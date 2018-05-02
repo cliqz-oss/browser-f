@@ -11,10 +11,15 @@
 #include "nsString.h"
 #include "nsStringBuffer.h"
 
+namespace mozilla {
+struct AtomsSizes;
+}
+
 class nsAtom
 {
 public:
-  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
+  void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
+                              mozilla::AtomsSizes& aSizes) const;
 
   enum class AtomKind : uint8_t {
     DynamicAtom = 0,
@@ -33,17 +38,11 @@ public:
     return Equals(aString.BeginReading(), aString.Length());
   }
 
-  void SetKind(AtomKind aKind)
-  {
-    mKind = static_cast<uint32_t>(aKind);
-    MOZ_ASSERT(Kind() == aKind);
-  }
-
   AtomKind Kind() const { return static_cast<AtomKind>(mKind); }
 
-  bool IsDynamicAtom() const { return Kind() == AtomKind::DynamicAtom; }
-  bool IsHTML5Atom()   const { return Kind() == AtomKind::HTML5Atom; }
-  bool IsStaticAtom()  const { return Kind() == AtomKind::StaticAtom; }
+  bool IsDynamic() const { return Kind() == AtomKind::DynamicAtom; }
+  bool IsHTML5()   const { return Kind() == AtomKind::HTML5Atom; }
+  bool IsStatic()  const { return Kind() == AtomKind::StaticAtom; }
 
   char16ptr_t GetUTF16String() const { return mString; }
 
@@ -52,12 +51,13 @@ public:
   void ToString(nsAString& aString) const;
   void ToUTF8String(nsACString& aString) const;
 
-  // This is only valid for dynamic atoms.
+  // This is not valid for static atoms. The caller must *not* mutate the
+  // string buffer, otherwise all hell will break loose.
   nsStringBuffer* GetStringBuffer() const
   {
     // See the comment on |mString|'s declaration.
-    MOZ_ASSERT(IsDynamicAtom());
-    return nsStringBuffer::FromData(mString);
+    MOZ_ASSERT(IsDynamic() || IsHTML5());
+    return nsStringBuffer::FromData(const_cast<char16_t*>(mString));
   }
 
   // A hashcode that is better distributed than the actual atom pointer, for
@@ -67,7 +67,7 @@ public:
   //
   uint32_t hash() const
   {
-    MOZ_ASSERT(!IsHTML5Atom());
+    MOZ_ASSERT(!IsHTML5());
     return mHash;
   }
 
@@ -79,26 +79,27 @@ public:
   typedef mozilla::TrueType HasThreadSafeRefCnt;
 
 private:
-  friend class nsAtomFriend;
+  friend class nsAtomTable;
+  friend class nsAtomSubTable;
   friend class nsHtml5AtomEntry;
 
-  // Dynamic atom construction is done by |friend|s.
+protected:
+  // Used by nsDynamicAtom and directly (by nsHtml5AtomEntry) for HTML5 atoms.
   nsAtom(AtomKind aKind, const nsAString& aString, uint32_t aHash);
 
-protected:
+  // Used by nsStaticAtom.
   nsAtom(const char16_t* aString, uint32_t aLength, uint32_t aHash);
 
   ~nsAtom();
 
-  mozilla::ThreadSafeAutoRefCnt mRefCnt;
-  uint32_t mLength: 30;
-  uint32_t mKind: 2; // nsAtom::AtomKind
-  uint32_t mHash;
+  const uint32_t mLength:30;
+  const uint32_t mKind:2; // nsAtom::AtomKind
+  const uint32_t mHash;
   // WARNING! For static atoms, this is a pointer to a static char buffer. For
   // non-static atoms it points to the chars in an nsStringBuffer. This means
   // that nsStringBuffer::FromData(mString) calls are only valid for non-static
   // atoms.
-  char16_t* mString;
+  const char16_t* const mString;
 };
 
 // A trivial subclass of nsAtom that can be used for known static atoms. The
@@ -112,12 +113,16 @@ class nsStaticAtom : public nsAtom
 {
 public:
   // These are deleted so it's impossible to RefPtr<nsStaticAtom>. Raw
-  // nsStaticAtom atoms should be used instead.
+  // nsStaticAtom pointers should be used instead.
   MozExternalRefCountType AddRef() = delete;
   MozExternalRefCountType Release() = delete;
 
+  already_AddRefed<nsAtom> ToAddRefed() {
+    return already_AddRefed<nsAtom>(static_cast<nsAtom*>(this));
+  }
+
 private:
-  friend class nsAtomFriend;
+  friend class nsAtomTable;
 
   // Construction is done entirely by |friend|s.
   nsStaticAtom(const char16_t* aString, uint32_t aLength, uint32_t aHash)
@@ -149,14 +154,19 @@ already_AddRefed<nsAtom> NS_Atomize(const nsAString& aUTF16String);
 already_AddRefed<nsAtom> NS_AtomizeMainThread(const nsAString& aUTF16String);
 
 // Return a count of the total number of atoms currently alive in the system.
+//
+// Note that the result is imprecise and racy if other threads are currently
+// operating on atoms. It's also slow, since it triggers a GC before counting.
+// Currently this function is only used in tests, which should probably remain
+// the case.
 nsrefcnt NS_GetNumberOfAtoms();
 
 // Return a pointer for a static atom for the string or null if there's no
 // static atom for this string.
 nsStaticAtom* NS_GetStaticAtom(const nsAString& aUTF16String);
 
-// Seal the static atom table.
-void NS_SealStaticAtomTable();
+// Record that all static atoms have been inserted.
+void NS_SetStaticAtomsDone();
 
 class nsAtomString : public nsString
 {

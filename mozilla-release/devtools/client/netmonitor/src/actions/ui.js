@@ -7,6 +7,7 @@
 const {
   ACTIVITY_TYPE,
   OPEN_NETWORK_DETAILS,
+  RESIZE_NETWORK_DETAILS,
   ENABLE_PERSISTENT_LOGS,
   DISABLE_BROWSER_CACHE,
   OPEN_STATISTICS,
@@ -16,15 +17,37 @@ const {
   WATERFALL_RESIZE,
 } = require("../constants");
 
+const { getDisplayedRequests } = require("../selectors/index");
+
 /**
  * Change network details panel.
  *
  * @param {boolean} open - expected network details panel open state
  */
 function openNetworkDetails(open) {
+  return (dispatch, getState) => {
+    const visibleRequestItems = getDisplayedRequests(getState());
+    let defaultSelectedId = visibleRequestItems.length ? visibleRequestItems[0].id : null;
+
+    return dispatch({
+      type: OPEN_NETWORK_DETAILS,
+      open,
+      defaultSelectedId,
+    });
+  };
+}
+
+/**
+ * Change network details panel size.
+ *
+ * @param {integer} width
+ * @param {integer} height
+ */
+function resizeNetworkDetails(width, height) {
   return {
-    type: OPEN_NETWORK_DETAILS,
-    open,
+    type: RESIZE_NETWORK_DETAILS,
+    width,
+    height,
   };
 }
 
@@ -146,6 +169,7 @@ function toggleStatistics(connector) {
 
 module.exports = {
   openNetworkDetails,
+  resizeNetworkDetails,
   enablePersistentLogs,
   disableBrowserCache,
   openStatistics,

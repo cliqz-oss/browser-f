@@ -13,7 +13,6 @@
 #include "nsSize.h"
 #include "nsDocument.h"
 #include "nsIDocument.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsIScriptContext.h"
 #include "nsIURL.h"
 #include "nsIIOService.h"
@@ -26,6 +25,7 @@
 #include "nsIDOMWindow.h"
 #include "nsFocusManager.h"
 #include "mozilla/dom/HTMLFormElement.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "nsAttrValueOrString.h"
 #include "imgLoader.h"
 #include "Image.h"
@@ -62,7 +62,7 @@ static bool IsPreviousSibling(nsINode *aSubject, nsINode *aNode)
 
   nsINode *parent = aSubject->GetParentNode();
   if (parent && parent == aNode->GetParentNode()) {
-    return parent->IndexOf(aSubject) < parent->IndexOf(aNode);
+    return parent->ComputeIndexOf(aSubject) < parent->ComputeIndexOf(aNode);
   }
 
   return false;
@@ -266,8 +266,8 @@ HTMLImageElement::GetAttributeChangeHint(const nsAtom* aAttribute,
       aAttribute == nsGkAtoms::ismap) {
     retval |= nsChangeHint_ReconstructFrame;
   } else if (aAttribute == nsGkAtoms::alt) {
-    if (aModType == nsIDOMMutationEvent::ADDITION ||
-        aModType == nsIDOMMutationEvent::REMOVAL) {
+    if (aModType == MutationEventBinding::ADDITION ||
+        aModType == MutationEventBinding::REMOVAL) {
       retval |= nsChangeHint_ReconstructFrame;
     }
   }
@@ -495,8 +495,7 @@ HTMLImageElement::AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
       // Bug 1076583 - We still use the older synchronous algorithm in
       // non-responsive mode. Force a new load of the image with the
       // new cross origin policy
-      IgnoredErrorResult error;
-      ForceReload(aNotify, error);
+      ForceReload(aNotify, IgnoreErrors());
     }
   }
 }
@@ -735,7 +734,7 @@ HTMLImageElement::Image(const GlobalObject& aGlobal,
   already_AddRefed<mozilla::dom::NodeInfo> nodeInfo =
     doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::img, nullptr,
                                         kNameSpaceID_XHTML,
-                                        nsIDOMNode::ELEMENT_NODE);
+                                        ELEMENT_NODE);
 
   RefPtr<HTMLImageElement> img = new HTMLImageElement(nodeInfo);
 

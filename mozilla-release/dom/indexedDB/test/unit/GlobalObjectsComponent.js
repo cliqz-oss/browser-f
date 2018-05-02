@@ -3,9 +3,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["indexedDB"]);
 
 function GlobalObjectsComponent() {
@@ -16,7 +14,7 @@ GlobalObjectsComponent.prototype =
 {
   classID: Components.ID("{949ebf50-e0da-44b9-8335-cbfd4febfdcc}"),
 
-  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsISupports]),
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports]),
 
   runTest() {
     const name = "Splendid Test";

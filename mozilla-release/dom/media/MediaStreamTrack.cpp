@@ -166,11 +166,15 @@ MediaStreamTrack::Destroy()
     mPrincipalHandleListener->Forget();
     mPrincipalHandleListener = nullptr;
   }
-  for (auto l : mTrackListeners) {
-    RemoveListener(l);
+  // Remove all listeners -- avoid iterating over the list we're removing from
+  const nsTArray<RefPtr<MediaStreamTrackListener>> trackListeners(mTrackListeners);
+  for (auto listener : trackListeners) {
+    RemoveListener(listener);
   }
-  for (auto l : mDirectTrackListeners) {
-    RemoveDirectListener(l);
+  // Do the same as above for direct listeners
+  const nsTArray<RefPtr<DirectMediaStreamTrackListener>> directTrackListeners(mDirectTrackListeners);
+  for (auto listener : directTrackListeners) {
+    RemoveDirectListener(listener);
   }
 }
 
@@ -219,9 +223,14 @@ MediaStreamTrack::SetEnabled(bool aEnabled)
   LOG(LogLevel::Info, ("MediaStreamTrack %p %s",
                        this, aEnabled ? "Enabled" : "Disabled"));
 
+  if (mEnabled == aEnabled) {
+    return;
+  }
+
   mEnabled = aEnabled;
   GetOwnedStream()->SetTrackEnabled(mTrackID, mEnabled ? DisabledTrackMode::ENABLED
                                                        : DisabledTrackMode::SILENCE_BLACK);
+  GetSource().SinkEnabledStateChanged();
 }
 
 void
@@ -289,9 +298,12 @@ MediaStreamTrack::ApplyConstraints(const MediaTrackConstraints& aConstraints,
   typedef media::Pledge<bool, MediaStreamError*> PledgeVoid;
 
   nsPIDOMWindowInner* window = mOwningStream->GetParentObject();
+  nsIGlobalObject* go = window ? window->AsGlobal() : nullptr;
 
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(window);
   RefPtr<Promise> promise = Promise::Create(go, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   // Forward constraints to the source.
   //

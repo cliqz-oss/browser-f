@@ -191,6 +191,8 @@ public:
     }
 
     void SetFastOpenStatus(uint8_t aStatus) override;
+
+    void SetHttpTrailers(nsCString &aTrailers);
 private:
     friend class DeleteHttpTransaction;
     virtual ~nsHttpTransaction();
@@ -219,7 +221,7 @@ private:
 
     bool TimingEnabled() const { return mCaps & NS_HTTP_TIMING_ENABLED; }
 
-    bool ResponseTimeoutEnabled() const final override;
+    bool ResponseTimeoutEnabled() const final;
 
     void DisableSpdy() override;
     void ReuseConnectionOnRestartOK(bool reuseOk) override { mReuseOnRestart = reuseOk; }

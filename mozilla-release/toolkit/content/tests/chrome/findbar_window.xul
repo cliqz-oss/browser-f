@@ -20,10 +20,9 @@
           src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"/>
 
   <script type="application/javascript"><![CDATA[
-    const {interfaces: Ci, classes: Cc, results: Cr, utils: Cu} = Components;
-    Cu.import("resource://gre/modules/AppConstants.jsm");
-    Cu.import("resource://testing-common/BrowserTestUtils.jsm");
-    Cu.import("resource://testing-common/ContentTask.jsm");
+    ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+    ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    ChromeUtils.import("resource://testing-common/ContentTask.jsm");
     ContentTask.setTestScope(window.opener.wrappedJSObject);
 
     var gPrefsvc = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
@@ -517,7 +516,7 @@
       await promiseHighlightFinished();
       await promiseExpectRangeCount(3);
 
-      synthesizeKey("VK_BACK_SPACE", {});
+      synthesizeKey("KEY_Backspace");
       await promiseExpectRangeCount(0);
 
       // Regression test for bug 1316513.
@@ -536,7 +535,7 @@
 
       ok(highlightButton.checked, "testFindWithHighlight - 1316513: Highlight All " +
          "should still be checked after a reload.");
-      synthesizeKey("VK_RETURN", {});
+      synthesizeKey("KEY_Enter");
       await promiseHighlightFinished();
       await promiseExpectRangeCount(3);
 

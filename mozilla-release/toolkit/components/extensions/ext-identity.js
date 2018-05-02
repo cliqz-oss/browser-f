@@ -2,8 +2,8 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 Cu.importGlobalProperties(["URL", "XMLHttpRequest"]);
 
@@ -14,7 +14,7 @@ var {
 const checkRedirected = (url, redirectURI) => {
   return new Promise((resolve, reject) => {
     let xhr = new XMLHttpRequest();
-    xhr.open("HEAD", url);
+    xhr.open("GET", url);
     // We expect this if the user has not authenticated.
     xhr.onload = () => {
       reject(0);
@@ -34,10 +34,10 @@ const checkRedirected = (url, redirectURI) => {
         if (responseURL.startsWith(redirectURI)) {
           resolve(responseURL);
           // Cancel the redirect.
-          callback.onRedirectVerifyCallback(Components.results.NS_BINDING_ABORTED);
+          callback.onRedirectVerifyCallback(Cr.NS_BINDING_ABORTED);
           return;
         }
-        callback.onRedirectVerifyCallback(Components.results.NS_OK);
+        callback.onRedirectVerifyCallback(Cr.NS_OK);
       },
     };
     xhr.send();

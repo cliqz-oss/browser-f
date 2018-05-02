@@ -4,7 +4,7 @@
 
 // This verifies that add-ons URIs can be mapped to add-on IDs
 //
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Enable loading extensions from the user scopes
 Services.prefs.setIntPref("extensions.enabledScopes",
@@ -45,8 +45,8 @@ TestProviderNoMap.prototype = {
 
 function check_mapping(uri, id) {
   Assert.equal(AddonManager.mapURIToAddonID(uri), id);
-  let svc = Components.classes["@mozilla.org/addons/integration;1"].
-            getService(Components.interfaces.amIAddonManager);
+  let svc = Cc["@mozilla.org/addons/integration;1"].
+            getService(Ci.amIAddonManager);
   let val = {};
   Assert.ok(svc.mapURIToAddonID(uri, val));
   Assert.equal(val.value, id);
@@ -75,7 +75,7 @@ function run_test_early() {
       // See bug 957089
 
       // First force-initialize the XPIProvider.
-      let s = Components.utils.import(
+      let s = ChromeUtils.import(
         "resource://gre/modules/addons/XPIProvider.jsm", {});
 
       // Make the early API call.
@@ -99,8 +99,8 @@ function run_test_early() {
 function run_test_nomapping() {
   Assert.equal(AddonManager.mapURIToAddonID(TestProvider.prototype.uri), null);
   try {
-    let svc = Components.classes["@mozilla.org/addons/integration;1"].
-              getService(Components.interfaces.amIAddonManager);
+    let svc = Cc["@mozilla.org/addons/integration;1"].
+              getService(Ci.amIAddonManager);
     let val = {};
     Assert.ok(!svc.mapURIToAddonID(TestProvider.prototype.uri, val));
   } catch (ex) {
@@ -295,7 +295,7 @@ function run_test_invalidarg() {
       throw new Error("Shouldn't be able to map the URI in question");
     } catch (ex) {
       if (ex.result) {
-        Assert.equal(ex.result, Components.results.NS_ERROR_INVALID_ARG);
+        Assert.equal(ex.result, Cr.NS_ERROR_INVALID_ARG);
       } else {
         do_throw(ex);
       }
@@ -309,13 +309,14 @@ function run_test_invalidarg() {
 function run_test_provider() {
   restartManager();
 
-  const provider = new TestProvider(Components.results.NS_ERROR_NOT_AVAILABLE);
+  const provider = new TestProvider(Cr.NS_ERROR_NOT_AVAILABLE);
   AddonManagerPrivate.registerProvider(provider);
 
   check_mapping(provider.uri, provider.id);
 
-  let u2 = provider.uri.clone();
-  u2.pathQueryRef = "notmapped";
+  let u2 = provider.uri.mutate()
+                       .setPathQueryRef("notmapped")
+                       .finalize();
   Assert.equal(AddonManager.mapURIToAddonID(u2), null);
 
   AddonManagerPrivate.unregisterProvider(provider);

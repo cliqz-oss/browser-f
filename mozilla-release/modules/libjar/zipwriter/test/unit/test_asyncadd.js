@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-var Cu = Components.utils;
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 // Values taken from using zipinfo to list the test.zip contents
 var TESTS = [
@@ -29,7 +28,7 @@ var observer = {
 
   onStopRequest: function(request, context, status)
   {
-    Assert.equal(status, Components.results.NS_OK);
+    Assert.equal(status, Cr.NS_OK);
 
     zipW.close();
     size += ZIP_EOCDR_HEADER_SIZE;

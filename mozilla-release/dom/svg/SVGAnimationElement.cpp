@@ -354,15 +354,6 @@ SVGAnimationElement::IsNodeOfType(uint32_t aFlags) const
 }
 
 //----------------------------------------------------------------------
-// SVGTests methods
-
-bool
-SVGAnimationElement::IsInChromeDoc() const
-{
-  return nsContentUtils::IsChromeDoc(OwnerDoc());
-}
-
-//----------------------------------------------------------------------
 // SVG utility methods
 
 void
@@ -386,8 +377,7 @@ SVGAnimationElement::ActivateByHyperlink()
     // else, silently fail. We mustn't be part of an SVG document fragment that
     // is attached to the document tree so there's nothing we can do here
   } else {
-    IgnoredErrorResult rv;
-    BeginElement(rv);
+    BeginElement(IgnoreErrors());
   }
 }
 

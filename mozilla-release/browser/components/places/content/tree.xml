@@ -44,6 +44,11 @@
                 readonly="true"
                 onget="return this._controller"/>
 
+      <property name="disableUserActions"
+                onget="return this.getAttribute('disableUserActions') == 'true';"
+                onset="if (val) this.setAttribute('disableUserActions', 'true');
+                       else this.removeAttribute('disableUserActions'); return val;"/>
+
       <!-- overriding -->
       <property name="view">
         <getter><![CDATA[
@@ -76,7 +81,8 @@
           // tag containers, so we must fall to the default case.
           if (PlacesUtils.nodeIsHistoryContainer(queryNode) ||
               options.resultType == options.RESULTS_AS_TAG_QUERY ||
-              options.resultType == options.RESULTS_AS_TAG_CONTENTS)
+              options.resultType == options.RESULTS_AS_TAG_CONTENTS ||
+              options.resultType == options.RESULTS_AS_ROOTS_QUERY)
             options.resultType = options.RESULTS_AS_URI;
 
           var query = PlacesUtils.history.getNewQuery();
@@ -109,6 +115,7 @@
 
           if (!this._controller) {
             this._controller = new PlacesController(this);
+            this._controller.disableUserActions = this.disableUserActions;
             this.controllers.appendController(this._controller);
           }
 
@@ -242,7 +249,7 @@
             // opening each folder as we go.
             for (var i = parents.length - 1; i >= 0; --i) {
               let index = view.treeIndexForNode(parents[i]);
-              if (index != Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE &&
+              if (index != -1 &&
                   view.isContainer(index) && !view.isContainerOpen(index))
                 view.toggleOpenState(index);
             }
@@ -250,7 +257,7 @@
           }
 
           let index = view.treeIndexForNode(node);
-          if (index == Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE)
+          if (index == -1)
             return;
 
           view.selection.select(index);
@@ -500,7 +507,7 @@
 
               // Avoid the potentially expensive call to getChildIndex
               // if we know this container doesn't allow insertion
-              if (PlacesControllerDragHelper.disallowInsertion(container, this))
+              if (this.controller.disallowInsertion(container))
                 return null;
 
               var queryOptions = PlacesUtils.asQuery(result.root).queryOptions;
@@ -523,7 +530,7 @@
             }
           }
 
-          if (PlacesControllerDragHelper.disallowInsertion(container, this))
+          if (this.controller.disallowInsertion(container))
             return null;
 
           // TODO (Bug 1160193): properly support dropping on a tag root.
@@ -534,7 +541,7 @@
               return null;
           }
 
-          return new InsertionPoint({
+          return new PlacesInsertionPoint({
             parentId: PlacesUtils.getConcreteItemId(container),
             parentGuid: PlacesUtils.getConcreteItemGuid(container),
             index, orientation, tagName, dropNearNode
@@ -621,8 +628,12 @@
                 checkedGuidsSet.has(concreteGuid))
               return foundOne;
 
-            // Only follow a query if it has been been explicitly opened by the caller.
-            let shouldOpen = aOpenContainers && PlacesUtils.nodeIsFolder(node);
+            // Only follow a query if it has been been explicitly opened by the
+            // caller. We support the "AllBookmarks" case to allow callers to
+            // specify just the top-level bookmark folders.
+            let shouldOpen = aOpenContainers && (PlacesUtils.nodeIsFolder(node) ||
+              (PlacesUtils.nodeIsQuery(node) && node.itemId == PlacesUIUtils.leftPaneQueries.AllBookmarks));
+
             PlacesUtils.asContainer(node);
             if (!node.containerOpen && !shouldOpen)
               return foundOne;
@@ -672,7 +683,7 @@
           }
           for (let i = 0; i < nodes.length; i++) {
             var index = resultview.treeIndexForNode(nodes[i]);
-            if (index == Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE)
+            if (index == -1)
               continue;
             selection.rangedSelect(index, index, true);
           }
@@ -732,6 +743,12 @@
         if (event.target.localName != "treechildren")
           return;
 
+        if (this.disableUserActions) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
         let nodes = this.selectedNodes;
         for (let i = 0; i < nodes.length; i++) {
           let node = nodes[i];
@@ -745,7 +762,7 @@
 
           // If this node is child of a readonly container (e.g. a livemark)
           // or cannot be moved, we must force a copy.
-          if (!PlacesControllerDragHelper.canMoveNode(node, this)) {
+          if (!this.controller.canMoveNode(node)) {
             event.dataTransfer.effectAllowed = "copyLink";
             break;
           }

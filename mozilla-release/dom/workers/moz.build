@@ -9,14 +9,15 @@ with Files("**"):
 
 # Public stuff.
 EXPORTS.mozilla.dom += [
-    'FileReaderSync.h',
-    'ServiceWorkerCommon.h',
-    'ServiceWorkerContainer.h',
-    'ServiceWorkerDescriptor.h',
-    'ServiceWorkerEvents.h',
-    'ServiceWorkerIPCUtils.h',
-    'ServiceWorkerRegistrar.h',
-    'ServiceWorkerRegistration.h',
+    'ChromeWorker.h',
+    'SharedWorker.h',
+    'Worker.h',
+    'WorkerCommon.h',
+    'WorkerDebugger.h',
+    'WorkerDebuggerManager.h',
+    'WorkerHolder.h',
+    'WorkerHolderToken.h',
+    'WorkerLoadInfo.h',
     'WorkerLocation.h',
     'WorkerNavigator.h',
     'WorkerPrivate.h',
@@ -24,21 +25,11 @@ EXPORTS.mozilla.dom += [
     'WorkerScope.h',
 ]
 
-EXPORTS.mozilla.dom.workers += [
+# Private stuff.
+EXPORTS.mozilla.dom.workerinternals += [
+    'JSSettings.h',
+    'Queue.h',
     'RuntimeService.h',
-    'ServiceWorkerInfo.h',
-    'ServiceWorkerManager.h',
-    'ServiceWorkerRegistrationInfo.h',
-    'WorkerDebuggerManager.h',
-    'Workers.h',
-]
-
-# Stuff needed for the bindings, not really public though.
-EXPORTS.mozilla.dom.workers.bindings += [
-    'ServiceWorker.h',
-    'SharedWorker.h',
-    'WorkerHolder.h',
-    'WorkerHolderToken.h',
 ]
 
 XPIDL_MODULE = 'dom_workers'
@@ -49,37 +40,22 @@ XPIDL_SOURCES += [
 ]
 
 UNIFIED_SOURCES += [
+    'ChromeWorker.cpp',
     'ChromeWorkerScope.cpp',
-    'FileReaderSync.cpp',
+    'MessageEventRunnable.cpp',
     'Principal.cpp',
     'RegisterBindings.cpp',
     'RuntimeService.cpp',
     'ScriptLoader.cpp',
-    'ServiceWorker.cpp',
-    'ServiceWorkerContainer.cpp',
-    'ServiceWorkerDescriptor.cpp',
-    'ServiceWorkerEvents.cpp',
-    'ServiceWorkerInfo.cpp',
-    'ServiceWorkerJob.cpp',
-    'ServiceWorkerJobQueue.cpp',
-    'ServiceWorkerManager.cpp',
-    'ServiceWorkerManagerChild.cpp',
-    'ServiceWorkerManagerParent.cpp',
-    'ServiceWorkerManagerService.cpp',
-    'ServiceWorkerPrivate.cpp',
-    'ServiceWorkerRegisterJob.cpp',
-    'ServiceWorkerRegistrar.cpp',
-    'ServiceWorkerRegistration.cpp',
-    'ServiceWorkerRegistrationInfo.cpp',
-    'ServiceWorkerScriptCache.cpp',
-    'ServiceWorkerUnregisterJob.cpp',
-    'ServiceWorkerUpdateJob.cpp',
-    'ServiceWorkerUpdaterChild.cpp',
-    'ServiceWorkerUpdaterParent.cpp',
     'SharedWorker.cpp',
+    'Worker.cpp',
+    'WorkerDebugger.cpp',
     'WorkerDebuggerManager.cpp',
+    'WorkerError.cpp',
+    'WorkerEventTarget.cpp',
     'WorkerHolder.cpp',
     'WorkerHolderToken.cpp',
+    'WorkerLoadInfo.cpp',
     'WorkerLocation.cpp',
     'WorkerNavigator.cpp',
     'WorkerPrivate.cpp',
@@ -88,18 +64,12 @@ UNIFIED_SOURCES += [
     'WorkerThread.cpp',
 ]
 
-IPDL_SOURCES += [
-    'IPCServiceWorkerDescriptor.ipdlh',
-    'PServiceWorkerManager.ipdl',
-    'PServiceWorkerUpdater.ipdl',
-    'ServiceWorkerRegistrarTypes.ipdlh',
-]
-
 LOCAL_INCLUDES += [
     '../base',
     '../system',
     '/dom/base',
     '/dom/bindings',
+    '/js/xpconnect/loader',
     '/xpcom/build',
     '/xpcom/threads',
 ]
@@ -115,17 +85,10 @@ TEST_DIRS += [
 
 MOCHITEST_MANIFESTS += [
     'test/mochitest.ini',
-    'test/serviceworkers/mochitest.ini',
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
     'test/chrome.ini',
-    'test/serviceworkers/chrome.ini'
-]
-
-BROWSER_CHROME_MANIFESTS += [
-    'test/serviceworkers/browser.ini',
-    'test/serviceworkers/isolated/multi-e10s-update/browser.ini',
 ]
 
 XPCSHELL_TESTS_MANIFESTS += ['test/xpcshell/xpcshell.ini']

@@ -433,12 +433,14 @@ class ParentRunnable final
   , public PAsmJSCacheEntryParent
 {
 public:
+  // We need to always declare refcounting because
+  // OpenDirectoryListener has pure-virtual refcounting.
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
 
   ParentRunnable(const PrincipalInfo& aPrincipalInfo,
                  OpenMode aOpenMode,
-                 WriteParams aWriteParams)
+                 const WriteParams& aWriteParams)
   : mOwningEventTarget(GetCurrentThreadEventTarget()),
     mPrincipalInfo(aPrincipalInfo),
     mOpenMode(aOpenMode),
@@ -1317,7 +1319,7 @@ public:
 
   ChildRunnable(nsIPrincipal* aPrincipal,
                 OpenMode aOpenMode,
-                WriteParams aWriteParams,
+                const WriteParams& aWriteParams,
                 ReadParams aReadParams)
   : mPrincipal(aPrincipal),
     mWriteParams(aWriteParams),

@@ -44,6 +44,7 @@
 namespace mozilla {
 
 using namespace dom;
+using namespace dom::SVGPreserveAspectRatioBinding;
 using namespace gfx;
 using namespace layers;
 
@@ -776,12 +777,7 @@ VectorImage::GetFrameAtSize(const IntSize& aSize,
 #endif
 
   auto result = GetFrameInternal(aSize, Nothing(), aWhichFrame, aFlags);
-  RefPtr<SourceSurface> surf = Get<2>(result).forget();
-
-  // If we are here, it suggests the image is embedded in a canvas or some
-  // other path besides layers, and we won't need the file handle.
-  MarkSurfaceShared(surf);
-  return surf.forget();
+  return Get<2>(result).forget();
 }
 
 Tuple<ImgDrawResult, IntSize, RefPtr<SourceSurface>>
@@ -881,7 +877,7 @@ VectorImage::IsImageContainerAvailableAtSize(LayerManager* aManager,
                                              uint32_t aFlags)
 {
   if (mError || !mIsFullyLoaded || aSize.IsEmpty() ||
-      mHaveAnimations || !gfxVars::UseWebRender()) {
+      mHaveAnimations || !gfxVars::GetUseWebRenderOrDefault()) {
     return false;
   }
 
@@ -1042,10 +1038,6 @@ VectorImage::Draw(gfxContext* aContext,
     new gfxSurfaceDrawable(sourceSurface, params.size);
   Show(drawable, params);
   SendFrameComplete(didCache, params.flags);
-
-  // Image got put into a painted layer, it will not be shared with another
-  // process.
-  MarkSurfaceShared(sourceSurface);
   return ImgDrawResult::SUCCESS;
 }
 

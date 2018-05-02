@@ -7,7 +7,7 @@
 use app_units::AU_PER_PX;
 use app_units::Au;
 use context::QuirksMode;
-use cssparser::{CssStringWriter, Parser, RGBA, Token, BasicParseErrorKind};
+use cssparser::{Parser, RGBA, Token, BasicParseErrorKind};
 use euclid::Size2D;
 use euclid::TypedScale;
 use gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
@@ -28,7 +28,7 @@ use style_traits::{CSSPixel, CssWriter, DevicePixel};
 use style_traits::{ToCss, ParseError, StyleParseErrorKind};
 use style_traits::viewport::ViewportConstraints;
 use stylesheets::Origin;
-use values::{CSSFloat, CustomIdent};
+use values::{CSSFloat, CustomIdent, KeyframesName, serialize_atom_identifier};
 use values::computed::{self, ToComputedValue};
 use values::computed::font::FontSize;
 use values::specified::{Integer, Length, Number};
@@ -71,7 +71,7 @@ impl Device {
     pub fn new(pres_context: RawGeckoPresContextOwned) -> Self {
         assert!(!pres_context.is_null());
         Device {
-            pres_context: pres_context,
+            pres_context,
             default_values: ComputedValues::default_values(unsafe { &*pres_context }),
             // FIXME(bz): Seems dubious?
             root_font_size: AtomicIsize::new(FontSize::medium().size().0 as isize),
@@ -85,9 +85,20 @@ impl Device {
     /// relevant viewport constraints.
     pub fn account_for_viewport_rule(
         &mut self,
-        _constraints: &ViewportConstraints
+        _constraints: &ViewportConstraints,
     ) {
         unreachable!("Gecko doesn't support @viewport");
+    }
+
+    /// Whether any animation name may be referenced from the style of any
+    /// element.
+    pub fn animation_name_may_be_referenced(&self, name: &KeyframesName) -> bool {
+        unsafe {
+            bindings::Gecko_AnimationNameMayBeReferencedFromStyle(
+                self.pres_context(),
+                name.as_atom().as_ptr(),
+            )
+        }
     }
 
     /// Returns the default computed values as a reference, in order to match
@@ -341,15 +352,11 @@ pub enum MediaExpressionValue {
     /// feature's `mData` member.
     Enumerated(i16),
     /// An identifier.
-    ///
-    /// TODO(emilio): Maybe atomize?
-    Ident(String),
+    Ident(Atom),
 }
 
 impl MediaExpressionValue {
     fn from_css_value(for_expr: &Expression, css_value: &nsCSSValue) -> Option<Self> {
-        use gecko::conversions::string_from_chars_pointer;
-
         // NB: If there's a null value, that means that we don't support the
         // feature.
         if css_value.mUnit == nsCSSUnit::eCSSUnit_Null {
@@ -358,7 +365,7 @@ impl MediaExpressionValue {
 
         match for_expr.feature.mValueType {
             nsMediaFeature_ValueType::eLength => {
-                debug_assert!(css_value.mUnit == nsCSSUnit::eCSSUnit_Pixel);
+                debug_assert_eq!(css_value.mUnit, nsCSSUnit::eCSSUnit_Pixel);
                 let pixels = css_value.float_unchecked();
                 Some(MediaExpressionValue::Length(Length::from_px(pixels)))
             }
@@ -368,17 +375,17 @@ impl MediaExpressionValue {
                 Some(MediaExpressionValue::Integer(i as u32))
             }
             nsMediaFeature_ValueType::eFloat => {
-                debug_assert!(css_value.mUnit == nsCSSUnit::eCSSUnit_Number);
+                debug_assert_eq!(css_value.mUnit, nsCSSUnit::eCSSUnit_Number);
                 Some(MediaExpressionValue::Float(css_value.float_unchecked()))
             }
             nsMediaFeature_ValueType::eBoolInteger => {
-                debug_assert!(css_value.mUnit == nsCSSUnit::eCSSUnit_Integer);
+                debug_assert_eq!(css_value.mUnit, nsCSSUnit::eCSSUnit_Integer);
                 let i = css_value.integer_unchecked();
                 debug_assert!(i == 0 || i == 1);
                 Some(MediaExpressionValue::BoolInteger(i == 1))
             }
             nsMediaFeature_ValueType::eResolution => {
-                debug_assert!(css_value.mUnit == nsCSSUnit::eCSSUnit_Pixel);
+                debug_assert_eq!(css_value.mUnit, nsCSSUnit::eCSSUnit_Pixel);
                 Some(MediaExpressionValue::Resolution(Resolution::Dppx(css_value.float_unchecked())))
             }
             nsMediaFeature_ValueType::eEnumerated => {
@@ -386,13 +393,10 @@ impl MediaExpressionValue {
                 Some(MediaExpressionValue::Enumerated(value))
             }
             nsMediaFeature_ValueType::eIdent => {
-                debug_assert!(css_value.mUnit == nsCSSUnit::eCSSUnit_Ident);
-                let string = unsafe {
-                    let buffer = *css_value.mValue.mString.as_ref();
-                    debug_assert!(!buffer.is_null());
-                    string_from_chars_pointer(buffer.offset(1) as *const u16)
-                };
-                Some(MediaExpressionValue::Ident(string))
+                debug_assert_eq!(css_value.mUnit, nsCSSUnit::eCSSUnit_AtomIdent);
+                Some(MediaExpressionValue::Ident(Atom::from(unsafe {
+                    *css_value.mValue.mAtom.as_ref()
+                })))
             }
             nsMediaFeature_ValueType::eIntRatio => {
                 let array = unsafe { css_value.array_unchecked() };
@@ -425,7 +429,7 @@ impl MediaExpressionValue {
             },
             MediaExpressionValue::Resolution(ref r) => r.to_css(dest),
             MediaExpressionValue::Ident(ref ident) => {
-                CssStringWriter::new(dest).write_str(ident)
+                serialize_atom_identifier(ident, dest)
             }
             MediaExpressionValue::Enumerated(value) => unsafe {
                 use std::{slice, str};
@@ -550,7 +554,7 @@ fn parse_feature_value<'i, 't>(
             MediaExpressionValue::Enumerated(value)
         }
         nsMediaFeature_ValueType::eIdent => {
-            MediaExpressionValue::Ident(input.expect_ident()?.as_ref().to_owned())
+            MediaExpressionValue::Ident(Atom::from(input.expect_ident()?.as_ref()))
         }
     };
 
@@ -763,11 +767,11 @@ impl Expression {
                 one.to_dpi().partial_cmp(&actual_dpi).unwrap()
             }
             (&Ident(ref one), &Ident(ref other)) => {
-                debug_assert!(self.feature.mRangeType != nsMediaFeature_RangeType::eMinMaxAllowed);
+                debug_assert_ne!(self.feature.mRangeType, nsMediaFeature_RangeType::eMinMaxAllowed);
                 return one == other;
             }
             (&Enumerated(one), &Enumerated(other)) => {
-                debug_assert!(self.feature.mRangeType != nsMediaFeature_RangeType::eMinMaxAllowed);
+                debug_assert_ne!(self.feature.mRangeType, nsMediaFeature_RangeType::eMinMaxAllowed);
                 return one == other;
             }
             _ => unreachable!(),

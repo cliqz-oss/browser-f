@@ -15,8 +15,7 @@
 const chromeScript = runChecksAfterCommonInit(false);
 
 runInParent(function addLogins() {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   // Create some logins just for this form, since we'll be deleting them.
   let nsLoginInfo = Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
@@ -63,8 +62,8 @@ add_task(async function setup() {
 add_task(async function test_initial_focus() {
   let results = await notifyMenuChanged(2, "name");
   checkArrayValues(results, ["name", "name1"], "Two results");
-  doKey("down");
-  doKey("return");
+  synthesizeKey("KEY_ArrowDown");
+  synthesizeKey("KEY_Enter");
   await promiseFormsProcessed();
   is(iframeDoc.getElementById("form-basic-password").value, "pass", "Check first password filled");
   let popupState = await getPopupState();

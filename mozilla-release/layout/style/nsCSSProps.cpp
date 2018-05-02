@@ -12,6 +12,7 @@
 #include "nsCSSProps.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Casting.h"
 
 #include "nsCSSKeywords.h"
 #include "nsLayoutUtils.h"
@@ -140,9 +141,13 @@ SortPropertyAndCount(const void* s1, const void* s2, void *closure)
 {
   const PropertyAndCount *pc1 = static_cast<const PropertyAndCount*>(s1);
   const PropertyAndCount *pc2 = static_cast<const PropertyAndCount*>(s2);
+
   // Primary sort by count (lowest to highest)
-  if (pc1->count != pc2->count)
-    return pc1->count - pc2->count;
+  if (pc1->count != pc2->count) {
+    return AssertedCast<int32_t>(pc1->count) -
+           AssertedCast<int32_t>(pc2->count);
+  }
+
   // Secondary sort by property index (highest to lowest)
   return pc2->property - pc1->property;
 }
@@ -161,7 +166,7 @@ static nsCSSPropertyID gAliases[eCSSAliasCount != 0 ? eCSSAliasCount : 1] = {
 #undef CSS_PROP_ALIAS
 };
 
-nsStaticCaseInsensitiveNameTable*
+static nsStaticCaseInsensitiveNameTable*
 CreateStaticTable(const char* const aRawTable[], int32_t aLength)
 {
   auto table = new nsStaticCaseInsensitiveNameTable(aRawTable, aLength);
@@ -616,12 +621,6 @@ nsCSSProps::LookupFontDesc(const nsACString& aFontDesc)
 
   if (which == eCSSFontDesc_Display && !StylePrefs::sFontDisplayEnabled) {
     which = eCSSFontDesc_UNKNOWN;
-  } else if (which == eCSSFontDesc_UNKNOWN) {
-    // check for unprefixed font-feature-settings/font-language-override
-    nsAutoCString prefixedProp;
-    prefixedProp.AppendLiteral("-moz-");
-    prefixedProp.Append(aFontDesc);
-    which = nsCSSFontDesc(gFontDescTable->Lookup(prefixedProp));
   }
   return which;
 }
@@ -634,12 +633,6 @@ nsCSSProps::LookupFontDesc(const nsAString& aFontDesc)
 
   if (which == eCSSFontDesc_Display && !StylePrefs::sFontDisplayEnabled) {
     which = eCSSFontDesc_UNKNOWN;
-  } else if (which == eCSSFontDesc_UNKNOWN) {
-    // check for unprefixed font-feature-settings/font-language-override
-    nsAutoString prefixedProp;
-    prefixedProp.AppendLiteral("-moz-");
-    prefixedProp.Append(aFontDesc);
-    which = nsCSSFontDesc(gFontDescTable->Lookup(prefixedProp));
   }
   return which;
 }
@@ -710,6 +703,13 @@ nsCSSProps::GetStringValue(nsCSSCounterDesc aCounterDesc)
     static nsDependentCString sNullStr("");
     return sNullStr;
   }
+}
+
+const char* const*
+nsCSSProps::GetListStyleTypes(int32_t *aLength)
+{
+  *aLength = ArrayLength(kCSSRawPredefinedCounterStyles);
+  return kCSSRawPredefinedCounterStyles;
 }
 
 /***************************************************************************/
@@ -1550,6 +1550,12 @@ const KTableEntry nsCSSProps::kFontKerningKTable[] = {
   { eCSSKeyword_UNKNOWN, -1 }
 };
 
+const KTableEntry nsCSSProps::kFontOpticalSizingKTable[] = {
+  { eCSSKeyword_auto, NS_FONT_OPTICAL_SIZING_AUTO },
+  { eCSSKeyword_none, NS_FONT_OPTICAL_SIZING_NONE },
+  { eCSSKeyword_UNKNOWN, -1 }
+};
+
 const KTableEntry nsCSSProps::kFontSizeKTable[] = {
   { eCSSKeyword_xx_small, NS_STYLE_FONT_SIZE_XXSMALL },
   { eCSSKeyword_x_small, NS_STYLE_FONT_SIZE_XSMALL },
@@ -2140,8 +2146,6 @@ const KTableEntry nsCSSProps::kUserFocusKTable[] = {
 
 const KTableEntry nsCSSProps::kUserInputKTable[] = {
   { eCSSKeyword_none,     StyleUserInput::None },
-  { eCSSKeyword_enabled,  StyleUserInput::Enabled },
-  { eCSSKeyword_disabled, StyleUserInput::Disabled },
   { eCSSKeyword_auto,     StyleUserInput::Auto },
   { eCSSKeyword_UNKNOWN,  -1 }
 };
@@ -2800,6 +2804,8 @@ static const nsCSSPropertyID gFontSubpropTable[] = {
   eCSSProperty_font_feature_settings,
   eCSSProperty_font_language_override,
   eCSSProperty_font_kerning,
+  eCSSProperty_font_optical_sizing,
+  eCSSProperty_font_variation_settings,
   eCSSProperty_font_variant_alternates,
   eCSSProperty_font_variant_caps,
   eCSSProperty_font_variant_east_asian,
@@ -2995,13 +3001,6 @@ static const nsCSSPropertyID gPlaceItemsSubpropTable[] = {
 static const nsCSSPropertyID gPlaceSelfSubpropTable[] = {
   eCSSProperty_align_self,
   eCSSProperty_justify_self,
-  eCSSProperty_UNKNOWN
-};
-
-// Subproperty tables for shorthands that are just aliases with
-// different parsing rules.
-static const nsCSSPropertyID gMozTransformSubpropTable[] = {
-  eCSSProperty_transform,
   eCSSProperty_UNKNOWN
 };
 

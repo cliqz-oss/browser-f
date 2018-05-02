@@ -242,6 +242,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
                 self.fatal("Unable to find geckodriver binary "
                            "in common test package: %s" % str(geckodriver_path))
             cmd.append("--webdriver-binary=%s" % geckodriver_path)
+            cmd.append("--webdriver-arg=-vv")  # enable trace logs
 
         options = list(c.get("options", []))
 
@@ -277,7 +278,9 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
                           "mozbase/*",
                           "marionette/*",
                           "tools/*",
-                          "web-platform/*"],
+                          "web-platform/*",
+                          "mozpack/*",
+                          "mozbuild/*"],
             suite_categories=["web-platform"])
 
     def _install_fonts(self):

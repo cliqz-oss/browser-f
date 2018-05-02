@@ -189,7 +189,7 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                   "-DCMAKE_EXE_LINKER_FLAGS=%s" % ' '.join(ld[1:]),
                   "-DCMAKE_SHARED_LINKER_FLAGS=%s" % ' '.join(ld[1:]),
                   "-DCMAKE_BUILD_TYPE=%s" % build_type,
-                  "-DLLVM_TARGETS_TO_BUILD=X86;ARM",
+                  "-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64",
                   "-DLLVM_ENABLE_ASSERTIONS=%s" % ("ON" if assertions else "OFF"),
                   "-DPYTHON_EXECUTABLE=%s" % slashify_path(python_path),
                   "-DCMAKE_INSTALL_PREFIX=%s" % inst_dir,
@@ -213,9 +213,10 @@ def build_one_stage(cc, cxx, asm, ld, ar, ranlib, libtool,
                        "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
                        "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
                        "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
-                       "-DCMAKE_MACOSX_RPATH=@executable_path",
+                       "-DCMAKE_MACOSX_RPATH=ON",
                        "-DCMAKE_OSX_ARCHITECTURES=x86_64",
                        "-DDARWIN_osx_ARCHS=x86_64",
+                       "-DDARWIN_osx_SYSROOT=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
                        "-DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin11"]
     build_package(build_dir, cmake_args)
 
@@ -371,6 +372,9 @@ if __name__ == "__main__":
     parser.add_argument('--clean', required=False,
                         action='store_true',
                         help="Clean the build directory")
+    parser.add_argument('--skip-tar', required=False,
+                        action='store_true',
+                        help="Skip tar packaging stage")
 
     args = parser.parse_args()
     config = json.load(args.config)
@@ -595,5 +599,6 @@ if __name__ == "__main__":
         prune_final_dir_for_clang_tidy(os.path.join(final_stage_dir, "clang"))
         package_name = "clang-tidy"
 
-    ext = "bz2" if is_darwin() or is_windows() else "xz"
-    build_tar_package("tar", "%s.tar.%s" % (package_name, ext), final_stage_dir, "clang")
+    if not args.skip_tar:
+        ext = "bz2" if is_darwin() or is_windows() else "xz"
+        build_tar_package("tar", "%s.tar.%s" % (package_name, ext), final_stage_dir, "clang")

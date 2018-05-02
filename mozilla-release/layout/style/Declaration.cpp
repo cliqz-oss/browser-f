@@ -197,12 +197,14 @@ Declaration::GetPropertyIsImportant(const nsAString& aProperty) const
   return r;
 }
 
-void
+bool
 Declaration::RemoveProperty(const nsAString& aProperty)
 {
+  bool r = true;
   DispatchPropertyOperation(aProperty,
-    [&](nsCSSPropertyID propID) { RemovePropertyByID(propID); },
-    [&](const nsAString& name) { RemoveVariable(name); });
+    [&](nsCSSPropertyID propID) { r = RemovePropertyByID(propID); },
+    [&](const nsAString& name) { r = RemoveVariable(name); });
+  return r;
 }
 
 bool
@@ -822,8 +824,12 @@ Declaration::GetPropertyValueInternal(
         data->ValueFor(eCSSProperty_font_feature_settings);
       const nsCSSValue *languageOverride =
         data->ValueFor(eCSSProperty_font_language_override);
+      const nsCSSValue *opticalSizing =
+        data->ValueFor(eCSSProperty_font_optical_sizing); // may be missing!
       const nsCSSValue *fontKerning =
         data->ValueFor(eCSSProperty_font_kerning);
+      const nsCSSValue *variationSettings =
+        data->ValueFor(eCSSProperty_font_variation_settings); // may be missing!
       const nsCSSValue *fontVariantAlternates =
         data->ValueFor(eCSSProperty_font_variant_alternates);
       const nsCSSValue *fontVariantCaps =
@@ -849,7 +855,9 @@ Declaration::GetPropertyValueInternal(
             sizeAdjust->GetUnit() != eCSSUnit_System_Font ||
             featureSettings->GetUnit() != eCSSUnit_System_Font ||
             languageOverride->GetUnit() != eCSSUnit_System_Font ||
+            (opticalSizing && opticalSizing->GetUnit() != eCSSUnit_System_Font) ||
             fontKerning->GetUnit() != eCSSUnit_System_Font ||
+            (variationSettings && variationSettings->GetUnit() != eCSSUnit_System_Font) ||
             fontVariantAlternates->GetUnit() != eCSSUnit_System_Font ||
             fontVariantCaps->GetUnit() != eCSSUnit_System_Font ||
             fontVariantEastAsian->GetUnit() != eCSSUnit_System_Font ||
@@ -866,7 +874,9 @@ Declaration::GetPropertyValueInternal(
         if (sizeAdjust->GetUnit() != eCSSUnit_None ||
             featureSettings->GetUnit() != eCSSUnit_Normal ||
             languageOverride->GetUnit() != eCSSUnit_Normal ||
+            (opticalSizing && opticalSizing->GetIntValue() != NS_FONT_OPTICAL_SIZING_AUTO) ||
             fontKerning->GetIntValue() != NS_FONT_KERNING_AUTO ||
+            (variationSettings && variationSettings->GetUnit() != eCSSUnit_Normal) ||
             fontVariantAlternates->GetUnit() != eCSSUnit_Normal ||
             fontVariantEastAsian->GetUnit() != eCSSUnit_Normal ||
             fontVariantLigatures->GetUnit() != eCSSUnit_Normal ||
@@ -1452,15 +1462,6 @@ Declaration::GetPropertyValueInternal(
       }
       break;
     }
-    case eCSSProperty__moz_transform: {
-      // shorthands that are just aliases with different parsing rules
-      const nsCSSPropertyID* subprops =
-        nsCSSProps::SubpropertyEntryFor(aProperty);
-      MOZ_ASSERT(subprops[1] == eCSSProperty_UNKNOWN,
-                 "must have exactly one subproperty");
-      AppendValueToString(subprops[0], aValue);
-      break;
-    }
     case eCSSProperty_overscroll_behavior: {
       const nsCSSValue& xValue =
         *data->ValueFor(eCSSProperty_overscroll_behavior_x);
@@ -1911,7 +1912,7 @@ Declaration::AddVariable(const nsAString& aName,
   mOrder.AppendElement(propertyIndex);
 }
 
-void
+bool
 Declaration::RemoveVariable(const nsAString& aName)
 {
   if (mVariables) {
@@ -1923,7 +1924,9 @@ Declaration::RemoveVariable(const nsAString& aName)
   nsTArray<nsString>::index_type index = mVariableOrder.IndexOf(aName);
   if (index != nsTArray<nsString>::NoIndex) {
     mOrder.RemoveElement(index + eCSSProperty_COUNT);
+    return true;
   }
+  return false;
 }
 
 bool

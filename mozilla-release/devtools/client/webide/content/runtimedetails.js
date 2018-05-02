@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cu = Components.utils;
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const {AppManager} = require("devtools/client/webide/modules/app-manager");
 const {Connection} = require("devtools/shared/client/connection-manager");
@@ -32,7 +31,7 @@ function CloseUI() {
   window.parent.UI.openProject();
 }
 
-function OnAppManagerUpdate(event, what) {
+function OnAppManagerUpdate(what) {
   if (what == "connection" || what == "runtime-global-actors") {
     BuildUI();
     CheckLockState();

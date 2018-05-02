@@ -69,7 +69,7 @@ nsStyleLinkElement::Traverse(nsCycleCollectionTraversalCallback &cb)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mStyleSheet);
 }
 
-NS_IMETHODIMP
+void
 nsStyleLinkElement::SetStyleSheet(StyleSheet* aStyleSheet)
 {
   if (mStyleSheet) {
@@ -83,37 +83,30 @@ nsStyleLinkElement::SetStyleSheet(StyleSheet* aStyleSheet)
       mStyleSheet->SetOwningNode(node);
     }
   }
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP_(StyleSheet*)
+StyleSheet*
 nsStyleLinkElement::GetStyleSheet()
 {
   return mStyleSheet;
 }
 
-NS_IMETHODIMP
+void
 nsStyleLinkElement::InitStyleLinkElement(bool aDontLoadStyle)
 {
   mDontLoadStyle = aDontLoadStyle;
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 nsStyleLinkElement::SetEnableUpdates(bool aEnableUpdates)
 {
   mUpdatesEnabled = aEnableUpdates;
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 nsStyleLinkElement::GetCharset(nsAString& aCharset)
 {
-  // descendants have to implement this themselves
-  return NS_ERROR_NOT_IMPLEMENTED;
+  aCharset.Truncate();
 }
 
 /* virtual */ void
@@ -234,12 +227,7 @@ nsStyleLinkElement::CheckPreloadAttrs(const nsAttrValue& aAs,
   if (!aMedia.IsEmpty()) {
     RefPtr<MediaList> mediaList = MediaList::Create(aDocument->GetStyleBackendType(),
                                                     aMedia);
-    nsIPresShell* shell = aDocument->GetShell();
-    if (!shell) {
-      return false;
-    }
-
-    nsPresContext* presContext = shell->GetPresContext();
+    nsPresContext* presContext = aDocument->GetPresContext();
     if (!presContext) {
       return false;
     }
@@ -312,7 +300,7 @@ nsStyleLinkElement::CheckPreloadAttrs(const nsAttrValue& aAs,
   return false;
 }
 
-NS_IMETHODIMP
+nsresult
 nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
                                      bool* aWillNotify,
                                      bool* aIsAlternate,
@@ -427,7 +415,11 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
     if (mStyleSheet->IsServo()) {
       // XXXheycam ServoStyleSheets don't support <style scoped>.
     } else {
+#ifdef MOZ_OLD_STYLE
       oldScopeElement = mStyleSheet->AsGecko()->GetScopeElement();
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     }
   }
 
@@ -599,6 +591,7 @@ nsStyleLinkElement::UpdateStyleSheetScopedness(bool aIsNowScoped)
     return;
   }
 
+#ifdef MOZ_OLD_STYLE
   CSSStyleSheet* sheet = mStyleSheet->AsGecko();
 
   nsCOMPtr<nsIContent> thisContent = do_QueryInterface(this);
@@ -637,4 +630,7 @@ nsStyleLinkElement::UpdateStyleSheetScopedness(bool aIsNowScoped)
   if (newScopeElement) {
     newScopeElement->SetIsElementInStyleScopeFlagOnSubtree(true);
   }
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }

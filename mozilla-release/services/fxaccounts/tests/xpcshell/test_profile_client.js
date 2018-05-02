@@ -3,8 +3,8 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/FxAccountsProfileClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsProfileClient.jsm");
 
 const STATUS_SUCCESS = 200;
 
@@ -397,7 +397,7 @@ add_test(function errorTests() {
   Assert.equal(fields2.error, "Error");
   Assert.equal(fields2.message, "Something");
 
-  Assert.ok(error2.toString().indexOf("Something") >= 0);
+  Assert.ok(error2.toString().includes("Something"));
   run_next_test();
 });
 

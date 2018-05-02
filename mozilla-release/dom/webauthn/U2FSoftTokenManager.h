@@ -9,7 +9,6 @@
 
 #include "mozilla/dom/U2FTokenTransport.h"
 #include "ScopedNSSTypes.h"
-#include "nsNSSShutDown.h"
 
 /*
  * U2FSoftTokenManager is a software implementation of a secure token manager
@@ -19,47 +18,39 @@
 namespace mozilla {
 namespace dom {
 
-class U2FSoftTokenManager final : public U2FTokenTransport,
-                                  public nsNSSShutDownObject
+class U2FSoftTokenManager final : public U2FTokenTransport
 {
 public:
   explicit U2FSoftTokenManager(uint32_t aCounter);
 
-  virtual RefPtr<U2FRegisterPromise>
-  Register(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-           const WebAuthnAuthenticatorSelection &aAuthenticatorSelection,
-           const nsTArray<uint8_t>& aApplication,
-           const nsTArray<uint8_t>& aChallenge,
-           uint32_t aTimeoutMS) override;
+  RefPtr<U2FRegisterPromise>
+  Register(const WebAuthnMakeCredentialInfo& aInfo) override;
 
-  virtual RefPtr<U2FSignPromise>
-  Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-       const nsTArray<uint8_t>& aApplication,
-       const nsTArray<uint8_t>& aChallenge,
-       bool aRequireUserVerification,
-       uint32_t aTimeoutMS) override;
+  RefPtr<U2FSignPromise>
+  Sign(const WebAuthnGetAssertionInfo& aInfo) override;
 
-  virtual void Cancel() override;
-
-  // For nsNSSShutDownObject
-  virtual void virtualDestroyNSSReference() override;
-  void destructorSafeDestroyNSSReference();
+  void Cancel() override;
 
 private:
-  ~U2FSoftTokenManager();
+  ~U2FSoftTokenManager() {}
   nsresult Init();
 
   nsresult IsRegistered(const nsTArray<uint8_t>& aKeyHandle,
                         const nsTArray<uint8_t>& aAppParam,
                         bool& aResult);
 
+  bool
+  FindRegisteredKeyHandle(const nsTArray<nsTArray<uint8_t>>& aAppIds,
+                          const nsTArray<WebAuthnScopedCredential>& aCredentials,
+                          /*out*/ nsTArray<uint8_t>& aKeyHandle,
+                          /*out*/ nsTArray<uint8_t>& aAppId);
+
   bool mInitialized;
   mozilla::UniquePK11SymKey mWrappingKey;
 
   static const nsCString mSecretNickname;
 
-  nsresult GetOrCreateWrappingKey(const mozilla::UniquePK11SlotInfo& aSlot,
-                                  const nsNSSShutDownPreventionLock&);
+  nsresult GetOrCreateWrappingKey(const mozilla::UniquePK11SlotInfo& aSlot);
   uint32_t mCounter;
 };
 

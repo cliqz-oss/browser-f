@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+const { PromptUtils } = ChromeUtils.import("resource://gre/modules/SharedPromptUtils.jsm", {});
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-const { PromptUtils } = Cu.import("resource://gre/modules/SharedPromptUtils.jsm", {});
-
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 const LoginInfo =
       Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
@@ -128,8 +126,8 @@ LoginManagerPromptFactory.prototype = {
                 e.result == Cr.NS_ERROR_NOT_AVAILABLE) {
               self.log("_doAsyncPrompt:run bypassed, UI is not available in this context");
             } else {
-              Components.utils.reportError("LoginManagerPrompter: " +
-                                           "_doAsyncPrompt:run: " + e + "\n");
+              Cu.reportError("LoginManagerPrompter: " +
+                             "_doAsyncPrompt:run: " + e + "\n");
             }
           }
 
@@ -590,7 +588,7 @@ LoginManagerPrompter.prototype = {
     } catch (e) {
       // Ignore any errors and display the prompt anyway.
       epicfail = true;
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "Epic fail in promptAuth: " + e + "\n");
     }
 
@@ -651,7 +649,7 @@ LoginManagerPrompter.prototype = {
         this._updateLogin(selectedLogin);
       }
     } catch (e) {
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "Fail2 in promptAuth: " + e + "\n");
     }
 
@@ -695,7 +693,7 @@ LoginManagerPrompter.prototype = {
       this._factory._asyncPrompts[hashKey] = asyncPrompt;
       this._factory._doAsyncPrompt();
     } catch (e) {
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "asyncPromptAuth: " + e + "\nFalling back to promptAuth\n");
       // Fail the prompt operation to let the consumer fall back
       // to synchronous promptAuth method

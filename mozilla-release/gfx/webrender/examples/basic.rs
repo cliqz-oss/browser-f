@@ -11,13 +11,10 @@ extern crate webrender;
 #[path = "common/boilerplate.rs"]
 mod boilerplate;
 
-use app_units::Au;
 use boilerplate::{Example, HandyDandyRectBuilder};
 use euclid::vec2;
 use glutin::TouchPhase;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use webrender::api::*;
 
 #[derive(Debug)]
@@ -166,13 +163,6 @@ impl TouchState {
     }
 }
 
-fn load_file(name: &str) -> Vec<u8> {
-    let mut file = File::open(name).unwrap();
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).unwrap();
-    buffer
-}
-
 fn main() {
     let mut app = App {
         touch_state: TouchState::new(),
@@ -226,7 +216,7 @@ impl Example for App {
             BorderRadius::uniform(20.0),
             ClipMode::Clip
         );
-        let id = builder.define_clip(None, bounds, vec![complex], Some(mask));
+        let id = builder.define_clip(bounds, vec![complex], Some(mask));
         builder.push_clip_id(id);
 
         let info = LayoutPrimitiveInfo::new((100, 100).to(200, 200));
@@ -256,77 +246,6 @@ impl Example for App {
         builder.push_border(&info, border_widths, border_details);
         builder.pop_clip_id();
 
-        if true {
-            // draw text?
-            let font_key = api.generate_font_key();
-            let font_bytes = load_file("../wrench/reftests/text/FreeSans.ttf");
-            resources.add_raw_font(font_key, font_bytes, 0);
-
-            let font_instance_key = api.generate_font_instance_key();
-            resources.add_font_instance(font_instance_key, font_key, Au::from_px(32), None, None, Vec::new());
-
-            let text_bounds = (100, 50).by(700, 200);
-            let glyphs = vec![
-                GlyphInstance {
-                    index: 48,
-                    point: LayoutPoint::new(100.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 68,
-                    point: LayoutPoint::new(150.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 80,
-                    point: LayoutPoint::new(200.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 82,
-                    point: LayoutPoint::new(250.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 81,
-                    point: LayoutPoint::new(300.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 3,
-                    point: LayoutPoint::new(350.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 86,
-                    point: LayoutPoint::new(400.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 79,
-                    point: LayoutPoint::new(450.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 72,
-                    point: LayoutPoint::new(500.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 83,
-                    point: LayoutPoint::new(550.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 87,
-                    point: LayoutPoint::new(600.0, 100.0),
-                },
-                GlyphInstance {
-                    index: 17,
-                    point: LayoutPoint::new(650.0, 100.0),
-                },
-            ];
-
-            let info = LayoutPrimitiveInfo::new(text_bounds);
-            builder.push_text(
-                &info,
-                &glyphs,
-                font_instance_key,
-                ColorF::new(1.0, 1.0, 0.0, 1.0),
-                None,
-            );
-        }
-
         if false {
             // draw box shadow?
             let rect = LayoutRect::zero();
@@ -354,10 +273,10 @@ impl Example for App {
         builder.pop_stacking_context();
     }
 
-    fn on_event(&mut self, event: glutin::Event, api: &RenderApi, document_id: DocumentId) -> bool {
+    fn on_event(&mut self, event: glutin::WindowEvent, api: &RenderApi, document_id: DocumentId) -> bool {
         let mut txn = Transaction::new();
         match event {
-            glutin::Event::Touch(touch) => match self.touch_state.handle_event(touch) {
+            glutin::WindowEvent::Touch(touch) => match self.touch_state.handle_event(touch) {
                 TouchResult::Pan(pan) => {
                     txn.set_pan(pan);
                 }

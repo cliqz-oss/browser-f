@@ -428,6 +428,12 @@ public:
   void RemoveVideoOutputImpl(MediaStreamVideoSink* aSink, TrackID aID);
   void AddListenerImpl(already_AddRefed<MediaStreamListener> aListener);
   void RemoveListenerImpl(MediaStreamListener* aListener);
+
+  /**
+   * Removes all direct listeners and signals to them that they have been
+   * uninstalled.
+   */
+  virtual void RemoveAllDirectListenersImpl() {}
   void RemoveAllListenersImpl();
   virtual void AddTrackListenerImpl(already_AddRefed<MediaStreamTrackListener> aListener,
                                     TrackID aTrackID);
@@ -676,7 +682,16 @@ public:
 
   SourceMediaStream* AsSourceStream() override { return this; }
 
-  // Media graph thread only
+  // Main thread only
+
+  /**
+   * Enable or disable pulling. When pulling is enabled, NotifyPull
+   * gets called on MediaStreamListeners for this stream during the
+   * MediaStreamGraph control loop. Pulling is initially disabled.
+   * Due to unavoidable race conditions, after a call to SetPullEnabled(false)
+   * it is still possible for a NotifyPull to occur.
+   */
+  void SetPullEnabled(bool aEnabled);
 
   // Users of audio inputs go through the stream so it can track when the
   // last stream referencing an input goes away, so it can close the cubeb
@@ -687,18 +702,10 @@ public:
   // Note: also implied when Destroy() happens
   void CloseAudioInput();
 
+  // MediaStreamGraph thread only
   void DestroyImpl() override;
 
   // Call these on any thread.
-  /**
-   * Enable or disable pulling. When pulling is enabled, NotifyPull
-   * gets called on MediaStreamListeners for this stream during the
-   * MediaStreamGraph control loop. Pulling is initially disabled.
-   * Due to unavoidable race conditions, after a call to SetPullEnabled(false)
-   * it is still possible for a NotifyPull to occur.
-   */
-  void SetPullEnabled(bool aEnabled);
-
   /**
    * Call all MediaStreamListeners to request new data via the NotifyPull API
    * (if enabled).
@@ -800,17 +807,13 @@ public:
     MediaStream::ApplyTrackDisabling(aTrackID, aSegment, aRawSegment);
   }
 
+  void RemoveAllDirectListenersImpl() override;
+
   /**
    * End all tracks and Finish() this stream.  Used to voluntarily revoke access
    * to a LocalMediaStream.
    */
   void EndAllTrackAndFinish();
-
-  /**
-   * Removes all direct listeners and signals to them that they have been
-   * uninstalled.
-   */
-  void RemoveAllDirectListeners();
 
   void RegisterForAudioMixing();
 

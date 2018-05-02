@@ -970,6 +970,8 @@ protected:
   { }
 
 private:
+  // Need to declare refcounting unconditionally, because
+  // OpenDirectoryListener has pure-virtual refcounting.
   NS_DECL_ISUPPORTS_INHERITED
 
   virtual void
@@ -6976,6 +6978,8 @@ GetUsageOp::TraverseRepository(QuotaManager* aQuotaManager,
     if (aPersistenceType == PERSISTENCE_TYPE_DEFAULT) {
       originUsage->persisted() = persisted;
     }
+
+    originUsage->lastAccessed() = timestamp;
 
     UsageInfo usageInfo;
     rv = GetUsageForOrigin(aQuotaManager,

@@ -9,13 +9,13 @@
 
 #include "nsString.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMNodeFilter.h"
 #include "nsIDOMNodeList.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIContent.h"
 #include "ChildIterator.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/InspectorUtils.h"
+#include "mozilla/dom/NodeFilterBinding.h"
 
 /*****************************************************************************
  * This implementation does not currently operaate according to the W3C spec.
@@ -29,7 +29,7 @@ inDeepTreeWalker::inDeepTreeWalker()
   : mShowAnonymousContent(false),
     mShowSubDocuments(false),
     mShowDocumentsAsNodes(false),
-    mWhatToShow(nsIDOMNodeFilter::SHOW_ALL)
+    mWhatToShow(mozilla::dom::NodeFilterBinding::SHOW_ALL)
 {
 }
 
@@ -100,7 +100,6 @@ inDeepTreeWalker::Init(nsIDOMNode* aRoot, uint32_t aWhatToShow)
 }
 
 ////////////////////////////////////////////////////
-// nsIDOMTreeWalker
 
 NS_IMETHODIMP
 inDeepTreeWalker::GetRoot(nsIDOMNode** aRoot)
@@ -115,12 +114,6 @@ inDeepTreeWalker::GetWhatToShow(uint32_t* aWhatToShow)
 {
   *aWhatToShow = mWhatToShow;
   return NS_OK;
-}
-
-NS_IMETHODIMP
-inDeepTreeWalker::GetFilter(nsIDOMNodeFilter** aFilter)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
@@ -154,7 +147,7 @@ inDeepTreeWalker::GetParent()
   // For compatibility reasons by default we skip the document nodes
   // from the walk.
   if (!mShowDocumentsAsNodes &&
-      nodeType == nsIDOMNode::DOCUMENT_NODE &&
+      nodeType == nsINode::DOCUMENT_NODE &&
       parentNode != root) {
     parentNode =
       InspectorUtils::GetParentForNode(*parentNode, mShowAnonymousContent);
@@ -204,10 +197,11 @@ inDeepTreeWalker::SetCurrentNode(nsIDOMNode* aCurrentNode)
 
   // If Document nodes are skipped by the walk, we should not allow
   // one to set one as the current node either.
-  uint16_t nodeType = 0;
-  aCurrentNode->GetNodeType(&nodeType);
-  if (!mShowDocumentsAsNodes && nodeType == nsIDOMNode::DOCUMENT_NODE) {
-    return NS_ERROR_FAILURE;
+  if (!mShowDocumentsAsNodes) {
+    nsCOMPtr<nsINode> node = do_QueryInterface(aCurrentNode);
+    if (node->NodeType() == nsINode::DOCUMENT_NODE) {
+      return NS_ERROR_FAILURE;
+    }
   }
 
   return SetCurrentNode(aCurrentNode, nullptr);
@@ -233,14 +227,15 @@ inDeepTreeWalker::SetCurrentNode(nsIDOMNode* aCurrentNode,
   // is set as the current, we don't want to get the children
   // from the iframe accidentally here, so let's just skip this
   // part for document nodes, they should never have siblings.
-  uint16_t nodeType = 0;
-  aCurrentNode->GetNodeType(&nodeType);
-  if (!mSiblings && nodeType != nsIDOMNode::DOCUMENT_NODE) {
-    nsCOMPtr<nsIDOMNode> parent = GetParent();
-    if (parent) {
-      mSiblings = GetChildren(parent,
-                              mShowAnonymousContent,
-                              mShowSubDocuments);
+  if (!mSiblings) {
+    nsCOMPtr<nsINode> currentNode = do_QueryInterface(aCurrentNode);
+    if (currentNode->NodeType() != nsINode::DOCUMENT_NODE) {
+      nsCOMPtr<nsIDOMNode> parent = GetParent();
+      if (parent) {
+        mSiblings = GetChildren(parent,
+                                mShowAnonymousContent,
+                                mShowSubDocuments);
+      }
     }
   }
 

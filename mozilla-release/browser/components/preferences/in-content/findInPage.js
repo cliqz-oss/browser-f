@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 
 var gSearchResultsPane = {
@@ -213,7 +214,7 @@ var gSearchResultsPane = {
       return;
     }
 
-    let subQuery = this.query && query.indexOf(this.query) !== -1;
+    let subQuery = this.query && query.includes(this.query);
     this.query = query;
 
     this.getFindSelection(window).removeAllRanges();
@@ -303,18 +304,15 @@ var gSearchResultsPane = {
         let helpUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "preferences";
         let brandName = document.getElementById("bundleBrand").getString("brandShortName");
         let helpString = strings.getString("searchResults.needHelp3");
-        let helpItems = helpString.split(/%(?:1\$)?S/);
         let helpContainer = document.getElementById("need-help");
-        helpContainer.innerHTML = "";
-        helpContainer.appendChild(document.createTextNode(helpItems[0]));
         let link = document.createElement("label");
         link.className = "text-link";
         link.setAttribute("href", helpUrl);
         link.textContent = strings.getFormattedString("searchResults.needHelpSupportLink", [brandName]);
-        helpContainer.appendChild(link);
-        if (helpItems[1]) {
-          helpContainer.appendChild(document.createTextNode(helpItems[1]));
-        }
+
+        helpContainer.innerHTML = "";
+        let fragment = BrowserUtils.getLocalizedFragment(document, helpString, link);
+        helpContainer.appendChild(fragment);
       } else {
         // Creating tooltips for all the instances found
         for (let anchorNode of this.listSearchTooltips) {

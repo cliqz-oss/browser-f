@@ -301,6 +301,7 @@ class AssemblerX86Shared : public AssemblerShared
         LessThan = X86Encoding::ConditionL,
         LessThanOrEqual = X86Encoding::ConditionLE,
         Overflow = X86Encoding::ConditionO,
+        NoOverflow = X86Encoding::ConditionNO,
         CarrySet = X86Encoding::ConditionC,
         CarryClear = X86Encoding::ConditionNC,
         Signed = X86Encoding::ConditionS,
@@ -448,10 +449,10 @@ class AssemblerX86Shared : public AssemblerShared
     void nopAlign(int alignment) {
         masm.nopAlign(alignment);
     }
-    void writeCodePointer(CodeOffset* label) {
+    void writeCodePointer(CodeLabel* label) {
         // Use -1 as dummy value. This will be patched after codegen.
         masm.jumpTablePointer(-1);
-        label->bind(masm.size());
+        label->patchAt()->bind(masm.size());
     }
     void cmovCCl(Condition cond, const Operand& src, Register dest) {
         X86Encoding::Condition cc = static_cast<X86Encoding::Condition>(cond);
@@ -991,8 +992,8 @@ class AssemblerX86Shared : public AssemblerShared
         }
         label->bind(dst.offset());
     }
-    void use(CodeOffset* label) {
-        label->bind(currentOffset());
+    void bind(CodeLabel* label) {
+        label->target()->bind(currentOffset());
     }
     uint32_t currentOffset() {
         return masm.label().offset();
@@ -1023,10 +1024,11 @@ class AssemblerX86Shared : public AssemblerShared
         label->reset();
     }
 
-    static void Bind(uint8_t* raw, CodeOffset label, CodeOffset target) {
-        if (label.bound()) {
-            intptr_t offset = label.offset();
-            X86Encoding::SetPointer(raw + offset, raw + target.offset());
+    static void Bind(uint8_t* raw, const CodeLabel& label) {
+        if (label.patchAt().bound()) {
+            intptr_t offset = label.patchAt().offset();
+            intptr_t target = label.target().offset();
+            X86Encoding::SetPointer(raw + offset, raw + target);
         }
     }
 
@@ -1343,6 +1345,9 @@ class AssemblerX86Shared : public AssemblerShared
             MOZ_CRASH("unexpected operand kind");
         }
     }
+    void sbbl(Register src, Register dest) {
+        masm.sbbl_rr(src.encoding(), dest.encoding());
+    }
     void subl(Register src, Register dest) {
         masm.subl_rr(src.encoding(), dest.encoding());
     }
@@ -1629,6 +1634,9 @@ class AssemblerX86Shared : public AssemblerShared
             break;
           case Operand::MEM_REG_DISP:
             masm.andl_mr(src.disp(), src.base(), dest.encoding());
+            break;
+          case Operand::MEM_SCALE:
+            masm.andl_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
@@ -2113,6 +2121,9 @@ class AssemblerX86Shared : public AssemblerShared
             break;
           case Operand::MEM_REG_DISP:
             masm.push_m(src.disp(), src.base());
+            break;
+          case Operand::MEM_SCALE:
+            masm.push_m(src.disp(), src.base(), src.index(), src.scale());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
@@ -3674,9 +3685,9 @@ class AssemblerX86Shared : public AssemblerShared
     static void PatchDataWithValueCheck(CodeLocationLabel data, PatchedImmPtr newData,
                                         PatchedImmPtr expectedData) {
         // The pointer given is a pointer to *after* the data.
-        uintptr_t* ptr = ((uintptr_t*) data.raw()) - 1;
-        MOZ_ASSERT(*ptr == (uintptr_t)expectedData.value);
-        *ptr = (uintptr_t)newData.value;
+        uint8_t* ptr = data.raw() - sizeof(uintptr_t);
+        MOZ_ASSERT(mozilla::LittleEndian::readUintptr(ptr) == uintptr_t(expectedData.value));
+        mozilla::LittleEndian::writeUintptr(ptr, uintptr_t(newData.value));
     }
     static void PatchDataWithValueCheck(CodeLocationLabel data, ImmPtr newData, ImmPtr expectedData) {
         PatchDataWithValueCheck(data, PatchedImmPtr(newData.value), PatchedImmPtr(expectedData.value));

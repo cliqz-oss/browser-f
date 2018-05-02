@@ -24,7 +24,7 @@ function run_test() {
       function (response, tabClient, threadClient) {
         gThreadClient = threadClient;
 
-        promise.resolve(setup_code())
+        Promise.resolve(setup_code())
           .then(black_box_code)
           .then(run_code)
           .then(test_correct_location)
@@ -63,10 +63,10 @@ function setup_code() {
 
   code += "//# sourceMappingURL=data:text/json," + map.toString();
 
-  Components.utils.evalInSandbox(code,
-                                 gDebuggee,
-                                 "1.8",
-                                 "http://example.com/abc.js");
+  Cu.evalInSandbox(code,
+                   gDebuggee,
+                   "1.8",
+                   "http://example.com/abc.js");
 }
 
 function black_box_code() {
@@ -75,7 +75,7 @@ function black_box_code() {
   gThreadClient.getSources(function ({ sources, error }) {
     Assert.ok(!error, "Shouldn't get an error getting sources");
     const source = sources.filter((s) => {
-      return s.url.indexOf("b.js") !== -1;
+      return s.url.includes("b.js");
     })[0];
     Assert.ok(!!source, "We should have our source in the sources list");
 

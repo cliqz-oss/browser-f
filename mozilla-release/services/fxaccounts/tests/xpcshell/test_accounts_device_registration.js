@@ -3,11 +3,11 @@
 
 "use strict";
 
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/FxAccounts.jsm");
-Cu.import("resource://gre/modules/FxAccountsClient.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 initTestLogging("Trace");
 
@@ -19,11 +19,6 @@ const BOGUS_AUTHKEY = "GSsIiaD2Mr83iPqwFNK4rw";
 
 Services.prefs.setCharPref("identity.fxaccounts.loglevel", "Trace");
 Log.repository.getLogger("FirefoxAccounts").level = Log.Level.Trace;
-
-Services.prefs.setCharPref("identity.fxaccounts.remote.oauth.uri", "https://example.com/v1");
-Services.prefs.setCharPref("identity.fxaccounts.oauth.client_id", "abc123");
-Services.prefs.setCharPref("identity.fxaccounts.remote.profile.uri", "http://example.com/v1");
-Services.prefs.setCharPref("identity.fxaccounts.settings.uri", "http://accounts.example.com/");
 
 const DEVICE_REGISTRATION_VERSION = 42;
 

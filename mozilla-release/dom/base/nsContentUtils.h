@@ -22,6 +22,7 @@
 #include "js/RootingAPI.h"
 #include "mozilla/dom/FromParser.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/CORSMode.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/TaskCategory.h"
@@ -72,8 +73,6 @@ class nsIDocumentLoaderFactory;
 class nsIDOMDocument;
 class nsIDOMDocumentFragment;
 class nsIDOMEvent;
-class nsIDOMHTMLInputElement;
-class nsIDOMKeyEvent;
 class nsIDOMNode;
 class nsIDragSession;
 class nsIEventTarget;
@@ -135,6 +134,7 @@ struct CustomElementDefinition;
 class DocumentFragment;
 class Element;
 class EventTarget;
+class HTMLInputElement;
 class IPCDataTransfer;
 class IPCDataTransferItem;
 struct LifecycleCallbackArgs;
@@ -208,6 +208,9 @@ class nsContentUtils
 
 public:
   static nsresult Init();
+
+  // Strip off "wyciwyg://n/" part of a URL. aURI must have "wyciwyg" scheme.
+  static nsresult RemoveWyciwygScheme(nsIURI* aURI, nsIURI** aReturn);
 
   static bool     IsCallerChrome();
   static bool     ThreadsafeIsCallerChrome();
@@ -329,6 +332,13 @@ public:
     const nsINode* aPossibleDescendant, const nsINode* aPossibleAncestor);
 
   /**
+   * Similar to above, but does special case only ShadowRoot,
+   * not HTMLTemplateElement.
+   */
+  static bool ContentIsShadowIncludingDescendantOf(
+    const nsINode* aPossibleDescendant, const nsINode* aPossibleAncestor);
+
+  /**
    * Similar to ContentIsDescendantOf except it crosses document boundaries,
    * this function uses ancestor/descendant relations in the composed document
    * (see shadow DOM spec).
@@ -355,6 +365,13 @@ public:
   static bool
   ContentIsFlattenedTreeDescendantOfForStyle(const nsINode* aPossibleDescendant,
                                              const nsINode* aPossibleAncestor);
+
+  /**
+   * Retarget an object A against an object B
+   * @see https://dom.spec.whatwg.org/#retarget
+   */
+  static nsINode*
+  Retarget(nsINode* aTargetA, nsINode* aTargetB);
 
   /*
    * This method fills the |aArray| with all ancestor nodes of |aNode|
@@ -781,9 +798,19 @@ public:
    *
    * @param aContent The content node.
    * @return the presContext, or nullptr if the content is not in a document
-   *         (if GetCurrentDoc returns nullptr)
+   *         (if GetComposedDoc returns nullptr)
    */
   static nsPresContext* GetContextForContent(const nsIContent* aContent);
+
+
+  /**
+   * Method that gets the pres shell for the node.
+   *
+   * @param aContent The content node.
+   * @return the pres shell, or nullptr if the content is not in a document
+   *         (if GetComposedDoc returns nullptr)
+   */
+  static nsIPresShell* GetPresShellForContent(const nsIContent* aContent);
 
   /**
    * Method to do security and content policy checks on the image URI
@@ -814,6 +841,14 @@ public:
    * Returns true if objects in aDocument shouldn't initiate image loads.
    */
   static bool DocumentInactiveForImageLoads(nsIDocument* aDocument);
+
+  /**
+   * Convert a CORSMode into the corresponding imgILoader flags for
+   * passing to LoadImage.
+   * @param aMode CORS mode to convert
+   * @return a bitfield suitable to bitwise OR with other nsIRequest flags
+   */
+  static int32_t CORSModeToLoadImageFlags(mozilla::CORSMode aMode);
 
   /**
    * Method to start an image load.  This does not do any security checks.
@@ -1198,11 +1233,6 @@ public:
   static bool IsChildOfSameType(nsIDocument* aDoc);
 
   /**
-   * Returns true if the content-type is any of the supported script types.
-   */
-  static bool IsScriptType(const nsACString& aContentType);
-
-  /**
    * Returns true if the content-type will be rendered as plain-text.
    */
   static bool IsPlainTextType(const nsACString& aContentType);
@@ -1274,6 +1304,14 @@ public:
    *   * TYPE_INTERNAL_STYLESHEET_PRELOAD
    */
   static bool IsPreloadType(nsContentPolicyType aType);
+
+  /**
+   * Returns true if the pref "security.mixed_content.upgrade_display_content" is true
+   * and the content policy type is any of:
+   *   * TYPE_IMAGE
+   *   * TYPE_MEDIA
+   */
+  static bool IsUpgradableDisplayType(nsContentPolicyType aType);
 
   /**
    * Quick helper to determine whether there are any mutation listeners
@@ -1993,17 +2031,12 @@ public:
    */
   static void RunInStableState(already_AddRefed<nsIRunnable> aRunnable);
 
-  /* Add a "synchronous section", in the form of an nsIRunnable run once the
-   * event loop has reached a "metastable state". |aRunnable| must not cause any
-   * queued events to be processed (i.e. must not spin the event loop).
-   * We've reached a metastable state when the currently executing task or
-   * microtask has finished.  This is not specced at this time.
-   * In practice this runs aRunnable once the currently executing task or
-   * microtask finishes.  If called multiple times per microtask, all the
-   * runnables will be executed, in the order in which RunInMetastableState()
-   * was called
+  /* Add a pending IDBTransaction to be cleaned up at the end of performing a
+   * microtask checkpoint.
+   * See the step of "Cleanup Indexed Database Transactions" in
+   * https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint
    */
-  static void RunInMetastableState(already_AddRefed<nsIRunnable> aRunnable);
+  static void AddPendingIDBTransaction(already_AddRefed<nsIRunnable> aTransaction);
 
   /**
    * Returns true if we are doing StableState/MetastableState.
@@ -2596,7 +2629,7 @@ public:
    * @param aInput the input element to check. NOTE: aInput can't be null.
    * @return whether the input element has autocomplete enabled.
    */
-  static bool IsAutocompleteEnabled(nsIDOMHTMLInputElement* aInput);
+  static bool IsAutocompleteEnabled(mozilla::dom::HTMLInputElement* aInput);
 
   enum AutocompleteAttrState : uint8_t
   {
@@ -2812,6 +2845,7 @@ public:
   static nsresult IPCTransferableToTransferable(const mozilla::dom::IPCDataTransfer& aDataTransfer,
                                                 const bool& aIsPrivateData,
                                                 nsIPrincipal* aRequestingPrincipal,
+                                                const nsContentPolicyType& aContentPolicyType,
                                                 nsITransferable* aTransferable,
                                                 mozilla::dom::nsIContentParent* aContentParent,
                                                 mozilla::dom::TabChild* aTabChild);
@@ -2855,18 +2889,6 @@ public:
                                                      nsPresContext* aPresContext);
   static nsView* GetViewToDispatchEvent(nsPresContext* aPresContext,
                                         nsIPresShell** aPresShell);
-
-  /**
-   * Synthesize a key event to the given widget
-   * (see nsIDOMWindowUtils.sendKeyEvent).
-   */
-  static nsresult SendKeyEvent(nsIWidget* aWidget,
-                               const nsAString& aType,
-                               int32_t aKeyCode,
-                               int32_t aCharCode,
-                               int32_t aModifiers,
-                               uint32_t aAdditionalFlags,
-                               bool* aDefaultActionTaken);
 
   /**
    * Synthesize a mouse event to the given widget
@@ -2929,6 +2951,8 @@ public:
 
   static bool IsNonSubresourceRequest(nsIChannel* aChannel);
 
+  static bool IsNonSubresourceInternalPolicyType(nsContentPolicyType aType);
+
   // The order of these entries matters, as we use std::min for total ordering
   // of permissions. Private Browsing is considered to be more limiting
   // then session scoping
@@ -2974,6 +2998,13 @@ public:
   static StorageAccess StorageAllowedForNewWindow(nsIPrincipal* aPrincipal,
                                                   nsIURI* aURI,
                                                   nsPIDOMWindowInner* aParent);
+
+  /*
+   * Checks if storage should be allowed for the given channel.  The check will
+   * be based on the channel result principal and, depending on preferences and
+   * permissions, mozIThirdPartyUtil.isThirdPartyChannel().
+   */
+  static StorageAccess StorageAllowedForChannel(nsIChannel* aChannel);
 
   /*
    * Checks if storage for the given principal is permitted by the user's
@@ -3038,7 +3069,7 @@ public:
    */
   static mozilla::dom::CustomElementDefinition*
     LookupCustomElementDefinition(nsIDocument* aDoc,
-                                  const nsAString& aLocalName,
+                                  nsAtom* aNameAtom,
                                   uint32_t aNameSpaceID,
                                   nsAtom* aTypeAtom);
 
@@ -3353,14 +3384,17 @@ private:
    * preferences. If aWindow is non-null, its principal must be passed as
    * aPrincipal, and the third-party iframe and sandboxing status of the window
    * are also checked.  If aURI is non-null, then it is used as the comparison
-   * against aWindow to determine if this is a third-party load.
+   * against aWindow to determine if this is a third-party load.  We also
+   * allow a channel instead of the window reference when determining 3rd party
+   * status.
    *
    * Used in the implementation of StorageAllowedForWindow and
    * StorageAllowedForPrincipal.
    */
   static StorageAccess InternalStorageAllowedForPrincipal(nsIPrincipal* aPrincipal,
                                                           nsPIDOMWindowInner* aWindow,
-                                                          nsIURI* aURI);
+                                                          nsIURI* aURI,
+                                                          nsIChannel* aChannel);
 
   static nsINode* GetCommonAncestorHelper(nsINode* aNode1, nsINode* aNode2);
   static nsIContent* GetCommonFlattenedTreeAncestorHelper(nsIContent* aContent1,
@@ -3415,6 +3449,7 @@ private:
   static bool sIsPerformanceTimingEnabled;
   static bool sIsResourceTimingEnabled;
   static bool sIsPerformanceNavigationTimingEnabled;
+  static bool sIsUpgradableDisplayContentPrefEnabled;
   static bool sIsFrameTimingPrefEnabled;
   static bool sIsFormAutofillAutocompleteEnabled;
   static bool sIsShadowDOMEnabled;

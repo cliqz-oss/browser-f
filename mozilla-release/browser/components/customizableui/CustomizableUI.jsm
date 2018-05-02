@@ -4,18 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["CustomizableUI"];
+var EXPORTED_SYMBOLS = ["CustomizableUI"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   SearchWidgetTracker: "resource:///modules/SearchWidgetTracker.jsm",
   CustomizableWidgets: "resource:///modules/CustomizableWidgets.jsm",
   DeferredTask: "resource://gre/modules/DeferredTask.jsm",
+  PanelMultiView: "resource:///modules/PanelMultiView.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.jsm",
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
@@ -169,7 +168,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "gDebuggingEnabled", kPrefCustomizat
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let scope = {};
-  Cu.import("resource://gre/modules/Console.jsm", scope);
+  ChromeUtils.import("resource://gre/modules/Console.jsm", scope);
   let consoleOptions = {
     maxLogLevel: gDebuggingEnabled ? "all" : "log",
     prefix: "CustomizableUI",
@@ -518,7 +517,7 @@ var CustomizableUIInternal = {
       let widget = gPalette.get(widgetId);
       if (!widget || widget.source !== CustomizableUI.SOURCE_BUILTIN ||
           !widget.defaultArea || !widget._introducedInVersion ||
-          savedPlacements.indexOf(widget.id) !== -1) {
+          savedPlacements.includes(widget.id)) {
         continue;
       }
       defaultWidgetIndex = defaultPlacements.indexOf(widget.id);
@@ -618,7 +617,7 @@ var CustomizableUIInternal = {
     }
     // Sanity check type:
     let allTypes = [CustomizableUI.TYPE_TOOLBAR, CustomizableUI.TYPE_MENU_PANEL];
-    if (allTypes.indexOf(props.get("type")) == -1) {
+    if (!allTypes.includes(props.get("type"))) {
       throw new Error("Invalid area type " + props.get("type"));
     }
 
@@ -1778,7 +1777,7 @@ var CustomizableUIInternal = {
   hidePanelForNode(aNode) {
     let panel = this._getPanelForNode(aNode);
     if (panel) {
-      panel.hidePopup();
+      PanelMultiView.hidePopup(panel);
     }
   },
 
@@ -1803,34 +1802,18 @@ var CustomizableUIInternal = {
       }
     }
 
-    // We can't use event.target because we might have passed a panelview
-    // anonymous content boundary as well, and so target points to the
-    // panelmultiview in that case. Unfortunately, this means we get
-    // anonymous child nodes instead of the real ones, so looking for the
-    // 'stoooop, don't close me' attributes is more involved.
+    // We can't use event.target because we might have passed an anonymous
+    // content boundary as well, and so target points to the outer element in
+    // that case. Unfortunately, this means we get anonymous child nodes instead
+    // of the real ones, so looking for the 'stoooop, don't close me' attributes
+    // is more involved.
     let target = aEvent.originalTarget;
-    let closemenu = "auto";
-    let widgetType = "button";
     while (target.parentNode && target.localName != "panel") {
-      closemenu = target.getAttribute("closemenu");
-      widgetType = target.getAttribute("widget-type");
-      if (closemenu == "none" || closemenu == "single" ||
-          widgetType == "view") {
-        break;
-      }
-      target = target.parentNode;
-    }
-    if (closemenu == "none" || widgetType == "view") {
-      return;
-    }
-
-    if (closemenu == "single") {
-      let panel = this._getPanelForNode(target);
-      let multiview = panel.querySelector("panelmultiview");
-      if (multiview.showingSubView) {
-        multiview.goBack();
+      if (target.getAttribute("closemenu") == "none" ||
+          target.getAttribute("widget-type") == "view") {
         return;
       }
+      target = target.parentNode;
     }
 
     // If we get here, we can actually hide the popup:
@@ -2857,7 +2840,7 @@ var CustomizableUIInternal = {
         let removableOrDefault = (itemNodeOrItem) => {
           let item = (itemNodeOrItem && itemNodeOrItem.id) || itemNodeOrItem;
           let isRemovable = this.isWidgetRemovable(itemNodeOrItem);
-          let isInDefault = defaultPlacements.indexOf(item) != -1;
+          let isInDefault = defaultPlacements.includes(item);
           return isRemovable || isInDefault;
         };
         // Toolbars have a currentSet property which also deals correctly with overflown
@@ -2944,7 +2927,7 @@ var CustomizableUIInternal = {
 };
 Object.freeze(CustomizableUIInternal);
 
-this.CustomizableUI = {
+var CustomizableUI = {
   /**
    * Constant reference to the ID of the navigation toolbar.
    */
@@ -3901,6 +3884,86 @@ this.CustomizableUI = {
   createSpecialWidget(aId, aDocument) {
     return CustomizableUIInternal.createSpecialWidget(aId, aDocument);
   },
+
+  /**
+   * Fills a submenu with menu items.
+   * @param aMenuItems the menu items to display.
+   * @param aSubview   the subview to fill.
+   */
+  fillSubviewFromMenuItems(aMenuItems, aSubview) {
+    let attrs = ["oncommand", "onclick", "label", "key", "disabled",
+                 "command", "observes", "hidden", "class", "origin",
+                 "image", "checked", "style"];
+
+    let doc = aSubview.ownerDocument;
+    let fragment = doc.createDocumentFragment();
+    for (let menuChild of aMenuItems) {
+      if (menuChild.hidden)
+        continue;
+
+      let subviewItem;
+      if (menuChild.localName == "menuseparator") {
+        // Don't insert duplicate or leading separators. This can happen if there are
+        // menus (which we don't copy) above the separator.
+        if (!fragment.lastChild || fragment.lastChild.localName == "menuseparator") {
+          continue;
+        }
+        subviewItem = doc.createElementNS(kNSXUL, "menuseparator");
+      } else if (menuChild.localName == "menuitem") {
+        subviewItem = doc.createElementNS(kNSXUL, "toolbarbutton");
+        CustomizableUI.addShortcut(menuChild, subviewItem);
+
+        let item = menuChild;
+        if (!item.hasAttribute("onclick")) {
+          subviewItem.addEventListener("click", event => {
+            let newEvent = new doc.defaultView.MouseEvent(event.type, event);
+            item.dispatchEvent(newEvent);
+          });
+        }
+
+        if (!item.hasAttribute("oncommand")) {
+          subviewItem.addEventListener("command", event => {
+            let newEvent = doc.createEvent("XULCommandEvent");
+            newEvent.initCommandEvent(
+              event.type, event.bubbles, event.cancelable, event.view,
+              event.detail, event.ctrlKey, event.altKey, event.shiftKey,
+              event.metaKey, event.sourceEvent, 0);
+            item.dispatchEvent(newEvent);
+          });
+        }
+      } else {
+        continue;
+      }
+      for (let attr of attrs) {
+        let attrVal = menuChild.getAttribute(attr);
+        if (attrVal)
+          subviewItem.setAttribute(attr, attrVal);
+      }
+      // We do this after so the .subviewbutton class doesn't get overriden.
+      if (menuChild.localName == "menuitem") {
+        subviewItem.classList.add("subviewbutton");
+      }
+      fragment.appendChild(subviewItem);
+    }
+    aSubview.appendChild(fragment);
+  },
+
+  /**
+   * A helper function for clearing subviews.
+   * @param aSubview the subview to clear.
+   */
+  clearSubview(aSubview) {
+    let parent = aSubview.parentNode;
+    // We'll take the container out of the document before cleaning it out
+    // to avoid reflowing each time we remove something.
+    parent.removeChild(aSubview);
+
+    while (aSubview.firstChild) {
+      aSubview.firstChild.remove();
+    }
+
+    parent.appendChild(aSubview);
+  },
 };
 Object.freeze(this.CustomizableUI);
 Object.freeze(this.CustomizableUI.windows);
@@ -4264,7 +4327,7 @@ OverflowableToolbar.prototype = {
         if (aEvent.target == this._chevron) {
           this._onClickChevron(aEvent);
         } else {
-          this._panel.hidePopup();
+          PanelMultiView.hidePopup(this._panel);
         }
         break;
       case "customizationstarting":
@@ -4276,7 +4339,7 @@ OverflowableToolbar.prototype = {
         }
         break;
       case "dragend":
-        this._panel.hidePopup();
+        PanelMultiView.hidePopup(this._panel);
         break;
       case "popuphiding":
         this._onPanelHiding(aEvent);
@@ -4302,21 +4365,26 @@ OverflowableToolbar.prototype = {
       // Ensure we update the gEditUIVisible flag when opening the popup, in
       // case the edit controls are in it.
       this._panel.addEventListener("popupshowing", () => doc.defaultView.updateEditUIVisibility(), {once: true});
-      this._panel.openPopup(anchor || this._chevron, { triggerEvent: aEvent });
+      PanelMultiView.openPopup(this._panel, anchor || this._chevron, {
+        triggerEvent: aEvent,
+      }).catch(Cu.reportError);
       this._chevron.open = true;
 
       this._panel.addEventListener("popupshown", () => {
         this._panel.addEventListener("dragover", this);
         this._panel.addEventListener("dragend", this);
-        resolve();
+        // Wait until the next tick to resolve so all popupshown
+        // handlers have a chance to run before our promise resolution
+        // handlers do.
+        Services.tm.dispatchToMainThread(resolve);
       }, {once: true});
     });
   },
 
   _onClickChevron(aEvent) {
     if (this._chevron.open) {
-      this._panel.hidePopup();
       this._chevron.open = false;
+      PanelMultiView.hidePopup(this._panel);
     } else if (this._panel.state != "hiding" && !this._chevron.disabled) {
       this.show(aEvent);
     }
@@ -4608,7 +4676,7 @@ OverflowableToolbar.prototype = {
       }
       this._hideTimeoutId = window.setTimeout(() => {
         if (!this._panel.firstChild.matches(":hover")) {
-          this._panel.hidePopup();
+          PanelMultiView.hidePopup(this._panel);
         }
       }, OVERFLOW_PANEL_HIDE_DELAY_MS);
     });

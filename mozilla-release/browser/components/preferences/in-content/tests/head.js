@@ -1,7 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/Promise.jsm");
+ChromeUtils.import("resource://gre/modules/Promise.jsm", this);
+
+XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager", "@mozilla.org/serviceworkers/manager;1", "nsIServiceWorkerManager");
 
 const kDefaultWait = 2000;
 
@@ -142,52 +144,12 @@ function openPreferencesViaOpenPreferencesAPI(aPane, aOptions) {
   });
 }
 
-function waitForCondition(aConditionFn, aMaxTries = 50, aCheckInterval = 100) {
-  return new Promise((resolve, reject) => {
-    function tryNow() {
-      tries++;
-      let rv = aConditionFn();
-      if (rv) {
-        resolve(rv);
-      } else if (tries < aMaxTries) {
-        tryAgain();
-      } else {
-        reject("Condition timed out: " + aConditionFn.toSource());
-      }
-    }
-    function tryAgain() {
-      setTimeout(tryNow, aCheckInterval);
-    }
-    let tries = 0;
-    tryAgain();
-  });
-}
-
 function promiseWindowDialogOpen(buttonAction, url) {
-  return new Promise(resolve => {
-    Services.ww.registerNotification(function onOpen(subj, topic, data) {
-      if (topic == "domwindowopened" && subj instanceof Ci.nsIDOMWindow) {
-        subj.addEventListener("load", function onLoad() {
-          if (subj.document.documentURI == url) {
-            Services.ww.unregisterNotification(onOpen);
-            let doc = subj.document.documentElement;
-            doc.getButton(buttonAction).click();
-            resolve();
-          }
-        }, { once: true });
-      }
-    });
-  });
+  return BrowserTestUtils.promiseAlertDialogOpen(buttonAction, url);
 }
 
 function promiseAlertDialogOpen(buttonAction) {
-  return promiseWindowDialogOpen(buttonAction, "chrome://global/content/commonDialog.xul");
-}
-
-function addPersistentStoragePerm(origin) {
-  let uri = NetUtil.newURI(origin);
-  let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
-  Services.perms.addFromPrincipal(principal, "persistent-storage", Ci.nsIPermissionManager.ALLOW_ACTION);
+  return BrowserTestUtils.promiseAlertDialogOpen(buttonAction);
 }
 
 function promiseSiteDataManagerSitesUpdated() {
@@ -218,7 +180,7 @@ function assertSitesListed(doc, hosts) {
     let site = sitesList.querySelector(`richlistitem[host="${host}"]`);
     ok(site, `Should list the site of ${host}`);
   });
-  is(removeBtn.disabled, false, "Should enable the removeSelected button");
+  is(removeBtn.disabled, true, "Should disable the removeSelected button");
   is(removeAllBtn.disabled, false, "Should enable the removeAllBtn button");
 }
 
@@ -254,9 +216,10 @@ const mockSiteDataManager = {
     let result = this.fakeSites.map(site => ({
       origin: site.principal.origin,
       usage: site.usage,
-      persisted: site.persisted
+      persisted: site.persisted,
+      lastAccessed: site.lastAccessed,
     }));
-    onUsageResult({ result, resultCode: Components.results.NS_OK });
+    onUsageResult({ result, resultCode: Cr.NS_OK });
   },
 
   _removeQuotaUsage(site) {
@@ -266,17 +229,88 @@ const mockSiteDataManager = {
     });
   },
 
-  register(SiteDataManager) {
+  register(SiteDataManager, fakeSites) {
     this._SiteDataManager = SiteDataManager;
     this._originalQMS = this._SiteDataManager._qms;
     this._SiteDataManager._qms = this;
     this._originalRemoveQuotaUsage = this._SiteDataManager._removeQuotaUsage;
     this._SiteDataManager._removeQuotaUsage = this._removeQuotaUsage.bind(this);
-    this.fakeSites = null;
+    // Add some fake data.
+    this.fakeSites = fakeSites;
+    for (let site of fakeSites) {
+      if (!site.principal) {
+        site.principal = Services.scriptSecurityManager
+          .createCodebasePrincipalFromOrigin(site.origin);
+      }
+
+      let uri = site.principal.URI;
+      try {
+        site.baseDomain = Services.eTLD.getBaseDomainFromHost(uri.host);
+      } catch (e) {
+        site.baseDomain = uri.host;
+      }
+
+      // Add some cookies if needed.
+      for (let i = 0; i < (site.cookies || 0); i++) {
+        Services.cookies.add(uri.host, uri.pathQueryRef, Cu.now(), i,
+          false, false, false, Date.now() + 1000 * 60 * 60);
+      }
+    }
   },
 
-  unregister() {
+  async unregister() {
+    await this._SiteDataManager.removeAll();
+    this.fakeSites = null;
     this._SiteDataManager._qms = this._originalQMS;
     this._SiteDataManager._removeQuotaUsage = this._originalRemoveQuotaUsage;
   }
 };
+
+function getQuotaUsage(origin) {
+  return new Promise(resolve => {
+    let uri = NetUtil.newURI(origin);
+    let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
+    Services.qms.getUsageForPrincipal(principal, request => resolve(request.result.usage));
+  });
+}
+
+function promiseCookiesCleared() {
+  return TestUtils.topicObserved("cookie-changed", (subj, data) => {
+    return data === "cleared";
+  });
+}
+
+async function loadServiceWorkerTestPage(url) {
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  await BrowserTestUtils.waitForCondition(() => {
+    return ContentTask.spawn(tab.linkedBrowser, {}, () =>
+      content.document.body.getAttribute("data-test-service-worker-registered") === "true");
+  }, `Fail to load service worker test ${url}`);
+  await BrowserTestUtils.removeTab(tab);
+}
+
+function promiseServiceWorkersCleared() {
+  return BrowserTestUtils.waitForCondition(() => {
+    let serviceWorkers = serviceWorkerManager.getAllRegistrations();
+    if (serviceWorkers.length == 0) {
+      ok(true, "Cleared all service workers");
+      return true;
+    }
+    return false;
+  }, "Should clear all service workers");
+}
+
+function promiseServiceWorkerRegisteredFor(url) {
+  return BrowserTestUtils.waitForCondition(() => {
+    try {
+      let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(url);
+      let sw = serviceWorkerManager.getRegistrationByPrincipal(principal, principal.URI.spec);
+      if (sw) {
+        ok(true, `Found the service worker registered for ${url}`);
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }, `Should register service worker for ${url}`);
+}
+

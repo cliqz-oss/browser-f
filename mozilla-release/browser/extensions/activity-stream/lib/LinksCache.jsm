@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LinksCache"];
+const EXPORTED_SYMBOLS = ["LinksCache"];
 
 // This should be slightly less than SYSTEM_TICK_INTERVAL as timer
 // comparisons are too exact while the async/await functionality will make the
@@ -104,13 +104,13 @@ this.LinksCache = class LinksCache {
             }
           } else {
             // Share data among link copies and new links from future requests
-            newLink.__sharedCache = {
-              // Provide a helper to update the cached link
-              updateLink(property, value) {
-                newLink[property] = value;
-              }
-            };
+            newLink.__sharedCache = {};
           }
+          // Provide a helper to update the cached link
+          newLink.__sharedCache.updateLink = (property, value) => {
+            newLink[property] = value;
+          };
+
           return newLink;
         }));
       });

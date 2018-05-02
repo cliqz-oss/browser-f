@@ -116,58 +116,45 @@ function test_dependent_elements(win) {
 }
 
 function test_dependent_cookie_elements(win) {
-  let historymode = win.document.getElementById("historyMode");
-  ok(historymode, "history mode menulist should exist");
-  let pbautostart = win.document.getElementById("privateBrowsingAutoStart");
-  ok(pbautostart, "the private browsing auto-start checkbox should exist");
-  let controls = [
-    win.document.getElementById("acceptThirdPartyLabel"),
-    win.document.getElementById("acceptThirdPartyMenu"),
-    win.document.getElementById("keepUntil"),
-    win.document.getElementById("keepCookiesUntil"),
-  ];
+  let keepUntil = win.document.getElementById("keepUntil");
+  let keepCookiesUntil = win.document.getElementById("keepCookiesUntil");
+  let acceptThirdPartyLabel = win.document.getElementById("acceptThirdPartyLabel");
+  let acceptThirdPartyMenu = win.document.getElementById("acceptThirdPartyMenu");
+
+  let controls = [acceptThirdPartyLabel, acceptThirdPartyMenu, keepUntil, keepCookiesUntil];
   controls.forEach(function(control) {
     ok(control, "the dependent cookie controls should exist");
   });
   let acceptcookies = win.document.getElementById("acceptCookies");
   ok(acceptcookies, "the accept cookies checkbox should exist");
 
-  function expect_disabled(disabled) {
-    controls.forEach(function(control) {
+  function expect_disabled(disabled, c = controls) {
+    c.forEach(function(control) {
       is(control.disabled, disabled,
         control.getAttribute("id") + " should " + (disabled ? "" : "not ") + "be disabled");
     });
   }
 
-  historymode.value = "custom";
+  acceptcookies.value = "2";
+  controlChanged(acceptcookies);
+  expect_disabled(true);
+
+  acceptcookies.value = "1";
+  controlChanged(acceptcookies);
+  expect_disabled(false);
+
+  let historymode = win.document.getElementById("historyMode");
+
+  // The History mode setting for "never remember history" should still
+  // disable the "keep cookies until..." menu.
+  historymode.value = "dontremember";
   controlChanged(historymode);
-  pbautostart.checked = false;
-  controlChanged(pbautostart);
+  expect_disabled(true, [keepUntil, keepCookiesUntil]);
+  expect_disabled(false, [acceptThirdPartyLabel, acceptThirdPartyMenu]);
+
+  historymode.value = "remember";
+  controlChanged(historymode);
   expect_disabled(false);
-
-  acceptcookies.checked = false;
-  controlChanged(acceptcookies);
-  expect_disabled(true);
-
-  acceptcookies.checked = true;
-  controlChanged(acceptcookies);
-  expect_disabled(false);
-
-  let accessthirdparty = controls.shift();
-  acceptcookies.checked = false;
-  controlChanged(acceptcookies);
-  expect_disabled(true);
-  ok(accessthirdparty.disabled, "access third party button should be disabled");
-
-  pbautostart.checked = false;
-  controlChanged(pbautostart);
-  expect_disabled(true);
-  ok(accessthirdparty.disabled, "access third party button should be disabled");
-
-  acceptcookies.checked = true;
-  controlChanged(acceptcookies);
-  expect_disabled(false);
-  ok(!accessthirdparty.disabled, "access third party button should be enabled");
 }
 
 function test_dependent_clearonclose_elements(win) {
@@ -207,23 +194,17 @@ function test_dependent_prefs(win) {
   ok(historymode, "history mode menulist should exist");
   let controls = [
     win.document.getElementById("rememberHistory"),
-    win.document.getElementById("rememberForms"),
-    win.document.getElementById("acceptCookies")
+    win.document.getElementById("rememberForms")
   ];
   controls.forEach(function(control) {
     ok(control, "the micro-management controls should exist");
   });
-
-  let thirdPartyCookieMenu = win.document.getElementById("acceptThirdPartyMenu");
-  ok(thirdPartyCookieMenu, "the third-party cookie control should exist");
 
   function expect_checked(checked) {
     controls.forEach(function(control) {
       is(control.checked, checked,
         control.getAttribute("id") + " should " + (checked ? "" : "not ") + "be checked");
     });
-
-    is(thirdPartyCookieMenu.value == "always" || thirdPartyCookieMenu.value == "visited", checked, "third-party cookies should " + (checked ? "not " : "") + "be limited");
   }
 
   // controls should be checked in remember mode
@@ -234,8 +215,6 @@ function test_dependent_prefs(win) {
   // even if they're unchecked in custom mode
   historymode.value = "custom";
   controlChanged(historymode);
-  thirdPartyCookieMenu.value = "never";
-  controlChanged(thirdPartyCookieMenu);
   controls.forEach(function(control) {
     control.checked = false;
     controlChanged(control);

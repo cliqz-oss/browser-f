@@ -244,7 +244,8 @@ ImageLoader::ClearFrames(nsPresContext* aPresContext)
 
 void
 ImageLoader::LoadImage(nsIURI* aURI, nsIPrincipal* aOriginPrincipal,
-                       nsIURI* aReferrer, ImageLoader::Image* aImage)
+                       nsIURI* aReferrer, ImageLoader::Image* aImage,
+                       CORSMode aCorsMode)
 {
   NS_ASSERTION(aImage->mRequests.Count() == 0, "Huh?");
 
@@ -254,11 +255,14 @@ ImageLoader::LoadImage(nsIURI* aURI, nsIPrincipal* aOriginPrincipal,
     return;
   }
 
+  int32_t loadFlags = nsIRequest::LOAD_NORMAL |
+                      nsContentUtils::CORSModeToLoadImageFlags(aCorsMode);
+
   RefPtr<imgRequestProxy> request;
   nsresult rv = nsContentUtils::LoadImage(aURI, mDocument, mDocument,
                                           aOriginPrincipal, 0, aReferrer,
                                           mDocument->GetReferrerPolicy(),
-                                          nullptr, nsIRequest::LOAD_NORMAL,
+                                          nullptr, loadFlags,
                                           NS_LITERAL_STRING("css"),
                                           getter_AddRefs(request));
 
@@ -302,12 +306,7 @@ ImageLoader::GetPresContext()
     return nullptr;
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    return nullptr;
-  }
-
-  return shell->GetPresContext();
+  return mDocument->GetPresContext();
 }
 
 static bool
@@ -318,7 +317,8 @@ IsRenderNoImages(uint32_t aDisplayItemKey)
   return flags & TYPE_RENDERS_NO_IMAGES;
 }
 
-void InvalidateImages(nsIFrame* aFrame)
+static void
+InvalidateImages(nsIFrame* aFrame)
 {
   bool invalidateFrame = false;
   const SmallPointerArray<DisplayItemData>& array = aFrame->DisplayItemData();

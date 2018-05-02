@@ -12,12 +12,16 @@
   // For UnrestrictedDoubleOrKeyframeAnimationOptions;
 #include "mozilla/dom/CSSPseudoElement.h"
 #include "mozilla/dom/KeyframeEffectBinding.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/AnimValuesStyleRule.h"
+#endif
 #include "mozilla/AnimationUtils.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/FloatingPoint.h" // For IsFinite
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/GeckoStyleContext.h"
+#endif
 #include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/LookAndFeel.h" // For LookAndFeel::GetInt
 #include "mozilla/KeyframeUtils.h"
@@ -194,24 +198,31 @@ KeyframeEffectReadOnly::SetKeyframes(JSContext* aContext,
 
   RefPtr<nsStyleContext> styleContext = GetTargetStyleContext();
   if (styleContext) {
-    if (auto gecko = styleContext->GetAsGecko()) {
+    if (styleContext->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+      auto gecko = styleContext->AsGecko();
       SetKeyframes(Move(keyframes), gecko);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     } else {
       SetKeyframes(Move(keyframes), styleContext->AsServo());
     }
   } else {
     // SetKeyframes has the same behavior for null StyleType* for
     // both backends, just pick one and use it.
-    SetKeyframes(Move(keyframes), (GeckoStyleContext*) nullptr);
+    SetKeyframes(Move(keyframes), (ServoStyleContext*) nullptr);
   }
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 KeyframeEffectReadOnly::SetKeyframes(nsTArray<Keyframe>&& aKeyframes,
                                      GeckoStyleContext* aStyleContext)
 {
   DoSetKeyframes(Move(aKeyframes), Move(aStyleContext));
 }
+#endif
 
 void
 KeyframeEffectReadOnly::SetKeyframes(
@@ -226,10 +237,12 @@ void
 KeyframeEffectReadOnly::DoSetKeyframes(nsTArray<Keyframe>&& aKeyframes,
                                        StyleType* aStyle)
 {
+#ifdef MOZ_OLD_STYLE
   static_assert(IsSame<StyleType, GeckoStyleContext>::value ||
                 IsSame<StyleType, const ServoStyleContext>::value,
                 "StyleType should be GeckoStyleContext* or "
                 "const ServoStyleContext*");
+#endif
 
   if (KeyframesEqualIgnoringComputedOffsets(aKeyframes, mKeyframes)) {
     return;
@@ -313,9 +326,14 @@ KeyframeEffectReadOnly::UpdateProperties(nsStyleContext* aStyleContext)
 {
   MOZ_ASSERT(aStyleContext);
 
-  if (auto gecko = aStyleContext->GetAsGecko()) {
+  if (aStyleContext->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+    auto gecko = aStyleContext->AsGecko();
     DoUpdateProperties(Move(gecko));
     return;
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
 
   UpdateProperties(aStyleContext->AsServo());
@@ -377,6 +395,7 @@ KeyframeEffectReadOnly::DoUpdateProperties(StyleType* aStyle)
   RequestRestyle(EffectCompositor::RestyleType::Layer);
 }
 
+#ifdef MOZ_OLD_STYLE
 /* static */ StyleAnimationValue
 KeyframeEffectReadOnly::CompositeValue(
   nsCSSPropertyID aProperty,
@@ -509,6 +528,7 @@ KeyframeEffectReadOnly::EnsureBaseStyle(
 
   mBaseStyleValues.Put(aProperty, result);
 }
+#endif
 
 void
 KeyframeEffectReadOnly::EnsureBaseStyles(
@@ -590,6 +610,7 @@ KeyframeEffectReadOnly::WillComposeStyle()
   mCurrentIterationOnLastCompose = computedTiming.mCurrentIteration;
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 KeyframeEffectReadOnly::ComposeStyleRule(
   RefPtr<AnimValuesStyleRule>& aStyleRule,
@@ -669,6 +690,7 @@ KeyframeEffectReadOnly::ComposeStyleRule(
     aStyleRule->AddValue(aProperty.mProperty, Move(toValue));
   }
 }
+#endif
 
 void
 KeyframeEffectReadOnly::ComposeStyleRule(
@@ -748,12 +770,11 @@ KeyframeEffectReadOnly::ComposeStyle(
                      computedTiming);
   }
 
-  // If the animation produces any transform change hint, we need to record the
-  // current time to unthrottle the animation periodically when the animation is
-  // being throttled because it's scrolled out of view.
-  if (mCumulativeChangeHint & (nsChangeHint_UpdatePostTransformOverflow |
-                               nsChangeHint_AddOrRemoveTransform |
-                               nsChangeHint_UpdateTransformLayer)) {
+  // If the animation produces a transform change hint that affects the overflow
+  // region, we need to record the current time to unthrottle the animation
+  // periodically when the animation is being throttled because it's scrolled
+  // out of view.
+  if (HasTransformThatMightAffectOverflow()) {
     nsPresContext* presContext =
       nsContentUtils::GetContextForContent(mTarget->mElement);
     if (presContext) {
@@ -881,7 +902,17 @@ KeyframeEffectReadOnly::ConstructKeyframeEffect(
     const OptionsType& aOptions,
     ErrorResult& aRv)
 {
-  nsIDocument* doc = AnimationUtils::GetCurrentRealmDocument(aGlobal.Context());
+  // We should get the document from `aGlobal` instead of the current Realm
+  // to make this works in Xray case.
+  //
+  // In all non-Xray cases, `aGlobal` matches the current Realm, so this
+  // matches the spec behavior.
+  //
+  // In Xray case, the new objects should be created using the document of
+  // the target global, but KeyframeEffect and KeyframeEffectReadOnly
+  // constructors are called in the caller's compartment to access
+  // `aKeyframes` object.
+  nsIDocument* doc = AnimationUtils::GetDocumentFromGlobal(aGlobal.Get());
   if (!doc) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -947,10 +978,12 @@ template<typename StyleType>
 nsTArray<AnimationProperty>
 KeyframeEffectReadOnly::BuildProperties(StyleType* aStyle)
 {
+#ifdef MOZ_OLD_STYLE
   static_assert(IsSame<StyleType, GeckoStyleContext>::value ||
                 IsSame<StyleType, const ServoStyleContext>::value,
                 "StyleType should be GeckoStyleContext* or "
                 "const ServoStyleContext*");
+#endif
 
   MOZ_ASSERT(aStyle);
 
@@ -1061,19 +1094,18 @@ KeyframeEffectReadOnly::RequestRestyle(
 already_AddRefed<nsStyleContext>
 KeyframeEffectReadOnly::GetTargetStyleContext()
 {
-  nsIPresShell* shell = GetPresShell();
-  if (!shell) {
+  if (!GetRenderedDocument()) {
     return nullptr;
   }
 
   MOZ_ASSERT(mTarget,
-             "Should only have a presshell when we have a target element");
+             "Should only have a document when we have a target element");
 
   nsAtom* pseudo = mTarget->mPseudoType < CSSPseudoElementType::Count
                     ? nsCSSPseudoElements::GetPseudoAtom(mTarget->mPseudoType)
                     : nullptr;
 
-  return nsComputedDOMStyle::GetStyleContext(mTarget->mElement, pseudo, shell);
+  return nsComputedDOMStyle::GetStyleContext(mTarget->mElement, pseudo);
 }
 
 #ifdef DEBUG
@@ -1340,33 +1372,39 @@ KeyframeEffectReadOnly::GetKeyframes(JSContext*& aCx,
                                            &stringValue);
           }
         }
-      } else if (nsCSSProps::IsShorthand(propertyValue.mProperty)) {
-         // nsCSSValue::AppendToString does not accept shorthands properties but
-         // works with token stream values if we pass eCSSProperty_UNKNOWN as
-         // the property.
-         propertyValue.mValue.AppendToString(
-           eCSSProperty_UNKNOWN, stringValue);
       } else {
-        nsCSSValue cssValue = propertyValue.mValue;
-        if (cssValue.GetUnit() == eCSSUnit_Null) {
-          // We use an uninitialized nsCSSValue to represent the
-          // "neutral value". We currently only do this for keyframes generated
-          // from CSS animations with missing 0%/100% keyframes. Furthermore,
-          // currently (at least until bug 1339334) keyframes generated from
-          // CSS animations only contain longhand properties so we only need to
-          // handle null nsCSSValues for longhand properties.
-          DebugOnly<bool> uncomputeResult =
-            StyleAnimationValue::UncomputeValue(
-              propertyValue.mProperty,
-              Move(BaseStyle(propertyValue.mProperty).mGecko),
-              cssValue);
+#ifdef MOZ_OLD_STYLE
+        if (nsCSSProps::IsShorthand(propertyValue.mProperty)) {
+           // nsCSSValue::AppendToString does not accept shorthands properties but
+           // works with token stream values if we pass eCSSProperty_UNKNOWN as
+           // the property.
+           propertyValue.mValue.AppendToString(
+             eCSSProperty_UNKNOWN, stringValue);
+        } else {
+          nsCSSValue cssValue = propertyValue.mValue;
+          if (cssValue.GetUnit() == eCSSUnit_Null) {
+            // We use an uninitialized nsCSSValue to represent the
+            // "neutral value". We currently only do this for keyframes generated
+            // from CSS animations with missing 0%/100% keyframes. Furthermore,
+            // currently (at least until bug 1339334) keyframes generated from
+            // CSS animations only contain longhand properties so we only need to
+            // handle null nsCSSValues for longhand properties.
+            DebugOnly<bool> uncomputeResult =
+              StyleAnimationValue::UncomputeValue(
+                propertyValue.mProperty,
+                Move(BaseStyle(propertyValue.mProperty).mGecko),
+                cssValue);
 
-          MOZ_ASSERT(uncomputeResult,
-                     "Unable to get specified value from computed value");
-          MOZ_ASSERT(cssValue.GetUnit() != eCSSUnit_Null,
-                     "Got null computed value");
+            MOZ_ASSERT(uncomputeResult,
+                       "Unable to get specified value from computed value");
+            MOZ_ASSERT(cssValue.GetUnit() != eCSSUnit_Null,
+                       "Got null computed value");
+          }
+          cssValue.AppendToString(propertyValue.mProperty, stringValue);
         }
-        cssValue.AppendToString(propertyValue.mProperty, stringValue);
+#else
+        MOZ_CRASH("old style system disabled");
+#endif
       }
 
       const char* name = nsCSSProps::PropertyIDLName(propertyValue.mProperty);
@@ -1427,13 +1465,24 @@ KeyframeEffectReadOnly::CanThrottle() const
     if (presShell && !presShell->IsActive()) {
       return true;
     }
-    if (frame->IsScrolledOutOfView()) {
+
+    const bool isVisibilityHidden =
+      !frame->IsVisibleOrMayHaveVisibleDescendants();
+    if (isVisibilityHidden ||
+        frame->IsScrolledOutOfView()) {
       // If there are transform change hints, unthrottle the animation
       // periodically since it might affect the overflow region.
-      if (mCumulativeChangeHint & (nsChangeHint_UpdatePostTransformOverflow |
-                                   nsChangeHint_AddOrRemoveTransform |
-                                   nsChangeHint_UpdateTransformLayer)) {
-        return CanThrottleTransformChanges(*frame);
+      if (HasTransformThatMightAffectOverflow()) {
+        // Don't throttle finite transform animations since the animation might
+        // suddenly come into view and if it was throttled it will be
+        // out-of-sync.
+        if (HasFiniteActiveDuration()) {
+          return false;
+        }
+
+        return isVisibilityHidden
+          ? CanThrottleTransformChangesInScrollable(*frame)
+          : CanThrottleTransformChanges(*frame);
       }
       return true;
     }
@@ -1469,8 +1518,8 @@ KeyframeEffectReadOnly::CanThrottle() const
 
     // If this is a transform animation that affects the overflow region,
     // we should unthrottle the animation periodically.
-    if (record.mProperty == eCSSProperty_transform &&
-        !CanThrottleTransformChangesForCompositor(*frame)) {
+    if (HasTransformThatMightAffectOverflow() &&
+        !CanThrottleTransformChangesInScrollable(*frame)) {
       return false;
     }
   }
@@ -1502,18 +1551,35 @@ KeyframeEffectReadOnly::CanThrottleTransformChanges(const nsIFrame& aFrame) cons
 }
 
 bool
-KeyframeEffectReadOnly::CanThrottleTransformChangesForCompositor(nsIFrame& aFrame) const
+KeyframeEffectReadOnly::CanThrottleTransformChangesInScrollable(nsIFrame& aFrame) const
 {
+  // If the target element is not associated with any documents, we don't care
+  // it.
+  nsIDocument* doc = GetRenderedDocument();
+  if (!doc) {
+    return true;
+  }
+
+  bool hasIntersectionObservers = doc->HasIntersectionObservers();
+
   // If we know that the animation cannot cause overflow,
   // we can just disable flushes for this animation.
 
-  // If we don't show scrollbars, we don't care about overflow.
-  if (LookAndFeel::GetInt(LookAndFeel::eIntID_ShowHideScrollbars) == 0) {
+  // If we don't show scrollbars and have no intersection observers, we don't
+  // care about overflow.
+  if (LookAndFeel::GetInt(LookAndFeel::eIntID_ShowHideScrollbars) == 0 &&
+      !hasIntersectionObservers) {
     return true;
   }
 
   if (CanThrottleTransformChanges(aFrame)) {
     return true;
+  }
+
+  // If we have any intersection observers, we unthrottle this transform
+  // animation periodically.
+  if (hasIntersectionObservers) {
+    return false;
   }
 
   // If the nearest scrollable ancestor has overflow:hidden,
@@ -1676,6 +1742,12 @@ KeyframeEffectReadOnly::ShouldBlockAsyncTransformAnimations(
     }
   }
 
+  // XXX cku temporarily disable async-animation when this frame has any
+  // individual transforms before bug 1425837 been fixed.
+  if (aFrame->StyleDisplay()->HasIndividualTransform()) {
+    return true;
+  }
+
   return false;
 }
 
@@ -1713,6 +1785,7 @@ KeyframeEffectReadOnly::SetPerformanceWarning(
   }
 }
 
+#ifdef MOZ_OLD_STYLE
 already_AddRefed<nsStyleContext>
 KeyframeEffectReadOnly::CreateStyleContextForAnimationValue(
   nsCSSPropertyID aProperty,
@@ -1741,6 +1814,7 @@ KeyframeEffectReadOnly::CreateStyleContextForAnimationValue(
 
   return styleContext.forget();
 }
+#endif
 
 already_AddRefed<nsStyleContext>
 KeyframeEffectReadOnly::CreateStyleContextForAnimationValue(
@@ -1981,11 +2055,13 @@ KeyframeEffectReadOnly::UpdateEffectSet(EffectSet* aEffectSet) const
   }
 }
 
+#ifdef MOZ_OLD_STYLE
 template
 void
 KeyframeEffectReadOnly::ComposeStyle<RefPtr<AnimValuesStyleRule>&>(
   RefPtr<AnimValuesStyleRule>& aAnimationRule,
   const nsCSSPropertyIDSet& aPropertiesToSkip);
+#endif
 
 template
 void

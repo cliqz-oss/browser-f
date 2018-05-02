@@ -9,7 +9,7 @@
 #![deny(missing_docs)]
 
 #[cfg(feature = "gecko")]
-use computed_values::{font_feature_settings, font_stretch, font_style, font_weight};
+use computed_values::{font_stretch, font_style, font_weight};
 use cssparser::{AtRuleParser, DeclarationListParser, DeclarationParser, Parser};
 use cssparser::{SourceLocation, CowRcStr};
 use error_reporting::{ContextualParseError, ParseErrorReporter};
@@ -25,6 +25,8 @@ use str::CssStringWriter;
 use style_traits::{Comma, CssWriter, OneOrMoreSeparated, ParseError};
 use style_traits::{StyleParseErrorKind, ToCss};
 use values::computed::font::FamilyName;
+#[cfg(feature = "gecko")]
+use values::specified::font::{SpecifiedFontFeatureSettings, SpecifiedFontVariationSettings};
 use values::specified::url::SpecifiedUrl;
 
 /// A source for a font-face rule.
@@ -46,34 +48,30 @@ impl OneOrMoreSeparated for Source {
 /// `url()` function.
 ///
 /// <https://drafts.csswg.org/css-fonts/#src-desc>
-#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Debug, Eq, PartialEq, ToCss)]
 pub struct UrlSource {
     /// The specified url.
     pub url: SpecifiedUrl,
     /// The format hints specified with the `format()` function.
+    #[css(skip)]
     pub format_hints: Vec<String>,
-}
-
-impl ToCss for UrlSource {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        self.url.to_css(dest)
-    }
 }
 
 /// A font-display value for a @font-face rule.
 /// The font-display descriptor determines how a font face is displayed based
 /// on whether and when it is downloaded and ready to use.
-define_css_keyword_enum!(FontDisplay:
-                         "auto" => Auto,
-                         "block" => Block,
-                         "swap" => Swap,
-                         "fallback" => Fallback,
-                         "optional" => Optional);
-add_impls_for_keyword_enum!(FontDisplay);
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum FontDisplay {
+    Auto,
+    Block,
+    Swap,
+    Fallback,
+    Optional,
+}
 
 /// A font-weight value for a @font-face rule.
 /// The font-weight CSS property specifies the weight or boldness of the font.
@@ -229,6 +227,12 @@ macro_rules! is_descriptor_enabled {
             mozilla::StylePrefs_sFontDisplayEnabled
         }
     };
+    ("font-variation-settings") => {
+        unsafe {
+            use gecko_bindings::structs::mozilla;
+            mozilla::StylePrefs_sFontVariationsEnabled
+        }
+    };
     ($name: tt) => { true }
 }
 
@@ -239,7 +243,7 @@ macro_rules! font_face_descriptors_common {
         /// Data inside a `@font-face` rule.
         ///
         /// <https://drafts.csswg.org/css-fonts/#font-face-rule>
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, PartialEq)]
         pub struct FontFaceRuleData {
             $(
                 #[$doc]
@@ -319,8 +323,7 @@ macro_rules! font_face_descriptors {
             $( #[$m_doc: meta] $m_name: tt $m_ident: ident / $m_gecko_ident: ident: $m_ty: ty, )*
         ]
         optional descriptors = [
-            $( #[$o_doc: meta] $o_name: tt $o_ident: ident / $o_gecko_ident: ident: $o_ty: ty =
-                $o_initial: expr, )*
+            $( #[$o_doc: meta] $o_name: tt $o_ident: ident / $o_gecko_ident: ident: $o_ty: ty, )*
         ]
     ) => {
         font_face_descriptors_common! {
@@ -352,21 +355,11 @@ macro_rules! font_face_descriptors {
                     self.0 .$m_ident.as_ref().unwrap()
                 }
             )*
-            $(
-                #[$o_doc]
-                pub fn $o_ident(&self) -> $o_ty {
-                    if let Some(ref value) = self.0 .$o_ident {
-                        value.clone()
-                    } else {
-                        $o_initial
-                    }
-                }
-            )*
         }
     }
 }
 
-/// css-name rust_identifier: Type = initial_value,
+/// css-name rust_identifier: Type,
 #[cfg(feature = "gecko")]
 font_face_descriptors! {
     mandatory descriptors = [
@@ -378,31 +371,28 @@ font_face_descriptors! {
     ]
     optional descriptors = [
         /// The style of this font face
-        "font-style" style / mStyle: font_style::T = font_style::T::normal,
+        "font-style" style / mStyle: font_style::T,
 
         /// The weight of this font face
-        "font-weight" weight / mWeight: FontWeight = FontWeight::Normal,
+        "font-weight" weight / mWeight: FontWeight,
 
         /// The stretch of this font face
-        "font-stretch" stretch / mStretch: font_stretch::T = font_stretch::T::normal,
+        "font-stretch" stretch / mStretch: font_stretch::T,
 
         /// The display of this font face
-        "font-display" display / mDisplay: FontDisplay = FontDisplay::Auto,
+        "font-display" display / mDisplay: FontDisplay,
 
         /// The ranges of code points outside of which this font face should not be used.
-        "unicode-range" unicode_range / mUnicodeRange: Vec<UnicodeRange> = vec![
-            UnicodeRange { start: 0, end: 0x10FFFF }
-        ],
+        "unicode-range" unicode_range / mUnicodeRange: Vec<UnicodeRange>,
 
         /// The feature settings of this font face.
-        "font-feature-settings" feature_settings / mFontFeatureSettings: font_feature_settings::T = {
-            font_feature_settings::T::Normal
-        },
+        "font-feature-settings" feature_settings / mFontFeatureSettings: SpecifiedFontFeatureSettings,
+
+        /// The variation settings of this font face.
+        "font-variation-settings" variation_settings / mFontVariationSettings: SpecifiedFontVariationSettings,
 
         /// The language override of this font face.
-        "font-language-override" language_override / mFontLanguageOverride: font_language_override::SpecifiedValue = {
-            font_language_override::SpecifiedValue::Normal
-        },
+        "font-language-override" language_override / mFontLanguageOverride: font_language_override::SpecifiedValue,
     ]
 }
 

@@ -3,9 +3,9 @@
 */
 "use strict";
 
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/SyncedTabs.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/SyncedTabs.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 const faviconService = Cc["@mozilla.org/browser/favicon-service;1"]
                        .getService(Ci.nsIFaviconService);
@@ -69,7 +69,7 @@ function configureClients(clients, clientSettings = {}) {
 add_task(async function setup() {
   await Weave.Service.promiseInitialized;
   // Configure Sync with our mock tabs engine and force it to become initialized.
-  Weave.Service.engineManager.unregister("tabs");
+  await Weave.Service.engineManager.unregister("tabs");
   await Weave.Service.engineManager.register(MockTabsEngine);
   Weave.Service.clientsEngine = MockClientsEngine;
   tabsEngine = Weave.Service.engineManager.get("tabs");

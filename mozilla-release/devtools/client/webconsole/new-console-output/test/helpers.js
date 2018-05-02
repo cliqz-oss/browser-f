@@ -3,19 +3,14 @@
 
 "use strict";
 
-let ReactDOM = require("devtools/client/shared/vendor/react-dom");
-let React = require("devtools/client/shared/vendor/react");
-const dom = require("devtools/client/shared/vendor/react-dom-factories");
-const { createElement } = React;
-const TestUtils = ReactDOM.TestUtils;
-
 const reduxActions = require("devtools/client/webconsole/new-console-output/actions/index");
 const { configureStore } = require("devtools/client/webconsole/new-console-output/store");
 const { IdGenerator } = require("devtools/client/webconsole/new-console-output/utils/id-generator");
 const { stubPackets } = require("devtools/client/webconsole/new-console-output/test/fixtures/stubs/index");
-const {
-  getAllMessagesById,
-} = require("devtools/client/webconsole/new-console-output/selectors/messages");
+const { getAllMessagesById } = require("devtools/client/webconsole/new-console-output/selectors/messages");
+const { getPrefsService } = require("devtools/client/webconsole/new-console-output/utils/prefs");
+const prefsService = getPrefsService({});
+const { PREFS } = require("devtools/client/webconsole/new-console-output/constants");
 
 /**
  * Prepare actions for use in testing.
@@ -62,23 +57,6 @@ function setupStore(input = [], {
   return store;
 }
 
-function renderComponent(component, props) {
-  const el = createElement(component, props, {});
-  // By default, renderIntoDocument() won't work for stateless components, but
-  // it will work if the stateless component is wrapped in a stateful one.
-  // See https://github.com/facebook/react/issues/4839
-  const wrappedEl = dom.span({}, [el]);
-  const renderedComponent = TestUtils.renderIntoDocument(wrappedEl);
-  return ReactDOM.findDOMNode(renderedComponent).children[0];
-}
-
-function shallowRenderComponent(component, props) {
-  const el = createElement(component, props);
-  const renderer = TestUtils.createRenderer();
-  renderer.render(el, {});
-  return renderer.getRenderOutput();
-}
-
 /**
  * Create deep copy of given packet object.
  */
@@ -119,13 +97,41 @@ function getLastMessage(state) {
   return getMessageAt(state, lastIndex);
 }
 
+function getFiltersPrefs() {
+  return Object.values(PREFS.FILTER).reduce((res, pref) => {
+    res[pref] = prefsService.getBoolPref(pref);
+    return res;
+  }, {});
+}
+
+function clearPrefs() {
+  [
+    "devtools.hud.loglimit",
+    ...Object.values(PREFS.FILTER),
+    ...Object.values(PREFS.UI),
+  ].forEach(prefsService.clearUserPref);
+}
+
+function getPrivatePacket(key) {
+  const packet = clonePacket(stubPackets.get(key));
+  if (packet.message) {
+    packet.message.private = true;
+  }
+  if (Object.getOwnPropertyNames(packet).includes("private")) {
+    packet.private = true;
+  }
+  return packet;
+}
+
 module.exports = {
+  clearPrefs,
   clonePacket,
-  getMessageAt,
+  getFiltersPrefs,
   getFirstMessage,
   getLastMessage,
-  renderComponent,
+  getMessageAt,
+  getPrivatePacket,
+  prefsService,
   setupActions,
   setupStore,
-  shallowRenderComponent,
 };

@@ -7,9 +7,9 @@ const ARCHIVE = "zips/zen.zip";
 const SUBDIR = "zen";
 const ENTRIES = ["beyond.txt", "waterwood.txt"];
 
-Components.utils.import("resource://gre/modules/ZipUtils.jsm");
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ZipUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const archive = do_get_file(ARCHIVE, false);
 const dir = do_get_profile().clone();
@@ -43,7 +43,7 @@ add_task(function test_extractFiles() {
 add_task(async function test_extractFilesAsync() {
   let target = dir.clone();
   target.append("test_extractFilesAsync");
-  target.create(Components.interfaces.nsIFile.DIRECTORY_TYPE,
+  target.create(Ci.nsIFile.DIRECTORY_TYPE,
     FileUtils.PERMS_DIRECTORY);
 
   await ZipUtils.extractFilesAsync(archive, target).then(

@@ -11,6 +11,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DoublyLinkedList.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MaybeOneOf.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PodOperations.h"
@@ -20,11 +21,8 @@
 
 #include <setjmp.h>
 
-#include "jsatom.h"
-#include "jsscript.h"
-
 #include "builtin/AtomicsObject.h"
-#include "builtin/Intl.h"
+#include "builtin/intl/SharedIntlData.h"
 #include "builtin/Promise.h"
 #include "frontend/NameCollections.h"
 #include "gc/GCRuntime.h"
@@ -45,11 +43,13 @@
 #include "vm/CommonPropertyNames.h"
 #include "vm/DateTime.h"
 #include "vm/GeckoProfiler.h"
+#include "vm/JSAtom.h"
+#include "vm/JSScript.h"
 #include "vm/Scope.h"
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/Stack.h"
 #include "vm/Stopwatch.h"
-#include "vm/Symbol.h"
+#include "vm/SymbolType.h"
 #include "wasm/WasmSignalHandlers.h"
 
 #ifdef _MSC_VER
@@ -137,52 +137,6 @@ class Simulator;
 //   activities do not cause observable changes in script behaviors. Activity
 //   on helper threads may be referred to as happening 'off thread' or on a
 //   background thread in some parts of the VM.
-
-/*
- * A FreeOp can do one thing: free memory. For convenience, it has delete_
- * convenience methods that also call destructors.
- *
- * FreeOp is passed to finalizers and other sweep-phase hooks so that we do not
- * need to pass a JSContext to those hooks.
- */
-class FreeOp : public JSFreeOp
-{
-    Vector<void*, 0, SystemAllocPolicy> freeLaterList;
-    jit::JitPoisonRangeVector jitPoisonRanges;
-
-  public:
-    static FreeOp* get(JSFreeOp* fop) {
-        return static_cast<FreeOp*>(fop);
-    }
-
-    explicit FreeOp(JSRuntime* maybeRuntime);
-    ~FreeOp();
-
-    bool onActiveCooperatingThread() const {
-        return runtime_ != nullptr;
-    }
-
-    bool maybeOnHelperThread() const {
-        // Sometimes background finalization happens on the active thread so
-        // runtime_ being null doesn't always mean we are off thread.
-        return !runtime_;
-    }
-
-    bool isDefaultFreeOp() const;
-
-    inline void free_(void* p);
-    inline void freeLater(void* p);
-
-    inline bool appendJitPoisonRange(const jit::JitPoisonRange& range);
-
-    template <class T>
-    inline void delete_(T* p) {
-        if (p) {
-            p->~T();
-            free_(p);
-        }
-    }
-};
 
 } /* namespace js */
 
@@ -280,6 +234,7 @@ void DisableExtraThreads();
 using ScriptAndCountsVector = GCVector<ScriptAndCounts, 0, SystemAllocPolicy>;
 
 class AutoLockForExclusiveAccess;
+class AutoLockScriptData;
 
 } // namespace js
 
@@ -393,59 +348,31 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     void endSingleThreadedExecution(JSContext* cx);
 
     /*
-     * The profiler sampler generation after the latest sample.
-     *
-     * The lapCount indicates the number of largest number of 'laps'
-     * (wrapping from high to low) that occurred when writing entries
-     * into the sample buffer.  All JitcodeGlobalMap entries referenced
-     * from a given sample are assigned the generation of the sample buffer
-     * at the START of the run.  If multiple laps occur, then some entries
-     * (towards the end) will be written out with the "wrong" generation.
-     * The lapCount indicates the required fudge factor to use to compare
-     * entry generations with the sample buffer generation.
+     * The start of the range stored in the profiler sample buffer, as measured
+     * after the most recent sample.
+     * All JitcodeGlobalTable entries referenced from a given sample are
+     * assigned the buffer position of the START of the sample. The buffer
+     * entries that reference the JitcodeGlobalTable entries will only ever be
+     * read from the buffer while the entire sample is still inside the buffer;
+     * if some buffer entries at the start of the sample have left the buffer,
+     * the entire sample will be considered inaccessible.
+     * This means that, once profilerSampleBufferRangeStart_ advances beyond
+     * the sample position that's stored on a JitcodeGlobalTable entry, the
+     * buffer entries that reference this JitcodeGlobalTable entry will be
+     * considered inaccessible, and those JitcodeGlobalTable entry can be
+     * disposed of.
      */
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> profilerSampleBufferGen_;
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> profilerSampleBufferLapCount_;
+    mozilla::Atomic<uint64_t, mozilla::ReleaseAcquire> profilerSampleBufferRangeStart_;
 
-    uint32_t profilerSampleBufferGen() {
-        return profilerSampleBufferGen_;
-    }
-    void resetProfilerSampleBufferGen() {
-        profilerSampleBufferGen_ = 0;
-    }
-    void setProfilerSampleBufferGen(uint32_t gen) {
-        // May be called from sampler thread or signal handler; use
-        // compareExchange to make sure we have monotonic increase.
-        for (;;) {
-            uint32_t curGen = profilerSampleBufferGen_;
-            if (curGen >= gen)
-                break;
-
-            if (profilerSampleBufferGen_.compareExchange(curGen, gen))
-                break;
+    mozilla::Maybe<uint64_t> profilerSampleBufferRangeStart() {
+        if (beingDestroyed_ || !geckoProfiler().enabled()) {
+            return mozilla::Nothing();
         }
+        uint64_t rangeStart = profilerSampleBufferRangeStart_;
+        return mozilla::Some(rangeStart);
     }
-
-    uint32_t profilerSampleBufferLapCount() {
-        MOZ_ASSERT(profilerSampleBufferLapCount_ > 0);
-        return profilerSampleBufferLapCount_;
-    }
-    void resetProfilerSampleBufferLapCount() {
-        profilerSampleBufferLapCount_ = 1;
-    }
-    void updateProfilerSampleBufferLapCount(uint32_t lapCount) {
-        MOZ_ASSERT(profilerSampleBufferLapCount_ > 0);
-
-        // May be called from sampler thread or signal handler; use
-        // compareExchange to make sure we have monotonic increase.
-        for (;;) {
-            uint32_t curLapCount = profilerSampleBufferLapCount_;
-            if (curLapCount >= lapCount)
-                break;
-
-            if (profilerSampleBufferLapCount_.compareExchange(curLapCount, lapCount))
-                break;
-        }
+    void setProfilerSampleBufferRangeStart(uint64_t rangeStart) {
+        profilerSampleBufferRangeStart_ = rangeStart;
     }
 
     /* Call this to accumulate telemetry data. */
@@ -610,10 +537,26 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     bool activeThreadHasExclusiveAccess;
 #endif
 
-    /* Number of zones which may be operated on by non-cooperating helper threads. */
+    /*
+     * Lock used to protect the script data table, which can be used by
+     * off-thread parsing.
+     *
+     * Locking this only occurs if there is actually a thread other than the
+     * active thread which could access this.
+     */
+    js::Mutex scriptDataLock;
+#ifdef DEBUG
+    bool activeThreadHasScriptDataAccess;
+#endif
+
+    /*
+     * Number of zones which may be operated on by non-cooperating helper
+     * threads.
+     */
     js::UnprotectedData<size_t> numActiveHelperThreadZones;
 
     friend class js::AutoLockForExclusiveAccess;
+    friend class js::AutoLockScriptData;
 
   public:
     void setUsedByHelperThread(JS::Zone* zone);
@@ -627,6 +570,11 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     bool currentThreadHasExclusiveAccess() const {
         return (!hasHelperThreadZones() && activeThreadHasExclusiveAccess) ||
             exclusiveAccessLock.ownedByCurrentThread();
+    }
+
+    bool currentThreadHasScriptDataAccess() const {
+        return (!hasHelperThreadZones() && activeThreadHasScriptDataAccess) ||
+            scriptDataLock.ownedByCurrentThread();
     }
 #endif
 
@@ -737,7 +685,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     /* Gets current default locale. String remains owned by context. */
     const char* getDefaultLocale();
 
-    /* Garbage collector state, used by jsgc.c. */
+    /* Garbage collector state. */
     js::gc::GCRuntime   gc;
 
     /* Garbage collector state has been successfully initialized. */
@@ -906,7 +854,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::WriteOnceData<js::WellKnownSymbols*> wellKnownSymbols;
 
     /* Shared Intl data for this runtime. */
-    js::ActiveThreadData<js::SharedIntlData> sharedIntlData;
+    js::ActiveThreadData<js::intl::SharedIntlData> sharedIntlData;
 
     void traceSharedIntlData(JSTracer* trc);
 
@@ -914,9 +862,9 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     // within the runtime. This may be modified by threads using
     // AutoLockForExclusiveAccess.
   private:
-    js::ExclusiveAccessLockData<js::ScriptDataTable> scriptDataTable_;
+    js::ScriptDataLockData<js::ScriptDataTable> scriptDataTable_;
   public:
-    js::ScriptDataTable& scriptDataTable(js::AutoLockForExclusiveAccess& lock) {
+    js::ScriptDataTable& scriptDataTable(const js::AutoLockScriptData& lock) {
         return scriptDataTable_.ref();
     }
 
@@ -1090,34 +1038,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
 };
 
 namespace js {
-
-inline void
-FreeOp::free_(void* p)
-{
-    js_free(p);
-}
-
-inline void
-FreeOp::freeLater(void* p)
-{
-    // FreeOps other than the defaultFreeOp() are constructed on the stack,
-    // and won't hold onto the pointers to free indefinitely.
-    MOZ_ASSERT(!isDefaultFreeOp());
-
-    AutoEnterOOMUnsafeRegion oomUnsafe;
-    if (!freeLaterList.append(p))
-        oomUnsafe.crash("FreeOp::freeLater");
-}
-
-inline bool
-FreeOp::appendJitPoisonRange(const jit::JitPoisonRange& range)
-{
-    // FreeOps other than the defaultFreeOp() are constructed on the stack,
-    // and won't hold onto the pointers to free indefinitely.
-    MOZ_ASSERT(!isDefaultFreeOp());
-
-    return jitPoisonRanges.append(range);
-}
 
 /*
  * RAII class that takes the GC lock while it is live.

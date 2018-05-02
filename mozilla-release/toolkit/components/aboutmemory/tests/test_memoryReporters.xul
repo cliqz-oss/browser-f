@@ -26,10 +26,6 @@
 
   "use strict";
 
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
-  const Cr = Components.results;
-
   const NONHEAP = Ci.nsIMemoryReporter.KIND_NONHEAP;
   const HEAP    = Ci.nsIMemoryReporter.KIND_HEAP;
   const OTHER   = Ci.nsIMemoryReporter.KIND_OTHER;
@@ -73,7 +69,11 @@
     shortStrings.push(str);
   }
 
-  let mySandbox = Components.utils.Sandbox(document.nodePrincipal,
+  // Strings in the nursery are not reported, so make sure the above test
+  // strings are tenured.
+  Cu.forceGC();
+
+  let mySandbox = Cu.Sandbox(document.nodePrincipal,
                     { sandboxName: "this-is-a-sandbox-name" });
 
   function handleReportNormal(aProcess, aPath, aKind, aUnits, aAmount,
@@ -103,8 +103,8 @@
       present.images = true;
     } else if (aPath.search(/^explicit\/xpti-working-set$/) >= 0) {
       present.xptiWorkingSet = true;
-    } else if (aPath.search(/^explicit\/atom-tables\/main$/) >= 0) {
-      present.atomTablesMain = true;
+    } else if (aPath.search(/^explicit\/atoms\/static\/atom-objects$/) >= 0) {
+      present.staticAtomObjects = true;
     } else if (/\[System Principal\].*this-is-a-sandbox-name/.test(aPath)) {
       // A system compartment with a location (such as a sandbox) should
       // show that location.
@@ -261,7 +261,7 @@
     ok(present.places,                      "places is present");
     ok(present.images,                      "images is present");
     ok(present.xptiWorkingSet,              "xpti-working-set is present");
-    ok(present.atomTablesMain,              "atom-tables/main is present");
+    ok(present.staticAtomObjects,           "static/atom-objects is present");
     ok(present.sandboxLocation,             "sandbox locations are present");
     ok(present.bigString,                   "large string is present");
     ok(present.smallString1,                "small string 1 is present");
@@ -409,7 +409,7 @@
       ok(false, "Shouldn't be allowed to register a JS component (WrappedJS)");
     }
     catch (ex) {
-      ok(ex.message.indexOf("NS_ERROR_") >= 0,
+      ok(ex.message.includes("NS_ERROR_"),
          "WrappedJS reporter got rejected: " + ex);
     }
 

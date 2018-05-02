@@ -48,7 +48,7 @@ dnl ========================================================
 MOZJPEG=62
 MOZPNG=10634
 NSPR_VERSION=4
-NSPR_MINVER=4.18
+NSPR_MINVER=4.19
 NSS_VERSION=3
 
 dnl Set the minimum version of toolkit libs used by mozilla
@@ -66,7 +66,7 @@ W32API_VERSION=3.14
 GCONF_VERSION=1.2.1
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.21.0
+SQLITE_VERSION=3.22.0
 
 dnl Set various checks
 dnl ========================================================
@@ -1296,14 +1296,6 @@ if test -n "$MOZ_X11"; then
     AC_CHECK_LIB(X11-xcb, XGetXCBConnection, [XLIBS="-lX11-xcb $XLIBS"],
         [MISSING_X="$MISSING_X -lX11-xcb"], $XLIBS)
 
-    dnl ========================================================
-    dnl = Check for Xss
-    dnl ========================================================
-    MOZ_CHECK_HEADER(X11/extensions/scrnsaver.h,
-        AC_CHECK_LIB(Xss, XScreenSaverQueryInfo,
-            [XSS_LIBS="-lXss $XEXT_LIBS $XLIBS"
-             AC_DEFINE(HAVE_LIBXSS)],, $XEXT_LIBS $XLIBS))
-
     LDFLAGS="$_SAVE_LDFLAGS"
     LIBS="$_SAVE_LIBS"
 fi # $MOZ_X11
@@ -1313,7 +1305,6 @@ AC_SUBST_LIST(XLDFLAGS)
 AC_SUBST_LIST(XLIBS)
 AC_SUBST_LIST(XEXT_LIBS)
 AC_SUBST_LIST(XT_LIBS)
-AC_SUBST_LIST(XSS_LIBS)
 
 dnl ========================================================
 dnl = pthread support
@@ -1663,42 +1654,6 @@ dnl gnu style tables anyways.
   LDFLAGS="$LDFLAGS -Wl,--hash-style=sysv"
 fi
 
-dnl The custom linker doesn't support text relocations, but NDK >= r6b
-dnl creates some (http://code.google.com/p/android/issues/detail?id=23203)
-dnl We however want to avoid these text relocations, and this can be done
-dnl by making gcc not link crtbegin and crtend. In the broken NDKs, crtend
-dnl doesn't contain anything at all, beside placeholders for some sections,
-dnl and crtbegin only contains a finalizer function that calls
-dnl __cxa_finalize. The custom linker actually takes care of calling
-dnl __cxa_finalize when the library doesn't call it itself, which makes it
-dnl safe not to link crtbegin. Besides, previous versions of the NDK didn't
-dnl link crtbegin and crtend at all.
-if test -n "$MOZ_LINKER" -a "$OS_TARGET" = "Android"; then
-  AC_CACHE_CHECK([whether the CRT objects have text relocations],
-    ac_cv_crt_has_text_relocations,
-    [echo 'int foo() { return 0; }' > conftest.cpp
-     if AC_TRY_COMMAND(${CXX-g++} -o conftest${DLL_SUFFIX} $CXXFLAGS $DSO_LDOPTS $LDFLAGS conftest.cpp $LIBS 1>&5) &&
-        test -s conftest${DLL_SUFFIX}; then
-       if ${TOOLCHAIN_PREFIX}readelf -d conftest${DLL_SUFFIX} | grep TEXTREL > /dev/null; then
-         ac_cv_crt_has_text_relocations=yes
-       else
-         ac_cv_crt_has_text_relocations=no
-       fi
-     else
-       AC_ERROR([couldn't compile a simple C file])
-     fi
-     rm -rf conftest*])
-  if test "$ac_cv_crt_has_text_relocations" = yes; then
-    dnl While we want libraries to skip the CRT files, we don't want
-    dnl executables to be treated the same way. We thus set the flag
-    dnl in DSO_LDOPTS and not LDFLAGS. However, to pass it to nspr,
-    dnl we need to use LDFLAGS because nspr doesn't inherit DSO_LDOPTS.
-    dnl Using LDFLAGS in nspr is safe, since we only really build
-    dnl libraries there.
-    DSO_LDOPTS="$DSO_LDOPTS -nostartfiles"
-  fi
-fi
-
 dnl End of C++ language/feature checks
 AC_LANG_C
 
@@ -1805,7 +1760,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.35, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.36.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_SYSTEM_NSS"; then
@@ -1991,7 +1946,6 @@ NECKO_COOKIES=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=
 MOZ_EXCLUDE_HYPHENATION_DICTIONARIES=
 ACCESSIBILITY=1
-MOZ_TIME_MANAGER=
 MOZ_CONTENT_SANDBOX=
 MOZ_GMP_SANDBOX=
 MOZ_SANDBOX=1
@@ -2115,7 +2069,7 @@ dnl ========================================================
 
 case "$MOZ_BUILD_APP" in
 mobile/android)
-    MOZ_ANDROID_SDK(23, 23, 25.0.3, 26.0.0 26.0.0-dev 25.3.2 25.3.1)
+    MOZ_ANDROID_SDK(23, 23, 26.0.2, 26.0.0 26.0.0-dev 25.3.2 25.3.1)
     ;;
 esac
 
@@ -2285,17 +2239,6 @@ fi
 
 AC_DEFINE_UNQUOTED(MOZ_DISTRIBUTION_ID,"$MOZ_DISTRIBUTION_ID")
 AC_SUBST(MOZ_DISTRIBUTION_ID)
-
-
-dnl ========================================================
-dnl Google Play Services, placed here so it can depend on
-dnl values set by configure.sh above.
-dnl ========================================================
-
-MOZ_ANDROID_GOOGLE_PLAY_SERVICES
-MOZ_ANDROID_GOOGLE_CLOUD_MESSAGING
-MOZ_ANDROID_INSTALL_TRACKING
-
 
 dnl ========================================================
 dnl = GConf support module
@@ -3807,23 +3750,6 @@ fi
 AC_SUBST(MOZ_DISABLE_STARTUPCACHE)
 
 dnl ========================================================
-dnl = Enable Support for Time Manager API
-dnl ========================================================
-if test -n "$MOZ_TIME_MANAGER"; then
-    AC_DEFINE(MOZ_TIME_MANAGER)
-fi
-AC_SUBST(MOZ_TIME_MANAGER)
-
-dnl ========================================================
-dnl = Enable Support for Secure Element API
-dnl ========================================================
-   MOZ_SECUREELEMENT=1,
-if test -n "$MOZ_SECUREELEMENT"; then
-   AC_DEFINE(MOZ_SECUREELEMENT)
-fi
- AC_SUBST(MOZ_SECUREELEMENT)
-
-dnl ========================================================
 dnl = Support for demangling undefined symbols
 dnl ========================================================
 if test -z "$SKIP_LIBRARY_CHECKS"; then
@@ -3888,32 +3814,6 @@ else
 fi])
 
 AC_DEFINE_UNQUOTED(MOZ_USER_DIR,"$MOZ_USER_DIR")
-
-dnl ========================================================
-dnl = Doxygen configuration
-dnl ========================================================
-dnl Use commas to specify multiple dirs to this arg
-MOZ_DOC_INPUT_DIRS='./dist/include ./dist/idl'
-MOZ_ARG_WITH_STRING(doc-input-dirs,
-[  --with-doc-input-dirs=DIRS
-                          Header/idl dirs to create docs from],
-[ MOZ_DOC_INPUT_DIRS=`echo "$withval" | sed "s/,/ /g"` ] )
-AC_SUBST(MOZ_DOC_INPUT_DIRS)
-
-dnl Use commas to specify multiple dirs to this arg
-MOZ_DOC_INCLUDE_DIRS='./dist/include ./dist/include/nspr'
-MOZ_ARG_WITH_STRING(doc-include-dirs,
-[  --with-doc-include-dirs=DIRS
-                          Include dirs to preprocess doc headers],
-[ MOZ_DOC_INCLUDE_DIRS=`echo "$withval" | sed "s/,/ /g"` ] )
-AC_SUBST(MOZ_DOC_INCLUDE_DIRS)
-
-MOZ_DOC_OUTPUT_DIR='./dist/docs'
-MOZ_ARG_WITH_STRING(doc-output-dir,
-[  --with-doc-output-dir=DIR
-                          Dir to generate docs into],
-[ MOZ_DOC_OUTPUT_DIR=$withval ] )
-AC_SUBST(MOZ_DOC_OUTPUT_DIR)
 
 if test -z "$SKIP_COMPILER_CHECKS"; then
 dnl ========================================================
@@ -4085,8 +3985,8 @@ dnl ========================================================
 
 MOZ_TREE_CAIRO=1
 MOZ_ARG_ENABLE_BOOL(system-cairo,
-[  --enable-system-cairo   Use system cairo (located with pkgconfig)],
-MOZ_TREE_CAIRO=,
+[ --enable-system-cairo  Obsolete: do not use this option],
+AC_MSG_ERROR(--enable-system-cairo is not supported),
 MOZ_TREE_CAIRO=1 )
 
 MOZ_TREE_PIXMAN=1
@@ -4096,111 +3996,87 @@ MOZ_TREE_PIXMAN=,
 MOZ_TREE_PIXMAN=force,
 MOZ_TREE_PIXMAN=1 )
 
-# System cairo depends on system pixman
-if test "$MOZ_TREE_PIXMAN" = "force"; then
-    if test -z "$MOZ_TREE_CAIRO"; then
-        AC_MSG_ERROR([--disable-system-pixman is incompatible with --enable-system-cairo.])
-    else
-        MOZ_TREE_PIXMAN=1
-    fi
-elif test -z "$MOZ_TREE_CAIRO"; then
-    MOZ_TREE_PIXMAN=
-fi
-
 if test "$MOZ_TREE_PIXMAN"; then
     AC_DEFINE(MOZ_TREE_PIXMAN)
 else
     PKG_CHECK_MODULES(MOZ_PIXMAN, pixman-1 >= 0.19.2)
 fi
 
-if test "$MOZ_TREE_CAIRO"; then
-    MOZ_CAIRO_CFLAGS="-I${DIST}/include/cairo"
-    AC_DEFINE(MOZ_TREE_CAIRO)
+MOZ_CAIRO_CFLAGS="-I${DIST}/include/cairo"
+AC_DEFINE(MOZ_TREE_CAIRO)
 
-    if test "$OS_ARCH" = "WINNT"; then
-        # For now we assume that we will have a uint64_t available through
-        # one of the above headers or mozstdint.h.
-        AC_DEFINE(HAVE_UINT64_T)
-    fi
-
-    # Define macros for cairo-features.h
-    TEE_SURFACE_FEATURE="#define CAIRO_HAS_TEE_SURFACE 1"
-    if test "$MOZ_X11"; then
-        XLIB_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_SURFACE 1"
-        XLIB_XRENDER_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_XRENDER_SURFACE 1"
-        PS_SURFACE_FEATURE="#define CAIRO_HAS_PS_SURFACE 1"
-    fi
-    if test "$_HAVE_FREETYPE2"; then
-        FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
-        MOZ_ENABLE_CAIRO_FT=1
-        CAIRO_FT_CFLAGS="$FT2_CFLAGS"
-    fi
-
-    case "$MOZ_WIDGET_TOOLKIT" in
-      cocoa | uikit)
-        QUARTZ_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_SURFACE 1"
-        QUARTZ_IMAGE_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_IMAGE_SURFACE 1"
-        QUARTZ_FONT_FEATURE="#define CAIRO_HAS_QUARTZ_FONT 1"
-        ;;
-      windows)
-        WIN32_D2D_SURFACE_FEATURE="#define CAIRO_HAS_D2D_SURFACE 1"
-        WIN32_DWRITE_FONT_FEATURE="#define CAIRO_HAS_DWRITE_FONT 1"
-        WIN32_FONT_FEATURE="#define CAIRO_HAS_WIN32_FONT 1"
-        WIN32_SURFACE_FEATURE="#define CAIRO_HAS_WIN32_SURFACE 1"
-        MOZ_ENABLE_D2D_SURFACE=1
-
-        if test "$COMPILE_ENVIRONMENT"; then
-
-          dnl D3D10 Layers depend on D2D Surfaces.
-          if test -n "$WIN32_D2D_SURFACE_FEATURE"; then
-            MOZ_CHECK_HEADER(d3d10.h, MOZ_ENABLE_D3D10_LAYER=1)
-          fi
-        fi
-        ;;
-    esac
-    if test "$USE_FC_FREETYPE"; then
-        FC_FONT_FEATURE="#define CAIRO_HAS_FC_FONT 1"
-    fi
-    AC_SUBST(MOZ_ENABLE_CAIRO_FT)
-    AC_SUBST(MOZ_ENABLE_D2D_SURFACE)
-    AC_SUBST(MOZ_ENABLE_D3D10_LAYER)
-
-    AC_SUBST(PS_SURFACE_FEATURE)
-    AC_SUBST(SVG_SURFACE_FEATURE)
-    AC_SUBST(XLIB_SURFACE_FEATURE)
-    AC_SUBST(XLIB_XRENDER_SURFACE_FEATURE)
-    AC_SUBST(QUARTZ_SURFACE_FEATURE)
-    AC_SUBST(QUARTZ_IMAGE_SURFACE_FEATURE)
-    AC_SUBST(WIN32_SURFACE_FEATURE)
-    AC_SUBST(OS2_SURFACE_FEATURE)
-    AC_SUBST(DIRECTFB_SURFACE_FEATURE)
-    AC_SUBST(FT_FONT_FEATURE)
-    AC_SUBST(FC_FONT_FEATURE)
-    AC_SUBST(WIN32_FONT_FEATURE)
-    AC_SUBST(WIN32_DWRITE_FONT_FEATURE)
-    AC_SUBST(WIN32_D2D_SURFACE_FEATURE)
-    AC_SUBST(QUARTZ_FONT_FEATURE)
-    AC_SUBST(PNG_FUNCTIONS_FEATURE)
-    AC_SUBST(QT_SURFACE_FEATURE)
-    AC_SUBST(TEE_SURFACE_FEATURE)
-
-    if test "$MOZ_X11"; then
-        MOZ_CAIRO_OSLIBS="$MOZ_CAIRO_OSLIBS $XLDFLAGS -lXrender"
-    fi
-
-    CAIRO_FEATURES_H=gfx/cairo/cairo/src/cairo-features.h
-else
-    PKG_CHECK_MODULES(CAIRO, cairo >= $CAIRO_VERSION)
-    MOZ_CAIRO_CFLAGS="$CAIRO_CFLAGS"
-    MOZ_CAIRO_LIBS="$CAIRO_LIBS"
-    PKG_CHECK_MODULES(CAIRO_TEE, cairo-tee >= $CAIRO_VERSION)
-    if test "$MOZ_X11"; then
-        PKG_CHECK_MODULES(CAIRO_XRENDER, cairo-xlib-xrender >= $CAIRO_VERSION)
-        MOZ_CAIRO_LIBS="$MOZ_CAIRO_LIBS $XLDFLAGS $CAIRO_XRENDER_LIBS"
-        MOZ_CAIRO_OSLIBS="$MOZ_CAIRO_LIBS"
-        MOZ_CAIRO_CFLAGS="$MOZ_CAIRO_CFLAGS $CAIRO_XRENDER_CFLAGS"
-    fi
+if test "$OS_ARCH" = "WINNT"; then
+    # For now we assume that we will have a uint64_t available through
+    # one of the above headers or mozstdint.h.
+    AC_DEFINE(HAVE_UINT64_T)
 fi
+
+# Define macros for cairo-features.h
+TEE_SURFACE_FEATURE="#define CAIRO_HAS_TEE_SURFACE 1"
+if test "$MOZ_X11"; then
+    XLIB_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_SURFACE 1"
+    XLIB_XRENDER_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_XRENDER_SURFACE 1"
+    PS_SURFACE_FEATURE="#define CAIRO_HAS_PS_SURFACE 1"
+fi
+if test "$_HAVE_FREETYPE2"; then
+    FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
+    MOZ_ENABLE_CAIRO_FT=1
+    CAIRO_FT_CFLAGS="$FT2_CFLAGS"
+fi
+
+case "$MOZ_WIDGET_TOOLKIT" in
+  cocoa | uikit)
+    QUARTZ_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_SURFACE 1"
+    QUARTZ_IMAGE_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_IMAGE_SURFACE 1"
+    QUARTZ_FONT_FEATURE="#define CAIRO_HAS_QUARTZ_FONT 1"
+    ;;
+  windows)
+    WIN32_D2D_SURFACE_FEATURE="#define CAIRO_HAS_D2D_SURFACE 1"
+    WIN32_DWRITE_FONT_FEATURE="#define CAIRO_HAS_DWRITE_FONT 1"
+    WIN32_FONT_FEATURE="#define CAIRO_HAS_WIN32_FONT 1"
+    WIN32_SURFACE_FEATURE="#define CAIRO_HAS_WIN32_SURFACE 1"
+    MOZ_ENABLE_D2D_SURFACE=1
+
+    if test "$COMPILE_ENVIRONMENT"; then
+
+      dnl D3D10 Layers depend on D2D Surfaces.
+      if test -n "$WIN32_D2D_SURFACE_FEATURE"; then
+        MOZ_CHECK_HEADER(d3d10.h, MOZ_ENABLE_D3D10_LAYER=1)
+      fi
+    fi
+    ;;
+esac
+if test "$USE_FC_FREETYPE"; then
+    FC_FONT_FEATURE="#define CAIRO_HAS_FC_FONT 1"
+fi
+AC_SUBST(MOZ_ENABLE_CAIRO_FT)
+AC_SUBST(MOZ_ENABLE_D2D_SURFACE)
+AC_SUBST(MOZ_ENABLE_D3D10_LAYER)
+
+AC_SUBST(PS_SURFACE_FEATURE)
+AC_SUBST(SVG_SURFACE_FEATURE)
+AC_SUBST(XLIB_SURFACE_FEATURE)
+AC_SUBST(XLIB_XRENDER_SURFACE_FEATURE)
+AC_SUBST(QUARTZ_SURFACE_FEATURE)
+AC_SUBST(QUARTZ_IMAGE_SURFACE_FEATURE)
+AC_SUBST(WIN32_SURFACE_FEATURE)
+AC_SUBST(OS2_SURFACE_FEATURE)
+AC_SUBST(DIRECTFB_SURFACE_FEATURE)
+AC_SUBST(FT_FONT_FEATURE)
+AC_SUBST(FC_FONT_FEATURE)
+AC_SUBST(WIN32_FONT_FEATURE)
+AC_SUBST(WIN32_DWRITE_FONT_FEATURE)
+AC_SUBST(WIN32_D2D_SURFACE_FEATURE)
+AC_SUBST(QUARTZ_FONT_FEATURE)
+AC_SUBST(PNG_FUNCTIONS_FEATURE)
+AC_SUBST(QT_SURFACE_FEATURE)
+AC_SUBST(TEE_SURFACE_FEATURE)
+
+if test "$MOZ_X11"; then
+    MOZ_CAIRO_OSLIBS="$MOZ_CAIRO_OSLIBS $XLDFLAGS -lXrender"
+fi
+
+CAIRO_FEATURES_H=gfx/cairo/cairo/src/cairo-features.h
 
 case "$MOZ_WIDGET_TOOLKIT" in
 android)
@@ -4381,7 +4257,7 @@ dnl Mac bundle identifier (based on MOZ_APP_DISPLAYNAME)
 # If the MOZ_MACBUNDLE_ID is defined in the configure.sh, use it
 # Otherwise, use MOZ_APP_DISPLAYNAME
 if test -z "$MOZ_MACBUNDLE_ID"; then
-   MOZ_MACBUNDLE_ID=`echo $MOZ_APP_DISPLAYNAME | tr 'A-Z' 'a-z' | tr -d '[[:blank:]]'`
+   MOZ_MACBUNDLE_ID=`echo $MOZ_APP_DISPLAYNAME | tr 'A-Z' 'a-z' | tr -dc 'a-z-'`
 fi
 MOZ_MACBUNDLE_ID=${MOZ_DISTRIBUTION_ID}.${MOZ_MACBUNDLE_ID}
 if test "$MOZ_DEBUG"; then

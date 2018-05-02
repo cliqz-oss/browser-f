@@ -523,3 +523,7 @@ load 1428353.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1429088.html
 load 1429961.html
 load 1435015.html
+load 1429962.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1439016.html
+load 1442506.html
+asserts-if(!stylo,1) load 1437155.html

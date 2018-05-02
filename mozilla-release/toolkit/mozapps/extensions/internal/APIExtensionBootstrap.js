@@ -6,8 +6,8 @@
 
 /* exported startup, shutdown, install, uninstall, ExtensionAPIs */
 
-Components.utils.import("resource://gre/modules/ExtensionCommon.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const {ExtensionAPIs} = ExtensionCommon;
 
@@ -23,7 +23,7 @@ function startup(data, reason) {
   resource = `extension-${namespace.toLowerCase()}-api`;
 
   resProto = Services.io.getProtocolHandler("resource")
-                     .QueryInterface(Components.interfaces.nsIResProtocolHandler);
+                     .QueryInterface(Ci.nsIResProtocolHandler);
 
   resProto.setSubstitution(resource, data.resourceURI);
 

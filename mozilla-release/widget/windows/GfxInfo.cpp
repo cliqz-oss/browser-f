@@ -10,7 +10,6 @@
 #include "gfxConfig.h"
 #include "gfxWindowsPlatform.h"
 #include "GfxInfo.h"
-#include "GfxInfoWebGL.h"
 #include "nsUnicharUtils.h"
 #include "prenv.h"
 #include "prprf.h"
@@ -372,6 +371,7 @@ GfxInfo::Init()
   // Unfortunately, the Device ID is nullptr, and we can't enumerate
   // it using the setup infrastructure (SetupDiGetClassDevsW below
   // will return INVALID_HANDLE_VALUE).
+  UINT flags = DIGCF_PRESENT | DIGCF_PROFILE | DIGCF_ALLCLASSES;
   if (mWindowsVersion >= kWindows8 &&
       mDeviceID[0].Length() == 0 &&
       mDeviceString[0].EqualsLiteral("RDPUDD Chained DD"))
@@ -386,12 +386,12 @@ GfxInfo::Init()
 
       // 0x1414 is Microsoft; 0xfefe is an invented (and unused) code
       mDeviceID[0].AssignLiteral("PCI\\VEN_1414&DEV_FEFE&SUBSYS_00000000");
+      flags |= DIGCF_DEVICEINTERFACE;
     }
   }
 
   /* create a device information set composed of the current display device */
-  HDEVINFO devinfo = SetupDiGetClassDevsW(nullptr, mDeviceID[0].get(), nullptr,
-                                          DIGCF_PRESENT | DIGCF_PROFILE | DIGCF_ALLCLASSES);
+  HDEVINFO devinfo = SetupDiGetClassDevsW(nullptr, mDeviceID[0].get(), nullptr, flags);
 
   if (devinfo != INVALID_HANDLE_VALUE) {
     HKEY key;
@@ -1379,11 +1379,22 @@ GfxInfo::GetGfxDriverInfo()
       DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions, "FEATURE_FAILURE_BUG_1359416");
 
     // bug 1419264
-    APPEND_TO_DRIVER_BLOCKLIST(OperatingSystem::Windows7,
+    APPEND_TO_DRIVER_BLOCKLIST_RANGE(OperatingSystem::Windows7,
       (nsAString&) GfxDriverInfo::GetDeviceVendor(VendorNVIDIA), GfxDriverInfo::allDevices,
       nsIGfxInfo::FEATURE_ADVANCED_LAYERS, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-      DRIVER_GREATER_THAN_OR_EQUAL, V(23,21,13,8813),
+      DRIVER_BETWEEN_INCLUSIVE, V(23,21,13,8569), V(23,21,13,9135),
       "FEATURE_FAILURE_BUG_1419264", "Windows 10");
+
+    // Bug 1447141, for causing device creation crashes.
+    APPEND_TO_DRIVER_BLOCKLIST2(OperatingSystem::Windows7,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorAMD), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Bug1447141),
+      GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+      DRIVER_EQUAL, V(15, 201, 2201, 0), "FEATURE_FAILURE_BUG_1447141_1");
+    APPEND_TO_DRIVER_BLOCKLIST2(OperatingSystem::Windows7,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorAMD), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Bug1447141),
+      GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+      DRIVER_EQUAL, V(15, 201, 1701, 0), "FEATURE_FAILURE_BUG_1447141_1");
+
   }
   return *mDriverInfo;
 }

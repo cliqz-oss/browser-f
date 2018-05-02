@@ -12,7 +12,9 @@
 #include "nsITableCellLayout.h" // for MAX_COLSPAN / MAX_ROWSPAN
 #include "nsCRT.h"
 #include "nsLayoutStylesheetCache.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleData.h"
+#endif
 #include "nsCSSValue.h"
 #include "nsCSSParser.h"
 #include "nsMappedAttributes.h"
@@ -120,9 +122,9 @@ nsMathMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
       // Rebuild style data for the presshell, because style system
       // optimizations may have taken place assuming MathML was disabled.
       // (See nsRuleNode::CheckSpecifiedProperties.)
-      nsCOMPtr<nsIPresShell> shell = doc->GetShell();
-      if (shell) {
-        shell->GetPresContext()->
+      RefPtr<nsPresContext> presContext = doc->GetPresContext();
+      if (presContext) {
+        presContext->
           PostRebuildAllStyleDataEvent(nsChangeHint(0), eRestyle_Subtree);
       }
     }

@@ -6,23 +6,20 @@
 
 #include "builtin/Object.h"
 
-#include "mozilla/ArrayUtils.h"
 #include "mozilla/MaybeOneOf.h"
-
-#include "jscntxt.h"
-#include "jsstr.h"
 
 #include "builtin/Eval.h"
 #include "builtin/SelfHostingDefines.h"
+#include "builtin/String.h"
 #include "frontend/BytecodeCompiler.h"
 #include "jit/InlinableNatives.h"
 #include "js/UniquePtr.h"
+#include "util/StringBuffer.h"
 #include "vm/AsyncFunction.h"
+#include "vm/JSContext.h"
 #include "vm/RegExpObject.h"
-#include "vm/StringBuffer.h"
 
-#include "jsobjinlines.h"
-
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
 #include "vm/UnboxedObject-inl.h"
@@ -34,7 +31,6 @@
 using namespace js;
 
 using js::frontend::IsIdentifier;
-using mozilla::ArrayLength;
 
 bool
 js::obj_construct(JSContext* cx, unsigned argc, Value* vp)
@@ -115,7 +111,6 @@ js::obj_propertyIsEnumerable(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
-#if JS_HAS_TOSOURCE
 static bool
 obj_toSource(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -434,7 +429,6 @@ js::ObjectToSource(JSContext* cx, HandleObject obj)
 
     return buf.finishString();
 }
-#endif /* JS_HAS_TOSOURCE */
 
 static bool
 GetBuiltinTagSlow(JSContext* cx, HandleObject obj, MutableHandleString builtinTag)
@@ -1954,28 +1948,22 @@ ProtoSetter(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static const JSFunctionSpec object_methods[] = {
-#if JS_HAS_TOSOURCE
     JS_FN(js_toSource_str,             obj_toSource,                0,0),
-#endif
     JS_INLINABLE_FN(js_toString_str,   obj_toString,                0,0, ObjectToString),
     JS_SELF_HOSTED_FN(js_toLocaleString_str, "Object_toLocaleString", 0, 0),
     JS_SELF_HOSTED_FN(js_valueOf_str,  "Object_valueOf",            0,0),
     JS_SELF_HOSTED_FN(js_hasOwnProperty_str, "Object_hasOwnProperty", 1,0),
     JS_FN(js_isPrototypeOf_str,        obj_isPrototypeOf,           1,0),
     JS_FN(js_propertyIsEnumerable_str, obj_propertyIsEnumerable,    1,0),
-#if JS_OLD_GETTER_SETTER_METHODS
     JS_SELF_HOSTED_FN(js_defineGetter_str, "ObjectDefineGetter",    2,0),
     JS_SELF_HOSTED_FN(js_defineSetter_str, "ObjectDefineSetter",    2,0),
     JS_SELF_HOSTED_FN(js_lookupGetter_str, "ObjectLookupGetter",    1,0),
     JS_SELF_HOSTED_FN(js_lookupSetter_str, "ObjectLookupSetter",    1,0),
-#endif
     JS_FS_END
 };
 
 static const JSPropertySpec object_properties[] = {
-#if JS_HAS_OBJ_PROTO_PROP
     JS_PSGS("__proto__", ProtoGetter, ProtoSetter, 0),
-#endif
     JS_PS_END
 };
 
@@ -1988,7 +1976,7 @@ static const JSFunctionSpec object_static_methods[] = {
     JS_FN("keys",                      obj_keys,                    1, 0),
     JS_FN("values",                    obj_values,                  1, 0),
     JS_FN("entries",                   obj_entries,                 1, 0),
-    JS_FN("is",                        obj_is,                      2, 0),
+    JS_INLINABLE_FN("is",              obj_is,                      2, 0, ObjectIs),
     JS_SELF_HOSTED_FN("defineProperty", "ObjectDefineProperty",     3, 0),
     JS_FN("defineProperties",          obj_defineProperties,        2, 0),
     JS_INLINABLE_FN("create",          obj_create,                  2, 0, ObjectCreate),

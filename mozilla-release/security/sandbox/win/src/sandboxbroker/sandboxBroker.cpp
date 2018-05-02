@@ -7,9 +7,6 @@
 #include "sandboxBroker.h"
 
 #include <string>
-#if defined(NIGHTLY_BUILD)
-#include <vector>
-#endif
 
 #include "base/win/windows_version.h"
 #include "mozilla/Assertions.h"
@@ -30,32 +27,6 @@
 #include "sandbox/win/src/sandbox.h"
 #include "sandbox/win/src/security_level.h"
 #include "WinUtils.h"
-
-#if defined(NIGHTLY_BUILD)
-
-// This list of DLLs have been found to cause instability in sandboxed child
-// processes and so they will be unloaded if they attempt to load.
-const std::vector<std::wstring> kDllsToUnload = {
-  // Symantec Corporation (bug 1400637)
-  L"ffm64.dll",
-  L"ffm.dll",
-  L"prntm64.dll",
-
-  // HitmanPro - SurfRight now part of Sophos (bug 1400637)
-  L"hmpalert.dll",
-
-  // Avast Antivirus (bug 1400637)
-  L"snxhk64.dll",
-  L"snxhk.dll",
-
-  // Webroot SecureAnywhere (bug 1400637)
-  L"wrusr.dll",
-
-  // Comodo Internet Security (bug 1400637)
-  L"guard32.dll",
-};
-
-#endif
 
 namespace mozilla
 {
@@ -258,30 +229,9 @@ SandboxBroker::LaunchApp(const wchar_t *aPath,
                      sandbox::TargetPolicy::FILES_ALLOW_ANY, logFileName);
   }
 
-  sandbox::ResultCode result;
-#if defined(NIGHTLY_BUILD)
-
-  // Add DLLs to the policy that have been found to cause instability with the
-  // sandbox, so that they will be unloaded when they attempt to load.
-  for (std::wstring dllToUnload : kDllsToUnload) {
-    // Similar to Chromium, we only add a DLL if it is loaded in this process.
-    if (::GetModuleHandleW(dllToUnload.c_str())) {
-      result = mPolicy->AddDllToUnload(dllToUnload.c_str());
-      MOZ_RELEASE_ASSERT(sandbox::SBOX_ALL_OK == result,
-                         "AddDllToUnload should never fail, what happened?");
-    }
-  }
-
-  // Add K7 Computing DLL to be blocked even if not loaded in the parent, as we
-  // are still getting crash reports for it.
-  result = mPolicy->AddDllToUnload(L"k7pswsen.dll");
-  MOZ_RELEASE_ASSERT(sandbox::SBOX_ALL_OK == result,
-                     "AddDllToUnload should never fail, what happened?");
-
-#endif
-
   // Ceate the sandboxed process
   PROCESS_INFORMATION targetInfo = {0};
+  sandbox::ResultCode result;
   sandbox::ResultCode last_warning = sandbox::SBOX_ALL_OK;
   DWORD last_error = ERROR_SUCCESS;
   result = sBrokerService->SpawnTarget(aPath, aArguments, aEnvironment, mPolicy,
@@ -501,8 +451,10 @@ SandboxBroker::SetSecurityLevelForContentProcess(int32_t aSandboxLevel,
 
   if (aSandboxLevel > 4) {
     result = mPolicy->SetAlternateDesktop(false);
-    MOZ_RELEASE_ASSERT(sandbox::SBOX_ALL_OK == result,
-                       "Failed to create alternate desktop for sandbox.");
+    if (NS_WARN_IF(result != sandbox::SBOX_ALL_OK)) {
+      LOG_W("SetAlternateDesktop failed, result: %i, last error: %x",
+            result, ::GetLastError());
+    }
   }
 
   if (aSandboxLevel > 3) {
@@ -753,7 +705,10 @@ SandboxBroker::SetSecurityLevelForPluginProcess(int32_t aSandboxLevel)
     delayedIntegrityLevel = sandbox::INTEGRITY_LEVEL_MEDIUM;
   }
 
+#ifndef NIGHTLY_BUILD
+  // We are experimenting with using restricting SIDs in the nightly builds
   mPolicy->SetDoNotUseRestrictingSIDs();
+#endif
 
   sandbox::ResultCode result = SetJobLevel(mPolicy, jobLevel,
                                            0 /* ui_exceptions */);
@@ -778,11 +733,27 @@ SandboxBroker::SetSecurityLevelForPluginProcess(int32_t aSandboxLevel)
     sandbox::MITIGATION_HEAP_TERMINATE |
     sandbox::MITIGATION_SEHOP |
     sandbox::MITIGATION_DEP_NO_ATL_THUNK |
-    sandbox::MITIGATION_DEP;
+    sandbox::MITIGATION_DEP |
+    sandbox::MITIGATION_HARDEN_TOKEN_IL_POLICY |
+    sandbox::MITIGATION_EXTENSION_POINT_DISABLE |
+    sandbox::MITIGATION_NONSYSTEM_FONT_DISABLE |
+    sandbox::MITIGATION_IMAGE_LOAD_PREFER_SYS32;
+
+  if (!sRunningFromNetworkDrive) {
+    mitigations |= sandbox::MITIGATION_IMAGE_LOAD_NO_REMOTE |
+                   sandbox::MITIGATION_IMAGE_LOAD_NO_LOW_LABEL;
+  }
 
   result = mPolicy->SetProcessMitigations(mitigations);
   SANDBOX_ENSURE_SUCCESS(result,
                          "Invalid flags for SetProcessMitigations.");
+
+  sandbox::MitigationFlags delayedMitigations =
+    sandbox::MITIGATION_DLL_SEARCH_ORDER;
+
+  result = mPolicy->SetDelayedProcessMitigations(delayedMitigations);
+  SANDBOX_ENSURE_SUCCESS(result,
+                         "Invalid flags for SetDelayedProcessMitigations.");
 
   if (aSandboxLevel >= 2) {
     // Level 2 and above uses low integrity, so we need to give write access to
@@ -885,8 +856,10 @@ SandboxBroker::SetSecurityLevelForPDFiumProcess()
                          "SetTokenLevel should never fail with these arguments, what happened?");
 
   result = mPolicy->SetAlternateDesktop(true);
-  SANDBOX_ENSURE_SUCCESS(result,
-                         "Failed to create alternate desktop for sandbox.");
+  if (NS_WARN_IF(result != sandbox::SBOX_ALL_OK)) {
+    LOG_W("SetAlternateDesktop failed, result: %i, last error: %x",
+          result, ::GetLastError());
+  }
 
   result = mPolicy->SetIntegrityLevel(sandbox::INTEGRITY_LEVEL_LOW);
   MOZ_ASSERT(sandbox::SBOX_ALL_OK == result,
@@ -906,11 +879,11 @@ SandboxBroker::SetSecurityLevelForPDFiumProcess()
     sandbox::MITIGATION_SEHOP |
     sandbox::MITIGATION_DEP_NO_ATL_THUNK |
     sandbox::MITIGATION_DEP |
-    sandbox::MITIGATION_EXTENSION_POINT_DISABLE |
-    sandbox::MITIGATION_IMAGE_LOAD_NO_LOW_LABEL;
+    sandbox::MITIGATION_EXTENSION_POINT_DISABLE;
 
   if (!sRunningFromNetworkDrive) {
-    mitigations |= sandbox::MITIGATION_IMAGE_LOAD_NO_REMOTE;
+    mitigations |= sandbox::MITIGATION_IMAGE_LOAD_NO_REMOTE |
+                   sandbox::MITIGATION_IMAGE_LOAD_NO_LOW_LABEL;
   }
 
   result = mPolicy->SetProcessMitigations(mitigations);
@@ -964,8 +937,10 @@ SandboxBroker::SetSecurityLevelForGMPlugin(SandboxLevel aLevel)
                          "SetTokenLevel should never fail with these arguments, what happened?");
 
   result = mPolicy->SetAlternateDesktop(true);
-  SANDBOX_ENSURE_SUCCESS(result,
-                         "Failed to create alternate desktop for sandbox.");
+  if (NS_WARN_IF(result != sandbox::SBOX_ALL_OK)) {
+    LOG_W("SetAlternateDesktop failed, result: %i, last error: %x",
+          result, ::GetLastError());
+  }
 
   result = mPolicy->SetIntegrityLevel(sandbox::INTEGRITY_LEVEL_LOW);
   MOZ_ASSERT(sandbox::SBOX_ALL_OK == result,
@@ -980,6 +955,7 @@ SandboxBroker::SetSecurityLevelForGMPlugin(SandboxLevel aLevel)
     sandbox::MITIGATION_BOTTOM_UP_ASLR |
     sandbox::MITIGATION_HEAP_TERMINATE |
     sandbox::MITIGATION_SEHOP |
+    sandbox::MITIGATION_EXTENSION_POINT_DISABLE |
     sandbox::MITIGATION_DEP_NO_ATL_THUNK |
     sandbox::MITIGATION_DEP;
 
@@ -1134,6 +1110,12 @@ SandboxBroker::AddTargetPeer(HANDLE aPeerProcess)
 
   sandbox::ResultCode result = sBrokerService->AddTargetPeer(aPeerProcess);
   return (sandbox::SBOX_ALL_OK == result);
+}
+
+void
+SandboxBroker::AddHandleToShare(HANDLE aHandle)
+{
+  mPolicy->AddHandleToShare(aHandle);
 }
 
 void

@@ -39,6 +39,14 @@ available. -->
 
 <!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Mozilla zu senden">
 <!ENTITY alwaysSubmitCrashReports1.accesskey "r">
+
+<!ENTITY collectBrowserErrors.label          "Browser-Fehler einschließlich Fehlermeldung automatisch von &brandShortName; an Mozilla senden lassen">
+<!ENTITY collectBrowserErrors.accesskey      "B">
+<!ENTITY collectBrowserErrorsLearnMore.label "Weitere Informationen">
+
+<!ENTITY sendBackloggedCrashReports.label  "Nicht gesendete Absturzberichte automatisch von &brandShortName; senden lassen">
+<!ENTITY sendBackloggedCrashReports.accesskey "g">
+
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!ENTITY networkTab.label                "Netzwerk">
@@ -51,14 +59,17 @@ available. -->
 
 <!ENTITY httpCache.label                 "Zwischengespeicherte Webinhalte">
 
-<!ENTITY offlineStorage2.label           "Offline-Webinhalte und -Benutzerdaten">
-
 <!--  Site Data section manages sites using Storage API and is under Network -->
 <!ENTITY siteData.label                  "Websitedaten">
 <!ENTITY clearSiteData.label             "Alle Daten löschen">
 <!ENTITY clearSiteData.accesskey         "D">
 <!ENTITY siteDataSettings.label          "Einstellungen…">
 <!ENTITY siteDataSettings.accesskey      "g">
+<!ENTITY siteData1.label                 "Cookies und Websitedaten">
+<!ENTITY clearSiteData1.label            "Daten entfernen…">
+<!ENTITY clearSiteData1.accesskey        "e">
+<!ENTITY siteDataSettings1.label         "Daten verwalten…">
+<!ENTITY siteDataSettings1.accesskey     "v">
 <!ENTITY siteDataLearnMoreLink.label     "Weitere Informationen">
 
 <!-- LOCALIZATION NOTE:
@@ -72,8 +83,6 @@ available. -->
 <!ENTITY limitCacheSizeAfter.label       "MB Speicherplatz limitieren">
 <!ENTITY clearCacheNow.label             "Jetzt leeren">
 <!ENTITY clearCacheNow.accesskey         "J">
-<!ENTITY clearOfflineAppCacheNow.label   "Jetzt leeren">
-<!ENTITY clearOfflineAppCacheNow.accesskey "l">
 <!ENTITY overrideSmartCacheSize.label    "Automatisches Cache-Management ausschalten">
 <!ENTITY overrideSmartCacheSize.accesskey "M">
 
@@ -110,17 +119,6 @@ available. -->
 
 <!ENTITY enableSearchUpdate2.label       "Suchmaschinen automatisch aktualisieren">
 <!ENTITY enableSearchUpdate2.accesskey   "S">
-
-<!ENTITY offlineStorageNotify.label               "Mitteilen, wenn eine Website Daten für die Verwendung im Offline-Modus speichern möchte">
-<!ENTITY offlineStorageNotify.accesskey           "w">
-<!ENTITY offlineStorageNotifyExceptions.label     "Ausnahmen…">
-<!ENTITY offlineStorageNotifyExceptions.accesskey "A">
-
-<!ENTITY offlineAppsList3.label          "Folgende Websites dürfen Daten für die Verwendung im Offline-Modus speichern:">
-<!ENTITY offlineAppsList.height          "7em">
-<!ENTITY offlineAppsListRemove.label     "Entfernen…">
-<!ENTITY offlineAppsListRemove.accesskey "E">
-<!ENTITY offlineAppRemove.confirm        "Offline-Daten entfernen">
 
 <!ENTITY certificateTab.label            "Zertifikate">
 <!ENTITY certPersonal2.description       "Wenn eine Website nach dem persönlichen Sicherheitszertifikat verlangt">

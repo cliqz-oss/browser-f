@@ -14,11 +14,11 @@
 Should have a green background.
 <script>
 test(() => {
-	document.body.offsetTop;
-	assert_equals(getComputedStyle(document.body).backgroundColor, "rgb(255, 0, 0)");
-	document.body.className = "";
+  document.body.offsetTop;
+  assert_equals(getComputedStyle(document.body).backgroundColor, "rgb(255, 0, 0)");
+  document.body.className = "";
   document.styleSheets[0].cssRules[1].selectorText = ".bar";
-	assert_equals(getComputedStyle(document.body).backgroundColor, "rgb(0, 128, 0)");
+  assert_equals(getComputedStyle(document.body).backgroundColor, "rgb(0, 128, 0)");
 }, "Style should be recomputed correctly when the selector it depends on changes");
 </script>
 </body>

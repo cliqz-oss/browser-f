@@ -139,9 +139,6 @@ with Files("HTML*"):
 with Files("HashChangeEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Events")
 
-with Files("HeapSnapshot.webidl"):
-    BUG_COMPONENT = ("Firefox", "Developer Tools: Memory")
-
 with Files("HiddenPluginEvent.webidl"):
     BUG_COMPONENT = ("Core", "Plug-ins")
 
@@ -162,9 +159,6 @@ with Files("InputEvent.webidl"):
 
 with Files("InstallTrigger.webidl"):
     BUG_COMPONENT = ("Toolkit", "Add-ons Manager")
-
-with Files("InspectorUtils.webidl"):
-    BUG_COMPONENT = ("Firefox", "Developer Tools: Inspector")
 
 with Files("KeyAlgorithm.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Security")
@@ -208,11 +202,11 @@ with Files("*Record*"):
 with Files("Media*Track*"):
     BUG_COMPONENT = ("Core", "WebRTC: Audio/Video")
 
+with Files("MIDI*"):
+    BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
+
 with Files("Mouse*"):
     BUG_COMPONENT = ("Core", "DOM: Events")
-
-with Files("MozTimeManager.webidl"):
-    BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
 
 with Files("MutationEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Events")
@@ -267,9 +261,6 @@ with Files("SVG*"):
 
 with Files("ScriptProcessorNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
-
-# TODO: SecureElement*, SettingChangeNotification
-# are FirefoxOS::*, leaving as Core::DOM
 
 with Files("Selection.webidl"):
     BUG_COMPONENT = ("Core", "Selection")
@@ -363,8 +354,6 @@ GENERATED_WEBIDL_FILES = [
 ]
 
 PREPROCESSED_WEBIDL_FILES = [
-    'ChromeUtils.webidl',
-    'Navigator.webidl',
     'Node.webidl',
     'Window.webidl',
 ]
@@ -372,6 +361,7 @@ PREPROCESSED_WEBIDL_FILES = [
 WEBIDL_FILES = [
     'AbortController.webidl',
     'AbortSignal.webidl',
+    'AboutCapabilities.webidl',
     'AbstractWorker.webidl',
     'AddonManager.webidl',
     'AnalyserNode.webidl',
@@ -421,7 +411,6 @@ WEBIDL_FILES = [
     'CDATASection.webidl',
     'ChannelMergerNode.webidl',
     'ChannelSplitterNode.webidl',
-    'ChannelWrapper.webidl',
     'CharacterData.webidl',
     'CheckerboardReportService.webidl',
     'ChildNode.webidl',
@@ -486,7 +475,6 @@ WEBIDL_FILES = [
     'DOMError.webidl',
     'DOMException.webidl',
     'DOMImplementation.webidl',
-    'DominatorTree.webidl',
     'DOMMatrix.webidl',
     'DOMParser.webidl',
     'DOMPoint.webidl',
@@ -539,7 +527,6 @@ WEBIDL_FILES = [
     'GetUserMediaRequest.webidl',
     'Grid.webidl',
     'Headers.webidl',
-    'HeapSnapshot.webidl',
     'History.webidl',
     'HTMLAllCollection.webidl',
     'HTMLAnchorElement.webidl',
@@ -638,7 +625,6 @@ WEBIDL_FILES = [
     'ImageData.webidl',
     'ImageDocument.webidl',
     'InputEvent.webidl',
-    'InspectorUtils.webidl',
     'IntersectionObserver.webidl',
     'IntlUtils.webidl',
     'IterableIterator.webidl',
@@ -648,13 +634,12 @@ WEBIDL_FILES = [
     'KeyframeAnimationOptions.webidl',
     'KeyframeEffect.webidl',
     'KeyIdsInitData.webidl',
+    'L10nUtils.webidl',
     'LegacyQueryInterface.webidl',
     'LinkStyle.webidl',
     'ListBoxObject.webidl',
     'LocalMediaStream.webidl',
     'Location.webidl',
-    'MatchGlob.webidl',
-    'MatchPattern.webidl',
     'MediaDeviceInfo.webidl',
     'MediaDevices.webidl',
     'MediaElementAudioSourceNode.webidl',
@@ -683,18 +668,23 @@ WEBIDL_FILES = [
     'MessageChannel.webidl',
     'MessageEvent.webidl',
     'MessagePort.webidl',
+    'MIDIAccess.webidl',
+    'MIDIInput.webidl',
+    'MIDIInputMap.webidl',
+    'MIDIMessageEvent.webidl',
+    'MIDIOptions.webidl',
+    'MIDIOutput.webidl',
+    'MIDIOutputMap.webidl',
+    'MIDIPort.webidl',
     'MimeType.webidl',
     'MimeTypeArray.webidl',
     'MouseEvent.webidl',
     'MouseScrollEvent.webidl',
-    'MozStorageAsyncStatementParams.webidl',
-    'MozStorageStatementParams.webidl',
-    'MozStorageStatementRow.webidl',
-    'MozTimeManager.webidl',
     'MutationEvent.webidl',
     'MutationObserver.webidl',
     'NamedNodeMap.webidl',
     'NativeOSFileInternals.webidl',
+    'Navigator.webidl',
     'NetDashboard.webidl',
     'NetworkInformation.webidl',
     'NetworkOptions.webidl',
@@ -736,7 +726,6 @@ WEBIDL_FILES = [
     'PopupBoxObject.webidl',
     'Position.webidl',
     'PositionError.webidl',
-    'PrecompiledScript.webidl',
     'Presentation.webidl',
     'PresentationAvailability.webidl',
     'PresentationConnection.webidl',
@@ -746,7 +735,6 @@ WEBIDL_FILES = [
     'ProcessingInstruction.webidl',
     'ProfileTimelineMarker.webidl',
     'Promise.webidl',
-    'PromiseDebugging.webidl',
     'PushEvent.webidl',
     'PushManager.webidl',
     'PushManager.webidl',
@@ -770,7 +758,6 @@ WEBIDL_FILES = [
     'ServiceWorkerContainer.webidl',
     'ServiceWorkerGlobalScope.webidl',
     'ServiceWorkerRegistration.webidl',
-    'SettingChangeNotification.webidl',
     'ShadowRoot.webidl',
     'SharedWorker.webidl',
     'SharedWorkerGlobalScope.webidl',
@@ -785,7 +772,6 @@ WEBIDL_FILES = [
     'StorageType.webidl',
     'StreamFilter.webidl',
     'StreamFilterDataEvent.webidl',
-    'StructuredCloneHolder.webidl',
     'StyleSheet.webidl',
     'StyleSheetList.webidl',
     'SubtleCrypto.webidl',
@@ -891,7 +877,6 @@ WEBIDL_FILES = [
     'SVGTransformList.webidl',
     'SVGTSpanElement.webidl',
     'SVGUnitTypes.webidl',
-    'SVGUnitTypeValues.webidl',
     'SVGURIReference.webidl',
     'SVGUseElement.webidl',
     'SVGViewElement.webidl',
@@ -941,8 +926,6 @@ WEBIDL_FILES = [
     'WaveShaperNode.webidl',
     'WebAuthentication.webidl',
     'WebComponents.webidl',
-    'WebExtensionContentScript.webidl',
-    'WebExtensionPolicy.webidl',
     'WebGL2RenderingContext.webidl',
     'WebGLRenderingContext.webidl',
     'WebKitCSSMatrix.webidl',
@@ -976,13 +959,13 @@ WEBIDL_FILES = [
 
 if CONFIG['MOZ_WEBRTC']:
     WEBIDL_FILES += [
-        'DataChannel.webidl',
         'PeerConnectionImpl.webidl',
         'PeerConnectionImplEnums.webidl',
         'PeerConnectionObserver.webidl',
         'PeerConnectionObserverEnums.webidl',
         'RTCCertificate.webidl',
         'RTCConfiguration.webidl',
+        'RTCDataChannel.webidl',
         'RTCDTMFSender.webidl',
         'RTCIceCandidate.webidl',
         'RTCIdentityAssertion.webidl',
@@ -1032,17 +1015,11 @@ WEBIDL_FILES += [
 
 # We only expose our prefable test interfaces in debug builds, just to be on
 # the safe side.
-if CONFIG['MOZ_DEBUG']:
+if CONFIG['MOZ_DEBUG'] and CONFIG['ENABLE_TESTS']:
     WEBIDL_FILES += ['TestFunctions.webidl',
                      'TestInterfaceJS.webidl',
                      'TestInterfaceJSDictionaries.webidl',
                      'TestInterfaceJSMaplikeSetlikeIterable.webidl']
-
-if CONFIG['MOZ_SECUREELEMENT']:
-    WEBIDL_FILES += [
-         'SecureElement.webidl',
-         'SecureElementManager.webidl',
-    ]
 
 WEBIDL_FILES += [
     'InstallTrigger.webidl',
@@ -1075,6 +1052,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     'MediaRecorderErrorEvent.webidl',
     'MediaStreamEvent.webidl',
     'MediaStreamTrackEvent.webidl',
+    'MIDIConnectionEvent.webidl',
     'OfflineAudioCompletionEvent.webidl',
     'PageTransitionEvent.webidl',
     'PerformanceEntryEvent.webidl',

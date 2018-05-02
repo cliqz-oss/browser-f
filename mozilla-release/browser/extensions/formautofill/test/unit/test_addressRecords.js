@@ -1,5 +1,5 @@
 /**
- * Tests ProfileStorage object with addresses records.
+ * Tests FormAutofillStorage object with addresses records.
  */
 
 "use strict";
@@ -254,8 +254,8 @@ const MERGE_TESTCASES = [
   },
 ];
 
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "Preferences",
+                               "resource://gre/modules/Preferences.jsm");
 
 let do_check_record_matches = (recordWithMeta, record) => {
   for (let key in record) {

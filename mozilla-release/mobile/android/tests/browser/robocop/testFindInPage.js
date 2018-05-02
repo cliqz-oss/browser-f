@@ -5,7 +5,7 @@
 
 "use strict";
 
-var Cu = Components.utils;
+/* eslint-disable mozilla/use-chromeutils-import */
 
 Cu.import("resource://gre/modules/Messaging.jsm");
 Cu.import("resource://gre/modules/Services.jsm");

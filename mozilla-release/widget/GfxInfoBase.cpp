@@ -9,7 +9,6 @@
 
 #include "GfxInfoBase.h"
 
-#include "GfxInfoWebGL.h"
 #include "GfxDriverInfo.h"
 #include "nsCOMPtr.h"
 #include "nsCOMArray.h"
@@ -32,6 +31,7 @@
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/layers/PaintThread.h"
 #include "MediaPrefs.h"
 #include "gfxPrefs.h"
 #include "gfxPlatform.h"
@@ -973,14 +973,6 @@ GfxInfoBase::GetFeatureSuggestedDriverVersion(int32_t aFeature,
   return GetFeatureStatusImpl(aFeature, &status, aVersion, driverInfo, discardFailureId);
 }
 
-
-NS_IMETHODIMP
-GfxInfoBase::GetWebGLParameter(const nsAString& aParam,
-                               nsAString& aResult)
-{
-  return GfxInfoWebGL::GetWebGLParameter(aParam, aResult);
-}
-
 void
 GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
 {
@@ -1489,9 +1481,27 @@ GfxInfoBase::GetWebRenderEnabled(bool* aWebRenderEnabled)
 }
 
 NS_IMETHODIMP
+GfxInfoBase::GetUsesTiling(bool* aUsesTiling)
+{
+  *aUsesTiling = gfxPlatform::GetPlatform()->UsesTiling();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 GfxInfoBase::GetOffMainThreadPaintEnabled(bool* aOffMainThreadPaintEnabled)
 {
   *aOffMainThreadPaintEnabled = gfxConfig::IsEnabled(Feature::OMTP);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetOffMainThreadPaintWorkerCount(int32_t* aOffMainThreadPaintWorkerCount)
+{
+  if (gfxConfig::IsEnabled(Feature::OMTP)) {
+    *aOffMainThreadPaintWorkerCount = layers::PaintThread::CalculatePaintWorkerCount();
+  } else {
+    *aOffMainThreadPaintWorkerCount = 0;
+  }
   return NS_OK;
 }
 

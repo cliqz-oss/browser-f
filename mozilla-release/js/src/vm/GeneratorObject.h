@@ -7,11 +7,10 @@
 #ifndef vm_GeneratorObject_h
 #define vm_GeneratorObject_h
 
-#include "jscntxt.h"
-#include "jsobj.h"
-
 #include "vm/ArgumentsObject.h"
 #include "vm/ArrayObject.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/Stack.h"
 
 namespace js {
@@ -73,7 +72,7 @@ class GeneratorObject : public NativeObject
         return suspend(cx, obj, frame, pc, vp, nvalues);
     }
 
-    static void finalSuspend(JSContext* cx, HandleObject obj);
+    static void finalSuspend(HandleObject obj);
 
     JSFunction& callee() const {
         return getFixedSlot(CALLEE_SLOT).toObject().as<JSFunction>();

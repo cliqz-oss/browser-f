@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function FooComponent() {
   this.wrappedJSObject = this;
@@ -18,7 +18,7 @@ FooComponent.prototype =
   flags: 0,
 
   getInterfaces: function getInterfaces(aCount) {
-    var interfaces = [Components.interfaces.nsIClassInfo];
+    var interfaces = [Ci.nsIClassInfo];
     aCount.value = interfaces.length;
 
     // Guerilla test for line numbers hiding in this method
@@ -40,11 +40,11 @@ FooComponent.prototype =
 
   // nsISupports
   QueryInterface: function QueryInterface(aIID) {
-    if (aIID.equals(Components.interfaces.nsIClassInfo) ||
-        aIID.equals(Components.interfaces.nsISupports))
+    if (aIID.equals(Ci.nsIClassInfo) ||
+        aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -61,7 +61,7 @@ BarComponent.prototype =
   flags: 0,
 
   getInterfaces: function getInterfaces(aCount) {
-    var interfaces = [Components.interfaces.nsIClassInfo];
+    var interfaces = [Ci.nsIClassInfo];
     aCount.value = interfaces.length;
     return interfaces;
   },
@@ -71,7 +71,7 @@ BarComponent.prototype =
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIClassInfo])
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIClassInfo])
 };
 
 const Assert = {

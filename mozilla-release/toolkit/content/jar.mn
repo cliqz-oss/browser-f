@@ -4,6 +4,7 @@ toolkit.jar:
    content/global/XPCNativeWrapper.js
    content/global/minimal-xul.css
 *  content/global/xul.css
+   content/global/components.css
    content/global/textbox.css
    content/global/menulist.css
    content/global/autocomplete.css
@@ -39,15 +40,16 @@ toolkit.jar:
    content/global/browser-child.js
    content/global/browser-content.js
 *   content/global/buildconfig.html
+   content/global/buildconfig.css
    content/global/contentAreaUtils.js
    content/global/datepicker.xhtml
 #ifndef MOZ_FENNEC
    content/global/editMenuOverlay.js
-*  content/global/editMenuOverlay.xul
 #endif
    content/global/filepicker.properties
    content/global/globalOverlay.js
    content/global/mozilla.xhtml
+   content/global/aboutMozilla.css
    content/global/preferencesBindings.js
    content/global/process-content.js
    content/global/resetProfile.css
@@ -93,7 +95,6 @@ toolkit.jar:
    content/global/bindings/scrollbox.xml       (widgets/scrollbox.xml)
    content/global/bindings/spinner.js          (widgets/spinner.js)
    content/global/bindings/splitter.xml        (widgets/splitter.xml)
-   content/global/bindings/spinbuttons.xml     (widgets/spinbuttons.xml)
    content/global/bindings/stringbundle.xml    (widgets/stringbundle.xml)
 *  content/global/bindings/tabbox.xml          (widgets/tabbox.xml)
    content/global/bindings/text.xml            (widgets/text.xml)

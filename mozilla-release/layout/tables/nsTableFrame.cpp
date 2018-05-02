@@ -34,7 +34,6 @@
 #include "nsCSSAnonBoxes.h"
 #include "nsIPresShell.h"
 #include "nsIDOMElement.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsIScriptError.h"
 #include "nsFrameManager.h"
 #include "nsError.h"
@@ -1534,7 +1533,7 @@ nsTableFrame::DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
     // Paint the outset box-shadows for the table frames
     if (aFrame->StyleEffects()->mBoxShadow) {
       aLists.BorderBackground()->AppendToTop(
-        new (aBuilder) nsDisplayBoxShadowOuter(aBuilder, aFrame));
+        MakeDisplayItem<nsDisplayBoxShadowOuter>(aBuilder, aFrame));
     }
   }
 
@@ -1602,7 +1601,7 @@ nsTableFrame::DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
     // Paint the inset box-shadows for the table frames
     if (aFrame->StyleEffects()->mBoxShadow) {
       aLists.BorderBackground()->AppendToTop(
-        new (aBuilder) nsDisplayBoxShadowInner(aBuilder, aFrame));
+        MakeDisplayItem<nsDisplayBoxShadowInner>(aBuilder, aFrame));
     }
   }
 
@@ -1617,13 +1616,13 @@ nsTableFrame::DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
       if (table->IsBorderCollapse()) {
         if (table->HasBCBorders()) {
           aLists.BorderBackground()->AppendToTop(
-            new (aBuilder) nsDisplayTableBorderCollapse(aBuilder, table));
+            MakeDisplayItem<nsDisplayTableBorderCollapse>(aBuilder, table));
         }
       } else {
         const nsStyleBorder* borderStyle = aFrame->StyleBorder();
         if (borderStyle->HasBorder()) {
           aLists.BorderBackground()->AppendToTop(
-            new (aBuilder) nsDisplayBorder(aBuilder, table));
+            MakeDisplayItem<nsDisplayBorder>(aBuilder, table));
         }
       }
     }
@@ -2075,11 +2074,20 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
   bool haveDesiredBSize = false;
   SetHaveReflowedColGroups(false);
 
+  // The tentative width is the width we assumed for the table when the child
+  // frames were positioned (which only matters in vertical-rl mode, because
+  // they're positioned relative to the right-hand edge). Then, after reflowing
+  // the kids, we can check whether the table ends up with a different width
+  // than this tentative value (either because it was unconstrained, so we used
+  // zero, or because it was enlarged by the child frames), we make the
+  // necessary positioning adjustments along the x-axis.
+  nscoord tentativeContainerWidth = 0;
+  bool mayAdjustXForAllChildren = false;
+
   // Reflow the entire table (pass 2 and possibly pass 3). This phase is necessary during a
   // constrained initial reflow and other reflows which require either a strategy init or balance.
   // This isn't done during an unconstrained reflow, because it will occur later when the parent
   // reflows with a constrained isize.
-  bool fixupKidPositions = false;
   if (NS_SUBTREE_DIRTY(this) ||
       aReflowInput.ShouldReflowAllKids() ||
       IsGeometryDirty() ||
@@ -2135,11 +2143,26 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
 
     ReflowTable(aDesiredSize, aReflowInput, availBSize,
                 lastChildReflowed, aStatus);
-    // If ComputedWidth is unconstrained, we may need to fix child positions
-    // later (in vertical-rl mode) due to use of 0 as a dummy
-    // containerSize.width during ReflowChildren.
-    fixupKidPositions = wm.IsVerticalRL() &&
-      aReflowInput.ComputedWidth() == NS_UNCONSTRAINEDSIZE;
+    // When in vertical-rl mode, there may be two kinds of scenarios in which
+    // the positioning of all the children need to be adjusted along the x-axis
+    // because the width we assumed for the table when the child frames were
+    // being positioned(i.e. tentative width) may be different from the final
+    // width for the table:
+    // 1. If the computed width for the table is unconstrained, a dummy zero
+    //    width was assumed as the tentative width to begin with.
+    // 2. If the child frames enlarge the width for the table, the final width
+    //    becomes larger than the tentative one.
+    // Let's record the tentative width here, if later the final width turns out
+    // to be different from this tentative one, it means one of the above
+    // scenarios happens, then we adjust positioning of all the children.
+    // Note that vertical-lr, unlike vertical-rl, doesn't need to take special
+    // care of this situation, because they're positioned relative to the
+    // left-hand edge.
+    if (wm.IsVerticalRL()) {
+      tentativeContainerWidth =
+        aReflowInput.ComputedSizeAsContainerIfConstrained().width;
+      mayAdjustXForAllChildren = true;
+    }
 
     // reevaluate special bsize reflow conditions
     if (HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE)) {
@@ -2183,12 +2206,17 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
     ProcessRowInserted(aDesiredSize.BSize(wm));
   }
 
-  if (fixupKidPositions) {
-    // If we didn't already know the containerSize (and so used zero during
-    // ReflowChildren), then we need to update the block-position of our kids.
-    for (nsIFrame* kid : mFrames) {
-      kid->MovePositionBy(nsPoint(aDesiredSize.Width(), 0));
-      RePositionViews(kid);
+  // For more information on the reason for what we should do this, refer to the
+  // code which defines and evaluates the variables xAdjustmentForAllKids and
+  // tentativeContainerWidth in the previous part in this function.
+  if (mayAdjustXForAllChildren) {
+    nscoord xAdjustmentForAllKids =
+      aDesiredSize.Width() - tentativeContainerWidth;
+    if (0 != xAdjustmentForAllKids) {
+      for (nsIFrame* kid : mFrames) {
+        kid->MovePositionBy(nsPoint(xAdjustmentForAllKids, 0));
+        RePositionViews(kid);
+      }
     }
   }
 
@@ -2683,7 +2711,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
       }
       nsCOMPtr<nsIContent> container = content->GetParent();
       if (MOZ_LIKELY(container)) { // XXX need this null-check, see bug 411823.
-        int32_t newIndex = container->IndexOf(content);
+        int32_t newIndex = container->ComputeIndexOf(content);
         nsIFrame* kidFrame;
         nsTableColGroupFrame* lastColGroup = nullptr;
         if (isColGroup) {
@@ -2707,7 +2735,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
                                   (content = pseudoFrame->GetContent()))) {
             pseudoFrame = pseudoFrame->PrincipalChildList().FirstChild();
           }
-          int32_t index = container->IndexOf(content);
+          int32_t index = container->ComputeIndexOf(content);
           if (index > lastIndex && index < newIndex) {
             lastIndex = index;
             aPrevFrame = kidFrame;
@@ -6527,7 +6555,8 @@ struct BCBlockDirSeg
                                BCPixelSize aInlineSegBSize,
                                wr::DisplayListBuilder& aBuilder,
                                const layers::StackingContextHelper& aSc,
-                               const nsPoint& aPt);
+                               const nsPoint& aPt,
+                               Maybe<BCBorderParameters>* aBevelBorders);
   void AdvanceOffsetB();
   void IncludeCurrentBorder(BCPaintBorderIterator& aIter);
 
@@ -6581,7 +6610,8 @@ struct BCInlineDirSeg
   void CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                wr::DisplayListBuilder& aBuilder,
                                const layers::StackingContextHelper& aSc,
-                               const nsPoint& aPt);
+                               const nsPoint& aPt,
+                               Maybe<BCBorderParameters>* aBevelBorders);
 
   nscoord            mOffsetI;       // i-offset with respect to the table edge
   nscoord            mOffsetB;       // b-offset with respect to the table edge
@@ -6628,6 +6658,7 @@ struct BCCreateWebRenderCommandsData
   wr::DisplayListBuilder& mBuilder;
   const layers::StackingContextHelper& mSc;
   const nsPoint& mOffsetToReferenceFrame;
+  Maybe<BCBorderParameters> mBevelBorders[4];
 };
 
 struct BCPaintBorderAction
@@ -6645,6 +6676,16 @@ struct BCPaintBorderAction
     , mCreateWebRenderCommandsData(aBuilder, aSc, aOffsetToReferenceFrame)
   {
     mMode = Mode::CREATE_WEBRENDER_COMMANDS;
+  }
+
+  ~BCPaintBorderAction()
+  {
+    // mCreateWebRenderCommandsData is in a union which means the destructor
+    // wouldn't be called when BCPaintBorderAction get destroyed. So call the
+    // destructor here explicitly.
+    if (mMode == Mode::CREATE_WEBRENDER_COMMANDS) {
+      mCreateWebRenderCommandsData.~BCCreateWebRenderCommandsData();
+    }
   }
 
   enum class Mode {
@@ -7459,17 +7500,45 @@ BCBlockDirSeg::CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                        BCPixelSize aInlineSegBSize,
                                        wr::DisplayListBuilder& aBuilder,
                                        const layers::StackingContextHelper& aSc,
-                                       const nsPoint& aOffset)
+                                       const nsPoint& aOffset,
+                                       Maybe<BCBorderParameters>* aBevelBorders)
 {
   Maybe<BCBorderParameters> param = BuildBorderParameters(aIter, aInlineSegBSize);
   if (param.isNothing()) {
     return;
   }
 
-  //TODO: Currently, we don't support border with m{Start,End}Bevel{Side,Offset} attributes.
+  if (param->mStartBevelOffset != 0 || param->mEndBevelOffset != 0) {
+    // If both bevel offsets are non zero, the parameters of two bevels should
+    // be the same. So we choose start bevel side here.
+    mozilla::Side bevelSide = param->mStartBevelOffset != 0 ? param->mStartBevelSide : param->mEndBevelSide;
+
+    // The left border is going to be beveled on its right edge because that's
+    // the edge that intersects other borders (in this case the top and bottom borders).
+    // Correspondingly, if the bevel side is "right" that means we are operating on
+    // the left border, and so store the parameters for that entry in aBevelBorders.
+    // Same goes for the other directions.
+    switch (bevelSide) {
+      case eSideTop:
+        aBevelBorders[eSideBottom] = param;
+        break;
+      case eSideBottom:
+        aBevelBorders[eSideTop] = param;
+        break;
+      case eSideLeft:
+        aBevelBorders[eSideRight] = param;
+        break;
+      case eSideRight:
+        aBevelBorders[eSideLeft] = param;
+        break;
+    }
+
+    return;
+  }
 
   LayoutDeviceRect borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aOffset,
                                                                                param->mAppUnitsPerDevPixel));
+
   wr::LayoutRect transformedRect = aSc.ToRelativeLayoutRect(borderRect);
   wr::BorderSide wrSide[4];
   NS_FOR_CSS_SIDES(i) {
@@ -7720,14 +7789,35 @@ void
 BCInlineDirSeg::CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                         wr::DisplayListBuilder& aBuilder,
                                         const layers::StackingContextHelper& aSc,
-                                        const nsPoint& aPt)
+                                        const nsPoint& aPt,
+                                        Maybe<BCBorderParameters>* aBevelBorders)
 {
   Maybe<BCBorderParameters> param = BuildBorderParameters(aIter);
   if (param.isNothing()) {
     return;
   }
 
-  //TODO: Currently, we don't support border with m{Start,End}Bevel{Side,Offset} attributes.
+  if (param->mStartBevelOffset != 0 || param->mEndBevelOffset != 0) {
+    mozilla::Side bevelSide = param->mStartBevelOffset != 0 ? param->mStartBevelSide : param->mEndBevelSide;
+
+    // See detailed comment on equivalent code in BCBlockDirSeg::CreateWebRenderCommands.
+    switch (bevelSide) {
+      case eSideTop:
+        aBevelBorders[eSideBottom] = param;
+        break;
+      case eSideBottom:
+        aBevelBorders[eSideTop] = param;
+        break;
+      case eSideLeft:
+        aBevelBorders[eSideRight] = param;
+        break;
+      case eSideRight:
+        aBevelBorders[eSideLeft] = param;
+        break;
+    }
+
+    return;
+  }
 
   LayoutDeviceRect borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aPt,
                                                                                param->mAppUnitsPerDevPixel));
@@ -7849,7 +7939,8 @@ BCPaintBorderIterator::AccumulateOrDoActionInlineDirSegment(BCPaintBorderAction&
           mInlineSeg.CreateWebRenderCommands(*this,
                                              aAction.mCreateWebRenderCommandsData.mBuilder,
                                              aAction.mCreateWebRenderCommandsData.mSc,
-                                             aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame);
+                                             aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame,
+                                             aAction.mCreateWebRenderCommandsData.mBevelBorders);
         }
       }
       mInlineSeg.AdvanceOffsetI();
@@ -7901,7 +7992,8 @@ BCPaintBorderIterator::AccumulateOrDoActionBlockDirSegment(BCPaintBorderAction& 
                                               inlineSegBSize,
                                               aAction.mCreateWebRenderCommandsData.mBuilder,
                                               aAction.mCreateWebRenderCommandsData.mSc,
-                                              aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame);
+                                              aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame,
+                                              aAction.mCreateWebRenderCommandsData.mBevelBorders);
         }
       }
       blockDirSeg.AdvanceOffsetB();
@@ -7981,6 +8073,54 @@ nsTableFrame::CreateWebRenderCommandsForBCBorders(wr::DisplayListBuilder& aBuild
   // We always draw whole table border for webrender. Passing the table rect as
   // dirty rect.
   IterateBCBorders(action, GetRect());
+
+  LayoutDeviceRect allBorderRect;
+  wr::BorderSide wrSide[4];
+  wr::BorderWidths wrWidths;
+  wr::BorderRadius borderRadii = wr::EmptyBorderRadius();
+  bool backfaceIsVisible = false;
+  NS_FOR_CSS_SIDES(side) {
+    auto param = action.mCreateWebRenderCommandsData.mBevelBorders[side];
+    LayoutDeviceRect borderRect;
+    nscolor borderColor = NS_RGBA(0, 0, 0, 255);
+    uint8_t borderStyle = NS_STYLE_BORDER_STYLE_NONE;
+    if (param.isSome()) {
+      borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aOffsetToReferenceFrame,
+                                                                  param->mAppUnitsPerDevPixel));
+      borderColor = param->mBorderColor;
+      borderStyle = param->mBorderStyle;
+      backfaceIsVisible |= param->mBackfaceIsVisible;
+    }
+
+    wr::LayoutRect transformedRect = aSc.ToRelativeLayoutRect(borderRect);
+    allBorderRect = allBorderRect.Union(borderRect);
+    wrSide[side] = wr::ToBorderSide(ToDeviceColor(borderColor), borderStyle);
+    switch (side) {
+      case eSideTop:
+        wrWidths.top = transformedRect.size.height;
+        break;
+      case eSideBottom:
+        wrWidths.bottom = transformedRect.size.height;
+        break;
+      case eSideLeft:
+        wrWidths.left = transformedRect.size.width;
+        break;
+      case eSideRight:
+        wrWidths.right = transformedRect.size.width;
+        break;
+    }
+  }
+
+  if (!allBorderRect.IsEmpty()) {
+    Range<const wr::BorderSide> wrsides(wrSide, 4);
+    wr::LayoutRect allTransformedRect = aSc.ToRelativeLayoutRect(allBorderRect);
+    aBuilder.PushBorder(allTransformedRect,
+                        allTransformedRect,
+                        backfaceIsVisible,
+                        wrWidths,
+                        wrsides,
+                        borderRadii);
+  }
 }
 
 bool

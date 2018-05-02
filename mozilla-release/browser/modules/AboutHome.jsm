@@ -4,22 +4,18 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "AboutHomeUtils", "AboutHome" ];
 
-this.EXPORTED_SYMBOLS = [ "AboutHomeUtils", "AboutHome" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AutoMigrate",
+ChromeUtils.defineModuleGetter(this, "AutoMigrate",
   "resource:///modules/AutoMigrate.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
+ChromeUtils.defineModuleGetter(this, "fxAccounts",
   "resource://gre/modules/FxAccounts.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 // Url to fetch snippets, in the urlFormatter service format.
@@ -28,7 +24,7 @@ const SNIPPETS_URL_PREF = "browser.aboutHomeSnippets.updateUrl";
 // Should be bumped up if the snippets content format changes.
 const STARTPAGE_VERSION = 4;
 
-this.AboutHomeUtils = {
+var AboutHomeUtils = {
   get snippetsVersion() {
     return STARTPAGE_VERSION;
   },
@@ -161,7 +157,7 @@ var AboutHome = {
   // gets re-sent when the search engine changes.
   sendAboutHomeData(target) {
     let wrapper = {};
-    Components.utils.import("resource:///modules/sessionstore/SessionStore.jsm",
+    ChromeUtils.import("resource:///modules/sessionstore/SessionStore.jsm",
       wrapper);
     let ss = wrapper.SessionStore;
 

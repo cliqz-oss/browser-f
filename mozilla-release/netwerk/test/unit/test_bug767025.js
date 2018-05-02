@@ -1,6 +1,6 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 /**
  * This is testcase do following steps to make sure bug767025 removing
@@ -18,7 +18,7 @@ Cu.import("resource://testing-common/httpd.js");
  *      are activated.
  */
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kNS_OFFLINECACHEUPDATESERVICE_CONTRACTID =
   "@mozilla.org/offlinecacheupdate-service;1";
@@ -87,7 +87,7 @@ function init_http_server() {
 function clean_app_cache() {
   let cache_service = Cc[kNS_CACHESTORAGESERVICE_CONTRACTID].
     getService(Ci.nsICacheStorageService);
-  let storage = cache_service.appCacheStorage(LoadContextInfo.default, null);
+  let storage = cache_service.appCacheStorage(Services.loadContextInfo.default, null);
   storage.asyncEvictStorage(null);
 }
 
@@ -169,7 +169,7 @@ function check_bug() {
     kHttpLocation + "pages/foo1",
     "appcache", Ci.nsICacheStorage.OPEN_READONLY, null,
     function(status, entry, appcache) {
-      let storage = get_cache_service().appCacheStorage(LoadContextInfo.default, appcache);
+      let storage = get_cache_service().appCacheStorage(Services.loadContextInfo.default, appcache);
 
       // Doom foo1 & foo2
       storage.asyncDoomURI(createURI(kHttpLocation + "pages/foo1"), "", { onCacheEntryDoomed: function() {
@@ -206,7 +206,7 @@ function check_evict_cache(appcache) {
       var hold_entry_foo3 = entry;
 
       // evict all documents.
-      let storage = get_cache_service().appCacheStorage(LoadContextInfo.default, appcache);
+      let storage = get_cache_service().appCacheStorage(Services.loadContextInfo.default, appcache);
       storage.asyncEvictStorage(null);
 
       // All documents are removed except foo1 & foo3.

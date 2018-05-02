@@ -7,10 +7,11 @@
 /* import-globals-from browser.js */
 /* import-globals-from nsContextMenu.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
-                                  "resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionParent",
+                               "resource://gre/modules/ExtensionParent.jsm");
 
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   promiseEvent,
@@ -88,18 +89,25 @@ var gBrowser = {
   },
 };
 
-function loadWebPanel() {
-  let sidebarURI = new URL(location);
+function loadPanel(extensionId, extensionUrl, browserStyle) {
+  let browserEl = document.getElementById("webext-panels-browser");
+  if (browserEl) {
+    if (browserEl.currentURI.spec === extensionUrl) {
+      return;
+    }
+    // Forces runtime disconnect.  Remove the stack (parent).
+    browserEl.parentNode.remove();
+  }
+
+  let policy = WebExtensionPolicy.getByID(extensionId);
   let sidebar = {
-    uri: sidebarURI.searchParams.get("panel"),
-    remote: sidebarURI.searchParams.get("remote"),
-    browserStyle: sidebarURI.searchParams.get("browser-style"),
+    uri: extensionUrl,
+    remote: policy.extension.remote,
+    browserStyle,
   };
   getBrowser(sidebar).then(browser => {
-    browser.loadURI(sidebar.uri);
+    let uri = Services.io.newURI(policy.getURL());
+    let triggeringPrincipal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
+    browser.loadURIWithFlags(extensionUrl, {triggeringPrincipal});
   });
-}
-
-function load() {
-  this.loadWebPanel();
 }

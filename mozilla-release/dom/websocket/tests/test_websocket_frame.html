@@ -10,8 +10,6 @@
 <body>
 <script class="testbody" type="text/javascript">
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
 const URI = "ws://mochi.test:8888/tests/dom/websocket/tests/file_websocket_basic";
 
 var frameReceivedCounter = 0;
@@ -21,7 +19,7 @@ var webSocketOpenedCounter = 0;
 var webSocketMessageAvailableCounter = 0;
 var webSocketClosedCounter = 0;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var tests = [
   { payload: "Hello world!" },

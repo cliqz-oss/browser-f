@@ -7,12 +7,8 @@ function LOG(str) {
   dump("*** " + str + "\n");
 }
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const FP_CONTRACTID = "@mozilla.org/feed-processor;1";
 const FP_CLASSID = Components.ID("{26acb1f0-28fc-43bc-867a-a46aabc85dd4}");
@@ -1386,7 +1382,7 @@ FeedProcessor.prototype = {
     if ((this._result.version == "atom" || this._result.version == "atom03") &&
         this._textConstructs[key] != null) {
       var type = attributes.getValueFromName("", "type");
-      if (type != null && type.indexOf("xhtml") >= 0) {
+      if (type != null && type.includes("xhtml")) {
         this._xhtmlHandler =
           new XHTMLHandler(this, (this._result.version == "atom"));
         this._reader.contentHandler = this._xhtmlHandler;
@@ -1685,17 +1681,17 @@ FeedProcessor.prototype = {
       if (this._result.version == "atom" && typeAttribute != null) {
         type = typeAttribute;
       } else if (this._result.version == "atom03" && typeAttribute != null) {
-        if (typeAttribute.toLowerCase().indexOf("xhtml") >= 0) {
+        if (typeAttribute.toLowerCase().includes("xhtml")) {
           type = "xhtml";
-        } else if (typeAttribute.toLowerCase().indexOf("html") >= 0) {
+        } else if (typeAttribute.toLowerCase().includes("html")) {
           type = "html";
-        } else if (typeAttribute.toLowerCase().indexOf("text") >= 0) {
+        } else if (typeAttribute.toLowerCase().includes("text")) {
           type = "text";
         }
       }
 
       // If it's rss feed-level description, it's not supposed to have html
-      if (this._result.version.indexOf("rss") >= 0 &&
+      if (this._result.version.includes("rss") &&
           this._handlerStack[this._depth].containerClass != ENTRY_CONTRACTID) {
         type = "text";
       }

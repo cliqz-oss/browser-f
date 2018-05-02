@@ -33,7 +33,6 @@ public:
   RenderCompositor(RefPtr<widget::CompositorWidget>&& aWidget);
   virtual ~RenderCompositor();
 
-  virtual bool Destroy() = 0;
   virtual bool BeginFrame() = 0;
   virtual void EndFrame() = 0;
   virtual void Pause() = 0;
@@ -43,7 +42,7 @@ public:
 
   virtual bool UseANGLE() const { return false; }
 
-  virtual LayoutDeviceIntSize GetClientSize() = 0;
+  virtual LayoutDeviceIntSize GetBufferSize() = 0;
 
   widget::CompositorWidget* GetWidget() const { return mWidget; }
 

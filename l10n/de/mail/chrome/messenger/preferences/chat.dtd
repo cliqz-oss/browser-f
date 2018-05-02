@@ -31,6 +31,10 @@ sentence. -->
 <!ENTITY  completeNotification.label          "mit dem Namen des Absenders und einer Vorschau der Nachricht">
 <!ENTITY  buddyInfoOnly.label                 "nur mit dem Namen des Absenders">
 <!ENTITY  dummyNotification.label             "ohne jegliche Informationen">
+<!ENTITY  getAttention.label                  "Blinkendes Symbol in Taskleiste">
+<!ENTITY  getAttention.accesskey              "m">
+<!ENTITY  getAttentionMac.label               "Animiertes Symbol im Dock">
+<!ENTITY  getAttentionMac.accesskey           "m">
 <!ENTITY  chatSound.accesskey                 "K">
 <!ENTITY  chatSound.label                     "Einen Klang abspielen">
 <!ENTITY  play.label                          "Probe hören">

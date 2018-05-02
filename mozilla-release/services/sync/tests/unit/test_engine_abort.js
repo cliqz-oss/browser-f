@@ -1,11 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/rotaryengine.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://testing-common/services/sync/rotaryengine.js");
 
 add_task(async function test_processIncoming_abort() {
   _("An abort exception, raised in applyIncoming, will abort _processIncoming.");
@@ -30,7 +30,7 @@ add_task(async function test_processIncoming_abort() {
                                           syncID: engine.syncID}};
   _("Fake applyIncoming to abort.");
   engine._store.applyIncoming = async function(record) {
-    let ex = {code: Engine.prototype.eEngineAbortApplyIncoming,
+    let ex = {code: SyncEngine.prototype.eEngineAbortApplyIncoming,
               cause: "Nooo"};
     _("Throwing: " + JSON.stringify(ex));
     throw ex;
@@ -62,6 +62,6 @@ add_task(async function test_processIncoming_abort() {
   Svc.Prefs.resetBranch("");
   Service.recordManager.clearCache();
 
-  engine._tracker.clearChangedIDs();
+  await engine._tracker.clearChangedIDs();
   await engine.finalize();
 });

@@ -57,15 +57,23 @@ def set_tp_preferences(test, browser_config):
                         'fnbpaint']
     CLI_options = ['tpcycles', 'tppagecycles', 'tptimeout', 'tpmanifest']
     for key in CLI_bool_options:
+        _pref_name = "talos.%s" % key
         if key in test:
-            _pref_name = "talos.%s" % key
             test['preferences'][_pref_name] = test.get(key)
+        else:
+            # current test doesn't use this setting, remove it from our prefs
+            if _pref_name in test['preferences']:
+                del test['preferences'][_pref_name]
 
     for key in CLI_options:
         value = test.get(key)
+        _pref_name = "talos.%s" % key
         if value:
-            _pref_name = "talos.%s" % key
             test['preferences'][_pref_name] = value
+        else:
+            # current test doesn't use this setting, remove it from our prefs
+            if _pref_name in test['preferences']:
+                del test['preferences'][_pref_name]
 
 
 def setup_webserver(webserver):
@@ -90,7 +98,11 @@ def run_tests(config, browser_config):
         # Build command line from config
         for path in paths:
             if test.get(path):
-                test[path] = utils.interpolate(test[path])
+                if path == 'extensions':
+                    for _index, _ext in enumerate(test['extensions']):
+                        test['extensions'][_index] = utils.interpolate(_ext)
+                else:
+                    test[path] = utils.interpolate(test[path])
         if test.get('tpmanifest'):
             test['tpmanifest'] = \
                 os.path.normpath('file:/%s' % (urllib.quote(test['tpmanifest'],
@@ -195,12 +207,7 @@ def run_tests(config, browser_config):
 
     # legacy still required for perfherder data
     talos_results.add_extra_option('e10s')
-
-    # stylo is another option for testing
-    if config['enable_stylo']:
-        talos_results.add_extra_option('stylo')
-    if config['disable_stylo']:
-        talos_results.add_extra_option('stylo_disabled')
+    talos_results.add_extra_option('stylo')
 
     # measuring the difference of a a certain thread level
     if config.get('stylothreads', 0) > 0:

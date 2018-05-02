@@ -3,9 +3,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "minidump-analyzer.h"
+
 #include <cstdio>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <sstream>
 
@@ -20,9 +21,12 @@
 #include "google_breakpad/processor/stack_frame.h"
 #include "processor/pathname_stripper.h"
 
+#include "mozilla/FStream.h"
+
 #if defined(XP_WIN32)
 
 #include <windows.h>
+#include "mozilla/glue/WindowsDllServices.h"
 
 #elif defined(XP_UNIX) || defined(XP_MACOSX)
 
@@ -40,10 +44,15 @@
 
 namespace CrashReporter {
 
+#if defined(XP_WIN)
+
+static mozilla::glue::BasicDllServices gDllServices;
+
+#endif
+
 using std::ios;
 using std::ios_base;
 using std::hex;
-using std::ofstream;
 using std::map;
 using std::showbase;
 using std::string;
@@ -60,6 +69,8 @@ using google_breakpad::PathnameStripper;
 using google_breakpad::ProcessResult;
 using google_breakpad::ProcessState;
 using google_breakpad::StackFrame;
+
+using mozilla::OFStream;
 
 MinidumpAnalyzerOptions gMinidumpAnalyzerOptions;
 
@@ -175,7 +186,7 @@ ConvertStackToJSON(const ProcessState& aProcessState,
 static int
 ConvertModulesToJSON(const ProcessState& aProcessState,
                      OrderedModulesMap& aOrderedModules,
-                     Json::Value& aNode)
+                     Json::Value& aNode, Json::Value& aCertSubjects)
 {
   const CodeModules* modules = aProcessState.modules();
 
@@ -213,6 +224,24 @@ ConvertModulesToJSON(const ProcessState& aProcessState,
       mainModuleIndex = moduleSequence;
     }
 
+#if defined(XP_WIN)
+    auto certSubject = gDllServices.GetBinaryOrgName(
+                         UTF8ToWide(module->code_file()).c_str());
+    if (certSubject) {
+      string strSubject(WideToUTF8(certSubject.get()));
+      // Json::Value::operator[] creates and returns a null member if the key
+      // does not exist.
+      Json::Value& subjectNode = aCertSubjects[strSubject];
+      if (!subjectNode) {
+        // If the member is null, we want to convert that to an array.
+        subjectNode = Json::Value(Json::arrayValue);
+      }
+
+      // Now we're guaranteed that subjectNode is an array. Add the new entry.
+      subjectNode.append(PathnameStripper::File(module->code_file()));
+    }
+#endif
+
     Json::Value moduleNode;
     moduleNode["filename"] = PathnameStripper::File(module->code_file());
     moduleNode["code_id"] = PathnameStripper::File(module->code_identifier());
@@ -232,7 +261,10 @@ ConvertModulesToJSON(const ProcessState& aProcessState,
 // crash, the module list and stack traces for every thread
 
 static void
-ConvertProcessStateToJSON(const ProcessState& aProcessState, Json::Value& aRoot)
+ConvertProcessStateToJSON(const ProcessState& aProcessState,
+                          Json::Value& aStackTraces,
+                          const bool aFullStacks,
+                          Json::Value& aCertSubjects)
 {
   // We use this map to get the index of a module when listed by address
   OrderedModulesMap orderedModules;
@@ -249,8 +281,7 @@ ConvertProcessStateToJSON(const ProcessState& aProcessState, Json::Value& aRoot)
       // Record the crashing thread index only if this is a full minidump
       // and all threads' stacks are present, otherwise only the crashing
       // thread stack is written out and this field is set to 0.
-      crashInfo["crashing_thread"] =
-        gMinidumpAnalyzerOptions.fullMinidump ? requestingThread : 0;
+      crashInfo["crashing_thread"] = aFullStacks ? requestingThread : 0;
     }
   } else {
     crashInfo["type"] = Json::Value(Json::nullValue);
@@ -262,23 +293,24 @@ ConvertProcessStateToJSON(const ProcessState& aProcessState, Json::Value& aRoot)
     }
   }
 
-  aRoot["crash_info"] = crashInfo;
+  aStackTraces["crash_info"] = crashInfo;
 
   // Modules
   Json::Value modules(Json::arrayValue);
-  int mainModule = ConvertModulesToJSON(aProcessState, orderedModules, modules);
+  int mainModule = ConvertModulesToJSON(aProcessState, orderedModules,
+                                        modules, aCertSubjects);
 
   if (mainModule != -1) {
-    aRoot["main_module"] = mainModule;
+    aStackTraces["main_module"] = mainModule;
   }
 
-  aRoot["modules"] = modules;
+  aStackTraces["modules"] = modules;
 
   // Threads
   Json::Value threads(Json::arrayValue);
   int threadCount = aProcessState.threads()->size();
 
-  if (!gMinidumpAnalyzerOptions.fullMinidump && (requestingThread != -1)) {
+  if (!aFullStacks && (requestingThread != -1)) {
     // Only add the crashing thread
     Json::Value thread;
     Json::Value stack(Json::arrayValue);
@@ -299,14 +331,17 @@ ConvertProcessStateToJSON(const ProcessState& aProcessState, Json::Value& aRoot)
     }
   }
 
-  aRoot["threads"] = threads;
+  aStackTraces["threads"] = threads;
 }
 
 // Process the minidump file and append the JSON-formatted stack traces to
-// the node specified in |aRoot|
-
+// the node specified in |aStackTraces|. We also populate |aCertSubjects| with
+// information about the certificates used to sign modules, when present and
+// supported by the underlying OS.
 static bool
-ProcessMinidump(Json::Value& aRoot, const string& aDumpFile) {
+ProcessMinidump(Json::Value& aStackTraces, Json::Value& aCertSubjects,
+                const string& aDumpFile, const bool aFullStacks)
+{
 #if XP_WIN && HAVE_64BIT_BUILD
   MozStackFrameSymbolizer symbolizer;
   MinidumpProcessor minidumpProcessor(&symbolizer, false);
@@ -317,7 +352,12 @@ ProcessMinidump(Json::Value& aRoot, const string& aDumpFile) {
 #endif
 
   // Process the minidump.
+#if defined(XP_WIN)
+  // Breakpad invokes std::ifstream directly, so this path needs to be ANSI
+  Minidump dump(UTF8ToMBCS(aDumpFile));
+#else
   Minidump dump(aDumpFile);
+#endif // defined(XP_WIN)
   if (!dump.Read()) {
     return false;
   }
@@ -325,98 +365,152 @@ ProcessMinidump(Json::Value& aRoot, const string& aDumpFile) {
   ProcessResult rv;
   ProcessState processState;
   rv = minidumpProcessor.Process(&dump, &processState);
-  aRoot["status"] = ResultString(rv);
+  aStackTraces["status"] = ResultString(rv);
 
-  ConvertProcessStateToJSON(processState, aRoot);
+  ConvertProcessStateToJSON(processState, aStackTraces, aFullStacks,
+                            aCertSubjects);
 
   return true;
 }
 
-// Open the specified file in append mode
-
-static ofstream*
-OpenAppend(const string& aFilename)
-{
-  ios_base::openmode mode = ios::out | ios::app;
-
-#if defined(XP_WIN)
-#if defined(_MSC_VER)
-  ofstream* file = new ofstream();
-  file->open(UTF8ToWide(aFilename).c_str(), mode);
-#else   // GCC
-  ofstream* file =
-    new ofstream(WideToMBCP(UTF8ToWide(aFilename), CP_ACP).c_str(), mode);
-#endif  // _MSC_VER
-#else // Non-Windows
-  ofstream* file = new ofstream(aFilename.c_str(), mode);
-#endif // XP_WIN
-  return file;
-}
-
-// Update the extra data file by adding the StackTraces field holding the
-// JSON output of this program.
-
-static void
-UpdateExtraDataFile(const string &aDumpPath, const Json::Value& aRoot)
+// Update the extra data file by adding the StackTraces and ModuleSignatureInfo
+// fields that contain the JSON outputs of this program.
+static bool
+UpdateExtraDataFile(const string &aDumpPath, const Json::Value& aStackTraces,
+                    const Json::Value& aCertSubjects)
 {
   string extraDataPath(aDumpPath);
   int dot = extraDataPath.rfind('.');
 
   if (dot < 0) {
-    return; // Not a valid dump path
+    return false; // Not a valid dump path
   }
 
   extraDataPath.replace(dot, extraDataPath.length() - dot, kExtraDataExtension);
-  ofstream* f = OpenAppend(extraDataPath.c_str());
+  bool res = false;
 
-  if (f->is_open()) {
+  // We want to open the extra file in append mode.
+  ios_base::openmode mode = ios::out | ios::app;
+  OFStream f(
+#if defined(XP_WIN)
+      UTF8ToWide(extraDataPath).c_str(),
+#else
+      extraDataPath.c_str(),
+#endif // defined(XP_WIN)
+      mode);
+
+  if (f.is_open()) {
     Json::FastWriter writer;
 
-    *f << "StackTraces=" << writer.write(aRoot);
+    f << "StackTraces=" << writer.write(aStackTraces);
+    res = !f.fail();
 
-    f->close();
+    if (!!aCertSubjects) {
+      f << "ModuleSignatureInfo=" << writer.write(aCertSubjects);
+      res &= !f.fail();
+    }
+
+    f.close();
   }
 
-  delete f;
+  return res;
+}
+
+bool
+GenerateStacks(const string& aDumpPath, const bool aFullStacks) {
+  Json::Value stackTraces;
+  Json::Value certSubjects;
+
+  if (!ProcessMinidump(stackTraces, certSubjects, aDumpPath, aFullStacks)) {
+    return false;
+  }
+
+  return UpdateExtraDataFile(aDumpPath, stackTraces, certSubjects);
 }
 
 } // namespace CrashReporter
 
 using namespace CrashReporter;
 
+#if defined(XP_WIN)
+#define XP_LITERAL(s) L##s
+#else
+#define XP_LITERAL(s) s
+#endif
+
+template <typename CharT>
+struct CharTraits;
+
+template<>
+struct CharTraits<char>
+{
+  static int compare(const char* left, const char* right)
+  {
+    return strcmp(left, right);
+  }
+
+  static string& assign(string& left, const char* right)
+  {
+    left = right;
+    return left;
+  }
+};
+
+#if defined(XP_WIN)
+
+template<>
+struct CharTraits<wchar_t>
+{
+  static int compare(const wchar_t* left, const wchar_t* right)
+  {
+    return wcscmp(left, right);
+  }
+
+  static string& assign(string& left, const wchar_t* right)
+  {
+    left = WideToUTF8(right);
+    return left;
+  }
+};
+
+#endif // defined(XP_WIN)
+
+template <typename CharT, typename Traits = CharTraits<CharT>>
 static void
-ParseArguments(int argc, char** argv) {
+ParseArguments(int argc, CharT** argv) {
   if (argc <= 1) {
     exit(EXIT_FAILURE);
   }
 
   for (int i = 1; i < argc - 1; i++) {
-    if (strcmp(argv[i], "--full") == 0) {
+    if (!Traits::compare(argv[i], XP_LITERAL("--full"))) {
       gMinidumpAnalyzerOptions.fullMinidump = true;
-    } else if ((strcmp(argv[i], "--force-use-module") == 0) && (i < argc - 2)) {
-      gMinidumpAnalyzerOptions.forceUseModule = argv[i + 1];
+    } else if (!Traits::compare(argv[i], XP_LITERAL("--force-use-module")) &&
+                 (i < argc - 2)) {
+      Traits::assign(gMinidumpAnalyzerOptions.forceUseModule, argv[i + 1]);
       ++i;
     } else {
       exit(EXIT_FAILURE);
     }
   }
 
-  gMinidumpPath = argv[argc - 1];
+  Traits::assign(gMinidumpPath, argv[argc - 1]);
 }
 
+#if defined(XP_WIN)
+// WARNING: Windows does *NOT* use UTF8 for char strings off the command line!
+// Using wmain here so that the CRT doesn't need to perform a wasteful and
+// lossy UTF-16 to MBCS conversion; ParseArguments will convert to UTF8 directly.
+extern "C"
+int wmain(int argc, wchar_t** argv)
+#else
 int main(int argc, char** argv)
+#endif
 {
   ParseArguments(argc, argv);
 
-  if (!FileExists(gMinidumpPath)) {
-    // The dump file does not exist
+  if (!GenerateStacks(gMinidumpPath, gMinidumpAnalyzerOptions.fullMinidump)) {
     exit(EXIT_FAILURE);
-  }
-
-  // Try processing the minidump
-  Json::Value root;
-  if (ProcessMinidump(root, gMinidumpPath)) {
-    UpdateExtraDataFile(gMinidumpPath, root);
   }
 
   exit(EXIT_SUCCESS);

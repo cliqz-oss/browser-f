@@ -16,7 +16,7 @@ const {KeyCodes} = require("devtools/client/shared/keycodes");
 loader.lazyServiceGetter(this, "clipboardHelper",
                          "@mozilla.org/widget/clipboardhelper;1",
                          "nsIClipboardHelper");
-loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/old-event-emitter");
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 loader.lazyRequireGetter(this, "AutocompletePopup", "devtools/client/shared/autocomplete-popup");
 loader.lazyRequireGetter(this, "ToolSidebar", "devtools/client/framework/sidebar", true);
 loader.lazyRequireGetter(this, "Messages", "devtools/client/webconsole/console-output", true);
@@ -269,16 +269,19 @@ JSTerm.prototype = {
         !Services.prefs.getBoolPref("devtools.chrome.enabled")) {
       inputContainer.style.display = "none";
     } else {
+      this.inputNode.addEventListener("keypress", this._keyPress);
+      this.inputNode.addEventListener("input", this._inputEventHandler);
+      this.inputNode.addEventListener("keyup", this._inputEventHandler);
+      this.inputNode.addEventListener("focus", this._focusEventHandler);
+    }
+
+    if (!this.hud.isBrowserConsole) {
       let okstring = l10n.getStr("selfxss.okstring");
       let msg = l10n.getFormatStr("selfxss.msg", [okstring]);
       this._onPaste = WebConsoleUtils.pasteHandlerGen(this.inputNode,
           this.getNotificationBox(), msg, okstring);
-      this.inputNode.addEventListener("keypress", this._keyPress);
       this.inputNode.addEventListener("paste", this._onPaste);
       this.inputNode.addEventListener("drop", this._onPaste);
-      this.inputNode.addEventListener("input", this._inputEventHandler);
-      this.inputNode.addEventListener("keyup", this._inputEventHandler);
-      this.inputNode.addEventListener("focus", this._focusEventHandler);
     }
 
     this.hud.window.addEventListener("blur", this._blurEventHandler);
@@ -636,7 +639,7 @@ JSTerm.prototype = {
         window.focus();
       }
 
-      this.emit("variablesview-open", view, options);
+      this.emit("variablesview-open", {view, options});
       return view;
     };
 
@@ -770,7 +773,7 @@ JSTerm.prototype = {
     });
 
     // Relay events from the VariablesView.
-    view.on("fetched", (event, type, variableObject) => {
+    view.on("fetched", (type, variableObject) => {
       this.emit("variablesview-fetched", variableObject);
     });
 
@@ -1003,9 +1006,13 @@ JSTerm.prototype = {
    * This method emits the "private-messages-cleared" notification.
    */
   clearPrivateMessages: function () {
-    let nodes = this.hud.outputNode.querySelectorAll(".message[private]");
-    for (let node of nodes) {
-      this.hud.removeOutputMessage(node);
+    if (this.hud.NEW_CONSOLE_OUTPUT_ENABLED) {
+      this.hud.newConsoleOutput.dispatchPrivateMessagesClear();
+    } else {
+      let nodes = this.hud.outputNode.querySelectorAll(".message[private]");
+      for (let node of nodes) {
+        this.hud.removeOutputMessage(node);
+      }
     }
     this.emit("private-messages-cleared");
   },

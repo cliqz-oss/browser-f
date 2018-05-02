@@ -8,6 +8,7 @@
 #include "HTMLEditRules.h"
 #include "TextEditUtils.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/EditAction.h"
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EditorUtils.h"
 #include "mozilla/LookAndFeel.h"
@@ -15,6 +16,7 @@
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/NodeFilterBinding.h"
 #include "mozilla/dom/NodeIterator.h"
 #include "mozilla/dom/Selection.h"
 #include "nsAString.h"
@@ -29,8 +31,6 @@
 #include "nsIContent.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMNode.h"
-#include "nsIDOMNodeFilter.h"
 #include "nsNameSpaceManager.h"
 #include "nsINode.h"
 #include "nsIPlaintextEditor.h"
@@ -528,11 +528,9 @@ GetTextNode(Selection* selection)
   if (!EditorBase::IsTextNode(selNode)) {
     // This should be the root node, walk the tree looking for text nodes
     RefPtr<NodeIterator> iter =
-      new NodeIterator(selNode, nsIDOMNodeFilter::SHOW_TEXT,
-                       NodeFilterHolder());
+      new NodeIterator(selNode, NodeFilterBinding::SHOW_TEXT, nullptr);
     while (!EditorBase::IsTextNode(selNode)) {
-      IgnoredErrorResult rv;
-      selNode = iter->NextNode(rv);
+      selNode = iter->NextNode(IgnoreErrors());
       if (!selNode) {
         return nullptr;
       }
@@ -1034,7 +1032,7 @@ TextEditRules::WillDeleteSelection(Selection* aSelection,
       mPasswordText.Cut(start, end-start);
     }
   } else {
-    nsCOMPtr<nsIDOMNode> startNode;
+    nsCOMPtr<nsINode> startNode;
     int32_t startOffset;
     nsresult rv =
       EditorBase::GetStartNodeAndOffset(aSelection, getter_AddRefs(startNode),

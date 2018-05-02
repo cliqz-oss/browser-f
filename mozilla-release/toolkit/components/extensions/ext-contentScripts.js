@@ -5,7 +5,7 @@
 /* exported registerContentScript, unregisterContentScript */
 /* global registerContentScript, unregisterContentScript */
 
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   ExtensionError,
@@ -68,7 +68,7 @@ class ContentScriptParent {
       exclude_globs: details.excludeGlobs,
       all_frames: details.allFrames,
       match_about_blank: details.matchAboutBlank,
-      run_at: details.runAt,
+      run_at: details.runAt || "document_idle",
       js: [],
       css: [],
     };

@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-
-this.EXPORTED_SYMBOLS = ["ContentCollector"];
+var EXPORTED_SYMBOLS = ["ContentCollector"];
 
 // This listens for the message "browser-test:collect-request". When it gets it,
 // it runs some GCs and CCs, then prints out a message indicating the collections

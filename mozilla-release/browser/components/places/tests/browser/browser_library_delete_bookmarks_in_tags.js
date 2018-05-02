@@ -10,7 +10,7 @@
 
 registerCleanupFunction(async function() {
   await PlacesUtils.bookmarks.eraseEverything();
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_tags() {
@@ -45,7 +45,7 @@ add_task(async function test_tags() {
   // Select and open the left pane "Bookmarks Toolbar" folder.
   let PO = library.PlacesOrganizer;
 
-  PO.selectLeftPaneQuery("Tags");
+  PO.selectLeftPaneBuiltIn("Tags");
   let tagsNode = PO._places.selectedNode;
   Assert.notEqual(tagsNode, null, "Should have a valid selection");
   let tagsTitle = PlacesUtils.getString("TagsFolderTitle");

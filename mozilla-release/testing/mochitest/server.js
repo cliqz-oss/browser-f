@@ -126,7 +126,7 @@ function runServer()
   //if a.b.c.d or 'localhost'
   if (typeof(_SERVER_ADDR) != "undefined") {
     if (_SERVER_ADDR == "localhost") {
-      gServerAddress = _SERVER_ADDR;      
+      gServerAddress = _SERVER_ADDR;
     } else {
       var quads = _SERVER_ADDR.split('.');
       if (quads.length == 4) {
@@ -138,18 +138,18 @@ function runServer()
         if (!invalid)
           gServerAddress = _SERVER_ADDR;
         else
-          throw "invalid _SERVER_ADDR, please specify a valid IP Address";
+          throw new Error("invalid _SERVER_ADDR, please specify a valid IP Address");
       }
     }
   } else {
-    throw "please defined _SERVER_ADDR (as an ip address) before running server.js";
+    throw new Error("please define _SERVER_ADDR (as an ip address) before running server.js");
   }
 
   if (typeof(_SERVER_PORT) != "undefined") {
     if (parseInt(_SERVER_PORT) > 0 && parseInt(_SERVER_PORT) < 65536)
       SERVER_PORT = _SERVER_PORT;
   } else {
-    throw "please define _SERVER_PORT (as a port number) before running server.js";
+    throw new Error("please define _SERVER_PORT (as a port number) before running server.js");
   }
 
   // If DISPLAY_RESULTS is not specified, it defaults to true
@@ -172,8 +172,7 @@ function runServer()
     serverAlive.initWithPath(_PROFILE_PATH);
   }
 
-  // If we're running outside of the test harness, there might
-  // not be a test profile directory present
+  // Create a file to inform the harness that the server is ready
   if (serverAlive.exists()) {
     serverAlive.append("server_alive.txt");
     foStream.init(serverAlive,
@@ -181,6 +180,9 @@ function runServer()
     var data = "It's alive!";
     foStream.write(data, data.length);
     foStream.close();
+  } else {
+    throw new Error("Failed to create server_alive.txt because " + serverAlive.path +
+                    " could not be found.");
   }
 
   makeTags();
@@ -292,19 +294,19 @@ function processLocations(server)
 
     var match = LINE_REGEXP.exec(lineValue);
     if (!match)
-      throw "Syntax error in server-locations.txt, line " + lineno;
+      throw new Error("Syntax error in server-locations.txt, line " + lineno);
 
     var [, scheme, host, port, options] = match;
     if (options)
     {
-      if (options.split(",").indexOf("primary") >= 0)
+      if (options.split(",").includes("primary"))
       {
         if (seenPrimary)
         {
-          throw "Multiple primary locations in server-locations.txt, " +
-                "line " + lineno;
+          throw new Error("Multiple primary locations in server-locations.txt, " +
+                          "line " + lineno);
         }
-  
+
         server.identity.setPrimary(scheme, host, port);
         seenPrimary = true;
         continue;
@@ -399,7 +401,7 @@ function list(requestPath, directory, recurse)
   // The SimpleTest directory is hidden
   let files = [];
   for (let file of dirIter(dir)) {
-    if (file.exists() && file.path.indexOf("SimpleTest") == -1) {
+    if (file.exists() && !file.path.includes("SimpleTest")) {
       files.push(file);
     }
   }
@@ -451,10 +453,10 @@ function isTest(filename, pattern)
   var testPattern = new RegExp("^" + testPrefix);
 
   var pathPieces = filename.split('/');
-    
+
   return testPattern.test(pathPieces[pathPieces.length - 1]) &&
-         filename.indexOf(".js") == -1 &&
-         filename.indexOf(".css") == -1 &&
+         !filename.includes(".js") &&
+         !filename.includes(".css") &&
          !/\^headers\^$/.test(filename);
 }
 
@@ -471,7 +473,7 @@ function linksToListItems(links)
       ? "non-test invisible"
       : "test";
     if (value instanceof Object) {
-      children = UL({class: "testdir"}, linksToListItems(value)); 
+      children = UL({class: "testdir"}, linksToListItems(value));
     } else {
       children = "";
     }
@@ -591,7 +593,7 @@ function regularListing(metadata, response)
  */
 function convertManifestToTestLinks(root, manifest)
 {
-  Cu.import("resource://gre/modules/NetUtil.jsm");
+  ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
   var manifestFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   manifestFile.initWithFile(serverBasePath);
@@ -641,7 +643,7 @@ function testListing(metadata, response)
 {
   var links = {};
   var count = 0;
-  if (metadata.queryString.indexOf('manifestFile') == -1) {
+  if (!metadata.queryString.includes('manifestFile')) {
     [links, count] = list(metadata.path,
                           metadata.getProperty("directory"),
                           true);
@@ -756,5 +758,5 @@ function defaultDirHandler(metadata, response)
     }
   } catch (ex) {
     response.write(ex);
-  }  
+  }
 }

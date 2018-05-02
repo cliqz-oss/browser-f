@@ -15,11 +15,13 @@
 #include "nsColor.h"
 #include "nsCSSPropertyID.h"
 #include "nsDOMCSSDeclaration.h"
-#include "nsString.h"
+#include "nsStringFwd.h"
 
 class nsCSSValue;
 class nsIDocument;
 struct nsCSSRect;
+struct nsTimingFunction;
+struct RawServoDeclarationBlock;
 
 using RawGeckoGfxMatrix4x4 = mozilla::gfx::Float[16];
 

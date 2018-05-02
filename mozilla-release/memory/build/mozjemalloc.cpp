@@ -1115,12 +1115,12 @@ public:
 
     Item<Iterator> end() { return Item<Iterator>(this, nullptr); }
 
-    Tree::TreeNode* Next()
+    arena_t* Next()
     {
-      Tree::TreeNode* result = Tree::Iterator::Next();
+      arena_t* result = Tree::Iterator::Next();
       if (!result && mNextTree) {
         new (this) Iterator(mNextTree, nullptr);
-        result = reinterpret_cast<Tree::TreeNode*>(*Tree::Iterator::begin());
+        result = *Tree::Iterator::begin();
       }
       return result;
     }
@@ -1444,9 +1444,9 @@ base_alloc(size_t aSize)
       return nullptr;
     }
 #endif
-    base_next_decommitted = pbase_next_addr;
     base_committed +=
       (uintptr_t)pbase_next_addr - (uintptr_t)base_next_decommitted;
+    base_next_decommitted = pbase_next_addr;
   }
 
   return ret;
@@ -2303,7 +2303,8 @@ arena_run_reg_dalloc(arena_run_t* run, arena_bin_t* bin, void* ptr, size_t size)
     run->mRegionsMinElement = elm;
   }
   bit = regind - (elm << (LOG2(sizeof(int)) + 3));
-  MOZ_DIAGNOSTIC_ASSERT((run->mRegionsMask[elm] & (1U << bit)) == 0);
+  MOZ_RELEASE_ASSERT((run->mRegionsMask[elm] & (1U << bit)) == 0,
+                     "Double-free?");
   run->mRegionsMask[elm] |= (1U << bit);
 #undef SIZE_INV
 #undef SIZE_INV_SHIFT
@@ -3497,7 +3498,7 @@ arena_dalloc(void* aPtr, size_t aOffset, arena_t* aArena)
   MutexAutoLock lock(arena->mLock);
   size_t pageind = aOffset >> gPageSize2Pow;
   arena_chunk_map_t* mapelm = &chunk->map[pageind];
-  MOZ_DIAGNOSTIC_ASSERT((mapelm->bits & CHUNK_MAP_ALLOCATED) != 0);
+  MOZ_RELEASE_ASSERT((mapelm->bits & CHUNK_MAP_ALLOCATED) != 0, "Double-free?");
   if ((mapelm->bits & CHUNK_MAP_LARGE) == 0) {
     // Small allocation.
     arena->DallocSmall(chunk, aPtr, mapelm);
@@ -3896,7 +3897,7 @@ huge_dalloc(void* aPtr, arena_t* aArena)
     // Extract from tree of huge allocations.
     key.mAddr = aPtr;
     node = huge.Search(&key);
-    MOZ_ASSERT(node);
+    MOZ_RELEASE_ASSERT(node, "Double-free?");
     MOZ_ASSERT(node->mAddr == aPtr);
     MOZ_RELEASE_ASSERT(!aArena || node->mArena == aArena);
     huge.Remove(node);
@@ -4548,7 +4549,6 @@ ArenaCollection::GetById(arena_id_t aArenaId, bool aIsPrivate)
   return result;
 }
 
-#ifdef NIGHTLY_BUILD
 template<>
 inline arena_id_t
 MozJemalloc::moz_create_arena_with_params(arena_params_t* aParams)
@@ -4564,6 +4564,10 @@ template<>
 inline void
 MozJemalloc::moz_dispose_arena(arena_id_t aArenaId)
 {
+  // Until Bug 1364359 is fixed it is unsafe to call moz_dispose_arena.
+  // We want to catch any such occurances of that behavior.
+  MOZ_CRASH("Do not call moz_dispose_arena until Bug 1364359 is fixed.");
+
   arena_t* arena = gArenas.GetById(aArenaId, /* IsPrivate = */ true);
   MOZ_RELEASE_ASSERT(arena);
   gArenas.DisposeArena(arena);
@@ -4580,20 +4584,6 @@ MozJemalloc::moz_dispose_arena(arena_id_t aArenaId)
   }
 #define MALLOC_FUNCS MALLOC_FUNCS_MALLOC_BASE
 #include "malloc_decls.h"
-
-#else
-
-#define MALLOC_DECL(name, return_type, ...)                                    \
-  template<>                                                                   \
-  inline return_type MozJemalloc::name(ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) \
-  {                                                                            \
-    return DummyArenaAllocator<MozJemalloc>::name(                             \
-      ARGS_HELPER(ARGS, ##__VA_ARGS__));                                       \
-  }
-#define MALLOC_FUNCS MALLOC_FUNCS_ARENA
-#include "malloc_decls.h"
-
-#endif
 
 // End non-standard functions.
 // ***************************************************************************

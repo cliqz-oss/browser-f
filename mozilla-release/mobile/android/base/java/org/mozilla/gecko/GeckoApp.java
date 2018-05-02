@@ -9,7 +9,6 @@ import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.GeckoProfileDirectories.NoMozillaDirectoryException;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.health.HealthRecorder;
 import org.mozilla.gecko.health.SessionInformation;
 import org.mozilla.gecko.health.StubbedHealthRecorder;
@@ -28,7 +27,6 @@ import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.prompts.PromptService;
 import org.mozilla.gecko.restrictions.Restrictions;
 import org.mozilla.gecko.tabqueue.TabQueueHelper;
-import org.mozilla.gecko.text.FloatingToolbarTextSelection;
 import org.mozilla.gecko.text.TextSelection;
 import org.mozilla.gecko.updater.UpdateServiceHelper;
 import org.mozilla.gecko.util.ActivityUtils;
@@ -42,6 +40,9 @@ import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.ViewUtil;
 import org.mozilla.gecko.widget.ActionModePresenter;
 import org.mozilla.gecko.widget.AnchoredPopup;
+import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.GeckoSessionSettings;
+import org.mozilla.geckoview.GeckoView;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
@@ -54,7 +55,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Configuration;
-import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
@@ -75,7 +75,6 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
-import android.view.OrientationEventListener;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -112,7 +111,7 @@ public abstract class GeckoApp extends GeckoActivity
                                           BundleEventListener,
                                           GeckoMenu.Callback,
                                           GeckoMenu.MenuPresenter,
-                                          GeckoSession.ContentListener,
+                                          GeckoSession.ContentDelegate,
                                           ScreenOrientationDelegate,
                                           Tabs.OnTabsChangedListener,
                                           ViewTreeObserver.OnGlobalLayoutListener {
@@ -141,11 +140,14 @@ public abstract class GeckoApp extends GeckoActivity
     public static final String PREFS_CRASHED_COUNT         = "crashedCount";
     public static final String PREFS_CLEANUP_TEMP_FILES    = "cleanupTempFiles";
 
-    // Used with SharedPreferences, per profile, to determine if this is the first run of
-    // the application. When accessing SharedPreferences, the default value of true should be used.
-    //
-    // Originally, this was only used for the telemetry core ping logic. To avoid
-    // having to write custom migration logic, we just keep the original pref key.
+    /**
+     * Used with SharedPreferences, per profile, to determine if this is the first run of
+     * the application. When accessing SharedPreferences, the default value of true should be used.
+
+     * Originally, this was only used for the telemetry core ping logic. To avoid
+     * having to write custom migration logic, we just keep the original pref key.
+     * Be aware of {@link org.mozilla.gecko.fxa.EnvironmentUtils.GECKO_PREFS_IS_FIRST_RUN}.
+     */
     public static final String PREFS_IS_FIRST_RUN = "telemetry-isFirstRun";
 
     public static final String SAVED_STATE_IN_BACKGROUND   = "inBackground";
@@ -165,7 +167,6 @@ public abstract class GeckoApp extends GeckoActivity
     protected RelativeLayout mMainLayout;
 
     protected RelativeLayout mGeckoLayout;
-    private OrientationEventListener mCameraOrientationEventListener;
     protected MenuPanel mMenuPanel;
     protected Menu mMenu;
     protected boolean mIsRestoringActivity;
@@ -317,6 +318,8 @@ public abstract class GeckoApp extends GeckoActivity
     private Telemetry.Timer mGeckoReadyStartupTimer;
 
     private String mPrivateBrowsingSession;
+    private boolean mPrivateBrowsingSessionOutdated;
+    private static final int MAX_PRIVATE_TABS_UPDATE_WAIT_MSEC = 500;
 
     private volatile HealthRecorder mHealthRecorder;
     private volatile Locale mLastLocale;
@@ -607,10 +610,28 @@ public abstract class GeckoApp extends GeckoActivity
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
+        synchronized (this) {
+            mPrivateBrowsingSessionOutdated = true;
+        }
+        // Through the GeckoActivityMonitor, this will flush tabs if the whole
+        // application is going into the background.
         super.onSaveInstanceState(outState);
 
+        // If on the other hand we're merely switching to a different activity
+        // within our app, we need to trigger a tabs flush ourselves.
+        if (!isApplicationInBackground()) {
+            EventDispatcher.getInstance().dispatch("Session:FlushTabs", null);
+        }
+        synchronized (this) {
+            if (GeckoThread.isRunning() && mPrivateBrowsingSessionOutdated) {
+                try {
+                    wait(MAX_PRIVATE_TABS_UPDATE_WAIT_MSEC);
+                } catch (final InterruptedException e) { }
+            }
+            outState.putString(SAVED_STATE_PRIVATE_SESSION, mPrivateBrowsingSession);
+        }
+
         outState.putBoolean(SAVED_STATE_IN_BACKGROUND, isApplicationInBackground());
-        outState.putString(SAVED_STATE_PRIVATE_SESSION, mPrivateBrowsingSession);
     }
 
     public void addTab() { }
@@ -657,6 +678,12 @@ public abstract class GeckoApp extends GeckoActivity
                 }
             }, STARTUP_PHASE_DURATION_MS);
 
+        } else if (event.equals("Gecko:CorruptAPK")) {
+            showCorruptAPKError();
+            if (!isFinishing()) {
+                finish();
+            }
+
         } else if ("Accessibility:Ready".equals(event)) {
             GeckoAccessibility.updateAccessibilitySettings(this);
 
@@ -696,7 +723,13 @@ public abstract class GeckoApp extends GeckoActivity
             showSiteSettingsDialog(permissions);
 
         } else if ("PrivateBrowsing:Data".equals(event)) {
-            mPrivateBrowsingSession = message.getString("session");
+            synchronized (this) {
+                if (!message.getBoolean("noChange", false)) {
+                    mPrivateBrowsingSession = message.getString("session");
+                }
+                mPrivateBrowsingSessionOutdated = false;
+                notifyAll();
+            }
 
         } else if ("SystemUI:Visibility".equals(event)) {
             if (message.getBoolean("visible", true)) {
@@ -840,11 +873,19 @@ public abstract class GeckoApp extends GeckoActivity
         return inSampleSize;
     }
 
-    @Override // GeckoSession.ContentListener
+    @Override // GeckoSession.ContentDelegate
     public void onTitleChange(final GeckoSession session, final String title) {
     }
 
-    @Override // GeckoSession.ContentListener
+    @Override // GeckoSession.ContentDelegate
+    public void onFocusRequest(final GeckoSession session) {
+    }
+
+    @Override // GeckoSession.ContentDelegate
+    public void onCloseRequest(final GeckoSession session) {
+    }
+
+    @Override // GeckoSession.ContentDelegate
     public void onFullScreen(final GeckoSession session, final boolean fullScreen) {
         if (fullScreen) {
             SnackbarBuilder.builder(this)
@@ -900,16 +941,22 @@ public abstract class GeckoApp extends GeckoActivity
             enableStrictMode();
         }
 
+        final boolean corruptAPK = GeckoThread.isState(GeckoThread.State.CORRUPT_APK);
         boolean supported = HardwareUtils.isSupportedSystem();
         if (supported) {
             GeckoLoader.loadMozGlue(getApplicationContext());
             supported = GeckoLoader.neonCompatible();
         }
-        if (!supported) {
-            // This build does not support the Android version of the device: Show an error and finish the app.
+        if (corruptAPK || !supported) {
+            // This build is corrupt or does not support the Android version of the device.
+            // Show an error and finish the app.
             mIsAbortingAppLaunch = true;
             super.onCreate(savedInstanceState);
-            showSDKVersionError();
+            if (corruptAPK) {
+                showCorruptAPKError();
+            } else {
+                showSDKVersionError();
+            }
             finish();
             return;
         }
@@ -921,11 +968,6 @@ public abstract class GeckoApp extends GeckoActivity
         final SafeIntent intent = new SafeIntent(getIntent());
 
         earlyStartJavaSampler(intent);
-
-        // GeckoLoader wants to dig some environment variables out of the
-        // incoming intent, so pass it in here. GeckoLoader will do its
-        // business later and dispose of the reference.
-        GeckoLoader.setLastIntent(intent);
 
         // Workaround for <http://code.google.com/p/android/issues/detail?id=20915>.
         try {
@@ -965,12 +1007,12 @@ public abstract class GeckoApp extends GeckoActivity
 
         } else {
             final String action = intent.getAction();
-            final String args = GeckoApplication.addDefaultGeckoArgs(
-                    intent.getStringExtra("args"));
+            final String[] args = GeckoApplication.getDefaultGeckoArgs();
             final int flags = ACTION_DEBUG.equals(action) ? GeckoThread.FLAG_DEBUGGING : 0;
 
             sAlreadyLoaded = true;
-            GeckoThread.initMainProcess(/* profile */ null, args, flags);
+            GeckoThread.initMainProcess(/* profile */ null, args,
+                                        intent.getExtras(), flags);
 
             // Speculatively pre-fetch the profile in the background.
             ThreadUtils.postToBackgroundThread(new Runnable() {
@@ -994,6 +1036,7 @@ public abstract class GeckoApp extends GeckoActivity
             null);
 
         EventDispatcher.getInstance().registerUiThreadListener(this,
+            "Gecko:CorruptAPK",
             "Update:Check",
             "Update:Download",
             "Update:Install",
@@ -1032,19 +1075,20 @@ public abstract class GeckoApp extends GeckoActivity
         final GeckoSession session = new GeckoSession();
         // If the view already has a session, we need to ensure it is closed.
         if (mLayerView.getSession() != null) {
-            mLayerView.getSession().closeWindow();
+            mLayerView.getSession().close();
         }
         mLayerView.setSession(session);
         mLayerView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         session.getSettings().setString(GeckoSessionSettings.CHROME_URI,
                                         "chrome://browser/content/browser.xul");
-        session.setContentListener(this);
+        session.setContentDelegate(this);
 
         GeckoAccessibility.setDelegate(mLayerView);
 
         getAppEventDispatcher().registerGeckoThreadListener(this,
             "Locale:Set",
+            "PrivateBrowsing:Data",
             null);
 
         getAppEventDispatcher().registerUiThreadListener(this,
@@ -1057,7 +1101,6 @@ public abstract class GeckoApp extends GeckoActivity
             "Mma:web_save_image",
             "Mma:web_save_media",
             "Permissions:Data",
-            "PrivateBrowsing:Data",
             "SystemUI:Visibility",
             "ToggleChrome:Focus",
             "ToggleChrome:Hide",
@@ -1416,7 +1459,7 @@ public abstract class GeckoApp extends GeckoActivity
         final String passedUri = getIntentURI(intent);
 
         final boolean intentHasURL = passedUri != null;
-        final boolean isAboutHomeURL = intentHasURL && AboutPages.isAboutHome(passedUri);
+        final boolean isAboutHomeURL = intentHasURL && AboutPages.isDefaultHomePage(passedUri);
         final boolean isAssistIntent = Intent.ACTION_ASSIST.equals(action);
         final boolean needsNewForegroundTab = intentHasURL || isAssistIntent;
 
@@ -2044,6 +2087,7 @@ public abstract class GeckoApp extends GeckoActivity
             null);
 
         EventDispatcher.getInstance().unregisterUiThreadListener(this,
+            "Gecko:CorruptAPK",
             "Update:Check",
             "Update:Download",
             "Update:Install",
@@ -2051,6 +2095,7 @@ public abstract class GeckoApp extends GeckoActivity
 
         getAppEventDispatcher().unregisterGeckoThreadListener(this,
             "Locale:Set",
+            "PrivateBrowsing:Data",
             null);
 
         getAppEventDispatcher().unregisterUiThreadListener(this,
@@ -2063,7 +2108,6 @@ public abstract class GeckoApp extends GeckoActivity
             "Mma:web_save_image",
             "Mma:web_save_media",
             "Permissions:Data",
-            "PrivateBrowsing:Data",
             "SystemUI:Visibility",
             "ToggleChrome:Focus",
             "ToggleChrome:Hide",
@@ -2102,6 +2146,10 @@ public abstract class GeckoApp extends GeckoActivity
         final String message = getString(R.string.unsupported_sdk_version,
                 HardwareUtils.getRealAbi(), Integer.toString(Build.VERSION.SDK_INT));
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    private void showCorruptAPKError() {
+        Toast.makeText(this, getString(R.string.corrupt_apk), Toast.LENGTH_LONG).show();
     }
 
     // Get a temporary directory, may return null

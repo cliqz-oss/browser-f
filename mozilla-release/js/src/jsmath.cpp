@@ -14,32 +14,28 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Unused.h"
+#include "mozilla/WrappingOperations.h"
 
 #include <algorithm>  // for std::max
 #include <fcntl.h>
-
 #ifdef XP_UNIX
 # include <unistd.h>
 #endif
 
 #include "fdlibm.h"
-
-#ifdef XP_WIN
-# include "jswin.h"
-#endif
-
 #include "jsapi.h"
-#include "jsatom.h"
-#include "jscntxt.h"
-#include "jscompartment.h"
 #include "jslibmath.h"
 #include "jstypes.h"
 
 #include "jit/InlinableNatives.h"
 #include "js/Class.h"
+#include "util/Windows.h"
+#include "vm/JSAtom.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/Time.h"
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 
 #if defined(XP_WIN)
 // #define needed to link in RtlGenRandom(), a.k.a. SystemFunction036.  See the
@@ -119,6 +115,7 @@ using mozilla::IsNegative;
 using mozilla::IsNegativeZero;
 using mozilla::PositiveInfinity;
 using mozilla::NegativeInfinity;
+using mozilla::WrappingMultiply;
 using JS::ToNumber;
 using JS::GenericNaN;
 
@@ -487,16 +484,13 @@ js::math_floor(JSContext* cx, unsigned argc, Value* vp)
 bool
 js::math_imul_handle(JSContext* cx, HandleValue lhs, HandleValue rhs, MutableHandleValue res)
 {
-    uint32_t a = 0, b = 0;
-    if (!lhs.isUndefined() && !ToUint32(cx, lhs, &a))
+    int32_t a = 0, b = 0;
+    if (!lhs.isUndefined() && !ToInt32(cx, lhs, &a))
         return false;
-    if (!rhs.isUndefined() && !ToUint32(cx, rhs, &b))
+    if (!rhs.isUndefined() && !ToInt32(cx, rhs, &b))
         return false;
 
-    uint32_t product = a * b;
-    res.setInt32(product > INT32_MAX
-                 ? int32_t(INT32_MIN + (product - INT32_MAX - 1))
-                 : int32_t(product));
+    res.setInt32(WrappingMultiply(a, b));
     return true;
 }
 
@@ -658,10 +652,10 @@ js::minmax_impl(JSContext* cx, bool max, HandleValue a, HandleValue b, MutableHa
 }
 
 double
-js::powi(double x, int y)
+js::powi(double x, int32_t y)
 {
     AutoUnsafeCallWithABI unsafe;
-    unsigned n = (y < 0) ? -y : y;
+    uint32_t n = Abs(y);
     double m = x;
     double p = 1;
     while (true) {
@@ -1439,7 +1433,6 @@ js::math_cbrt(JSContext* cx, unsigned argc, Value* vp)
     return math_function<math_cbrt_impl>(cx, argc, vp);
 }
 
-#if JS_HAS_TOSOURCE
 static bool
 math_toSource(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -1447,12 +1440,9 @@ math_toSource(JSContext* cx, unsigned argc, Value* vp)
     args.rval().setString(cx->names().Math);
     return true;
 }
-#endif
 
 static const JSFunctionSpec math_static_methods[] = {
-#if JS_HAS_TOSOURCE
     JS_FN(js_toSource_str,  math_toSource,        0, 0),
-#endif
     JS_INLINABLE_FN("abs",    math_abs,             1, 0, MathAbs),
     JS_INLINABLE_FN("acos",   math_acos,            1, 0, MathACos),
     JS_INLINABLE_FN("asin",   math_asin,            1, 0, MathASin),

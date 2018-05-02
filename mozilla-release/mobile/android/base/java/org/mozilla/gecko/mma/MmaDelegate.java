@@ -23,9 +23,9 @@ import org.mozilla.gecko.PrefsHelper;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.Tab;
 import org.mozilla.gecko.Tabs;
+import org.mozilla.gecko.activitystream.homepanel.ActivityStreamConfiguration;
 import org.mozilla.gecko.fxa.FirefoxAccounts;
 import org.mozilla.gecko.preferences.GeckoPreferences;
-import org.mozilla.gecko.push.PushManager;
 import org.mozilla.gecko.switchboard.SwitchBoard;
 import org.mozilla.gecko.util.ContextUtils;
 
@@ -47,6 +47,7 @@ public class MmaDelegate {
     public static final String SAVED_LOGIN_AND_PASSWORD = "E_Saved_Login_And_Password";
     public static final String LAUNCH_BUT_NOT_DEFAULT_BROWSER = "E_Launch_But_Not_Default_Browser";
     public static final String LAUNCH_BROWSER = "E_Launch_Browser";
+    public static final String RESUMED_FROM_BACKGROUND = "E_Resumed_From_Background";
     public static final String NEW_TAB = "E_Opened_New_Tab";
     public static final String DISMISS_ONBOARDING = "E_Dismiss_Onboarding";
 
@@ -56,6 +57,7 @@ public class MmaDelegate {
     public static final String USER_ATT_POCKET_INSTALLED = "Pocket Installed";
     public static final String USER_ATT_DEFAULT_BROWSER = "Default Browser";
     public static final String USER_ATT_SIGNED_IN = "Signed In Sync";
+    public static final String USER_ATT_POCKET_TOP_SITES = "Pocket in Top Sites";
 
     public static final String PACKAGE_NAME_KLAR = "org.mozilla.klar";
     public static final String PACKAGE_NAME_FOCUS = "org.mozilla.focus";
@@ -75,7 +77,6 @@ public class MmaDelegate {
         // we gather the information here then pass to mmaHelper.init()
         // Note that generateUserAttribute always return a non null HashMap.
         final Map<String, Object> attributes = gatherUserAttributes(activity);
-        mmaHelper.setGcmSenderId(PushManager.getSenderIds());
         final String deviceId = getDeviceId(activity);
         mmaHelper.setDeviceId(deviceId);
         PrefsHelper.setPref(GeckoPreferences.PREFS_MMA_DEVICE_ID, deviceId);
@@ -104,6 +105,7 @@ public class MmaDelegate {
         attributes.put(USER_ATT_POCKET_INSTALLED, ContextUtils.isPackageInstalled(context, PACKAGE_NAME_POCKET));
         attributes.put(USER_ATT_DEFAULT_BROWSER, isDefaultBrowser(context));
         attributes.put(USER_ATT_SIGNED_IN, FirefoxAccounts.firefoxAccountsExist(context));
+        attributes.put(USER_ATT_POCKET_TOP_SITES, ActivityStreamConfiguration.isPocketRecommendingTopSites(context));
 
         return attributes;
     }
@@ -159,10 +161,6 @@ public class MmaDelegate {
         } else {
             return false;
         }
-    }
-
-    public static String getMmaSenderId() {
-        return mmaHelper.getMmaSenderId();
     }
 
     private static String getDeviceId(Activity activity) {

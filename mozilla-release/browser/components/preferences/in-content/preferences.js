@@ -15,24 +15,11 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
-                                  "resource://gre/modules/ExtensionSettingsStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "formAutofillParent",
-                                  "resource://formautofill/FormAutofillParent.jsm");
-
-XPCOMUtils.defineLazyPreferenceGetter(this, "trackingprotectionUiEnabled",
-                                      "privacy.trackingprotection.ui.enabled");
+ChromeUtils.defineModuleGetter(this, "formAutofillParent",
+                               "resource://formautofill/FormAutofillParent.jsm");
 
 var gLastHash = "";
 
@@ -68,7 +55,11 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
-  register_module("paneSync", gSyncPane);
+  if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+    document.getElementById("category-sync").hidden = false;
+    document.getElementById("weavePrefsDeck").removeAttribute("data-hidden-from-search");
+    register_module("paneSync", gSyncPane);
+  }
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();
@@ -84,6 +75,8 @@ function init_all() {
   categories.addEventListener("mousedown", function() {
     this.removeAttribute("keyboard-navigation");
   });
+
+  maybeDisplayPoliciesNotice();
 
   window.addEventListener("hashchange", onHashChange);
   gotoPref();
@@ -313,9 +306,9 @@ function getClosestDisplayedHeader(element) {
 }
 
 function scrollContentTo(element) {
-  const SEARCH_CONTAINER_HEIGHT = document.querySelector(".search-container").clientHeight;
+  const STICKY_CONTAINER_HEIGHT = document.querySelector(".sticky-container").clientHeight;
   let mainContent = document.querySelector(".main-content");
-  let top = element.getBoundingClientRect().top - SEARCH_CONTAINER_HEIGHT;
+  let top = element.getBoundingClientRect().top - STICKY_CONTAINER_HEIGHT;
   mainContent.scroll({
     top,
     behavior: "smooth",
@@ -342,40 +335,41 @@ function internalPrefCategoryNameToFriendlyName(aName) {
 const CONFIRM_RESTART_PROMPT_RESTART_NOW = 0;
 const CONFIRM_RESTART_PROMPT_CANCEL = 1;
 const CONFIRM_RESTART_PROMPT_RESTART_LATER = 2;
-function confirmRestartPrompt(aRestartToEnable, aDefaultButtonIndex,
-                              aWantRevertAsCancelButton,
-                              aWantRestartLaterButton) {
-  let brandName = document.getElementById("bundleBrand").getString("brandShortName");
-  let bundle = document.getElementById("bundlePreferences");
-  let msg = bundle.getFormattedString(aRestartToEnable ?
-                                      "featureEnableRequiresRestart" :
-                                      "featureDisableRequiresRestart",
-                                      [brandName]);
-  let title = bundle.getFormattedString("shouldRestartTitle", [brandName]);
+async function confirmRestartPrompt(aRestartToEnable, aDefaultButtonIndex,
+                                    aWantRevertAsCancelButton,
+                                    aWantRestartLaterButton) {
+  let [
+    msg, title, restartButtonText, noRestartButtonText, restartLaterButtonText
+  ] = await document.l10n.formatValues([
+    [aRestartToEnable ?
+      "feature-enable-requires-restart" : "feature-disable-requires-restart"],
+    ["should-restart-title"],
+    ["should-restart-ok"],
+    ["cancel-no-restart-button"],
+    ["restart-later"],
+  ]);
 
   // Set up the first (index 0) button:
-  let button0Text = bundle.getFormattedString("okToRestartButton", [brandName]);
   let buttonFlags = (Services.prompt.BUTTON_POS_0 *
                      Services.prompt.BUTTON_TITLE_IS_STRING);
 
 
   // Set up the second (index 1) button:
-  let button1Text = null;
   if (aWantRevertAsCancelButton) {
-    button1Text = bundle.getString("revertNoRestartButton");
     buttonFlags += (Services.prompt.BUTTON_POS_1 *
                     Services.prompt.BUTTON_TITLE_IS_STRING);
   } else {
+    noRestartButtonText = null;
     buttonFlags += (Services.prompt.BUTTON_POS_1 *
                     Services.prompt.BUTTON_TITLE_CANCEL);
   }
 
   // Set up the third (index 2) button:
-  let button2Text = null;
   if (aWantRestartLaterButton) {
-    button2Text = bundle.getString("restartLater");
     buttonFlags += (Services.prompt.BUTTON_POS_2 *
                     Services.prompt.BUTTON_TITLE_IS_STRING);
+  } else {
+    restartLaterButtonText = null;
   }
 
   switch (aDefaultButtonIndex) {
@@ -393,8 +387,8 @@ function confirmRestartPrompt(aRestartToEnable, aDefaultButtonIndex,
   }
 
   let buttonIndex = Services.prompt.confirmEx(window, title, msg, buttonFlags,
-                                              button0Text, button1Text, button2Text,
-                                              null, {});
+                                              restartButtonText, noRestartButtonText,
+                                              restartLaterButtonText, null, {});
 
   // If we have the second confirmation dialog for restart, see if the user
   // cancels out at that point.
@@ -421,143 +415,8 @@ function appendSearchKeywords(aId, keywords) {
   element.setAttribute("searchkeywords", keywords.join(" "));
 }
 
-const PREF_SETTING_TYPE = "prefs";
-
-let extensionControlledContentIds = {
-  "privacy.containers": "browserContainersExtensionContent",
-  "homepage_override": "browserHomePageExtensionContent",
-  "newTabURL": "browserNewTabExtensionContent",
-  "defaultSearch": "browserDefaultSearchExtensionContent",
-  get "websites.trackingProtectionMode"() {
-    return {
-      button: "trackingProtectionExtensionContentButton",
-      section:
-        trackingprotectionUiEnabled ?
-          "trackingProtectionExtensionContentLabel" :
-          "trackingProtectionPBMExtensionContentLabel",
-    };
+function maybeDisplayPoliciesNotice() {
+  if (Services.policies.status == Services.policies.ACTIVE) {
+    document.getElementById("policies-container").removeAttribute("hidden");
   }
-};
-
-let extensionControlledIds = {};
-
-/**
-  * Check if a pref is being managed by an extension.
-  */
-async function getControllingExtensionInfo(type, settingName) {
-  await ExtensionSettingsStore.initialize();
-  return ExtensionSettingsStore.getSetting(type, settingName);
-}
-
-function getControllingExtensionEls(settingName) {
-  let idInfo = extensionControlledContentIds[settingName];
-  let section = document.getElementById(idInfo.section || idInfo);
-  let button = idInfo.button ?
-    document.getElementById(idInfo.button) :
-    section.querySelector("button");
-  return {
-    section,
-    button,
-    description: section.querySelector("description"),
-  };
-}
-
-async function handleControllingExtension(type, settingName) {
-  let info = await getControllingExtensionInfo(type, settingName);
-  let addon = info && info.id
-    && await AddonManager.getAddonByID(info.id);
-
-  // Sometimes the ExtensionSettingsStore gets in a bad state where it thinks
-  // an extension is controlling a setting but the extension has been uninstalled
-  // outside of the regular lifecycle. If the extension isn't currently installed
-  // then we should treat the setting as not being controlled.
-  // See https://bugzilla.mozilla.org/show_bug.cgi?id=1411046 for an example.
-  if (addon) {
-    extensionControlledIds[settingName] = info.id;
-    showControllingExtension(settingName, addon);
-  } else {
-    let elements = getControllingExtensionEls(settingName);
-    if (extensionControlledIds[settingName]
-        && !document.hidden
-        && elements.button) {
-      showEnableExtensionMessage(settingName);
-    } else {
-      hideControllingExtension(settingName);
-    }
-    delete extensionControlledIds[settingName];
-  }
-
-  return !!addon;
-}
-
-async function showControllingExtension(settingName, addon) {
-  // Tell the user what extension is controlling the setting.
-  let elements = getControllingExtensionEls(settingName);
-
-  elements.section.classList.remove("extension-controlled-disabled");
-  const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
-  let stringParts = document
-    .getElementById("bundlePreferences")
-    .getString(`extensionControlled.${settingName}`)
-    .split("%S");
-  let description = elements.description;
-
-  // Remove the old content from the description.
-  while (description.firstChild) {
-    description.firstChild.remove();
-  }
-
-  // Populate the description.
-  description.appendChild(document.createTextNode(stringParts[0]));
-  let image = document.createElement("image");
-  image.setAttribute("src", addon.iconURL || defaultIcon);
-  image.classList.add("extension-controlled-icon");
-  description.appendChild(image);
-  description.appendChild(document.createTextNode(` ${addon.name}`));
-  description.appendChild(document.createTextNode(stringParts[1]));
-
-  if (elements.button) {
-    elements.button.hidden = false;
-  }
-
-  // Show the controlling extension row and hide the old label.
-  elements.section.hidden = false;
-}
-
-function hideControllingExtension(settingName) {
-  let elements = getControllingExtensionEls(settingName);
-  elements.section.hidden = true;
-  if (elements.button) {
-    elements.button.hidden = true;
-  }
-}
-
-function showEnableExtensionMessage(settingName) {
-  let elements = getControllingExtensionEls(settingName);
-
-  elements.button.hidden = true;
-  elements.section.classList.add("extension-controlled-disabled");
-  let icon = url => `<image src="${url}" class="extension-controlled-icon"/>`;
-  let addonIcon = icon("chrome://mozapps/skin/extensions/extensionGeneric-16.svg");
-  let toolbarIcon = icon("chrome://browser/skin/menu.svg");
-  let message = document
-    .getElementById("bundlePreferences")
-    .getFormattedString("extensionControlled.enable", [addonIcon, toolbarIcon]);
-  // eslint-disable-next-line no-unsanitized/property
-  elements.description.innerHTML = message;
-  let dismissButton = document.createElement("image");
-  dismissButton.setAttribute("class", "extension-controlled-icon close-icon");
-  dismissButton.addEventListener("click", function dismissHandler() {
-    hideControllingExtension(settingName);
-    dismissButton.removeEventListener("click", dismissHandler);
-  });
-  elements.description.appendChild(dismissButton);
-}
-
-function makeDisableControllingExtension(type, settingName) {
-  return async function disableExtension() {
-    let {id} = await getControllingExtensionInfo(type, settingName);
-    let addon = await AddonManager.getAddonByID(id);
-    addon.userDisabled = true;
-  };
 }

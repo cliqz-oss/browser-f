@@ -1,7 +1,7 @@
 use mozprofile::preferences::Pref;
 
 lazy_static! {
-    pub static ref DEFAULT: [(&'static str, Pref); 80] = [
+    pub static ref DEFAULT: [(&'static str, Pref); 78] = [
         // Disable automatic downloading of new releases
         ("app.update.auto", Pref::new(false)),
 
@@ -29,14 +29,6 @@ lazy_static! {
 
         // Implicitly accept license
         ("browser.EULA.override", Pref::new(true)),
-
-        // use about:blank as new tab page
-        ("browser.newtabpage.enabled", Pref::new(false)),
-
-        // Assume the about:newtab pages intro panels have been shown
-        // to not depend on which test runs first and happens to open
-        // about:newtab
-        ("browser.newtabpage.introShown", Pref::new(true)),
 
         // Never start the browser in offline mode
         ("browser.offline", Pref::new(false)),
@@ -152,7 +144,7 @@ lazy_static! {
         ("extensions.installDistroAddons", Pref::new(false)),
 
         // Make sure Shield doesn't hit the network.
-        ("extensions.shield-recipe-client.api_url", Pref::new("")),
+        ("app.normandy.api_url", Pref::new("")),
 
         ("extensions.showMismatchUI", Pref::new(false)),
 

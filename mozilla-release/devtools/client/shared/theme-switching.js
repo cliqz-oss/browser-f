@@ -5,8 +5,7 @@
 /* eslint-env browser */
 "use strict";
 (function () {
-  const { utils: Cu } = Components;
-  const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+  const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const Services = require("Services");
   const { gDevTools } = require("devtools/client/framework/devtools");
   const { appendStyleSheet } = require("devtools/client/shared/stylesheet-utils");

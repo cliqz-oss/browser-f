@@ -6,6 +6,8 @@
   width: 16px;
   height: 16px;
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 /**
@@ -60,7 +62,7 @@
 }
 
 .search-panel-input-value {
-  color: -moz-fieldtext;
+  color: var(--autocomplete-popup-color);
 }
 
 .search-panel-one-offs {
@@ -198,25 +200,30 @@
   list-style-image: none;
 }
 
-.search-panel-tree > .autocomplete-treebody::-moz-tree-cell {
-  border-top: none !important;
+.search-panel-tree {
+  background: transparent;
+  color: inherit;
 }
 
-.search-panel-tree > .autocomplete-treebody::-moz-tree-image {
-  padding-inline-start: 2px;
-  padding-inline-end: 2px;
+.search-panel-tree > .autocomplete-richlistitem {
+  padding: 1px;
+}
+
+.search-panel-tree > .autocomplete-richlistitem > .ac-type-icon {
+  display: -moz-box;
   width: 14px;
   height: 14px;
 }
 
-.search-panel-tree > .autocomplete-treebody::-moz-tree-image(fromhistory) {
+.search-panel-tree > .autocomplete-richlistitem[originaltype="fromhistory"] > .ac-type-icon {
   list-style-image: url("chrome://browser/skin/history.svg");
   -moz-context-properties: fill;
-  fill: graytext;
+  fill: currentColor;
+  fill-opacity: 0.6;
 }
 
-.search-panel-tree > .autocomplete-treebody::-moz-tree-image(fromhistory, selected) {
-  fill: HighlightText;
+.search-panel-tree > .autocomplete-richlistitem[originaltype="fromhistory"][selected] > .ac-type-icon {
+  fill-opacity: 1;
 }
 
 .search-setting-button {

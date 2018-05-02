@@ -8,7 +8,7 @@
 
 #include "nsGkAtoms.h"
 #include "nsLayoutUtils.h"
-#include "nsIDOMHTMLInputElement.h"
+#include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/LookAndFeel.h"
 #include "nsDeviceContext.h"
@@ -16,6 +16,7 @@
 #include "nsThemeConstants.h"
 
 using namespace mozilla;
+using mozilla::dom::HTMLInputElement;
 
 //#define FCF_NOISY
 
@@ -185,10 +186,8 @@ nsCheckboxRadioFrame::HandleEvent(nsPresContext* aPresContext,
                                   WidgetGUIEvent* aEvent,
                                   nsEventStatus* aEventStatus)
 {
-  // Check for user-input:none style
-  const nsStyleUserInterface* uiStyle = StyleUserInterface();
-  if (uiStyle->mUserInput == StyleUserInput::None ||
-      uiStyle->mUserInput == StyleUserInput::Disabled) {
+  // Check for disabled content so that selection works properly (?).
+  if (IsContentDisabled()) {
     return nsFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
   return NS_OK;
@@ -197,9 +196,9 @@ nsCheckboxRadioFrame::HandleEvent(nsPresContext* aPresContext,
 void
 nsCheckboxRadioFrame::GetCurrentCheckState(bool* aState)
 {
-  nsCOMPtr<nsIDOMHTMLInputElement> inputElement = do_QueryInterface(mContent);
+  HTMLInputElement* inputElement = HTMLInputElement::FromContent(mContent);
   if (inputElement) {
-    inputElement->GetChecked(aState);
+    *aState = inputElement->Checked();
   }
 }
 

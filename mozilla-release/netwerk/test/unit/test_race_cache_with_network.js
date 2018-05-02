@@ -4,9 +4,9 @@
 
 "use strict";
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var httpserver = new HttpServer();
 httpserver.start(-1);
@@ -16,7 +16,7 @@ function make_channel(url) {
   return NetUtil.newChannel({
     uri: url,
     loadUsingSystemPrincipal: true
-  }).QueryInterface(Components.interfaces.nsIHttpChannel);
+  }).QueryInterface(Ci.nsIHttpChannel);
 }
 
 let gResponseBody = "blahblah";
@@ -113,21 +113,21 @@ function *testSteps() {
 
   // Checks that delaying the response from the cache works.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(200);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(200);
   let startTime = Date.now();
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   yield undefined;
-  greater(Date.now() - startTime, 200, "Check that timer works properly");
+  greaterOrEqual(Date.now() - startTime, 200, "Check that timer works properly");
   equal(gResponseCounter, 3);
   equal(g200Counter, 1, "check number of 200 responses");
   equal(g304Counter, 2, "check number of 304 responses");
 
   // Checks that we can trigger the cache open immediately, even if the cache delay is set very high.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   do_timeout(50, function() {
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
   });
   yield undefined;
   equal(gResponseCounter, 4);
@@ -136,10 +136,10 @@ function *testSteps() {
 
   // Sets a high delay for the cache fetch, and triggers the network activity.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   // Trigger network after 50 ms.
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(50);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(50);
   yield undefined;
   equal(gResponseCounter, 5);
   equal(g200Counter, 2, "check number of 200 responses");
@@ -149,11 +149,11 @@ function *testSteps() {
   // While the network response is produced, we trigger the cache fetch.
   // Because the network response was the first, a non-conditional request is sent.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   do_timeout(50, function() {
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
-    executeSoon(() => { channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry(); });
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
+    executeSoon(() => { channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry(); });
   });
   yield undefined;
   equal(gResponseCounter, 6);
@@ -162,11 +162,11 @@ function *testSteps() {
 
   // Triggers cache open before triggering network.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   do_timeout(50, function() {
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
   });
   yield undefined;
   equal(gResponseCounter, 7);
@@ -192,10 +192,10 @@ function *testSteps() {
   // Cache times out, so we trigger the network
   gIsFromCache = 0;
   var channel = make_channel("http://localhost:" + PORT + "/rcwn_cached");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   // trigger network after 50 ms
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(50);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(50);
   yield undefined;
   equal(gResponseCounter, 10);
   equal(gIsFromCache, 0, "should be from the network");
@@ -204,11 +204,11 @@ function *testSteps() {
 
   // Cache callback comes back right after network is triggered.
   var channel = make_channel("http://localhost:" + PORT + "/rcwn_cached");
-  channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+  channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
   channel.asyncOpen2(new ChannelListener(checkContent, null));
   do_timeout(50, function() {
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(0);
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
   });
   yield undefined;
   equal(gResponseCounter, 11);
@@ -222,14 +222,14 @@ function *testSteps() {
   gIsFromCache = 0;
   for (var i = 0; i < 50; i++) {
     var channel = make_channel("http://localhost:" + PORT + "/rcwn_cached");
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_delayCacheEntryOpeningBy(100000);
     channel.asyncOpen2(new ChannelListener(checkContent, null));
-    channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerNetwork(10);
+    channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerNetwork(10);
     // This may be racy. The delay was chosen because the distribution of net-cache
     // results was around 25-25 on my machine.
     do_timeout(i*100, function() {
       try {
-        channel.QueryInterface(Components.interfaces.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
+        channel.QueryInterface(Ci.nsIRaceCacheWithNetwork).test_triggerDelayedOpenCacheEntry();
       } catch (e) {}
 
     });

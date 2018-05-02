@@ -21,6 +21,8 @@ interface CredentialsContainer {
   Promise<Credential?> create(optional CredentialCreationOptions options);
   [Throws]
   Promise<Credential> store(Credential credential);
+  [Throws]
+  Promise<void> preventSilentAccess();
 };
 
 dictionary CredentialRequestOptions {
@@ -29,6 +31,6 @@ dictionary CredentialRequestOptions {
 };
 
 dictionary CredentialCreationOptions {
-  MakePublicKeyCredentialOptions publicKey;
+  PublicKeyCredentialCreationOptions publicKey;
   AbortSignal signal;
 };

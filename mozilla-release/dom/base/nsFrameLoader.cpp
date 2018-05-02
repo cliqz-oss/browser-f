@@ -20,7 +20,6 @@
 #include "nsIContentInlines.h"
 #include "nsIContentViewer.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsPIDOMWindow.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebProgress.h"
@@ -43,13 +42,13 @@
 #include "nsError.h"
 #include "nsISHistory.h"
 #include "nsISHistoryInternal.h"
-#include "nsIDOMHTMLDocument.h"
 #include "nsIXULWindow.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsISHistory.h"
 #include "NullPrincipal.h"
 #include "nsIScriptError.h"
 #include "nsGlobalWindow.h"
+#include "nsHTMLDocument.h"
 #include "nsPIWindowRoot.h"
 #include "nsLayoutUtils.h"
 #include "nsMappedAttributes.h"
@@ -410,8 +409,6 @@ nsFrameLoader::FireWillChangeProcessEvent()
     return nullptr;
   }
   JSContext* cx = jsapi.cx();
-  GlobalObject global(cx, mOwnerContent->GetOwnerGlobal()->GetGlobalJSObject());
-  MOZ_ASSERT(!global.Failed());
 
   // Set our mBrowserChangingProcessBlockers property to refer to the blockers
   // list. We will synchronously dispatch a DOM event to collect this list of
@@ -434,7 +431,7 @@ nsFrameLoader::FireWillChangeProcessEvent()
   mBrowserChangingProcessBlockers = nullptr;
 
   ErrorResult rv;
-  RefPtr<Promise> allPromise = Promise::All(global, blockers, rv);
+  RefPtr<Promise> allPromise = Promise::All(cx, blockers, rv);
   return allPromise.forget();
 }
 
@@ -898,20 +895,23 @@ nsFrameLoader::Show(int32_t marginWidth, int32_t marginHeight,
   // https://bugzilla.mozilla.org/show_bug.cgi?id=284245
   presShell = mDocShell->GetPresShell();
   if (presShell) {
-    nsCOMPtr<nsIDOMHTMLDocument> doc =
-      do_QueryInterface(presShell->GetDocument());
+    nsIDocument* doc = presShell->GetDocument();
+    nsHTMLDocument* htmlDoc = doc ? doc->AsHTMLDocument() : nullptr;
 
-    if (doc) {
+    if (htmlDoc) {
       nsAutoString designMode;
-      doc->GetDesignMode(designMode);
+      htmlDoc->GetDesignMode(designMode);
 
       if (designMode.EqualsLiteral("on")) {
         // Hold on to the editor object to let the document reattach to the
         // same editor object, instead of creating a new one.
         RefPtr<HTMLEditor> htmlEditor = mDocShell->GetHTMLEditor();
         Unused << htmlEditor;
-        doc->SetDesignMode(NS_LITERAL_STRING("off"));
-        doc->SetDesignMode(NS_LITERAL_STRING("on"));
+        htmlDoc->SetDesignMode(NS_LITERAL_STRING("off"), Nothing(),
+                               IgnoreErrors());
+
+        htmlDoc->SetDesignMode(NS_LITERAL_STRING("on"), Nothing(),
+                               IgnoreErrors());
       } else {
         // Re-initialize the presentation for contenteditable documents
         bool editable = false,
@@ -2928,35 +2928,6 @@ nsFrameLoader::ActivateFrameEvent(const nsAString& aType,
   return NS_ERROR_FAILURE;
 }
 
-void
-nsFrameLoader::SendCrossProcessKeyEvent(const nsAString& aType,
-                                        int32_t aKeyCode,
-                                        int32_t aCharCode,
-                                        int32_t aModifiers,
-                                        bool aPreventDefault,
-                                        ErrorResult& aRv)
-{
-  nsresult rv = SendCrossProcessKeyEvent(aType, aKeyCode, aCharCode, aModifiers, aPreventDefault);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-  }
-}
-
-NS_IMETHODIMP
-nsFrameLoader::SendCrossProcessKeyEvent(const nsAString& aType,
-                                        int32_t aKeyCode,
-                                        int32_t aCharCode,
-                                        int32_t aModifiers,
-                                        bool aPreventDefault)
-{
-  if (mRemoteBrowser) {
-    mRemoteBrowser->SendKeyEvent(aType, aKeyCode, aCharCode, aModifiers,
-                                 aPreventDefault);
-    return NS_OK;
-  }
-  return NS_ERROR_FAILURE;
-}
-
 nsresult
 nsFrameLoader::CreateStaticClone(nsIFrameLoader* aDest)
 {
@@ -2979,9 +2950,8 @@ nsFrameLoader::CreateStaticClone(nsIFrameLoader* aDest)
   NS_ENSURE_STATE(doc);
 
   nsCOMPtr<nsIDocument> clonedDoc = doc->CreateStaticClone(dest->mDocShell);
-  nsCOMPtr<nsIDOMDocument> clonedDOMDoc = do_QueryInterface(clonedDoc);
 
-  viewer->SetDOMDocument(clonedDOMDoc);
+  viewer->SetDocument(clonedDoc);
   return NS_OK;
 }
 
@@ -3244,11 +3214,10 @@ nsFrameLoader::ApplySandboxFlags(uint32_t sandboxFlags)
 }
 
 /* virtual */ void
-nsFrameLoader::AttributeChanged(nsIDocument* aDocument,
-                                mozilla::dom::Element* aElement,
-                                int32_t      aNameSpaceID,
-                                nsAtom*     aAttribute,
-                                int32_t      aModType,
+nsFrameLoader::AttributeChanged(mozilla::dom::Element* aElement,
+                                int32_t aNameSpaceID,
+                                nsAtom* aAttribute,
+                                int32_t aModType,
                                 const nsAttrValue* aOldValue)
 {
   MOZ_ASSERT(mObservingOwnerContent);

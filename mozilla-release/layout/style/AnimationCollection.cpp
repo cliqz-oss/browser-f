@@ -116,23 +116,7 @@ AnimationCollection<AnimationType>::GetOrCreateAnimationCollection(
   return collection;
 }
 
-template <class AnimationType>
-/* static */ nsString
-AnimationCollection<AnimationType>::PseudoTypeAsString(
-  CSSPseudoElementType aPseudoType)
-{
-  switch (aPseudoType) {
-    case CSSPseudoElementType::before:
-      return NS_LITERAL_STRING("::before");
-    case CSSPseudoElementType::after:
-      return NS_LITERAL_STRING("::after");
-    default:
-      MOZ_ASSERT(aPseudoType == CSSPseudoElementType::NotPseudo,
-                 "Unexpected pseudo type");
-      return EmptyString();
-  }
-}
-
+#ifdef MOZ_OLD_STYLE
 template <class AnimationType>
 void
 AnimationCollection<AnimationType>::UpdateCheckGeneration(
@@ -140,6 +124,7 @@ AnimationCollection<AnimationType>::UpdateCheckGeneration(
 {
   mCheckGeneration = aPresContext->RestyleManager()->GetAnimationGeneration();
 }
+#endif
 
 template<class AnimationType>
 /*static*/ nsAtom*

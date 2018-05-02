@@ -29,7 +29,6 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "openPopup@chrome://global/content/bindings/autocomplete.xml",
       "set_popupOpen@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 1, // This number should only ever go down - never up.
   },
 
   {
@@ -37,7 +36,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "onxblpopupshown@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 5, // This number should only ever go down - never up.
+    maxCount: 5, // This number should only ever go down - never up.
   },
 
   {
@@ -45,7 +44,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "_invalidate/this._adjustHeightTimeout<@chrome://global/content/bindings/autocomplete.xml",
     ],
-    times: 3, // This number should only ever go down - never up.
+    maxCount: 6, // This number should only ever go down - never up.
   },
 
   {
@@ -57,7 +56,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "_invalidate@chrome://global/content/bindings/autocomplete.xml",
       "invalidate@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 36, // This number should only ever go down - never up.
+    maxCount: 36, // This number should only ever go down - never up.
   },
 
   {
@@ -69,7 +68,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "openPopup@chrome://global/content/bindings/autocomplete.xml",
       "set_popupOpen@chrome://global/content/bindings/autocomplete.xml",
     ],
-    times: 6, // This number should only ever go down - never up.
+    maxCount: 6, // This number should only ever go down - never up.
   },
 
   // Bug 1359989
@@ -91,7 +90,7 @@ const EXPECTED_REFLOWS_SECOND_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "onxblpopupshown@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 3, // This number should only ever go down - never up.
+    maxCount: 3, // This number should only ever go down - never up.
   },
 
   {
@@ -99,7 +98,7 @@ const EXPECTED_REFLOWS_SECOND_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "_invalidate/this._adjustHeightTimeout<@chrome://global/content/bindings/autocomplete.xml",
     ],
-    times: 3, // This number should only ever go down - never up.
+    maxCount: 6, // This number should only ever go down - never up.
   },
 
   {
@@ -111,7 +110,7 @@ const EXPECTED_REFLOWS_SECOND_OPEN = [
       "_invalidate@chrome://global/content/bindings/autocomplete.xml",
       "invalidate@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 24, // This number should only ever go down - never up.
+    maxCount: 24, // This number should only ever go down - never up.
   },
 
   // Bug 1359989
@@ -138,8 +137,7 @@ add_task(async function setup() {
  * with the default values in Places.
  */
 add_task(async function() {
-  let win = await BrowserTestUtils.openNewBrowserWindow();
-  await ensureNoPreloadedBrowser(win);
+  let win = await prepareSettledWindow();
 
   let URLBar = win.gURLBar;
   let popup = URLBar.popup;
@@ -149,6 +147,7 @@ add_task(async function() {
   let testFn = async function(dirtyFrameFn) {
     let oldInvalidate = popup.invalidate.bind(popup);
     let oldResultsAdded = popup.onResultsAdded.bind(popup);
+    let oldSetTimeout = win.setTimeout;
 
     // We need to invalidate the frame tree outside of the normal
     // mechanism since invalidations and result additions to the
@@ -164,13 +163,20 @@ add_task(async function() {
       oldResultsAdded();
     };
 
+    win.setTimeout = (fn, ms) => {
+      return oldSetTimeout(() => {
+        dirtyFrameFn();
+        fn();
+      }, ms);
+    };
+
     URLBar.controller.startSearch(URLBar.value);
     await BrowserTestUtils.waitForEvent(URLBar.popup, "popupshown");
     await BrowserTestUtils.waitForCondition(() => {
       return URLBar.controller.searchStatus >=
         Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH;
     });
-    let matchCount = URLBar.popup._matchCount;
+    let matchCount = URLBar.popup.matchCount;
     await BrowserTestUtils.waitForCondition(() => {
       return URLBar.popup.richlistbox.childNodes.length == matchCount;
     });

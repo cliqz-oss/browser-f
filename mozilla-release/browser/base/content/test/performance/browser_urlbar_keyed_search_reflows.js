@@ -29,7 +29,6 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "openPopup@chrome://global/content/bindings/autocomplete.xml",
       "set_popupOpen@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 1, // This number should only ever go down - never up.
   },
 
   {
@@ -37,7 +36,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "onxblpopupshown@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 5, // This number should only ever go down - never up.
+    maxCount: 5, // This number should only ever go down - never up.
   },
 
   {
@@ -45,8 +44,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
       "_invalidate/this._adjustHeightTimeout<@chrome://global/content/bindings/autocomplete.xml",
     ],
-    minTimes: 39, // This number should only ever go down - never up.
-    times: 51, // This number should only ever go down - never up.
+    maxCount: 51, // This number should only ever go down - never up.
   },
 
   {
@@ -58,7 +56,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "_invalidate@chrome://global/content/bindings/autocomplete.xml",
       "invalidate@chrome://global/content/bindings/autocomplete.xml"
     ],
-    times: 60, // This number should only ever go down - never up.
+    maxCount: 60, // This number should only ever go down - never up.
   },
 
   {
@@ -70,7 +68,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "openPopup@chrome://global/content/bindings/autocomplete.xml",
       "set_popupOpen@chrome://global/content/bindings/autocomplete.xml",
     ],
-    times: 6, // This number should only ever go down - never up.
+    maxCount: 6, // This number should only ever go down - never up.
   },
 
   // Bug 1359989
@@ -121,8 +119,7 @@ add_task(async function setup() {
  * typing into the URL bar with the default values in Places.
  */
 add_task(async function() {
-  let win = await BrowserTestUtils.openNewBrowserWindow();
-  await ensureNoPreloadedBrowser(win);
+  let win = await prepareSettledWindow();
 
   let URLBar = win.gURLBar;
   let popup = URLBar.popup;

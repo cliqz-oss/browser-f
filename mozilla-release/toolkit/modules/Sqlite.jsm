@@ -4,17 +4,15 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Sqlite",
 ];
-
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
 // The time to wait before considering a transaction stuck and rejecting it.
 const TRANSACTIONS_QUEUE_TIMEOUT_MS = 240000; // 4 minutes
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
@@ -24,7 +22,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   Task: "resource://gre/modules/Task.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
-  console: "resource://gre/modules/Console.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(this, "FinalizationWitnessService",
@@ -945,7 +942,9 @@ function openConnection(options) {
     Services.storage.openAsyncDatabase(file, dbOptions, (status, connection) => {
       if (!connection) {
         log.warn(`Could not open connection to ${path}: ${status}`);
-        reject(new Error(`Could not open connection to ${path}: ${status}`));
+        let error = new Error(`Could not open connection to ${path}: ${status}`);
+        error.status = status;
+        reject(error);
         return;
       }
       log.info("Connection opened");
@@ -1177,7 +1176,7 @@ OpenedConnection.prototype = Object.freeze({
         if (result == null) {
           return 0;
         }
-        return JSON.stringify(result[0].getInt32(0));
+        return result[0].getInt32(0);
       }
     );
   },
@@ -1375,7 +1374,7 @@ OpenedConnection.prototype = Object.freeze({
    *        One of the TRANSACTION_* constants attached to this type.
    */
   executeTransaction(func, type = this.TRANSACTION_DEFERRED) {
-    if (this.TRANSACTION_TYPES.indexOf(type) == -1) {
+    if (!this.TRANSACTION_TYPES.includes(type)) {
       throw new Error("Unknown transaction type: " + type);
     }
 
@@ -1455,7 +1454,7 @@ OpenedConnection.prototype = Object.freeze({
   },
 });
 
-this.Sqlite = {
+var Sqlite = {
   openConnection,
   cloneStorageConnection,
   wrapStorageConnection,

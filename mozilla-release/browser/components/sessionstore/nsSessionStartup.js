@@ -31,22 +31,16 @@
 
 /* :::::::: Constants and Helpers ::::::::::::::: */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionFile",
+ChromeUtils.defineModuleGetter(this, "SessionFile",
   "resource:///modules/sessionstore/SessionFile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "StartupPerformance",
+ChromeUtils.defineModuleGetter(this, "StartupPerformance",
   "resource:///modules/sessionstore/StartupPerformance.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CrashMonitor",
+ChromeUtils.defineModuleGetter(this, "CrashMonitor",
   "resource://gre/modules/CrashMonitor.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 const STATE_RUNNING_STR = "running";
@@ -300,6 +294,10 @@ SessionStartup.prototype = {
    * @returns bool
    */
   isAutomaticRestoreEnabled() {
+    if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
+      return false;
+    }
+
     return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
            Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
   },
@@ -314,20 +312,21 @@ SessionStartup.prototype = {
   },
 
   /**
-   * Returns a promise that resolves to a boolean, indicating whether we will
-   * restore a session that ends up replacing the homepage. True guarantees
-   * that we'll restore a session; false means that we /probably/ won't do so.
+   * Returns a boolean or a promise that resolves to a boolean, indicating
+   * whether we will restore a session that ends up replacing the homepage.
+   * True guarantees that we'll restore a session; false means that we
+   * /probably/ won't do so.
    * The browser uses this to avoid unnecessarily loading the homepage when
    * restoring a session.
    */
-  get willOverrideHomepagePromise() {
+  get willOverrideHomepage() {
     // If the session file hasn't been read yet and resuming the session isn't
     // enabled via prefs, go ahead and load the homepage. We may still replace
     // it when recovering from a crash, which we'll only know after reading the
     // session file, but waiting for that would delay loading the homepage in
     // the non-crash case.
     if (!this._initialState && !this._resumeSessionEnabled) {
-      return Promise.resolve(false);
+      return false;
     }
 
     return new Promise(resolve => {

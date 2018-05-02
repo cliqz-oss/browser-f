@@ -3,13 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Cc, Ci, Cu } = require("chrome");
+const { Cu } = require("chrome");
 const Services = require("Services");
 
 loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 loader.lazyRequireGetter(this, "DevToolsUtils", "devtools/shared/DevToolsUtils");
 loader.lazyRequireGetter(this, "DeferredTask", "resource://gre/modules/DeferredTask.jsm", true);
-loader.lazyRequireGetter(this, "Task", "devtools/shared/task", true);
 
 // Events piped from system observers to Profiler instances.
 const PROFILER_SYSTEM_EVENTS = [
@@ -20,10 +19,6 @@ const PROFILER_SYSTEM_EVENTS = [
 
 // How often the "profiler-status" is emitted by default (in ms)
 const BUFFER_STATUS_INTERVAL_DEFAULT = 5000;
-
-loader.lazyGetter(this, "nsIProfilerModule", () => {
-  return Cc["@mozilla.org/tools/profiler;1"].getService(Ci.nsIProfiler);
-});
 
 var DEFAULT_PROFILER_OPTIONS = {
   // When using the DevTools Performance Tools, this will be overridden
@@ -110,10 +105,10 @@ const ProfilerManager = (function () {
 
       // The start time should be before any samples we might be
       // interested in.
-      let currentTime = nsIProfilerModule.getElapsedTime();
+      let currentTime = Services.profiler.getElapsedTime();
 
       try {
-        nsIProfilerModule.StartProfiler(
+        Services.profiler.StartProfiler(
           config.entries,
           config.interval,
           config.features,
@@ -147,7 +142,7 @@ const ProfilerManager = (function () {
       // actually started it. This is to prevent stopping the profiler initiated
       // by some other code, like Talos.
       if (this.length <= 1 && this.started) {
-        nsIProfilerModule.StopProfiler();
+        Services.profiler.StopProfiler();
         this.started = false;
       }
       this._updateProfilerStatusPolling();
@@ -191,10 +186,10 @@ const ProfilerManager = (function () {
     getProfile: function (options) {
       let startTime = options.startTime || 0;
       let profile = options.stringify ?
-        nsIProfilerModule.GetProfile(startTime) :
-        nsIProfilerModule.getProfileData(startTime);
+        Services.profiler.GetProfile(startTime) :
+        Services.profiler.getProfileData(startTime);
 
-      return { profile: profile, currentTime: nsIProfilerModule.getElapsedTime() };
+      return { profile: profile, currentTime: Services.profiler.getElapsedTime() };
     },
 
     /**
@@ -205,7 +200,7 @@ const ProfilerManager = (function () {
      * @return {object}
      */
     getFeatures: function () {
-      return { features: nsIProfilerModule.GetFeatures([]) };
+      return { features: Services.profiler.GetFeatures([]) };
     },
 
     /**
@@ -217,7 +212,7 @@ const ProfilerManager = (function () {
      */
     getBufferInfo: function () {
       let position = {}, totalSize = {}, generation = {};
-      nsIProfilerModule.GetBufferInfo(position, totalSize, generation);
+      Services.profiler.GetBufferInfo(position, totalSize, generation);
       return {
         position: position.value,
         totalSize: totalSize.value,
@@ -242,8 +237,8 @@ const ProfilerManager = (function () {
      * @return {object}
      */
     isActive: function () {
-      let isActive = nsIProfilerModule.IsActive();
-      let elapsedTime = isActive ? nsIProfilerModule.getElapsedTime() : undefined;
+      let isActive = Services.profiler.IsActive();
+      let elapsedTime = isActive ? Services.profiler.getElapsedTime() : undefined;
       let { position, totalSize, generation } = this.getBufferInfo();
       return {
         isActive,
@@ -261,7 +256,7 @@ const ProfilerManager = (function () {
      */
     get sharedLibraries() {
       return {
-        sharedLibraries: nsIProfilerModule.sharedLibraries
+        sharedLibraries: Services.profiler.sharedLibraries
       };
     },
 
@@ -392,7 +387,7 @@ const ProfilerManager = (function () {
      * if there are subscribers and if the profiler is current recording.
      */
     _updateProfilerStatusPolling: function () {
-      if (this._profilerStatusSubscribers > 0 && nsIProfilerModule.IsActive()) {
+      if (this._profilerStatusSubscribers > 0 && Services.profiler.IsActive()) {
         if (!this._poller) {
           this._poller = new DeferredTask(this._emitProfilerStatus.bind(this),
                                           this._profilerStatusInterval, 0);
@@ -543,7 +538,7 @@ class Profiler {
    * @return boolean
    */
   static canProfile() {
-    return nsIProfilerModule.CanProfile();
+    return Services.profiler.CanProfile();
   }
 }
 

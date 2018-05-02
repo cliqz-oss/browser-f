@@ -2,8 +2,8 @@
 // Private channel test
 //
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver = new HttpServer();
 var testpath = "/simple";
@@ -45,7 +45,7 @@ function serverHandler(metadata, response) {
 function checkRequest(request, data, context) {
   get_device_entry_count("disk", null, function(count) {
     Assert.equal(count, 0)
-    get_device_entry_count("disk", LoadContextInfo.private, function(count) {
+    get_device_entry_count("disk", Services.loadContextInfo.private, function(count) {
       Assert.equal(count, 1);
       httpserver.stop(do_test_finished);
     });

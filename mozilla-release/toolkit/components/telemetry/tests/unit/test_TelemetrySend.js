@@ -6,21 +6,23 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://testing-common/ContentTaskUtils.jsm", this);
-Cu.import("resource://testing-common/MockRegistrar.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySend.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStorage.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
 
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryHealthPing",
+ChromeUtils.defineModuleGetter(this, "TelemetryHealthPing",
   "resource://gre/modules/TelemetryHealthPing.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(Services, "cookies", "@mozilla.org/cookieService;1", "nsICookieService");
 
 const MS_IN_A_MINUTE = 60 * 1000;
 
@@ -363,6 +365,22 @@ add_task(async function test_discardBigPings() {
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), 0, "Should not have recorded send failure time.");
 });
 
+add_task(async function test_largeButWithinLimit() {
+  const TEST_PING_TYPE = "test-ping-type";
+
+  let histSuccess = Telemetry.getHistogramById("TELEMETRY_SUCCESS");
+  histSuccess.clear();
+
+  // Generate a 900KB string and a large payload that is still within the 1MB limit.
+  const LARGE_PAYLOAD = {"data": generateRandomString(900 * 1024)};
+
+  await TelemetryController.submitExternalPing(TEST_PING_TYPE, LARGE_PAYLOAD);
+  await TelemetrySend.testWaitOnOutgoingPings();
+  await PingServer.promiseNextPing();
+
+  Assert.deepEqual(histSuccess.snapshot().counts, [0, 1, 0], "Should have sent large ping.");
+});
+
 add_task(async function test_evictedOnServerErrors() {
   const TEST_TYPE = "test-evicted";
 
@@ -504,6 +522,22 @@ add_task(async function test_sendCheckOverride() {
   // Restore the test mode and disable the override.
   TelemetrySend.setTestModeEnabled(true);
   Services.prefs.clearUserPref(TelemetryUtils.Preferences.OverrideOfficialCheck);
+});
+
+add_task(async function testCookies() {
+  const TEST_TYPE = "test-cookies";
+
+  await TelemetrySend.reset();
+  PingServer.clearRequests();
+
+  let uri = Services.io.newURI("http://localhost:" + PingServer.port);
+  Services.cookies.setCookieString(uri, null, "cookie-time=yes", null);
+
+  const id = await TelemetryController.submitExternalPing(TEST_TYPE, {});
+  let request = await PingServer.promiseNextRequest();
+  let ping = decodeRequestPayload(request);
+  Assert.equal(id, ping.id, "We're testing the right ping's request, right?");
+  Assert.equal(false, request.hasHeader("Cookie"), "Request should not have Cookie header");
 });
 
 add_task(async function test_measurePingsSize() {

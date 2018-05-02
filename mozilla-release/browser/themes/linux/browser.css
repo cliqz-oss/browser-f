@@ -12,9 +12,6 @@
 %include ../shared/browser.inc.css
 
 :root {
-  --tabs-border-color: rgba(0,0,0,.3);
-  --tab-line-color: highlight;
-
   --toolbar-non-lwt-bgcolor: -moz-dialog;
   --toolbar-non-lwt-textcolor: -moz-dialogtext;
   --toolbar-non-lwt-bgimage: linear-gradient(rgba(255,255,255,.15), rgba(255,255,255,.15));
@@ -33,6 +30,14 @@
   --urlbar-separator-color: ThreeDShadow;
 
   --toolbox-border-bottom-color: ThreeDShadow;
+}
+
+#navigator-toolbox {
+  --tabs-border-color: rgba(0,0,0,.3);
+}
+
+#tabbrowser-tabs {
+  --tab-line-color: highlight;
 }
 
 :root:-moz-lwtheme {
@@ -374,6 +379,11 @@ notification[value="translation"] menulist > .menulist-dropmarker {
 %include ../shared/autocomplete.inc.css
 %include ../shared/urlbar-autocomplete.inc.css
 
+:root {
+  --urlbar-popup-url-color: -moz-nativehyperlinktext;
+  --urlbar-popup-action-color: -moz-nativehyperlinktext;
+}
+
 #PopupAutoComplete > richlistbox > richlistitem[originaltype~="datalist-first"] {
   border-top: 1px solid ThreeDShadow;
 }
@@ -389,84 +399,14 @@ notification[value="translation"] menulist > .menulist-dropmarker {
   font-size: 0.9em;
 }
 
-html|span.ac-tag {
-  background-color: MenuText;
-  color: Menu;
-  border-radius: 2px;
-  border: 1px solid transparent;
-  padding: 0 1px;
-}
-
-.ac-separator:not([selected=true]),
-.ac-url:not([selected=true]),
-.ac-action:not([selected=true]) {
-  color: -moz-nativehyperlinktext;
-}
-
-.ac-tags-text[selected] > html|span.ac-tag {
-  background-color: HighlightText;
-  color: Highlight;
-}
-
-html|span.ac-emphasize-text-title,
-html|span.ac-emphasize-text-tag,
-html|span.ac-emphasize-text-url {
-  font-weight: 600;
-}
-
-.ac-type-icon[type=bookmark] {
-  list-style-image: url("chrome://browser/skin/bookmark.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=bookmark][selected][current] {
-  fill: white;
-}
-
-.ac-type-icon[type=keyword],
-.ac-site-icon[type=searchengine] {
-  list-style-image: url(chrome://browser/skin/search-glass.svg);
-  -moz-context-properties: fill;
-  fill: GrayText;
-}
-
-.ac-type-icon[type=keyword][selected],
-.ac-site-icon[type=searchengine][selected] {
-  fill: highlighttext;
-}
-
-.ac-type-icon[type=switchtab],
-.ac-type-icon[type=remotetab] {
-  list-style-image: url("chrome://browser/skin/urlbar-tab.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=switchtab][selected],
-.ac-type-icon[type=remotetab][selected] {
-  fill: white;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(treecolAutoCompleteComment) {
-  color: GrayText;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(suggesthint, treecolAutoCompleteComment),
-.autocomplete-treebody::-moz-tree-cell-text(suggestfirst, treecolAutoCompleteComment) {
-  color: GrayText;
-  font-size: smaller;
-}
-
-.autocomplete-treebody::-moz-tree-cell(suggesthint) {
-  border-top: 1px solid GrayText;
-}
-
 /* Bookmarking panel */
 #editBookmarkPanelStarIcon {
-  list-style-image: url("chrome://browser/skin/places/starred48.png");
-  width: 48px;
-  height: 48px;
+  list-style-image: url("chrome://browser/skin/bookmark.svg");
+  -moz-context-properties: fill;
+  fill: var(--toolbarbutton-icon-fill-attention);
+  width: 40px;
+  height: 40px;
+  margin: 4px;
 }
 
 #editBookmarkPanelTitle {
@@ -533,8 +473,8 @@ html|span.ac-emphasize-text-url {
 }
 
 @media (-moz-menubar-drag) {
-  #toolbar-menubar:not([autohide="true"]):not(:-moz-lwtheme),
-  #TabsToolbar:not(:-moz-lwtheme) {
+  #toolbar-menubar:not([autohide="true"]),
+  #TabsToolbar {
     -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbar-drag");
   }
 }
@@ -717,6 +657,28 @@ html|span.ac-emphasize-text-url {
     -moz-appearance: -moz-window-titlebar-maximized;
   }
 
+  /* Add extra space to titlebar for dragging */
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar {
+    padding-top: var(--space-above-tabbar);
+  }
+
+  /* Private browsing and accessibility indicators */
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .private-browsing-indicator,
+  :root[sizemode="normal"][chromehidden~="menubar"] #TabsToolbar > .accessibility-indicator,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .private-browsing-indicator,
+  :root[sizemode="normal"] #toolbar-menubar[autohide="true"][inactive] + #TabsToolbar > .accessibility-indicator {
+    padding-top: calc(-1 * var(--space-above-tabbar));
+  }
+
+  /* Make #TabsToolbar transparent as we style underlying #titlebar with
+   * -moz-window-titlebar (Gtk+ theme).
+   */
+  :root[tabsintitlebar] #TabsToolbar,
+  :root[tabsintitlebar] #toolbar-menubar {
+    -moz-appearance: none;
+  }
+
   /* The button box must appear on top of the navigator-toolbox in order for
    * click and hover mouse events to work properly for the button in the restored
    * window state. Otherwise, elements in the navigator-toolbox, like the menubar,
@@ -724,6 +686,9 @@ html|span.ac-emphasize-text-url {
    */
   #titlebar-buttonbox {
     z-index: 1;
+    -moz-box-align: center;
+    padding-top: 2px;
+    padding-bottom: 2px;
   }
 
   /* Render titlebar command buttons according to system config.
@@ -731,7 +696,6 @@ html|span.ac-emphasize-text-url {
    */
   @media (-moz-gtk-csd-minimize-button) {
     #titlebar-min {
-      list-style-image: url("moz-icon://stock/window-minimize-symbolic");
       -moz-appearance: -moz-window-button-minimize;
     }
   }
@@ -743,11 +707,9 @@ html|span.ac-emphasize-text-url {
 
   @media (-moz-gtk-csd-maximize-button) {
     #titlebar-max {
-      list-style-image: url("moz-icon://stock/window-maximize-symbolic");
       -moz-appearance: -moz-window-button-maximize;
     }
     :root[sizemode="maximized"] #titlebar-max {
-      list-style-image: url("moz-icon://stock/window-restore-symbolic");
       -moz-appearance: -moz-window-button-restore;
     }
   }
@@ -759,7 +721,6 @@ html|span.ac-emphasize-text-url {
 
   @media (-moz-gtk-csd-close-button) {
     #titlebar-close {
-      list-style-image: url("moz-icon://stock/window-close-symbolic");
       -moz-appearance: -moz-window-button-close;
     }
   }

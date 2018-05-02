@@ -29,10 +29,10 @@
  */
 
 "use strict";
+
 /* eslint-disable no-undef */
 
-const { classes: Cc, interfaces: Ci, manager: Cm, results: Cr,
-        utils: Cu } = Components;
+const Cm = Components.manager;
 
 const URL_HTTP_UPDATE_SJS = "http://test_details/";
 
@@ -52,7 +52,7 @@ function getLogSuffix() {
   return "_linux";
 }
 
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 const DIR_MACOS = IS_MACOSX ? "Contents/MacOS/" : "";
 const DIR_RESOURCES = IS_MACOSX ? "Contents/Resources/" : "";
@@ -204,10 +204,10 @@ const DATA_URI_SPEC = Services.io.newFileURI(do_get_file("../data", false)).spec
 /* import-globals-from ../data/shared.js */
 Services.scriptloader.loadSubScript(DATA_URI_SPEC + "shared.js", this);
 
-XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
-                                  "resource://gre/modules/ctypes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "MockRegistrar",
-                                  "resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "MockRegistrar",
+                               "resource://testing-common/MockRegistrar.jsm");
 
 var gTestFiles = [];
 var gTestDirs = [];
@@ -1145,11 +1145,11 @@ function setTestFilesAndDirsForFailure() {
  */
 function preventDistributionFiles() {
   gTestFiles = gTestFiles.filter(function(aTestFile) {
-    return aTestFile.relPathDir.indexOf("distribution/") == -1;
+    return !aTestFile.relPathDir.includes("distribution/");
   });
 
   gTestDirs = gTestDirs.filter(function(aTestDir) {
-    return aTestDir.relPathDir.indexOf("distribution/") == -1;
+    return !aTestDir.relPathDir.includes("distribution/");
   });
 }
 
@@ -3694,7 +3694,7 @@ function checkFilesInDirRecursive(aDir, aCallback) {
  *          The callback to call if the update prompt component is called.
  */
 function overrideUpdatePrompt(aCallback) {
-  Cu.import("resource://testing-common/MockRegistrar.jsm");
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
   MockRegistrar.register("@mozilla.org/updates/update-prompt;1", UpdatePrompt, [aCallback]);
 }
 
@@ -3798,7 +3798,7 @@ function start_httpserver() {
              "registerDirectory! Path: " + dir.path);
   }
 
-  let { HttpServer } = Cu.import("resource://testing-common/httpd.js", {});
+  let { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js", {});
   gTestserver = new HttpServer();
   gTestserver.registerDirectory("/", dir);
   gTestserver.registerPathHandler("/" + gHTTPHandlerPath, pathHandler);

@@ -7,6 +7,7 @@
 #include "mozilla/GeckoStyleContext.h"
 
 #include "CSSVariableImageTable.h"
+#include "nsFontMetrics.h"
 #include "nsStyleConsts.h"
 #include "nsStyleStruct.h"
 #include "nsPresContext.h"
@@ -15,6 +16,7 @@
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
 #include "mozilla/ReflowInput.h"
+#include "mozilla/StyleSetHandleInlines.h"
 #include "RubyUtils.h"
 
 using namespace mozilla;

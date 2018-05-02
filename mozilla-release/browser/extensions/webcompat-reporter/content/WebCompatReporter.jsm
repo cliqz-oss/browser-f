@@ -2,22 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["WebCompatReporter"];
+var EXPORTED_SYMBOLS = ["WebCompatReporter"];
 
-let { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const PREF_STYLO_ENABLED = "layout.css.servo.enabled";
-
-XPCOMUtils.defineLazyModuleGetter(this, "PageActions",
+ChromeUtils.defineModuleGetter(this, "PageActions",
   "resource:///modules/PageActions.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "wcStrings", function() {
   return Services.strings.createBundle(
     "chrome://webcompat-reporter/locale/webcompat.properties");
 });
+
+// Gather values for prefs we want to appear in reports.
+let prefs = {};
+XPCOMUtils.defineLazyPreferenceGetter(prefs, "gfx.webrender.all", "gfx.webrender.all", false);
+XPCOMUtils.defineLazyPreferenceGetter(prefs, "gfx.webrender.blob-images", "gfx.webrender.blob-images", 1);
+XPCOMUtils.defineLazyPreferenceGetter(prefs, "gfx.webrender.enabled", "gfx.webrender.enabled", false);
+XPCOMUtils.defineLazyPreferenceGetter(prefs, "image.mem.shared", "image.mem.shared", 2);
+
+if (AppConstants.platform == "linux") {
+  XPCOMUtils.defineLazyPreferenceGetter(prefs, "layers.acceleration.force-enabled", "layers.acceleration.force-enabled", false);
+}
 
 let WebCompatReporter = {
   get endpoint() {
@@ -79,14 +87,14 @@ let WebCompatReporter = {
     const FRAMESCRIPT = "chrome://webcompat-reporter/content/wc-frame.js";
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     const WEBCOMPAT_ORIGIN = new win.URL(WebCompatReporter.endpoint).origin;
-    let styloEnabled = Services.prefs.getBoolPref(PREF_STYLO_ENABLED, false);
 
     let params = new URLSearchParams();
     params.append("url", `${tabData.url}`);
     params.append("src", "desktop-reporter");
-    if (styloEnabled) {
-        params.append("details", "layout.css.servo.enabled: true");
-        params.append("label", "type-stylo");
+    params.append("details", JSON.stringify(prefs));
+
+    if (prefs["gfx.webrender.all"] || prefs["gfx.webrender.enabled"]) {
+      params.append("label", "type-webrender-enabled");
     }
 
     let tab = gBrowser.loadOneTab(

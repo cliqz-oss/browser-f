@@ -64,15 +64,21 @@ public:
    * @param aDecoderFlags Flags specifying the behavior of this decoder.
    * @param aSurfaceFlags Flags specifying the type of output this decoder
    *                      should produce.
+   * @param aOutTask Task representing the decoder.
+   * @return NS_OK if the decoder has been created/initialized successfully;
+   *         NS_ERROR_ALREADY_INITIALIZED if there is already an active decoder
+   *           for this image;
+   *         Else some other unrecoverable error occurred.
    */
-  static already_AddRefed<IDecodingTask>
+  static nsresult
   CreateDecoder(DecoderType aType,
                 NotNull<RasterImage*> aImage,
                 NotNull<SourceBuffer*> aSourceBuffer,
                 const gfx::IntSize& aIntrinsicSize,
                 const gfx::IntSize& aOutputSize,
                 DecoderFlags aDecoderFlags,
-                SurfaceFlags aSurfaceFlags);
+                SurfaceFlags aSurfaceFlags,
+                IDecodingTask** aOutTask);
 
   /**
    * Creates and initializes a decoder for animated images of type @aType.
@@ -88,14 +94,31 @@ public:
    * @param aDecoderFlags Flags specifying the behavior of this decoder.
    * @param aSurfaceFlags Flags specifying the type of output this decoder
    *                      should produce.
+   * @param aCurrentFrame The current frame the decoder should auto advance to.
+   * @param aOutTask Task representing the decoder.
+   * @return NS_OK if the decoder has been created/initialized successfully;
+   *         NS_ERROR_ALREADY_INITIALIZED if there is already an active decoder
+   *           for this image;
+   *         Else some other unrecoverable error occurred.
    */
-  static already_AddRefed<IDecodingTask>
+  static nsresult
   CreateAnimationDecoder(DecoderType aType,
                          NotNull<RasterImage*> aImage,
                          NotNull<SourceBuffer*> aSourceBuffer,
                          const gfx::IntSize& aIntrinsicSize,
                          DecoderFlags aDecoderFlags,
-                         SurfaceFlags aSurfaceFlags);
+                         SurfaceFlags aSurfaceFlags,
+                         size_t aCurrentFrame,
+                         IDecodingTask** aOutTask);
+
+  /**
+   * Creates and initializes a decoder for animated images, cloned from the
+   * given decoder.
+   *
+   * @param aDecoder Decoder to clone.
+   */
+  static already_AddRefed<Decoder>
+  CloneAnimationDecoder(Decoder* aDecoder);
 
   /**
    * Creates and initializes a metadata decoder of type @aType. This decoder

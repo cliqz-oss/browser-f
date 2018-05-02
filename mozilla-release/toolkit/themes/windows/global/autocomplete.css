@@ -17,7 +17,6 @@ textbox[nomatch="true"][highlightnonmatches="true"] {
 
 /* ::::: autocomplete popups ::::: */
 
-panel[type="autocomplete"],
 panel[type="autocomplete-richlistbox"],
 .autocomplete-history-popup {
   -moz-appearance: none;
@@ -28,43 +27,6 @@ panel[type="autocomplete-richlistbox"],
 
 .autocomplete-history-popup {
   max-height: 180px;
-}
-
-/* ::::: tree ::::: */
-
-.autocomplete-tree {
-  -moz-appearance: none !important;
-  border: none !important;
-  background-color: transparent !important;
-}
-
-.autocomplete-treecol {
-  -moz-appearance: none !important;
-  margin: 0 !important;
-  border: none !important;
-  padding: 0 !important;
-}
-
-/* GTK calculates space for a sort arrow */
-.autocomplete-treecol > .treecol-sortdirection {
-  -moz-appearance: none !important;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text {
-  padding-inline-start: 8px;
-}
-
-treechildren.autocomplete-treebody::-moz-tree-row(selected) {
- background-color: Highlight;
-}
-
-treechildren.autocomplete-treebody::-moz-tree-cell-text(selected) {
-  color: HighlightText !important;
-}
-
-.autocomplete-treebody::-moz-tree-image(treecolAutoCompleteValue) {
-  max-width: 16px;
-  height: 16px;
 }
 
 /* ::::: richlistbox autocomplete ::::: */
@@ -80,6 +42,7 @@ treechildren.autocomplete-treebody::-moz-tree-cell-text(selected) {
 }
 
 .ac-type-icon {
+  display: none;
   width: 16px;
   height: 16px;
   max-width: 16px;
@@ -89,13 +52,16 @@ treechildren.autocomplete-treebody::-moz-tree-cell-text(selected) {
 }
 
 .ac-site-icon {
+  display: none;
   width: 16px;
   height: 16px;
   max-width: 16px;
   max-height: 16px;
-  margin-inline-start: 0;
+  margin-inline-start: 6px;
   margin-inline-end: 9px;
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 .ac-title {
@@ -109,13 +75,20 @@ html|span.ac-tag {
 }
 
 .ac-tags {
+  display: none;
   margin-inline-start: 0;
   margin-inline-end: 4px;
 }
 
 .ac-separator {
+  display: none;
   margin-inline-start: 0;
   margin-inline-end: 6px;
+}
+
+.ac-url,
+.ac-action {
+  display: none;
 }
 
 /* Better align the URL/action with the title. */
@@ -142,4 +115,3 @@ toolbarpaletteitem > toolbaritem > textbox > .textbox-input-box> html|*.textbox-
 toolbarpaletteitem > toolbaritem > * > textbox > .textbox-input-box > html|*.textbox-input {
   visibility: hidden;
 }
-

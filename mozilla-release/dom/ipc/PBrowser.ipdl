@@ -69,6 +69,7 @@ using mozilla::CommandInt from "mozilla/EventForwards.h";
 using mozilla::WritingMode from "mozilla/WritingModes.h";
 using mozilla::layers::TouchBehaviorFlags from "mozilla/layers/APZUtils.h";
 using nsIWidget::TouchPointerState from "nsIWidget.h";
+using nsCursor from "nsIWidget.h";
 using struct LookAndFeelInt from "mozilla/widget/WidgetMessageUtils.h";
 using class mozilla::dom::MessagePort from "mozilla/dom/MessagePort.h";
 using class mozilla::dom::ipc::StructuredCloneData from "mozilla/dom/ipc/StructuredCloneData.h";
@@ -366,7 +367,7 @@ parent:
      *   Invalidate any locally cached cursor settings and force an
      *   update.
      */
-    async SetCursor(uint32_t value, bool force);
+    async SetCursor(nsCursor value, bool force);
 
     /**
      * Set the native cursor using a custom image.
@@ -564,7 +565,8 @@ parent:
     async InvokeDragSession(IPCDataTransfer[] transfers, uint32_t action,
                             OptionalShmem visualData,
                             uint32_t stride, uint8_t format,
-                            LayoutDeviceIntRect dragRect);
+                            LayoutDeviceIntRect dragRect,
+                            nsCString principalURISpec);
 
     // After a compositor reset, it is necessary to reconnect each layers ID to
     // the compositor of the widget that will render those layers. Note that
@@ -703,18 +705,9 @@ child:
      * don't need support RealDragEvent with input priority.
      */
     async RealDragEvent(WidgetDragEvent aEvent, uint32_t aDragAction,
-                        uint32_t aDropEffect);
+                        uint32_t aDropEffect, nsCString aPrincipalURISpec);
 
     async PluginEvent(WidgetPluginEvent aEvent);
-
-    /**
-     * @see nsIDOMWindowUtils sendKeyEvent.
-     */
-    async KeyEvent(nsString aType,
-                   int32_t aKeyCode,
-                   int32_t aCharCode,
-                   int32_t aModifiers,
-                   bool aPreventDefault);
 
     prio(input) async CompositionEvent(WidgetCompositionEvent event);
     async NormalPriorityCompositionEvent(WidgetCompositionEvent event);
@@ -728,7 +721,8 @@ child:
      */
     async PasteTransferable(IPCDataTransfer aDataTransfer,
                             bool aIsPrivateData,
-                            Principal aRequestingPrincipal);
+                            Principal aRequestingPrincipal,
+                            uint32_t aContentPolicyType);
 
     /**
      * Activate event forwarding from client to parent.

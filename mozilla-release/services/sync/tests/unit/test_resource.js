@@ -1,12 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
 
 var logger;
 
@@ -134,7 +134,7 @@ function server_headers(metadata, response) {
   let header_names = [];
   while (headers.hasMoreElements()) {
     let header = headers.getNext().toString();
-    if (ignore_headers.indexOf(header) == -1) {
+    if (!ignore_headers.includes(header)) {
       header_names.push(header);
     }
   }
@@ -512,7 +512,10 @@ add_test(function test_uri_construction() {
                   .QueryInterface(Ci.nsIURL);
   let uri2 = CommonUtils.makeURI("http://foo/")
                   .QueryInterface(Ci.nsIURL);
-  uri2.query = query;
+  uri2 = uri2.mutate()
+             .setQuery(query)
+             .finalize()
+             .QueryInterface(Ci.nsIURL);
   Assert.equal(uri1.query, uri2.query);
 
   run_next_test();

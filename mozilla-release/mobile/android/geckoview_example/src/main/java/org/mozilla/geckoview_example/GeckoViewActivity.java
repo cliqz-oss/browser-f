@@ -18,11 +18,12 @@ import android.view.WindowManager;
 
 import java.util.Locale;
 
-import org.mozilla.gecko.GeckoSession;
-import org.mozilla.gecko.GeckoSessionSettings;
 import org.mozilla.gecko.GeckoThread;
-import org.mozilla.gecko.GeckoView;
-import org.mozilla.gecko.util.GeckoBundle;
+import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.GeckoSessionSettings;
+import org.mozilla.geckoview.GeckoSession.Response;
+import org.mozilla.geckoview.GeckoSession.TrackingProtectionDelegate;
+import org.mozilla.geckoview.GeckoView;
 
 public class GeckoViewActivity extends Activity {
     private static final String LOGTAG = "GeckoViewActivity";
@@ -45,25 +46,18 @@ public class GeckoViewActivity extends Activity {
         Log.i(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() +
               " - application start");
 
-        String geckoArgs = null;
-        final String intentArgs = getIntent().getStringExtra("args");
+        final String[] geckoArgs;
 
         if (BuildConfig.DEBUG) {
             // In debug builds, we want to load JavaScript resources fresh with each build.
-            geckoArgs = "-purgecaches";
-        }
-
-        if (!TextUtils.isEmpty(intentArgs)) {
-            if (geckoArgs == null) {
-                geckoArgs = intentArgs;
-            } else {
-                geckoArgs += " " + intentArgs;
-            }
+            geckoArgs = new String[] { "-purgecaches" };
+        } else {
+            geckoArgs = null;
         }
 
         final boolean useMultiprocess = getIntent().getBooleanExtra(USE_MULTIPROCESS_EXTRA,
                                                                     true);
-        GeckoSession.preload(this, geckoArgs, useMultiprocess);
+        GeckoSession.preload(this, geckoArgs, getIntent().getExtras(), useMultiprocess);
 
         setContentView(R.layout.geckoview_activity);
 
@@ -71,9 +65,11 @@ public class GeckoViewActivity extends Activity {
         mGeckoSession = new GeckoSession();
         mGeckoView.setSession(mGeckoSession);
 
-        mGeckoSession.setContentListener(new MyGeckoViewContent());
-        mGeckoSession.setProgressListener(new MyGeckoViewProgress());
-        mGeckoSession.setNavigationListener(new Navigation());
+        mGeckoSession.setContentDelegate(new MyGeckoViewContent());
+        final MyTrackingProtection tp = new MyTrackingProtection();
+        mGeckoSession.setTrackingProtectionDelegate(tp);
+        mGeckoSession.setProgressDelegate(new MyGeckoViewProgress(tp));
+        mGeckoSession.setNavigationDelegate(new Navigation());
 
         final BasicGeckoViewPrompt prompt = new BasicGeckoViewPrompt(this);
         prompt.filePickerRequestCode = REQUEST_FILE_PICKER;
@@ -83,8 +79,15 @@ public class GeckoViewActivity extends Activity {
         permission.androidPermissionRequestCode = REQUEST_PERMISSIONS;
         mGeckoSession.setPermissionDelegate(permission);
 
-        mGeckoView.getSettings().setBoolean(GeckoSessionSettings.USE_MULTIPROCESS,
-                                            useMultiprocess);
+        mGeckoSession.getSettings().setBoolean(GeckoSessionSettings.USE_MULTIPROCESS,
+                                               useMultiprocess);
+
+        mGeckoSession.enableTrackingProtection(
+              TrackingProtectionDelegate.CATEGORY_AD |
+              TrackingProtectionDelegate.CATEGORY_ANALYTIC |
+              TrackingProtectionDelegate.CATEGORY_SOCIAL
+        );
+
         loadSettings(getIntent());
         loadFromIntent(getIntent());
     }
@@ -156,7 +159,7 @@ public class GeckoViewActivity extends Activity {
         }
     }
 
-    private class MyGeckoViewContent implements GeckoSession.ContentListener {
+    private class MyGeckoViewContent implements GeckoSession.ContentDelegate {
         @Override
         public void onTitleChange(GeckoSession session, String title) {
             Log.i(LOGTAG, "Content title changed to " + title);
@@ -174,6 +177,18 @@ public class GeckoViewActivity extends Activity {
         }
 
         @Override
+        public void onFocusRequest(final GeckoSession session) {
+            Log.i(LOGTAG, "Content requesting focus");
+        }
+
+        @Override
+        public void onCloseRequest(final GeckoSession session) {
+            if (session != mGeckoSession) {
+                session.close();
+            }
+        }
+
+        @Override
         public void onContextMenu(GeckoSession session, int screenX, int screenY,
                                   String uri, String elementSrc) {
             Log.d(LOGTAG, "onContextMenu screenX=" + screenX +
@@ -182,12 +197,19 @@ public class GeckoViewActivity extends Activity {
         }
     }
 
-    private class MyGeckoViewProgress implements GeckoSession.ProgressListener {
+    private class MyGeckoViewProgress implements GeckoSession.ProgressDelegate {
+        private MyTrackingProtection mTp;
+
+        private MyGeckoViewProgress(final MyTrackingProtection tp) {
+            mTp = tp;
+        }
+
         @Override
         public void onPageStart(GeckoSession session, String url) {
             Log.i(LOGTAG, "Starting to load page at " + url);
             Log.i(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() +
                   " - page load start");
+            mTp.clearCounters();
         }
 
         @Override
@@ -195,6 +217,7 @@ public class GeckoViewActivity extends Activity {
             Log.i(LOGTAG, "Stopping page load " + (success ? "successfully" : "unsuccessfully"));
             Log.i(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() +
                   " - page load stop");
+            mTp.logCounters();
         }
 
         @Override
@@ -227,7 +250,7 @@ public class GeckoViewActivity extends Activity {
         }
 
         @Override
-        public void requestAndroidPermissions(final GeckoSession session, final String[] permissions,
+        public void onAndroidPermissionsRequest(final GeckoSession session, final String[] permissions,
                                               final Callback callback) {
             if (Build.VERSION.SDK_INT < 23) {
                 // requestPermissions was introduced in API 23.
@@ -239,13 +262,13 @@ public class GeckoViewActivity extends Activity {
         }
 
         @Override
-        public void requestContentPermission(final GeckoSession session, final String uri,
-                                             final String type, final String access,
+        public void onContentPermissionRequest(final GeckoSession session, final String uri,
+                                             final int type, final String access,
                                              final Callback callback) {
             final int resId;
-            if ("geolocation".equals(type)) {
+            if (PERMISSION_GEOLOCATION == type) {
                 resId = R.string.request_geolocation;
-            } else if ("desktop-notification".equals(type)) {
+            } else if (PERMISSION_DESKTOP_NOTIFICATION == type) {
                 resId = R.string.request_notification;
             } else {
                 Log.w(LOGTAG, "Unknown permission: " + type);
@@ -256,37 +279,39 @@ public class GeckoViewActivity extends Activity {
             final String title = getString(resId, Uri.parse(uri).getAuthority());
             final BasicGeckoViewPrompt prompt = (BasicGeckoViewPrompt)
                     mGeckoSession.getPromptDelegate();
-            prompt.promptForPermission(session, title, callback);
+            prompt.onPermissionPrompt(session, title, callback);
         }
 
-        private void normalizeMediaName(final GeckoBundle[] sources) {
+        private String[] normalizeMediaName(final MediaSource[] sources) {
             if (sources == null) {
-                return;
+                return null;
             }
-            for (final GeckoBundle source : sources) {
-                final String mediaSource = source.getString("mediaSource");
-                String name = source.getString("name");
-                if ("camera".equals(mediaSource)) {
+
+            String[] res = new String[sources.length];
+            for (int i = 0; i < sources.length; i++) {
+                final int mediaSource = sources[i].source;
+                final String name = sources[i].name;
+                if (MediaSource.SOURCE_CAMERA == mediaSource) {
                     if (name.toLowerCase(Locale.ENGLISH).contains("front")) {
-                        name = getString(R.string.media_front_camera);
+                        res[i] = getString(R.string.media_front_camera);
                     } else {
-                        name = getString(R.string.media_back_camera);
+                        res[i] = getString(R.string.media_back_camera);
                     }
                 } else if (!name.isEmpty()) {
-                    continue;
-                } else if ("microphone".equals(mediaSource)) {
-                    name = getString(R.string.media_microphone);
+                    res[i] = name;
+                } else if (MediaSource.SOURCE_MICROPHONE == mediaSource) {
+                    res[i] = getString(R.string.media_microphone);
                 } else {
-                    name = getString(R.string.media_other);
+                    res[i] = getString(R.string.media_other);
                 }
-                source.putString("name", name);
             }
+
+            return res;
         }
 
         @Override
-        public void requestMediaPermission(final GeckoSession session, final String uri,
-                                           final GeckoBundle[] video,
-                                           final GeckoBundle[] audio,
+        public void onMediaPermissionRequest(final GeckoSession session, final String uri,
+                                           final MediaSource[] video, final MediaSource[] audio,
                                            final MediaCallback callback) {
             final String host = Uri.parse(uri).getAuthority();
             final String title;
@@ -298,16 +323,16 @@ public class GeckoViewActivity extends Activity {
                 title = getString(R.string.request_media, host);
             }
 
-            normalizeMediaName(video);
-            normalizeMediaName(audio);
+            String[] videoNames = normalizeMediaName(video);
+            String[] audioNames = normalizeMediaName(audio);
 
             final BasicGeckoViewPrompt prompt = (BasicGeckoViewPrompt)
                     mGeckoSession.getPromptDelegate();
-            prompt.promptForMedia(session, title, video, audio, callback);
+            prompt.onMediaPrompt(session, title, video, audio, videoNames, audioNames, callback);
         }
     }
 
-    private class Navigation implements GeckoSession.NavigationListener {
+    private class Navigation implements GeckoSession.NavigationDelegate {
         @Override
         public void onLocationChange(GeckoSession session, final String url) {
         }
@@ -321,15 +346,42 @@ public class GeckoViewActivity extends Activity {
         }
 
         @Override
-        public boolean onLoadUri(final GeckoSession session, final String uri,
-                                 final TargetWindow where) {
-            Log.d(LOGTAG, "onLoadUri=" + uri +
-                          " where=" + where);
-            if (where != TargetWindow.NEW) {
-                return false;
-            }
-            session.loadUri(uri);
-            return true;
+        public boolean onLoadRequest(final GeckoSession session, final String uri,
+                                     final int target) {
+            Log.d(LOGTAG, "onLoadRequest=" + uri + " where=" + target);
+            return false;
+        }
+
+        @Override
+        public void onNewSession(final GeckoSession session, final String uri, Response<GeckoSession> response) {
+            response.respond(null);
+        }
+    }
+
+    private class MyTrackingProtection implements GeckoSession.TrackingProtectionDelegate {
+        private int mBlockedAds = 0;
+        private int mBlockedAnalytics = 0;
+        private int mBlockedSocial = 0;
+
+        private void clearCounters() {
+            mBlockedAds = 0;
+            mBlockedAnalytics = 0;
+            mBlockedSocial = 0;
+        }
+
+        private void logCounters() {
+            Log.d(LOGTAG, "Trackers blocked: " + mBlockedAds + " ads, " +
+                  mBlockedAnalytics + " analytics, " +
+                  mBlockedSocial + " social");
+        }
+
+        @Override
+        public void onTrackerBlocked(final GeckoSession session, final String uri,
+                                     int categories) {
+            Log.d(LOGTAG, "onTrackerBlocked " + categories + " (" + uri + ")");
+            mBlockedAds += categories & TrackingProtectionDelegate.CATEGORY_AD;
+            mBlockedAnalytics += categories & TrackingProtectionDelegate.CATEGORY_ANALYTIC;
+            mBlockedSocial += categories & TrackingProtectionDelegate.CATEGORY_SOCIAL;
         }
     }
 }

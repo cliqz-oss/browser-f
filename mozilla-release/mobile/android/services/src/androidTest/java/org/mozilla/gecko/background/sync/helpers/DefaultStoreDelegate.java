@@ -15,7 +15,7 @@ public class DefaultStoreDelegate extends DefaultDelegate implements RepositoryS
   }
 
   @Override
-  public void onRecordStoreSucceeded(String guid) {
+  public void onRecordStoreSucceeded(int count) {
     performNotify("DefaultStoreDelegate used", null);
   }
 
@@ -30,6 +30,11 @@ public class DefaultStoreDelegate extends DefaultDelegate implements RepositoryS
   }
 
   @Override
+  public void onBatchCommitted() {
+    performNotify("Stores committed ", null);
+  }
+
+  @Override
   public void onRecordStoreReconciled(String guid, String oldGuid, Integer newVersion) {}
 
   @Override
@@ -38,11 +43,11 @@ public class DefaultStoreDelegate extends DefaultDelegate implements RepositoryS
     return new RepositorySessionStoreDelegate() {
 
       @Override
-      public void onRecordStoreSucceeded(final String guid) {
+      public void onRecordStoreSucceeded(final int count) {
         executor.execute(new Runnable() {
           @Override
           public void run() {
-            self.onRecordStoreSucceeded(guid);
+            self.onRecordStoreSucceeded(count);
           }
         });
       }
@@ -73,6 +78,16 @@ public class DefaultStoreDelegate extends DefaultDelegate implements RepositoryS
           @Override
           public void run() {
             self.onStoreCompleted();
+          }
+        });
+      }
+
+      @Override
+      public void onBatchCommitted() {
+        executor.execute(new Runnable() {
+          @Override
+          public void run() {
+            self.onBatchCommitted();
           }
         });
       }

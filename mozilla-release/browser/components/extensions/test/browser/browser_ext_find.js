@@ -5,7 +5,6 @@
 function frameScript() {
   function getSelectedText() {
     let frame = this.content.frames[0].frames[1];
-    let {interfaces: Ci, utils: Cu} = Components;
     let docShell = frame.QueryInterface(Ci.nsIInterfaceRequestor)
                         .getInterface(Ci.nsIWebNavigation)
                         .QueryInterface(Ci.nsIDocShell);
@@ -15,7 +14,7 @@ function frameScript() {
     let selection = controller.getSelection(controller.SELECTION_FIND);
     let range = selection.getRangeAt(0);
     let scope = {};
-    Cu.import("resource://gre/modules/FindContent.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/FindContent.jsm", scope);
     let highlighter = (new scope.FindContent(docShell)).highlighter;
     let r1 = frame.parent.frameElement.getBoundingClientRect();
     let f1 = highlighter._getFrameElementOffsets(frame.parent);

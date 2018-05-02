@@ -34,6 +34,13 @@ public:
   using Type = char32_t;
 };
 
+template<typename Char>
+constexpr bool
+IsAsciiAlpha(Char aChar)
+{
+  return ('a' <= aChar && aChar <= 'z') || ('A' <= aChar && aChar <= 'Z');
+}
+
 } // namespace detail
 
 /**
@@ -46,11 +53,7 @@ template<typename Char>
 constexpr bool
 IsAsciiAlpha(Char aChar)
 {
-  using UnsignedChar = typename detail::MakeUnsignedChar<Char>::Type;
-  return ('a' <= static_cast<UnsignedChar>(aChar) &&
-          static_cast<UnsignedChar>(aChar) <= 'z') ||
-         ('A' <= static_cast<UnsignedChar>(aChar) &&
-          static_cast<UnsignedChar>(aChar) <= 'Z');
+  return detail::IsAsciiAlpha(static_cast<typename detail::MakeUnsignedChar<Char>::Type>(aChar));
 }
 
 } // namespace mozilla

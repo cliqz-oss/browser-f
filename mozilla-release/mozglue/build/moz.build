@@ -4,9 +4,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# Build mozglue as a shared lib on Windows, OSX and Android.
+# Build mozglue as a shared lib on Windows, OSX and Android. But not for
+# embedders!
 # If this is ever changed, update MOZ_SHARED_MOZGLUE in browser/installer/Makefile.in
-if CONFIG['OS_TARGET'] in ('WINNT', 'Darwin', 'Android'):
+if CONFIG['JS_STANDALONE'] and not CONFIG['MOZ_MEMORY']:
+    Library('mozglue')
+elif CONFIG['OS_TARGET'] in ('WINNT', 'Darwin', 'Android'):
     SharedLibrary('mozglue')
 else:
     Library('mozglue')
@@ -28,6 +31,11 @@ if CONFIG['OS_TARGET'] == 'WINNT':
         'user32.dll',
     ]
 
+    if CONFIG['CC_TYPE'] == "msvc":
+        CFLAGS += ['-guard:cf']
+        CXXFLAGS += ['-guard:cf']
+        LDFLAGS += ['-guard:cf']
+
 if CONFIG['MOZ_WIDGET_TOOLKIT']:
 
     if CONFIG['MOZ_MEMORY'] and FORCE_SHARED_LIB:
@@ -44,20 +52,37 @@ if CONFIG['MOZ_WIDGET_TOOLKIT']:
         LOCAL_INCLUDES += [
             '/memory/build',
         ]
+
+        if CONFIG['CC_TYPE'] == "msvc":
+            SOURCES += ['WindowsCFGStatus.cpp']
         SOURCES += [
+            'Authenticode.cpp',
             'WindowsDllBlocklist.cpp',
         ]
+
         DisableStlWrapping()
         OS_LIBS += [
+            'crypt32',
             'version',
+            'wintrust',
+        ]
+        DELAYLOAD_DLLS += [
+            'crypt32.dll',
+            'wintrust.dll',
+        ]
+        EXPORTS.mozilla += [
+            'Authenticode.h',
+        ]
+        EXPORTS.mozilla.glue += [
+            'WindowsDllServices.h',
         ]
 
     EXPORTS.mozilla += [
         'arm.h',
         'mips.h',
         'SSE.h',
+        'WindowsCFGStatus.h',
         'WindowsDllBlocklist.h',
-        'WindowsDllServices.h',
     ]
 
     if CONFIG['CPU_ARCH'].startswith('x86'):

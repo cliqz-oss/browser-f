@@ -4,16 +4,14 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FinderIterator"];
+var EXPORTED_SYMBOLS = ["FinderIterator"];
 
-const { interfaces: Ci, classes: Cc, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NLP", "resource://gre/modules/NLP.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Rect", "resource://gre/modules/Geometry.jsm");
+ChromeUtils.defineModuleGetter(this, "NLP", "resource://gre/modules/NLP.jsm");
+ChromeUtils.defineModuleGetter(this, "Rect", "resource://gre/modules/Geometry.jsm");
 
 const kDebug = false;
 const kIterationSizeMax = 100;
@@ -23,7 +21,7 @@ const kTimeoutPref = "findbar.iteratorTimeout";
  * FinderIterator singleton. See the documentation for the `start()` method to
  * learn more.
  */
-this.FinderIterator = {
+var FinderIterator = {
   _currentParams: null,
   _listeners: new Map(),
   _catchingUp: new Set(),
@@ -535,8 +533,7 @@ this.FinderIterator = {
    */
   * _iterateDocument({ caseSensitive, entireWord, word }, window) {
     let doc = window.document;
-    let body = (doc instanceof Ci.nsIDOMHTMLDocument && doc.body) ?
-               doc.body : doc.documentElement;
+    let body = doc.body || doc.documentElement;
 
     if (!body)
       return;

@@ -7,16 +7,15 @@
 #ifndef jit_SharedIC_h
 #define jit_SharedIC_h
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsgc.h"
-
+#include "gc/GC.h"
 #include "jit/BaselineICList.h"
 #include "jit/BaselineJIT.h"
 #include "jit/ICState.h"
 #include "jit/MacroAssembler.h"
 #include "jit/SharedICList.h"
 #include "jit/SharedICRegisters.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/ReceiverGuard.h"
 #include "vm/TypedArrayObject.h"
 
@@ -846,6 +845,9 @@ class ICCacheIR_Regular : public ICStub
         stubInfo_(stubInfo)
     {}
 
+    static ICCacheIR_Regular* Clone(JSContext* cx, ICStubSpace* space, ICStub* firstMonitorStub,
+                                    ICCacheIR_Regular& other);
+
     void notePreliminaryObject() {
         extra_ = 1;
     }
@@ -1075,7 +1077,7 @@ class ICStubCompiler
     // performing a tail call. This is required for the return address
     // to pc mapping to work.
     void enterStubFrame(MacroAssembler& masm, Register scratch);
-    void assumeStubFrame(MacroAssembler& masm);
+    void assumeStubFrame();
     void leaveStubFrame(MacroAssembler& masm, bool calledIntoIon = false);
 
     // Some stubs need to emit Gecko Profiler updates.  This emits the guarding

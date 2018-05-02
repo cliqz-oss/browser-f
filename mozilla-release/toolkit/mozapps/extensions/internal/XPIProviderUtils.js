@@ -10,12 +10,7 @@
           isUsableAddon, recordAddonTelemetry,
           flushChromeCaches, descriptorToPath */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
@@ -31,7 +26,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
                                    Ci.nsIBlocklistService);
 
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 const LOGGER_ID = "addons.xpi-utils";
 
 const nsIFile = Components.Constructor("@mozilla.org/file/local;1", "nsIFile",
@@ -63,7 +58,7 @@ const PROP_JSON_FIELDS = ["id", "syncGUID", "location", "version", "type",
                           "appDisabled", "pendingUninstall", "installDate",
                           "updateDate", "applyBackgroundUpdates", "bootstrap", "path",
                           "skinnable", "size", "sourceURI", "releaseNotesURI",
-                          "softDisabled", "foreignInstall", "hasBinaryComponents",
+                          "softDisabled", "foreignInstall",
                           "strictCompatibility", "locales", "targetApplications",
                           "targetPlatforms", "multiprocessCompatible", "signedState",
                           "seen", "dependencies", "hasEmbeddedWebExtension", "mpcOptedOut",
@@ -81,14 +76,10 @@ function getRepositoryAddon(aAddon, aCallback) {
     aCallback(aAddon);
     return;
   }
-  function completeAddon(aRepositoryAddon) {
-    aAddon._repositoryAddon = aRepositoryAddon;
-    aAddon.compatibilityOverrides = aRepositoryAddon ?
-                                      aRepositoryAddon.compatibilityOverrides :
-                                      null;
+  AddonRepository.getCachedAddonByID(aAddon.id, repoAddon => {
+    aAddon._repositoryAddon = repoAddon;
     aCallback(aAddon);
-  }
-  AddonRepository.getCachedAddonByID(aAddon.id, completeAddon);
+  });
 }
 
 /**
@@ -394,13 +385,13 @@ this.XPIDatabase = {
     try {
       let readTimer = AddonManagerPrivate.simpleTimer("XPIDB_syncRead_MS");
       logger.debug("Opening XPI database " + this.jsonFile.path);
-      fstream = Components.classes["@mozilla.org/network/file-input-stream;1"].
-              createInstance(Components.interfaces.nsIFileInputStream);
+      fstream = Cc["@mozilla.org/network/file-input-stream;1"].
+              createInstance(Ci.nsIFileInputStream);
       fstream.init(this.jsonFile, -1, 0, 0);
       let cstream = null;
       try {
-        cstream = Components.classes["@mozilla.org/intl/converter-input-stream;1"].
-                createInstance(Components.interfaces.nsIConverterInputStream);
+        cstream = Cc["@mozilla.org/intl/converter-input-stream;1"].
+                createInstance(Ci.nsIConverterInputStream);
         cstream.init(fstream, "UTF-8", 0, 0);
 
         let str = {};

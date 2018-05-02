@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
 const PREF_DEPRECATION_WARNINGS = "devtools.errorconsole.deprecation_warnings";
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/Deprecated.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Deprecated.jsm", this);
 
 // Using this named functions to test deprecation and the properly logged
 // callstacks.
@@ -127,8 +125,8 @@ function nextTest() {
       if (!(aMessage instanceof Ci.nsIScriptError)) {
         return;
       }
-      if (aMessage.errorMessage.indexOf("DEPRECATION WARNING: ") < 0 &&
-          aMessage.errorMessage.indexOf("must provide a URL") < 0) {
+      if (!aMessage.errorMessage.includes("DEPRECATION WARNING: ") &&
+          !aMessage.errorMessage.includes("must provide a URL")) {
         return;
       }
       ok(aMessage instanceof Ci.nsIScriptError,

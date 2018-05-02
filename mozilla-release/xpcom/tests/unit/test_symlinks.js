@@ -11,17 +11,17 @@ const DOES_NOT_EXIST = "doesnotexist";
 const DANGLING_LINK  = "dangling_link";
 const LOOP_LINK      = "loop_link";
 
-const nsIFile = Components.interfaces.nsIFile;
+const nsIFile = Ci.nsIFile;
 
 var process;
 function createSymLink(from, to) {
   if (!process) {
-    var ln = Components.classes["@mozilla.org/file/local;1"]
-                       .createInstance(Components.interfaces.nsIFile);
+    var ln = Cc["@mozilla.org/file/local;1"]
+               .createInstance(Ci.nsIFile);
     ln.initWithPath("/bin/ln");
 
-    process = Components.classes["@mozilla.org/process/util;1"]
-                        .createInstance(Components.interfaces.nsIProcess);
+    process = Cc["@mozilla.org/process/util;1"]
+                .createInstance(Ci.nsIProcess);
     process.init(ln);
   }
 
@@ -122,9 +122,9 @@ function testSymLinks(testDir, relative) {
     const name = file.leafName;
     print(name + spaces.substring(name.length) + bools[file.isDirectory()] +
           bools[file.isFile()] + bools[file.isSymlink()]);
-    Assert.equal(file.isDirectory(), dirs.indexOf(name) != -1);
-    Assert.equal(file.isFile(), files.indexOf(name) != -1);
-    Assert.equal(file.isSymlink(), links.indexOf(name) != -1);
+    Assert.equal(file.isDirectory(), dirs.includes(name));
+    Assert.equal(file.isFile(), files.includes(name));
+    Assert.equal(file.isSymlink(), links.includes(name));
   }
 }
 

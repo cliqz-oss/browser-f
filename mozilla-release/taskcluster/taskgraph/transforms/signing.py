@@ -11,6 +11,7 @@ from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (
+    add_scope_prefix,
     get_signing_cert_scope_per_platform,
     get_worker_type_for_scope,
 )
@@ -65,6 +66,9 @@ signing_description_schema = Schema({
 
     Optional('shipping-phase'): task_description_schema['shipping-phase'],
     Optional('shipping-product'): task_description_schema['shipping-product'],
+
+    # Optional control for how long a task may run (aka maxRunTime)
+    Optional('max-run-time'): int,
 })
 
 
@@ -97,22 +101,26 @@ def make_task_description(config, jobs):
             for f in artifacts['formats']:
                 formats.add(f)  # Add each format only once
         for format in formats:
-            signing_format_scopes.append("project:releng:signing:format:{}".format(format))
+            signing_format_scopes.append(
+                add_scope_prefix(config, 'signing:format:{}'.format(format))
+            )
 
-        treeherder = job.get('treeherder', {})
         is_nightly = dep_job.attributes.get('nightly', False)
-        treeherder.setdefault('symbol', _generate_treeherder_symbol(is_nightly))
+        treeherder = None
+        if 'partner' not in config.kind:
+            treeherder = job.get('treeherder', {})
+            treeherder.setdefault('symbol', _generate_treeherder_symbol(is_nightly, config.kind))
 
-        dep_th_platform = dep_job.task.get('extra', {}).get(
-            'treeherder', {}).get('machine', {}).get('platform', '')
-        build_type = dep_job.attributes.get('build_type')
-        build_platform = dep_job.attributes.get('build_platform')
-        treeherder.setdefault('platform', _generate_treeherder_platform(
-            dep_th_platform, build_platform, build_type
-        ))
+            dep_th_platform = dep_job.task.get('extra', {}).get(
+                'treeherder', {}).get('machine', {}).get('platform', '')
+            build_type = dep_job.attributes.get('build_type')
+            build_platform = dep_job.attributes.get('build_platform')
+            treeherder.setdefault('platform', _generate_treeherder_platform(
+                dep_th_platform, build_platform, build_type
+            ))
 
-        treeherder.setdefault('tier', 1)
-        treeherder.setdefault('kind', 'build')
+            treeherder.setdefault('tier', 1 if '-ccov' not in build_platform else 2)
+            treeherder.setdefault('kind', 'build')
 
         label = job['label']
         description = (
@@ -141,22 +149,34 @@ def make_task_description(config, jobs):
             'worker-type': get_worker_type_for_scope(config, signing_cert_scope),
             'worker': {'implementation': 'scriptworker-signing',
                        'upstream-artifacts': job['upstream-artifacts'],
-                       'max-run-time': 3600},
+                       'max-run-time': job.get('max-run-time', 3600)},
             'scopes': [signing_cert_scope] + signing_format_scopes,
             'dependencies': {job['depname']: dep_job.label},
             'attributes': attributes,
             'run-on-projects': dep_job.attributes.get('run_on_projects'),
-            'treeherder': treeherder,
+            'optimization': dep_job.optimization,
             'routes': job.get('routes', []),
+            'shipping-product': job.get('shipping-product'),
+            'shipping-phase': job.get('shipping-phase'),
         }
+        if treeherder:
+            task['treeherder'] = treeherder
 
         yield task
 
 
 def _generate_treeherder_platform(dep_th_platform, build_platform, build_type):
-    actual_build_type = 'pgo' if '-pgo' in build_platform else build_type
+    if '-pgo' in build_platform:
+        actual_build_type = 'pgo'
+    elif '-ccov' in build_platform:
+        actual_build_type = 'ccov'
+    else:
+        actual_build_type = build_type
     return '{}/{}'.format(dep_th_platform, actual_build_type)
 
 
-def _generate_treeherder_symbol(is_nightly):
-    return 'Ns' if is_nightly else 'Bs'
+def _generate_treeherder_symbol(is_nightly, kind):
+    if is_nightly:
+        return 'Ns'
+    else:
+        return 'Bs'

@@ -17,14 +17,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["BasePromiseWorker"];
+var EXPORTED_SYMBOLS = ["BasePromiseWorker"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
 
 /**
@@ -106,7 +103,7 @@ const EXCEPTION_CONSTRUCTORS = {
  *
  * @constructor
  */
-this.BasePromiseWorker = function(url) {
+var BasePromiseWorker = function(url) {
   if (typeof url != "string") {
     throw new TypeError("Expecting a string");
   }

@@ -2,11 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
 // COMPLETE_LENGTH and PARTIAL_LENGTH copied from nsUrlClassifierDBService.h,
 // they correspond to the length, in bytes, of a hash prefix and the total
 // hash.
@@ -17,9 +12,9 @@ const PARTIAL_LENGTH = 4;
 const MIN_WAIT_DURATION_MAX_VALUE = 24 * 60 * 60 * 1000;
 const PREF_DEBUG_ENABLED = "browser.safebrowsing.debug";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gDbService",
                                    "@mozilla.org/url-classifier/dbservice;1",
@@ -171,6 +166,9 @@ function HashCompleter() {
   // to null. It may be used by multiple calls to |complete| in succession to
   // avoid creating multiple requests to the same gethash URL.
   this._currentRequest = null;
+  // An Array of ongoing gethash requests which is used to find requests for
+  // the same hash prefix.
+  this._ongoingRequests = [];
   // A map of gethashUrls to HashCompleterRequests that haven't yet begun.
   this._pendingRequests = {};
 
@@ -204,6 +202,15 @@ HashCompleter.prototype = {
   complete: function HC_complete(aPartialHash, aGethashUrl, aTableName, aCallback) {
     if (!aGethashUrl) {
       throw Cr.NS_ERROR_NOT_INITIALIZED;
+    }
+
+    // Check ongoing requests before creating a new HashCompleteRequest
+    for (let r of this._ongoingRequests) {
+      if (r.find(aPartialHash, aGethashUrl, aTableName)) {
+        log("Merge gethash request in " + aTableName + " for prefix : " + btoa(aPartialHash));
+        r.add(aPartialHash, aCallback, aTableName);
+        return;
+      }
     }
 
     if (!this._currentRequest) {
@@ -267,7 +274,9 @@ HashCompleter.prototype = {
 
     if (this._currentRequest) {
       try {
-        this._currentRequest.begin();
+        if (this._currentRequest.begin()) {
+          this._ongoingRequests.push(this._currentRequest);
+        }
       } finally {
         // If |begin| fails, we should get rid of our request.
         this._currentRequest = null;
@@ -277,8 +286,10 @@ HashCompleter.prototype = {
 
   // Pass the server response status to the RequestBackoff for the given
   // gethashUrl and fetch the next pending request, if there is one.
-  finishRequest(url, aStatus) {
-    this._backoffs[url].noteServerResponse(aStatus);
+  finishRequest(aRequest, aStatus) {
+    this._ongoingRequests = this._ongoingRequests.filter(v => v != aRequest);
+
+    this._backoffs[aRequest.gethashUrl].noteServerResponse(aStatus);
     Services.tm.dispatchToMainThread(this);
   },
 
@@ -356,7 +367,9 @@ HashCompleterRequest.prototype = {
         log('ERROR: Cannot mix "proto" tables with other types within ' +
             "the same gethash URL.");
       }
-      this.tableNames.set(aTableName);
+      if (!this.tableNames.has(aTableName)) {
+        this.tableNames.set(aTableName);
+      }
 
       // Assuming all tables with the same gethash URL have the same provider
       if (this.provider == "") {
@@ -367,6 +380,17 @@ HashCompleterRequest.prototype = {
         this.telemetryProvider = gUrlUtil.getTelemetryProvider(aTableName);
       }
     }
+  },
+
+  find: function HCR_find(aPartialHash, aGetHashUrl, aTableName) {
+    if (this.gethashUrl != aGetHashUrl ||
+        !this.tableNames.has(aTableName)) {
+      return false;
+    }
+
+    return this._requests.find(function(r) {
+      return r.partialHash === aPartialHash;
+    });
   },
 
   fillTableStatesBase64: function HCR_fillTableStatesBase64(aCallback) {
@@ -397,7 +421,7 @@ HashCompleterRequest.prototype = {
     if (!this._completer.canMakeRequest(this.gethashUrl)) {
       log("Can't make request to " + this.gethashUrl + "\n");
       this.notifyFailure(Cr.NS_ERROR_ABORT);
-      return;
+      return false;
     }
 
     Services.obs.addObserver(this, "quit-application");
@@ -413,10 +437,14 @@ HashCompleterRequest.prototype = {
         // point, finishRequest must be called.
         this._completer.noteRequest(this.gethashUrl);
       } catch (err) {
+        this._completer._ongoingRequests =
+          this._completer._ongoingRequests.filter(v => v != this);
         this.notifyFailure(err);
         throw err;
       }
     });
+
+    return true;
   },
 
   notify: function HCR_notify() {
@@ -522,7 +550,7 @@ HashCompleterRequest.prototype = {
 
     for (let i = 0; i < this._requests.length; i++) {
       let request = this._requests[i];
-      if (prefixes.indexOf(request.partialHash) == -1) {
+      if (!prefixes.includes(request.partialHash)) {
         prefixes.push(request.partialHash);
       }
     }
@@ -781,7 +809,7 @@ HashCompleterRequest.prototype = {
     }
     let success = Components.isSuccessCode(aStatusCode);
     log("Received a " + httpStatus + " status code from the " + this.provider +
-        " gethash server (success=" + success + ").");
+        " gethash server (success=" + success + "): " + btoa(this._response));
 
     Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_REMOTE_STATUS2").
       add(this.telemetryProvider, httpStatusToBucket(httpStatus));
@@ -794,7 +822,7 @@ HashCompleterRequest.prototype = {
       add(this.telemetryProvider, 0);
 
     // Notify the RequestBackoff once a response is received.
-    this._completer.finishRequest(this.gethashUrl, httpStatus);
+    this._completer.finishRequest(this, httpStatus);
 
     if (success) {
       try {

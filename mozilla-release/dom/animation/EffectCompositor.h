@@ -16,7 +16,9 @@
 #include "nsCSSPropertyID.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsDataHashtable.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsIStyleRuleProcessor.h"
+#endif
 #include "nsTArray.h"
 
 class nsCSSPropertyIDSet;
@@ -48,11 +50,13 @@ public:
   explicit EffectCompositor(nsPresContext* aPresContext)
     : mPresContext(aPresContext)
   {
+#ifdef MOZ_OLD_STYLE
     for (size_t i = 0; i < kCascadeLevelCount; i++) {
       CascadeLevel cascadeLevel = CascadeLevel(i);
       mRuleProcessors[cascadeLevel] =
         new AnimationStyleRuleProcessor(this, cascadeLevel);
     }
+#endif
   }
 
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(EffectCompositor)
@@ -117,6 +121,10 @@ public:
   // posted because updates on the main thread are throttled.
   void PostRestyleForThrottledAnimations();
 
+  // Clear all pending restyle requests for the given (pseudo-) element (and its
+  // ::before and ::after elements if the given element is not pseudo).
+  void ClearRestyleRequestsFor(dom::Element* aElement);
+
   // Called when computed style on the specified (pseudo-) element might
   // have changed so that any context-sensitive values stored within
   // animation effects (e.g. em-based endpoints used in keyframe effects)
@@ -126,6 +134,7 @@ public:
                               dom::Element* aElement,
                               CSSPseudoElementType aPseudoType);
 
+#ifdef MOZ_OLD_STYLE
   // Updates the animation rule stored on the EffectSet for the
   // specified (pseudo-)element for cascade level |aLevel|.
   // If the animation rule is not marked as needing an update,
@@ -154,6 +163,7 @@ public:
                                  CSSPseudoElementType aPseudoType,
                                  CascadeLevel aCascadeLevel,
                                  nsStyleContext* aStyleContext);
+#endif
 
   // Get animation rule for stylo. This is an equivalent of GetAnimationRule
   // and will be called from servo side.
@@ -167,6 +177,8 @@ public:
     RawServoAnimationValueMapBorrowedMut aAnimationValues);
 
   bool HasPendingStyleUpdates() const;
+
+#ifdef MOZ_OLD_STYLE
   bool HasThrottledStyleUpdates() const;
 
   // Tell the restyle tracker about all the animated styles that have
@@ -178,6 +190,7 @@ public:
   {
     return mRuleProcessors[aCascadeLevel];
   }
+#endif
 
   static bool HasAnimationsForCompositor(const nsIFrame* aFrame,
                                          nsCSSPropertyID aProperty);
@@ -208,6 +221,29 @@ public:
                             dom::Element* aElement,
                             CSSPseudoElementType aPseudoType,
                             nsStyleContext* aStyleContext);
+
+  // Update the mPropertiesWithImportantRules and
+  // mPropertiesForAnimationsLevel members of the given EffectSet, and also
+  // request any restyles required by changes to the cascade result.
+  //
+  // NOTE: This can be expensive so we should only call it if styles that apply
+  // above the animation level of the cascade might have changed. For all
+  // other cases we should call MaybeUpdateCascadeResults.
+  //
+  // This is typically reserved for internal callers but is public here since
+  // when we detect changes to the cascade on the Servo side we can't call
+  // MarkCascadeNeedsUpdate during the traversal so instead we call this as part
+  // of a follow-up sequential task.
+  //
+  // As with MaybeUpdateCascadeResults, |aStyleContext| is only used
+  // when |aBackendType| is StyleBackendType::Gecko. When |aBackendType| is
+  // StyleBackendType::Servo, it is ignored.
+  static void
+  UpdateCascadeResults(StyleBackendType aBackendType,
+                       EffectSet& aEffectSet,
+                       dom::Element* aElement,
+                       CSSPseudoElementType aPseudoType,
+                       nsStyleContext* aStyleContext);
 
   // Helper to fetch the corresponding element and pseudo-type from a frame.
   //
@@ -254,11 +290,13 @@ public:
 private:
   ~EffectCompositor() = default;
 
+#ifdef MOZ_OLD_STYLE
   // Rebuilds the animation rule corresponding to |aCascadeLevel| on the
   // EffectSet associated with the specified (pseudo-)element.
   static void ComposeAnimationRule(dom::Element* aElement,
                                    CSSPseudoElementType aPseudoType,
                                    CascadeLevel aCascadeLevel);
+#endif
 
   // Get the properties in |aEffectSet| that we are able to animate on the
   // compositor but which are also specified at a higher level in the cascade
@@ -279,24 +317,6 @@ private:
                           CSSPseudoElementType aPseudoType,
                           nsStyleContext* aStyleContext);
 
-  // Update the mPropertiesWithImportantRules and
-  // mPropertiesForAnimationsLevel members of the given EffectSet, and also
-  // request any restyles required by changes to the cascade result.
-  //
-  // This can be expensive so we should only call it if styles that apply
-  // above the animation level of the cascade might have changed. For all
-  // other cases we should call MaybeUpdateCascadeResults.
-  //
-  // As with MaybeUpdateCascadeResults, |aStyleContext| is only used
-  // when |aBackendType| is StyleBackendType::Gecko. When |aBackendType| is
-  // StyleBackendType::Servo, it is ignored.
-  static void
-  UpdateCascadeResults(StyleBackendType aBackendType,
-                       EffectSet& aEffectSet,
-                       dom::Element* aElement,
-                       CSSPseudoElementType aPseudoType,
-                       nsStyleContext* aStyleContext);
-
   static nsPresContext* GetPresContext(dom::Element* aElement);
 
   nsPresContext* mPresContext;
@@ -312,6 +332,7 @@ private:
 
   bool mIsInPreTraverse = false;
 
+#ifdef MOZ_OLD_STYLE
   class AnimationStyleRuleProcessor final : public nsIStyleRuleProcessor
   {
   public:
@@ -356,6 +377,7 @@ private:
   EnumeratedArray<CascadeLevel, CascadeLevel(kCascadeLevelCount),
                   OwningNonNull<AnimationStyleRuleProcessor>>
                     mRuleProcessors;
+#endif
 };
 
 } // namespace mozilla

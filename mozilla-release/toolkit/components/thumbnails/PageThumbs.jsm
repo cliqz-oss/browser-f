@@ -4,11 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PageThumbs", "PageThumbsStorage"];
-
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+var EXPORTED_SYMBOLS = ["PageThumbs", "PageThumbsStorage"];
 
 const PREF_STORAGE_VERSION = "browser.pagethumbnails.storage_version";
 const LATEST_STORAGE_VERSION = 3;
@@ -28,9 +24,9 @@ const MAX_THUMBNAIL_AGE_SECS = 172800; // 2 days == 60*60*24*2 == 172800 secs.
  */
 const THUMBNAIL_DIRECTORY = "thumbnails";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/PromiseWorker.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 Cu.importGlobalProperties(["FileReader"]);
 
@@ -84,7 +80,7 @@ const TaskUtils = {
  * Singleton providing functionality for capturing web page thumbnails and for
  * accessing them if already cached.
  */
-this.PageThumbs = {
+var PageThumbs = {
   _initialized: false,
 
   /**
@@ -379,7 +375,7 @@ this.PageThumbs = {
         let buffer = await TaskUtils.readBlob(blob);
         await this._store(originalURL, url, buffer, channelError);
       } catch (ex) {
-        Components.utils.reportError("Exception thrown during thumbnail capture: '" + ex + "'");
+        Cu.reportError("Exception thrown during thumbnail capture: '" + ex + "'");
         isSuccess = false;
       }
       if (aCallback) {
@@ -498,7 +494,7 @@ this.PageThumbs = {
   },
 };
 
-this.PageThumbsStorage = {
+var PageThumbsStorage = {
 
   ensurePath: function Storage_ensurePath() {
     // Create the directory (ignore any error if the directory
@@ -508,7 +504,7 @@ this.PageThumbsStorage = {
     // the directory exists.
     return PageThumbsWorker.post("makeDir",
       [PageThumbsStorageService.path, {ignoreExisting: true}]).catch(function onError(aReason) {
-          Components.utils.reportError("Could not create thumbnails directory" + aReason);
+          Cu.reportError("Could not create thumbnails directory" + aReason);
         });
   },
 

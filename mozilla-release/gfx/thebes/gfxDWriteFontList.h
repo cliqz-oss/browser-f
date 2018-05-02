@@ -19,7 +19,7 @@
  // we #include an extra header that contains copies of the relevant
  // classes/interfaces we need.
 #if !defined(__MINGW32__) && WINVER < 0x0A00
-#include "dw-extra.h"
+#include "mozilla/gfx/dw-extra.h"
 #endif
 
 #include "gfxFont.h"
@@ -60,23 +60,23 @@ public:
         mIsSystemFontFamily(aIsSystemFontFamily), mForceGDIClassic(false) {}
     virtual ~gfxDWriteFontFamily();
     
-    void FindStyleVariations(FontInfoData *aFontInfoData = nullptr) final override;
+    void FindStyleVariations(FontInfoData *aFontInfoData = nullptr) final;
 
-    void LocalizedName(nsAString& aLocalizedName) final override;
+    void LocalizedName(nsAString& aLocalizedName) final;
 
     void ReadFaceNames(gfxPlatformFontList *aPlatformFontList,
                        bool aNeedFullnamePostscriptNames,
-                       FontInfoData *aFontInfoData = nullptr) final override;
+                       FontInfoData *aFontInfoData = nullptr) final;
 
     void SetForceGDIClassic(bool aForce) { mForceGDIClassic = aForce; }
 
     void AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
-                                FontListSizes* aSizes) const final override;
+                                FontListSizes* aSizes) const final;
     void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
-                                FontListSizes* aSizes) const final override;
+                                FontListSizes* aSizes) const final;
 
     bool FilterForFontList(nsAtom* aLangGroup,
-                           const nsACString& aGeneric) const final override {
+                           const nsACString& aGeneric) const final {
         return !IsSymbolFontFamily();
     }
 
@@ -189,7 +189,9 @@ public:
 
     bool IsCJKFont();
 
-    bool HasVariations();
+    bool HasVariations() override;
+    void GetVariationAxes(nsTArray<gfxFontVariationAxis>& aAxes) override;
+    void GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) override;
 
     void SetForceGDIClassic(bool aForce) { mForceGDIClassic = aForce; }
     bool GetForceGDIClassic() { return mForceGDIClassic; }

@@ -152,11 +152,6 @@ public class VersioningDelegateHelper {
         }
 
         @Override
-        public void onBatchCompleted() {
-            this.inner.onBatchCompleted();
-        }
-
-        @Override
         public RepositorySessionFetchRecordsDelegate deferredFetchDelegate(ExecutorService executor) {
             return this.inner.deferredFetchDelegate(executor);
         }
@@ -192,8 +187,8 @@ public class VersioningDelegateHelper {
         }
 
         @Override
-        public void onRecordStoreSucceeded(String guid) {
-            inner.onRecordStoreSucceeded(guid);
+        public void onRecordStoreSucceeded(int count) {
+            inner.onRecordStoreSucceeded(count);
         }
 
         @Override
@@ -204,6 +199,11 @@ public class VersioningDelegateHelper {
         @Override
         public void onStoreFailed(Exception e) {
             inner.onStoreFailed(e);
+        }
+
+        @Override
+        public void onBatchCommitted() {
+            inner.onBatchCommitted();
         }
 
         @Override

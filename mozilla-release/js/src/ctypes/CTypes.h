@@ -10,15 +10,14 @@
 #include "mozilla/Vector.h"
 
 #include "ffi.h"
-#include "jsalloc.h"
-#include "jsprf.h"
 #include "prlink.h"
 
 #include "ctypes/typedefs.h"
+#include "js/AllocPolicy.h"
 #include "js/GCHashTable.h"
 #include "js/UniquePtr.h"
 #include "js/Vector.h"
-#include "vm/String.h"
+#include "vm/StringType.h"
 
 namespace js {
 namespace ctypes {

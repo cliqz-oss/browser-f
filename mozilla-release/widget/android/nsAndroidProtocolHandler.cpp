@@ -10,6 +10,7 @@
 #include "nsIIOService.h"
 #include "nsIStandardURL.h"
 #include "nsIURL.h"
+#include "nsIURIMutator.h"
 #include "android/log.h"
 #include "nsBaseChannel.h"
 #include "AndroidBridge.h"
@@ -140,22 +141,13 @@ nsAndroidProtocolHandler::NewURI(const nsACString &aSpec,
                                  nsIURI *aBaseURI,
                                  nsIURI **result)
 {
-    nsresult rv;
-
-    nsCOMPtr<nsIStandardURL> surl(do_CreateInstance(NS_STANDARDURL_CONTRACTID, &rv));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = surl->Init(nsIStandardURL::URLTYPE_STANDARD, -1, aSpec, aCharset, aBaseURI);
-    if (NS_FAILED(rv))
-        return rv;
-
-    nsCOMPtr<nsIURL> url(do_QueryInterface(surl, &rv));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    surl->SetMutable(false);
-
-    NS_ADDREF(*result = url);
-    return NS_OK;
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+        .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                nsIStandardURL::URLTYPE_STANDARD,
+                                -1, nsCString(aSpec), aCharset,
+                                base, nullptr))
+        .Finalize(result);
 }
 
 NS_IMETHODIMP

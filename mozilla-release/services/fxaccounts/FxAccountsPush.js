@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 
 /**
  * FxAccountsPushService manages Push notifications for Firefox Accounts in the browser
@@ -73,7 +69,7 @@ FxAccountsPushService.prototype = {
     if (options.fxAccounts) {
       this.fxAccounts = options.fxAccounts;
     } else {
-      XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
+      ChromeUtils.defineModuleGetter(this, "fxAccounts",
         "resource://gre/modules/FxAccounts.jsm");
     }
 

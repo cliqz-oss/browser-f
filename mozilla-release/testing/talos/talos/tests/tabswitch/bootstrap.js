@@ -3,13 +3,12 @@
 
 /* globals APP_SHUTDOWN */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Promise.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/RemotePageManager.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Promise.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/RemotePageManager.jsm");
 
 let aboutNewTabService = Cc["@mozilla.org/browser/aboutnewtab-service;1"]
                            .getService(Ci.nsIAboutNewTabService);
@@ -139,9 +138,7 @@ function loadTPSContentScript(browser) {
     // Here's our utility script. We'll serialize this and send it down
     // to run in the content process for this browser.
     let script = function() {
-      let Cu = Components.utils;
-      let Ci = Components.interfaces;
-      Cu.import("resource://gre/modules/Services.jsm");
+      ChromeUtils.import("resource://gre/modules/Services.jsm");
 
       /**
        * In order to account for the fact that a MozAfterPaint might fire

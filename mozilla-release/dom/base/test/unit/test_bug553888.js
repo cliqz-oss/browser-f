@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 var server = new HttpServer();
 server.start(-1);
@@ -41,8 +41,7 @@ function run_test() {
   server.registerPathHandler(headerCheckPath, headerCheckHandler);
 
   do_test_pending();
-  var request = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                .createInstance(Components.interfaces.nsIXMLHttpRequest);
+  var request = new XMLHttpRequest();
   request.open("GET", redirectURL, true);
   request.setRequestHeader("X-Custom-Header", "present");
   request.addEventListener("readystatechange", function() {

@@ -13,6 +13,8 @@
 #include "nsThreadUtils.h"
 #include "nsCOMPtr.h"
 #include "mozilla/Logging.h"
+#include "mozilla/NonBlockingAsyncInputStream.h"
+#include "mozilla/SlicedInputStream.h"
 #include "GeckoProfiler.h"
 #include "nsIStreamListener.h"
 #include "nsILoadGroup.h"
@@ -332,6 +334,12 @@ nsInputStreamPump::AsyncRead(nsIStreamListener *listener, nsISupports *ctxt)
 
     if (nonBlocking) {
         mAsyncStream = do_QueryInterface(mStream);
+        if (!mAsyncStream) {
+            rv = NonBlockingAsyncInputStream::Create(mStream.forget(),
+                                                     getter_AddRefs(mAsyncStream));
+            if (NS_WARN_IF(NS_FAILED(rv))) return rv;
+        }
+        MOZ_ASSERT(mAsyncStream);
     }
 
     if (!mAsyncStream) {
@@ -662,7 +670,7 @@ nsInputStreamPump::OnStateStop()
     if (!NS_IsMainThread()) {
         // This method can be called on a different thread if nsInputStreamPump
         // is used off the main-thread.
-        nsresult rv = NS_DispatchToMainThread(
+        nsresult rv = mLabeledMainThreadTarget->Dispatch(
           NewRunnableMethod("nsInputStreamPump::CallOnStateStop",
                             this,
                             &nsInputStreamPump::CallOnStateStop));

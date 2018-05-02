@@ -15,9 +15,11 @@
 #include "mozilla/RefPtr.h"
 #include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGMaskElement.h"
+#include "mozilla/dom/SVGUnitTypesBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::dom::SVGUnitTypesBinding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 
@@ -88,10 +90,10 @@ nsSVGMaskFrame::GetMaskForMaskedFrame(MaskParams& aParams)
 
   RefPtr<DrawTarget> maskDT;
   if (maskType == NS_STYLE_MASK_TYPE_LUMINANCE) {
-    maskDT = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+    maskDT = context->GetDrawTarget()->CreateSimilarDrawTarget(
                maskSurfaceSize, SurfaceFormat::B8G8R8A8);
   } else {
-    maskDT = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+    maskDT = context->GetDrawTarget()->CreateSimilarDrawTarget(
                maskSurfaceSize, SurfaceFormat::A8);
   }
 

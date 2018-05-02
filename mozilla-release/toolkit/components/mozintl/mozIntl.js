@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const mozIntlHelper =
   Cc["@mozilla.org/mozintlhelper;1"].getService(Ci.mozIMozIntlHelper);
@@ -94,6 +91,33 @@ class MozIntl {
       }
     }
     return MozDateTimeFormat;
+  }
+
+  get NumberFormat() {
+    class MozNumberFormat extends Intl.NumberFormat {
+      constructor(locales, options, ...args) {
+        super(getLocales(locales), options, ...args);
+      }
+    }
+    return MozNumberFormat;
+  }
+
+  get Collator() {
+    class MozCollator extends Intl.Collator {
+      constructor(locales, options, ...args) {
+        super(getLocales(locales), options, ...args);
+      }
+    }
+    return MozCollator;
+  }
+
+  get PluralRules() {
+    class MozPluralRules extends Intl.PluralRules {
+      constructor(locales, options, ...args) {
+        super(getLocales(locales), options, ...args);
+      }
+    }
+    return MozPluralRules;
   }
 }
 

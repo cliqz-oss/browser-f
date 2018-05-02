@@ -1,14 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 Svc.Prefs.set("registerEngines", "Tab,Bookmarks,Form,History");
-Cu.import("resource://services-sync/service.js");
 
-function run_test() {
+add_task(async function run_test() {
   validate_all_future_pings();
   _("When imported, Service.onStartup is called");
 
@@ -18,21 +17,18 @@ function run_test() {
   Assert.ok(!xps.enabled);
 
   // Test fixtures
+  let {Service} = ChromeUtils.import("resource://services-sync/service.js", {});
   Service.identity.username = "johndoe";
   Assert.ok(xps.enabled);
-
-  Cu.import("resource://services-sync/service.js");
 
   _("Service is enabled.");
   Assert.equal(Service.enabled, true);
 
   _("Observers are notified of startup");
-  do_test_pending();
-
   Assert.ok(!Service.status.ready);
   Assert.ok(!xps.ready);
 
-  Async.promiseSpinningly(promiseOneObserver("weave:service:ready"));
+  await promiseOneObserver("weave:service:ready");
 
   Assert.ok(Service.status.ready);
   Assert.ok(xps.ready);
@@ -46,4 +42,4 @@ function run_test() {
   Svc.Prefs.resetBranch("");
 
   do_test_finished();
-}
+});

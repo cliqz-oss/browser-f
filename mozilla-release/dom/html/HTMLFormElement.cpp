@@ -165,8 +165,6 @@ HTMLFormElement::AsyncEventRunning(AsyncEventDispatcher* aEvent)
   }
 }
 
-// nsIDOMHTMLFormElement
-
 NS_IMPL_ELEMENT_CLONE(HTMLFormElement)
 
 nsIHTMLCollection*
@@ -225,17 +223,20 @@ HTMLFormElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                             aOldValue, aSubjectPrincipal, aNotify);
 }
 
-NS_IMPL_STRING_ATTR(HTMLFormElement, AcceptCharset, acceptcharset)
-NS_IMPL_ACTION_ATTR(HTMLFormElement, Action, action)
-NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(HTMLFormElement, Autocomplete, autocomplete,
-                                kFormDefaultAutocomplete->tag)
-NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(HTMLFormElement, Enctype, enctype,
-                                kFormDefaultEnctype->tag)
-NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(HTMLFormElement, Method, method,
-                                kFormDefaultMethod->tag)
-NS_IMPL_BOOL_ATTR(HTMLFormElement, NoValidate, novalidate)
-NS_IMPL_STRING_ATTR(HTMLFormElement, Name, name)
-NS_IMPL_STRING_ATTR(HTMLFormElement, Target, target)
+void HTMLFormElement::GetAutocomplete(nsAString& aValue)
+{
+  GetEnumAttr(nsGkAtoms::autocomplete, kFormDefaultAutocomplete->tag, aValue);
+}
+
+void HTMLFormElement::GetEnctype(nsAString& aValue)
+{
+  GetEnumAttr(nsGkAtoms::enctype, kFormDefaultEnctype->tag, aValue);
+}
+
+void HTMLFormElement::GetMethod(nsAString& aValue)
+{
+  GetEnumAttr(nsGkAtoms::method, kFormDefaultMethod->tag, aValue);
+}
 
 void
 HTMLFormElement::Submit(ErrorResult& aRv)
@@ -252,27 +253,11 @@ HTMLFormElement::Submit(ErrorResult& aRv)
   aRv = DoSubmitOrReset(nullptr, eFormSubmit);
 }
 
-NS_IMETHODIMP
-HTMLFormElement::Submit()
-{
-  ErrorResult rv;
-  Submit(rv);
-  return rv.StealNSResult();
-}
-
-NS_IMETHODIMP
+void
 HTMLFormElement::Reset()
 {
   InternalFormEvent event(true, eFormReset);
   EventDispatcher::Dispatch(static_cast<nsIContent*>(this), nullptr, &event);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-HTMLFormElement::CheckValidity(bool* retVal)
-{
-  *retVal = CheckValidity();
-  return NS_OK;
 }
 
 bool
@@ -792,7 +777,8 @@ HTMLFormElement::SubmitSubmission(HTMLFormSubmission* aFormSubmission)
     int64_t postDataStreamLength = -1;
     rv = aFormSubmission->GetEncodedSubmission(actionURI,
                                                getter_AddRefs(postDataStream),
-                                               &postDataStreamLength);
+                                               &postDataStreamLength,
+                                               actionURI);
     NS_ENSURE_SUBMIT_SUCCESS(rv);
 
     rv = linkHandler->OnLinkClickSync(this, actionURI,
@@ -878,6 +864,10 @@ HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
   }
 
   if (nsMixedContentBlocker::IsPotentiallyTrustworthyLoopbackURL(aActionURL)) {
+    return NS_OK;
+  }
+
+  if (nsMixedContentBlocker::IsPotentiallyTrustworthyOnion(aActionURL)) {
     return NS_OK;
   }
 
@@ -1637,7 +1627,7 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
                  "The originating element must be a submit form control!");
 #endif // DEBUG
 
-    nsCOMPtr<nsIDOMHTMLInputElement> inputElement = do_QueryInterface(aOriginatingElement);
+    HTMLInputElement* inputElement = HTMLInputElement::FromContent(aOriginatingElement);
     if (inputElement) {
       inputElement->GetFormAction(action);
     } else {
@@ -1844,29 +1834,10 @@ HTMLFormElement::IsLastActiveElement(const nsIFormControl* aControl) const
   return false;
 }
 
-NS_IMETHODIMP
-HTMLFormElement::GetEncoding(nsAString& aEncoding)
-{
-  return GetEnctype(aEncoding);
-}
-
-NS_IMETHODIMP
-HTMLFormElement::SetEncoding(const nsAString& aEncoding)
-{
-  return SetEnctype(aEncoding);
-}
-
 int32_t
 HTMLFormElement::Length()
 {
   return mControls->Length();
-}
-
-NS_IMETHODIMP
-HTMLFormElement::GetLength(int32_t* aLength)
-{
-  *aLength = Length();
-  return NS_OK;
 }
 
 void

@@ -23,9 +23,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "jsalloc.h"
 #include "jspubtd.h"
 
+#include "js/AllocPolicy.h"
 #include "js/CallArgs.h"
 #include "js/CharacterEncoding.h"
 #include "js/Class.h"
@@ -100,133 +100,6 @@ class MOZ_RAII AutoValueArray : public AutoGCRooter
     }
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
-template<class T>
-class MOZ_RAII AutoVectorRooterBase : protected AutoGCRooter
-{
-    typedef js::Vector<T, 8> VectorImpl;
-    VectorImpl vector;
-
-  public:
-    explicit AutoVectorRooterBase(JSContext* cx, ptrdiff_t tag
-                              MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : AutoGCRooter(cx, tag), vector(cx)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    typedef T ElementType;
-    typedef typename VectorImpl::Range Range;
-
-    size_t length() const { return vector.length(); }
-    bool empty() const { return vector.empty(); }
-
-    MOZ_MUST_USE bool append(const T& v) { return vector.append(v); }
-    MOZ_MUST_USE bool appendN(const T& v, size_t len) { return vector.appendN(v, len); }
-    MOZ_MUST_USE bool append(const T* ptr, size_t len) { return vector.append(ptr, len); }
-    MOZ_MUST_USE bool appendAll(const AutoVectorRooterBase<T>& other) {
-        return vector.appendAll(other.vector);
-    }
-
-    MOZ_MUST_USE bool insert(T* p, const T& val) { return vector.insert(p, val); }
-
-    /* For use when space has already been reserved. */
-    void infallibleAppend(const T& v) { vector.infallibleAppend(v); }
-
-    void popBack() { vector.popBack(); }
-    T popCopy() { return vector.popCopy(); }
-
-    MOZ_MUST_USE bool growBy(size_t inc) {
-        size_t oldLength = vector.length();
-        if (!vector.growByUninitialized(inc))
-            return false;
-        makeRangeGCSafe(oldLength);
-        return true;
-    }
-
-    MOZ_MUST_USE bool resize(size_t newLength) {
-        size_t oldLength = vector.length();
-        if (newLength <= oldLength) {
-            vector.shrinkBy(oldLength - newLength);
-            return true;
-        }
-        if (!vector.growByUninitialized(newLength - oldLength))
-            return false;
-        makeRangeGCSafe(oldLength);
-        return true;
-    }
-
-    void clear() { vector.clear(); }
-
-    MOZ_MUST_USE bool reserve(size_t newLength) {
-        return vector.reserve(newLength);
-    }
-
-    JS::MutableHandle<T> operator[](size_t i) {
-        return JS::MutableHandle<T>::fromMarkedLocation(&vector[i]);
-    }
-    JS::Handle<T> operator[](size_t i) const {
-        return JS::Handle<T>::fromMarkedLocation(&vector[i]);
-    }
-
-    const T* begin() const { return vector.begin(); }
-    T* begin() { return vector.begin(); }
-
-    const T* end() const { return vector.end(); }
-    T* end() { return vector.end(); }
-
-    Range all() { return vector.all(); }
-
-    const T& back() const { return vector.back(); }
-
-    friend void AutoGCRooter::trace(JSTracer* trc);
-
-  private:
-    void makeRangeGCSafe(size_t oldLength) {
-        T* t = vector.begin() + oldLength;
-        for (size_t i = oldLength; i < vector.length(); ++i, ++t)
-            memset(t, 0, sizeof(T));
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
-template <typename T>
-class MOZ_RAII AutoVectorRooter : public AutoVectorRooterBase<T>
-{
-  public:
-    explicit AutoVectorRooter(JSContext* cx
-                             MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-        : AutoVectorRooterBase<T>(cx, this->GetTag(T()))
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
-class AutoValueVector : public Rooted<GCVector<Value, 8>> {
-    using Vec = GCVector<Value, 8>;
-    using Base = Rooted<Vec>;
-  public:
-    explicit AutoValueVector(JSContext* cx) : Base(cx, Vec(cx)) {}
-};
-
-class AutoIdVector : public Rooted<GCVector<jsid, 8>> {
-    using Vec = GCVector<jsid, 8>;
-    using Base = Rooted<Vec>;
-  public:
-    explicit AutoIdVector(JSContext* cx) : Base(cx, Vec(cx)) {}
-
-    bool appendAll(const AutoIdVector& other) { return this->Base::appendAll(other.get()); }
-};
-
-class AutoObjectVector : public Rooted<GCVector<JSObject*, 8>> {
-    using Vec = GCVector<JSObject*, 8>;
-    using Base = Rooted<Vec>;
-  public:
-    explicit AutoObjectVector(JSContext* cx) : Base(cx, Vec(cx)) {}
 };
 
 using ValueVector = JS::GCVector<JS::Value>;
@@ -1117,6 +990,8 @@ class JS_PUBLIC_API(ContextOptions) {
 #ifdef FUZZING
         , fuzzing_(false)
 #endif
+        , expressionClosures_(false)
+        , arrayProtoValues_(true)
     {
     }
 
@@ -1272,6 +1147,18 @@ class JS_PUBLIC_API(ContextOptions) {
     }
 #endif
 
+    bool expressionClosures() const { return expressionClosures_; }
+    ContextOptions& setExpressionClosures(bool flag) {
+        expressionClosures_ = flag;
+        return *this;
+    }
+
+    bool arrayProtoValues() const { return arrayProtoValues_; }
+    ContextOptions& setArrayProtoValues(bool flag) {
+        arrayProtoValues_ = flag;
+        return *this;
+    }
+
     void disableOptionsForSafeMode() {
         setBaseline(false);
         setIon(false);
@@ -1302,6 +1189,8 @@ class JS_PUBLIC_API(ContextOptions) {
 #ifdef FUZZING
     bool fuzzing_ : 1;
 #endif
+    bool expressionClosures_ : 1;
+    bool arrayProtoValues_ : 1;
 
 };
 
@@ -2106,7 +1995,8 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
         preserveJitCode_(false),
         cloneSingletons_(false),
         sharedMemoryAndAtomics_(false),
-        secureContext_(false)
+        secureContext_(false),
+        clampAndJitterTime_(true)
     {}
 
     // A null add-on ID means that the compartment is not associated with an
@@ -2182,6 +2072,12 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
         return *this;
     }
 
+    bool clampAndJitterTime() const { return clampAndJitterTime_; }
+    CompartmentCreationOptions& setClampAndJitterTime(bool flag) {
+        clampAndJitterTime_ = flag;
+        return *this;
+    }
+
   private:
     JSAddonId* addonId_;
     JSTraceOp traceGlobal_;
@@ -2193,6 +2089,7 @@ class JS_PUBLIC_API(CompartmentCreationOptions)
     bool cloneSingletons_;
     bool sharedMemoryAndAtomics_;
     bool secureContext_;
+    bool clampAndJitterTime_;
 };
 
 /**
@@ -3364,6 +3261,42 @@ JS_SetAllNonReservedSlotsToUndefined(JSContext* cx, JSObject* objArg);
 extern JS_PUBLIC_API(JSObject*)
 JS_NewArrayBufferWithContents(JSContext* cx, size_t nbytes, void* contents);
 
+namespace JS {
+
+using BufferContentsRefFunc = void (*)(void* contents, void* userData);
+
+}  /* namespace JS */
+
+/**
+ * Create a new array buffer with the given contents. The ref and unref
+ * functions should increment or decrement the reference count of the contents.
+ * These functions allow array buffers to be used with embedder objects that
+ * use reference counting, for example. The contents must not be modified by
+ * any reference holders, internal or external.
+ *
+ * On success, the new array buffer takes a reference, and |ref(contents,
+ * refUserData)| will be called. When the array buffer is ready to be disposed
+ * of, |unref(contents, refUserData)| will be called to release the array
+ * buffer's reference on the contents.
+ *
+ * The ref and unref functions must not call any JSAPI functions that could
+ * cause a garbage collection.
+ *
+ * The ref function is optional. If it is nullptr, the caller is responsible
+ * for incrementing the reference count before passing the contents to this
+ * function. This also allows using non-reference-counted contents that must be
+ * freed with some function other than free().
+ *
+ * The ref function may also be called in case the buffer is cloned in some
+ * way. Currently this is not used, but it may be in the future. If the ref
+ * function is nullptr, any operation where an extra reference would otherwise
+ * be taken, will either copy the data, or throw an exception.
+ */
+extern JS_PUBLIC_API(JSObject*)
+JS_NewExternalArrayBuffer(JSContext* cx, size_t nbytes, void* contents,
+                          JS::BufferContentsRefFunc ref, JS::BufferContentsRefFunc unref,
+                          void* refUserData = nullptr);
+
 /**
  * Create a new array buffer with the given contents.  The array buffer does not take ownership of
  * contents, and JS_DetachArrayBuffer must be called before the contents are disposed of.
@@ -3668,6 +3601,7 @@ class JS_FRIEND_API(TransitiveCompileOptions)
         canLazilyParse(true),
         strictOption(false),
         extraWarningsOption(false),
+        expressionClosuresOption(false),
         werrorOption(false),
         asmJSOption(AsmJSOption::Disabled),
         throwOnAsmJSValidationFailureOption(false),
@@ -3675,6 +3609,7 @@ class JS_FRIEND_API(TransitiveCompileOptions)
         sourceIsLazy(false),
         allowHTMLComments(true),
         isProbablySystemOrAddonCode(false),
+        hideScriptFromDebugger(false),
         introductionType(nullptr),
         introductionLineno(0),
         introductionOffset(0),
@@ -3702,6 +3637,7 @@ class JS_FRIEND_API(TransitiveCompileOptions)
     bool canLazilyParse;
     bool strictOption;
     bool extraWarningsOption;
+    bool expressionClosuresOption;
     bool werrorOption;
     AsmJSOption asmJSOption;
     bool throwOnAsmJSValidationFailureOption;
@@ -3709,6 +3645,7 @@ class JS_FRIEND_API(TransitiveCompileOptions)
     bool sourceIsLazy;
     bool allowHTMLComments;
     bool isProbablySystemOrAddonCode;
+    bool hideScriptFromDebugger;
 
     // |introductionType| is a statically allocated C string:
     // one of "eval", "Function", or "GeneratorFunction".
@@ -3740,6 +3677,7 @@ class JS_FRIEND_API(ReadOnlyCompileOptions) : public TransitiveCompileOptions
         column(0),
         scriptSourceOffset(0),
         isRunOnce(false),
+        nonSyntacticScope(false),
         noScriptRval(false)
     { }
 
@@ -3775,6 +3713,7 @@ class JS_FRIEND_API(ReadOnlyCompileOptions) : public TransitiveCompileOptions
     unsigned scriptSourceOffset;
     // isRunOnce only applies to non-function scripts.
     bool isRunOnce;
+    bool nonSyntacticScope;
     bool noScriptRval;
 
   private:
@@ -3844,6 +3783,7 @@ class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
     OwningCompileOptions& setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
     OwningCompileOptions& setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }
     OwningCompileOptions& setSourceIsLazy(bool l) { sourceIsLazy = l; return *this; }
+    OwningCompileOptions& setNonSyntacticScope(bool n) { nonSyntacticScope = n; return *this; }
     OwningCompileOptions& setIntroductionType(const char* t) { introductionType = t; return *this; }
     bool setIntroductionInfo(JSContext* cx, const char* introducerFn, const char* intro,
                              unsigned line, JSScript* script, uint32_t offset)
@@ -3936,6 +3876,7 @@ class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) final : public ReadOnlyCompi
     CompileOptions& setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
     CompileOptions& setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }
     CompileOptions& setSourceIsLazy(bool l) { sourceIsLazy = l; return *this; }
+    CompileOptions& setNonSyntacticScope(bool n) { nonSyntacticScope = n; return *this; }
     CompileOptions& setIntroductionType(const char* t) { introductionType = t; return *this; }
     CompileOptions& setIntroductionInfo(const char* introducerFn, const char* intro,
                                         unsigned line, JSScript* script, uint32_t offset)
@@ -4102,6 +4043,22 @@ CompileFunction(JSContext* cx, AutoObjectVector& envChain,
                 const ReadOnlyCompileOptions& options,
                 const char* name, unsigned nargs, const char* const* argnames,
                 const char* bytes, size_t length, JS::MutableHandleFunction fun);
+
+/*
+ * Associate an element wrapper and attribute name with a previously compiled
+ * script, for debugging purposes. Calling this function is optional, but should
+ * be done before script execution if it is required.
+ */
+extern JS_PUBLIC_API(bool)
+InitScriptSourceElement(JSContext* cx, HandleScript script,
+                        HandleObject element, HandleString elementAttrName = nullptr);
+
+/*
+ * For a script compiled with the hideScriptFromDebugger option, expose the
+ * script to the debugger by calling the debugger's onNewScript hook.
+ */
+extern JS_PUBLIC_API(void)
+ExposeScriptToDebugger(JSContext* cx, HandleScript script);
 
 } /* namespace JS */
 
@@ -4300,6 +4257,9 @@ GetRequestedModuleSpecifier(JSContext* cx, JS::HandleValue requestedModuleObject
 extern JS_PUBLIC_API(void)
 GetRequestedModuleSourcePos(JSContext* cx, JS::HandleValue requestedModuleObject,
                             uint32_t* lineNumber, uint32_t* columnNumber);
+
+extern JS_PUBLIC_API(JSScript*)
+GetModuleScript(JS::HandleObject moduleRecord);
 
 } /* namespace JS */
 
@@ -4591,6 +4551,11 @@ class JS_PUBLIC_API(StreamConsumer)
     // contract described above.
     enum CloseReason { EndOfFile, Error };
     virtual void streamClosed(CloseReason reason) = 0;
+
+    // Provides optional stream attributes such as base or source mapping URLs.
+    // Necessarily called before consumeChunk() or streamClosed(). The caller
+    // retains ownership of the given strings.
+    virtual void noteResponseURLs(const char* maybeUrl, const char* maybeSourceMapUrl) = 0;
 };
 
 enum class MimeType { Wasm };
@@ -4615,18 +4580,67 @@ extern JS_PUBLIC_API(void)
 ShutdownAsyncTasks(JSContext* cx);
 
 /**
- * This class can be used to store a pointer to the youngest frame of a saved
- * stack in the specified JSContext. This reference will be picked up by any new
- * calls performed until the class is destroyed, with the specified asyncCause,
- * that must not be empty.
+ * Supply an alternative stack to incorporate into captured SavedFrame
+ * backtraces as the imputed caller of asynchronous JavaScript calls, like async
+ * function resumptions and DOM callbacks.
  *
- * Any stack capture initiated during these new calls will go through the async
- * stack instead of the current stack.
+ * When one async function awaits the result of another, it's natural to think
+ * of that as a sort of function call: just as execution resumes from an
+ * ordinary call expression when the callee returns, with the return value
+ * providing the value of the call expression, execution resumes from an 'await'
+ * expression after the awaited asynchronous function call returns, passing the
+ * return value along.
  *
- * Capturing the stack before a new call is performed will not be affected.
+ * Call the two async functions in such a situation the 'awaiter' and the
+ * 'awaitee'.
  *
- * The provided chain of SavedFrame objects can live in any compartment,
- * although it will be copied to the compartment where the stack is captured.
+ * As an async function, the awaitee contains 'await' expressions of its own.
+ * Whenever it executes after its first 'await', there are never any actual
+ * frames on the JavaScript stack under it; its awaiter is certainly not there.
+ * An await expression's continuation is invoked as a promise callback, and
+ * those are always called directly from the event loop in their own microtick.
+ * (Ignore unusual cases like nested event loops.)
+ *
+ * But because await expressions bear such a strong resemblance to calls (and
+ * deliberately so!), it would be unhelpful for stacks captured within the
+ * awaitee to be empty; instead, they should present the awaiter as the caller.
+ *
+ * The AutoSetAsyncStackForNewCalls RAII class supplies a SavedFrame stack to
+ * treat as the caller of any JavaScript invocations that occur within its
+ * lifetime. Any SavedFrame stack captured during such an invocation uses the
+ * SavedFrame passed to the constructor's 'stack' parameter as the 'asyncParent'
+ * property of the SavedFrame for the invocation's oldest frame. Its 'parent'
+ * property will be null, so stack-walking code can distinguish this
+ * awaiter/awaitee transition from an ordinary caller/callee transition.
+ *
+ * The constructor's 'asyncCause' parameter supplies a string explaining what
+ * sort of asynchronous call caused 'stack' to be spliced into the backtrace;
+ * for example, async function resumptions use the string "async". This appears
+ * as the 'asyncCause' property of the 'asyncParent' SavedFrame.
+ *
+ * Async callers are distinguished in the string form of a SavedFrame chain by
+ * including the 'asyncCause' string in the frame. It appears before the
+ * function name, with the two separated by a '*'.
+ *
+ * Note that, as each compartment has its own set of SavedFrames, the
+ * 'asyncParent' may actually point to a copy of 'stack', rather than the exact
+ * SavedFrame object passed.
+ *
+ * The youngest frame of 'stack' is not mutated to take the asyncCause string as
+ * its 'asyncCause' property; SavedFrame objects are immutable. Rather, a fresh
+ * clone of the frame is created with the needed 'asyncCause' property.
+ *
+ * The 'kind' argument specifies how aggressively 'stack' supplants any
+ * JavaScript frames older than this AutoSetAsyncStackForNewCalls object. If
+ * 'kind' is 'EXPLICIT', then all captured SavedFrame chains take on 'stack' as
+ * their 'asyncParent' where the chain crosses this object's scope. If 'kind' is
+ * 'IMPLICIT', then 'stack' is only included in captured chains if there are no
+ * other JavaScript frames on the stack --- that is, only if the stack would
+ * otherwise end at that point.
+ *
+ * AutoSetAsyncStackForNewCalls affects only SavedFrame chains; it does not
+ * affect Debugger.Frame or js::FrameIter. SavedFrame chains are used for
+ * Error.stack, allocation profiling, Promise debugging, and so on.
  *
  * See also `js/src/doc/SavedFrame/SavedFrame.md` for documentation on async
  * stack frames.
@@ -4702,6 +4716,9 @@ JS_AtomizeAndPinStringN(JSContext* cx, const char* s, size_t length);
 
 extern JS_PUBLIC_API(JSString*)
 JS_AtomizeAndPinString(JSContext* cx, const char* s);
+
+extern JS_PUBLIC_API(JSString*)
+JS_NewLatin1String(JSContext* cx, JS::Latin1Char* chars, size_t length);
 
 extern JS_PUBLIC_API(JSString*)
 JS_NewUCString(JSContext* cx, char16_t* chars, size_t length);
@@ -5882,8 +5899,14 @@ JS_SetOffthreadIonCompilationEnabled(JSContext* cx, bool enabled);
     Register(JUMP_THRESHOLD, "jump-threshold")                              \
     Register(SIMULATOR_ALWAYS_INTERRUPT, "simulator.always-interrupt")      \
     Register(SPECTRE_INDEX_MASKING, "spectre.index-masking")                \
+    Register(SPECTRE_OBJECT_MITIGATIONS_BARRIERS, "spectre.object-mitigations.barriers") \
+    Register(SPECTRE_OBJECT_MITIGATIONS_MISC, "spectre.object-mitigations.misc") \
+    Register(SPECTRE_STRING_MITIGATIONS, "spectre.string-mitigations")      \
+    Register(SPECTRE_VALUE_MASKING, "spectre.value-masking")                \
+    Register(SPECTRE_JIT_TO_CXX_CALLS, "spectre.jit-to-C++-calls")          \
     Register(ASMJS_ATOMICS_ENABLE, "asmjs.atomics.enable")                  \
-    Register(WASM_FOLD_OFFSETS, "wasm.fold-offsets")
+    Register(WASM_FOLD_OFFSETS, "wasm.fold-offsets")                        \
+    Register(WASM_DELAY_TIER2, "wasm.delay-tier2")
 
 typedef enum JSJitCompilerOption {
 #define JIT_COMPILER_DECLARE(key, str) \
@@ -6297,15 +6320,18 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
      *
      *  Case 1: Regular Iteration
      *      iterator - pointer to the iterator object.
+     *      nextMethod - value of |iterator|.next.
      *      index - fixed to NOT_ARRAY (== UINT32_MAX)
      *
      *  Case 2: Optimized Array Iteration
      *      iterator - pointer to the array object.
+     *      nextMethod - the undefined value.
      *      index - current position in array.
      *
      * The cases are distinguished by whether or not |index| is equal to NOT_ARRAY.
      */
     JS::RootedObject iterator;
+    JS::RootedValue nextMethod;
     uint32_t index;
 
     static const uint32_t NOT_ARRAY = UINT32_MAX;
@@ -6314,7 +6340,9 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
     ForOfIterator& operator=(const ForOfIterator&) = delete;
 
   public:
-    explicit ForOfIterator(JSContext* cx) : cx_(cx), iterator(cx_), index(NOT_ARRAY) { }
+    explicit ForOfIterator(JSContext* cx)
+      : cx_(cx), iterator(cx_), nextMethod(cx), index(NOT_ARRAY)
+    { }
 
     enum NonIterableBehavior {
         ThrowOnNonIterable,
@@ -6352,7 +6380,6 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
 
   private:
     inline bool nextFromOptimizedArray(MutableHandleValue val, bool* done);
-    bool materializeArrayIterator();
 };
 
 
@@ -6489,14 +6516,14 @@ CaptureCurrentStack(JSContext* cx, MutableHandleObject stackp,
  * Here |asyncStack| is the async stack to prepare.  It is copied into
  * |cx|'s current compartment, and the newest frame is given
  * |asyncCause| as its asynchronous cause.  If |maxFrameCount| is
- * non-zero, capture at most the youngest |maxFrameCount| frames.  The
+ * |Some(n)|, capture at most the youngest |n| frames.  The
  * new stack object is written to |stackp|.  Returns true on success,
  * or sets an exception and returns |false| on error.
  */
 extern JS_PUBLIC_API(bool)
 CopyAsyncStack(JSContext* cx, HandleObject asyncStack,
                HandleString asyncCause, MutableHandleObject stackp,
-               unsigned maxFrameCount);
+               const mozilla::Maybe<size_t>& maxFrameCount);
 
 /*
  * Accessors for working with SavedFrame JSObjects

@@ -22,11 +22,14 @@ public:
   NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLOptGroupElement, optgroup)
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLOptGroupElement,
+                                       nsGenericHTMLElement)
 
   // nsINode
-  virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                                 bool aNotify) override;
+  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                                     bool aNotify) override;
+  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
+                                            bool aNotify) override;
   virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
   virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
 
@@ -44,10 +47,6 @@ public:
                                 bool aNotify) override;
 
   virtual nsIDOMNode* AsDOMNode() override { return this; }
-
-  virtual bool IsDisabled() const override {
-    return State().HasState(NS_EVENT_STATE_DISABLED);
-  }
 
   bool Disabled() const
   {

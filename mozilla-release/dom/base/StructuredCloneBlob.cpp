@@ -8,7 +8,7 @@
 
 #include "js/StructuredClone.h"
 #include "js/Utility.h"
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 #include "mozilla/dom/BlobImpl.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/Maybe.h"
@@ -134,6 +134,11 @@ StructuredCloneBlob::ReadStructuredCloneInternal(JSContext* aCx, JSStructuredClo
     return false;
   }
   if (blobCount) {
+#ifdef FUZZING
+    if (blobOffset >= aHolder->BlobImpls().Length()) {
+      return false;
+    }
+#endif
     BlobImpls().AppendElements(&aHolder->BlobImpls()[blobOffset], blobCount);
   }
 

@@ -22,7 +22,6 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "js/CharacterEncoding.h"
-#include "jsprf.h"
 
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMException.h"
@@ -48,13 +47,13 @@ using namespace JS;
 
 // static
 bool
-XPCConvert::IsMethodReflectable(const XPTMethodDescriptor& info)
+XPCConvert::IsMethodReflectable(const nsXPTMethodInfo& info)
 {
-    if (XPT_MD_IS_NOTXPCOM(info.flags) || XPT_MD_IS_HIDDEN(info.flags))
+    if (info.IsNotXPCOM() || info.IsHidden())
         return false;
 
-    for (int i = info.num_args-1; i >= 0; i--) {
-        const nsXPTParamInfo& param = info.params[i];
+    for (int i = info.GetParamCount() - 1; i >= 0; i--) {
+        const nsXPTParamInfo& param = info.GetParam(i);
         const nsXPTType& type = param.GetType();
 
         // Reflected methods can't use native types. All native types end up
@@ -952,7 +951,7 @@ nsresult
 XPCConvert::ConstructException(nsresult rv, const char* message,
                                const char* ifaceName, const char* methodName,
                                nsISupports* data,
-                               nsIException** exceptn,
+                               Exception** exceptn,
                                JSContext* cx,
                                Value* jsExceptionPtr)
 {
@@ -1014,7 +1013,7 @@ JSErrorToXPCException(const char* toStringResult,
                       const char* ifaceName,
                       const char* methodName,
                       const JSErrorReport* report,
-                      nsIException** exceptn)
+                      Exception** exceptn)
 {
     AutoJSContext cx;
     nsresult rv = NS_ERROR_FAILURE;
@@ -1064,7 +1063,7 @@ nsresult
 XPCConvert::JSValToXPCException(MutableHandleValue s,
                                 const char* ifaceName,
                                 const char* methodName,
-                                nsIException** exceptn)
+                                Exception** exceptn)
 {
     AutoJSContext cx;
     AutoExceptionRestorer aer(cx, s);
@@ -1083,18 +1082,17 @@ XPCConvert::JSValToXPCException(MutableHandleValue s,
         if (!unwrapped)
             return NS_ERROR_XPC_SECURITY_MANAGER_VETO;
         if (nsCOMPtr<nsISupports> supports = UnwrapReflectorToISupports(unwrapped)) {
-            nsCOMPtr<nsIException> iface = do_QueryInterface(supports);
+            nsCOMPtr<Exception> iface = do_QueryInterface(supports);
             if (iface) {
                 // just pass through the exception (with extra ref and all)
-                nsCOMPtr<nsIException> temp = iface;
-                temp.forget(exceptn);
+                iface.forget(exceptn);
                 return NS_OK;
-            } else {
-                // it is a wrapped native, but not an exception!
-                return ConstructException(NS_ERROR_XPC_JS_THREW_NATIVE_OBJECT,
-                                          nullptr, ifaceName, methodName, supports,
-                                          exceptn, nullptr, nullptr);
             }
+
+            // it is a wrapped native, but not an exception!
+            return ConstructException(NS_ERROR_XPC_JS_THREW_NATIVE_OBJECT,
+                                      nullptr, ifaceName, methodName, supports,
+                                      exceptn, nullptr, nullptr);
         } else {
             // It is a JSObject, but not a wrapped native...
 

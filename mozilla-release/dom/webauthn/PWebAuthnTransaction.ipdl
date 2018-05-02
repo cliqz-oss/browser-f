@@ -30,26 +30,53 @@ struct WebAuthnScopedCredential {
   uint8_t transports;
 };
 
-struct WebAuthnExtension {
-  /* TODO Fill in with predefined extensions */
+struct WebAuthnExtensionAppId {
+  uint8_t[] AppId;
+};
+
+union WebAuthnExtension {
+  WebAuthnExtensionAppId;
+};
+
+struct WebAuthnExtensionResultAppId {
+  bool AppId;
+};
+
+union WebAuthnExtensionResult {
+  WebAuthnExtensionResultAppId;
 };
 
 struct WebAuthnMakeCredentialInfo {
+  nsString Origin;
   uint8_t[] RpIdHash;
   uint8_t[] ClientDataHash;
   uint32_t TimeoutMS;
   WebAuthnScopedCredential[] ExcludeList;
   WebAuthnExtension[] Extensions;
   WebAuthnAuthenticatorSelection AuthenticatorSelection;
+  bool RequestDirectAttestation;
+};
+
+struct WebAuthnMakeCredentialResult {
+  uint8_t[] RegBuffer;
+  bool DirectAttestationPermitted;
 };
 
 struct WebAuthnGetAssertionInfo {
+  nsString Origin;
   uint8_t[] RpIdHash;
   uint8_t[] ClientDataHash;
   uint32_t TimeoutMS;
   WebAuthnScopedCredential[] AllowList;
   bool RequireUserVerification;
   WebAuthnExtension[] Extensions;
+};
+
+struct WebAuthnGetAssertionResult {
+  uint8_t[] RpIdHash;
+  uint8_t[] CredentialID;
+  uint8_t[] SigBuffer;
+  WebAuthnExtensionResult[] Extensions;
 };
 
 async protocol PWebAuthnTransaction {
@@ -63,8 +90,8 @@ async protocol PWebAuthnTransaction {
 
   child:
     async __delete__();
-    async ConfirmRegister(uint64_t aTransactionId, uint8_t[] RegBuffer);
-    async ConfirmSign(uint64_t aTransactionId, uint8_t[] CredentialID, uint8_t[] ReplyBuffer);
+    async ConfirmRegister(uint64_t aTransactionId, WebAuthnMakeCredentialResult aResult);
+    async ConfirmSign(uint64_t aTransactionId, WebAuthnGetAssertionResult aResult);
     async Abort(uint64_t aTransactionId, nsresult Error);
 };
 

@@ -9,23 +9,19 @@
 #include "mozilla/EventForwards.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/AnimationEventBinding.h"
-#include "nsIDOMAnimationEvent.h"
 #include "nsStringFwd.h"
 
 namespace mozilla {
 namespace dom {
 
-class AnimationEvent : public Event,
-                       public nsIDOMAnimationEvent
+class AnimationEvent : public Event
 {
 public:
   AnimationEvent(EventTarget* aOwner,
                  nsPresContext* aPresContext,
                  InternalAnimationEvent* aEvent);
 
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_FORWARD_TO_EVENT
-  NS_DECL_NSIDOMANIMATIONEVENT
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(AnimationEvent, Event)
 
   static already_AddRefed<AnimationEvent>
   Constructor(const GlobalObject& aGlobal,
@@ -38,11 +34,11 @@ public:
     return AnimationEventBinding::Wrap(aCx, this, aGivenProto);
   }
 
-  // xpidl implementation
-  // GetAnimationName(nsAString& aAnimationName);
-  // GetPseudoElement(nsAString& aPseudoElement);
+  void GetAnimationName(nsAString& aAnimationName);
 
   float ElapsedTime();
+
+  void GetPseudoElement(nsAString& aPseudoElement);
 
 protected:
   ~AnimationEvent() {}

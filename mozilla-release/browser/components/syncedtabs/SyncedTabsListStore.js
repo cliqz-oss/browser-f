@@ -4,11 +4,9 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+let { EventEmitter } = ChromeUtils.import("resource:///modules/syncedtabs/EventEmitter.jsm", {});
 
-let { EventEmitter } = Cu.import("resource:///modules/syncedtabs/EventEmitter.jsm", {});
-
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "SyncedTabsListStore"
 ];
 

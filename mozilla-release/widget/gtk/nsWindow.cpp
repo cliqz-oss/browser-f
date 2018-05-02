@@ -134,8 +134,6 @@ using namespace mozilla::widget;
 
 #include <dlfcn.h>
 
-#include "mozilla/layers/APZCTreeManager.h"
-
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::widget;
@@ -408,8 +406,6 @@ UpdateLastInputEventTime(void *aGdkEvent)
 
     sLastUserInputTime = timestamp;
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 
 nsWindow::nsWindow()
 {
@@ -1363,13 +1359,17 @@ SetUserTimeAndStartupIDForActivatedWindow(GtkWidget* aWindow)
 /* static */ guint32
 nsWindow::GetLastUserInputTime()
 {
-    // gdk_x11_display_get_user_time tracks button and key presses,
-    // DESKTOP_STARTUP_ID used to start the app, drop events from external
-    // drags, WM_DELETE_WINDOW delete events, but not usually mouse motion nor
+    // gdk_x11_display_get_user_time/gtk_get_current_event_time tracks
+    // button and key presses, DESKTOP_STARTUP_ID used to start the app,
+    // drop events from external drags,
+    // WM_DELETE_WINDOW delete events, but not usually mouse motion nor
     // button and key releases.  Therefore use the most recent of
     // gdk_x11_display_get_user_time and the last time that we have seen.
-    guint32 timestamp =
-            gdk_x11_display_get_user_time(gdk_display_get_default());
+    GdkDisplay* gdkDisplay = gdk_display_get_default();
+    guint32 timestamp = GDK_IS_X11_DISPLAY(gdkDisplay) ?
+            gdk_x11_display_get_user_time(gdkDisplay) :
+            gtk_get_current_event_time();
+
     if (sLastUserInputTime != GDK_CURRENT_TIME &&
         TimestampIsNewerThan(sLastUserInputTime, timestamp)) {
         return sLastUserInputTime;
@@ -2808,7 +2808,27 @@ nsWindow::OnButtonReleaseEvent(GdkEventButton *aEvent)
     gdk_event_get_axis ((GdkEvent*)aEvent, GDK_AXIS_PRESSURE, &pressure);
     event.pressure = pressure ? pressure : mLastMotionPressure;
 
-    DispatchInputEvent(&event);
+    // The mRefPoint is manipulated in DispatchInputEvent, we're saving it
+    // to use it for the doubleclick position check.
+    LayoutDeviceIntPoint pos = event.mRefPoint;
+
+    nsEventStatus eventStatus = DispatchInputEvent(&event);
+
+    bool defaultPrevented = (eventStatus == nsEventStatus_eConsumeNoDefault);
+    // Check if mouse position in titlebar and doubleclick happened to
+    // trigger restore/maximize.
+    if (!defaultPrevented
+             && mIsCSDEnabled
+             && event.button == WidgetMouseEvent::eLeftButton
+             && event.mClickCount == 2
+             && mDraggableRegion.Contains(pos.x, pos.y)) {
+
+        if (mSizeState == nsSizeMode_Maximized) {
+            SetSizeMode(nsSizeMode_Normal);
+        } else {
+            SetSizeMode(nsSizeMode_Maximized);
+        }
+    }
     mLastMotionPressure = pressure;
 
     // right menu click on linux should also pop up a context menu
@@ -3745,7 +3765,7 @@ nsWindow::Create(nsIWidget* aParent,
         GtkStyleContext* style = gtk_widget_get_style_context(mShell);
         drawToContainer =
             !mIsX11Display ||
-            (mIsCSDAvailable && GetCSDSupportLevel() == CSD_SUPPORT_FLAT ) ||
+            (mIsCSDAvailable && GetCSDSupportLevel() == CSD_SUPPORT_CLIENT) ||
             gtk_style_context_has_class(style, "csd");
         eventWidget = (drawToContainer) ? container : mShell;
 
@@ -3786,6 +3806,10 @@ nsWindow::Create(nsIWidget* aParent,
                   gdk_window_set_decorations(mGdkWindow, (GdkWMDecoration) wmd);
             }
 
+            if (!mIsX11Display) {
+                gtk_widget_set_app_paintable(mShell, TRUE);
+            }
+
             // If the popup ignores mouse events, set an empty input shape.
             if (aInitData->mMouseTransparent) {
               cairo_rectangle_int_t rect = { 0, 0, 0, 0 };
@@ -3795,6 +3819,25 @@ nsWindow::Create(nsIWidget* aParent,
               cairo_region_destroy(region);
             }
         }
+
+#ifdef MOZ_X11
+        // Set window manager hint to keep fullscreen windows composited.
+        //
+        // If the window were to get unredirected, there could be visible
+        // tearing because Gecko does not align its framebuffer updates with
+        // vblank.
+        if (mIsX11Display) {
+            gulong value = 2; // Opt out of unredirection
+            GdkAtom cardinal_atom = gdk_x11_xatom_to_atom(XA_CARDINAL);
+            gdk_property_change(gtk_widget_get_window(mShell),
+                                gdk_atom_intern("_NET_WM_BYPASS_COMPOSITOR", FALSE),
+                                cardinal_atom,
+                                32, // format
+                                GDK_PROP_MODE_REPLACE,
+                                (guchar*)&value,
+                                1);
+        }
+#endif
     }
         break;
 
@@ -4375,6 +4418,16 @@ nsWindow::GetTransparencyMode()
     }
 
     return mIsTransparent ? eTransparencyTransparent : eTransparencyOpaque;
+}
+
+// For setting the draggable titlebar region from CSS
+// with -moz-window-dragging: drag.
+void
+nsWindow::UpdateWindowDraggingRegion(const LayoutDeviceIntRegion& aRegion)
+{
+  if (mDraggableRegion != aRegion) {
+    mDraggableRegion = aRegion;
+  }
 }
 
 #if (MOZ_WIDGET_GTK >= 3)
@@ -5906,6 +5959,7 @@ scale_changed_cb (GtkWidget* widget, GParamSpec* aPSpec, gpointer aPointer)
     if (!window) {
       return;
     }
+    // This eventually propagate new scale to the PuppetWidgets
     window->OnDPIChanged();
 
     // configure_event is already fired before scale-factor signal,
@@ -6515,7 +6569,7 @@ nsWindow::SetDrawsInTitlebar(bool aState)
       return;
 
   if (mShell) {
-      if (GetCSDSupportLevel() == CSD_SUPPORT_FULL) {
+      if (GetCSDSupportLevel() == CSD_SUPPORT_SYSTEM) {
           SetWindowDecoration(aState ? eBorderStyle_border : mBorderStyle);
       }
       else {
@@ -6857,9 +6911,79 @@ nsWindow::GetCSDSupportLevel() {
     if (sCSDSupportLevel != CSD_SUPPORT_UNKNOWN) {
         return sCSDSupportLevel;
     }
-            
-    // Disabled due to Bug 1440461
-    sCSDSupportLevel = CSD_SUPPORT_NONE;
+
+    const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
+    if (currentDesktop) {
+        // GNOME Flashback (fallback)
+        if (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        // gnome-shell
+        } else if (strstr(currentDesktop, "GNOME") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+        } else if (strstr(currentDesktop, "XFCE") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        } else if (strstr(currentDesktop, "X-Cinnamon") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+        // KDE Plasma
+        } else if (strstr(currentDesktop, "KDE") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        } else if (strstr(currentDesktop, "LXDE") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        } else if (strstr(currentDesktop, "openbox") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        } else if (strstr(currentDesktop, "i3") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_NONE;
+        } else if (strstr(currentDesktop, "MATE") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        // Ubuntu Unity
+        } else if (strstr(currentDesktop, "Unity") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        // Elementary OS
+        } else if (strstr(currentDesktop, "Pantheon") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+        } else if (strstr(currentDesktop, "LXQt") != nullptr) {
+            sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+        } else {
+// Release or beta builds are not supposed to be broken
+// so disable titlebar rendering on untested/unknown systems.
+#if defined(RELEASE_OR_BETA)
+            sCSDSupportLevel = CSD_SUPPORT_NONE;
+#else
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+#endif
+        }
+    } else {
+        sCSDSupportLevel = CSD_SUPPORT_NONE;
+    }
+
+    // We don't support CSD_SUPPORT_SYSTEM on Wayland
+    if (!GDK_IS_X11_DISPLAY(gdk_display_get_default()) &&
+        sCSDSupportLevel == CSD_SUPPORT_SYSTEM) {
+        sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+    }
+
+    // GTK_CSD forces CSD mode - use also CSD because window manager
+    // decorations does not work with CSD.
+    // We check GTK_CSD as well as gtk_window_should_use_csd() does.
+    if (sCSDSupportLevel == CSD_SUPPORT_SYSTEM) {
+        const char* csdOverride = getenv("GTK_CSD");
+        if (csdOverride && g_strcmp0(csdOverride, "1") == 0) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        }
+    }
+
+    // Allow MOZ_GTK_TITLEBAR_DECORATION to override our heuristics
+    const char* decorationOverride = getenv("MOZ_GTK_TITLEBAR_DECORATION");
+    if (decorationOverride) {
+        if (strcmp(decorationOverride, "none") == 0) {
+            sCSDSupportLevel = CSD_SUPPORT_NONE;
+        } else if (strcmp(decorationOverride, "client") == 0) {
+            sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+        } else if (strcmp(decorationOverride, "system") == 0) {
+            sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+        }
+    }
+
     return sCSDSupportLevel;
 }
 
@@ -6908,6 +7032,10 @@ nsWindow::GetWaylandDisplay()
 wl_surface*
 nsWindow::GetWaylandSurface()
 {
-  return moz_container_get_wl_surface(MOZ_CONTAINER(mContainer));
+  if (mContainer)
+    return moz_container_get_wl_surface(MOZ_CONTAINER(mContainer));
+
+  NS_WARNING("nsWindow::GetWaylandSurfaces(): We don't have any mContainer for drawing!");
+  return nullptr;
 }
 #endif

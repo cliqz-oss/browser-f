@@ -84,7 +84,7 @@ class JitCode : public gc::TenuredCell
         jumpRelocTableBytes_(0),
         dataRelocTableBytes_(0),
         headerSize_(headerSize),
-        kind_(kind),
+        kind_(uint8_t(kind)),
         invalidated_(false),
         hasBytecodeMap_(false)
     {
@@ -522,8 +522,8 @@ struct IonScript
     void copyRecovers(const RecoverWriter* writer);
     void copyBailoutTable(const SnapshotOffset* table);
     void copyConstants(const Value* vp);
-    void copySafepointIndices(const SafepointIndex* firstSafepointIndex, MacroAssembler& masm);
-    void copyOsiIndices(const OsiIndex* firstOsiIndex, MacroAssembler& masm);
+    void copySafepointIndices(const SafepointIndex* firstSafepointIndex);
+    void copyOsiIndices(const OsiIndex* firstOsiIndex);
     void copyRuntimeData(const uint8_t* data);
     void copyICEntries(const uint32_t* caches, MacroAssembler& masm);
     void copySafepoints(const SafepointWriter* writer);
@@ -683,6 +683,11 @@ struct IonBlockCounts
     const char* code() const {
         return code_;
     }
+
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
+        return mallocSizeOf(description_) + mallocSizeOf(successors_) +
+            mallocSizeOf(code_);
+    }
 };
 
 // Execution information for a compiled script which may persist after the
@@ -743,6 +748,25 @@ struct IonScriptCounts
     IonScriptCounts* previous() const {
         return previous_;
     }
+
+    size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
+        size_t size = 0;
+        auto currCounts = this;
+        while (currCounts) {
+            const IonScriptCounts* currCount = currCounts;
+            currCounts = currCount->previous_;
+            size += currCount->sizeOfOneIncludingThis(mallocSizeOf);
+        }
+        return size;
+    }
+
+    size_t sizeOfOneIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
+        size_t size = mallocSizeOf(this) + mallocSizeOf(blocks_);
+        for (size_t i = 0; i < numBlocks_; i++)
+            blocks_[i].sizeOfExcludingThis(mallocSizeOf);
+        return size;
+    }
+
 };
 
 struct VMFunction;
@@ -796,7 +820,7 @@ class Concrete<js::jit::JitCode> : TracerConcrete<js::jit::JitCode> {
   public:
     static void construct(void *storage, js::jit::JitCode *ptr) { new (storage) Concrete(ptr); }
 
-    CoarseType coarseType() const final override { return CoarseType::Script; }
+    CoarseType coarseType() const final { return CoarseType::Script; }
 
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override {
         Size size = js::gc::Arena::thingSize(get().asTenured().getAllocKind());

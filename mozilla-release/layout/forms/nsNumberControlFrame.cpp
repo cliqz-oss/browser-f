@@ -21,12 +21,14 @@
 #include "nsContentUtils.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsCSSPseudoElements.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "mozilla/StyleSetHandle.h"
 #include "mozilla/StyleSetHandleInlines.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsThreadUtils.h"
 #include "mozilla/FloatingPoint.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 #ifdef ACCESSIBILITY
 #include "mozilla/a11y/AccTypes.h"
@@ -270,11 +272,11 @@ nsNumberControlFrame::AttributeChanged(int32_t  aNameSpaceID,
     if (aAttribute == nsGkAtoms::placeholder ||
         aAttribute == nsGkAtoms::readonly ||
         aAttribute == nsGkAtoms::tabindex) {
-      if (aModType == nsIDOMMutationEvent::REMOVAL) {
+      if (aModType == MutationEventBinding::REMOVAL) {
         mTextField->UnsetAttr(aNameSpaceID, aAttribute, true);
       } else {
-        MOZ_ASSERT(aModType == nsIDOMMutationEvent::ADDITION ||
-                   aModType == nsIDOMMutationEvent::MODIFICATION);
+        MOZ_ASSERT(aModType == MutationEventBinding::ADDITION ||
+                   aModType == MutationEventBinding::MODIFICATION);
         nsAutoString value;
         mContent->AsElement()->GetAttr(aNameSpaceID, aAttribute, value);
         mTextField->SetAttr(aNameSpaceID, aAttribute, value, true);
@@ -312,8 +314,7 @@ public:
   NS_IMETHOD Run() override
   {
     if (mNumber->AsElement()->State().HasState(NS_EVENT_STATE_FOCUS)) {
-      IgnoredErrorResult ignored;
-      HTMLInputElement::FromContent(mTextField)->Focus(ignored);
+      HTMLInputElement::FromContent(mTextField)->Focus(IgnoreErrors());
     }
 
     return NS_OK;
@@ -404,8 +405,7 @@ nsNumberControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   }
 
   // Propogate our tabindex:
-  IgnoredErrorResult ignored;
-  textField->SetTabIndex(content->TabIndex(), ignored);
+  textField->SetTabIndex(content->TabIndex(), IgnoreErrors());
 
   // Initialize the text field's placeholder, if ours is set:
   nsAutoString placeholder;
@@ -599,8 +599,7 @@ nsNumberControlFrame::HandleFocusEvent(WidgetEvent* aEvent)
   if (aEvent->mOriginalTarget != mTextField) {
     // Move focus to our text field
     RefPtr<HTMLInputElement> textField = HTMLInputElement::FromContent(mTextField);
-    IgnoredErrorResult ignored;
-    textField->Focus(ignored);
+    textField->Focus(IgnoreErrors());
   }
 }
 
@@ -681,10 +680,9 @@ nsNumberControlFrame::SetValueOfAnonTextControl(const nsAString& aValue)
   // Pass NonSystem as the caller type; this should work fine for actual number
   // inputs, and be safe in case our input has a type we don't expect for some
   // reason.
-  IgnoredErrorResult rv;
   HTMLInputElement::FromContent(mTextField)->SetValue(localizedValue,
                                                       CallerType::NonSystem,
-                                                      rv);
+                                                      IgnoreErrors());
 }
 
 void

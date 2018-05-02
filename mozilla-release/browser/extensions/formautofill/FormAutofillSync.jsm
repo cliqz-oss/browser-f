@@ -4,22 +4,20 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["AddressesEngine", "CreditCardsEngine"];
 
-this.EXPORTED_SYMBOLS = ["AddressesEngine", "CreditCardsEngine"];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Log",
-                                  "resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "profileStorage",
-                                  "resource://formautofill/ProfileStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "Log",
+                               "resource://gre/modules/Log.jsm");
+ChromeUtils.defineModuleGetter(this, "formAutofillStorage",
+                               "resource://formautofill/FormAutofillStorage.jsm");
 
 // A helper to sanitize address and creditcard records suitable for logging.
 function sanitizeStorageObject(ob) {
@@ -59,7 +57,7 @@ AutofillRecord.prototype = {
     this.id = entry.guid;
     this.entry = entry;
     // The GUID is already stored in record.id, so we nuke it from the entry
-    // itself to save a tiny bit of space. The profileStorage clones profiles,
+    // itself to save a tiny bit of space. The formAutofillStorage clones profiles,
     // so nuking in-place is OK.
     delete this.entry.guid;
   },
@@ -86,7 +84,7 @@ FormAutofillStore.prototype = {
 
   get storage() {
     if (!this._storage) {
-      this._storage = profileStorage[this._subStorageName];
+      this._storage = formAutofillStorage[this._subStorageName];
     }
     return this._storage;
   },
@@ -104,7 +102,7 @@ FormAutofillStore.prototype = {
   },
 
   // Note: this function intentionally returns false in cases where we only have
-  // a (local) tombstone - and profileStorage.get() filters them for us.
+  // a (local) tombstone - and formAutofillStorage.get() filters them for us.
   async itemExists(id) {
     return Boolean(this.storage.get(id));
   },
@@ -184,8 +182,7 @@ function FormAutofillTracker(name, engine) {
 
 FormAutofillTracker.prototype = {
   __proto__: Tracker.prototype,
-  observe: function observe(subject, topic, data) {
-    Tracker.prototype.observe.call(this, subject, topic, data);
+  async observe(subject, topic, data) {
     if (topic != "formautofill-storage-changed") {
       return;
     }
@@ -214,16 +211,16 @@ FormAutofillTracker.prototype = {
   // setting a read-only property.
   set ignoreAll(value) {},
 
-  startTracking() {
+  onStart() {
     Services.obs.addObserver(this, "formautofill-storage-changed");
   },
 
-  stopTracking() {
+  onStop() {
     Services.obs.removeObserver(this, "formautofill-storage-changed");
   },
 
   // We never want to persist changed IDs, as the changes are already stored
-  // in ProfileStorage
+  // in FormAutofillStorage
   persistChangedIDs: false,
 
   // Ensure we aren't accidentally using the base persistence.
@@ -273,7 +270,7 @@ class AutofillChangeset extends Changeset {
     let change = this.changes[id];
     if (change) {
       // Mark the change as synced without removing it from the set. We do this
-      // so that we can update ProfileStorage in `trackRemainingChanges`.
+      // so that we can update FormAutofillStorage in `trackRemainingChanges`.
       change.synced = true;
     }
   }
@@ -292,9 +289,9 @@ FormAutofillEngine.prototype = {
 
   // We don't use SyncEngine.initialize() for this, as we initialize even if
   // the engine is disabled, and we don't want to be the loader of
-  // ProfileStorage in this case.
+  // FormAutofillStorage in this case.
   async _syncStartup() {
-    await profileStorage.initialize();
+    await formAutofillStorage.initialize();
     await SyncEngine.prototype._syncStartup.call(this);
   },
 
@@ -332,7 +329,7 @@ FormAutofillEngine.prototype = {
   },
 
   async _resetClient() {
-    await profileStorage.initialize();
+    await formAutofillStorage.initialize();
     this._store.storage.resetSync();
   },
 };

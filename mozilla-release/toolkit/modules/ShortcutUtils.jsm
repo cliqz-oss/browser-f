@@ -4,11 +4,10 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ShortcutUtils"];
+var EXPORTED_SYMBOLS = ["ShortcutUtils"];
 
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "PlatformKeys", function() {
   return Services.strings.createBundle(
@@ -112,4 +111,3 @@ var ShortcutUtils = {
 
 Object.freeze(ShortcutUtils);
 
-this.ShortcutUtils = ShortcutUtils;

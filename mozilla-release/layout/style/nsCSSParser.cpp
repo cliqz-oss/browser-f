@@ -143,6 +143,7 @@ public:
                       nsIURI*          aSheetURI,
                       nsIURI*          aBaseURI,
                       nsIPrincipal*    aSheetPrincipal,
+                      SheetLoadData*   aLoadData,
                       uint32_t         aLineNumber,
                       css::LoaderReusableStyleSheets* aReusableSheets);
 
@@ -789,7 +790,6 @@ protected:
   bool ParseImageLayerSize(nsCSSPropertyID aPropID);
   bool ParseImageLayerSizeValues(nsCSSValuePair& aOut);
   bool ParseBorderColor();
-  bool ParseBorderColors(nsCSSPropertyID aProperty);
   void SetBorderImageInitialValues();
   bool ParseBorderImageRepeat(bool aAcceptsInherit);
   // If ParseBorderImageSlice returns false, aConsumedTokens indicates
@@ -932,7 +932,7 @@ protected:
   bool ParseListStyleType(nsCSSValue& aValue);
   bool ParseMargin();
   bool ParseClipPath(nsCSSValue& aValue);
-  bool ParseTransform(bool aIsPrefixed, nsCSSPropertyID aProperty,
+  bool ParseTransform(nsCSSPropertyID aProperty,
                       bool aDisallowRelativeValues = false);
   bool ParseObjectPosition();
   bool ParseOutline();
@@ -1251,7 +1251,7 @@ protected:
 
 
   /* Functions for transform Parsing */
-  bool ParseSingleTransform(bool aIsPrefixed, bool aDisallowRelativeValues,
+  bool ParseSingleTransform(bool aDisallowRelativeValues,
                             nsCSSValue& aValue);
   bool ParseFunction(nsCSSKeyword aFunction, const uint32_t aAllowedTypes[],
                      uint32_t aVariantMaskAll, uint16_t aMinElems,
@@ -1299,6 +1299,9 @@ protected:
 
   // The sheet we're parsing into
   RefPtr<CSSStyleSheet> mSheet;
+
+  // The data describing this load, if applicable.
+  RefPtr<SheetLoadData> mLoadData;
 
   // Used for @import rules
   css::Loader* mChildLoader; // not ref counted, it owns us
@@ -1575,6 +1578,7 @@ CSSParserImpl::ParseSheet(const nsAString& aInput,
                           nsIURI*          aSheetURI,
                           nsIURI*          aBaseURI,
                           nsIPrincipal*    aSheetPrincipal,
+                          SheetLoadData*   aLoadData,
                           uint32_t         aLineNumber,
                           css::LoaderReusableStyleSheets* aReusableSheets)
 {
@@ -1598,6 +1602,7 @@ CSSParserImpl::ParseSheet(const nsAString& aInput,
   nsCSSScanner scanner(aInput, aLineNumber);
   css::ErrorReporter reporter(scanner, mSheet, mChildLoader, aSheetURI);
   InitScanner(scanner, reporter, aSheetURI, aBaseURI, aSheetPrincipal);
+  mLoadData = aLoadData;
 
   int32_t ruleCount = mSheet->StyleRuleCount();
   if (0 < ruleCount) {
@@ -1646,6 +1651,7 @@ CSSParserImpl::ParseSheet(const nsAString& aInput,
 
   mSheet->SetSourceMapURLFromComment(scanner.GetSourceMapURL());
   mSheet->SetSourceURL(scanner.GetSourceURL());
+  mLoadData = nullptr;
   ReleaseScanner();
 
   mParsingMode = css::eAuthorSheetFeatures;
@@ -1828,7 +1834,7 @@ CSSParserImpl::ParseTransformProperty(const nsAString& aPropValue,
   css::ErrorReporter reporter(scanner, mSheet, mChildLoader, nullptr);
   InitScanner(scanner, reporter, nullptr, nullptr, nullptr);
 
-  bool parsedOK = ParseTransform(false, eCSSProperty_transform,
+  bool parsedOK = ParseTransform(eCSSProperty_transform,
                                  aDisallowRelativeValues);
   // We should now be at EOF
   if (parsedOK && GetToken(true)) {
@@ -3627,6 +3633,9 @@ CSSParserImpl::ParseMediaQueryExpression(nsMediaQuery* aQuery)
       break;
     case nsMediaFeature::eIdent:
       rv = ParseSingleTokenVariant(expr->mValue, VARIANT_IDENTIFIER, nullptr);
+      if (rv) {
+        expr->mValue.AtomizeIdentValue();
+      }
       break;
   }
   if (!rv || !ExpectSymbol(')', true)) {
@@ -3697,7 +3706,7 @@ CSSParserImpl::ProcessImport(const nsString& aURLSpec,
   }
 
   if (mChildLoader) {
-    mChildLoader->LoadChildSheet(mSheet, url, aMedia, rule, mReusableSheets);
+    mChildLoader->LoadChildSheet(mSheet, mLoadData, url, aMedia, rule, mReusableSheets);
   }
 }
 
@@ -11661,11 +11670,6 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSPropertyID aPropID)
     return ParseBorderSide(kBorderRightIDs, false);
   case eCSSProperty_border_top:
     return ParseBorderSide(kBorderTopIDs, false);
-  case eCSSProperty__moz_border_bottom_colors:
-  case eCSSProperty__moz_border_left_colors:
-  case eCSSProperty__moz_border_right_colors:
-  case eCSSProperty__moz_border_top_colors:
-    return ParseBorderColors(aPropID);
   case eCSSProperty_border_image_slice:
     return ParseBorderImageSlice(true, nullptr);
   case eCSSProperty_border_image_width:
@@ -11789,9 +11793,7 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSPropertyID aPropID)
     return ParseWillChange();
   case eCSSProperty_transform:
   case eCSSProperty__moz_window_transform:
-    return ParseTransform(false, aPropID);
-  case eCSSProperty__moz_transform:
-    return ParseTransform(true, eCSSProperty_transform);
+    return ParseTransform(aPropID);
   case eCSSProperty_transform_origin:
   case eCSSProperty_perspective_origin:
   case eCSSProperty__moz_window_transform_origin:
@@ -11831,6 +11833,11 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSPropertyID aPropID)
     return ParseWebkitTextStroke();
   case eCSSProperty_all:
     return ParseAll();
+  case eCSSProperty_translate:
+  case eCSSProperty_rotate:
+  case eCSSProperty_scale:
+    // These properties aren't implemented in the old style system.
+    return false;
   default:
     MOZ_ASSERT(false, "should not be called");
     return false;
@@ -12053,6 +12060,12 @@ CSSParserImpl::ParseFontDescriptorValue(nsCSSFontDesc aDescID,
 
   case eCSSFontDesc_FontFeatureSettings:
     return ParseFontFeatureSettings(aValue);
+
+  case eCSSFontDesc_FontVariationSettings:
+    if (StylePrefs::sFontVariationsEnabled) {
+      return ParseFontVariationSettings(aValue);
+    }
+    return false;
 
   case eCSSFontDesc_FontLanguageOverride:
     return ParseSingleTokenVariant(aValue, VARIANT_NORMAL | VARIANT_STRING,
@@ -13493,30 +13506,6 @@ CSSParserImpl::ParseBorderWidth()
   return ParseBoxProperties(kBorderWidthIDs);
 }
 
-bool
-CSSParserImpl::ParseBorderColors(nsCSSPropertyID aProperty)
-{
-  nsCSSValue value;
-  // 'inherit', 'initial', 'unset' and 'none' are only allowed on their own
-  if (!ParseSingleTokenVariant(value, VARIANT_INHERIT | VARIANT_NONE,
-                               nullptr)) {
-    nsCSSValueList *cur = value.SetListValue();
-    for (;;) {
-      if (ParseVariant(cur->mValue, VARIANT_COLOR, nullptr) !=
-          CSSParseResult::Ok) {
-        return false;
-      }
-      if (CheckEndProperty()) {
-        break;
-      }
-      cur->mNext = new nsCSSValueList;
-      cur = cur->mNext;
-    }
-  }
-  AppendValue(aProperty, value);
-  return true;
-}
-
 // Parse the top level of a calc() expression.
 bool
 CSSParserImpl::ParseCalc(nsCSSValue &aValue, uint32_t aVariantMask)
@@ -14067,6 +14056,10 @@ CSSParserImpl::ParseFont()
       AppendValue(eCSSProperty_font_variant_ligatures, family);
       AppendValue(eCSSProperty_font_variant_numeric, family);
       AppendValue(eCSSProperty_font_variant_position, family);
+      if (StylePrefs::sFontVariationsEnabled) {
+        AppendValue(eCSSProperty_font_variation_settings, family);
+        AppendValue(eCSSProperty_font_optical_sizing, family);
+      }
     }
     else {
       AppendValue(eCSSProperty__x_system_font, family);
@@ -14087,6 +14080,10 @@ CSSParserImpl::ParseFont()
       AppendValue(eCSSProperty_font_variant_ligatures, systemFont);
       AppendValue(eCSSProperty_font_variant_numeric, systemFont);
       AppendValue(eCSSProperty_font_variant_position, systemFont);
+      if (StylePrefs::sFontVariationsEnabled) {
+        AppendValue(eCSSProperty_font_variation_settings, systemFont);
+        AppendValue(eCSSProperty_font_optical_sizing, systemFont);
+      }
     }
     return true;
   }
@@ -14197,6 +14194,11 @@ CSSParserImpl::ParseFont()
                   nsCSSValue(eCSSUnit_Normal));
       AppendValue(eCSSProperty_font_variant_position,
                   nsCSSValue(eCSSUnit_Normal));
+      if (StylePrefs::sFontVariationsEnabled) {
+        AppendValue(eCSSProperty_font_variation_settings, nsCSSValue(eCSSUnit_Normal));
+        AppendValue(eCSSProperty_font_optical_sizing,
+                    nsCSSValue(NS_FONT_OPTICAL_SIZING_AUTO, eCSSUnit_Enumerated));
+      }
       return true;
     }
   }
@@ -15877,8 +15879,6 @@ CSSParserImpl::ParseFunction(nsCSSKeyword aFunction,
  * returns an error.
  *
  * @param aToken The token identifying the function.
- * @param aIsPrefixed If true, parse matrices using the matrix syntax
- *   for -moz-transform.
  * @param aDisallowRelativeValues If true, only allow variants that are
  *   numbers or have non-relative dimensions.
  * @param aMinElems [out] The minimum number of elements to read.
@@ -15887,7 +15887,6 @@ CSSParserImpl::ParseFunction(nsCSSKeyword aFunction,
  * @return Whether the information was loaded successfully.
  */
 static bool GetFunctionParseInformation(nsCSSKeyword aToken,
-                                        bool aIsPrefixed,
                                         bool aDisallowRelativeValues,
                                         uint16_t &aMinElems,
                                         uint16_t &aMaxElems,
@@ -15913,9 +15912,7 @@ static bool GetFunctionParseInformation(nsCSSKeyword aToken,
          eThreeNumbers,
          eThreeNumbersOneAngle,
          eMatrix,
-         eMatrixPrefixed,
          eMatrix3d,
-         eMatrix3dPrefixed,
          eNumVariantMasks };
   static const int32_t kMaxElemsPerFunction = 16;
   static const uint32_t kVariantMasks[eNumVariantMasks][kMaxElemsPerFunction] = {
@@ -15937,15 +15934,9 @@ static bool GetFunctionParseInformation(nsCSSKeyword aToken,
     {VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
      VARIANT_NUMBER, VARIANT_NUMBER},
     {VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
-     VARIANT_LPNCALC, VARIANT_LPNCALC},
-    {VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
      VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
      VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
-     VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER},
-    {VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
-     VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
-     VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER,
-     VARIANT_LPNCALC, VARIANT_LPNCALC, VARIANT_LNCALC, VARIANT_NUMBER}};
+     VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER, VARIANT_NUMBER}};
   // Map from a mask to a congruent mask that excludes relative variants.
   static const int32_t kNonRelativeVariantMap[eNumVariantMasks] = {
     eAbsoluteLengthCalc,
@@ -15964,13 +15955,11 @@ static bool GetFunctionParseInformation(nsCSSKeyword aToken,
     eThreeNumbers,
     eThreeNumbersOneAngle,
     eMatrix,
-    eMatrix,
-    eMatrix3d,
     eMatrix3d };
 
 #ifdef DEBUG
   static const uint8_t kVariantMaskLengths[eNumVariantMasks] =
-    {1, 1, 1, 2, 2, 3, 3, 1, 2, 1, 1, 1, 2, 3, 4, 6, 6, 16, 16};
+    {1, 1, 1, 2, 2, 3, 3, 1, 2, 1, 1, 1, 2, 3, 4, 6, 16};
 #endif
 
   int32_t variantIndex = eNumVariantMasks;
@@ -16055,13 +16044,13 @@ static bool GetFunctionParseInformation(nsCSSKeyword aToken,
     break;
   case eCSSKeyword_matrix:
     /* Six values, all numbers. */
-    variantIndex = aIsPrefixed ? eMatrixPrefixed : eMatrix;
+    variantIndex = eMatrix;
     aMinElems = 6U;
     aMaxElems = 6U;
     break;
   case eCSSKeyword_matrix3d:
     /* 16 matrix values, all numbers */
-    variantIndex = aIsPrefixed ? eMatrix3dPrefixed : eMatrix3d;
+    variantIndex = eMatrix3d;
     aMinElems = 16U;
     aMaxElems = 16U;
     break;
@@ -16151,8 +16140,7 @@ bool CSSParserImpl::ParseWillChange()
  * error if something goes wrong.
  */
 bool
-CSSParserImpl::ParseSingleTransform(bool aIsPrefixed,
-                                    bool aDisallowRelativeValues,
+CSSParserImpl::ParseSingleTransform(bool aDisallowRelativeValues,
                                     nsCSSValue& aValue)
 {
   if (!GetToken(true))
@@ -16167,7 +16155,7 @@ CSSParserImpl::ParseSingleTransform(bool aIsPrefixed,
   uint16_t minElems, maxElems;
   nsCSSKeyword keyword = nsCSSKeywords::LookupKeyword(mToken.mIdent);
 
-  if (!GetFunctionParseInformation(keyword, aIsPrefixed,
+  if (!GetFunctionParseInformation(keyword,
                                    aDisallowRelativeValues,
                                    minElems, maxElems,
                                    variantMask))
@@ -16185,7 +16173,7 @@ CSSParserImpl::ParseSingleTransform(bool aIsPrefixed,
  * identity transform very late in the pipeline.
  */
 bool
-CSSParserImpl::ParseTransform(bool aIsPrefixed, nsCSSPropertyID aProperty,
+CSSParserImpl::ParseTransform(nsCSSPropertyID aProperty,
                               bool aDisallowRelativeValues)
 {
   nsCSSValue value;
@@ -16197,7 +16185,7 @@ CSSParserImpl::ParseTransform(bool aIsPrefixed, nsCSSPropertyID aProperty,
     list->mHead = new nsCSSValueList;
     nsCSSValueList* cur = list->mHead;
     for (;;) {
-      if (!ParseSingleTransform(aIsPrefixed, aDisallowRelativeValues,
+      if (!ParseSingleTransform(aDisallowRelativeValues,
                                 cur->mValue)) {
         return false;
       }
@@ -17964,12 +17952,13 @@ nsCSSParser::ParseSheet(const nsAString& aInput,
                         nsIURI*          aSheetURI,
                         nsIURI*          aBaseURI,
                         nsIPrincipal*    aSheetPrincipal,
+                        SheetLoadData*   aLoadData,
                         uint32_t         aLineNumber,
                         css::LoaderReusableStyleSheets* aReusableSheets)
 {
   return static_cast<CSSParserImpl*>(mImpl)->
-    ParseSheet(aInput, aSheetURI, aBaseURI, aSheetPrincipal, aLineNumber,
-               aReusableSheets);
+    ParseSheet(aInput, aSheetURI, aBaseURI, aSheetPrincipal, aLoadData,
+               aLineNumber, aReusableSheets);
 }
 
 already_AddRefed<css::Declaration>

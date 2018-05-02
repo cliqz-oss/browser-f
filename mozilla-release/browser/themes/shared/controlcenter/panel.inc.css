@@ -206,6 +206,7 @@
 
 #identity-popup[connection=secure-cert-user-overridden] .identity-popup-security-content {
   background-image: url(chrome://browser/skin/connection-mixed-passive-loaded.svg);
+  fill: unset;
   -moz-context-properties: fill, fill-opacity;
 }
 
@@ -309,6 +310,14 @@ description#identity-popup-content-verifier,
   padding-bottom: 1.5em;
 }
 
+@supports -moz-bool-pref("layout.css.emulate-moz-box-with-flex") {
+  /* The extra padding-bottom is there to work around XUL flex (Bug 1368281).
+     This rule and the 1.5em above can both be removed once we are only using CSS flex. */
+  #identity-popup-permissions-content {
+    padding-bottom: 1em;
+  }
+}
+
 #identity-popup-permissions-headline {
   /* Make sure the label is as tall as the icon so that the permission list
      which is aligned with the icon doesn't cover it up. */
@@ -373,6 +382,8 @@ description#identity-popup-content-verifier,
   min-width: 0;
   padding: 2px;
   background-color: transparent;
+  color: inherit;
+  opacity: 0.6;
 }
 
 .identity-popup-permission-remove-button > .button-box {
@@ -385,7 +396,7 @@ description#identity-popup-content-verifier,
   height: 16px;
   list-style-image: url(chrome://browser/skin/panel-icon-cancel.svg);
   -moz-context-properties: fill;
-  fill: graytext;
+  fill: currentColor;
 }
 
 .identity-popup-permission-remove-button > .button-box > .button-text {
@@ -394,13 +405,13 @@ description#identity-popup-content-verifier,
 
 /* swap foreground / background colors on hover */
 .identity-popup-permission-remove-button:not(:-moz-focusring):hover {
-  background-color: graytext;
+  background-color: currentColor;
 }
 
 .identity-popup-permission-remove-button:not(:-moz-focusring):hover > .button-box > .button-icon {
-  fill: -moz-field;
+  fill: var(--arrowpanel-background);
 }
 
 .identity-popup-permission-remove-button:not(:-moz-focusring):hover:active {
-  background-color: -moz-fieldtext;
+  opacity: 0.8;
 }

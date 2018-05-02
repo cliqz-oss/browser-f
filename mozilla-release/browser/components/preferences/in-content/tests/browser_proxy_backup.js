@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -46,7 +46,7 @@ function test() {
   open_preferences(async function tabOpened(aContentWindow) {
     is(gBrowser.currentURI.spec, "about:preferences", "about:preferences loaded");
     let dialog = await openAndLoadSubDialog(connectionURL);
-    let dialogClosingPromise = waitForEvent(dialog.document.documentElement, "dialogclosing");
+    let dialogClosingPromise = BrowserTestUtils.waitForEvent(dialog.document.documentElement, "dialogclosing");
 
     ok(dialog, "connection window opened");
     dialog.document.documentElement.acceptDialog();

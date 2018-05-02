@@ -43,10 +43,14 @@ class LTableSwitchV : public LInstruction
     static const size_t InputValue = 0;
 };
 
-class LWasmUint32ToFloat32 : public LInstruction
+class LWasmUint32ToFloat32 : public LInstructionHelper<1, 1, 0>
 {
   public:
-    LWasmUint32ToFloat32(const LAllocation& ) { MOZ_CRASH(); }
+    explicit LWasmUint32ToFloat32(const LAllocation&)
+      : LInstructionHelper(LOp_Invalid)
+    {
+        MOZ_CRASH();
+    }
 };
 
 class LUnbox : public LInstructionHelper<1, 2, 0>
@@ -56,13 +60,15 @@ class LUnbox : public LInstructionHelper<1, 2, 0>
     MUnbox* mir() const { MOZ_CRASH(); }
     const LAllocation* payload() { MOZ_CRASH(); }
     const LAllocation* type() { MOZ_CRASH(); }
-    const char* extraName() const override { MOZ_CRASH(); }
+    const char* extraName() const { MOZ_CRASH(); }
 };
 class LDivI : public LBinaryMath<1>
 {
   public:
     LDivI(const LAllocation& , const LAllocation& ,
-          const LDefinition& ) {
+          const LDefinition& )
+      : LBinaryMath(LOp_Invalid)
+    {
         MOZ_CRASH();
     }
     MDiv* mir() const { MOZ_CRASH(); }
@@ -70,7 +76,7 @@ class LDivI : public LBinaryMath<1>
 class LDivPowTwoI : public LInstructionHelper<1, 1, 0>
 {
   public:
-    LDivPowTwoI(const LAllocation& , int32_t ) { MOZ_CRASH(); }
+    LDivPowTwoI(const LAllocation&, int32_t) : LInstructionHelper(LOp_Invalid) { MOZ_CRASH(); }
     const LAllocation* numerator() { MOZ_CRASH(); }
     int32_t shift() { MOZ_CRASH(); }
     MDiv* mir() const { MOZ_CRASH(); }
@@ -80,6 +86,7 @@ class LModI : public LBinaryMath<1>
   public:
     LModI(const LAllocation&, const LAllocation&,
           const LDefinition&)
+      : LBinaryMath(LOp_Invalid)
     {
         MOZ_CRASH();
     }
@@ -90,19 +97,25 @@ class LModI : public LBinaryMath<1>
 class LWasmUint32ToDouble : public LInstructionHelper<1, 1, 0>
 {
   public:
-    LWasmUint32ToDouble(const LAllocation&) { MOZ_CRASH(); }
+    explicit LWasmUint32ToDouble(const LAllocation&)
+      : LInstructionHelper(LOp_Invalid)
+    {
+        MOZ_CRASH();
+    }
 };
 class LModPowTwoI : public LInstructionHelper<1, 1, 0>
 {
 
   public:
     int32_t shift() { MOZ_CRASH(); }
-    LModPowTwoI(const LAllocation& lhs, int32_t shift) { MOZ_CRASH(); }
+    LModPowTwoI(const LAllocation& lhs, int32_t shift)
+      : LInstructionHelper(LOp_Invalid)
+    {
+        MOZ_CRASH();
+    }
     MMod* mir() const { MOZ_CRASH(); }
 };
 
-class LGuardShape : public LInstruction {};
-class LGuardObjectGroup : public LInstruction {};
 class LMulI : public LInstruction {};
 
 } // namespace jit

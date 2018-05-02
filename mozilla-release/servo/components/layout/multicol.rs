@@ -23,6 +23,7 @@ use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
 use style::values::Either;
 use style::values::computed::{LengthOrPercentageOrAuto, LengthOrPercentageOrNone};
+use style::values::generics::column::ColumnCount;
 
 #[allow(unsafe_code)]
 unsafe impl ::flow::HasBaseFlow for MulticolFlow {}
@@ -115,12 +116,12 @@ impl Flow for MulticolFlow {
                 let column_width = Au::from(column_width);
                 column_count =
                     max(1, (content_inline_size + column_gap).0 / (column_width + column_gap).0);
-                if let Either::First(specified_column_count) = column_style.column_count {
+                if let ColumnCount::Integer(specified_column_count) = column_style.column_count {
                     column_count = min(column_count, specified_column_count.0 as i32);
                 }
             } else {
                 column_count = match column_style.column_count {
-                    Either::First(n) => n.0,
+                    ColumnCount::Integer(n) => n.0,
                     _ => unreachable!(),
                 }
             }
@@ -159,7 +160,7 @@ impl Flow for MulticolFlow {
         });
 
         // Before layout, everything is in a single "column"
-        assert!(self.block_flow.base.children.len() == 1);
+        assert_eq!(self.block_flow.base.children.len(), 1);
         let mut column = self.block_flow.base.children.pop_front_arc().unwrap();
 
         // Pretend there is no children for this:

@@ -3,9 +3,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 'use strict';
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { XPCOMUtils } = Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+const { XPCOMUtils } = ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
 
 const manager = Cc['@mozilla.org/presentation-device/manager;1']
                   .getService(Ci.nsIPresentationDeviceManager);
@@ -85,7 +83,7 @@ var mockedDeviceSupportHttpsURL = {
   },
   disconnect: function() {},
   isRequestedUrlSupported: function(requestedUrl) {
-    if (requestedUrl.indexOf("https://") != -1) {
+    if (requestedUrl.includes("https://")) {
       return true;
     }
     return false;

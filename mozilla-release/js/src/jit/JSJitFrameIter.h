@@ -7,14 +7,13 @@
 #ifndef jit_JSJitFrameIter_h
 #define jit_JSJitFrameIter_h
 
-#include "jsfun.h"
-#include "jsscript.h"
 #include "jstypes.h"
 
 #include "jit/IonCode.h"
 #include "jit/Snapshots.h"
-
 #include "js/ProfilingFrameIterator.h"
+#include "vm/JSFunction.h"
+#include "vm/JSScript.h"
 
 namespace js {
 namespace jit {
@@ -60,6 +59,11 @@ enum FrameType
     // jits, used as a marker to interleave JS jit and wasm frames. From the
     // point of view of JS JITs, this is just another kind of entry frame.
     JitFrame_WasmToJSJit,
+
+    // A JS to wasm frame is constructed during fast calls from any JS jits to
+    // wasm, and is a special kind of exit frame that doesn't have the exit
+    // footer. From the point of view of the jit, it can be skipped as an exit.
+    JitFrame_JSJitToWasm,
 };
 
 enum ReadFrameArgsBehavior {
@@ -112,6 +116,10 @@ class JSJitFrameIter
   public:
     // See comment above the class.
     explicit JSJitFrameIter(const JitActivation* activation);
+
+    // A constructor specialized for jit->wasm frames, which starts at a
+    // specific FP.
+    JSJitFrameIter(const JitActivation* activation, uint8_t* fp);
 
     // Used only by DebugModeOSRVolatileJitFrameIter.
     void exchangeReturnAddressIfMatch(uint8_t* oldAddr, uint8_t* newAddr) {
@@ -292,7 +300,7 @@ class JSJitProfilingFrameIterator
     inline JitFrameLayout* framePtr();
     inline JSScript* frameScript();
     MOZ_MUST_USE bool tryInitWithPC(void* pc);
-    MOZ_MUST_USE bool tryInitWithTable(JitcodeGlobalTable* table, void* pc, JSRuntime* rt,
+    MOZ_MUST_USE bool tryInitWithTable(JitcodeGlobalTable* table, void* pc,
                                        bool forLastCallSite);
     void fixBaselineReturnAddress();
 
@@ -301,9 +309,8 @@ class JSJitProfilingFrameIterator
     void moveToNextFrame(CommonFrameLayout* frame);
 
   public:
-    JSJitProfilingFrameIterator(JSContext* cx,
-                                const JS::ProfilingFrameIterator::RegisterState& state);
-    explicit JSJitProfilingFrameIterator(void* exitFrame);
+    JSJitProfilingFrameIterator(JSContext* cx, void* pc);
+    explicit JSJitProfilingFrameIterator(CommonFrameLayout* exitFP);
 
     void operator++();
     bool done() const { return fp_ == nullptr; }

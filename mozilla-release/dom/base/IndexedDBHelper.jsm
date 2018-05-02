@@ -12,23 +12,19 @@ if (DEBUG) {
   debug = function (s) {}
 }
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+var EXPORTED_SYMBOLS = ["IndexedDBHelper"];
 
-this.EXPORTED_SYMBOLS = ["IndexedDBHelper"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["indexedDB"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, 'Services',
+ChromeUtils.defineModuleGetter(this, 'Services',
   'resource://gre/modules/Services.jsm');
 
 function getErrorName(err) {
   return err && err.name || "UnknownError";
 }
 
-this.IndexedDBHelper = function IndexedDBHelper() {
+function IndexedDBHelper() {
 }
 
 IndexedDBHelper.prototype = {

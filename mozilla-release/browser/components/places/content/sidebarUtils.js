@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-window.top.gUIDensity.update();
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+
+let uidensity = window.top.document.documentElement.getAttribute("uidensity");
+if (uidensity) {
+  document.documentElement.setAttribute("uidensity", uidensity);
+}
 
 var SidebarUtils = {
   handleTreeClick: function SU_handleTreeClick(aTree, aEvent, aGutterSelect) {
@@ -39,7 +43,7 @@ var SidebarUtils = {
     var openInTabs = isContainer &&
                      (aEvent.button == 1 ||
                       (aEvent.button == 0 && modifKey)) &&
-                     PlacesUtils.hasChildURIs(tbo.view.nodeForTreeIndex(cell.row));
+                     PlacesUtils.hasChildURIs(aTree.view.nodeForTreeIndex(cell.row));
 
     if (aEvent.button == 0 && isContainer && !openInTabs) {
       tbo.view.toggleOpenState(cell.row);

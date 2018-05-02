@@ -125,9 +125,9 @@ public:
   Init(uint8_t *aData, IntSize aSize, int32_t aStride, SurfaceFormat aFormat)
   {
     //XXX: do we need to ensure any alignment here?
-    auto data = MakeUnique<uint8_t[]>(aStride * aSize.height * BytesPerPixel(aFormat));
+    auto data = MakeUnique<uint8_t[]>(aStride * aSize.height);
     if (data) {
-      memcpy(data.get(), aData, aStride * aSize.height * BytesPerPixel(aFormat));
+      memcpy(data.get(), aData, aStride * aSize.height);
       RefPtr<DataSourceSurfaceRecording> surf = new DataSourceSurfaceRecording(Move(data), aSize, aStride, aFormat);
       return surf.forget();
     }
@@ -251,9 +251,6 @@ DrawTargetRecording::DrawTargetRecording(const DrawTargetRecording *aDT,
   , mFinalDT(aDT->mFinalDT)
   , mSize(aSize)
 {
-  mRecorder->RecordEvent(RecordedCreateSimilarDrawTarget(this,
-                                                         aSize,
-                                                         aFormat));
   mFormat = aFormat;
 }
 
@@ -360,6 +357,7 @@ DrawTargetRecording::FillGlyphs(ScaledFont *aFont,
 	}
 	mRecorder->AddStoredObject(unscaledFont);
       }
+      mRecorder->RecordEvent(RecordedScaledFontCreation(aFont, unscaledFont));
     }
     RecordingFontUserData *userData = new RecordingFontUserData;
     userData->refPtr = aFont;
@@ -529,6 +527,23 @@ DrawTargetRecording::PushLayer(bool aOpaque, Float aOpacity,
 }
 
 void
+DrawTargetRecording::PushLayerWithBlend(bool aOpaque, Float aOpacity,
+                                        SourceSurface* aMask,
+                                        const Matrix& aMaskTransform,
+                                        const IntRect& aBounds,
+                                        bool aCopyBackground,
+                                        CompositionOp aCompositionOp)
+{
+  if (aMask) {
+    EnsureSurfaceStoredRecording(mRecorder, aMask, "PushLayer");
+  }
+
+  mRecorder->RecordEvent(RecordedPushLayerWithBlend(this, aOpaque, aOpacity, aMask,
+                                           aMaskTransform, aBounds,
+                                           aCopyBackground, aCompositionOp));
+}
+
+void
 DrawTargetRecording::PopLayer()
 {
   mRecorder->RecordEvent(RecordedPopLayer(static_cast<DrawTarget*>(this)));
@@ -567,7 +582,18 @@ already_AddRefed<DrawTarget>
 DrawTargetRecording::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const
 {
   RefPtr<DrawTarget> similarDT = new DrawTargetRecording(this, aSize, aFormat);
+  mRecorder->RecordEvent(RecordedCreateSimilarDrawTarget(similarDT.get(),
+                                                         aSize,
+                                                         aFormat));
   return similarDT.forget();
+}
+
+RefPtr<DrawTarget>
+DrawTargetRecording::CreateClippedDrawTarget(const IntSize& aMaxSize, const Matrix& aTransform, SurfaceFormat aFormat) const
+{
+  RefPtr<DrawTarget> similarDT = new DrawTargetRecording(this, aMaxSize, aFormat);
+  mRecorder->RecordEvent(RecordedCreateClippedDrawTarget(similarDT.get(), aMaxSize, aTransform, aFormat));
+  return similarDT;
 }
 
 already_AddRefed<PathBuilder>

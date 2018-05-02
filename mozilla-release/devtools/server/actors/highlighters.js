@@ -7,7 +7,7 @@
 const { Ci, Cu } = require("chrome");
 
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const protocol = require("devtools/shared/protocol");
 const Services = require("Services");
 const { highlighterSpec, customHighlighterSpec } = require("devtools/shared/specs/highlighters");
@@ -307,7 +307,7 @@ exports.HighlighterActor = protocol.ActorClassWithSpec(highlighterSpec, {
        */
       switch (event.keyCode) {
         // Wider.
-        case Ci.nsIDOMKeyEvent.DOM_VK_LEFT:
+        case event.DOM_VK_LEFT:
           if (!currentNode.parentElement) {
             return;
           }
@@ -315,7 +315,7 @@ exports.HighlighterActor = protocol.ActorClassWithSpec(highlighterSpec, {
           break;
 
         // Narrower.
-        case Ci.nsIDOMKeyEvent.DOM_VK_RIGHT:
+        case event.DOM_VK_RIGHT:
           if (!currentNode.children.length) {
             return;
           }
@@ -335,16 +335,16 @@ exports.HighlighterActor = protocol.ActorClassWithSpec(highlighterSpec, {
           break;
 
         // Select the element.
-        case Ci.nsIDOMKeyEvent.DOM_VK_RETURN:
+        case event.DOM_VK_RETURN:
           this._onPick(event);
           return;
 
         // Cancel pick mode.
-        case Ci.nsIDOMKeyEvent.DOM_VK_ESCAPE:
+        case event.DOM_VK_ESCAPE:
           this.cancelPick();
           this._walker.emit("picker-node-canceled");
           return;
-        case Ci.nsIDOMKeyEvent.DOM_VK_C:
+        case event.DOM_VK_C:
           if ((IS_OSX && event.metaKey && event.altKey) ||
             (!IS_OSX && event.ctrlKey && event.shiftKey)) {
             this.cancelPick();
@@ -438,10 +438,10 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
    * The typename must be one of HIGHLIGHTER_CLASSES and the class must
    * implement constructor(tabActor), show(node), hide(), destroy()
    */
-  initialize: function (inspector, typeName) {
+  initialize: function (parent, typeName) {
     protocol.Actor.prototype.initialize.call(this, null);
 
-    this._inspector = inspector;
+    this._parent = parent;
 
     let modulePath = highlighterTypes.get(typeName);
     if (!modulePath) {
@@ -450,12 +450,14 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
       throw new Error(`${typeName} isn't a valid highlighter class (${list})`);
     }
 
-    // The assumption is that all custom highlighters need the canvasframe
-    // container to append their elements, so if this is a XUL window, bail out.
-    if (!isXUL(this._inspector.tabActor.window)) {
+    let constructor = require("./highlighters/" + modulePath)[typeName];
+    // The assumption is that custom highlighters either need the canvasframe
+    // container to append their elements and thus a non-XUL window or they have
+    // to define a static XULSupported flag that indicates that the highlighter
+    // supports XUL windows. Otherwise, bail out.
+    if (!isXUL(this._parent.tabActor.window) || constructor.XULSupported) {
       this._highlighterEnv = new HighlighterEnvironment();
-      this._highlighterEnv.initFromTabActor(inspector.tabActor);
-      let constructor = require("./highlighters/" + modulePath)[typeName];
+      this._highlighterEnv.initFromTabActor(parent.tabActor);
       this._highlighter = new constructor(this._highlighterEnv);
       if (this._highlighter.on) {
         this._highlighter.on("highlighter-event", this._onHighlighterEvent.bind(this));
@@ -467,13 +469,13 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
   },
 
   get conn() {
-    return this._inspector && this._inspector.conn;
+    return this._parent && this._parent.conn;
   },
 
   destroy: function () {
     protocol.Actor.prototype.destroy.call(this);
     this.finalize();
-    this._inspector = null;
+    this._parent = null;
   },
 
   release: function () {},
@@ -515,7 +517,7 @@ exports.CustomHighlighterActor = protocol.ActorClassWithSpec(customHighlighterSp
   /**
    * Upon receiving an event from the highlighter, forward it to the client.
    */
-  _onHighlighterEvent: function (type, data) {
+  _onHighlighterEvent: function (data) {
     this.emit("highlighter-event", data);
   },
 

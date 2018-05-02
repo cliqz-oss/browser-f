@@ -4,15 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LightweightThemeManager"];
+var EXPORTED_SYMBOLS = ["LightweightThemeManager"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 /* globals AddonManagerPrivate*/
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const ID_SUFFIX              = "@personas.mozilla.org";
 const PREF_LWTHEME_TO_SELECT = "extensions.lwThemeToSelect";
@@ -27,10 +24,10 @@ const DEFAULT_MAX_USED_THEMES_COUNT = 30;
 
 const MAX_PREVIEW_SECONDS = 30;
 
-const MANDATORY = ["id", "name", "headerURL"];
-const OPTIONAL = ["footerURL", "textcolor", "accentcolor", "iconURL",
-                  "previewURL", "author", "description", "homepageURL",
-                  "updateURL", "version"];
+const MANDATORY = ["id", "name"];
+const OPTIONAL = ["headerURL", "footerURL", "textcolor", "accentcolor",
+                  "iconURL", "previewURL", "author", "description",
+                  "homepageURL", "updateURL", "version"];
 
 const PERSIST_ENABLED = true;
 const PERSIST_BYPASS_CACHE = false;
@@ -39,9 +36,9 @@ const PERSIST_FILES = {
   footerURL: "lightweighttheme-footer"
 };
 
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeImageOptimizer",
+ChromeUtils.defineModuleGetter(this, "LightweightThemeImageOptimizer",
   "resource://gre/modules/addons/LightweightThemeImageOptimizer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ServiceRequest",
+ChromeUtils.defineModuleGetter(this, "ServiceRequest",
   "resource://gre/modules/ServiceRequest.jsm");
 
 
@@ -92,7 +89,7 @@ var _fallbackThemeData = null;
   }
 })();
 
-this.LightweightThemeManager = {
+var LightweightThemeManager = {
   get name() {
     return "LightweightThemeManager";
   },
@@ -454,7 +451,7 @@ this.LightweightThemeManager = {
    *         A callback to pass an array of Addons to
    */
   getAddonsByTypes(aTypes, aCallback) {
-    if (aTypes && aTypes.indexOf(ADDON_TYPE) == -1) {
+    if (aTypes && !aTypes.includes(ADDON_TYPE)) {
       aCallback([]);
       return;
     }
@@ -753,7 +750,7 @@ function _sanitizeTheme(aData, aBaseURI, aLocal) {
   for (let mandatoryProperty of MANDATORY) {
     let val = sanitizeProperty(mandatoryProperty);
     if (!val)
-      throw Components.results.NS_ERROR_INVALID_ARG;
+      throw Cr.NS_ERROR_INVALID_ARG;
     result[mandatoryProperty] = val;
   }
 

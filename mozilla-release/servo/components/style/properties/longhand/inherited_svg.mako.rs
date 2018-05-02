@@ -66,9 +66,9 @@ ${helpers.predefined_type(
     "stroke-width", "SVGWidth",
     "::values::computed::NonNegativeLength::new(1.).into()",
     products="gecko",
-    boxed=not RUSTC_HAS_PR45225,
     animation_value_type="::values::computed::SVGWidth",
-    spec="https://www.w3.org/TR/SVG2/painting.html#StrokeWidth")}
+    spec="https://www.w3.org/TR/SVG2/painting.html#StrokeWidth",
+)}
 
 ${helpers.single_keyword("stroke-linecap", "butt round square",
                          products="gecko", animation_value_type="discrete",
@@ -101,9 +101,9 @@ ${helpers.predefined_type(
     "stroke-dashoffset", "SVGLength",
     "Au(0).into()",
     products="gecko",
-    boxed=not RUSTC_HAS_PR45225,
     animation_value_type="ComputedValue",
-    spec="https://www.w3.org/TR/SVG2/painting.html#StrokeDashing")}
+    spec="https://www.w3.org/TR/SVG2/painting.html#StrokeDashing",
+)}
 
 // Section 14 - Clipping, Masking and Compositing
 ${helpers.single_keyword("clip-rule", "nonzero evenodd",
@@ -114,26 +114,22 @@ ${helpers.single_keyword("clip-rule", "nonzero evenodd",
 
 ${helpers.predefined_type("marker-start", "UrlOrNone", "Either::Second(None_)",
                           products="gecko",
-                          boxed= product == "gecko",
                           animation_value_type="discrete",
                           spec="https://www.w3.org/TR/SVG2/painting.html#VertexMarkerProperties")}
 
 ${helpers.predefined_type("marker-mid", "UrlOrNone", "Either::Second(None_)",
                           products="gecko",
-                          boxed= product == "gecko",
                           animation_value_type="discrete",
                           spec="https://www.w3.org/TR/SVG2/painting.html#VertexMarkerProperties")}
 
 ${helpers.predefined_type("marker-end", "UrlOrNone", "Either::Second(None_)",
                           products="gecko",
-                          boxed= product == "gecko",
                           animation_value_type="discrete",
                           spec="https://www.w3.org/TR/SVG2/painting.html#VertexMarkerProperties")}
 
 ${helpers.predefined_type("paint-order", "SVGPaintOrder", "computed::SVGPaintOrder::normal()",
                           products="gecko",
                           animation_value_type="discrete",
-                          gecko_pref="svg.paint-order.enabled",
                           spec="https://www.w3.org/TR/SVG2/painting.html#PaintOrder")}
 
 ${helpers.predefined_type("-moz-context-properties",

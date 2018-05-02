@@ -14,7 +14,9 @@
 #include "mozilla/WritingModes.h"
 #include "nsCSSCounterStyleRule.h"
 #include "nsString.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "nsTArray.h"
 #include "nsTHashtable.h"
 #include "nsUnicodeProperties.h"
@@ -581,7 +583,7 @@ public:
   {
   }
 
-  virtual nsStaticAtom* GetStyleName() const final override;
+  nsStaticAtom* GetStyleName() const final;
   virtual void GetPrefix(nsAString& aResult) override;
   virtual void GetSuffix(nsAString& aResult) override;
   virtual void GetSpokenCounterText(CounterValue aOrdinal,

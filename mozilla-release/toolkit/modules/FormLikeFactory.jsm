@@ -4,9 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FormLikeFactory"];
-
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["FormLikeFactory"];
 
 /**
  * A factory to generate FormLike objects that represent a set of related fields

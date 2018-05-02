@@ -7,18 +7,13 @@
             writeTestTempFile, socket_transport, local_transport, really_long
 */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
 var CC = Components.Constructor;
 
 const { require } =
-  Cu.import("resource://devtools/shared/Loader.jsm", {});
+  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 const promise = require("promise");
 const defer = require("devtools/shared/defer");
-const { Task } = require("devtools/shared/task");
 
 const Services = require("Services");
 
@@ -90,15 +85,13 @@ var listener = {
   }
 };
 
-var consoleService = Cc["@mozilla.org/consoleservice;1"]
-                     .getService(Ci.nsIConsoleService);
-consoleService.registerListener(listener);
+Services.console.registerListener(listener);
 
 /**
  * Initialize the testing debugger server.
  */
 function initTestDebuggerServer() {
-  DebuggerServer.registerModule("devtools/server/actors/script", {
+  DebuggerServer.registerModule("devtools/server/actors/thread", {
     prefix: "script",
     constructor: "ScriptActor",
     type: { global: true, tab: true }
@@ -136,7 +129,7 @@ function writeTestTempFile(fileName, content) {
 
 /** * Transport Factories ***/
 
-var socket_transport = Task.async(function* () {
+var socket_transport = async function () {
   if (!DebuggerServer.listeningSockets) {
     let AuthenticatorType = DebuggerServer.Authenticators.get("PROMPT");
     let authenticator = new AuthenticatorType.Server();
@@ -146,12 +139,12 @@ var socket_transport = Task.async(function* () {
     let debuggerListener = DebuggerServer.createListener();
     debuggerListener.portOrPath = -1;
     debuggerListener.authenticator = authenticator;
-    yield debuggerListener.open();
+    await debuggerListener.open();
   }
   let port = DebuggerServer._listeners[0].port;
   info("Debugger server port is " + port);
   return DebuggerClient.socketConnect({ host: "127.0.0.1", port });
-});
+};
 
 function local_transport() {
   return promise.resolve(DebuggerServer.connectPipe());

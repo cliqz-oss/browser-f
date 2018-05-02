@@ -31,10 +31,6 @@
   }
 }
 
-#toolbar-menubar {
-  text-shadow: none !important;
-}
-
 @media (-moz-os-version: windows-win7) {
   @media (-moz-windows-default-theme) {
     /* Always show light toolbar elements on aero surface. */
@@ -131,12 +127,12 @@
   /* Use proper menu text styling in Win7 classic mode (copied from browser.css) */
   @media (-moz-windows-compositor: 0),
          (-moz-windows-default-theme: 0) {
-    :root[tabsintitlebar]:not([inFullscreen]) {
-      --titlebar-text-color: CaptionText;
+    :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color {
+      color: CaptionText;
     }
 
-    :root[tabsintitlebar]:not([inFullscreen]):-moz-window-inactive {
-      --titlebar-text-color: InactiveCaptionText;
+    :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color:-moz-window-inactive {
+      color: InactiveCaptionText;
     }
 
     #main-window[tabsintitlebar] #main-menubar > menu {
@@ -155,23 +151,3 @@
   box-shadow: none !important;
   padding-top: 0 !important;
 }
-
-@media (-moz-os-version: windows-win10) {
-  .titlebar-button:-moz-lwtheme {
-    -moz-context-properties: stroke;
-    stroke: currentColor;
-  }
-  #titlebar-min:-moz-lwtheme {
-    list-style-image: url(chrome://browser/skin/window-controls/minimize.svg);
-  }
-  #titlebar-max:-moz-lwtheme {
-    list-style-image: url(chrome://browser/skin/window-controls/maximize.svg);
-  }
-  :root[sizemode="maximized"] #titlebar-max:-moz-lwtheme {
-    list-style-image: url(chrome://browser/skin/window-controls/restore.svg);
-  }
-  #titlebar-close:-moz-lwtheme {
-    list-style-image: url(chrome://browser/skin/window-controls/close.svg);
-  }
-}
-

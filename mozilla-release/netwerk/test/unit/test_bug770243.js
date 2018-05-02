@@ -7,23 +7,23 @@
  5. 407 followed by 304
 */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserv;
 
 function addCreds(scheme, host)
 {
-  var authMgr = Components.classes['@mozilla.org/network/http-auth-manager;1']
-                          .getService(Ci.nsIHttpAuthManager);
+  var authMgr = Cc['@mozilla.org/network/http-auth-manager;1']
+                  .getService(Ci.nsIHttpAuthManager);
   authMgr.setAuthIdentity(scheme, host, httpserv.identity.primaryPort,
                           "basic", "secret", "/", "", "user", "pass");
 }
 
 function clearCreds()
 {
-  var authMgr = Components.classes['@mozilla.org/network/http-auth-manager;1']
-                          .getService(Ci.nsIHttpAuthManager);
+  var authMgr = Cc['@mozilla.org/network/http-auth-manager;1']
+                  .getService(Ci.nsIHttpAuthManager);
   authMgr.clearAll();
 }
 

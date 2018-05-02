@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const gIsWindows = mozinfo.os == "win";
 const gIsOSX = mozinfo.os == "mac";
@@ -34,9 +32,6 @@ function get_test_plugin(secondplugin=false) {
 
 // Finds the test nsIPluginTag
 function get_test_plugintag(aName="Test Plug-in") {
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
-
   var name = aName || "Test Plug-in";
   var host = Cc["@mozilla.org/plugin/host;1"].
              getService(Ci.nsIPluginHost);
@@ -51,33 +46,33 @@ function get_test_plugintag(aName="Test Plug-in") {
 
 // Creates a fake ProfDS directory key, copied from do_get_profile
 function do_get_profile_startup() {
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   // the python harness sets this in the environment for us
   let profd = env.get("XPCSHELL_TEST_PROFILE_DIR");
-  let file = Components.classes["@mozilla.org/file/local;1"]
-                       .createInstance(Components.interfaces.nsIFile);
+  let file = Cc["@mozilla.org/file/local;1"]
+               .createInstance(Ci.nsIFile);
   file.initWithPath(profd);
 
-  let dirSvc = Components.classes["@mozilla.org/file/directory_service;1"]
-                         .getService(Components.interfaces.nsIProperties);
+  let dirSvc = Cc["@mozilla.org/file/directory_service;1"]
+                 .getService(Ci.nsIProperties);
   let provider = {
     getFile: function(prop, persistent) {
       persistent.value = true;
       if (prop == "ProfDS") {
         return file.clone();
       }
-      throw Components.results.NS_ERROR_FAILURE;
+      throw Cr.NS_ERROR_FAILURE;
     },
     QueryInterface: function(iid) {
-      if (iid.equals(Components.interfaces.nsIDirectoryServiceProvider) ||
-          iid.equals(Components.interfaces.nsISupports)) {
+      if (iid.equals(Ci.nsIDirectoryServiceProvider) ||
+          iid.equals(Ci.nsISupports)) {
         return this;
       }
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   };
-  dirSvc.QueryInterface(Components.interfaces.nsIDirectoryService)
+  dirSvc.QueryInterface(Ci.nsIDirectoryService)
         .registerProvider(provider);
   return file.clone();
 }
@@ -120,7 +115,7 @@ function get_test_plugin_no_symlink() {
 var gGlobalScope = this;
 function loadAddonManager() {
   let ns = {};
-  Cu.import("resource://gre/modules/Services.jsm", ns);
+  ChromeUtils.import("resource://gre/modules/Services.jsm", ns);
   let head = "../../../../toolkit/mozapps/extensions/test/xpcshell/head_addons.js";
   let file = do_get_file(head);
   let uri = ns.Services.io.newFileURI(file);

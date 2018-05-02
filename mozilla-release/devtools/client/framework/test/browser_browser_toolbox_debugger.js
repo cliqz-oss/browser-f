@@ -7,6 +7,11 @@
 // MOZ_TOOLBOX_TEST_SCRIPT env variable. It does that as test resources fetched from
 // chrome://mochitests/ package isn't available from browser toolbox process.
 
+// There are shutdown issues for which multiple rejections are left uncaught.
+// See bug 1018184 for resolving these issues.
+const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
+
 // On debug test runner, it takes about 50s to run the test.
 requestLongerTimeout(4);
 
@@ -32,10 +37,17 @@ add_task(function* runTest() {
   });
 
   let s = Cu.Sandbox("http://mozilla.org");
+
+  // Use a unique id for the fake script name in order to be able to run
+  // this test more than once. That's because the Sandbox is not immediately
+  // destroyed and so the debugger would display only one file but not necessarily
+  // connected to the latest sandbox.
+  let id = new Date().getTime();
+
   // Pass a fake URL to evalInSandbox. If we just pass a filename,
   // Debugger is going to fail and only display root folder (`/`) listing.
   // But it won't try to fetch this url and use sandbox content as expected.
-  let testUrl = "http://mozilla.org/browser-toolbox-test.js";
+  let testUrl = `http://mozilla.org/browser-toolbox-test-${id}.js`;
   Cu.evalInSandbox("(" + function () {
     this.plop = function plop() {
       return 1;
@@ -47,8 +59,8 @@ add_task(function* runTest() {
 
   // Be careful, this JS function is going to be executed in the browser toolbox,
   // which lives in another process. So do not try to use any scope variable!
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   // First inject a very minimal head, with simplest assertion methods
   // and very common globals
   let testHead = (function () {
@@ -81,12 +93,27 @@ add_task(function* runTest() {
         dump(msg + "\n");
       }
     };
+
     const registerCleanupFunction = () => {};
 
-    const Cu = Components.utils;
-    const { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
-    const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-    const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+    const { Task } = ChromeUtils.import("resource://gre/modules/Task.jsm", {});
+    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+    const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+
+    // Copied from shared-head.js:
+    // test_browser_toolbox_debugger.js uses waitForPaused, which relies on waitUntil
+    // which is normally provided by shared-head.js
+    const { setTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
+    function waitUntil(predicate, interval = 10) {
+      if (predicate()) {
+        return Promise.resolve(true);
+      }
+      return new Promise(resolve => {
+        setTimeout(function () {
+          waitUntil(predicate, interval).then(() => resolve(true));
+        }, interval);
+      });
+    }
   }).toSource().replace(/^\(function \(\) \{|\}\)$/g, "");
   // Stringify testHead's function and remove `(function {` prefix and `})` suffix
   // to ensure inner symbols gets exposed to next pieces of code
@@ -102,7 +129,7 @@ add_task(function* runTest() {
   // toolbox process
   let testScript = (yield fetch(testScriptURL)).content;
   let source =
-    "try {" + testHead + debuggerHead + testScript + "} catch (e) {" +
+    "try { let testUrl = \""+testUrl+"\";" + testHead + debuggerHead + testScript + "} catch (e) {" +
     "  dump('Exception: '+ e + ' at ' + e.fileName + ':' + " +
     "       e.lineNumber + '\\nStack: ' + e.stack + '\\n');" +
     "}";
@@ -111,7 +138,7 @@ add_task(function* runTest() {
     env.set("MOZ_TOOLBOX_TEST_SCRIPT", "");
   });
 
-  let { BrowserToolboxProcess } = Cu.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
+  let { BrowserToolboxProcess } = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
   // Use two promises, one for each BrowserToolboxProcess.init callback
   // arguments, to ensure that we wait for toolbox run and close events.
   let closePromise;

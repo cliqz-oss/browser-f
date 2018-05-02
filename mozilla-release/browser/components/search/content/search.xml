@@ -3,9 +3,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!-- This file is imported into the browser window. -->
-<!-- eslint-env mozilla/browser-window -->
-
 <!-- XULCommandEvent is a specialised global. -->
 <!-- global XULCommandEvent -->
 
@@ -89,7 +86,7 @@
                 this.updateDisplay();
                 BrowserSearch.updateOpenSearchBadge();
               } else {
-                Components.utils.reportError("Cannot initialize search service, bailing out: " + aStatus);
+                Cu.reportError("Cannot initialize search service, bailing out: " + aStatus);
               }
             });
           });
@@ -142,7 +139,7 @@
           "anonid", "searchbar-textbox");</field>
       <field name="_engines">null</field>
       <field name="FormHistory" readonly="true">
-        (Components.utils.import("resource://gre/modules/FormHistory.jsm", {})).FormHistory;
+        (ChromeUtils.import("resource://gre/modules/FormHistory.jsm", {})).FormHistory;
       </field>
 
       <property name="engines" readonly="true">
@@ -450,7 +447,7 @@
                 fieldname: textBox.getAttribute("autocompletesearchparam"),
                 value: aData },
               { handleError(aError) {
-                  Components.utils.reportError("Saving search to form history failed: " + aError.message);
+                  Cu.reportError("Saving search to form history failed: " + aError.message);
               }});
           }
 
@@ -742,11 +739,8 @@
             }
 
             popup.mInput = this;
-            popup.view = this.controller.QueryInterface(Ci.nsITreeView);
-            popup.invalidate();
-
-            popup.showCommentColumn = this.showCommentColumn;
-            popup.showImageColumn = this.showImageColumn;
+            // clear any previous selection, see bugs 400671 and 488357
+            popup.selectedIndex = -1;
 
             document.popupNode = null;
 
@@ -758,6 +752,9 @@
                         innerRect.right - outerRect.left :
                         outerRect.right - innerRect.left;
             popup.setAttribute("width", width > 100 ? width : 100);
+
+            // invalidate() depends on the width attribute
+            popup._invalidate();
 
             var yOffset = outerRect.bottom - innerRect.bottom;
             popup.openPopup(this.inputField, "after_start", 0, yOffset, false, false);
@@ -808,8 +805,7 @@
             }
             engine = oneOff.engine;
           }
-          if (this._selectionDetails &&
-              this._selectionDetails.currentIndex != -1) {
+          if (this._selectionDetails) {
             BrowserSearch.searchBar.telemetrySearchDetails = this._selectionDetails;
             this._selectionDetails = null;
           }
@@ -839,8 +835,8 @@
             return;
 
           let suggestionsHidden =
-            popup.tree.getAttribute("collapsed") == "true";
-          let numItems = suggestionsHidden ? 0 : this.popup.view.rowCount;
+            popup.richlistbox.getAttribute("collapsed") == "true";
+          let numItems = suggestionsHidden ? 0 : this.popup.matchCount;
           this.popup.oneOffButtons.handleKeyPress(aEvent, numItems, true);
         ]]></body>
       </method>
@@ -927,7 +923,7 @@
     </handlers>
   </binding>
 
-  <binding id="browser-search-autocomplete-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-result-popup">
+  <binding id="browser-search-autocomplete-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
     <resources>
       <stylesheet src="chrome://browser/content/search/searchbarBindings.css"/>
       <stylesheet src="chrome://browser/skin/searchbar.css"/>
@@ -939,14 +935,7 @@
         <xul:label anonid="searchbar-engine-name" flex="1" crop="end"
                    role="presentation"/>
       </xul:hbox>
-      <xul:tree anonid="tree" flex="1"
-                class="autocomplete-tree plain search-panel-tree"
-                hidecolumnpicker="true" seltype="single">
-        <xul:treecols anonid="treecols">
-          <xul:treecol id="treecolAutoCompleteValue" class="autocomplete-treecol" flex="1" overflow="true"/>
-        </xul:treecols>
-        <xul:treechildren class="autocomplete-treebody searchbar-treebody" noSelectOnMouseMove="true"/>
-      </xul:tree>
+      <xul:richlistbox anonid="richlistbox" class="autocomplete-richlistbox search-panel-tree" flex="1"/>
       <xul:vbox anonid="search-one-off-buttons" class="search-one-offs"/>
     </content>
     <implementation>
@@ -970,13 +959,11 @@
           if (aEvent.button == 2)
             return;
 
-          var controller = this.view.QueryInterface(Components.interfaces.nsIAutoCompleteController);
-
           var searchBar = BrowserSearch.searchBar;
           var popupForSearchBar = searchBar && searchBar.textbox == this.mInput;
           if (popupForSearchBar) {
             searchBar.telemetrySearchDetails = {
-              index: controller.selection.currentIndex,
+              index: this.selectedIndex,
               kind: "mouse"
             };
           }
@@ -984,7 +971,7 @@
           // Check for unmodified left-click, and use default behavior
           if (aEvent.button == 0 && !aEvent.shiftKey && !aEvent.ctrlKey &&
               !aEvent.altKey && !aEvent.metaKey) {
-            controller.handleEnter(true, aEvent);
+            this.input.controller.handleEnter(true, aEvent);
             return;
           }
 
@@ -996,7 +983,7 @@
             );
 
             // Handle search bar popup clicks
-            var search = controller.getValueAt(this.selectedIndex);
+            var search = this.input.controller.getValueAt(this.selectedIndex);
 
             // open the search results according to the clicking subtlety
             var where = whereToOpenLink(aEvent, false, true);
@@ -1014,7 +1001,7 @@
             if (!(where == "tab" && params.inBackground)) {
               // close the autocomplete popup and revert the entered search term
               this.closePopup();
-              controller.handleEscape();
+              this.input.controller.handleEscape();
             }
 
             searchBar.doSearch(search, where, null, params);
@@ -1114,14 +1101,14 @@
 
           // Setting this with an xbl-inherited attribute gets overridden the
           // second time the user clicks the glass icon for some reason...
-          this.tree.collapsed = true;
+          this.richlistbox.collapsed = true;
         } else {
           this.removeAttribute("showonlysettings");
-          // Uncollapse as long as we have a tree with a view which has >= 1 row.
+          // Uncollapse as long as we have a view which has >= 1 row.
           // The autocomplete binding itself will take care of uncollapsing later,
           // if we currently have no rows but end up having some in the future
           // when the search string changes
-          this.tree.collapsed = !this.tree.view || !this.tree.view.rowCount;
+          this.richlistbox.collapsed = (this.matchCount == 0);
         }
 
         // Show the current default engine in the top header of the panel.
@@ -2037,7 +2024,7 @@
             return !!this.selectedButton;
           }
 
-          if (event.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_UP) {
+          if (event.keyCode == KeyboardEvent.DOM_VK_UP) {
             if (event.altKey) {
               // Keep the currently selected result in the list (if any) as a
               // secondary "alt" selection and move the selection up within the
@@ -2085,7 +2072,7 @@
             return true;
           }
 
-          if (event.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_DOWN) {
+          if (event.keyCode == KeyboardEvent.DOM_VK_DOWN) {
             if (event.altKey) {
               // Keep the currently selected result in the list (if any) as a
               // secondary "alt" selection and move the selection down within
@@ -2139,7 +2126,7 @@
             return false;
           }
 
-          if (event.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_LEFT) {
+          if (event.keyCode == KeyboardEvent.DOM_VK_LEFT) {
             if (this.selectedButton &&
                 (this.compact || this.selectedButton.engine)) {
               // Moving left within the buttons.
@@ -2149,7 +2136,7 @@
             return false;
           }
 
-          if (event.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_RIGHT) {
+          if (event.keyCode == KeyboardEvent.DOM_VK_RIGHT) {
             if (this.selectedButton &&
                 (this.compact || this.selectedButton.engine)) {
               // Moving right within the buttons.

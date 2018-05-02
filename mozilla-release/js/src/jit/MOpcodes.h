@@ -44,6 +44,7 @@ namespace jit {
     _(ObjectGroupDispatch)                                                  \
     _(FunctionDispatch)                                                     \
     _(Compare)                                                              \
+    _(SameValue)                                                            \
     _(Phi)                                                                  \
     _(Beta)                                                                 \
     _(NaNToZero)                                                            \
@@ -126,7 +127,7 @@ namespace jit {
     _(AssertRange)                                                          \
     _(ToDouble)                                                             \
     _(ToFloat32)                                                            \
-    _(ToInt32)                                                              \
+    _(ToNumberInt32)                                                        \
     _(TruncateToInt32)                                                      \
     _(WrapInt64ToInt32)                                                     \
     _(ExtendInt32ToInt64)                                                   \
@@ -185,7 +186,6 @@ namespace jit {
     _(HomeObjectSuperBase)                                                  \
     _(FilterTypeSet)                                                        \
     _(TypeBarrier)                                                          \
-    _(MonitorTypes)                                                         \
     _(PostWriteBarrier)                                                     \
     _(PostWriteElementBarrier)                                              \
     _(GetPropSuperCache)                                                    \
@@ -198,7 +198,6 @@ namespace jit {
     _(GuardReceiverPolymorphic)                                             \
     _(GuardObjectGroup)                                                     \
     _(GuardObjectIdentity)                                                  \
-    _(GuardClass)                                                           \
     _(GuardUnboxedExpando)                                                  \
     _(LoadUnboxedExpando)                                                   \
     _(ArrayLength)                                                          \
@@ -235,9 +234,7 @@ namespace jit {
     _(ArraySlice)                                                           \
     _(ArrayJoin)                                                            \
     _(LoadTypedArrayElementHole)                                            \
-    _(LoadTypedArrayElementStatic)                                          \
     _(StoreTypedArrayElementHole)                                           \
-    _(StoreTypedArrayElementStatic)                                         \
     _(AtomicIsLockFree)                                                     \
     _(GuardSharedTypedArray)                                                \
     _(CompareExchangeTypedArrayElement)                                     \
@@ -275,7 +272,7 @@ namespace jit {
     _(InCache)                                                              \
     _(HasOwnCache)                                                          \
     _(InstanceOf)                                                           \
-    _(CallInstanceOf)                                                       \
+    _(InstanceOfCache)                                                      \
     _(InterruptCheck)                                                       \
     _(GetDOMProperty)                                                       \
     _(GetDOMMember)                                                         \

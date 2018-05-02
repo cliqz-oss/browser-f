@@ -3,9 +3,7 @@
 
 "use strict";
 
-var {utils: Cu, classes: Cc, interfaces: Ci} = Components;
-
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { FileUtils } = require("resource://gre/modules/FileUtils.jsm");
 const { gDevTools } = require("devtools/client/framework/devtools");
 const Services = require("Services");
@@ -96,7 +94,7 @@ function nextTick() {
 function waitForUpdate(win, update) {
   info("Wait: " + update);
   return new Promise(resolve => {
-    win.AppManager.on("app-manager-update", function onUpdate(e, what) {
+    win.AppManager.on("app-manager-update", function onUpdate(what) {
       info("Got: " + what);
       if (what !== update) {
         return;
@@ -211,7 +209,7 @@ function handleError(aError) {
 
 function waitForConnectionChange(expectedState, count = 1) {
   return new Promise(resolve => {
-    let onConnectionChange = (_, state) => {
+    let onConnectionChange = state => {
       if (state != expectedState) {
         return;
       }

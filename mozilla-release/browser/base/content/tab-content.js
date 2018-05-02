@@ -7,31 +7,29 @@
 
 /* eslint-env mozilla/frame-script */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
   "resource://gre/modules/E10SUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AboutReader",
+ChromeUtils.defineModuleGetter(this, "AboutReader",
   "resource://gre/modules/AboutReader.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
 XPCOMUtils.defineLazyGetter(this, "SimpleServiceDiscovery", function() {
-  let ssdp = Cu.import("resource://gre/modules/SimpleServiceDiscovery.jsm", {}).SimpleServiceDiscovery;
+  let ssdp = ChromeUtils.import("resource://gre/modules/SimpleServiceDiscovery.jsm", {}).SimpleServiceDiscovery;
   // Register targets
   ssdp.registerDevice({
     id: "roku:ecp",
     target: "roku:ecp",
     factory(aService) {
-      Cu.import("resource://gre/modules/RokuApp.jsm");
+      ChromeUtils.import("resource://gre/modules/RokuApp.jsm");
       return new RokuApp(aService);
     },
     types: ["video/mp4"],
@@ -210,39 +208,6 @@ var AboutHomeListener = {
   },
 };
 AboutHomeListener.init(this);
-
-var AboutPrivateBrowsingListener = {
-  init(chromeGlobal) {
-    chromeGlobal.addEventListener("AboutPrivateBrowsingOpenWindow", this,
-                                  false, true);
-    chromeGlobal.addEventListener("AboutPrivateBrowsingToggleTrackingProtection", this,
-                                  false, true);
-    chromeGlobal.addEventListener("AboutPrivateBrowsingDontShowIntroPanelAgain", this,
-                                  false, true);
-  },
-
-  get isAboutPrivateBrowsing() {
-    return content.document.documentURI.toLowerCase() == "about:privatebrowsing";
-  },
-
-  handleEvent(aEvent) {
-    if (!this.isAboutPrivateBrowsing) {
-      return;
-    }
-    switch (aEvent.type) {
-      case "AboutPrivateBrowsingOpenWindow":
-        sendAsyncMessage("AboutPrivateBrowsing:OpenPrivateWindow");
-        break;
-      case "AboutPrivateBrowsingToggleTrackingProtection":
-        sendAsyncMessage("AboutPrivateBrowsing:ToggleTrackingProtection");
-        break;
-      case "AboutPrivateBrowsingDontShowIntroPanelAgain":
-        sendAsyncMessage("AboutPrivateBrowsing:DontShowIntroPanelAgain");
-        break;
-    }
-  },
-};
-AboutPrivateBrowsingListener.init(this);
 
 var AboutReaderListener = {
 
@@ -562,7 +527,7 @@ PageStyleHandler.init();
 // Keep a reference to the translation content handler to avoid it it being GC'ed.
 var trHandler = null;
 if (Services.prefs.getBoolPref("browser.translation.detectLanguage")) {
-  Cu.import("resource:///modules/translation/TranslationContentHandler.jsm");
+  ChromeUtils.import("resource:///modules/translation/TranslationContentHandler.jsm");
   trHandler = new TranslationContentHandler(global, docShell);
 }
 

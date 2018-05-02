@@ -8,8 +8,6 @@
 
 #include "mozilla/Casting.h"
 
-#include "jsfun.h"
-
 #include "jit/BaselineIC.h"
 #include "jit/BaselineJIT.h"
 #include "jit/FixedList.h"
@@ -27,14 +25,14 @@
 #include "vm/AsyncIteration.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/Interpreter.h"
+#include "vm/JSFunction.h"
 #include "vm/TraceLogging.h"
 #include "vtune/VTuneWrapper.h"
-
-#include "jsscriptinlines.h"
 
 #include "jit/BaselineFrameInfo-inl.h"
 #include "jit/MacroAssembler-inl.h"
 #include "vm/Interpreter-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/TypeInference-inl.h"
 
@@ -136,7 +134,7 @@ BaselineCompiler::compile()
     }
 
     AutoFlushICache afc("Baseline");
-    JitCode* code = linker.newCode<CanGC>(cx, BASELINE_CODE);
+    JitCode* code = linker.newCode(cx, CodeKind::Baseline);
     if (!code)
         return Method_Error;
 
@@ -236,7 +234,7 @@ BaselineCompiler::compile()
 
     // Copy IC entries
     if (icEntries_.length())
-        baselineScript->copyICEntries(script, &icEntries_[0], masm);
+        baselineScript->copyICEntries(script, &icEntries_[0]);
 
     // Adopt fallback stubs from the compiler into the baseline script.
     baselineScript->adoptFallbackStubs(&stubSpace_);
@@ -262,7 +260,7 @@ BaselineCompiler::compile()
 
 #ifdef JS_TRACE_LOGGING
     // Initialize the tracelogger instrumentation.
-    baselineScript->initTraceLogger(cx->runtime(), script, traceLoggerToggleOffsets_);
+    baselineScript->initTraceLogger(script, traceLoggerToggleOffsets_);
 #endif
 
     uint32_t* bytecodeMap = baselineScript->bytecodeTypeMap();
@@ -292,7 +290,7 @@ BaselineCompiler::compile()
         entry.init(code, code->raw(), code->rawEnd(), script, str);
 
         JitcodeGlobalTable* globalTable = cx->runtime()->jitRuntime()->getJitcodeGlobalTable();
-        if (!globalTable->addEntry(entry, cx->runtime())) {
+        if (!globalTable->addEntry(entry)) {
             entry.destroy();
             ReportOutOfMemory(cx);
             return Method_Error;
@@ -729,7 +727,7 @@ BaselineCompiler::emitWarmUpCounterIncrement(bool allowOsr)
     // Emit no warm-up counter increments or bailouts if Ion is not
     // enabled, or if the script will never be Ion-compileable
 
-    if (!ionCompileable_ && !ionOSRCompileable_)
+    if (!ionCompileable_)
         return true;
 
     frame.assertSyncedStack();
@@ -1695,11 +1693,11 @@ bool
 BaselineCompiler::emit_JSOP_CALLSITEOBJ()
 {
     RootedObject cso(cx, script->getObject(pc));
-    RootedArrayObject raw(cx, &script->getObject(GET_UINT32_INDEX(pc) + 1)->as<ArrayObject>());
+    RootedObject raw(cx, script->getObject(GET_UINT32_INDEX(pc) + 1));
     if (!cso || !raw)
         return false;
 
-    if (!cx->compartment()->getTemplateLiteralObject(cx, raw, &cso))
+    if (!ProcessCallSiteObjOperation(cx, cso, raw))
         return false;
 
     frame.push(ObjectValue(*cso));
@@ -2792,7 +2790,7 @@ BaselineCompiler::emit_JSOP_SETALIASEDVAR()
 
     Label skipBarrier;
     masm.branchPtrInNurseryChunk(Assembler::Equal, objReg, temp, &skipBarrier);
-    masm.branchValueIsNurseryObject(Assembler::NotEqual, R0, temp, &skipBarrier);
+    masm.branchValueIsNurseryCell(Assembler::NotEqual, R0, temp, &skipBarrier);
 
     masm.call(&postBarrierSlot_); // Won't clobber R0
 
@@ -3216,7 +3214,7 @@ BaselineCompiler::emitFormalArgAccess(uint32_t arg, bool get)
         Label skipBarrier;
 
         masm.branchPtrInNurseryChunk(Assembler::Equal, reg, temp, &skipBarrier);
-        masm.branchValueIsNurseryObject(Assembler::NotEqual, R0, temp, &skipBarrier);
+        masm.branchValueIsNurseryCell(Assembler::NotEqual, R0, temp, &skipBarrier);
 
         masm.call(&postBarrierSlot_);
 
@@ -4087,7 +4085,7 @@ BaselineCompiler::emit_JSOP_TOASYNCGEN()
     return true;
 }
 
-typedef JSObject* (*ToAsyncIterFn)(JSContext*, HandleObject);
+typedef JSObject* (*ToAsyncIterFn)(JSContext*, HandleObject, HandleValue);
 static const VMFunction ToAsyncIterInfo =
     FunctionInfo<ToAsyncIterFn>(js::CreateAsyncFromSyncIterator, "ToAsyncIter");
 
@@ -4095,16 +4093,18 @@ bool
 BaselineCompiler::emit_JSOP_TOASYNCITER()
 {
     frame.syncStack(0);
-    masm.unboxObject(frame.addressOfStackValue(frame.peek(-1)), R0.scratchReg());
+    masm.unboxObject(frame.addressOfStackValue(frame.peek(-2)), R0.scratchReg());
+    masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R1);
 
     prepareVMCall();
+    pushArg(R1);
     pushArg(R0.scratchReg());
 
     if (!callVM(ToAsyncIterInfo))
         return false;
 
     masm.tagValue(JSVAL_TYPE_OBJECT, ReturnReg, R0);
-    frame.pop();
+    frame.popn(2);
     frame.push(R0);
     return true;
 }
@@ -4380,7 +4380,8 @@ BaselineCompiler::emit_JSOP_SUPERFUN()
     masm.branchPtr(Assembler::BelowOrEqual, proto, ImmWord(1), &needVMCall);
 
     // Use VMCall for non-JSFunction objects (eg. Proxy)
-    masm.branchTestObjClass(Assembler::NotEqual, proto, scratch, &JSFunction::class_, &needVMCall);
+    masm.branchTestObjClass(Assembler::NotEqual, proto, &JSFunction::class_, scratch, proto,
+                            &needVMCall);
 
     // Use VMCall if not constructor
     masm.load16ZeroExtend(Address(proto, JSFunction::offsetOfFlags()), scratch);
@@ -4636,21 +4637,19 @@ BaselineCompiler::emit_JSOP_DEBUGAFTERYIELD()
     return callVM(DebugAfterYieldInfo);
 }
 
-typedef bool (*FinalSuspendFn)(JSContext*, HandleObject, BaselineFrame*, jsbytecode*);
+typedef bool (*FinalSuspendFn)(JSContext*, HandleObject, jsbytecode*);
 static const VMFunction FinalSuspendInfo =
     FunctionInfo<FinalSuspendFn>(jit::FinalSuspend, "FinalSuspend");
 
 bool
 BaselineCompiler::emit_JSOP_FINALYIELDRVAL()
 {
-    // Store generator in R0, BaselineFrame pointer in R1.
+    // Store generator in R0.
     frame.popRegsAndSync(1);
     masm.unboxObject(R0, R0.scratchReg());
-    masm.loadBaselineFramePtr(BaselineFrameReg, R1.scratchReg());
 
     prepareVMCall();
     pushArg(ImmPtr(pc));
-    pushArg(R1.scratchReg());
     pushArg(R0.scratchReg());
 
     if (!callVM(FinalSuspendInfo))
@@ -4676,7 +4675,7 @@ BaselineCompiler::emit_JSOP_RESUME()
     GeneratorObject::ResumeKind resumeKind = GeneratorObject::getResumeKind(pc);
 
     frame.syncStack(0);
-    masm.checkStackAlignment();
+    masm.assertStackAlignment(sizeof(Value), 0);
 
     AllocatableGeneralRegisterSet regs(GeneralRegisterSet::All());
     regs.take(BaselineFrameReg);
@@ -4782,8 +4781,7 @@ BaselineCompiler::emit_JSOP_RESUME()
         masm.branch32(Assembler::Equal, addressOfEnabled, Imm32(0), &skip);
         masm.loadJSContext(scratchReg);
         masm.loadPtr(Address(scratchReg, JSContext::offsetOfProfilingActivation()), scratchReg);
-        masm.storePtr(masm.getStackPointer(),
-                      Address(scratchReg, JitActivation::offsetOfLastProfilingFrame()));
+        masm.storeStackPtr(Address(scratchReg, JitActivation::offsetOfLastProfilingFrame()));
         masm.bind(&skip);
     }
 
@@ -4791,7 +4789,7 @@ BaselineCompiler::emit_JSOP_RESUME()
     masm.push(BaselineFrameReg);
     masm.moveStackPtrTo(BaselineFrameReg);
     masm.subFromStackPtr(Imm32(BaselineFrame::Size()));
-    masm.checkStackAlignment();
+    masm.assertStackAlignment(sizeof(Value), 0);
 
     // Store flags and env chain.
     masm.store32(Imm32(BaselineFrame::HAS_INITIAL_ENV), frame.addressOfFlags());
@@ -4800,8 +4798,9 @@ BaselineCompiler::emit_JSOP_RESUME()
 
     // Store the arguments object if there is one.
     Label noArgsObj;
-    masm.unboxObject(Address(genObj, GeneratorObject::offsetOfArgsObjSlot()), scratch2);
-    masm.branchTestPtr(Assembler::Zero, scratch2, scratch2, &noArgsObj);
+    Address argsObjSlot(genObj, GeneratorObject::offsetOfArgsObjSlot());
+    masm.branchTestUndefined(Assembler::Equal, argsObjSlot, &noArgsObj);
+    masm.unboxObject(argsObjSlot, scratch2);
     {
         masm.storePtr(scratch2, frame.addressOfArgsObj());
         masm.or32(Imm32(BaselineFrame::HAS_ARGS_OBJ), frame.addressOfFlags());

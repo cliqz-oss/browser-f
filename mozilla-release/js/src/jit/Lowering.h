@@ -63,6 +63,9 @@ class LIRGenerator : public LIRGeneratorSpecific
 
     MOZ_MUST_USE bool lowerCallArguments(MCall* call);
 
+    template <typename LClass>
+    LInstruction* lowerWasmCall(MWasmCall* ins, bool needsBoundsCheck);
+
   public:
     MOZ_MUST_USE bool visitInstruction(MInstruction* ins);
     MOZ_MUST_USE bool visitBlock(MBasicBlock* block);
@@ -120,6 +123,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitFunctionDispatch(MFunctionDispatch* ins) override;
     void visitObjectGroupDispatch(MObjectGroupDispatch* ins) override;
     void visitCompare(MCompare* comp) override;
+    void visitSameValue(MSameValue* comp) override;
     void visitTypeOf(MTypeOf* ins) override;
     void visitToAsync(MToAsync* ins) override;
     void visitToAsyncGen(MToAsyncGen* ins) override;
@@ -170,7 +174,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitOsrArgumentsObject(MOsrArgumentsObject* object) override;
     void visitToDouble(MToDouble* convert) override;
     void visitToFloat32(MToFloat32* convert) override;
-    void visitToInt32(MToInt32* convert) override;
+    void visitToNumberInt32(MToNumberInt32* convert) override;
     void visitTruncateToInt32(MTruncateToInt32* truncate) override;
     void visitWasmTruncateToInt32(MWasmTruncateToInt32* truncate) override;
     void visitWrapInt64ToInt32(MWrapInt64ToInt32* ins) override;
@@ -212,7 +216,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitStoreSlot(MStoreSlot* ins) override;
     void visitFilterTypeSet(MFilterTypeSet* ins) override;
     void visitTypeBarrier(MTypeBarrier* ins) override;
-    void visitMonitorTypes(MMonitorTypes* ins) override;
     void visitPostWriteBarrier(MPostWriteBarrier* ins) override;
     void visitPostWriteElementBarrier(MPostWriteElementBarrier* ins) override;
     void visitArrayLength(MArrayLength* ins) override;
@@ -248,7 +251,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitArrayJoin(MArrayJoin* ins) override;
     void visitLoadUnboxedScalar(MLoadUnboxedScalar* ins) override;
     void visitLoadTypedArrayElementHole(MLoadTypedArrayElementHole* ins) override;
-    void visitLoadTypedArrayElementStatic(MLoadTypedArrayElementStatic* ins) override;
     void visitStoreUnboxedScalar(MStoreUnboxedScalar* ins) override;
     void visitStoreTypedArrayElementHole(MStoreTypedArrayElementHole* ins) override;
     void visitClampToUint8(MClampToUint8* ins) override;
@@ -261,7 +263,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitBindNameCache(MBindNameCache* ins) override;
     void visitCallBindVar(MCallBindVar* ins) override;
     void visitGuardObjectIdentity(MGuardObjectIdentity* ins) override;
-    void visitGuardClass(MGuardClass* ins) override;
+    void visitGuardShape(MGuardShape* ins) override;
+    void visitGuardObjectGroup(MGuardObjectGroup* ins) override;
     void visitGuardObject(MGuardObject* ins) override;
     void visitGuardString(MGuardString* ins) override;
     void visitGuardReceiverPolymorphic(MGuardReceiverPolymorphic* ins) override;
@@ -294,7 +297,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitInArray(MInArray* ins) override;
     void visitHasOwnCache(MHasOwnCache* ins) override;
     void visitInstanceOf(MInstanceOf* ins) override;
-    void visitCallInstanceOf(MCallInstanceOf* ins) override;
+    void visitInstanceOfCache(MInstanceOfCache* ins) override;
     void visitIsCallable(MIsCallable* ins) override;
     void visitIsConstructor(MIsConstructor* ins) override;
     void visitIsArray(MIsArray* ins) override;

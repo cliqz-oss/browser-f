@@ -34,6 +34,7 @@ talos-chrome:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=chromez
@@ -45,21 +46,11 @@ talos-chrome-profiling:
     try-name: chromez-profiling
     treeherder-symbol: T-P(c)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=chromez
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-chrome-stylo-disabled:
-    description: "Talos Stylo disabled chrome"
-    try-name: chromez-stylo-disabled
-    treeherder-symbol: Tsd(c)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=chromez-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -71,6 +62,7 @@ talos-dromaeojs:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 2100
     mozharness:
         extra-options:
             - --suite=dromaeojs
@@ -82,6 +74,7 @@ talos-dromaeojs-profiling:
     try-name: dromaeojs-profiling
     treeherder-symbol: T-P(d)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 2100
     mozharness:
         extra-options:
             - --suite=dromaeojs
@@ -89,14 +82,16 @@ talos-dromaeojs-profiling:
             - --add-option
             - --webServer,localhost
 
-talos-dromaeojs-stylo-disabled:
-    description: "Talos Stylo disabled dromaeojs"
-    try-name: dromaeojs-stylo-disabled
-    treeherder-symbol: Tsd(d)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
+talos-flex:
+    description: "Talos XUL flexbox emulation enabled"
+    try-name: flex
+    treeherder-symbol: T(f)
+    tier: 3
+    run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1800
     mozharness:
         extra-options:
-            - --suite=dromaeojs-stylo-disabled
+            - --suite=flex
             - --add-option
             - --webServer,localhost
 
@@ -108,7 +103,10 @@ talos-g1:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
-    max-run-time: 7200
+    max-run-time:
+        by-test-platform:
+            linux64.*: 2700
+            default: 7200
     mozharness:
         extra-options:
             - --suite=g1
@@ -120,7 +118,10 @@ talos-g1-profiling:
     try-name: g1-profiling
     treeherder-symbol: T-P(g1)
     run-on-projects: ['mozilla-central', 'try']
-    max-run-time: 7200
+    max-run-time:
+        by-test-platform:
+            linux64.*: 2700
+            default: 7200
     mozharness:
         extra-options:
             - --suite=g1
@@ -128,23 +129,14 @@ talos-g1-profiling:
             - --add-option
             - --webServer,localhost
 
-talos-g1-stylo-disabled:
-    description: "Talos Stylo disabled g1"
-    try-name: g1-stylo-disabled
-    treeherder-symbol: Tsd(g1)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    max-run-time: 7200
-    mozharness:
-        extra-options:
-            - --suite=g1-stylo-disabled
-            - --add-option
-            - --webServer,localhost
-
 talos-g2:
     description: "Talos g2"
     try-name: g2
     treeherder-symbol: T(g2)
-    max-run-time: 7200
+    max-run-time:
+        by-test-platform:
+            linux64.*: 2700
+            default: 7200
     run-on-projects:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
@@ -160,24 +152,15 @@ talos-g2-profiling:
     description: "Talos profiling g2"
     try-name: g2-profiling
     treeherder-symbol: T-P(g2)
-    max-run-time: 7200
+    max-run-time:
+        by-test-platform:
+            linux64.*: 2700
+            default: 7200
     run-on-projects: ['mozilla-central', 'try']
     mozharness:
         extra-options:
             - --suite=g2
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-g2-stylo-disabled:
-    description: "Talos Stylo disabled g2"
-    try-name: g2-stylo-disabled
-    treeherder-symbol: Tsd(g2)
-    max-run-time: 7200
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=g2-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -189,6 +172,7 @@ talos-g3:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 900
     mozharness:
         extra-options:
             - --suite=g3
@@ -200,21 +184,11 @@ talos-g3-profiling:
     try-name: g3-profiling
     treeherder-symbol: T-P(g3)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 900
     mozharness:
         extra-options:
             - --suite=g3
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-g3-stylo-disabled:
-    description: "Talos Stylo disabled g3"
-    try-name: g3-stylo-disabled
-    treeherder-symbol: Tsd(g3)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=g3-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -226,6 +200,10 @@ talos-g4:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time:
+        by-test-platform:
+            linux64.*: 1500
+            default: 1800
     mozharness:
         extra-options:
             - --suite=g4
@@ -243,17 +221,10 @@ talos-g4-profiling:
             - --geckoProfile
             - --add-option
             - --webServer,localhost
-
-talos-g4-stylo-disabled:
-    description: "Talos Stylo disabled g4"
-    try-name: g4-stylo-disabled
-    treeherder-symbol: Tsd(g4)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=g4-stylo-disabled
-            - --add-option
-            - --webServer,localhost
+    max-run-time:
+        by-test-platform:
+            linux64.*: 1500
+            default: 1800
 
 talos-g5:
     description: "Talos g5"
@@ -268,6 +239,10 @@ talos-g5:
             - --suite=g5
             - --add-option
             - --webServer,localhost
+    max-run-time:
+        by-test-platform:
+            linux64.*: 1200
+            default: 1800
 
 talos-g5-profiling:
     description: "Talos profiling g5"
@@ -280,40 +255,73 @@ talos-g5-profiling:
             - --geckoProfile
             - --add-option
             - --webServer,localhost
-
-
-talos-g5-stylo-disabled:
-    description: "Talos Stylo disabled g5"
-    try-name: g5-stylo-disabled
-    treeherder-symbol: Tsd(g5)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=g5-stylo-disabled
-            - --add-option
-            - --webServer,localhost
+    max-run-time:
+        by-test-platform:
+            linux64.*: 1200
+            default: 1800
 
 talos-h1:
     description: "Talos h1"
     try-name: h1
     treeherder-symbol: T(h1)
-    max-run-time: 5400
     run-on-projects: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
     mozharness:
         extra-options:
             - --suite=h1
             - --add-option
             - --webServer,localhost
+    max-run-time:
+        by-test-platform:
+            linux64.*: 900
+            default: 1800
 
 talos-h2:
     description: "Talos h2"
     try-name: h2
     treeherder-symbol: T(h2)
-    max-run-time: 7200
+    max-run-time:
+        by-test-platform:
+            linux64.*: 900
+            default: 7200
     run-on-projects: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
     mozharness:
         extra-options:
             - --suite=h2
+            - --add-option
+            - --webServer,localhost
+
+talos-motionmark:
+    description: "Talos motionmark"
+    try-name: motionmark
+    treeherder-symbol: T(mm)
+    run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 3600
+    tier:
+        by-test-platform:
+            windows10-64-ccov/.*: 3
+            linux64-ccov/.*: 3
+            default: 2
+    mozharness:
+        extra-options:
+            - --suite=motionmark
+            - --add-option
+            - --webServer,localhost
+
+talos-motionmark-profiling:
+    description: "Talos profiling motionmark"
+    try-name: motionmark-profiling
+    treeherder-symbol: T-P(mm)
+    run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 3600
+    tier:
+        by-test-platform:
+            windows10-64-ccov/.*: 3
+            linux64-ccov/.*: 3
+            default: 2
+    mozharness:
+        extra-options:
+            - --suite=motionmark
+            - --geckoProfile
             - --add-option
             - --webServer,localhost
 
@@ -325,6 +333,7 @@ talos-other:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1500
     mozharness:
         extra-options:
             - --suite=other
@@ -336,21 +345,11 @@ talos-other-profiling:
     try-name: other-profiling
     treeherder-symbol: T-P(o)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1500
     mozharness:
         extra-options:
             - --suite=other
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-other-stylo-disabled:
-    description: "Talos Stylo disabled other"
-    try-name: other-stylo-disabled
-    treeherder-symbol: Tsd(o)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=other-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -362,6 +361,7 @@ talos-perf-reftest:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=perf-reftest
@@ -371,6 +371,7 @@ talos-perf-reftest-profiling:
     try-name: perf-reftest-profiling
     treeherder-symbol: T-P(p)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=perf-reftest
@@ -384,6 +385,7 @@ talos-perf-reftest-singletons:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=perf-reftest-singletons
@@ -393,28 +395,11 @@ talos-perf-reftest-singletons-profiling:
     try-name: perf-reftest-singletons-profiling
     treeherder-symbol: T-P(ps)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=perf-reftest-singletons
             - --geckoProfile
-
-talos-perf-reftest-singletons-stylo-disabled:
-    description: "Talos Stylo disabled perf-reftest singletons"
-    try-name: perf-reftest-singletons-stylo-disabled
-    treeherder-symbol: Tsd(ps)
-    run-on-projects: ['mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=perf-reftest-singletons-stylo-disabled
-
-talos-perf-reftest-stylo-disabled:
-    description: "Talos Stylo disabled perf-reftest"
-    try-name: perf-reftest-stylo-disabled
-    treeherder-symbol: Tsd(p)
-    run-on-projects: ['mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=perf-reftest-stylo-disabled
 
 talos-speedometer:
     description: "Talos speedometer"
@@ -424,6 +409,7 @@ talos-speedometer:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1500
     mozharness:
         extra-options:
             - --suite=speedometer
@@ -435,21 +421,11 @@ talos-speedometer-profiling:
     try-name: speedometer-profiling
     treeherder-symbol: T-P(sp)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1500
     mozharness:
         extra-options:
             - --suite=speedometer
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-speedometer-stylo-disabled:
-    description: "Talos Stylo disabled speedometer"
-    try-name: speedometer-stylo-disabled
-    treeherder-symbol: Tsd(sp)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=speedometer-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -461,6 +437,7 @@ talos-svgr:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1800
     mozharness:
         extra-options:
             - --suite=svgr
@@ -472,21 +449,11 @@ talos-svgr-profiling:
     try-name: svgr-profiling
     treeherder-symbol: T-P(s)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1800
     mozharness:
         extra-options:
             - --suite=svgr
             - --geckoProfile
-            - --add-option
-            - --webServer,localhost
-
-talos-svgr-stylo-disabled:
-    description: "Talos Stylo disabled svgr"
-    try-name: svgr-stylo-disabled
-    treeherder-symbol: Tsd(s)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=svgr-stylo-disabled
             - --add-option
             - --webServer,localhost
 
@@ -498,6 +465,7 @@ talos-tp5o:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1800
     mozharness:
         extra-options:
             - --suite=tp5o
@@ -509,6 +477,7 @@ talos-tp5o-profiling:
     try-name: tp5o-profiling
     treeherder-symbol: T-P(tp)
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1800
     mozharness:
         extra-options:
             - --suite=tp5o
@@ -516,26 +485,15 @@ talos-tp5o-profiling:
             - --add-option
             - --webServer,localhost
 
-talos-tp5o-stylo-disabled:
-    description: "Talos Stylo disabled tp5o"
-    try-name: tp5o-stylo-disabled
-    treeherder-symbol: Tsd(tp)
-    run-on-projects: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=tp5o-stylo-disabled
-            - --add-option
-            - --webServer,localhost
-
 talos-tp6:
     description: "Talos tp6"
     try-name: tp6
     treeherder-symbol: T(tp6)
-    max-run-time: 7200
     run-on-projects:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']
             default: ['mozilla-beta', 'mozilla-central', 'mozilla-inbound', 'autoland', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=tp6
@@ -546,8 +504,8 @@ talos-tp6-profiling:
     description: "Talos profiling tp6"
     try-name: tp6-profiling
     treeherder-symbol: T-P(tp6)
-    max-run-time: 7200
     run-on-projects: ['mozilla-central', 'try']
+    max-run-time: 1200
     mozharness:
         extra-options:
             - --suite=tp6
@@ -555,25 +513,11 @@ talos-tp6-profiling:
             - --add-option
             - --webServer,localhost
 
-talos-tp6-stylo-disabled:
-    description: "Talos Stylo disabled tp6"
-    try-name: tp6-stylo-disabled
-    treeherder-symbol: Tsd(tp6)
-    max-run-time: 7200
-    run-on-projects:
-        by-test-platform:
-            windows.*: ['mozilla-beta', 'mozilla-central', 'try']
-            macosx.*: ['mozilla-beta', 'mozilla-central', 'try']
-            default: ['mozilla-beta', 'mozilla-central', 'try']
-    mozharness:
-        extra-options:
-            - --suite=tp6-stylo-disabled
-
 talos-tp6-stylo-threads:
     description: "Talos Stylo sequential tp6"
     try-name: tp6-stylo-threads
     treeherder-symbol: Tss(tp6)
-    max-run-time: 7200
+    max-run-time: 1200
     run-on-projects:
         by-test-platform:
             .*-qr/.*: ['mozilla-central', 'try']

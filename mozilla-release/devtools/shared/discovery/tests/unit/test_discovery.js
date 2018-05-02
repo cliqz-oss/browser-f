@@ -4,15 +4,13 @@
 
 "use strict";
 
-var Cu = Components.utils;
-
 const { require } =
-  Cu.import("resource://devtools/shared/Loader.jsm", {});
+  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const defer = require("devtools/shared/defer");
 const EventEmitter = require("devtools/shared/old-event-emitter");
 const discovery = require("devtools/shared/discovery/discovery");
-const { setTimeout, clearTimeout } = Cu.import("resource://gre/modules/Timer.jsm", {});
+const { setTimeout, clearTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 
 Services.prefs.setBoolPref("devtools.discovery.log", true);
 
@@ -76,7 +74,7 @@ Object.defineProperty(discovery.device, "name", {
   }
 });
 
-add_task(function* () {
+add_task(async function () {
   // At startup, no remote devices are known
   deepEqual(discovery.getRemoteDevicesWithService("devtools"), []);
   deepEqual(discovery.getRemoteDevicesWithService("penguins"), []);
@@ -93,14 +91,14 @@ add_task(function* () {
   deepEqual(discovery.getRemoteDevicesWithService("devtools"), []);
   deepEqual(discovery.getRemoteDevicesWithService("penguins"), []);
 
-  yield scanForChange("devtools", "added");
+  await scanForChange("devtools", "added");
 
   // Now we see the new service
   deepEqual(discovery.getRemoteDevicesWithService("devtools"), ["test-device"]);
   deepEqual(discovery.getRemoteDevicesWithService("penguins"), []);
 
   discovery.addService("penguins", { tux: true });
-  yield scanForChange("penguins", "added");
+  await scanForChange("penguins", "added");
 
   deepEqual(discovery.getRemoteDevicesWithService("devtools"), ["test-device"]);
   deepEqual(discovery.getRemoteDevicesWithService("penguins"), ["test-device"]);
@@ -112,20 +110,20 @@ add_task(function* () {
             { tux: true, host: "localhost" });
 
   discovery.removeService("devtools");
-  yield scanForChange("devtools", "removed");
+  await scanForChange("devtools", "removed");
 
   discovery.addService("penguins", { tux: false });
-  yield scanForChange("penguins", "updated");
+  await scanForChange("penguins", "updated");
 
   // Scan again, but nothing should be removed
-  yield scanForNoChange("penguins", "removed");
+  await scanForNoChange("penguins", "removed");
 
   // Split the scanning side from the service side to simulate the machine with
   // the service becoming unreachable
   gTestTransports = {};
 
   discovery.removeService("penguins");
-  yield scanForChange("penguins", "removed");
+  await scanForChange("penguins", "removed");
 });
 
 function scanForChange(service, changeType) {

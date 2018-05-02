@@ -1244,17 +1244,18 @@
         this.mResetButton.style.visibility = "hidden";
 
         this.EVENTS.forEach((eventName) => {
-          this.addEventListener(eventName, this, { mozSystemGroup: true });
+          this.addEventListener(eventName, this, { mozSystemGroup: true }, false);
         });
         // Handle keypress separately since we need to catch it on capturing.
         this.addEventListener("keypress", this, {
           capture: true,
           mozSystemGroup: true
-        });
+        }, false);
         // This is to open the picker when input element is clicked (this
         // includes padding area).
         this.mInputElement.addEventListener("click", this,
-                                            { mozSystemGroup: true });
+                                            { mozSystemGroup: true },
+                                            false);
       ]]>
       </constructor>
 
@@ -1605,55 +1606,55 @@
 
       <method name="setFieldValue">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="clearInputFields">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="setFieldsFromInputValue">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="setInputValueFromFields">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="setFieldsFromPicker">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="handleKeypress">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="handleKeyboardNav">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="getCurrentValue">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 
       <method name="isAnyFieldAvailable">
         <body>
-          throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+          throw Cr.NS_ERROR_NOT_IMPLEMENTED;
         </body>
       </method>
 

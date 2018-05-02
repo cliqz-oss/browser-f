@@ -13,8 +13,7 @@
 interface PublicKeyCredential : Credential {
     [SameObject] readonly attribute ArrayBuffer              rawId;
     [SameObject] readonly attribute AuthenticatorResponse    response;
-    // Extensions are not supported yet.
-    // [SameObject] readonly attribute AuthenticationExtensions clientExtensionResults; // Add in Bug 1406458
+    AuthenticationExtensionsClientOutputs getClientExtensionResults();
 };
 
 [SecureContext]
@@ -44,7 +43,7 @@ dictionary PublicKeyCredentialParameters {
     required COSEAlgorithmIdentifier  alg;
 };
 
-dictionary MakePublicKeyCredentialOptions {
+dictionary PublicKeyCredentialCreationOptions {
     required PublicKeyCredentialRpEntity   rp;
     required PublicKeyCredentialUserEntity user;
 
@@ -54,8 +53,8 @@ dictionary MakePublicKeyCredentialOptions {
     unsigned long                                timeout;
     sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
     AuthenticatorSelectionCriteria               authenticatorSelection;
-    // Extensions are not supported yet.
-    // AuthenticationExtensions                  extensions; // Add in Bug 1406458
+    AttestationConveyancePreference              attestation = "none";
+    AuthenticationExtensionsClientInputs         extensions;
 };
 
 dictionary PublicKeyCredentialEntity {
@@ -83,6 +82,12 @@ enum AuthenticatorAttachment {
     "cross-platform"  // Cross-platform attachment
 };
 
+enum AttestationConveyancePreference {
+    "none",
+    "indirect",
+    "direct"
+};
+
 enum UserVerificationRequirement {
     "required",
     "preferred",
@@ -95,20 +100,33 @@ dictionary PublicKeyCredentialRequestOptions {
     USVString                            rpId;
     sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
     UserVerificationRequirement          userVerification = "preferred";
-    // Extensions are not supported yet.
-    // AuthenticationExtensions             extensions; // Add in Bug 1406458
+    AuthenticationExtensionsClientInputs extensions;
 };
 
-typedef record<DOMString, any>       AuthenticationExtensions;
+// TODO - Use partial dictionaries when bug 1436329 is fixed.
+dictionary AuthenticationExtensionsClientInputs {
+    // FIDO AppID Extension (appid)
+    // <https://w3c.github.io/webauthn/#sctn-appid-extension>
+    USVString appid;
+};
+
+// TODO - Use partial dictionaries when bug 1436329 is fixed.
+dictionary AuthenticationExtensionsClientOutputs {
+    // FIDO AppID Extension (appid)
+    // <https://w3c.github.io/webauthn/#sctn-appid-extension>
+    boolean appid;
+};
+
+typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs;
 
 dictionary CollectedClientData {
+    required DOMString           type;
     required DOMString           challenge;
     required DOMString           origin;
     required DOMString           hashAlgorithm;
     DOMString                    tokenBindingId;
-    // Extensions are not supported yet.
-    // AuthenticationExtensions     clientExtensions; // Add in Bug 1406458
-    // AuthenticationExtensions     authenticatorExtensions; // Add in Bug 1406458
+    AuthenticationExtensionsClientInputs clientExtensions;
+    AuthenticationExtensionsAuthenticatorInputs authenticatorExtensions;
 };
 
 enum PublicKeyCredentialType {
@@ -133,3 +151,16 @@ typedef sequence<AAGUID>      AuthenticatorSelectionList;
 
 typedef BufferSource      AAGUID;
 
+/*
+// FIDO AppID Extension (appid)
+// <https://w3c.github.io/webauthn/#sctn-appid-extension>
+partial dictionary AuthenticationExtensionsClientInputs {
+    USVString appid;
+};
+
+// FIDO AppID Extension (appid)
+// <https://w3c.github.io/webauthn/#sctn-appid-extension>
+partial dictionary AuthenticationExtensionsClientOutputs {
+  boolean appid;
+};
+*/

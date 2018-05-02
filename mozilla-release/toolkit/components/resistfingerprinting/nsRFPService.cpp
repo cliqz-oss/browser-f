@@ -6,14 +6,17 @@
 #include "nsRFPService.h"
 
 #include <algorithm>
+#include <memory>
 #include <time.h>
 
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/TextEvents.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 
 #include "nsCOMPtr.h"
 #include "nsCoord.h"
@@ -22,28 +25,31 @@
 #include "nsXULAppAPI.h"
 #include "nsPrintfCString.h"
 
+#include "nsICryptoHash.h"
 #include "nsIObserverService.h"
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
+#include "nsIRandomGenerator.h"
 #include "nsIXULAppInfo.h"
 #include "nsIXULRuntime.h"
 #include "nsJSUtils.h"
 
 #include "prenv.h"
+#include "nss.h"
 
 #include "js/Date.h"
 
 using namespace mozilla;
 using namespace std;
 
-#ifdef DEBUG
 static mozilla::LazyLogModule gResistFingerprintingLog("nsResistFingerprinting");
-#endif
 
 #define RESIST_FINGERPRINTING_PREF "privacy.resistFingerprinting"
 #define RFP_TIMER_PREF "privacy.reduceTimerPrecision"
 #define RFP_TIMER_VALUE_PREF "privacy.resistFingerprinting.reduceTimerPrecision.microseconds"
-#define RFP_TIMER_VALUE_DEFAULT 2000
+#define RFP_TIMER_VALUE_DEFAULT 1000
+#define RFP_JITTER_VALUE_PREF "privacy.resistFingerprinting.reduceTimerPrecision.jitter"
+#define RFP_JITTER_VALUE_DEFAULT true
 #define RFP_SPOOFED_FRAMES_PER_SEC_PREF "privacy.resistFingerprinting.video_frames_per_sec"
 #define RFP_SPOOFED_DROPPED_RATIO_PREF  "privacy.resistFingerprinting.video_dropped_ratio"
 #define RFP_TARGET_VIDEO_RES_PREF "privacy.resistFingerprinting.target_video_res"
@@ -57,17 +63,29 @@ static mozilla::LazyLogModule gResistFingerprintingLog("nsResistFingerprinting")
 
 NS_IMPL_ISUPPORTS(nsRFPService, nsIObserver)
 
+/*
+ * The below variables are marked with 'Relaxed' memory ordering. We don't
+ * particurally care that threads have a percently consistent view of the values
+ * of these prefs. They are not expected to change often, and having an outdated
+ * view is not particurally harmful. They will eventually become consistent.
+ *
+ * The variables will, however, be read often (specifically sResolutionUSec on
+ * each timer rounding) so performance is important.
+ */
+
 static StaticRefPtr<nsRFPService> sRFPService;
 static bool sInitialized = false;
-Atomic<bool, ReleaseAcquire> nsRFPService::sPrivacyResistFingerprinting;
-Atomic<bool, ReleaseAcquire> nsRFPService::sPrivacyTimerPrecisionReduction;
+Atomic<bool, Relaxed> nsRFPService::sPrivacyResistFingerprinting;
+Atomic<bool, Relaxed> nsRFPService::sPrivacyTimerPrecisionReduction;
 // Note: anytime you want to use this variable, you should probably use TimerResolution() instead
-Atomic<uint32_t, ReleaseAcquire> sResolutionUSec;
+Atomic<uint32_t, Relaxed> sResolutionUSec;
+Atomic<bool, Relaxed> sJitter;
 static uint32_t sVideoFramesPerSec;
 static uint32_t sVideoDroppedRatio;
 static uint32_t sTargetVideoRes;
 nsDataHashtable<KeyboardHashKey, const SpoofingKeyboardCode*>*
   nsRFPService::sSpoofingKeyboardCodes = nullptr;
+static mozilla::StaticMutex sLock;
 
 /* static */
 nsRFPService*
@@ -114,42 +132,478 @@ nsRFPService::IsTimerPrecisionReductionEnabled(TimerPrecisionType aType)
   }
 
   return (sPrivacyTimerPrecisionReduction || IsResistFingerprintingEnabled()) &&
-         TimerResolution() != 0;
+         TimerResolution() > 0;
 }
 
+/*
+ * The below is a simple time-based Least Recently Used cache used to store the
+ * result of a cryptographic hash function. It has LRU_CACHE_SIZE slots, and will
+ * be used from multiple threads. It is thread-safe.
+ */
+#define LRU_CACHE_SIZE         (45)
+#define HASH_DIGEST_SIZE_BITS  (256)
+#define HASH_DIGEST_SIZE_BYTES (HASH_DIGEST_SIZE_BITS / 8)
+
+class LRUCache final
+{
+public:
+  LRUCache()
+    : mLock("mozilla.resistFingerprinting.LRUCache")
+  {
+    this->cache.SetLength(LRU_CACHE_SIZE);
+  }
+
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(LRUCache)
+
+  nsCString
+  Get(long long aKeyPart1, long long aKeyPart2)
+  {
+    for (auto & cacheEntry : this->cache) {
+      // Read optimistically befor locking
+      if (cacheEntry.keyPart1 == aKeyPart1 &&
+          cacheEntry.keyPart2 == aKeyPart2) {
+        MutexAutoLock lock(mLock);
+
+        // Double check after we have a lock
+        if (MOZ_UNLIKELY(cacheEntry.keyPart1 != aKeyPart1 ||
+                         cacheEntry.keyPart2 != aKeyPart2)) {
+          // Got evicted in a race
+          long long tmp_keyPart1 = cacheEntry.keyPart1;
+          long long tmp_keyPart2 = cacheEntry.keyPart2;
+          MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+            ("LRU Cache HIT-MISS with %lli != %lli and %lli != %lli",
+              aKeyPart1, tmp_keyPart1, aKeyPart2, tmp_keyPart2));
+          return EmptyCString();
+        }
+
+        cacheEntry.accessTime = PR_Now();
+        MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+          ("LRU Cache HIT with %lli %lli", aKeyPart1, aKeyPart2));
+        return cacheEntry.data;
+      }
+    }
+
+    return EmptyCString();
+  }
+
+  void
+  Store(long long aKeyPart1, long long aKeyPart2, const nsCString& aValue)
+  {
+    MOZ_DIAGNOSTIC_ASSERT(aValue.Length() == HASH_DIGEST_SIZE_BYTES);
+    MutexAutoLock lock(mLock);
+
+    CacheEntry* lowestKey = &this->cache[0];
+    for (auto & cacheEntry : this->cache) {
+      if (MOZ_UNLIKELY(cacheEntry.keyPart1 == aKeyPart1 &&
+                       cacheEntry.keyPart2 == aKeyPart2)) {
+        // Another thread inserted before us, don't insert twice
+        MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+          ("LRU Cache DOUBLE STORE with %lli %lli", aKeyPart1, aKeyPart2));
+        return;
+      }
+      if (cacheEntry.accessTime < lowestKey->accessTime) {
+        lowestKey = &cacheEntry;
+      }
+    }
+
+    lowestKey->keyPart1 = aKeyPart1;
+    lowestKey->keyPart2 = aKeyPart2;
+    lowestKey->data = aValue;
+    lowestKey->accessTime = PR_Now();
+    MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
+      ("LRU Cache STORE with %lli %lli", aKeyPart1, aKeyPart2));
+  }
+
+
+private:
+  ~LRUCache() = default;
+
+  struct CacheEntry
+  {
+    Atomic<long long, Relaxed> keyPart1;
+    Atomic<long long, Relaxed> keyPart2;
+    PRTime accessTime = 0;
+    nsCString data;
+
+    CacheEntry()
+    {
+      this->keyPart1 = 0xFFFFFFFFFFFFFFFF;
+      this->keyPart2 = 0xFFFFFFFFFFFFFFFF;
+      this->accessTime = 0;
+      this->data = nullptr;
+    }
+    CacheEntry(const CacheEntry &obj)
+    {
+      this->keyPart1.exchange(obj.keyPart1);
+      this->keyPart2.exchange(obj.keyPart2);
+      this->accessTime = obj.accessTime;
+      this->data = obj.data;
+    }
+  };
+
+  AutoTArray<CacheEntry, LRU_CACHE_SIZE> cache;
+  mozilla::Mutex mLock;
+};
+
+// We make a single LRUCache
+static StaticRefPtr<LRUCache> sCache;
+
+/**
+ * The purpose of this function is to deterministicly generate a random midpoint
+ * between a lower clamped value and an upper clamped value. Assuming a clamping
+ * resolution of 100, here is an example:
+ *
+ * |---------------------------------------|--------------------------|
+ * lower clamped value (e.g. 300)          |           upper clamped value (400)
+ *                              random midpoint (e.g. 360)
+ *
+ * If our actual timestamp (e.g. 325) is below the midpoint, we keep it clamped
+ * downwards. If it were equal to or above the midpoint (e.g. 365) we would
+ * round it upwards to the largest clamped value (in this example: 400).
+ *
+ * The question is: does time go backwards?
+ *
+ * The midpoint is deterministicly random and generated from three components:
+ * a secret seed, a per-timeline (context) 'mix-in', and a clamped time.
+ *
+ * When comparing times across different seed values: time may go backwards.
+ * For a clamped time of 300, one seed may generate a midpoint of 305 and another
+ * 395. So comparing an (actual) timestamp of 325 and 351 could see the 325 clamped
+ * up to 400 and the 351 clamped down to 300. The seed is per-process, so this case
+ * occurs when one can compare timestamps cross-process. This is uncommon (because
+ * we don't have site isolation.) The circumstances this could occur are
+ * BroadcastChannel, Storage Notification, and in theory (but not yet implemented)
+ * SharedWorker. This should be an exhaustive list (at time of comment writing!).
+ *
+ * Aside from cross-process communication, derived timestamps across different
+ * time origins may go backwards. (Specifically, derived means adding two timestamps
+ * together to get an (approximate) absolute time.)
+ * Assume a page and a worker. If one calls performance.now() in the page and then
+ * triggers a call to performance.now() in the worker, the following invariant should
+ * hold true:
+ *             page.performance.timeOrigin + page.performance.now() <
+ *                        worker.performance.timeOrigin + worker.performance.now()
+ *
+ * We break this invariant.
+ *
+ * The 'Context Mix-in' is a securely generated random seed that is unique for each
+ * timeline that starts over at zero. It is needed to ensure that the sequence of
+ * midpoints (as calculated by the secret seed and clamped time) does not repeat.
+ * In RelativeTimeline.h, we define a 'RelativeTimeline' class that can be inherited by
+ * any object that has a relative timeline. The most obvious examples are Documents
+ * and Workers. An attacker could let time go forward and observe (roughly) where
+ * the random midpoints fall. Then they create a new object, time starts back over at
+ * zero, and they know (approximately) where the random midpoints are.
+ *
+ * When the timestamp given is a non-relative timestamp (e.g. it is relative to the
+ * unix epoch) it is not possible to replay a sequence of random values. Thus,
+ * providing a zero context pointer is an indicator that the timestamp given is
+ * absolute and does not need any additional randomness.
+ *
+ * @param aClampedTimeUSec [in]  The clamped input time in microseconds.
+ * @param aResolutionUSec  [in]  The current resolution for clamping in microseconds.
+ * @param aMidpointOut     [out] The midpoint, in microseconds, between [0, aResolutionUSec].
+ * @param aContextMixin    [in]  An opaque random value for relative timestamps. 0 for
+ *                               absolute timestamps
+ * @param aSecretSeed      [in]  TESTING ONLY. When provided, the current seed will be
+ *                               replaced with this value.
+ * @return                 A nsresult indicating success of failure. If the function failed,
+ *                         nothing is written to aMidpointOut
+ */
+
+/* static */
+nsresult
+nsRFPService::RandomMidpoint(long long aClampedTimeUSec,
+                             long long aResolutionUSec,
+                             int64_t aContextMixin,
+                             long long* aMidpointOut,
+                             uint8_t * aSecretSeed /* = nullptr */)
+{
+  nsresult rv;
+  const int kSeedSize = 16;
+  const int kClampTimesPerDigest = HASH_DIGEST_SIZE_BITS / 32;
+  static uint8_t * sSecretMidpointSeed = nullptr;
+
+  if(MOZ_UNLIKELY(!aMidpointOut)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  RefPtr<LRUCache> cache;
+  {
+    StaticMutexAutoLock lock(sLock);
+    cache = sCache;
+  }
+
+  if(!cache) {
+    return NS_ERROR_FAILURE;
+  }
+
+  /*
+   * Below, we will call a cryptographic hash function. That's expensive. We look for ways to
+   * make it more efficient.
+   *
+   * We only need as much output from the hash function as the maximum resolution we will
+   * ever support, because we will reduce the output modulo that value. The maximum resolution
+   * we think is likely is in the low seconds value, or about 1-10 million microseconds.
+   * 2**24 is 16 million, so we only need 24 bits of output. Practically speaking though,
+   * it's way easier to work with 32 bits.
+   *
+   * So we're using 32 bits of output and throwing away the other DIGEST_SIZE - 32 (in the case of
+   * SHA-256, DIGEST_SIZE is 256.)  That's a lot of waste.
+   *
+   * Instead of throwing it away, we're going to use all of it. We can handle DIGEST_SIZE / 32
+   * Clamped Time's per hash function - call that , so we reduce aClampedTime to a multiple of
+   * kClampTimesPerDigest (just like we reduced the real time value to aClampedTime!)
+   *
+   * Then we hash _that_ value (assuming it's not in the cache) and index into the digest result
+   * the appropriate bit offset.
+   */
+  long long reducedResolution = aResolutionUSec * kClampTimesPerDigest;
+  long long extraClampedTime = (aClampedTimeUSec / reducedResolution) * reducedResolution;
+
+  nsCString hashResult = cache->Get(extraClampedTime, aContextMixin);
+
+  if(hashResult.Length() != HASH_DIGEST_SIZE_BYTES) { // Cache Miss =(
+    // If someone has pased in the testing-only parameter, replace our seed with it
+    if (aSecretSeed != nullptr) {
+      StaticMutexAutoLock lock(sLock);
+      if (sSecretMidpointSeed) {
+        delete[] sSecretMidpointSeed;
+      }
+      sSecretMidpointSeed = new uint8_t[kSeedSize];
+      memcpy(sSecretMidpointSeed, aSecretSeed, kSeedSize);
+    }
+
+    // If we don't have a seed, we need to get one.
+    if(MOZ_UNLIKELY(!sSecretMidpointSeed)) {
+      nsCOMPtr<nsIRandomGenerator> randomGenerator =
+        do_GetService("@mozilla.org/security/random-generator;1", &rv);
+      if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+      StaticMutexAutoLock lock(sLock);
+      if(MOZ_LIKELY(!sSecretMidpointSeed)) {
+        rv = randomGenerator->GenerateRandomBytes(kSeedSize, &sSecretMidpointSeed);
+        if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+      }
+    }
+
+    /*
+     * Use a cryptographicly secure hash function, but do _not_ use an HMAC.
+     * Obviously we're not using this data for authentication purposes, but
+     * even still an HMAC is a perfect fit here, as we're hashing a value
+     * using a seed that never changes, and an input that does. So why not
+     * use one?
+     *
+     * Basically - we don't need to, it's two invocations of the hash function,
+     * and speed really counts here.
+     *
+     * With authentication off the table, the properties we would get by
+     * using an HMAC here would be:
+     *  - Resistence to length extension
+     *  - Resistence to collision attacks on the underlying hash function
+     *  - Resistence to chosen prefix attacks
+     *
+     * There is no threat of length extension here. Nor is there any real
+     * practical threat of collision: not only are we using a good hash
+     * function (you may mock me in 10 years if it is broken) but we don't
+     * provide the attacker much control over the input. Nor do we let them
+     * have the prefix.
+     */
+
+     // Then hash extraClampedTime and store it in the cache
+     nsCOMPtr<nsICryptoHash> hasher = do_CreateInstance("@mozilla.org/security/hash;1", &rv);
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     rv = hasher->Init(nsICryptoHash::SHA256);
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     rv = hasher->Update(sSecretMidpointSeed, kSeedSize);
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     rv = hasher->Update((const uint8_t *)&aContextMixin, sizeof(aContextMixin));
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     rv = hasher->Update((const uint8_t *)&extraClampedTime, sizeof(extraClampedTime));
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     nsAutoCStringN<HASH_DIGEST_SIZE_BYTES> derivedSecret;
+     rv = hasher->Finish(false, derivedSecret);
+     NS_ENSURE_SUCCESS(rv, rv);
+
+     // Finally, store it in the cache
+     cache->Store(extraClampedTime, aContextMixin, derivedSecret);
+     hashResult = derivedSecret;
+  }
+
+  // Offset the appropriate index into the hash output, and then turn it into a random midpoint
+  // between 0 and aResolutionUSec. Sometimes out input time is negative, we ride the negative
+  // out to the end until we start doing pointer math. (We also triple check we're in bounds.)
+  int byteOffset = abs(((aClampedTimeUSec - extraClampedTime) / aResolutionUSec) * 4);
+  if (MOZ_UNLIKELY(byteOffset > (HASH_DIGEST_SIZE_BYTES - 4))) {
+    byteOffset = 0;
+  }
+  uint32_t deterministiclyRandomValue = *BitwiseCast<uint32_t*>(PromiseFlatCString(hashResult).get() + byteOffset);
+  deterministiclyRandomValue %= aResolutionUSec;
+  *aMidpointOut = deterministiclyRandomValue;
+
+  return NS_OK;
+}
+
+
+/**
+ * Given a precision value, this function will reduce a given input time to the nearest
+ * multiple of that precision.
+ *
+ * It will check if it is appropriate to clamp the input time according to the values
+ * of the privacy.resistFingerprinting and privacy.reduceTimerPrecision preferences.
+ * Note that while it will check these prefs, it will use whatever precision is given to
+ * it, so if one desires a minimum precision for Resist Fingerprinting, it is the
+ * caller's responsibility to provide the correct value. This means you should pass
+ * TimerResolution(), which enforces a minimum vale on the precision based on
+ * preferences.
+ *
+ * It ensures the given precision value is greater than zero, if it is not it returns
+ * the input time.
+ *
+ * @param aTime           [in] The input time to be clamped.
+ * @param aTimeScale      [in] The units the input time is in (Seconds, Milliseconds, or Microseconds).
+ * @param aResolutionUSec [in] The precision (in microseconds) to clamp to.
+ * @param aContextMixin   [in] An opaque random value for relative timestamps. 0 for absolute timestamps
+ * @return                 If clamping is appropriate, the clamped value of the input, otherwise the input.
+ */
 /* static */
 double
-nsRFPService::ReduceTimePrecisionAsMSecs(double aTime, TimerPrecisionType aType /* = TimerPrecisionType::All */)
-{
-  if (!IsTimerPrecisionReductionEnabled(aType)) {
-    return aTime;
+nsRFPService::ReduceTimePrecisionImpl(
+  double aTime,
+  TimeScale aTimeScale,
+  double aResolutionUSec,
+  int64_t aContextMixin,
+  TimerPrecisionType aType)
+ {
+   if (!IsTimerPrecisionReductionEnabled(aType) || aResolutionUSec <= 0) {
+     return aTime;
+   }
+
+  // Increase the time as needed until it is in microseconds.
+  // Note that a double can hold up to 2**53 with integer precision. This gives us
+  // only until June 5, 2255 in time-since-the-epoch with integer precision.
+  // So we will be losing microseconds precision after that date.
+  // We think this is okay, and we codify it in some tests.
+  double timeScaled = aTime * (1000000 / aTimeScale);
+  // Cut off anything less than a microsecond.
+  long long timeAsInt = timeScaled;
+
+  // If we have a blank context mixin, this indicates we (should) have an absolute timestamp.
+  // We check the time, and if it less than a unix timestamp about 10 years in the past, we
+  // output to the log and, in debug builds, assert. This is an error case we want to
+  // understand and fix: we must have given a relative timestamp with a mixin of 0 which is
+  // incorrect.
+  // Anyone running a debug build _probably_ has an accurate clock, and if they don't, they'll
+  // hopefully find this message and understand why things are crashing.
+  if (aContextMixin == 0 && aType == TimerPrecisionType::All && timeAsInt < 1204233985000) {
+    MOZ_LOG(gResistFingerprintingLog, LogLevel::Error,
+      ("About to assert. aTime=%lli<1204233985000 aContextMixin=%" PRId64 " aType=%s",
+        timeAsInt, aContextMixin, (aType == TimerPrecisionType::RFPOnly ? "RFPOnly" : "All")));
+    MOZ_ASSERT(false, "ReduceTimePrecisionImpl was given a relative time "
+                      "with an empty context mix-in (or your clock is 10+ years off.) "
+                      "Run this with MOZ_LOG=nsResistFingerprinting:1 to get more details.");
+}
+
+  // Cast the resolution (in microseconds) to an int.
+  long long resolutionAsInt = aResolutionUSec;
+  // Perform the clamping.
+  // We do a cast back to double to perform the division with doubles, then floor the result
+  // and the rest occurs with integer precision.
+  // This is because it gives consistency above and below zero. Above zero, performing the
+  // division in integers truncates decimals, taking the result closer to zero (a floor).
+  // Below zero, performing the division in integers truncates decimals, taking the result
+  // closer to zero (a ceil).
+  // The impact of this is that comparing two clamped values that should be related by a
+  // constant (e.g. 10s) that are across the zero barrier will no longer work. We need to
+  // round consistently towards positive infinity or negative infinity (we chose negative.)
+  // This can't be done with a truncation, it must be done with floor.
+  long long clamped = floor(double(timeAsInt) / resolutionAsInt) * resolutionAsInt;
+
+
+  long long midpoint = 0,
+            clampedAndJittered = clamped;
+  if (sJitter) {
+    if(!NS_FAILED(RandomMidpoint(clamped, resolutionAsInt, aContextMixin, &midpoint)) &&
+       timeAsInt >= clamped + midpoint) {
+      clampedAndJittered += resolutionAsInt;
+    }
   }
-  const double resolutionMSec = TimerResolution() / 1000.0;
-  double ret = floor(aTime / resolutionMSec) * resolutionMSec;
-#if defined(DEBUG)
+
+  // Cast it back to a double and reduce it to the correct units.
+  double ret = double(clampedAndJittered) / (1000000.0 / aTimeScale);
+
+  bool tmp_jitter = sJitter;
   MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
-    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
-      DBL_DIG-1, aTime, DBL_DIG-1, resolutionMSec, DBL_DIG-1, floor(aTime / resolutionMSec), DBL_DIG-1, ret));
-#endif
+    ("Given: (%.*f, Scaled: %.*f, Converted: %lli), Rounding with (%lli, Originally %.*f), "
+    "Intermediate: (%lli), Clamped: (%lli) Jitter: (%i Context: %" PRId64 " Midpoint: %lli) "
+    "Final: (%lli Converted: %.*f)",
+     DBL_DIG-1, aTime, DBL_DIG-1, timeScaled, timeAsInt, resolutionAsInt, DBL_DIG-1, aResolutionUSec,
+    (long long)floor(double(timeAsInt) / resolutionAsInt), clamped, tmp_jitter, aContextMixin, midpoint,
+    clampedAndJittered, DBL_DIG-1, ret));
+
   return ret;
 }
 
 /* static */
 double
-nsRFPService::ReduceTimePrecisionAsUSecs(double aTime, TimerPrecisionType aType /* = TimerPrecisionType::All */)
+nsRFPService::ReduceTimePrecisionAsUSecs(
+  double aTime,
+  int64_t aContextMixin,
+  TimerPrecisionType aType /* = TimerPrecisionType::All */)
 {
-  if (!IsTimerPrecisionReductionEnabled(aType)) {
-    return aTime;
-  }
-  double resolutionUSec = TimerResolution();
-  double ret = floor(aTime / resolutionUSec) * resolutionUSec;
-#if defined(DEBUG)
-  double tmp_sResolutionUSec = resolutionUSec;
-  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
-    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
-      DBL_DIG-1, aTime, DBL_DIG-1, tmp_sResolutionUSec, DBL_DIG-1, floor(aTime / tmp_sResolutionUSec), DBL_DIG-1, ret));
-#endif
-  return ret;
+  return nsRFPService::ReduceTimePrecisionImpl(
+    aTime,
+    MicroSeconds,
+    TimerResolution(),
+    aContextMixin,
+    aType);
+}
+
+/* static */
+double
+nsRFPService::ReduceTimePrecisionAsUSecsWrapper(double aTime)
+{
+  return nsRFPService::ReduceTimePrecisionImpl(
+    aTime,
+    MicroSeconds,
+    TimerResolution(),
+    0, /* For absolute timestamps (all the JS engine does), supply zero context mixin */
+    TimerPrecisionType::All);
+}
+
+/* static */
+double
+nsRFPService::ReduceTimePrecisionAsMSecs(
+  double aTime,
+  int64_t aContextMixin,
+  TimerPrecisionType aType /* = TimerPrecisionType::All */)
+{
+  return nsRFPService::ReduceTimePrecisionImpl(
+    aTime,
+    MilliSeconds,
+    TimerResolution(),
+    aContextMixin,
+    aType);
+}
+
+/* static */
+double
+nsRFPService::ReduceTimePrecisionAsSecs(
+  double aTime,
+  int64_t aContextMixin,
+  TimerPrecisionType aType /* = TimerPrecisionType::All */)
+{
+  return nsRFPService::ReduceTimePrecisionImpl(
+    aTime,
+    Seconds,
+    TimerResolution(),
+    aContextMixin,
+    aType);
 }
 
 /* static */
@@ -160,40 +614,11 @@ nsRFPService::CalculateTargetVideoResolution(uint32_t aVideoQuality)
 }
 
 /* static */
-double
-nsRFPService::ReduceTimePrecisionAsSecs(double aTime, TimerPrecisionType aType /* = TimerPrecisionType::All */)
-{
-  if (!IsTimerPrecisionReductionEnabled(aType)) {
-    return aTime;
-  }
-  double resolutionUSec = TimerResolution();
-  if (TimerResolution() < 1000000) {
-    // The resolution is smaller than one sec.  Use the reciprocal to avoid
-    // floating point error.
-    const double resolutionSecReciprocal = 1000000.0 / resolutionUSec;
-    double ret = floor(aTime * resolutionSecReciprocal) / resolutionSecReciprocal;
-#if defined(DEBUG)
-  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
-    ("Given: %.*f, Reciprocal Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
-      DBL_DIG-1, aTime, DBL_DIG-1, resolutionSecReciprocal, DBL_DIG-1, floor(aTime * resolutionSecReciprocal), DBL_DIG-1, ret));
-#endif
-    return ret;
-  }
-  const double resolutionSec = resolutionUSec / 1000000.0;
-  double ret = floor(aTime / resolutionSec) * resolutionSec;
-#if defined(DEBUG)
-  MOZ_LOG(gResistFingerprintingLog, LogLevel::Verbose,
-    ("Given: %.*f, Rounding with %.*f, Intermediate: %.*f, Got: %.*f",
-      DBL_DIG-1, aTime, DBL_DIG-1, resolutionSec, DBL_DIG-1, floor(aTime / resolutionSec), DBL_DIG-1, ret));
-#endif
-  return ret;
-}
-
-/* static */
 uint32_t
 nsRFPService::GetSpoofedTotalFrames(double aTime)
 {
-  double time = ReduceTimePrecisionAsSecs(aTime);
+  double precision = TimerResolution() / 1000 / 1000;
+  double time = floor(aTime / precision) * precision;
 
   return NSToIntFloor(time * sVideoFramesPerSec);
 }
@@ -210,7 +635,8 @@ nsRFPService::GetSpoofedDroppedFrames(double aTime, uint32_t aWidth, uint32_t aH
     return 0;
   }
 
-  double time = ReduceTimePrecisionAsSecs(aTime);
+  double precision = TimerResolution() / 1000 / 1000;
+  double time = floor(aTime / precision) * precision;
   // Bound the dropped ratio from 0 to 100.
   uint32_t boundedDroppedRatio = min(sVideoDroppedRatio, 100u);
 
@@ -229,7 +655,8 @@ nsRFPService::GetSpoofedPresentedFrames(double aTime, uint32_t aWidth, uint32_t 
     return GetSpoofedTotalFrames(aTime);
   }
 
-  double time = ReduceTimePrecisionAsSecs(aTime);
+  double precision = TimerResolution() / 1000 / 1000;
+  double time = floor(aTime / precision) * precision;
   // Bound the dropped ratio from 0 to 100.
   uint32_t boundedDroppedRatio = min(sVideoDroppedRatio, 100u);
 
@@ -247,12 +674,46 @@ nsRFPService::GetSpoofedUserAgent(nsACString &userAgent)
   // https://developer.mozilla.org/en-US/docs/Web/API/NavigatorID/userAgent
   // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/User-Agent
 
-  uint32_t spoofedVersion = 52;
+  nsresult rv;
+  nsCOMPtr<nsIXULAppInfo> appInfo =
+    do_GetService("@mozilla.org/xre/app-info;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsAutoCString appVersion;
+  rv = appInfo->GetVersion(appVersion);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // The browser version will be spoofed as the last ESR version.
+  // By doing so, the anonymity group will cover more versions instead of one
+  // version.
+  uint32_t firefoxVersion = appVersion.ToInteger(&rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Starting from Firefox 10, Firefox ESR was released once every seven
+  // Firefox releases, e.g. Firefox 10, 17, 24, 31, and so on.
+  // We infer the last and closest ESR version based on this rule.
+  nsCOMPtr<nsIXULRuntime> runtime =
+    do_GetService("@mozilla.org/xre/runtime;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsAutoCString updateChannel;
+  rv = runtime->GetDefaultUpdateChannel(updateChannel);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // If we are running in Firefox ESR, determine whether the formula of ESR
+  // version has changed.  Once changed, we must update the formula in this
+  // function.
+  if (updateChannel.EqualsLiteral("esr")) {
+    MOZ_ASSERT(((firefoxVersion % 7) == 3),
+      "Please udpate ESR version formula in nsRFPService.cpp");
+  }
+
+  uint32_t spoofedVersion = firefoxVersion - ((firefoxVersion - 3) % 7);
   userAgent.Assign(nsPrintfCString(
     "Mozilla/5.0 (%s; rv:%d.0) Gecko/%s Firefox/%d.0",
     SPOOFED_UA_OS, spoofedVersion, LEGACY_BUILD_ID, spoofedVersion));
 
-  return NS_OK;
+  return rv;
 }
 
 nsresult
@@ -285,6 +746,9 @@ nsRFPService::Init()
   rv = prefs->AddObserver(RFP_TIMER_VALUE_PREF, this, false);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  rv = prefs->AddObserver(RFP_JITTER_VALUE_PREF, this, false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   Preferences::AddAtomicBoolVarCache(&sPrivacyTimerPrecisionReduction,
                                      RFP_TIMER_PREF,
                                      true);
@@ -292,6 +756,9 @@ nsRFPService::Init()
   Preferences::AddAtomicUintVarCache(&sResolutionUSec,
                                      RFP_TIMER_VALUE_PREF,
                                      RFP_TIMER_VALUE_DEFAULT);
+  Preferences::AddAtomicBoolVarCache(&sJitter,
+                                     RFP_JITTER_VALUE_PREF,
+                                     RFP_JITTER_VALUE_DEFAULT);
   Preferences::AddUintVarCache(&sVideoFramesPerSec,
                                RFP_SPOOFED_FRAMES_PER_SEC_PREF,
                                RFP_SPOOFED_FRAMES_PER_SEC_DEFAULT);
@@ -311,6 +778,12 @@ nsRFPService::Init()
   // Call Update here to cache the values of the prefs and set the timezone.
   UpdateRFPPref();
 
+  // Create the LRU Cache when we initialize, to avoid accidently trying to
+  // create it (and call ClearOnShutdown) on a non-main-thread
+  if(!sCache) {
+    sCache = new LRUCache();
+  }
+
   return rv;
 }
 
@@ -320,9 +793,10 @@ nsRFPService::UpdateTimers() {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (sPrivacyResistFingerprinting || sPrivacyTimerPrecisionReduction) {
-    JS::SetTimeResolutionUsec(TimerResolution());
+    JS::SetTimeResolutionUsec(TimerResolution(), sJitter);
+    JS::SetReduceMicrosecondTimePrecisionCallback(nsRFPService::ReduceTimePrecisionAsUSecsWrapper);
   } else if (sInitialized) {
-    JS::SetTimeResolutionUsec(0);
+    JS::SetTimeResolutionUsec(0, false);
   }
 }
 
@@ -379,6 +853,11 @@ nsRFPService::StartShutdown()
 
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
 
+  StaticMutexAutoLock lock(sLock);
+  {
+    sCache = nullptr;
+  }
+
   if (obs) {
     obs->RemoveObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
 
@@ -388,6 +867,7 @@ nsRFPService::StartShutdown()
       prefs->RemoveObserver(RESIST_FINGERPRINTING_PREF, this);
       prefs->RemoveObserver(RFP_TIMER_PREF, this);
       prefs->RemoveObserver(RFP_TIMER_VALUE_PREF, this);
+      prefs->RemoveObserver(RFP_JITTER_VALUE_PREF, this);
     }
   }
 }
@@ -592,7 +1072,8 @@ nsRFPService::GetSpoofedCode(const nsIDocument* aDoc,
 
   // We need to change the 'Left' with 'Right' if the location indicates
   // it's a right key.
-  if (aKeyboardEvent->mLocation == nsIDOMKeyEvent::DOM_KEY_LOCATION_RIGHT &&
+  if (aKeyboardEvent->mLocation ==
+        dom::KeyboardEventBinding::DOM_KEY_LOCATION_RIGHT &&
       StringEndsWith(aOut, NS_LITERAL_STRING("Left"))) {
     aOut.ReplaceLiteral(aOut.Length() - 4, 4, u"Right");
   }
@@ -625,7 +1106,9 @@ nsRFPService::Observe(nsISupports* aObject, const char* aTopic,
   if (!strcmp(NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, aTopic)) {
     NS_ConvertUTF16toUTF8 pref(aMessage);
 
-    if (pref.EqualsLiteral(RFP_TIMER_PREF) || pref.EqualsLiteral(RFP_TIMER_VALUE_PREF)) {
+    if (pref.EqualsLiteral(RFP_TIMER_PREF) ||
+        pref.EqualsLiteral(RFP_TIMER_VALUE_PREF) ||
+        pref.EqualsLiteral(RFP_JITTER_VALUE_PREF)) {
       UpdateTimers();
     }
     else if (pref.EqualsLiteral(RESIST_FINGERPRINTING_PREF)) {

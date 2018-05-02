@@ -227,12 +227,21 @@ Assembler::trace(JSTracer* trc)
 }
 
 void
-Assembler::Bind(uint8_t* rawCode, CodeOffset label, CodeOffset target)
+Assembler::Bind(uint8_t* rawCode, const CodeLabel& label)
 {
-    if (label.bound()) {
-        intptr_t offset = label.offset();
-        Instruction* inst = (Instruction*) (rawCode + offset);
-        Assembler::UpdateLoad64Value(inst, (uint64_t)(rawCode + target.offset()));
+    if (label.patchAt().bound()) {
+
+        auto mode = label.linkMode();
+        intptr_t offset = label.patchAt().offset();
+        intptr_t target = label.target().offset();
+
+        if (mode == CodeLabel::RawPointer) {
+            *reinterpret_cast<const void**>(rawCode + offset) = rawCode + target;
+        } else {
+            MOZ_ASSERT(mode == CodeLabel::MoveImmediate || mode == CodeLabel::JumpImmediate);
+            Instruction* inst = (Instruction*) (rawCode + offset);
+            Assembler::UpdateLoad64Value(inst, (uint64_t)(rawCode + target));
+        }
     }
 }
 
@@ -323,7 +332,9 @@ Assembler::bind(RepatchLabel* label)
             MOZ_ASSERT(inst[0].extractOpcode() == (uint32_t(op_beq) >> OpcodeShift) ||
                        inst[0].extractOpcode() == (uint32_t(op_bne) >> OpcodeShift) ||
                        inst[0].extractOpcode() == (uint32_t(op_blez) >> OpcodeShift) ||
-                       inst[0].extractOpcode() == (uint32_t(op_bgtz) >> OpcodeShift));
+                       inst[0].extractOpcode() == (uint32_t(op_bgtz) >> OpcodeShift) ||
+                       (inst[0].extractOpcode() == (uint32_t(op_regimm) >> OpcodeShift) &&
+                       inst[0].extractRT() == (uint32_t(rt_bltz) >> RTShift)));
             inst[0].setBOffImm16(BOffImm16(offset));
         } else if (inst[0].encode() == inst_beq.encode()) {
             // Handle open long unconditional jumps created by
@@ -362,9 +373,8 @@ Assembler::bind(RepatchLabel* label)
 void
 Assembler::processCodeLabels(uint8_t* rawCode)
 {
-    for (size_t i = 0; i < codeLabels_.length(); i++) {
-        CodeLabel label = codeLabels_[i];
-        Bind(rawCode, *label.patchAt(), *label.target());
+    for (const CodeLabel& label : codeLabels_) {
+        Bind(rawCode, label);
     }
 }
 

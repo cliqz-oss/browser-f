@@ -200,10 +200,10 @@ function editableTextTest(aID) {
 
   function getValue() {
     var elm = getNode(aID);
-    if (elm instanceof Components.interfaces.nsIDOMNSEditableElement)
+    if (elm instanceof Ci.nsIDOMNSEditableElement)
       return elm.value;
 
-    if (elm instanceof Components.interfaces.nsIDOMHTMLDocument)
+    if (ChromeUtils.getClassName(elm) == "HTMLDocument")
       return elm.body.textContent;
 
     return elm.textContent;

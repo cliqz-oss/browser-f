@@ -13,13 +13,8 @@
 
 #include "gc/AllocKind.h"
 #include "js/SliceBudget.h"
+#include "js/TypeDecls.h"
 #include "threading/ProtectedData.h"
-
-namespace JS {
-
-struct Zone;
-
-} /* namespace JS */
 
 namespace js {
 
@@ -228,8 +223,13 @@ class ArenaLists
      * only for the arena that was not fully allocated.
      */
     ZoneGroupData<AllAllocKindArray<FreeSpan*>> freeLists_;
-    FreeSpan*& freeLists(AllocKind i) { return freeLists_.ref()[i]; }
-    FreeSpan* freeLists(AllocKind i) const { return freeLists_.ref()[i]; }
+    AllAllocKindArray<FreeSpan*>& freeLists() { return freeLists_.ref(); }
+    const AllAllocKindArray<FreeSpan*>& freeLists() const { return freeLists_.ref(); }
+
+    FreeSpan* freeList(AllocKind i) const { return freeLists()[i]; }
+
+    inline void setFreeList(AllocKind i, FreeSpan* span);
+    inline void clearFreeList(AllocKind i);
 
     // Because the JITs can allocate from the free lists, they cannot be null.
     // We use a placeholder FreeSpan that is empty (and wihout an associated
@@ -266,13 +266,9 @@ class ArenaLists
     ZoneGroupData<Arena*> gcScriptArenasToUpdate;
     ZoneGroupData<Arena*> gcObjectGroupArenasToUpdate;
 
-    // While sweeping type information, these lists save the arenas for the
-    // objects which have already been finalized in the foreground (which must
-    // happen at the beginning of the GC), so that type sweeping can determine
-    // which of the object pointers are marked.
-    ZoneGroupData<ObjectAllocKindArray<ArenaList>> savedObjectArenas_;
-    ArenaList& savedObjectArenas(AllocKind i) { return savedObjectArenas_.ref()[i]; }
-    ZoneGroupData<Arena*> savedEmptyObjectArenas;
+    // The list of empty arenas which are collected during sweep phase and released at the end of
+    // sweeping every sweep group.
+    ZoneGroupData<Arena*> savedEmptyArenas;
 
   public:
     explicit ArenaLists(JSRuntime* rt, ZoneGroup* group);
@@ -295,9 +291,9 @@ class ArenaLists
     inline bool needBackgroundFinalizeWait(AllocKind kind) const;
 
     /* Clear the free lists so we won't try to allocate from swept arenas. */
-    inline void purge();
+    inline void clearFreeLists();
 
-    inline void prepareForIncrementalGC();
+    inline void unmarkPreMarkedFreeCells();
 
     /* Check if this arena is in use. */
     inline bool arenaIsInUse(Arena* arena, AllocKind kind) const;
@@ -320,9 +316,9 @@ class ArenaLists
                         js::SliceBudget& sliceBudget, gcstats::Statistics& stats);
 
     void queueForegroundObjectsForSweep(FreeOp* fop);
-    void queueForegroundThingsForSweep(FreeOp* fop);
+    void queueForegroundThingsForSweep();
 
-    void mergeForegroundSweptObjectArenas();
+    void releaseForegroundSweptEmptyArenas();
 
     bool foregroundFinalize(FreeOp* fop, AllocKind thingKind, js::SliceBudget& sliceBudget,
                             SortedArenaList& sweepList);
@@ -338,9 +334,8 @@ class ArenaLists
   private:
     inline void queueForForegroundSweep(FreeOp* fop, const FinalizePhase& phase);
     inline void queueForBackgroundSweep(FreeOp* fop, const FinalizePhase& phase);
-    inline void queueForForegroundSweep(FreeOp* fop, AllocKind thingKind);
-    inline void queueForBackgroundSweep(FreeOp* fop, AllocKind thingKind);
-    inline void mergeSweptArenas(AllocKind thingKind);
+    inline void queueForForegroundSweep(AllocKind thingKind);
+    inline void queueForBackgroundSweep(AllocKind thingKind);
 
     TenuredCell* allocateFromArena(JS::Zone* zone, AllocKind thingKind,
                                    ShouldCheckThresholds checkThresholds);

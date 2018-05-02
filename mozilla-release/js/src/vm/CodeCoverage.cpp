@@ -12,17 +12,16 @@
 
 #include <stdio.h>
 #ifdef XP_WIN
-#include <process.h>
-#define getpid _getpid
+# include <process.h>
+# define getpid _getpid
 #else
-#include <unistd.h>
+# include <unistd.h>
 #endif
 
-#include "jscompartment.h"
-#include "jsopcode.h"
-#include "jsprf.h"
-#include "jsscript.h"
-
+#include "util/Text.h"
+#include "vm/BytecodeUtil.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSScript.h"
 #include "vm/Runtime.h"
 #include "vm/Time.h"
 
@@ -198,11 +197,8 @@ LCovSource::writeScript(JSScript* script)
 
         // If we have additional source notes, walk all the source notes of the
         // current pc.
-        if (snpc <= pc) {
+        if (snpc <= pc || !firstLineHasBeenWritten) {
             size_t oldLine = lineno;
-            // Without this check, we'll never write the script's first line
-            if (lineno == script->lineno() && !firstLineHasBeenWritten)
-                oldLine = 0;
             while (!SN_IS_TERMINATOR(sn) && snpc <= pc) {
                 SrcNoteType type = SN_TYPE(sn);
                 if (type == SRC_SETLINE)
@@ -216,21 +212,25 @@ LCovSource::writeScript(JSScript* script)
                 snpc += SN_DELTA(sn);
             }
 
-            if (oldLine != lineno && fallsthrough) {
+            if ((oldLine != lineno || !firstLineHasBeenWritten) &&
+                pc >= script->main() &&
+                fallsthrough)
+            {
                 auto p = linesHit_.lookupForAdd(lineno);
                 if (!p) {
                     if (!linesHit_.add(p, lineno, hits))
                         return false;
+                    numLinesInstrumented_++;
+                    if (hits != 0)
+                        numLinesHit_++;
+                    maxLineHit_ = std::max(lineno, maxLineHit_);
                 } else {
+                    if (p->value() == 0 && hits != 0)
+                        numLinesHit_++;
                     p->value() += hits;
                 }
 
-                // Count the number of lines instrumented & hit.
                 firstLineHasBeenWritten = true;
-                maxLineHit_ = std::max(lineno, maxLineHit_);
-                numLinesInstrumented_++;
-                if (hits)
-                    numLinesHit_++;
             }
         }
 

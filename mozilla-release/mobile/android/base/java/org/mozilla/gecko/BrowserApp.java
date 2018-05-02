@@ -83,7 +83,6 @@ import org.mozilla.gecko.bookmarks.BookmarkEditFragment;
 import org.mozilla.gecko.bookmarks.BookmarkUtils;
 import org.mozilla.gecko.bookmarks.EditBookmarkTask;
 import org.mozilla.gecko.cleanup.FileCleanupController;
-import org.mozilla.gecko.dawn.DawnHelper;
 import org.mozilla.gecko.db.BrowserContract;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.SuggestedSites;
@@ -174,6 +173,7 @@ import org.mozilla.gecko.widget.AnchoredPopup;
 import org.mozilla.gecko.widget.AnimatedProgressBar;
 import org.mozilla.gecko.widget.GeckoActionProvider;
 import org.mozilla.gecko.widget.SplashScreen;
+import org.mozilla.geckoview.GeckoSession;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -187,6 +187,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import static org.mozilla.gecko.mma.MmaDelegate.NEW_TAB;
@@ -236,6 +237,11 @@ public class BrowserApp extends GeckoApp
     @RobocopTarget
     public static final String EXTRA_SKIP_STARTPANE = "skipstartpane";
     private static final String EOL_NOTIFIED = "eol_notified";
+
+    /**
+     * Be aware of {@link org.mozilla.gecko.fxa.EnvironmentUtils.GECKO_PREFS_FIRSTRUN_UUID}.
+     */
+    private static final String FIRSTRUN_UUID = "firstrun_uuid";
 
     private BrowserSearch mBrowserSearch;
     private View mBrowserSearchContainer;
@@ -696,17 +702,6 @@ public class BrowserApp extends GeckoApp
 
         showSplashScreen = true;
 
-        boolean supported = HardwareUtils.isSupportedSystem();
-        if (supported) {
-            GeckoLoader.loadMozGlue(appContext);
-            supported = GeckoLoader.neonCompatible();
-        }
-        if (!supported) {
-            // This build does not support the Android version of the device; Exit early.
-            super.onCreate(savedInstanceState);
-            return;
-        }
-
         final SafeIntent intent = new SafeIntent(getIntent());
         final boolean isInAutomation = IntentUtils.getIsInAutomationFromEnvironment(intent);
 
@@ -725,6 +720,10 @@ public class BrowserApp extends GeckoApp
         app.prepareLightweightTheme();
 
         super.onCreate(savedInstanceState);
+
+        if (mIsAbortingAppLaunch) {
+          return;
+        }
 
         initSwitchboard(this, intent, isInAutomation);
         initTelemetryUploader(isInAutomation);
@@ -1148,8 +1147,13 @@ public class BrowserApp extends GeckoApp
                     }
                 }
 
-                // Don't bother trying again to show the v1 minimal first run.
-                prefs.edit().putBoolean(FirstrunAnimationContainer.PREF_FIRSTRUN_ENABLED, false).apply();
+                prefs.edit()
+                        // Don't bother trying again to show the v1 minimal first run.
+                        .putBoolean(FirstrunAnimationContainer.PREF_FIRSTRUN_ENABLED, false)
+                        // Generate a unique identify for the current first run.
+                        // See Bug 1429735 for why we care to do this.
+                        .putString(FIRSTRUN_UUID, UUID.randomUUID().toString())
+                        .apply();
 
                 // We have no intention of stopping this session. The FIRSTRUN session
                 // ends when the browsing session/activity has ended. All events
@@ -1216,11 +1220,9 @@ public class BrowserApp extends GeckoApp
     public void onAttachedToWindow() {
         final SafeIntent intent = new SafeIntent(getIntent());
 
-        // We can't show the first run experience until Gecko has finished initialization (bug 1077583).
-        checkFirstrun(this, intent);
-
         if (!IntentUtils.getIsInAutomationFromEnvironment(intent)) {
-            DawnHelper.conditionallyNotifyDawn(this);
+            // We can't show the first run experience until Gecko has finished initialization (bug 1077583).
+            checkFirstrun(this, intent);
         }
     }
 
@@ -1349,6 +1351,8 @@ public class BrowserApp extends GeckoApp
         for (final BrowserAppDelegate delegate : delegates) {
             delegate.onStart(this);
         }
+
+        MmaDelegate.track(MmaDelegate.RESUMED_FROM_BACKGROUND);
     }
 
     @Override
@@ -2745,9 +2749,11 @@ public class BrowserApp extends GeckoApp
 
                 final String keywordUrl = db.getUrlForKeyword(getContentResolver(), keyword);
 
-                // If there isn't a bookmark keyword, load the url. This may result in a query
-                // using the default search engine.
-                if (TextUtils.isEmpty(keywordUrl)) {
+                // If there isn't a bookmark keyword, or if there is no search query
+                // within the keywordURL, yet one is provided, load the url.
+                // This may result in a query using the default search engine.
+                if (TextUtils.isEmpty(keywordUrl) ||
+                        (!TextUtils.isEmpty(keywordSearch) && !StringUtils.queryExists(keywordUrl))) {
                     Tabs.getInstance().loadUrl(url, Tabs.LOADURL_USER_ENTERED);
                     Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.ACTIONBAR, "user");
                     return;
@@ -2918,6 +2924,7 @@ public class BrowserApp extends GeckoApp
         super.onLocaleReady(locale);
 
         HomePanelsManager.getInstance().onLocaleReady(locale);
+        mBrowserToolbar.onLocaleReady(locale);
 
         if (mMenu != null) {
             mMenu.clear();
@@ -3591,7 +3598,7 @@ public class BrowserApp extends GeckoApp
             super.closeOptionsMenu();
     }
 
-    @Override // GeckoView.ContentListener
+    @Override // GeckoView.ContentDelegate
     public void onFullScreen(final GeckoSession session, final boolean fullscreen) {
         super.onFullScreen(session, fullscreen);
 
@@ -3630,6 +3637,7 @@ public class BrowserApp extends GeckoApp
         final MenuItem historyList = aMenu.findItem(R.id.history_list);
         final MenuItem saveAsPDF = aMenu.findItem(R.id.save_as_pdf);
         final MenuItem print = aMenu.findItem(R.id.print);
+        final MenuItem viewPageSource = aMenu.findItem(R.id.view_page_source);
         final MenuItem charEncoding = aMenu.findItem(R.id.char_encoding);
         final MenuItem findInPage = aMenu.findItem(R.id.find_in_page);
         final MenuItem desktopMode = aMenu.findItem(R.id.desktop_mode);
@@ -3658,6 +3666,7 @@ public class BrowserApp extends GeckoApp
             saveAsPDF.setEnabled(false);
             print.setEnabled(false);
             findInPage.setEnabled(false);
+            viewPageSource.setEnabled(false);
 
             // NOTE: Use MenuUtils.safeSetEnabled because some actions might
             // be on the BrowserToolbar context menu.
@@ -3820,8 +3829,10 @@ public class BrowserApp extends GeckoApp
         print.setEnabled(allowPDF);
         print.setVisible(Versions.feature19Plus);
 
-        // Disable find in page for about:home, since it won't work on Java content.
-        findInPage.setEnabled(!isAboutHome(tab));
+        // Disable find in page and view source for about:home, since it won't work on Java content.
+        final boolean notInAboutHome = !isAboutHome(tab);
+        findInPage.setEnabled(notInAboutHome);
+        viewPageSource.setEnabled(notInAboutHome);
 
         charEncoding.setVisible(GeckoPreferences.getCharEncodingState());
 
@@ -4017,6 +4028,13 @@ public class BrowserApp extends GeckoApp
             Telemetry.sendUIEvent(TelemetryContract.Event.SAVE, TelemetryContract.Method.MENU, "print");
             PrintHelper.printPDF(this);
             return true;
+        }
+
+        if (itemId == R.id.view_page_source) {
+            tab = Tabs.getInstance().getSelectedTab();
+            final GeckoBundle args = new GeckoBundle(1);
+            args.putInt("tabId", tab.getId());
+            getAppEventDispatcher().dispatch("Tab:ViewSource", args);
         }
 
         if (itemId == R.id.settings) {

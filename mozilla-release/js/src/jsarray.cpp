@@ -9,19 +9,13 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/FloatingPoint.h"
 #include "mozilla/MathAlgorithms.h"
 
 #include <algorithm>
 
 #include "jsapi.h"
-#include "jsatom.h"
-#include "jscntxt.h"
 #include "jsfriendapi.h"
-#include "jsfun.h"
-#include "jsiter.h"
 #include "jsnum.h"
-#include "jsobj.h"
 #include "jstypes.h"
 #include "jsutil.h"
 
@@ -30,21 +24,26 @@
 #include "jit/InlinableNatives.h"
 #include "js/Class.h"
 #include "js/Conversions.h"
+#include "util/StringBuffer.h"
+#include "util/Text.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/Interpreter.h"
+#include "vm/Iteration.h"
+#include "vm/JSAtom.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
 #include "vm/SelfHosting.h"
 #include "vm/Shape.h"
-#include "vm/StringBuffer.h"
 #include "vm/TypedArrayObject.h"
 #include "vm/WrapperObject.h"
-
-#include "jsatominlines.h"
 
 #include "vm/ArgumentsObject-inl.h"
 #include "vm/ArrayObject-inl.h"
 #include "vm/Caches-inl.h"
 #include "vm/GeckoProfiler-inl.h"
 #include "vm/Interpreter-inl.h"
+#include "vm/JSAtom-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/UnboxedObject-inl.h"
 
@@ -56,7 +55,6 @@ using mozilla::ArrayLength;
 using mozilla::CeilingLog2;
 using mozilla::CheckedInt;
 using mozilla::DebugOnly;
-using mozilla::IsNaN;
 
 using JS::AutoCheckCannotGC;
 using JS::IsArrayAnswer;
@@ -1128,8 +1126,6 @@ ArraySpeciesCreate(JSContext* cx, HandleObject origArray, uint64_t length, Mutab
     return true;
 }
 
-#if JS_HAS_TOSOURCE
-
 static bool
 array_toSource(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -1206,8 +1202,6 @@ array_toSource(JSContext* cx, unsigned argc, Value* vp)
     args.rval().setString(str);
     return true;
 }
-
-#endif
 
 struct EmptySeparatorOp
 {
@@ -3503,9 +3497,7 @@ const JSJitInfo js::array_splice_info = {
 };
 
 static const JSFunctionSpec array_methods[] = {
-#if JS_HAS_TOSOURCE
     JS_FN(js_toSource_str,      array_toSource,     0,0),
-#endif
     JS_SELF_HOSTED_FN(js_toString_str, "ArrayToString",      0,0),
     JS_FN(js_toLocaleString_str,       array_toLocaleString, 0,0),
 
@@ -3543,9 +3535,7 @@ static const JSFunctionSpec array_methods[] = {
     JS_SELF_HOSTED_SYM_FN(iterator,  "ArrayValues",      0,0),
     JS_SELF_HOSTED_FN("entries",     "ArrayEntries",     0,0),
     JS_SELF_HOSTED_FN("keys",        "ArrayKeys",        0,0),
-#ifdef NIGHTLY_BUILD
     JS_SELF_HOSTED_FN("values",      "ArrayValues",      0,0),
-#endif
 
     /* ES7 additions */
     JS_SELF_HOSTED_FN("includes",    "ArrayIncludes",    2,0),

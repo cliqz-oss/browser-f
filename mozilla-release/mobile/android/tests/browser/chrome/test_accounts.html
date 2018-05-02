@@ -13,19 +13,15 @@ Migrated from Robocop: https://bugzilla.mozilla.org/show_bug.cgi?id=1184186
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
 
-  Components.utils.import("resource://gre/modules/Accounts.jsm");
+  ChromeUtils.import("resource://gre/modules/Accounts.jsm");
 
   add_task(function* () {
-    let syncExists = yield Accounts.syncAccountsExist();
-    info("Sync account exists? " + syncExists + "\n");
     let firefoxExists = yield Accounts.firefoxAccountsExist();
     info("Firefox account exists? " + firefoxExists + "\n");
     let anyExists = yield Accounts.anySyncAccountsExist();
     info("Any accounts exist? " + anyExists + "\n");
 
-    // Only one account should exist.
-    ok(!syncExists || !firefoxExists, "at least one account does not exist");
-    is(anyExists, firefoxExists || syncExists, "sync/firefox account existence consistent with any existence");
+    is(anyExists, firefoxExists, "sync/firefox account existence consistent with any existence");
 
     // TODO: How can this be cleaned up?
     // info("Launching setup.\n");

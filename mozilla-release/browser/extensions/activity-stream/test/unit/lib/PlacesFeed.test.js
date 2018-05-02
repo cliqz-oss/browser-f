@@ -7,7 +7,8 @@ const FAKE_BOOKMARK = {bookmarkGuid: "xi31", bookmarkTitle: "Foo", dateAdded: 12
 const TYPE_BOOKMARK = 0; // This is fake, for testing
 const SOURCES = {
   DEFAULT: 0,
-  IMPORT_REPLACE: 3
+  IMPORT_REPLACE: 3,
+  SYNC: 6
 };
 
 const BLOCKED_EVENT = "newtab-linkBlocked"; // The event dispatched in NewTabUtils when a link is blocked;
@@ -25,7 +26,8 @@ describe("PlacesFeed", () => {
         addBookmark: sandbox.spy(),
         deleteBookmark: sandbox.spy(),
         deleteHistoryEntry: sandbox.spy(),
-        blockURL: sandbox.spy()
+        blockURL: sandbox.spy(),
+        addPocketEntry: sandbox.spy(() => Promise.resolve())
       }
     });
     globals.set("PlacesUtils", {
@@ -41,20 +43,19 @@ describe("PlacesFeed", () => {
         SOURCES
       }
     });
-    globals.set("Pocket", {savePage: sandbox.spy()});
-    global.Components.classes["@mozilla.org/browser/nav-history-service;1"] = {
+    global.Cc["@mozilla.org/browser/nav-history-service;1"] = {
       getService() {
         return global.PlacesUtils.history;
       }
     };
-    global.Components.classes["@mozilla.org/browser/nav-bookmarks-service;1"] = {
+    global.Cc["@mozilla.org/browser/nav-bookmarks-service;1"] = {
       getService() {
         return global.PlacesUtils.bookmarks;
       }
     };
     sandbox.spy(global.Services.obs, "addObserver");
     sandbox.spy(global.Services.obs, "removeObserver");
-    sandbox.spy(global.Components.utils, "reportError");
+    sandbox.spy(global.Cu, "reportError");
 
     feed = new PlacesFeed();
     feed.store = {dispatch: sinon.spy()};
@@ -96,8 +97,8 @@ describe("PlacesFeed", () => {
       assert.calledWith(global.Services.obs.removeObserver, feed, BLOCKED_EVENT);
     });
     it("should block a url on BLOCK_URL", () => {
-      feed.onAction({type: at.BLOCK_URL, data: "apple.com"});
-      assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "apple.com"});
+      feed.onAction({type: at.BLOCK_URL, data: {url: "apple.com", pocket_id: 1234}});
+      assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "apple.com", pocket_id: 1234});
     });
     it("should bookmark a url on BOOKMARK_URL", () => {
       const data = {url: "pear.com", title: "A pear"};
@@ -117,54 +118,141 @@ describe("PlacesFeed", () => {
     it("should delete a history entry on DELETE_HISTORY_URL and force a site to be blocked if specified", () => {
       feed.onAction({type: at.DELETE_HISTORY_URL, data: {url: "guava.com", forceBlock: "g123kd"}});
       assert.calledWith(global.NewTabUtils.activityStreamLinks.deleteHistoryEntry, "guava.com");
-      assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "guava.com"});
+      assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "guava.com", pocket_id: undefined});
     });
-    it("should call openNewWindow with the correct url on OPEN_NEW_WINDOW", () => {
-      sinon.stub(feed, "openNewWindow");
-      const openWindowAction = {type: at.OPEN_NEW_WINDOW, data: {url: "foo.com"}};
-      feed.onAction(openWindowAction);
-      assert.calledWith(feed.openNewWindow, openWindowAction);
-    });
-    it("should call openNewWindow with the correct url and privacy args on OPEN_PRIVATE_WINDOW", () => {
-      sinon.stub(feed, "openNewWindow");
-      const openWindowAction = {type: at.OPEN_PRIVATE_WINDOW, data: {url: "foo.com"}};
-      feed.onAction(openWindowAction);
-      assert.calledWith(feed.openNewWindow, openWindowAction, true);
-    });
-    it("should call openNewWindow with the correct url on OPEN_NEW_WINDOW", () => {
+    it("should call openLinkIn with the correct url and where on OPEN_NEW_WINDOW", () => {
+      const openLinkIn = sinon.stub();
       const openWindowAction = {
         type: at.OPEN_NEW_WINDOW,
         data: {url: "foo.com"},
-        _target: {browser: {ownerGlobal: {openLinkIn: () => {}}}}
+        _target: {browser: {ownerGlobal: {openLinkIn}}}
       };
-      sinon.stub(openWindowAction._target.browser.ownerGlobal, "openLinkIn");
+
       feed.onAction(openWindowAction);
-      assert.calledOnce(openWindowAction._target.browser.ownerGlobal.openLinkIn);
+
+      assert.calledOnce(openLinkIn);
+      const [url, where, params] = openLinkIn.firstCall.args;
+      assert.equal(url, "foo.com");
+      assert.equal(where, "window");
+      assert.propertyVal(params, "private", false);
+    });
+    it("should call openLinkIn with the correct url, where and privacy args on OPEN_PRIVATE_WINDOW", () => {
+      const openLinkIn = sinon.stub();
+      const openWindowAction = {
+        type: at.OPEN_PRIVATE_WINDOW,
+        data: {url: "foo.com"},
+        _target: {browser: {ownerGlobal: {openLinkIn}}}
+      };
+
+      feed.onAction(openWindowAction);
+
+      assert.calledOnce(openLinkIn);
+      const [url, where, params] = openLinkIn.firstCall.args;
+      assert.equal(url, "foo.com");
+      assert.equal(where, "window");
+      assert.propertyVal(params, "private", true);
     });
     it("should open link on OPEN_LINK", () => {
-      sinon.stub(feed, "openNewWindow");
+      const openLinkIn = sinon.stub();
       const openLinkAction = {
         type: at.OPEN_LINK,
-        data: {url: "foo.com", event: {where: "current"}},
-        _target: {browser: {ownerGlobal: {openLinkIn: sinon.spy(), whereToOpenLink: e => e.where}}}
+        data: {url: "foo.com"},
+        _target: {browser: {ownerGlobal: {openLinkIn, whereToOpenLink: e => "current"}}}
       };
+
       feed.onAction(openLinkAction);
-      assert.calledWith(openLinkAction._target.browser.ownerGlobal.openLinkIn, openLinkAction.data.url, "current");
+
+      assert.calledOnce(openLinkIn);
+      const [url, where, params] = openLinkIn.firstCall.args;
+      assert.equal(url, "foo.com");
+      assert.equal(where, "current");
+      assert.propertyVal(params, "private", false);
+      assert.propertyVal(params, "triggeringPrincipal", undefined);
     });
     it("should open link with referrer on OPEN_LINK", () => {
-      globals.set("Services", {io: {newURI: url => `URI:${url}`}});
-      sinon.stub(feed, "openNewWindow");
+      const openLinkIn = sinon.stub();
       const openLinkAction = {
         type: at.OPEN_LINK,
-        data: {url: "foo.com", referrer: "foo.com/ref", event: {where: "tab"}},
-        _target: {browser: {ownerGlobal: {openLinkIn: sinon.spy(), whereToOpenLink: e => e.where}}}
+        data: {url: "foo.com", referrer: "foo.com/ref"},
+        _target: {browser: {ownerGlobal: {openLinkIn, whereToOpenLink: e => "tab"}}}
       };
+
       feed.onAction(openLinkAction);
-      assert.calledWith(openLinkAction._target.browser.ownerGlobal.openLinkIn, openLinkAction.data.url, "tab", {referrerURI: `URI:${openLinkAction.data.referrer}`});
+
+      const [, , params] = openLinkIn.firstCall.args;
+      assert.propertyVal(params, "referrerPolicy", 5);
+      assert.propertyVal(params.referrerURI, "spec", "foo.com/ref");
     });
-    it("should save to Pocket on SAVE_TO_POCKET", () => {
-      feed.onAction({type: at.SAVE_TO_POCKET, data: {site: {url: "raspberry.com", title: "raspberry"}}, _target: {browser: {}}});
-      assert.calledWith(global.Pocket.savePage, {}, "raspberry.com", "raspberry");
+    it("should open the pocket link if it's a pocket story on OPEN_LINK", () => {
+      const openLinkIn = sinon.stub();
+      const openLinkAction = {
+        type: at.OPEN_LINK,
+        data: {url: "foo.com", open_url: "getpocket.com/foo", type: "pocket"},
+        _target: {browser: {ownerGlobal: {openLinkIn, whereToOpenLink: e => "current"}}}
+      };
+
+      feed.onAction(openLinkAction);
+
+      assert.calledOnce(openLinkIn);
+      const [url, where, params] = openLinkIn.firstCall.args;
+      assert.equal(url, "getpocket.com/foo");
+      assert.equal(where, "current");
+      assert.propertyVal(params, "private", false);
+      assert.propertyVal(params, "triggeringPrincipal", undefined);
+    });
+    it("should call saveToPocket on SAVE_TO_POCKET", () => {
+      const action = {
+        type: at.SAVE_TO_POCKET,
+        data: {site: {url: "raspberry.com", title: "raspberry"}},
+        _target: {browser: {}}
+      };
+      sinon.stub(feed, "saveToPocket");
+      feed.onAction(action);
+      assert.calledWithExactly(feed.saveToPocket, action.data.site, action._target.browser);
+    });
+    it("should call NewTabUtils.activityStreamLinks.addPocketEntry if we are saving a pocket story", async () => {
+      const action = {
+        data: {site: {url: "raspberry.com", title: "raspberry"}},
+        _target: {browser: {}}
+      };
+      await feed.saveToPocket(action.data.site, action._target.browser);
+      assert.calledOnce(global.NewTabUtils.activityStreamLinks.addPocketEntry);
+      assert.calledWithExactly(global.NewTabUtils.activityStreamLinks.addPocketEntry, action.data.site.url, action.data.site.title, action._target.browser);
+    });
+    it("should reject the promise if NewTabUtils.activityStreamLinks.addPocketEntry rejects", async () => {
+      const e = new Error("Error");
+      const action = {
+        data: {site: {url: "raspberry.com", title: "raspberry"}},
+        _target: {browser: {}}
+      };
+      global.NewTabUtils.activityStreamLinks.addPocketEntry = sandbox.stub().rejects(e);
+      await feed.saveToPocket(action.data.site, action._target.browser);
+      assert.calledWith(global.Cu.reportError, e);
+    });
+    it("should broadcast to content if we successfully added a link to Pocket", async () => {
+      // test in the form that the API returns data based on: https://getpocket.com/developer/docs/v3/add
+      global.NewTabUtils.activityStreamLinks.addPocketEntry = sandbox.stub().resolves({item: {open_url: "pocket.com/itemID", item_id: 1234}});
+      const action = {
+        data: {site: {url: "raspberry.com", title: "raspberry"}},
+        _target: {browser: {}}
+      };
+      await feed.saveToPocket(action.data.site, action._target.browser);
+      assert.equal(feed.store.dispatch.firstCall.args[0].type, at.PLACES_SAVED_TO_POCKET);
+      assert.deepEqual(feed.store.dispatch.firstCall.args[0].data, {
+        url: "raspberry.com",
+        title: "raspberry",
+        pocket_id: 1234,
+        open_url: "pocket.com/itemID"
+      });
+    });
+    it("should only broadcast if we got some data back from addPocketEntry", async () => {
+      global.NewTabUtils.activityStreamLinks.addPocketEntry = sandbox.stub().resolves(null);
+      const action = {
+        data: {site: {url: "raspberry.com", title: "raspberry"}},
+        _target: {browser: {}}
+      };
+      await feed.saveToPocket(action.data.site, action._target.browser);
+      assert.notCalled(feed.store.dispatch);
     });
   });
 
@@ -244,11 +332,7 @@ describe("PlacesFeed", () => {
         // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
         const args = [null, null, null, TYPE_BOOKMARK,
           {spec: FAKE_BOOKMARK.url, scheme: "http"}, FAKE_BOOKMARK.bookmarkTitle,
-          FAKE_BOOKMARK.dateAdded,
-          FAKE_BOOKMARK.bookmarkGuid,
-          "",
-          SOURCES.DEFAULT
-        ];
+          FAKE_BOOKMARK.dateAdded, FAKE_BOOKMARK.bookmarkGuid, "", SOURCES.DEFAULT];
         await observer.onItemAdded(...args);
 
         assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_ADDED, data: FAKE_BOOKMARK});
@@ -257,11 +341,7 @@ describe("PlacesFeed", () => {
         // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
         const args = [null, null, null, TYPE_BOOKMARK,
           {spec: FAKE_BOOKMARK.url, scheme: "https"}, FAKE_BOOKMARK.bookmarkTitle,
-          FAKE_BOOKMARK.dateAdded,
-          FAKE_BOOKMARK.bookmarkGuid,
-          "",
-          SOURCES.DEFAULT
-        ];
+          FAKE_BOOKMARK.dateAdded, FAKE_BOOKMARK.bookmarkGuid, "", SOURCES.DEFAULT];
         await observer.onItemAdded(...args);
 
         assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_ADDED, data: FAKE_BOOKMARK});
@@ -270,11 +350,7 @@ describe("PlacesFeed", () => {
         // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
         const args = [null, null, null, TYPE_BOOKMARK,
           {spec: FAKE_BOOKMARK.url, scheme: "places"}, FAKE_BOOKMARK.bookmarkTitle,
-          FAKE_BOOKMARK.dateAdded,
-          FAKE_BOOKMARK.bookmarkGuid,
-          "",
-          SOURCES.DEFAULT
-        ];
+          FAKE_BOOKMARK.dateAdded, FAKE_BOOKMARK.bookmarkGuid, "", SOURCES.DEFAULT];
         await observer.onItemAdded(...args);
 
         assert.notCalled(dispatch);
@@ -283,11 +359,16 @@ describe("PlacesFeed", () => {
         // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
         const args = [null, null, null, TYPE_BOOKMARK,
           {spec: FAKE_BOOKMARK.url, scheme: "http"}, FAKE_BOOKMARK.bookmarkTitle,
-          FAKE_BOOKMARK.dateAdded,
-          FAKE_BOOKMARK.bookmarkGuid,
-          "",
-          SOURCES.IMPORT_REPLACE
-        ];
+          FAKE_BOOKMARK.dateAdded, FAKE_BOOKMARK.bookmarkGuid, "", SOURCES.IMPORT_REPLACE];
+        await observer.onItemAdded(...args);
+
+        assert.notCalled(dispatch);
+      });
+      it("should not dispatch a PLACES_BOOKMARK_ADDED action - has SYNC source", async () => {
+        // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
+        const args = [null, null, null, TYPE_BOOKMARK,
+          {spec: FAKE_BOOKMARK.url, scheme: "http"}, FAKE_BOOKMARK.bookmarkTitle,
+          FAKE_BOOKMARK.dateAdded, FAKE_BOOKMARK.bookmarkGuid, "", SOURCES.SYNC];
         await observer.onItemAdded(...args);
 
         assert.notCalled(dispatch);
@@ -300,47 +381,24 @@ describe("PlacesFeed", () => {
     });
     describe("#onItemRemoved", () => {
       it("should ignore events that are not of TYPE_BOOKMARK", async () => {
-        await observer.onItemRemoved(null, null, null, "nottypebookmark", null, "123foo");
+        await observer.onItemRemoved(null, null, null, "nottypebookmark", null, "123foo", "", SOURCES.DEFAULT);
+        assert.notCalled(dispatch);
+      });
+      it("should not dispatch a PLACES_BOOKMARK_REMOVED action - has SYNC source", async () => {
+        const args = [null, null, null, TYPE_BOOKMARK, {spec: "foo.com"}, "123foo", "", SOURCES.SYNC];
+        await observer.onItemRemoved(...args);
+
+        assert.notCalled(dispatch);
+      });
+      it("should not dispatch a PLACES_BOOKMARK_REMOVED action - has IMPORT_REPLACE source", async () => {
+        const args = [null, null, null, TYPE_BOOKMARK, {spec: "foo.com"}, "123foo", "", SOURCES.IMPORT_REPLACE];
+        await observer.onItemRemoved(...args);
+
         assert.notCalled(dispatch);
       });
       it("should dispatch a PLACES_BOOKMARK_REMOVED action with the right URL and bookmarkGuid", () => {
-        observer.onItemRemoved(null, null, null, TYPE_BOOKMARK, {spec: "foo.com"}, "123foo");
+        observer.onItemRemoved(null, null, null, TYPE_BOOKMARK, {spec: "foo.com"}, "123foo", "", SOURCES.DEFAULT);
         assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_REMOVED, data: {bookmarkGuid: "123foo", url: "foo.com"}});
-      });
-    });
-    describe("#onItemChanged", () => {
-      beforeEach(() => {
-        sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
-          .withArgs(FAKE_BOOKMARK.guid).returns(Promise.resolve(FAKE_BOOKMARK));
-      });
-      it("has an empty function to keep xpconnect happy", async () => {
-        await observer.onItemChanged();
-      });
-      // Disabled in Issue 3203, see observer.onItemChanged for more information.
-      it.skip("should dispatch a PLACES_BOOKMARK_CHANGED action with the bookmark data", async () => {
-        const args = [null, "title", null, null, null, TYPE_BOOKMARK, null, FAKE_BOOKMARK.guid];
-        await observer.onItemChanged(...args);
-
-        assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_CHANGED, data: FAKE_BOOKMARK});
-      });
-      it.skip("should catch errors gracefully", async () => {
-        const e = new Error("test error");
-        global.NewTabUtils.activityStreamProvider.getBookmark.restore();
-        sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
-          .returns(Promise.reject(e));
-
-        const args = [null, "title", null, null, null, TYPE_BOOKMARK, null, FAKE_BOOKMARK.guid];
-        await observer.onItemChanged(...args);
-
-        assert.calledWith(global.Components.utils.reportError, e);
-      });
-      it.skip("should ignore events that are not of TYPE_BOOKMARK", async () => {
-        await observer.onItemChanged(null, "title", null, null, null, "nottypebookmark");
-        assert.notCalled(dispatch);
-      });
-      it.skip("should ignore events that are not changes to uri/title", async () => {
-        await observer.onItemChanged(null, "tags", null, null, null, TYPE_BOOKMARK);
-        assert.notCalled(dispatch);
       });
     });
     describe("Other empty methods (to keep code coverage happy)", () => {
@@ -349,6 +407,7 @@ describe("PlacesFeed", () => {
         observer.onEndUpdateBatch();
         observer.onItemVisited();
         observer.onItemMoved();
+        observer.onItemChanged();
       });
     });
   });

@@ -22,7 +22,6 @@ user_pref("dom.ipc.reportProcessHangs", false); // process hang monitor
 user_pref("dom.popup_maximum", -1);
 user_pref("dom.send_after_paint_to_content", true);
 user_pref("dom.successive_dialog_time_limit", 0);
-user_pref("signed.applets.codebase_principal_support", true);
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("shell.checkDefaultClient", false);
 user_pref("browser.warnOnQuit", false);
@@ -211,10 +210,6 @@ user_pref("browser.pagethumbnails.capturing_disabled", true);
 // download test runs first doesn't show the popup inconsistently.
 user_pref("browser.download.panel.shown", true);
 
-// Assume the about:newtab page's intro panels have been shown to not depend on
-// which test runs first and happens to open about:newtab
-user_pref("browser.newtabpage.introShown", true);
-
 // Enable webapps testing mode, which bypasses native installation.
 user_pref("browser.webapps.testing", true);
 
@@ -270,12 +265,8 @@ user_pref("toolkit.telemetry.test.pref2", false);
 // resolves and accepts requests, even if they all fail.
 user_pref("identity.fxaccounts.auth.uri", "https://%(server)s/fxa-dummy/");
 
-// Ditto for all the other Firefox accounts URIs used for about:accounts et al.:
-user_pref("identity.fxaccounts.remote.signup.uri", "https://%(server)s/fxa-signup");
-user_pref("identity.fxaccounts.remote.force_auth.uri", "https://%(server)s/fxa-force-auth");
-user_pref("identity.fxaccounts.remote.signin.uri", "https://%(server)s/fxa-signin");
-user_pref("identity.fxaccounts.settings.uri", "https://%(server)s/fxa-settings");
-user_pref("identity.fxaccounts.remote.webchannel.uri", "https://%(server)s/");
+// Ditto for all the FxA content root URI.
+user_pref("identity.fxaccounts.remote.root", "https://%(server)s/");
 
 // We don't want browser tests to perform FxA device registration.
 user_pref("identity.fxaccounts.skipDeviceRegistration", true);
@@ -307,9 +298,6 @@ user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
 user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
 
-// Don't fetch directory tiles data from real servers
-user_pref("browser.newtabpage.directory.source", 'data:application/json,{"testing":1}');
-
 // Ensure UITour won't hit the network
 user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
@@ -322,7 +310,7 @@ user_pref("browser.search.countryCode", "US");
 user_pref("browser.search.geoSpecificDefaults", false);
 
 // Make sure Shield doesn't hit the network.
-user_pref("extensions.shield-recipe-client.api_url", "");
+user_pref("app.normandy.api_url", "");
 
 // Make sure PingCentre doesn't hit the network.
 user_pref("browser.ping-centre.staging.endpoint", "");

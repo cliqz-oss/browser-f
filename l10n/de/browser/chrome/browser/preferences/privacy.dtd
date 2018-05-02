@@ -5,7 +5,7 @@
 <!ENTITY  trackingProtectionHeader2.label      "Schutz vor Aktivitätenverfolgung">
 <!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über Ihr Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von Ihnen zu erstellen, und Inhalte an Hand Ihrer besuchten Webseiten und persönlichen Daten anzuzeigen.">
 <!ENTITY  trackingProtection2.radioGroupLabel  "Bekannte Aktivitäten verfolgende Skripte blockieren">
-<!ENTITY  trackingProtection3.description      "Der Schutz vor Aktivittenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen.">
+<!ENTITY  trackingProtection3.description      "Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen.">
 <!ENTITY  trackingProtection3.radioGroupLabel  "Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
@@ -59,6 +59,15 @@
 <!ENTITY  acceptThirdParty.never.label    "Nie">
 <!ENTITY  acceptThirdParty.visited.label  "Nur von besuchten Drittanbietern">
 
+<!ENTITY  acceptCookies4.label          "Cookies und Website-Daten annehmen (empfohlen)">
+<!ENTITY  acceptCookies4.accesskey      "C">
+
+<!ENTITY  blockCookies.label            "Cookies und Website-Daten ablehnen (kann Probleme mit Websites verursachen)">
+<!ENTITY  blockCookies.accesskey        "b">
+
+<!ENTITY  acceptThirdParty3.pre.label     "Cookies und Website-Daten von Drittanbietern akzeptieren">
+<!ENTITY  acceptThirdParty3.pre.accesskey "k">
+
 <!ENTITY  keepUntil2.label              "Behalten, bis">
 <!ENTITY  keepUntil2.accesskey          "B">
 
@@ -89,6 +98,8 @@
 <!ENTITY  rememberActions.removeCookies.label "einzelne Cookies">
 <!ENTITY  rememberActions.post.label          " löschen.">
 
+<!ENTITY  rememberDescription1.label      "&brandShortName; wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.">
+
 <!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
@@ -96,6 +107,9 @@
 <!ENTITY  dontrememberActions.pre.label          "Sie können auch die ">
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
+
+<!ENTITY  clearHistoryButton.label       "Chronik leeren…">
+<!ENTITY  clearHistoryButton.accesskey   "C">
 
 <!ENTITY  privateBrowsingPermanent2.label "Immer den Privaten Modus verwenden">
 <!ENTITY  privateBrowsingPermanent2.accesskey "M">

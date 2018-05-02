@@ -31,9 +31,6 @@ with Files("test/browser/browser_urlBar_zoom.js"):
 with Files("test/unit/test_AttributionCode.js"):
     BUG_COMPONENT = ("Toolkit", "Telemetry")
 
-with Files("test/unit/test_DirectoryLinksProvider.js"):
-    BUG_COMPONENT = ("Firefox", "New Tab Page")
-
 with Files("test/unit/test_E10SUtils_nested_URIs.js"):
     BUG_COMPONENT = ("Core", "Security: Process Sandboxing")
 
@@ -45,6 +42,9 @@ with Files("test/unit/test_SitePermissions.js"):
 
 with Files("AboutNewTab.jsm"):
     BUG_COMPONENT = ("Firefox", "New Tab Page")
+
+with Files('AsyncTabSwitcher.jsm'):
+    BUG_COMPONENT = ('Firefox', 'Tabbed Browser')
 
 with Files("AttributionCode.jsm"):
     BUG_COMPONENT = ("Toolkit", "Telemetry")
@@ -60,9 +60,6 @@ with Files("ContentSearch.jsm"):
 
 with Files("ContentWebRTC.jsm"):
     BUG_COMPONENT = ("Firefox", "Device Permissions")
-
-with Files("DirectoryLinksProvider.jsm"):
-    BUG_COMPONENT = ("Firefox", "New Tab Page")
 
 with Files("ExtensionsUI.jsm"):
     BUG_COMPONENT = ("Toolkit", "WebExtensions: General")
@@ -87,6 +84,12 @@ with Files("Sanitizer.jsm"):
 
 with Files("SitePermissions.jsm"):
     BUG_COMPONENT = ("Firefox", "Site Identity and Permission Panels")
+
+with Files("OpenInTabsUtils.jsm"):
+    BUG_COMPONENT = ("Firefox", "Tabbed Browser")
+
+with Files("ThemeVariableMap.jsm"):
+    BUG_COMPONENT = ("Toolkit", "WebExtensions: Themes")
 
 with Files("TransientPrefs.jsm"):
     BUG_COMPONENT = ("Firefox", "Preferences")
@@ -122,7 +125,9 @@ XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 EXTRA_JS_MODULES += [
     'AboutHome.jsm',
     'AboutNewTab.jsm',
+    'AsyncTabSwitcher.jsm',
     'AttributionCode.jsm',
+    'BrowserErrorReporter.jsm',
     'BrowserUITelemetry.jsm',
     'BrowserUsageTelemetry.jsm',
     'ContentClick.jsm',
@@ -133,13 +138,13 @@ EXTRA_JS_MODULES += [
     'ContentSearch.jsm',
     'ContentWebRTC.jsm',
     'ContextMenu.jsm',
-    'DirectoryLinksProvider.jsm',
     'ExtensionsUI.jsm',
     'Feeds.jsm',
     'FormSubmitObserver.jsm',
     'FormValidationHandler.jsm',
     'LaterRun.jsm',
     'offlineAppCache.jsm',
+    'OpenInTabsUtils.jsm',
     'PageActions.jsm',
     'PermissionUI.jsm',
     'PingCentre.jsm',
@@ -151,6 +156,7 @@ EXTRA_JS_MODULES += [
     'Sanitizer.jsm',
     'SchedulePressure.jsm',
     'SitePermissions.jsm',
+    'ThemeVariableMap.jsm',
     'TransientPrefs.jsm',
     'UpdateTopLevelContentWindowIDHelper.jsm',
     'webrtcUI.jsm',

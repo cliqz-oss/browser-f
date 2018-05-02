@@ -1,4 +1,5 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* vim: set ts=8 sts=4 et sw=4 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,6 +12,7 @@
 */
 
 #include "xpt_arena.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/MemoryReporting.h"
 #include <string.h>
 #include <stdio.h>
@@ -46,7 +48,7 @@ struct XPTArena
     XPTSubArena subarena1;
 };
 
-XPT_PUBLIC_API(XPTArena *)
+XPTArena*
 XPT_NewArena(size_t block_size8, size_t block_size1)
 {
     XPTArena *arena = static_cast<XPTArena*>(calloc(1, sizeof(XPTArena)));
@@ -73,7 +75,7 @@ DestroySubArena(XPTSubArena *subarena)
     }
 }
 
-XPT_PUBLIC_API(void)
+void
 XPT_DestroyArena(XPTArena *arena)
 {
     DestroySubArena(&arena->subarena8);
@@ -86,14 +88,14 @@ XPT_DestroyArena(XPTArena *arena)
 * so that the 'arena->next' pointer one will point to properly aligned space.
 */
 
-XPT_PUBLIC_API(void *)
+void*
 XPT_ArenaCalloc(XPTArena *arena, size_t size, size_t alignment)
 {
     if (!size)
         return NULL;
 
     if (!arena) {
-        XPT_ASSERT(0);
+        MOZ_ASSERT(false);
         return NULL;
     }
 
@@ -103,7 +105,7 @@ XPT_ArenaCalloc(XPTArena *arena, size_t size, size_t alignment)
     } else if (alignment == 1) {
         subarena = &arena->subarena1;
     } else {
-        XPT_ASSERT(0);
+        MOZ_ASSERT(false);
         return NULL;
     }
 
@@ -145,7 +147,7 @@ XPT_ArenaCalloc(XPTArena *arena, size_t size, size_t alignment)
         /* do corruption check */
         size_t i;
         for (i = 0; i < bytes; ++i) {
-            XPT_ASSERT(subarena->next[i] == 0xcd);
+            MOZ_ASSERT(subarena->next[i] == 0xcd);
         }
         /* we guarantee that the block will be filled with zeros */
         memset(subarena->next, 0, bytes);
@@ -160,16 +162,6 @@ XPT_ArenaCalloc(XPTArena *arena, size_t size, size_t alignment)
 }
 
 /***************************************************************************/
-
-#ifdef DEBUG
-XPT_PUBLIC_API(void)
-XPT_AssertFailed(const char *s, const char *file, uint32_t lineno)
-{
-    fprintf(stderr, "Assertion failed: %s, file %s, line %d\n",
-            s, file, lineno);
-    abort();
-}
-#endif
 
 static size_t
 SizeOfSubArenaExcludingThis(XPTSubArena *subarena, MozMallocSizeOf mallocSizeOf)
@@ -186,7 +178,7 @@ SizeOfSubArenaExcludingThis(XPTSubArena *subarena, MozMallocSizeOf mallocSizeOf)
     return n;
 }
 
-XPT_PUBLIC_API(size_t)
+size_t
 XPT_SizeOfArenaIncludingThis(XPTArena *arena, MozMallocSizeOf mallocSizeOf)
 {
     size_t n = mallocSizeOf(arena);

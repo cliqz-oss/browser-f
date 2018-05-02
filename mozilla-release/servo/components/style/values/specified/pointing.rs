@@ -6,9 +6,14 @@
 //!
 //! https://drafts.csswg.org/css-ui/#pointing-keyboard
 
+use cssparser::Parser;
+use parser::{Parse, ParserContext};
+use style_traits::ParseError;
 use style_traits::cursor::CursorKind;
+use values::generics::pointing::CaretColor as GenericCaretColor;
+use values::specified::color::Color;
 #[cfg(feature = "gecko")]
-use values::specified::url::SpecifiedUrl;
+use values::specified::url::SpecifiedImageUrl;
 
 /// The specified value for the `cursor` property.
 ///
@@ -34,7 +39,22 @@ pub struct Cursor {
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct CursorImage {
     /// The url to parse images from.
-    pub url: SpecifiedUrl,
+    pub url: SpecifiedImageUrl,
     /// The <x> and <y> coordinates.
     pub hotspot: Option<(f32, f32)>,
+}
+
+/// A specified value for the `caret-color` property.
+pub type CaretColor = GenericCaretColor<Color>;
+
+impl Parse for CaretColor {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if input.try(|i| i.expect_ident_matching("auto")).is_ok() {
+            return Ok(GenericCaretColor::Auto);
+        }
+        Ok(GenericCaretColor::Color(Color::parse(context, input)?))
+    }
 }

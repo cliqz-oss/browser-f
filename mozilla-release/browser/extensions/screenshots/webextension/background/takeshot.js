@@ -1,25 +1,28 @@
-/* globals communication, shot, main, auth, catcher, analytics, buildSettings, blobConverters */
+/* globals communication, shot, main, auth, catcher, analytics, buildSettings, blobConverters, thumbnailGenerator */
 
 "use strict";
 
 this.takeshot = (function() {
-  let exports = {};
+  const exports = {};
   const Shot = shot.AbstractShot;
   const { sendEvent } = analytics;
 
   communication.register("takeShot", catcher.watchFunction((sender, options) => {
-    let { captureType, captureText, scroll, selectedPos, shotId, shot, imageBlob } = options;
-    shot = new Shot(main.getBackend(), shotId, shot);
+    const { captureType, captureText, scroll, selectedPos, shotId } = options;
+    const shot = new Shot(main.getBackend(), shotId, options.shot);
     shot.favicon = sender.tab.favIconUrl;
+    let imageBlob = options.imageBlob;
     let capturePromise = Promise.resolve();
     let openedTab;
+    let thumbnailBlob;
     if (!shot.clipNames().length) {
       // canvas.drawWindow isn't available, so we fall back to captureVisibleTab
       capturePromise = screenshotPage(selectedPos, scroll).then((dataUrl) => {
+        imageBlob = buildSettings.uploadBinary ? blobConverters.dataUrlToBlob(dataUrl) : null;
         shot.addClip({
           createdDate: Date.now(),
           image: {
-            url: "data:",
+            url: buildSettings.uploadBinary ? "" : dataUrl,
             captureType,
             text: captureText,
             location: selectedPos,
@@ -31,19 +34,9 @@ this.takeshot = (function() {
         });
       });
     }
-    let convertBlobPromise = Promise.resolve();
-    if (buildSettings.uploadBinary && !imageBlob) {
-      imageBlob = blobConverters.dataUrlToBlob(shot.getClip(shot.clipNames()[0]).image.url);
-      shot.getClip(shot.clipNames()[0]).image.url = "";
-    } else if (!buildSettings.uploadBinary && imageBlob) {
-      convertBlobPromise = blobConverters.blobToDataUrl(imageBlob).then((dataUrl) => {
-        shot.getClip(shot.clipNames()[0]).image.url = dataUrl;
-      });
-      imageBlob = null;
-    }
-    let shotAbTests = {};
-    let abTests = auth.getAbTests();
-    for (let testName of Object.keys(abTests)) {
+    const shotAbTests = {};
+    const abTests = auth.getAbTests();
+    for (const testName of Object.keys(abTests)) {
       if (abTests[testName].shotField) {
         shotAbTests[testName] = abTests[testName].value;
       }
@@ -52,15 +45,25 @@ this.takeshot = (function() {
       shot.abTests = shotAbTests;
     }
     return catcher.watchPromise(capturePromise.then(() => {
-      return convertBlobPromise;
+      if (buildSettings.uploadBinary) {
+        const blobToUrlPromise = blobConverters.blobToDataUrl(imageBlob);
+        return thumbnailGenerator.createThumbnailBlobFromPromise(shot, blobToUrlPromise);
+      }
+      return thumbnailGenerator.createThumbnailUrl(shot);
+    }).then((thumbnailImage) => {
+      if (buildSettings.uploadBinary) {
+        thumbnailBlob = thumbnailImage;
+      } else {
+        shot.thumbnail = thumbnailImage;
+      }
     }).then(() => {
       return browser.tabs.create({url: shot.creatingUrl})
     }).then((tab) => {
       openedTab = tab;
-      sendEvent('internal', 'open-shot-tab');
-      return uploadShot(shot, imageBlob);
+      sendEvent("internal", "open-shot-tab");
+      return uploadShot(shot, imageBlob, thumbnailBlob);
     }).then(() => {
-      return browser.tabs.update(openedTab.id, {url: shot.viewUrl}).then(
+      return browser.tabs.update(openedTab.id, {url: shot.viewUrl, loadReplace: true}).then(
         null,
         (error) => {
           // FIXME: If https://bugzilla.mozilla.org/show_bug.cgi?id=1365718 is resolved,
@@ -73,7 +76,7 @@ this.takeshot = (function() {
         }
       );
     }).then(() => {
-      catcher.watchPromise(communication.sendToBootstrap('incrementUploadCount'));
+      catcher.watchPromise(communication.sendToBootstrap("incrementCount", {scalar: "upload"}));
       return shot.viewUrl;
     }).catch((error) => {
       browser.tabs.remove(openedTab.id);
@@ -98,16 +101,16 @@ this.takeshot = (function() {
       null,
       {format: "png"}
     ).then((dataUrl) => {
-      let image = new Image();
+      const image = new Image();
       image.src = dataUrl;
       return new Promise((resolve, reject) => {
         image.onload = catcher.watchFunction(() => {
-          let xScale = image.width / scroll.innerWidth;
-          let yScale = image.height / scroll.innerHeight;
-          let canvas = document.createElement("canvas");
+          const xScale = image.width / scroll.innerWidth;
+          const yScale = image.height / scroll.innerHeight;
+          const canvas = document.createElement("canvas");
           canvas.height = pos.height * yScale;
           canvas.width = pos.width * xScale;
-          let context = canvas.getContext("2d");
+          const context = canvas.getContext("2d");
           context.drawImage(
             image,
             pos.left * xScale, pos.top * yScale,
@@ -115,7 +118,7 @@ this.takeshot = (function() {
             0, 0,
             pos.width * xScale, pos.height * yScale
           );
-          let result = canvas.toDataURL();
+          const result = canvas.toDataURL();
           resolve(result);
         });
       });
@@ -124,36 +127,50 @@ this.takeshot = (function() {
 
   /** Combines two buffers or Uint8Array's */
   function concatBuffers(buffer1, buffer2) {
-    var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+    const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
     tmp.set(new Uint8Array(buffer1), 0);
     tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
     return tmp.buffer;
   }
 
   /** Creates a multipart TypedArray, given {name: value} fields
-      and {name: blob} files
+      and a files array in the format of
+      [{fieldName: "NAME", filename: "NAME.png", blob: fileBlob}, {...}, ...]
 
       Returns {body, "content-type"}
       */
-  function createMultipart(fields, fileField, fileFilename, blob) {
-    let boundary = "---------------------------ScreenshotBoundary" + Date.now();
-    return blobConverters.blobToArray(blob).then((blobAsBuffer) => {
-      let body = [];
-      for (let name in fields) {
-        body.push("--" + boundary);
-        body.push(`Content-Disposition: form-data; name="${name}"`);
-        body.push("");
-        body.push(fields[name]);
-      }
+  function createMultipart(fields, files) {
+    const boundary = "---------------------------ScreenshotBoundary" + Date.now();
+    let body = [];
+    for (const name in fields) {
       body.push("--" + boundary);
-      body.push(`Content-Disposition: form-data; name="${fileField}"; filename="${fileFilename}"`);
-      body.push(`Content-Type: ${blob.type}`);
+      body.push(`Content-Disposition: form-data; name="${name}"`);
       body.push("");
-      body.push("");
-      body = body.join("\r\n");
-      let enc = new TextEncoder("utf-8");
-      body = enc.encode(body);
-      body = concatBuffers(body.buffer, blobAsBuffer);
+      body.push(fields[name]);
+    }
+    body.push("");
+    body = body.join("\r\n");
+    const enc = new TextEncoder("utf-8");
+    body = enc.encode(body).buffer;
+
+    const blobToArrayPromises = files.map(f => {
+      return blobConverters.blobToArray(f.blob);
+    });
+
+    return Promise.all(blobToArrayPromises).then(buffers => {
+      for (let i = 0; i < buffers.length; i++) {
+        let filePart = [];
+        filePart.push("--" + boundary);
+        filePart.push(`Content-Disposition: form-data; name="${files[i].fieldName}"; filename="${files[i].filename}"`);
+        filePart.push(`Content-Type: ${files[i].blob.type}`);
+        filePart.push("");
+        filePart.push("");
+        filePart = filePart.join("\r\n");
+        filePart = concatBuffers(enc.encode(filePart).buffer, buffers[i]);
+        body = concatBuffers(body, filePart);
+        body = concatBuffers(body, enc.encode("\r\n").buffer);
+      }
+
       let tail = `\r\n--${boundary}--`;
       tail = enc.encode(tail);
       body = concatBuffers(body, tail.buffer);
@@ -164,14 +181,18 @@ this.takeshot = (function() {
     });
   }
 
-  function uploadShot(shot, blob) {
+  function uploadShot(shot, blob, thumbnail) {
     let headers;
     return auth.authHeaders().then((_headers) => {
       headers = _headers;
       if (blob) {
+        const files = [ {fieldName: "blob", filename: "screenshot.png", blob} ];
+        if (thumbnail) {
+          files.push({fieldName: "thumbnail", filename: "thumbnail.png", blob: thumbnail});
+        }
         return createMultipart(
           {shot: JSON.stringify(shot.asJson())},
-          "blob", "screenshot.png", blob
+          files
         );
       }
       return {
@@ -191,7 +212,7 @@ this.takeshot = (function() {
     }).then((resp) => {
       if (!resp.ok) {
         sendEvent("upload-failed", `status-${resp.status}`);
-        let exc = new Error(`Response failed with status ${resp.status}`);
+        const exc = new Error(`Response failed with status ${resp.status}`);
         exc.popupMessage = "REQUEST_ERROR";
         throw exc;
       } else {

@@ -6,14 +6,15 @@
 
 #include "frontend/ParseNode-inl.h"
 
+#include "mozilla/FloatingPoint.h"
+
 #include "frontend/Parser.h"
 
-#include "jscntxtinlines.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 using namespace js::frontend;
 
-using mozilla::ArrayLength;
 using mozilla::IsFinite;
 
 #ifdef DEBUG
@@ -183,7 +184,7 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
     switch (pn->getKind()) {
       // Trivial nodes that refer to no nodes, are referred to by nothing
       // but their parents, are never used, and are never a definition.
-      case ParseNodeKind::Nop:
+      case ParseNodeKind::EmptyStatement:
       case ParseNodeKind::String:
       case ParseNodeKind::TemplateString:
       case ParseNodeKind::RegExp:
@@ -204,6 +205,7 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
         return PushResult::Recyclable;
 
       // Nodes with a single non-null child.
+      case ParseNodeKind::ExpressionStatement:
       case ParseNodeKind::TypeOfName:
       case ParseNodeKind::TypeOfExpr:
       case ParseNodeKind::Void:
@@ -228,8 +230,7 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
         return PushUnaryNodeChild(pn, stack);
 
       // Nodes with a single nullable child.
-      case ParseNodeKind::This:
-      case ParseNodeKind::Semi: {
+      case ParseNodeKind::This: {
         MOZ_ASSERT(pn->isArity(PN_UNARY));
         if (pn->pn_kid)
             stack->push(pn->pn_kid);

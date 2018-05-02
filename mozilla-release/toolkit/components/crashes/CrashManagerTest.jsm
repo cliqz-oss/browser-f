@@ -9,23 +9,21 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "configureLogging",
   "getManager",
   "sleep",
   "TestingCrashManager",
 ];
 
-Cu.import("resource://gre/modules/CrashManager.jsm", this);
-Cu.import("resource://gre/modules/Log.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/CrashManager.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
 var loggingConfigured = false;
 
-this.configureLogging = function() {
+var configureLogging = function() {
   if (loggingConfigured) {
     return;
   }
@@ -38,7 +36,7 @@ this.configureLogging = function() {
   loggingConfigured = true;
 };
 
-this.sleep = function(wait) {
+var sleep = function(wait) {
   return new Promise(resolve => {
 
     setTimeout(() => {
@@ -48,7 +46,7 @@ this.sleep = function(wait) {
   });
 };
 
-this.TestingCrashManager = function(options) {
+var TestingCrashManager = function(options) {
   CrashManager.call(this, options);
 };
 
@@ -143,7 +141,7 @@ this.TestingCrashManager.prototype = {
 
 var DUMMY_DIR_COUNT = 0;
 
-this.getManager = function() {
+var getManager = function() {
   return (async function() {
     const dirMode = OS.Constants.libc.S_IRWXU;
     let baseFile = OS.Constants.Path.profileDir;

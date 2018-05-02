@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource:///modules/SitePermissions.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource:///modules/SitePermissions.jsm");
 
 function Permission(principal, type, capability, capabilityString) {
   this.principal = principal;
@@ -94,7 +94,7 @@ var gSitePermissionsManager = {
     if (topic !== "perm-changed")
       return;
 
-    let permission = subject.QueryInterface(Components.interfaces.nsIPermission);
+    let permission = subject.QueryInterface(Ci.nsIPermission);
 
     // Ignore unrelated permission types and permissions with unknown states.
     if (permission.type !== this._type || !PERMISSION_STATES.includes(permission.capability))
@@ -157,7 +157,7 @@ var gSitePermissionsManager = {
     // load permissions into a table.
     let enumerator = Services.perms.enumerator;
     while (enumerator.hasMoreElements()) {
-      let nextPermission = enumerator.getNext().QueryInterface(Components.interfaces.nsIPermission);
+      let nextPermission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
       this._addPermissionToList(nextPermission);
     }
   },

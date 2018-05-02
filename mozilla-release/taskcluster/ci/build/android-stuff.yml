@@ -15,8 +15,11 @@ android-test/opt:
             GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             PERFHERDER_EXTRA_OPTIONS: android-test
         artifacts:
-            - name: public/android/unittest
+            - name: public/app/unittest
               path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/tests
+              type: directory
+            - name: public/geckoview/unittest
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/reports/tests
               type: directory
             - name: public/build
               path: /builds/worker/artifacts/
@@ -28,7 +31,6 @@ android-test/opt:
         config:
             - builds/releng_base_android_64_builds.py
             - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-test
@@ -36,7 +38,6 @@ android-test/opt:
     toolchains:
         - android-gradle-dependencies
         - android-sdk-linux
-        - proguard-jar
     optimization:
         skip-unless-changed:
             - "mobile/android/base/**"
@@ -81,7 +82,6 @@ android-lint/opt:
         config:
             - builds/releng_base_android_64_builds.py
             - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-lint
@@ -89,7 +89,6 @@ android-lint/opt:
     toolchains:
         - android-gradle-dependencies
         - android-sdk-linux
-        - proguard-jar
     optimization:
         skip-unless-changed:
             - "mobile/android/**/*.java"
@@ -137,7 +136,6 @@ android-checkstyle/opt:
         config:
             - builds/releng_base_android_64_builds.py
             - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-checkstyle
@@ -145,7 +143,6 @@ android-checkstyle/opt:
     toolchains:
         - android-gradle-dependencies
         - android-sdk-linux
-        - proguard-jar
     optimization:
         skip-unless-changed:
             - "mobile/android/**/checkstyle.xml"
@@ -189,7 +186,6 @@ android-findbugs/opt:
         config:
             - builds/releng_base_android_64_builds.py
             - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-findbugs
@@ -197,7 +193,6 @@ android-findbugs/opt:
     toolchains:
         - android-gradle-dependencies
         - android-sdk-linux
-        - proguard-jar
     optimization:
         skip-unless-changed:
             - "mobile/android/**/*.java"
@@ -236,7 +231,6 @@ android-geckoview-docs/opt:
         config:
             - builds/releng_base_android_64_builds.py
             - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-geckoview-docs
@@ -244,7 +238,6 @@ android-geckoview-docs/opt:
     toolchains:
         - android-gradle-dependencies
         - android-sdk-linux
-        - proguard-jar
     optimization:
         skip-unless-changed:
             - "mobile/android/**/*.java"

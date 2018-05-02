@@ -243,6 +243,11 @@ public:
 
     void SetEvent(nsresult aStatus);
 
+    // Return true when the socket this connection is using has not been
+    // authenticated using a client certificate.  Before SSL negotiation
+    // has finished this returns false.
+    bool NoClientCertAuth() const;
+
 private:
     // Value (set in mTCPKeepaliveConfig) indicates which set of prefs to use.
     enum TCPKeepaliveConfig {
@@ -272,7 +277,7 @@ private:
     void     SetupSSL();
 
     // Start the Spdy transaction handler when NPN indicates spdy/*
-    void     StartSpdy(uint8_t versionLevel);
+    void     StartSpdy(nsISSLSocketControl *ssl, uint8_t versionLevel);
     // Like the above, but do the bare minimum to do 0RTT data, so we can back
     // it out, if necessary
     void     Start0RTTSpdy(uint8_t versionLevel);
@@ -380,6 +385,10 @@ private:
     // The capabailities associated with the most recent transaction
     uint32_t                        mTransactionCaps;
 
+    // If a large keepalive has been requested for any trans,
+    // scale the default by this factor
+    uint32_t                        mDefaultTimeoutFactor;
+
     bool                            mResponseTimeoutEnabled;
 
     // Flag to indicate connection is in inital keepalive period (fast detect).
@@ -419,6 +428,7 @@ public:
     void BootstrapTimings(TimingStruct times);
 private:
     TimingStruct    mBootstrappedTimings;
+    bool            mBootstrappedTimingsSet;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsHttpConnection, NS_HTTPCONNECTION_IID)

@@ -203,7 +203,6 @@
 #endif
 
 #include "mozilla/gfx/DeviceManagerDx.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/KnowsCompositor.h"
 #include "InputData.h"
@@ -271,9 +270,6 @@ BYTE            nsWindow::sLastMouseButton        = 0;
 bool            nsWindow::sHaveInitializedPrefs   = false;
 
 TriStateBool nsWindow::sHasBogusPopupsDropShadowOnMultiMonitor = TRI_UNKNOWN;
-
-WPARAM nsWindow::sMouseExitwParam = 0;
-LPARAM nsWindow::sMouseExitlParamScreen = 0;
 
 static SystemTimeConverter<DWORD>&
 TimeConverter() {
@@ -715,8 +711,6 @@ nsWindow::~nsWindow()
 
   NS_IF_RELEASE(mNativeDragTarget);
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 
 /**************************************************************
  *
@@ -1963,8 +1957,6 @@ nsWindow::Resize(double aX, double aY, double aWidth,
       // the system unexpectedly when we leave fullscreen state.
       ::SetWindowPos(mTransitionWnd, HWND_TOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-      // Every transition window is only used once.
-      mTransitionWnd = nullptr;
     }
     SetThemeRegion();
   }
@@ -2458,8 +2450,7 @@ nsWindow::ResetLayout()
   // Send a gecko size event to trigger reflow.
   RECT clientRc = {0};
   GetClientRect(mWnd, &clientRc);
-  nsIntRect evRect(WinUtils::ToIntRect(clientRc));
-  OnResize(evRect);
+  OnResize(WinUtils::ToIntRect(clientRc).Size());
 
   // Invalidate and update
   Invalidate();
@@ -3440,6 +3431,7 @@ nsWindow::PrepareForFullscreenTransition(nsISupports** aData)
   }
 
   mTransitionWnd = initData.mWnd;
+
   auto data = new FullscreenTransitionData(initData.mWnd);
   *aData = data;
   NS_ADDREF(data);
@@ -3457,6 +3449,15 @@ nsWindow::PerformFullscreenTransition(FullscreenTransitionStage aStage,
     WM_FULLSCREEN_TRANSITION_BEFORE : WM_FULLSCREEN_TRANSITION_AFTER;
   WPARAM wparam = (WPARAM)callback.forget().take();
   ::PostMessage(data->mWnd, msg, wparam, (LPARAM)aDuration);
+}
+
+/* virtual */ void
+nsWindow::CleanupFullscreenTransition()
+{
+  MOZ_ASSERT(NS_IsMainThread(), "CleanupFullscreenTransition "
+             "should only run on the main thread");
+
+  mTransitionWnd = nullptr;
 }
 
 nsresult
@@ -3506,17 +3507,6 @@ nsWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
   if (mWidgetListener) {
     mWidgetListener->SizeModeChanged(mSizeMode);
     mWidgetListener->FullscreenChanged(aFullScreen);
-  }
-
-  // Send a eMouseEnterIntoWidget event since Windows has already sent
-  // a WM_MOUSELEAVE that caused us to send a eMouseExitFromWidget event.
-  if (aFullScreen && !sCurrentWindow) {
-    sCurrentWindow = this;
-    LPARAM pos = sCurrentWindow->lParamToClient(sMouseExitlParamScreen);
-    sCurrentWindow->DispatchMouseEvent(eMouseEnterIntoWidget,
-                                       sMouseExitwParam, pos, false,
-                                       WidgetMouseEvent::eLeftButton,
-                                       MOUSE_INPUT_SOURCE());
   }
 
   return NS_OK;
@@ -4655,8 +4645,6 @@ nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
         }
       }
     } else if (aEventMessage == eMouseExitFromWidget) {
-      sMouseExitwParam = wParam;
-      sMouseExitlParamScreen = lParamToScreen(lParam);
       if (sCurrentWindow == this) {
         sCurrentWindow = nullptr;
       }
@@ -4709,13 +4697,18 @@ void nsWindow::DispatchFocusToTopLevelWindow(bool aIsActivate)
   }
 }
 
-bool nsWindow::IsTopLevelMouseExit(HWND aWnd)
+HWND nsWindow::WindowAtMouse()
 {
   DWORD pos = ::GetMessagePos();
   POINT mp;
   mp.x = GET_X_LPARAM(pos);
   mp.y = GET_Y_LPARAM(pos);
-  HWND mouseWnd = ::WindowFromPoint(mp);
+  return ::WindowFromPoint(mp);
+}
+
+bool nsWindow::IsTopLevelMouseExit(HWND aWnd)
+{
+  HWND mouseWnd = WindowAtMouse();
 
   // WinUtils::GetTopLevelHWND() will return a HWND for the window frame
   // (which includes the non-client area).  If the mouse has moved into
@@ -5645,6 +5638,14 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
         break;
       mMousePresent = false;
 
+      // Check if the mouse is over the fullscreen transition window, if so
+      // clear sLastMouseMovePoint. This way the WM_MOUSEMOVE we get after the
+      // transition window disappears will not be ignored, even if the mouse
+      // hasn't moved.
+      if (mTransitionWnd && WindowAtMouse() == mTransitionWnd) {
+        sLastMouseMovePoint = {0};
+      }
+
       // We need to check mouse button states and put them in for
       // wParam.
       WPARAM mouseState = (GetKeyState(VK_LBUTTON) ? MK_LBUTTON : 0)
@@ -6504,7 +6505,15 @@ LRESULT nsWindow::ProcessKeyUpMessage(const MSG &aMsg, bool *aEventDispatched)
 {
   ModifierKeyState modKeyState;
   NativeKey nativeKey(this, aMsg, modKeyState);
-  return static_cast<LRESULT>(nativeKey.HandleKeyUpMessage(aEventDispatched));
+  bool result = nativeKey.HandleKeyUpMessage(aEventDispatched);
+  if (aMsg.wParam == VK_F10) {
+    // Bug 1382199: Windows default behavior will trigger the System menu bar
+    // when F10 is released. Among other things, this causes the System menu bar
+    // to appear when a web page overrides the contextmenu event. We *never*
+    // want this default behavior, so eat this key (never pass it to Windows).
+    return true;
+  }
+  return result;
 }
 
 LRESULT nsWindow::ProcessKeyDownMessage(const MSG &aMsg,
@@ -6733,7 +6742,6 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
 
     newWidth  = r.right - r.left;
     newHeight = r.bottom - r.top;
-    nsIntRect rect(wp->x, wp->y, newWidth, newHeight);
 
     if (newWidth > mLastSize.width)
     {
@@ -6789,12 +6797,12 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
     }
 
     // Recalculate the width and height based on the client area for gecko events.
+    LayoutDeviceIntSize clientSize(newWidth, newHeight);
     if (::GetClientRect(mWnd, &r)) {
-      rect.SizeTo(r.right - r.left, r.bottom - r.top);
+      clientSize = WinUtils::ToIntRect(r).Size();
     }
-    
     // Send a gecko resize event
-    OnResize(rect);
+    OnResize(clientSize);
   }
 }
 
@@ -7251,14 +7259,19 @@ void nsWindow::OnDestroy()
 }
 
 // Send a resize message to the listener
-bool nsWindow::OnResize(nsIntRect &aWindowRect)
+bool
+nsWindow::OnResize(const LayoutDeviceIntSize& aSize)
 {
-  bool result = mWidgetListener ?
-    mWidgetListener->WindowResized(this, aWindowRect.Width(), aWindowRect.Height()) : false;
+  bool result = false;
+  if (mWidgetListener) {
+    result = mWidgetListener->
+      WindowResized(this, aSize.width, aSize.height);
+  }
 
   // If there is an attached view, inform it as well as the normal widget listener.
   if (mAttachedWidgetListener) {
-    return mAttachedWidgetListener->WindowResized(this, aWindowRect.Width(), aWindowRect.Height());
+    return mAttachedWidgetListener->
+      WindowResized(this, aSize.width, aSize.height);
   }
 
   return result;

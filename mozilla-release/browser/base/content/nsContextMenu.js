@@ -4,10 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   SpellCheckHelper: "resource://gre/modules/InlineSpellChecker.jsm",
@@ -16,6 +16,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   DevToolsShim: "chrome://devtools-shim/content/DevToolsShim.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 var gContextMenuContentData = null;
@@ -116,7 +117,8 @@ nsContextMenu.prototype = {
         onVideo: this.onVideo,
         onAudio: this.onAudio,
         onCanvas: this.onCanvas,
-        onEditableArea: this.onEditableArea,
+        onEditable: this.onEditable,
+        onSpellcheckable: this.onSpellcheckable,
         onPassword: this.onPassword,
         srcUrl: this.mediaURL,
         frameUrl: gContextMenuContentData ? gContextMenuContentData.docLocation : undefined,
@@ -196,7 +198,7 @@ nsContextMenu.prototype = {
     this.onCompletedImage    = context.onCompletedImage;
     this.onCTPPlugin         = context.onCTPPlugin;
     this.onDRMMedia          = context.onDRMMedia;
-    this.onEditableArea      = context.onEditableArea;
+    this.onEditable          = context.onEditable;
     this.onImage             = context.onImage;
     this.onKeywordField      = context.onKeywordField;
     this.onLink              = context.onLink;
@@ -207,6 +209,7 @@ nsContextMenu.prototype = {
     this.onNumeric           = context.onNumeric;
     this.onPassword          = context.onPassword;
     this.onSaveableLink      = context.onSaveableLink;
+    this.onSpellcheckable    = context.onSpellcheckable;
     this.onTextInput         = context.onTextInput;
     this.onVideo             = context.onVideo;
 
@@ -356,7 +359,7 @@ nsContextMenu.prototype = {
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
     this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-    this.showItem("context-openlinkprivate", shouldShow);
+    this.showItem("context-openlinkprivate", shouldShow && PrivateBrowsingUtils.enabled);
     this.showItem("context-openlinkintab", shouldShow && !inContainer);
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem("context-openlinkinusercontext-menu", shouldShow && !isWindowPrivate && showContainers);
@@ -433,7 +436,8 @@ nsContextMenu.prototype = {
                        this.onLink || this.onTextInput);
 
     var showInspect = this.inTabBrowser &&
-                      Services.prefs.getBoolPref("devtools.inspector.enabled", true);
+                      Services.prefs.getBoolPref("devtools.inspector.enabled", true) &&
+                      !Services.prefs.getBoolPref("devtools.policy.disabled", false);
 
     this.showItem("context-viewsource", shouldShow);
     this.showItem("context-viewinfo", shouldShow);
@@ -449,7 +453,8 @@ nsContextMenu.prototype = {
     // and only works if we have a shell service.
     var haveSetDesktopBackground = false;
 
-    if (AppConstants.HAVE_SHELL_SERVICE) {
+    if (AppConstants.HAVE_SHELL_SERVICE &&
+        Services.policies.isAllowed("setDesktopBackground")) {
       // Only enable Set as Desktop Background if we can get the shell service.
       var shell = getShellService();
       if (shell)
@@ -580,7 +585,7 @@ nsContextMenu.prototype = {
       let count = InlineSpellCheckerUI.addDictionaryListToMenu(dictMenu, dictSep);
       this.showItem(dictSep, count > 0);
       this.showItem("spell-add-dictionaries-main", false);
-    } else if (this.onEditableArea) {
+    } else if (this.onSpellcheckable) {
       // when there is no spellchecker but we might be able to spellcheck
       // add the add to dictionaries item. This will ensure that people
       // with no dictionaries will be able to download them
@@ -863,9 +868,8 @@ nsContextMenu.prototype = {
 
   // View Partial Source
   viewPartialSource(aContext) {
-    let inWindow = !Services.prefs.getBoolPref("view_source.tab");
     let {browser} = this;
-    let openSelectionFn = inWindow ? null : function() {
+    let openSelectionFn = function() {
       let tabBrowser = gBrowser;
       // In the case of popups, we need to find a non-popup browser window.
       // We might also not have a tabBrowser reference (if this isn't in a
@@ -1015,8 +1019,10 @@ nsContextMenu.prototype = {
       mm.removeMessageListener("ContextMenu:SetAsDesktopBackground:Result",
                                onMessage);
 
-      if (message.data.disable)
+      if (message.data.disable ||
+          !Services.policies.isAllowed("setDesktopBackground")) {
         return;
+      }
 
       let image = document.createElementNS("http://www.w3.org/1999/xhtml", "img");
       image.src = message.data.dataUrl;
@@ -1270,10 +1276,8 @@ nsContextMenu.prototype = {
     // Let's try to unescape it using a character set
     // in case the address is not ASCII.
     try {
-      const textToSubURI = Cc["@mozilla.org/intl/texttosuburi;1"].
-                           getService(Ci.nsITextToSubURI);
-      addresses = textToSubURI.unEscapeURIForUI(gContextMenuContentData.charSet,
-                                                addresses);
+      addresses = Services.textToSubURI.unEscapeURIForUI(gContextMenuContentData.charSet,
+                                                         addresses);
     } catch (ex) {
       // Do nothing.
     }
@@ -1408,7 +1412,7 @@ nsContextMenu.prototype = {
   bookmarkThisPage: function CM_bookmarkThisPage() {
     window.top.PlacesCommandHook
               .bookmarkPage(this.browser, true)
-              .catch(Components.utils.reportError);
+              .catch(Cu.reportError);
   },
 
   bookmarkLink: function CM_bookmarkLink() {
@@ -1427,7 +1431,7 @@ nsContextMenu.prototype = {
                                                 uri.spec,
                                                 message.data.title,
                                                 message.data.description)
-                                  .catch(Components.utils.reportError);
+                                  .catch(Cu.reportError);
     };
     mm.addMessageListener("ContextMenu:BookmarkFrame:Result", onMessage);
 

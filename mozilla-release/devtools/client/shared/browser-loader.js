@@ -3,9 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var Cu = Components.utils;
-const loaders = Cu.import("resource://devtools/shared/base-loader.js", {});
-const { devtools } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const loaders = ChromeUtils.import("resource://devtools/shared/base-loader.js", {});
+const { devtools } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { joinURI } = devtools.require("devtools/shared/path");
 const { assert } = devtools.require("devtools/shared/DevToolsUtils");
 const { AppConstants } = devtools.require("resource://gre/modules/AppConstants.jsm");
@@ -20,6 +19,7 @@ const BROWSER_BASED_DIRS = [
   "resource://devtools/client/inspector/grids",
   "resource://devtools/client/inspector/layout",
   "resource://devtools/client/jsonview",
+  "resource://devtools/client/netmonitor/src/utils",
   "resource://devtools/client/shared/source-map",
   "resource://devtools/client/shared/redux",
   "resource://devtools/client/shared/vendor",
@@ -109,6 +109,8 @@ function BrowserLoaderBuilder({ baseURI, window, useOnlyShared, commonLibRequire
       "resource://devtools/client/shared/vendor/react-dom-server-dev";
     dynamicPaths["devtools/client/shared/vendor/react-prop-types"] =
       "resource://devtools/client/shared/vendor/react-prop-types-dev";
+    dynamicPaths["devtools/client/shared/vendor/react-dom-test-utils"] =
+      "resource://devtools/client/shared/vendor/react-dom-test-utils-dev";
   }
 
   const opts = {

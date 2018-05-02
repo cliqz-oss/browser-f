@@ -3,15 +3,13 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 do_get_profile();
 
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
   // OS.File doesn't like to be first imported during shutdown
-Cu.import("resource://gre/modules/Sqlite.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 function getConnection(dbName, extraOptions = {}) {
   let path = dbName + ".sqlite";
@@ -112,5 +110,5 @@ add_task(async function test_shutdown_clients() {
     exn = ex;
   }
   Assert.ok(!!exn);
-  Assert.ok(exn.message.indexOf("Sqlite.jsm has been shutdown") != -1);
+  Assert.ok(exn.message.includes("Sqlite.jsm has been shutdown"));
 });

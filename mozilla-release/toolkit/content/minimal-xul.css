@@ -30,7 +30,6 @@
 
 :root {
   text-rendering: optimizeLegibility;
-  -moz-binding: url("chrome://global/content/bindings/general.xml#root-element");
   -moz-control-character-visibility: visible;
 }
 
@@ -88,12 +87,7 @@ scrollbar[orient="horizontal"] {
 }
 
 thumb {
-  -moz-binding: url(chrome://global/content/bindings/scrollbar.xml#thumb);
   display: -moz-box !important;
-}
-
-.scale-thumb {
-  -moz-binding: url(chrome://global/content/bindings/scale.xml#scalethumb);
 }
 
 scrollbar, scrollbarbutton, scrollcorner, slider, thumb, scale {
@@ -110,15 +104,6 @@ scrollcorner[hidden="true"] {
 
 scrollbar[value="hidden"] {
   visibility: hidden;
-}
-
-scale {
-  -moz-binding: url(chrome://global/content/bindings/scale.xml#scale);
-}
-
-.scale-slider {
-  -moz-binding: url(chrome://global/content/bindings/scale.xml#scaleslider);
-  -moz-user-focus: normal;
 }
 
 @media (-moz-scrollbar-start-backward: 0) {

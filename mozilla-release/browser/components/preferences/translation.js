@@ -5,10 +5,8 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gLangBundle", () =>
   Services.strings.createBundle("chrome://global/locale/languageNames.properties"));
@@ -196,7 +194,7 @@ var gTranslationExceptions = {
 
     let removed = this._langTree.getSelectedItems().map(l => l.langCode);
 
-    langs = langs.split(",").filter(l => removed.indexOf(l) == -1);
+    langs = langs.split(",").filter(l => !removed.includes(l));
     Services.prefs.setCharPref(kLanguagesPref, langs.join(","));
   },
 

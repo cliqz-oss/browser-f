@@ -15,6 +15,7 @@
  * https://html.spec.whatwg.org/#navigatorconcurrenthardware
  * http://wicg.github.io/netinfo/#extensions-to-the-navigator-interface
  * https://w3c.github.io/webappsec-credential-management/#framework-credential-management
+ * https://w3c.github.io/webdriver/webdriver-spec.html#interface
  *
  * © Copyright 2004-2011 Apple Computer, Inc., Mozilla Foundation, and
  * Opera Software ASA. You are granted a license to use, reproduce
@@ -33,11 +34,12 @@ Navigator implements NavigatorContentUtils;
 Navigator implements NavigatorStorageUtils;
 Navigator implements NavigatorConcurrentHardware;
 Navigator implements NavigatorStorage;
+Navigator implements NavigatorAutomationInformation;
 
 [NoInterfaceObject, Exposed=(Window,Worker)]
 interface NavigatorID {
   // WebKit/Blink/Trident/Presto support this (hardcoded "Mozilla").
-  [Constant, Cached]
+  [Constant, Cached, Throws]
   readonly attribute DOMString appCodeName; // constant "Mozilla"
   [Constant, Cached, NeedsCallerType]
   readonly attribute DOMString appName;
@@ -77,7 +79,7 @@ interface NavigatorOnLine {
 [NoInterfaceObject]
 interface NavigatorContentUtils {
   // content handler registration
-  [Throws]
+  [Throws, Func="nsGlobalWindowInner::RegisterProtocolHandlerAllowedForContext"]
   void registerProtocolHandler(DOMString scheme, DOMString url, DOMString title);
   [Pref="dom.registerContentHandler.enabled", Throws]
   void registerContentHandler(DOMString mimeType, DOMString url, DOMString title);
@@ -169,7 +171,6 @@ callback interface MozIdleObserver {
   void onactive();
 };
 
-// nsIDOMNavigator
 partial interface Navigator {
   [Throws, Constant, Cached, NeedsCallerType]
   readonly attribute DOMString oscpu;
@@ -235,13 +236,11 @@ partial interface Navigator {
   VRServiceTest requestVRServiceTest();
 };
 
-#ifdef MOZ_TIME_MANAGER
-// nsIDOMMozNavigatorTime
+// http://webaudio.github.io/web-midi-api/#requestmidiaccess
 partial interface Navigator {
-  [Throws, ChromeOnly]
-  readonly attribute MozTimeManager mozTime;
+  [Throws, Pref="dom.webmidi.enabled"]
+  Promise<MIDIAccess> requestMIDIAccess(optional MIDIOptions options);
 };
-#endif // MOZ_TIME_MANAGER
 
 callback NavigatorUserMediaSuccessCallback = void (MediaStream stream);
 callback NavigatorUserMediaErrorCallback = void (MediaStreamError error);
@@ -316,4 +315,11 @@ interface NavigatorConcurrentHardware {
 partial interface Navigator {
   [Pref="security.webauth.webauthn", SecureContext, SameObject]
   readonly attribute CredentialsContainer credentials;
+};
+
+// https://w3c.github.io/webdriver/webdriver-spec.html#interface
+[NoInterfaceObject]
+interface NavigatorAutomationInformation {
+  [Pref="dom.webdriver.enabled"]
+  readonly attribute boolean webdriver;
 };

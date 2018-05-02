@@ -1,5 +1,5 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var h2Port;
 var prefs;
@@ -150,7 +150,7 @@ var originAttributes = {};
 var Listener = function() {};
 Listener.prototype = {
   onStartRequest: function testOnStartRequest(request, ctx) {
-    Assert.ok(request instanceof Components.interfaces.nsIHttpChannel);
+    Assert.ok(request instanceof Ci.nsIHttpChannel);
 
     if (expectPass) {
       if (!Components.isSuccessCode(request.status)) {

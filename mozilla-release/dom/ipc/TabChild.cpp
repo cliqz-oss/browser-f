@@ -26,7 +26,6 @@
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/layers/APZChild.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/APZCTreeManagerChild.h"
 #include "mozilla/layers/APZEventState.h"
 #include "mozilla/layers/ContentProcessController.h"
@@ -146,7 +145,6 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 using namespace mozilla::dom::ipc;
-using namespace mozilla::dom::workers;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 using namespace mozilla::layout;
@@ -1120,8 +1118,10 @@ TabChild::ActorDestroy(ActorDestroyReason why)
     }
   }
 
-  CompositorBridgeChild* compositorChild = static_cast<CompositorBridgeChild*>(CompositorBridgeChild::Get());
-  compositorChild->CancelNotifyAfterRemotePaint(this);
+  CompositorBridgeChild* compositorChild = CompositorBridgeChild::Get();
+  if (compositorChild) {
+    compositorChild->CancelNotifyAfterRemotePaint(this);
+  }
 
   if (GetTabId() != 0) {
     NestedTabChildMap().erase(GetTabId());
@@ -1329,12 +1329,9 @@ TabChild::RecvSizeModeChanged(const nsSizeMode& aSizeMode)
     return IPC_OK();
   }
   nsCOMPtr<nsIDocument> document(GetDocument());
-  nsCOMPtr<nsIPresShell> presShell = document->GetShell();
-  if (presShell) {
-    nsPresContext* presContext = presShell->GetPresContext();
-    if (presContext) {
-      presContext->SizeModeChanged(aSizeMode);
-    }
+  nsPresContext* presContext = document->GetPresContext();
+  if (presContext) {
+    presContext->SizeModeChanged(aSizeMode);
   }
   return IPC_OK();
 }
@@ -1948,7 +1945,8 @@ TabChild::RecvNormalPriorityRealTouchMoveEvent(
 mozilla::ipc::IPCResult
 TabChild::RecvRealDragEvent(const WidgetDragEvent& aEvent,
                             const uint32_t& aDragAction,
-                            const uint32_t& aDropEffect)
+                            const uint32_t& aDropEffect,
+                            const nsCString& aPrincipalURISpec)
 {
   WidgetDragEvent localEvent(aEvent);
   localEvent.mWidget = mPuppetWidget;
@@ -1956,6 +1954,7 @@ TabChild::RecvRealDragEvent(const WidgetDragEvent& aEvent,
   nsCOMPtr<nsIDragSession> dragSession = nsContentUtils::GetDragSession();
   if (dragSession) {
     dragSession->SetDragAction(aDragAction);
+    dragSession->SetTriggeringPrincipalURISpec(aPrincipalURISpec);
     nsCOMPtr<nsIDOMDataTransfer> initialDataTransfer;
     dragSession->GetDataTransfer(getter_AddRefs(initialDataTransfer));
     if (initialDataTransfer) {
@@ -2130,19 +2129,6 @@ TabChild::RecvNormalPriorityRealKeyEvent(const WidgetKeyboardEvent& aEvent)
 }
 
 mozilla::ipc::IPCResult
-TabChild::RecvKeyEvent(const nsString& aType,
-                       const int32_t& aKeyCode,
-                       const int32_t& aCharCode,
-                       const int32_t& aModifiers,
-                       const bool& aPreventDefault)
-{
-  bool ignored = false;
-  nsContentUtils::SendKeyEvent(mPuppetWidget, aType, aKeyCode, aCharCode,
-                               aModifiers, aPreventDefault, &ignored);
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
 TabChild::RecvCompositionEvent(const WidgetCompositionEvent& aEvent)
 {
   WidgetCompositionEvent localEvent(aEvent);
@@ -2178,7 +2164,8 @@ TabChild::RecvNormalPrioritySelectionEvent(const WidgetSelectionEvent& aEvent)
 mozilla::ipc::IPCResult
 TabChild::RecvPasteTransferable(const IPCDataTransfer& aDataTransfer,
                                 const bool& aIsPrivateData,
-                                const IPC::Principal& aRequestingPrincipal)
+                                const IPC::Principal& aRequestingPrincipal,
+                                const uint32_t& aContentPolicyType)
 {
   nsresult rv;
   nsCOMPtr<nsITransferable> trans =
@@ -2189,6 +2176,7 @@ TabChild::RecvPasteTransferable(const IPCDataTransfer& aDataTransfer,
   rv = nsContentUtils::IPCTransferableToTransferable(aDataTransfer,
                                                      aIsPrivateData,
                                                      aRequestingPrincipal,
+                                                     aContentPolicyType,
                                                      trans, nullptr, this);
   NS_ENSURE_SUCCESS(rv, IPC_OK());
 
@@ -2390,19 +2378,16 @@ TabChild::RecvHandleAccessKey(const WidgetKeyboardEvent& aEvent,
                               nsTArray<uint32_t>&& aCharCodes)
 {
   nsCOMPtr<nsIDocument> document(GetDocument());
-  nsCOMPtr<nsIPresShell> presShell = document->GetShell();
-  if (presShell) {
-    nsPresContext* pc = presShell->GetPresContext();
-    if (pc) {
-      if (!pc->EventStateManager()->
-                 HandleAccessKey(&(const_cast<WidgetKeyboardEvent&>(aEvent)),
-                                 pc, aCharCodes)) {
-        // If no accesskey was found, inform the parent so that accesskeys on
-        // menus can be handled.
-        WidgetKeyboardEvent localEvent(aEvent);
-        localEvent.mWidget = mPuppetWidget;
-        SendAccessKeyNotHandled(localEvent);
-      }
+  RefPtr<nsPresContext> pc = document->GetPresContext();
+  if (pc) {
+    if (!pc->EventStateManager()->
+               HandleAccessKey(&(const_cast<WidgetKeyboardEvent&>(aEvent)),
+                               pc, aCharCodes)) {
+      // If no accesskey was found, inform the parent so that accesskeys on
+      // menus can be handled.
+      WidgetKeyboardEvent localEvent(aEvent);
+      localEvent.mWidget = mPuppetWidget;
+      SendAccessKeyNotHandled(localEvent);
     }
   }
 
@@ -2640,7 +2625,7 @@ TabChild::RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverE
     if (nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell()) {
       presShell->SetIsActive(true);
 
-      if (nsIFrame* root = presShell->FrameConstructor()->GetRootFrame()) {
+      if (nsIFrame* root = presShell->GetRootFrame()) {
         FrameLayerBuilder::InvalidateAllLayersForFrame(
           nsLayoutUtils::GetDisplayRootFrame(root));
         root->SchedulePaint();
@@ -2954,7 +2939,7 @@ TabChild::MakeHidden()
     if (nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell()) {
       if (nsPresContext* presContext = presShell->GetPresContext()) {
         nsRootPresContext* rootPresContext = presContext->GetRootPresContext();
-        nsIFrame* rootFrame = presShell->FrameConstructor()->GetRootFrame();
+        nsIFrame* rootFrame = presShell->GetRootFrame();
         rootPresContext->ComputePluginGeometryUpdates(rootFrame, nullptr, nullptr);
         rootPresContext->ApplyPluginGeometryUpdates();
       }
@@ -3286,12 +3271,9 @@ TabChild::RecvUIResolutionChanged(const float& aDpi,
     mPuppetWidget->UpdateBackingScaleCache(aDpi, aRounding, aScale);
   }
   nsCOMPtr<nsIDocument> document(GetDocument());
-  nsCOMPtr<nsIPresShell> presShell = document->GetShell();
-  if (presShell) {
-    RefPtr<nsPresContext> presContext = presShell->GetPresContext();
-    if (presContext) {
-      presContext->UIResolutionChangedSync();
-    }
+  RefPtr<nsPresContext> presContext = document->GetPresContext();
+  if (presContext) {
+    presContext->UIResolutionChangedSync();
   }
 
   ScreenIntSize screenSize = GetInnerSize();
@@ -3314,12 +3296,9 @@ TabChild::RecvThemeChanged(nsTArray<LookAndFeelInt>&& aLookAndFeelIntCache)
 {
   LookAndFeel::SetIntCache(aLookAndFeelIntCache);
   nsCOMPtr<nsIDocument> document(GetDocument());
-  nsCOMPtr<nsIPresShell> presShell = document->GetShell();
-  if (presShell) {
-    RefPtr<nsPresContext> presContext = presShell->GetPresContext();
-    if (presContext) {
-      presContext->ThemeChanged();
-    }
+  RefPtr<nsPresContext> presContext = document->GetPresContext();
+  if (presContext) {
+    presContext->ThemeChanged();
   }
   return IPC_OK();
 }

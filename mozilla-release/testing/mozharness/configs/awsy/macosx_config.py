@@ -1,5 +1,4 @@
 import os
-import platform
 
 PYTHON = "/usr/bin/env python"
 VENV_PATH = '%s/build/venv' % os.getcwd()
@@ -10,7 +9,6 @@ INSTALLER_PATH = os.path.join(ABS_WORK_DIR, "installer.dmg")
 
 config = {
     "log_name": "awsy",
-    "download_tooltool": True,
     "installer_path": INSTALLER_PATH,
     "virtualenv_path": VENV_PATH,
     "find_links": [

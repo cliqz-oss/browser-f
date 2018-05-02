@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PrivateBrowsingUtils"];
+var EXPORTED_SYMBOLS = ["PrivateBrowsingUtils"];
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kAutoStartPref = "browser.privatebrowsing.autostart";
 
@@ -12,10 +12,11 @@ const kAutoStartPref = "browser.privatebrowsing.autostart";
 // line for the current session.
 var gTemporaryAutoStartMode = false;
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+var PrivateBrowsingUtils = {
+  get enabled() {
+    return Services.policies.isAllowed("privatebrowsing");
+  },
 
-this.PrivateBrowsingUtils = {
   // Rather than passing content windows to this function, please use
   // isBrowserPrivate since it works with e10s.
   isWindowPrivate: function pbu_isWindowPrivate(aWindow) {

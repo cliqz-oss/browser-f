@@ -14,9 +14,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1222409
 "use strict";
 
 window.onload = function () {
-  const Cu = Components.utils;
-  const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-  const promise = require("promise");
+  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const {InspectorFront} = require("devtools/shared/fronts/inspector");
 
   SimpleTest.waitForExplicitFinish();
@@ -24,13 +22,13 @@ window.onload = function () {
   let win = null;
   let inspector = null;
 
-  addAsyncTest(function* setup() {
+  addAsyncTest(async function setup() {
     info("Setting up inspector and walker actors.");
 
     let url = document.getElementById("inspectorContent").href;
 
     // eslint-disable-next-line new-cap
-    yield new promise(resolve => {
+    await new Promise(resolve => {
       attachURL(url, function (err, client, tab, doc) {
         win = doc.defaultView;
         inspector = InspectorFront(client, tab);
@@ -41,22 +39,22 @@ window.onload = function () {
     runNextTest();
   });
 
-  addAsyncTest(function* () {
-    let walker = yield inspector.getWalker();
+  addAsyncTest(async function () {
+    let walker = await inspector.getWalker();
 
     // We can't receive events from the walker if we haven't first executed a
     // method on the actor to initialize it.
-    yield walker.querySelector(walker.rootNode, "img");
+    await walker.querySelector(walker.rootNode, "img");
 
     let {outerWidth, outerHeight} = win;
     // eslint-disable-next-line new-cap
-    let onResize = new promise(resolve => {
+    let onResize = new Promise(resolve => {
       walker.once("resize", () => {
         resolve();
       });
     });
     win.resizeTo(800, 600);
-    yield onResize;
+    await onResize;
 
     ok(true, "The resize event was emitted");
     win.resizeTo(outerWidth, outerHeight);

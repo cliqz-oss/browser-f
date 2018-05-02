@@ -28,7 +28,7 @@
 #include "nsStringFwd.h"
 #include "nsCoord.h"
 #include "nsColor.h"
-#include "nsFrameManagerBase.h"
+#include "nsFrameManager.h"
 #include "nsRect.h"
 #include "nsRegionFwd.h"
 #include "nsWeakReference.h"
@@ -282,13 +282,6 @@ public:
 
   nsCSSFrameConstructor* FrameConstructor() const { return mFrameConstructor; }
 
-  nsFrameManager* FrameManager() const {
-    // reinterpret_cast is valid since nsFrameManager does not add
-    // any members over nsFrameManagerBase.
-    return reinterpret_cast<nsFrameManager*>
-                           (const_cast<nsIPresShell*>(this)->mFrameManager);
-  }
-
   /* Enable/disable author style level. Disabling author style disables the entire
    * author level of the cascade, including the HTML preshint level.
    */
@@ -354,16 +347,13 @@ public:
 
   /**
    * Perform initialization. Constructs the frame for the root content
-   * object and then enqueues a reflow of the frame model into the
-   * specified width and height.
-   *
-   * The coordinates for aWidth and aHeight must be in standard nscoords.
+   * object and then enqueues a reflow of the frame model.
    *
    * Callers of this method must hold a reference to this shell that
    * is guaranteed to survive through arbitrary script execution.
    * Calling Initialize can execute arbitrary script.
    */
-  virtual nsresult Initialize(nscoord aWidth, nscoord aHeight) = 0;
+  virtual nsresult Initialize() = 0;
 
   enum class ResizeReflowOptions : uint32_t {
     // the resulting BSize should be exactly as given
@@ -540,10 +530,10 @@ public:
   void RestyleForAnimation(mozilla::dom::Element* aElement,
                            nsRestyleHint aHint);
 
-  // ShadowRoot has APIs that can change styles so we only
-  // want to restyle elements in the ShadowRoot and not the whole
-  // document.
-  virtual void RecordShadowStyleChange(mozilla::dom::ShadowRoot* aShadowRoot) = 0;
+  // ShadowRoot has APIs that can change styles. This notifies the shell that
+  // stlyes applicable in the shadow tree have potentially changed.
+  void RecordShadowStyleChange(mozilla::dom::ShadowRoot& aShadowRoot);
+
 
   /**
    * Determine if it is safe to flush all pending notifications.
@@ -630,6 +620,12 @@ public:
   }
 
   bool NeedStyleFlush() const { return mNeedStyleFlush; }
+  /**
+   * Returns true if we might need to flush layout, even if we haven't scheduled
+   * one yet (as opposed to HasPendingReflow, which returns true if a flush is
+   * scheduled or will soon be scheduled).
+   */
+  bool NeedLayoutFlush() const { return mNeedLayoutFlush; }
 
   /**
    * Callbacks will be called even if reflow itself fails for
@@ -897,7 +893,8 @@ public:
                                  nsIContent* aContent,
                                  nsEventStatus* aStatus,
                                  bool aIsHandlingNativeEvent = false,
-                                 nsIContent** aTargetContent = nullptr) = 0;
+                                 nsIContent** aTargetContent = nullptr,
+                                 nsIContent* aOverrideClickTarget = nullptr) = 0;
 
   /**
    * Dispatch event to content only (NOT full processing)
@@ -1648,6 +1645,10 @@ public:
     mIsNeverPainting = aNeverPainting;
   }
 
+  /**
+   * True if a reflow event has been scheduled, or is going to be scheduled
+   * to run in the future.
+   */
   bool HasPendingReflow() const
     { return mObservingLayoutFlushes || mReflowContinueTimer; }
 
@@ -1677,9 +1678,9 @@ protected:
   nsViewManager*           mViewManager;   // [WEAK] docViewer owns it so I don't have to
   nsPresArena               mFrameArena;
   RefPtr<nsFrameSelection> mSelection;
-  // Pointer into mFrameConstructor - this is purely so that FrameManager() and
-  // GetRootFrame() can be inlined:
-  nsFrameManagerBase*       mFrameManager;
+  // Pointer into mFrameConstructor - this is purely so that GetRootFrame() can
+  // be inlined:
+  nsFrameManager*       mFrameManager;
   mozilla::WeakPtr<nsDocShell>                 mForwardingContainer;
 #ifdef ACCESSIBILITY
   mozilla::a11y::DocAccessible* mDocAccessible;

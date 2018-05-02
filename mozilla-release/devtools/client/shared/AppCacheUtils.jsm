@@ -25,12 +25,9 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-var { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
-var { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
-var { LoadContextInfo } = Cu.import("resource://gre/modules/LoadContextInfo.jsm", {});
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
+var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 var { gDevTools } = require("devtools/client/framework/devtools");
 var Services = require("Services");
@@ -254,14 +251,14 @@ AppCacheUtils.prototype = {
 
     let entries = [];
 
-    let appCacheStorage = Services.cache2.appCacheStorage(LoadContextInfo.default, null);
+    let appCacheStorage = Services.cache2.appCacheStorage(Services.loadContextInfo.default, null);
     appCacheStorage.asyncVisitStorage({
       onCacheStorageInfo: function () {},
 
       onCacheEntryInfo: function (aURI, aIdEnhance, aDataSize, aFetchCount, aLastModifiedTime, aExpirationTime) {
         let lowerKey = aURI.asciiSpec.toLowerCase();
 
-        if (searchTerm && lowerKey.indexOf(searchTerm.toLowerCase()) == -1) {
+        if (searchTerm && !lowerKey.includes(searchTerm.toLowerCase())) {
           return;
         }
 
@@ -303,7 +300,7 @@ AppCacheUtils.prototype = {
       throw new Error(l10n.GetStringFromName("cacheDisabled"));
     }
 
-    let appCacheStorage = Services.cache2.appCacheStorage(LoadContextInfo.default, null);
+    let appCacheStorage = Services.cache2.appCacheStorage(Services.loadContextInfo.default, null);
     appCacheStorage.asyncEvictStorage({
       onCacheEntryDoomed: function (result) {}
     });
@@ -315,14 +312,16 @@ AppCacheUtils.prototype = {
         let htmlNode = this.doc.querySelector("html[manifest]");
         if (htmlNode) {
           let pageUri = this.doc.location ? this.doc.location.href : this.uri;
-          let origin = pageUri.substr(0, pageUri.lastIndexOf("/") + 1);
           let manifestURI = htmlNode.getAttribute("manifest");
 
-          if (manifestURI.startsWith("/")) {
-            manifestURI = manifestURI.substr(1);
+          let originRegExp = new RegExp(/([a-z]*:\/\/[^/]*\/)/);
+          if (originRegExp.test(manifestURI)) {
+            return manifestURI;
+          } else if (manifestURI.startsWith("/")) {
+            return pageUri.match(originRegExp)[0] + manifestURI.substring(1);
           }
 
-          return origin + manifestURI;
+          return pageUri.substring(0, pageUri.lastIndexOf("/") + 1) + manifestURI;
         }
       };
 
@@ -440,7 +439,7 @@ ManifestParser.prototype = {
   parseLine: function OCIMP_parseLine() {
     let text = this.text;
 
-    if (text.indexOf("*") != -1) {
+    if (text.includes("*")) {
       if (this.currSection != "NETWORK" || text.length != 1) {
         this._addError(this.currentLine, "asteriskInWrongSection2",
                        this.currSection, this.currentLine);
@@ -497,7 +496,7 @@ ManifestParser.prototype = {
 
     let [ namespace, fallback ] = split;
 
-    if (namespace.indexOf("*") != -1) {
+    if (namespace.includes("*")) {
       this._addError(this.currentLine, "fallbackAsterisk2", this.currentLine);
     }
 

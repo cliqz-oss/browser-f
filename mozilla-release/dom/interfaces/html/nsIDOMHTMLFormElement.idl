@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsIDOMHTMLElement.idl"
+#include "nsISupports.idl"
 
 /**
  * The nsIDOMHTMLFormElement interface is the interface to a [X]HTML
@@ -19,19 +19,4 @@
 [uuid(ad9b2ad0-9d29-43f6-b1a2-a1fd24627e6b)]
 interface nsIDOMHTMLFormElement : nsISupports
 {
-           attribute DOMString            acceptCharset;
-           attribute DOMString            action;
-           attribute DOMString            autocomplete;
-           attribute DOMString            enctype;
-           attribute DOMString            encoding;
-           attribute DOMString            method;
-           attribute DOMString            name;
-           attribute boolean              noValidate;
-           attribute DOMString            target;
-
-  readonly attribute long                 length;
-
-  void                      submit();
-  void                      reset();
-  boolean                   checkValidity();
 };

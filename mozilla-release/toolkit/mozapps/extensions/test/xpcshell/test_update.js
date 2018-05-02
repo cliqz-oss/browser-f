@@ -13,7 +13,7 @@ Services.prefs.setBoolPref(PREF_EM_STRICT_COMPATIBILITY, false);
 // doesn't support lightweight themes.
 Services.prefs.setBoolPref("lightweightThemes.update.enabled", true);
 
-Components.utils.import("resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm");
 
 const PARAMS = "?%REQ_VERSION%/%ITEM_ID%/%ITEM_VERSION%/%ITEM_MAXAPPVERSION%/" +
                "%ITEM_STATUS%/%APP_ID%/%APP_VERSION%/%CURRENT_APP_VERSION%/" +
@@ -25,7 +25,8 @@ var testserver = createHttpServer();
 gPort = testserver.identity.primaryPort;
 mapFile("/data/test_update.rdf", testserver);
 mapFile("/data/test_update.json", testserver);
-mapFile("/data/test_update.xml", testserver);
+mapFile("/data/test_update_addons.json", testserver);
+mapFile("/data/test_update_compat.json", testserver);
 testserver.registerDirectory("/addons/", do_get_file("addons"));
 
 const profileDir = gProfD.clone();
@@ -247,7 +248,7 @@ for (let test of testParams) {
 
         // Make sure that the extension lastModifiedTime was updated.
         let testURI = a1.getResourceURI(TEST_UNPACKED ? "install.rdf" : "");
-        let testFile = testURI.QueryInterface(Components.interfaces.nsIFileURL).file;
+        let testFile = testURI.QueryInterface(Ci.nsIFileURL).file;
         let difference = testFile.lastModifiedTime - startupTime;
         Assert.ok(Math.abs(difference) < MAX_TIME_DIFFERENCE);
 
@@ -1038,9 +1039,9 @@ for (let test of testParams) {
     });
 
     Services.prefs.setCharPref(PREF_GETADDONS_BYIDS,
-                               "http://localhost:" + gPort + "/data/test_update.xml");
-    Services.prefs.setCharPref(PREF_GETADDONS_BYIDS_PERFORMANCE,
-                               "http://localhost:" + gPort + "/data/test_update.xml");
+                               `http://localhost:${gPort}/data/test_update_addons.json`);
+    Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES,
+                               `http://localhost:${gPort}/data/test_update_compat.json`);
     Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
 
     AddonManagerInternal.backgroundUpdateCheck();

@@ -300,8 +300,7 @@ GetDocumentTitleAndURL(nsIDocument* aDoc,
   aTitle.Truncate();
   aURLStr.Truncate();
 
-  nsCOMPtr<nsIDOMDocument> doc = do_QueryInterface(aDoc);
-  doc->GetTitle(aTitle);
+  aDoc->GetTitle(aTitle);
 
   nsIURI* url = aDoc->GetDocumentURI();
   if (!url) return;
@@ -457,9 +456,7 @@ MapContentToWebShells(const UniquePtr<nsPrintObject>& aRootPO,
   aPO->mDocShell->GetContentViewer(getter_AddRefs(viewer));
   if (!viewer) return;
 
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  viewer->GetDOMDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+  nsCOMPtr<nsIDocument> doc = viewer->GetDocument();
   if (!doc) return;
 
   Element* rootElement = doc->GetRootElement();
@@ -1937,7 +1934,11 @@ nsPrintJob::SetupToPrintContent()
 
   PR_PL(("****************** Begin Document ************************\n"));
 
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    NS_WARNING_ASSERTION(rv == NS_ERROR_ABORT,
+                         "Failed to begin document for printing");
+    return rv;
+  }
 
   // This will print the docshell document
   // when it completes asynchronously in the DonePrintingPages method
@@ -2044,7 +2045,8 @@ nsPrintJob::AfterNetworkPrint(bool aHandleError)
 
   /* cleaup on failure + notify user */
   if (aHandleError && NS_FAILED(rv)) {
-    NS_WARNING("nsPrintJob::AfterNetworkPrint failed");
+    NS_WARNING_ASSERTION(rv == NS_ERROR_ABORT,
+                         "nsPrintJob::AfterNetworkPrint failed");
     CleanupOnFailure(rv, !mIsDoingPrinting);
   }
 
@@ -2391,6 +2393,7 @@ nsPrintJob::ReflowPrintObject(const UniquePtr<nsPrintObject>& aPO)
   aPO->mPresShell->BeginObservingDocument();
 
   aPO->mPresContext->SetPageSize(adjSize);
+  aPO->mPresContext->SetVisibleArea(nsRect(0, 0, adjSize.width, adjSize.height));
   aPO->mPresContext->SetIsRootPaginatedDocument(documentIsTopLevel);
   aPO->mPresContext->SetPageScale(aPO->mZoomRatio);
   // Calculate scale factor from printer to screen
@@ -2404,7 +2407,7 @@ nsPrintJob::ReflowPrintObject(const UniquePtr<nsPrintObject>& aPO)
                                                  aPO->mPresShell);
   }
 
-  rv = aPO->mPresShell->Initialize(adjSize.width, adjSize.height);
+  rv = aPO->mPresShell->Initialize();
 
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ASSERTION(aPO->mPresShell, "Presshell should still be here");
@@ -2426,7 +2429,7 @@ nsPrintJob::ReflowPrintObject(const UniquePtr<nsPrintObject>& aPO)
       FILE * fd = fopen(filename, "w");
       if (fd) {
         nsIFrame *theRootFrame =
-          aPO->mPresShell->FrameManager()->GetRootFrame();
+          aPO->mPresShell->GetRootFrame();
         fprintf(fd, "Title: %s\n", docStr.get());
         fprintf(fd, "URL:   %s\n", urlStr.get());
         fprintf(fd, "--------------- Frames ----------------\n");
@@ -2529,7 +2532,7 @@ GetCorrespondingNodeInDocument(const nsINode* aNode, nsIDocument* aDoc)
   nsTArray<int32_t> indexArray;
   const nsINode* child = aNode;
   while (const nsINode* parent = child->GetParentNode()) {
-    int32_t index = parent->IndexOf(child);
+    int32_t index = parent->ComputeIndexOf(child);
     MOZ_ASSERT(index >= 0);
     indexArray.AppendElement(index);
     child = parent;
@@ -2662,7 +2665,7 @@ nsPrintJob::DoPrint(const UniquePtr<nsPrintObject>& aPO)
     printData->mPreparingForPrint = false;
 
 #ifdef EXTENDED_DEBUG_PRINTING
-    nsIFrame* rootFrame = poPresShell->FrameManager()->GetRootFrame();
+    nsIFrame* rootFrame = poPresShell->GetRootFrame();
     if (aPO->IsPrintable()) {
       nsAutoCString docStr;
       nsAutoCString urlStr;
@@ -3372,15 +3375,15 @@ nsPrintJob::TurnScriptingOn(bool aDoTurnOn)
     }
 
     if (nsCOMPtr<nsPIDOMWindowInner> window = doc->GetInnerWindow()) {
-      nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(window);
-      NS_WARNING_ASSERTION(go && go->GetGlobalJSObject(), "Can't get global");
+      nsCOMPtr<nsIGlobalObject> go = window->AsGlobal();
+      NS_WARNING_ASSERTION(go->GetGlobalJSObject(), "Can't get global");
       nsresult propThere = NS_PROPTABLE_PROP_NOT_THERE;
       doc->GetProperty(nsGkAtoms::scriptEnabledBeforePrintOrPreview,
                        &propThere);
       if (aDoTurnOn) {
         if (propThere != NS_PROPTABLE_PROP_NOT_THERE) {
           doc->DeleteProperty(nsGkAtoms::scriptEnabledBeforePrintOrPreview);
-          if (go && go->GetGlobalJSObject()) {
+          if (go->GetGlobalJSObject()) {
             xpc::Scriptability::Get(go->GetGlobalJSObject()).Unblock();
           }
           window->Resume();
@@ -3656,7 +3659,7 @@ static void RootFrameList(nsPresContext* aPresContext, FILE* out,
 
   nsIPresShell *shell = aPresContext->GetPresShell();
   if (shell) {
-    nsIFrame* frame = shell->FrameManager()->GetRootFrame();
+    nsIFrame* frame = shell->GetRootFrame();
     if (frame) {
       frame->List(out, aPrefix);
     }
@@ -3812,7 +3815,7 @@ static void DumpPrintObjectsList(const nsTArray<nsPrintObject*>& aDocList)
     NS_ASSERTION(po, "nsPrintObject can't be null!");
     nsIFrame* rootFrame = nullptr;
     if (po->mPresShell) {
-      rootFrame = po->mPresShell->FrameManager()->GetRootFrame();
+      rootFrame = po->mPresShell->GetRootFrame();
       while (rootFrame != nullptr) {
         nsIPageSequenceFrame * sqf = do_QueryFrame(rootFrame);
         if (sqf) {
@@ -3888,7 +3891,7 @@ static void DumpPrintObjectsTreeLayout(const UniquePtr<nsPrintObject>& aPO,
   if (fd) {
     nsIFrame* rootFrame = nullptr;
     if (aPO->mPresShell) {
-      rootFrame = aPO->mPresShell->FrameManager()->GetRootFrame();
+      rootFrame = aPO->mPresShell->GetRootFrame();
     }
     for (int32_t k=0;k<aLevel;k++) fprintf(fd, "  ");
     fprintf(fd, "%s %p %p\n", types[aPO->mFrameType], aPO.get(),

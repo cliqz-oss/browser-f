@@ -5,12 +5,14 @@
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-browser.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
+                               "resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "SessionStore",
+                               "resource:///modules/sessionstore/SessionStore.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
   return Services.strings.createBundle("chrome://global/locale/extensions.properties");
@@ -22,8 +24,22 @@ var {
 
 const TABHIDE_PREFNAME = "extensions.webextensions.tabhide.enabled";
 
-// WeakMap[Tab -> ExtensionID]
-let hiddenTabs = new WeakMap();
+function showHiddenTabs(id) {
+  let windowsEnum = Services.wm.getEnumerator("navigator:browser");
+  while (windowsEnum.hasMoreElements()) {
+    let win = windowsEnum.getNext();
+    if (win.closed || !win.gBrowser) {
+      continue;
+    }
+
+    for (let tab of win.gBrowser.tabs) {
+      if (tab.hidden && tab.ownerGlobal &&
+          SessionStore.getTabValue(tab, "hiddenBy") === id) {
+        win.gBrowser.showTab(tab);
+      }
+    }
+  }
+}
 
 let tabListener = {
   tabReadyInitialized: false,
@@ -82,25 +98,14 @@ let tabListener = {
 };
 
 this.tabs = class extends ExtensionAPI {
-  onShutdown(reason) {
-    if (!this.extension.hasPermission("tabHide")) {
-      return;
+  static onUpdate(id, manifest) {
+    if (!manifest.permissions || !manifest.permissions.includes("tabHide")) {
+      showHiddenTabs(id);
     }
-    if (reason == "ADDON_DISABLE" ||
-        reason == "ADDON_UNINSTALL") {
-      // Show all hidden tabs if a tab managing extension is uninstalled or
-      // disabled.  If a user has more than one, the extensions will need to
-      // self-manage re-hiding tabs.
-      for (let tab of this.extension.tabManager.query()) {
-        let nativeTab = tabTracker.getTab(tab.id);
-        if (hiddenTabs.get(nativeTab) === this.extension.id) {
-          hiddenTabs.delete(nativeTab);
-          if (nativeTab.ownerGlobal) {
-            nativeTab.ownerGlobal.gBrowser.showTab(nativeTab);
-          }
-        }
-      }
-    }
+  }
+
+  static onDisable(id) {
+    showHiddenTabs(id);
   }
 
   getAPI(context) {
@@ -301,8 +306,6 @@ this.tabs = class extends ExtensionAPI {
               needed.push("discarded");
             } else if (event.type == "TabShow") {
               needed.push("hidden");
-              // Always remove the tab from the hiddenTabs map.
-              hiddenTabs.delete(event.originalTarget);
             } else if (event.type == "TabHide") {
               needed.push("hidden");
             }
@@ -512,10 +515,13 @@ this.tabs = class extends ExtensionAPI {
               return Promise.reject({message: `Illegal URL: ${url}`});
             }
 
-            let flags = updateProperties.loadReplace
-              ? Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY
-              : Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
-            nativeTab.linkedBrowser.loadURIWithFlags(url, {flags});
+            let options = {
+              flags: updateProperties.loadReplace
+                      ? Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY
+                      : Ci.nsIWebNavigation.LOAD_FLAGS_NONE,
+              triggeringPrincipal: context.principal,
+            };
+            nativeTab.linkedBrowser.loadURIWithFlags(url, options);
           }
 
           if (updateProperties.active !== null) {
@@ -1064,7 +1070,6 @@ this.tabs = class extends ExtensionAPI {
           for (let tabId of tabIds) {
             let tab = tabTracker.getTab(tabId);
             if (tab.ownerGlobal) {
-              hiddenTabs.delete(tab);
               tab.ownerGlobal.gBrowser.showTab(tab);
             }
           }
@@ -1083,9 +1088,8 @@ this.tabs = class extends ExtensionAPI {
           let tabs = tabIds.map(tabId => tabTracker.getTab(tabId));
           for (let tab of tabs) {
             if (tab.ownerGlobal && !tab.hidden) {
-              tab.ownerGlobal.gBrowser.hideTab(tab);
+              tab.ownerGlobal.gBrowser.hideTab(tab, extension.id);
               if (tab.hidden) {
-                hiddenTabs.set(tab, extension.id);
                 hidden.push(tabTracker.getId(tab));
               }
             }

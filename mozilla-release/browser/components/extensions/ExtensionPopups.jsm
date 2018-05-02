@@ -6,21 +6,19 @@
 
 var EXPORTED_SYMBOLS = ["BasePopup", "PanelPopup", "ViewPopup"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
+                               "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
+                               "resource://gre/modules/E10SUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionParent",
+                               "resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-                                  "resource://gre/modules/E10SUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
-                                  "resource://gre/modules/ExtensionParent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   DefaultWeakMap,
@@ -80,6 +78,7 @@ class BasePopup {
     });
 
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
+    this.panel.addEventListener("popuppositioned", this, {once: true, capture: true});
 
     this.browser = null;
     this.browserLoaded = new Promise((resolve, reject) => {
@@ -213,6 +212,18 @@ class BasePopup {
           this.destroy();
         }
         break;
+      case "popuppositioned":
+        if (!this.destroyed) {
+          this.browserLoaded.then(() => {
+            if (this.destroyed) {
+              return;
+            }
+            this.browser.messageManager.sendAsyncMessage("Extension:GrabFocus", {});
+          }).catch(() => {
+            // If the panel closes too fast an exception is raised here and tests will fail.
+          });
+        }
+        break;
     }
   }
 
@@ -305,7 +316,7 @@ class BasePopup {
         stylesheets: this.STYLESHEETS,
       });
 
-      browser.loadURI(popupURL);
+      browser.loadURIWithFlags(popupURL, {triggeringPrincipal: this.extension.principal});
     });
   }
 
@@ -440,6 +451,7 @@ class ViewPopup extends BasePopup {
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
     this.viewNode.setAttribute("closemenu", "none");
 
+    this.panel.addEventListener("popuppositioned", this, {once: true, capture: true});
     if (this.extension.remote) {
       this.panel.setAttribute("remote", "true");
     }
@@ -500,7 +512,10 @@ class ViewPopup extends BasePopup {
     this.browser.swapDocShells(browser);
     this.destroyBrowser(browser);
 
-    if (this.dimensions && !this.fixedWidth) {
+    if (this.dimensions) {
+      if (this.fixedWidth) {
+        delete this.dimensions.width;
+      }
       this.resizeBrowser(this.dimensions);
     }
 

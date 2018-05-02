@@ -119,7 +119,7 @@ protected:
   mozilla::ipc::IPCResult RecvReleaseCompositable(const CompositableHandle& aHandle) override;
 
   mozilla::ipc::IPCResult RecvClearCachedResources() override;
-  mozilla::ipc::IPCResult RecvForceComposite() override;
+  mozilla::ipc::IPCResult RecvScheduleComposite() override;
   mozilla::ipc::IPCResult RecvSetTestSampleTime(const TimeStamp& aTime) override;
   mozilla::ipc::IPCResult RecvLeaveTestMode() override;
   mozilla::ipc::IPCResult RecvGetAnimationOpacity(const uint64_t& aCompositorAnimationsId,
@@ -187,10 +187,6 @@ private:
   // Mapping from LayerHandles to Layers.
   nsRefPtrHashtable<nsUint64HashKey, Layer> mLayerMap;
 
-  // When this is nonzero, it refers to a layer tree owned by the
-  // compositor thread.  It is always true that
-  //   mId != 0 => mRoot == null
-  // because the "real tree" is owned by the compositor.
   uint64_t mId;
 
   // These fields keep track of the latest epoch values in the child and the

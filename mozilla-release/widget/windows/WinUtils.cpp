@@ -433,11 +433,6 @@ struct CoTaskMemFreePolicy
 
 SetThreadDpiAwarenessContextProc WinUtils::sSetThreadDpiAwarenessContext = NULL;
 EnableNonClientDpiScalingProc WinUtils::sEnableNonClientDpiScaling = NULL;
-#ifdef ACCESSIBILITY
-typedef NTSTATUS (NTAPI* NtTestAlertPtr)(VOID);
-static NtTestAlertPtr sNtTestAlert = nullptr;
-#endif
-
 
 /* static */
 void
@@ -461,12 +456,6 @@ WinUtils::Initialize()
       }
     }
   }
-
-#ifdef ACCESSIBILITY
-  sNtTestAlert = reinterpret_cast<NtTestAlertPtr>(
-      ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "NtTestAlert"));
-  MOZ_ASSERT(sNtTestAlert);
-#endif
 }
 
 // static
@@ -683,10 +672,6 @@ WinUtils::MonitorFromRect(const gfx::Rect& rect)
 }
 
 #ifdef ACCESSIBILITY
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
-#endif
-
 /* static */
 a11y::Accessible*
 WinUtils::GetRootAccessibleForHWND(HWND aHwnd)
@@ -1718,12 +1703,12 @@ WinUtils::GetShellItemPath(IShellItem* aItem,
 }
 
 /* static */
-nsIntRegion
+LayoutDeviceIntRegion
 WinUtils::ConvertHRGNToRegion(HRGN aRgn)
 {
   NS_ASSERTION(aRgn, "Don't pass NULL region here");
 
-  nsIntRegion rgn;
+  LayoutDeviceIntRegion rgn;
 
   DWORD size = ::GetRegionData(aRgn, 0, nullptr);
   AutoTArray<uint8_t,100> buffer;
@@ -1747,12 +1732,12 @@ WinUtils::ConvertHRGNToRegion(HRGN aRgn)
   return rgn;
 }
 
-nsIntRect
+LayoutDeviceIntRect
 WinUtils::ToIntRect(const RECT& aRect)
 {
-  return nsIntRect(aRect.left, aRect.top,
-                   aRect.right - aRect.left,
-                   aRect.bottom - aRect.top);
+  return LayoutDeviceIntRect(aRect.left, aRect.top,
+                             aRect.right - aRect.left,
+                             aRect.bottom - aRect.top);
 }
 
 /* static */

@@ -1,0 +1,104 @@
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode:nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#ifndef mozilla_intl_MozLocale_h__
+#define mozilla_intl_MozLocale_h__
+
+#include "nsString.h"
+#include "nsTArray.h"
+
+namespace mozilla {
+namespace intl {
+
+/**
+ * Locale class is a core representation of a single locale.
+ *
+ * A locale is a data object representing a combination of language, script,
+ * region, variant and a set of regional extension preferences that may further specify
+ * particular user choices like calendar, numbering system, etc.
+ *
+ * A locale can be expressed as a language tag string, like a simple "fr" for French,
+ * or a more specific "sr-Cyrl-RS-u-hc-h12" for Serbian in Russia with a Cyrylic script,
+ * and hour cycle selected to be `h12`.
+ *
+ * The format of the language tag follows BCP47 standard and implements a subset of it.
+ * In the future we expect to extend this class to cover more subtags and extensions.
+ *
+ * BCP47: https://tools.ietf.org/html/bcp47
+ *
+ * The aim of this class it aid in validation, parsing and canonicalization of the
+ * string.
+ *
+ * It allows the user to input any well-formed BCP47 language tag and operate
+ * on its subtags in a canonicalized form.
+ *
+ * It should be used for all operations on language tags, and together with
+ * LocaleService::NegotiateLanguages for language negotiation.
+ *
+ * Example:
+ *
+ *     Locale loc = Locale("de-at");
+ *
+ *     ASSERT_TRUE(loc.GetLanguage().Equals("de"));
+ *     ASSERT_TRUE(loc.GetScript().IsEmpty());
+ *     ASSERT_TRUE(loc.GetRegion().Equals("AT")); // canonicalized to upper case
+ *
+ *
+ * Note: The file name is `MozLocale` to avoid compilation problems on case-insensitive
+ * Windows. The class name is `Locale`.
+ */
+class Locale {
+  public:
+    explicit Locale(const nsACString& aLocale);
+    explicit Locale(const char* aLocale)
+      : Locale(nsDependentCString(aLocale))
+      { };
+
+    const nsACString& GetLanguage() const;
+    const nsACString& GetScript() const;
+    const nsACString& GetRegion() const;
+    const nsTArray<nsCString>& GetVariants() const;
+
+    bool IsValid() const {
+      return mIsValid;
+    }
+
+    const nsCString AsString() const;
+
+    bool Matches(const Locale& aOther, bool aThisRange, bool aOtherRange) const;
+    bool AddLikelySubtags();
+    void ClearVariants();
+    void ClearRegion();
+
+    // Mark the object as invalid, meaning we shouldn't use it any more.
+    void Invalidate() {
+      mIsValid = false;
+    }
+
+    bool operator== (const Locale& aOther) {
+      // Note: invalid Locale objects are never treated as equal to anything
+      // (even other invalid ones).
+      return IsValid() &&
+             aOther.IsValid() &&
+             mLanguage.Equals(aOther.mLanguage) &&
+             mScript.Equals(aOther.mScript) &&
+             mRegion.Equals(aOther.mRegion) &&
+             mVariants == aOther.mVariants;
+    }
+
+  private:
+    nsAutoCStringN<3> mLanguage;
+    nsAutoCStringN<4> mScript;
+    nsAutoCStringN<2> mRegion;
+    nsTArray<nsCString> mVariants;
+    bool mIsValid = true;
+};
+
+} // intl
+} // namespace mozilla
+
+DECLARE_USE_COPY_CONSTRUCTORS(mozilla::intl::Locale)
+
+#endif /* mozilla_intl_MozLocale_h__ */

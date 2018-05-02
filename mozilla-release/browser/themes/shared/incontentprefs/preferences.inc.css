@@ -85,6 +85,12 @@ button > hbox > label {
   margin-inline-end: 10px;
 }
 
+/* Add a bit of space to the end of descriptions to
+ * leave margin with e.g. additional buttons on the side. */
+.description-with-side-element {
+  margin-inline-end: 10px !important;
+}
+
 .learnMore {
   margin-inline-start: 0px;
   font-weight: normal;
@@ -115,8 +121,8 @@ button > hbox > label {
   padding-inline-start: 4px;
 }
 
-#searchInput {
-  border-radius: 0;
+.ac-site-icon {
+  display: -moz-box;
 }
 
 /* Subcategory title */
@@ -379,6 +385,10 @@ button > hbox > label {
   margin-top: 4px;
 }
 
+#acceptCookies {
+  margin-top: 1.5em;
+}
+
 /* Collapse the non-active vboxes in decks to use only the height the
    active vbox needs */
 #historyPane:not([selectedIndex="1"]) > #historyDontRememberPane,
@@ -548,6 +558,10 @@ button > hbox > label {
   margin-bottom: 4px;
 }
 
+#tosPP-small {
+  margin-top: 32px;
+}
+
 #tosPP-small-ToS {
   margin-bottom: 14px;
 }
@@ -608,7 +622,7 @@ button > hbox > label {
 }
 
 .fxaMobilePromo {
-  margin: 2px 0 32px 0 !important;
+  margin-top: 2px !important;
 }
 
 .androidLink {
@@ -739,21 +753,40 @@ button > hbox > label {
   margin-bottom: 5px;
 }
 
-.search-container {
+#policies-container,
+#searchInput {
+  min-height: 32px;
+  margin: 20px 0 30px 0px;
+}
+
+#policies-container {
+  background-color: #ededf0;
+  padding: 0px 8px;
+  margin-inline-end: 16px;
+  border-radius: 2px;
+}
+
+.info-icon {
+  list-style-image: url("chrome://browser/skin/identity-icon.svg");
+  fill: currentColor;
+  -moz-context-properties: fill;
+  width: 16px;
+  height: 16px;
+  margin-top: calc((32px - 16px) / 2);
+}
+
+.sticky-container {
   position: sticky;
   background-color: var(--in-content-page-background);
   top: 0;
   z-index: 1;
-  /* The search-container should have the capability to cover all spotlight area. */
+  /* The sticky-container should have the capability to cover all spotlight area. */
   width: calc(100% + 8px);
   margin-left: -4px;
   margin-right: -4px;
   padding-left: 4px;
   padding-right: 4px;
-}
-
-#searchInput {
-  margin: 20px 0 30px 0;
+  font-size: 85%;
 }
 
 #searchInput .textbox-search-icons:not([selectedIndex="1"]) {
@@ -862,4 +895,10 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 
 .no-results-message[query*=🔥🦊] > .no-results-container {
   visibility: hidden;
+}
+
+/* Proxy port input */
+
+.proxy-port-input {
+  width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
 }

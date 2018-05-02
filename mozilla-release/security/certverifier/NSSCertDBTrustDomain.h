@@ -87,6 +87,7 @@ public:
                        ValidityCheckingMode validityCheckingMode,
                        CertVerifier::SHA1Mode sha1Mode,
                        NetscapeStepUpPolicy netscapeStepUpPolicy,
+                       DistrustedCAPolicy distrustedCAPolicy,
                        const OriginAttributes& originAttributes,
                        UniqueCERTCertList& builtChain,
           /*optional*/ PinningTelemetryInfo* pinningTelemetryInfo = nullptr,
@@ -172,6 +173,8 @@ public:
   mozilla::pkix::Input GetSCTListFromCertificate() const;
   mozilla::pkix::Input GetSCTListFromOCSPStapling() const;
 
+  bool GetIsErrorDueToDistrustedCAPolicy() const;
+
 private:
   enum EncodedResponseSource {
     ResponseIsFromNetwork = 1,
@@ -196,6 +199,8 @@ private:
   ValidityCheckingMode mValidityCheckingMode;
   CertVerifier::SHA1Mode mSHA1Mode;
   NetscapeStepUpPolicy mNetscapeStepUpPolicy;
+  DistrustedCAPolicy mDistrustedCAPolicy;
+  bool mSawDistrustedCAByPolicyError;
   const OriginAttributes& mOriginAttributes;
   UniqueCERTCertList& mBuiltChain; // non-owning
   PinningTelemetryInfo* mPinningTelemetryInfo;

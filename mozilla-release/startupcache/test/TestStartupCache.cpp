@@ -65,12 +65,18 @@ TestStartupCache::TestStartupCache()
 {
   NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(mSCFile));
   mSCFile->AppendNative(NS_LITERAL_CSTRING("test-startupcache.tmp"));
+#ifdef XP_WIN
+  nsAutoString env(NS_LITERAL_STRING("MOZ_STARTUP_CACHE="));
+  env.Append(mSCFile->NativePath());
+  _wputenv(env.get());
+#else
   nsAutoCString path;
   mSCFile->GetNativePath(path);
   char* env = mozilla::Smprintf("MOZ_STARTUP_CACHE=%s", path.get()).release();
   PR_SetEnv(env);
   // We intentionally leak `env` here because it is required by PR_SetEnv
   MOZ_LSAN_INTENTIONALLY_LEAK_OBJECT(env);
+#endif
   StartupCache::GetSingleton()->InvalidateCache();
 }
 TestStartupCache::~TestStartupCache()
@@ -90,7 +96,7 @@ TEST_F(TestStartupCache, StartupWriteRead)
   UniquePtr<char[]> outbuf;
   uint32_t len;
 
-  rv = sc->PutBuffer(id, buf, strlen(buf) + 1);
+  rv = sc->PutBuffer(id, UniquePtr<char[]>(strdup(buf)), strlen(buf) + 1);
   EXPECT_TRUE(NS_SUCCEEDED(rv));
 
   rv = sc->GetBuffer(id, &outbuf, &len);
@@ -116,7 +122,7 @@ TEST_F(TestStartupCache, WriteInvalidateRead)
   StartupCache* sc = StartupCache::GetSingleton();
   ASSERT_TRUE(sc);
 
-  rv = sc->PutBuffer(id, buf, strlen(buf) + 1);
+  rv = sc->PutBuffer(id, UniquePtr<char[]>(strdup(buf)), strlen(buf) + 1);
   EXPECT_TRUE(NS_SUCCEEDED(rv));
 
   sc->InvalidateCache();
@@ -171,7 +177,7 @@ TEST_F(TestStartupCache, WriteObject)
 
   // Since this is a post-startup write, it should be written and
   // available.
-  rv = sc->PutBuffer(id, buf.get(), len);
+  rv = sc->PutBuffer(id, Move(buf), len);
   EXPECT_TRUE(NS_SUCCEEDED(rv));
 
   UniquePtr<char[]> buf2;

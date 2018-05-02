@@ -1,11 +1,9 @@
 "use strict";
 
-var { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource:///modules/ChromeMigrationUtils.jsm");
+ChromeUtils.import("resource:///modules/ChromeMigrationUtils.jsm");
 
 // Setup chrome user data path for all platforms.
-ChromeMigrationUtils.getChromeUserDataPath = () => {
+ChromeMigrationUtils.getDataPath = () => {
   return do_get_file("Library/Application Support/Google/Chrome/").path;
 };
 
@@ -44,6 +42,6 @@ add_task(async function test_isExtensionInstalled_function() {
 });
 
 add_task(async function test_getLastUsedProfileId_function() {
-  let profileId = ChromeMigrationUtils.getLastUsedProfileId();
+  let profileId = await ChromeMigrationUtils.getLastUsedProfileId();
   Assert.equal(profileId, "Default", "The last used profile ID should be Default.");
 });

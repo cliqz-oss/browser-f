@@ -1,31 +1,31 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const {AddonManager, AddonManagerPrivate} = Cu.import("resource://gre/modules/AddonManager.jsm", {});
-Cu.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
-Cu.import("resource://gre/modules/ObjectUtils.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://testing-common/AddonManagerTesting.jsm");
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://testing-common/MockRegistrar.jsm", this);
-Cu.import("resource://gre/modules/FileUtils.jsm");
+const {AddonManager, AddonManagerPrivate} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
+ChromeUtils.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
+ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/AddonManagerTesting.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", this);
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 
 // AttributionCode is only needed for Firefox
-XPCOMUtils.defineLazyModuleGetter(this, "AttributionCode",
-                                  "resource:///modules/AttributionCode.jsm");
+ChromeUtils.defineModuleGetter(this, "AttributionCode",
+                               "resource:///modules/AttributionCode.jsm");
 
 // Lazy load |LightweightThemeManager|.
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
-                                  "resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
+                               "resource://gre/modules/LightweightThemeManager.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
-                                  "resource://gre/modules/ProfileAge.jsm");
+ChromeUtils.defineModuleGetter(this, "ProfileAge",
+                               "resource://gre/modules/ProfileAge.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionTestUtils",
-                                  "resource://testing-common/ExtensionXPCShellUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionTestUtils",
+                               "resource://testing-common/ExtensionXPCShellUtils.jsm");
 
 // The webserver hosting the addons.
 var gHttpServer = null;
@@ -38,7 +38,6 @@ const PLATFORM_VERSION = "1.9.2";
 const APP_VERSION = "1";
 const APP_ID = "xpcshell@tests.mozilla.org";
 const APP_NAME = "XPCShell";
-const APP_HOTFIX_VERSION = "2.3.4a";
 
 const DISTRIBUTION_ID = "distributor-id";
 const DISTRIBUTION_VERSION = "4.5.6b";
@@ -126,7 +125,7 @@ var PluginHost = {
      || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -391,10 +390,8 @@ function checkBuildSection(data) {
     Assert.equal(data.build[f], expectedInfo[f], f + " must have the correct value.");
   }
 
-  // Make sure architecture and hotfixVersion are in the environment.
+  // Make sure architecture is in the environment.
   Assert.ok(checkString(data.build.architecture));
-  Assert.ok(checkString(data.build.hotfixVersion));
-  Assert.equal(data.build.hotfixVersion, APP_HOTFIX_VERSION);
 
   if (gIsMac) {
     let macUtils = Cc["@mozilla.org/xpcom/mac-utils;1"].getService(Ci.nsIMacUtils);
@@ -755,7 +752,6 @@ function checkPlugin(data) {
 }
 
 function checkTheme(data) {
-  // "hasBinaryComponents" is not available when testing.
   const EXPECTED_THEME_FIELDS_TYPES = {
     id: "string",
     blocklisted: "boolean",
@@ -910,9 +906,6 @@ add_task(async function setup() {
   gHttpServer.registerDirectory("/data/", do_get_cwd());
   registerCleanupFunction(() => gHttpServer.stop(() => {}));
 
-  // Spoof the the hotfixVersion
-  Preferences.set("extensions.hotfix.lastVersion", APP_HOTFIX_VERSION);
-
   // Allow non-multiprocessCompatible extensions
   Preferences.set("extensions.allow-non-mpc-extensions", true);
 
@@ -1066,6 +1059,22 @@ add_task(async function test_prefDefaultState() {
   Services.prefs.getDefaultBranch(null).setCharPref(PREF_TEST, expectedValue);
 
   Assert.strictEqual(TelemetryEnvironment.currentEnvironment.settings.userPrefs[PREF_TEST], "<set>");
+});
+
+add_task(async function test_prefInvalid() {
+  const PREF_TEST_1 = "toolkit.telemetry.test.invalid1";
+  const PREF_TEST_2 = "toolkit.telemetry.test.invalid2";
+
+  const PREFS_TO_WATCH = new Map([
+    [PREF_TEST_1, {what: TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE}],
+    [PREF_TEST_2, {what: TelemetryEnvironment.RECORD_DEFAULTPREF_STATE}],
+  ]);
+
+  TelemetryEnvironment.testWatchPreferences(PREFS_TO_WATCH);
+
+  Assert.strictEqual(TelemetryEnvironment.currentEnvironment.settings.userPrefs[PREF_TEST_1], undefined);
+  Assert.strictEqual(TelemetryEnvironment.currentEnvironment.settings.userPrefs[PREF_TEST_2], undefined);
+
 });
 
 add_task(async function test_addonsWatch_InterestingChange() {

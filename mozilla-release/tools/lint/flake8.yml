@@ -24,6 +24,7 @@ flake8:
         - testing/marionette/puppeteer
         - testing/mochitest
         - testing/mozbase
+        - testing/mozharness/configs
         - testing/mozharness/mozfile
         - testing/mozharness/mozharness/mozilla/mar.py
         - testing/mozharness/mozinfo
@@ -34,10 +35,8 @@ flake8:
         - testing/xpcshell
         - toolkit/components/telemetry
         - toolkit/crashreporter/tools/upload_symbols.py
-        - tools/git
         - tools/lint
         - tools/mach_commands.py
-        - tools/mercurial
         - tools/tryselect
     # Excludes should be added to topsrcdir/.flake8 due to a bug in flake8 where
     # specifying --exclude causes custom configuration files to be ignored.
@@ -46,3 +45,4 @@ flake8:
     extensions: ['configure', 'py']
     type: external
     payload: python.flake8:lint
+    setup: python.flake8:setup

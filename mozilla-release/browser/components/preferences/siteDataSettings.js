@@ -2,15 +2,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-const { interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "SiteDataManager",
-                                  "resource:///modules/SiteDataManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadUtils",
-                                  "resource://gre/modules/DownloadUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "SiteDataManager",
+                               "resource:///modules/SiteDataManager.jsm");
+ChromeUtils.defineModuleGetter(this, "DownloadUtils",
+                               "resource://gre/modules/DownloadUtils.jsm");
 
 "use strict";
 
@@ -18,21 +16,69 @@ let gSiteDataSettings = {
 
   // Array of metadata of sites. Each array element is object holding:
   // - uri: uri of site; instance of nsIURI
-  // - status: persistent-storage permission status
+  // - baseDomain: base domain of the site
+  // - cookies: array of cookies of that site
   // - usage: disk usage which site uses
   // - userAction: "remove" or "update-permission"; the action user wants to take.
-  //               If not specified, means no action to take
   _sites: null,
 
   _list: null,
   _searchBox: null,
   _prefStrBundle: null,
 
+  _createSiteListItem(site) {
+    let item = document.createElement("richlistitem");
+    item.setAttribute("host", site.host);
+    let container = document.createElement("hbox");
+
+    // Creates a new column item with the specified relative width.
+    function addColumnItem(value, flexWidth) {
+      let box = document.createElement("hbox");
+      box.className = "item-box";
+      box.setAttribute("flex", flexWidth);
+      let label = document.createElement("label");
+      label.setAttribute("crop", "end");
+      if (value) {
+        box.setAttribute("tooltiptext", value);
+        label.setAttribute("value", value);
+      }
+      box.appendChild(label);
+      container.appendChild(box);
+    }
+
+    // Add "Host" column.
+    addColumnItem(site.host, "4");
+
+    // Add "Cookies" column.
+    addColumnItem(site.cookies.length, "1");
+
+    // Add "Storage" column
+    if (site.usage > 0 || site.persisted) {
+      let size = DownloadUtils.convertByteUnits(site.usage);
+      let strName = site.persisted ? "siteUsagePersistent" : "siteUsage";
+      addColumnItem(this._prefStrBundle.getFormattedString(strName, size), "2");
+    } else {
+      // Pass null to avoid showing "0KB" when there is no site data stored.
+      addColumnItem(null, "2");
+    }
+
+    // Add "Last Used" column.
+    addColumnItem(site.lastAccessed > 0 ?
+      this._formatter.format(site.lastAccessed) : null, "2");
+
+    item.appendChild(container);
+    return item;
+  },
+
   init() {
     function setEventListener(id, eventType, callback) {
       document.getElementById(id)
               .addEventListener(eventType, callback.bind(gSiteDataSettings));
     }
+
+    this._formatter = new Services.intl.DateTimeFormat(undefined, {
+      dateStyle: "short", timeStyle: "short",
+    });
 
     this._list = document.getElementById("sitesList");
     this._searchBox = document.getElementById("searchBox");
@@ -47,11 +93,13 @@ let gSiteDataSettings = {
 
     let brandShortName = document.getElementById("bundle_brand").getString("brandShortName");
     let settingsDescription = document.getElementById("settingsDescription");
-    settingsDescription.textContent = this._prefStrBundle.getFormattedString("siteDataSettings2.description", [brandShortName]);
+    settingsDescription.textContent = this._prefStrBundle.getFormattedString("siteDataSettings3.description", [brandShortName]);
 
+    setEventListener("sitesList", "select", this.onSelect);
     setEventListener("hostCol", "click", this.onClickTreeCol);
     setEventListener("usageCol", "click", this.onClickTreeCol);
-    setEventListener("statusCol", "click", this.onClickTreeCol);
+    setEventListener("lastAccessedCol", "click", this.onClickTreeCol);
+    setEventListener("cookiesCol", "click", this.onClickTreeCol);
     setEventListener("cancel", "command", this.close);
     setEventListener("save", "command", this.saveChanges);
     setEventListener("searchBox", "command", this.onCommandSearch);
@@ -63,8 +111,8 @@ let gSiteDataSettings = {
     let items = this._list.getElementsByTagName("richlistitem");
     let removeSelectedBtn = document.getElementById("removeSelected");
     let removeAllBtn = document.getElementById("removeAll");
-    removeSelectedBtn.disabled = items.length == 0;
-    removeAllBtn.disabled = removeSelectedBtn.disabled;
+    removeSelectedBtn.disabled = this._list.selectedItems.length == 0;
+    removeAllBtn.disabled = items.length == 0;
 
     let removeAllBtnLabelStringID = "removeAllSiteData.label";
     let removeAllBtnAccesskeyStringID = "removeAllSiteData.accesskey";
@@ -92,25 +140,22 @@ let gSiteDataSettings = {
     switch (col.id) {
       case "hostCol":
         sortFunc = (a, b) => {
-          let aHost = a.host.toLowerCase();
-          let bHost = b.host.toLowerCase();
+          let aHost = a.baseDomain.toLowerCase();
+          let bHost = b.baseDomain.toLowerCase();
           return aHost.localeCompare(bHost);
         };
         break;
 
-      case "statusCol":
-        sortFunc = (a, b) => {
-          if (a.persisted && !b.persisted) {
-            return 1;
-          } else if (!a.persisted && b.persisted) {
-            return -1;
-          }
-          return 0;
-        };
+      case "cookiesCol":
+        sortFunc = (a, b) => a.cookies.length - b.cookies.length;
         break;
 
       case "usageCol":
         sortFunc = (a, b) => a.usage - b.usage;
+        break;
+
+      case "lastAccessedCol":
+        sortFunc = (a, b) => a.lastAccessed - b.lastAccessed;
         break;
     }
     if (sortDirection === "descending") {
@@ -150,13 +195,7 @@ let gSiteDataSettings = {
         continue;
       }
 
-      let size = DownloadUtils.convertByteUnits(site.usage);
-      let item = document.createElement("richlistitem");
-      item.setAttribute("host", host);
-      item.setAttribute("usage", this._prefStrBundle.getFormattedString("siteUsage", size));
-      if (site.persisted) {
-        item.setAttribute("status", this._prefStrBundle.getString("persistent"));
-      }
+      let item = this._createSiteListItem(site);
       this._list.appendChild(item);
     }
     this._updateButtonsState();
@@ -175,81 +214,23 @@ let gSiteDataSettings = {
     this._updateButtonsState();
   },
 
-  _getBaseDomainFromHost(host) {
-    let result = host;
-    try {
-      result = Services.eTLD.getBaseDomainFromHost(host);
-    } catch (e) {
-      if (e.result == Cr.NS_ERROR_HOST_IS_IP_ADDRESS ||
-          e.result == Cr.NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
-        // For this 2 expected errors, just take the host as the result.
-        // - NS_ERROR_HOST_IS_IP_ADDRESS: the host is in ipv4/ipv6.
-        // - NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS: not enough domain part to extract.
-        result = host;
-      } else {
-        throw e;
-      }
-    }
-    return result;
-  },
-
   saveChanges() {
-    let allowed = true;
+    // Tracks whether the user confirmed their decision.
+    let allowed = false;
 
-    // Confirm user really wants to remove site data starts
-    let removals = new Set();
-    this._sites = this._sites.filter(site => {
-      if (site.userAction === "remove") {
-        removals.add(site.host);
-        return false;
-      }
-      return true;
-    });
+    let removals = this._sites
+      .filter(site => site.userAction == "remove")
+      .map(site => site.host);
 
-    if (removals.size > 0) {
-      if (this._sites.length == 0) {
-        // User selects all sites so equivalent to clearing all data
-        let flags =
-          Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0 +
-          Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
-          Services.prompt.BUTTON_POS_0_DEFAULT;
-        let prefStrBundle = document.getElementById("bundlePreferences");
-        let title = prefStrBundle.getString("clearSiteDataPromptTitle");
-        let text = prefStrBundle.getString("clearSiteDataPromptText");
-        let btn0Label = prefStrBundle.getString("clearSiteDataNow");
-        let result = Services.prompt.confirmEx(window, title, text, flags, btn0Label, null, null, null, {});
-        allowed = result == 0;
+    if (removals.length > 0) {
+      if (this._sites.length == removals.length) {
+        allowed = SiteDataManager.promptSiteDataRemoval(window);
         if (allowed) {
           SiteDataManager.removeAll();
         }
       } else {
-        // User only removes partial sites.
-        // We will remove cookies based on base domain, say, user selects "news.foo.com" to remove.
-        // The cookies under "music.foo.com" will be removed together.
-        // We have to prompt user about this action.
-        let hostsTable = new Map();
-        // Group removed sites by base domain
-        for (let host of removals) {
-          let baseDomain = this._getBaseDomainFromHost(host);
-          let hosts = hostsTable.get(baseDomain);
-          if (!hosts) {
-            hosts = [];
-            hostsTable.set(baseDomain, hosts);
-          }
-          hosts.push(host);
-        }
-
-        // Pick out sites with the same base domain as removed sites
-        for (let site of this._sites) {
-          let baseDomain = this._getBaseDomainFromHost(site.host);
-          let hosts = hostsTable.get(baseDomain);
-          if (hosts) {
-            hosts.push(site.host);
-          }
-        }
-
         let args = {
-          hostsTable,
+          hosts: removals,
           allowed: false
         };
         let features = "centerscreen,chrome,modal,resizable=no";
@@ -267,9 +248,12 @@ let gSiteDataSettings = {
         }
       }
     }
-    // Confirm user really wants to remove site data ends
 
-    this.close();
+    // If the user cancelled the confirm dialog keep the site data window open,
+    // they can still press cancel again to exit.
+    if (allowed) {
+      this.close();
+    }
   },
 
   close() {
@@ -279,17 +263,17 @@ let gSiteDataSettings = {
   onClickTreeCol(e) {
     this._sortSites(this._sites, e.target);
     this._buildSitesList(this._sites);
+    this._list.clearSelection();
   },
 
   onCommandSearch() {
     this._buildSitesList(this._sites);
+    this._list.clearSelection();
   },
 
   onClickRemoveSelected() {
-    let selected = this._list.selectedItem;
-    if (selected) {
-      this._removeSiteItems([selected]);
-    }
+    this._removeSiteItems(this._list.selectedItems);
+    this._list.clearSelection();
   },
 
   onClickRemoveAll() {
@@ -303,5 +287,9 @@ let gSiteDataSettings = {
     if (e.keyCode == KeyEvent.DOM_VK_ESCAPE) {
       this.close();
     }
+  },
+
+  onSelect() {
+    this._updateButtonsState();
   }
 };

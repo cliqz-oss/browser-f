@@ -4,10 +4,9 @@
 
 // Tests various aspects of the details view
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const PREF_AUTOUPDATE_DEFAULT = "extensions.update.autoUpdateDefault";
-const PREF_EM_HOTFIX_ID = "extensions.hotfix.id";
 
 var gManagerWindow;
 var gCategoryUtilities;
@@ -44,7 +43,6 @@ function get(aId) {
 
 function test() {
   requestLongerTimeout(2);
-  Services.prefs.setCharPref(PREF_EM_HOTFIX_ID, "hotfix@tests.mozilla.org");
 
   waitForExplicitFinish();
 
@@ -163,9 +161,6 @@ function test() {
     name: "Test add-on 12",
     signedState: AddonManager.SIGNEDSTATE_SIGNED,
     foreignInstall: true,
-  }, {
-    id: "hotfix@tests.mozilla.org",
-    name: "Test hotfix 1",
   }]);
 
   open_manager(null, function(aWindow) {
@@ -177,7 +172,6 @@ function test() {
 }
 
 function end_test() {
-  Services.prefs.clearUserPref(PREF_EM_HOTFIX_ID);
   close_manager(gManagerWindow, function() {
     finish();
   });
@@ -198,8 +192,6 @@ add_test(function() {
     is(get("detail-fulldesc").textContent, "Longer description", "Full description should be correct");
 
     is_element_visible(get("detail-contributions"), "Contributions section should be visible");
-    is_element_visible(get("detail-contrib-suggested"), "Contributions amount should be visible");
-    ok(get("detail-contrib-suggested").value, "$0.99");
 
     is_element_visible(get("detail-updates-row"), "Updates should not be hidden");
     is_element_hidden(get("detail-dateUpdated"), "Update date should be hidden");
@@ -216,8 +208,6 @@ add_test(function() {
     is_element_hidden(get("detail-repository-row"), "Repository profile should not be visible");
 
     is_element_hidden(get("detail-size"), "Size should be hidden");
-
-    is_element_hidden(get("detail-downloads"), "Downloads should be hidden");
 
     is_element_visible(get("detail-autoUpdate"), "Updates should not be hidden");
     ok(get("detail-autoUpdate").childNodes[1].selected, "Updates ahould be automatic");
@@ -307,7 +297,6 @@ add_test(function() {
     is_element_hidden(get("detail-fulldesc"), "Full description should be hidden");
 
     is_element_visible(get("detail-contributions"), "Contributions section should be visible");
-    is_element_hidden(get("detail-contrib-suggested"), "Contributions amount should be hidden");
 
     is_element_visible(get("detail-dateUpdated"), "Update date should not be hidden");
     is(get("detail-dateUpdated").value, formatDate(gDate), "Update date should be correct");
@@ -318,8 +307,6 @@ add_test(function() {
     is_element_hidden(get("detail-repository-row"), "Repository profile should not be visible");
 
     is_element_hidden(get("detail-size"), "Size should be hidden");
-
-    is_element_hidden(get("detail-downloads"), "Downloads should be hidden");
 
     is_element_hidden(get("detail-updates-row"), "Updates should be hidden");
 
@@ -373,8 +360,6 @@ add_test(function() {
     is(get("detail-reviews").value, "1 review", "Review text should be correct");
 
     is_element_hidden(get("detail-size"), "Size should be hidden");
-
-    is_element_hidden(get("detail-downloads"), "Downloads should be hidden");
 
     is_element_visible(get("detail-autoUpdate"), "Updates should not be hidden");
     ok(get("detail-autoUpdate").lastChild.selected, "Updates should be manual");
@@ -942,26 +927,6 @@ add_test(function() {
   });
 });
 
-// Opens and tests the details view for hotfix 1
-add_test(function() {
-  open_details("hotfix@tests.mozilla.org", "extension", function() {
-    is(get("detail-name").textContent, "Test hotfix 1", "Name should be correct");
-
-    is_element_hidden(get("detail-updates-row"), "Updates should be hidden");
-
-    is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
-    is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
-    is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
-    is_element_visible(get("detail-uninstall-btn"), "Remove button should be visible");
-
-    is_element_hidden(get("detail-warning"), "Warning message should be hidden");
-    is_element_hidden(get("detail-warning-link"), "Warning link should be hidden");
-    is_element_hidden(get("detail-pending"), "Pending message should be hidden");
-
-    run_next_test();
-  });
-});
-
 // Tests that upgrades with onExternalInstall apply immediately
 add_test(function() {
   open_details("addon1@tests.mozilla.org", "extension", function() {
@@ -1002,8 +967,6 @@ add_test(function() {
     is_element_hidden(get("detail-homepage-row"), "Homepage should be hidden");
 
     is_element_hidden(get("detail-size"), "Size should be hidden");
-
-    is_element_hidden(get("detail-downloads"), "Downloads should be hidden");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
     is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");

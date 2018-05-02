@@ -13,6 +13,7 @@ from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (get_beetmover_bucket_scope,
                                          get_beetmover_action_scope,
                                          get_phase)
+from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Any, Required, Optional
 
@@ -22,7 +23,6 @@ from voluptuous import Any, Required, Optional
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US = [
-    "balrog_props.json",
     "target.common.tests.zip",
     "target.cppunittest.tests.zip",
     "target.crashreporter-symbols.zip",
@@ -55,7 +55,6 @@ _DESKTOP_UPSTREAM_ARTIFACTS_SIGNED_EN_US = [
 # See example in bug 1348286
 _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_L10N = [
     "target.langpack.xpi",
-    "balrog_props.json",
 ]
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
 # need to be transfered to S3, please be aware you also need to follow-up
@@ -92,7 +91,6 @@ _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_EN_US = [
 # with a beetmover patch in https://github.com/mozilla-releng/beetmoverscript/.
 # See example in bug 1348286
 _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI = [
-    "balrog_props.json",
     "target.common.tests.zip",
     "target.cppunittest.tests.zip",
     "target.json",
@@ -189,7 +187,7 @@ UPSTREAM_ARTIFACT_UNSIGNED_PATHS = {
     'android-x86-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'android-x86-old-id-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'android-aarch64-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
-    'android-api-16-nightly-l10n': ["balrog_props.json"],
+    'android-api-16-nightly-l10n': [],
     'android-api-16-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'android-api-16-old-id-nightly-multi': _MOBILE_UPSTREAM_ARTIFACTS_UNSIGNED_MULTI,
     'macosx64-nightly-l10n': _DESKTOP_UPSTREAM_ARTIFACTS_UNSIGNED_L10N,
@@ -221,16 +219,16 @@ UPSTREAM_ARTIFACT_SIGNED_PATHS = {
         "target.tar.bz2.asc",
     ],
     'linux64-source': [
-        "SOURCE",
-        "SOURCE.asc",
+        "source.tar.xz",
+        "source.tar.xz.asc",
     ],
     'linux64-devedition-source': [
-        "SOURCE",
-        "SOURCE.asc",
+        "source.tar.xz",
+        "source.tar.xz.asc",
     ],
     'linux64-fennec-source': [
-        "SOURCE",
-        "SOURCE.asc",
+        "source.tar.xz",
+        "source.tar.xz.asc",
     ],
     'android-x86-nightly': ["en-US/target.apk"],
     'android-aarch64-nightly': ["en-US/target.apk"],
@@ -403,29 +401,35 @@ def make_task_description(config, jobs):
         yield task
 
 
-def generate_upstream_artifacts(signing_task_ref, build_task_ref, platform,
+def generate_upstream_artifacts(job, signing_task_ref, build_task_ref, platform,
                                 locale=None):
     build_mapping = UPSTREAM_ARTIFACT_UNSIGNED_PATHS
     signing_mapping = UPSTREAM_ARTIFACT_SIGNED_PATHS
 
-    artifact_prefix = 'public/build'
+    artifact_prefix = get_artifact_prefix(job)
     if locale:
-        artifact_prefix = 'public/build/{}'.format(locale)
+        artifact_prefix = '{}/{}'.format(artifact_prefix, locale)
         platform = "{}-l10n".format(platform)
 
-    upstream_artifacts = [{
-        "taskId": {"task-reference": build_task_ref},
-        "taskType": "build",
-        "paths": ["{}/{}".format(artifact_prefix, p)
-                  for p in build_mapping[platform]],
-        "locale": locale or "en-US",
-        }, {
+    upstream_artifacts = []
+
+    # Some platforms (like android-api-16-nightly-l10n) may not depend on any unsigned artifact
+    if build_mapping[platform]:
+        upstream_artifacts.append({
+            "taskId": {"task-reference": build_task_ref},
+            "taskType": "build",
+            "paths": ["{}/{}".format(artifact_prefix, p)
+                      for p in build_mapping[platform]],
+            "locale": locale or "en-US",
+        })
+
+    upstream_artifacts.append({
         "taskId": {"task-reference": signing_task_ref},
         "taskType": "signing",
         "paths": ["{}/{}".format(artifact_prefix, p)
                   for p in signing_mapping[platform]],
         "locale": locale or "en-US",
-    }]
+    })
 
     if not locale and "android" in platform:
         # edge case to support 'multi' locale paths
@@ -445,6 +449,29 @@ def generate_upstream_artifacts(signing_task_ref, build_task_ref, platform,
         }])
 
     return upstream_artifacts
+
+
+def craft_release_properties(config, job):
+    params = config.params
+    build_platform = job['attributes']['build_platform']
+    build_platform = build_platform.replace('-nightly', '')
+    if 'fennec-source' in build_platform:
+        # XXX This case is hardcoded to match the current implementation in beetmover
+        build_platform = 'android-api-16'
+    else:
+        build_platform = build_platform.replace('-source', '')
+
+    app_name = 'Fennec' if 'android' in job['label'] or 'fennec' in job['label'] else 'Firefox'
+
+    return {
+        # XXX Even DevEdition is called Firefox
+        'app-name': app_name,
+        'app-version': str(params['app_version']),
+        'branch': params['project'],
+        'build-id': str(params['moz_build_date']),
+        'hash-type': 'sha512',
+        'platform': build_platform,
+    }
 
 
 @transforms.add
@@ -467,12 +494,15 @@ def make_task_worker(config, jobs):
 
         signing_task_ref = "<" + str(signing_task) + ">"
         build_task_ref = "<" + str(build_task) + ">"
-        upstream_artifacts = generate_upstream_artifacts(
-            signing_task_ref, build_task_ref, platform, locale
-        )
 
-        worker = {'implementation': 'beetmover',
-                  'upstream-artifacts': upstream_artifacts}
+        worker = {
+            'implementation': 'beetmover',
+            'release-properties': craft_release_properties(config, job),
+            'upstream-artifacts': generate_upstream_artifacts(
+                job, signing_task_ref, build_task_ref, platform, locale
+            )
+        }
+
         if locale:
             worker["locale"] = locale
         job["worker"] = worker

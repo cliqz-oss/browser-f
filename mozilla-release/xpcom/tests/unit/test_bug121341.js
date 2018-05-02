@@ -1,5 +1,5 @@
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function run_test() {
   var dataFile = do_get_file("data/bug121341.properties");
@@ -9,8 +9,8 @@ function run_test() {
   });
   var inp = channel.open2();
 
-  var properties = Components.classes["@mozilla.org/persistent-properties;1"].
-                   createInstance(Components.interfaces.nsIPersistentProperties);
+  var properties = Cc["@mozilla.org/persistent-properties;1"].
+                   createInstance(Ci.nsIPersistentProperties);
   properties.load(inp);
 
   var value;
@@ -56,8 +56,8 @@ function run_test() {
   });
   inp = channel2.open2();
 
-  var properties2 = Components.classes["@mozilla.org/persistent-properties;1"].
-                    createInstance(Components.interfaces.nsIPersistentProperties);
+  var properties2 = Cc["@mozilla.org/persistent-properties;1"].
+                    createInstance(Ci.nsIPersistentProperties);
   try {
     properties2.load(inp);
     do_throw("load() didn't fail");

@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {utils: Cu} = Components;
-
 const {
   ElementClickInterceptedError,
   ElementNotAccessibleError,
@@ -17,7 +15,7 @@ const {
   InvalidSessionIDError,
   JavaScriptError,
   MoveTargetOutOfBoundsError,
-  NoAlertOpenError,
+  NoSuchAlertError,
   NoSuchElementError,
   NoSuchFrameError,
   NoSuchWindowError,
@@ -32,7 +30,7 @@ const {
   UnknownError,
   UnsupportedOperationError,
   WebDriverError,
-} = Cu.import("chrome://marionette/content/error.js", {});
+} = ChromeUtils.import("chrome://marionette/content/error.js", {});
 
 function notok(condition) {
   ok(!(condition));
@@ -335,9 +333,9 @@ add_test(function test_JavaScriptError() {
   run_next_test();
 });
 
-add_test(function test_NoAlertOpenError() {
-  let err = new NoAlertOpenError("foo");
-  equal("NoAlertOpenError", err.name);
+add_test(function test_NoSuchAlertError() {
+  let err = new NoSuchAlertError("foo");
+  equal("NoSuchAlertError", err.name);
   equal("foo", err.message);
   equal("no such alert", err.status);
   ok(err instanceof WebDriverError);

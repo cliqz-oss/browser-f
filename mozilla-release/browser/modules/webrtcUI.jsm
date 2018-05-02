@@ -4,30 +4,26 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["webrtcUI"];
+var EXPORTED_SYMBOLS = ["webrtcUI"];
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource:///modules/syncedtabs/EventEmitter.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource:///modules/syncedtabs/EventEmitter.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-                                  "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SitePermissions",
-                                  "resource:///modules/SitePermissions.jsm");
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "PluralForm",
+                               "resource://gre/modules/PluralForm.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "SitePermissions",
+                               "resource:///modules/SitePermissions.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gBrandBundle", function() {
   return Services.strings.createBundle("chrome://branding/locale/brand.properties");
 });
 
-this.webrtcUI = {
+var webrtcUI = {
   peerConnectionBlockers: new Set(),
   emitter: new EventEmitter(),
 
@@ -299,13 +295,6 @@ this.webrtcUI = {
   }
 };
 
-function getBrowserForWindow(aContentWindow) {
-  return aContentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIWebNavigation)
-                       .QueryInterface(Ci.nsIDocShell)
-                       .chromeEventHandler;
-}
-
 function denyRequest(aBrowser, aRequest) {
   aBrowser.messageManager.sendAsyncMessage("webrtc:Deny",
                                            {callID: aRequest.callID,
@@ -375,8 +364,7 @@ function prompt(aBrowser, aRequest) {
   } catch (e) {
     uri = Services.io.newURI(aRequest.documentURI);
   }
-  let message = {};
-  message.host = getHost(uri);
+
   let chromeDoc = aBrowser.ownerDocument;
   let stringBundle = chromeDoc.defaultView.gNavigatorBundle;
 
@@ -397,10 +385,7 @@ function prompt(aBrowser, aRequest) {
     "getUserMedia.shareScreenAndAudioCapture3.message",
   ].find(id => id.includes(joinedRequestTypes));
 
-  let header = stringBundle.getFormattedString(stringId, ["<>"], 1);
-  header = header.split("<>");
-  message.end = header[1];
-  message.start = header[0];
+  let message = stringBundle.getFormattedString(stringId, ["<>"], 1);
 
   let notification; // Used by action callbacks.
   let mainAction = {
@@ -435,6 +420,7 @@ function prompt(aBrowser, aRequest) {
   let productName = gBrandBundle.GetStringFromName("brandShortName");
 
   let options = {
+    name: getHost(uri),
     persistent: true,
     hideClose: !Services.prefs.getBoolPref("privacy.permissionPrompts.showCloseButton"),
     eventCallback(aTopic, aNewBrowser) {
@@ -850,6 +836,29 @@ function prompt(aBrowser, aRequest) {
                    anchorId, mainAction, secondaryActions,
                    options);
   notification.callID = aRequest.callID;
+
+  let schemeHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_ORIGIN_SCHEME");
+  let thirdPartyHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_THIRD_PARTY_ORIGIN");
+  let userInputHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_HANDLING_USER_INPUT");
+
+  let docURI = aRequest.documentURI;
+  let scheme = 0;
+  if (docURI.startsWith("https")) {
+    scheme = 2;
+  } else if (docURI.startsWith("http")) {
+    scheme = 1;
+  }
+
+  for (let requestType of requestTypes) {
+    if (requestType == "AudioCapture") {
+      requestType = "Microphone";
+    }
+    requestType = requestType.toLowerCase();
+
+    schemeHistogram.add(requestType, scheme);
+    thirdPartyHistogram.add(requestType, aRequest.isThirdPartyOrigin);
+    userInputHistogram.add(requestType, aRequest.isHandlingUserInput);
+  }
 }
 
 function removePrompt(aBrowser, aCallId) {

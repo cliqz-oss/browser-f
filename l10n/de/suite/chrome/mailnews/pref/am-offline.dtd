@@ -5,8 +5,9 @@
 <!ENTITY doNotDownloadPop3Movemail.label "Um Speicherplatz zu sparen, nicht herunterladen:">
 <!ENTITY doNotDownloadNntp.label "Um Speicherplatz zu sparen, nicht für Offline-Gebrauch herunterladen:">
 <!ENTITY doNotDownloadImap.label "Um Speicherplatz zu sparen, können Nachrichten nur nach Alter und Größe eingeschränkt vom Server heruntergeladen und lokal gespeichert werden.">
-<!ENTITY allFoldersOffline.label "Nachrichten für diesen Account auf diesem Rechner behalten">
-<!ENTITY allFoldersOffline.accesskey "d">
+<!ENTITY allFoldersOffline2.label "Nachrichten in allen Ordnern für diesen Account auf diesem Rechner behalten">
+<!ENTITY allFoldersOffline2.accesskey "d">
+<!ENTITY allFoldersOfflineNote.label "Anmerkung: Änderungen dieser Einstellung betreffen alle Ordner dieses Accounts. Um einzelne Ordner zu setzen, verwenden Sie die Schaltfläche &quot;Erweitert…&quot;.">
 <!ENTITY offlineNotDownload.label "Nachrichten, die größer sind als">
 <!ENTITY offlineNotDownload.accesskey "h">
 <!ENTITY autosyncNotDownload.label "Keine Nachrichten herunterladen, die größer sind als">

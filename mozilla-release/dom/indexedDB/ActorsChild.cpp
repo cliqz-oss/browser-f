@@ -30,6 +30,8 @@
 #include "mozilla/dom/indexedDB/PIndexedDBPermissionRequestChild.h"
 #include "mozilla/dom/ipc/PendingIPCBlobChild.h"
 #include "mozilla/dom/IPCBlobUtils.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/TaskQueue.h"
@@ -48,8 +50,6 @@
 #include "PermissionRequestBase.h"
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
 
 #ifdef DEBUG
 #include "IndexedDatabaseManager.h"
@@ -71,8 +71,6 @@ namespace mozilla {
 using ipc::PrincipalInfo;
 
 namespace dom {
-
-using namespace workers;
 
 namespace indexedDB {
 
@@ -851,22 +849,26 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
                  IDB_LOG_STRINGIFY(aEvent, kSuccessEventType));
   }
 
+  MOZ_ASSERT_IF(transaction,
+                transaction->IsOpen() && !transaction->IsAborted());
+
   bool dummy;
   nsresult rv = request->DispatchEvent(aEvent, &dummy);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
 
-  MOZ_ASSERT_IF(transaction,
-                transaction->IsOpen() || transaction->IsAborted());
-
   WidgetEvent* internalEvent = aEvent->WidgetEventPtr();
   MOZ_ASSERT(internalEvent);
 
   if (transaction &&
-      transaction->IsOpen() &&
-      internalEvent->mFlags.mExceptionWasRaised) {
-    transaction->Abort(NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
+      transaction->IsOpen()) {
+    if (internalEvent->mFlags.mExceptionWasRaised) {
+      transaction->Abort(NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
+    } else {
+      // To handle upgrade transaction.
+      transaction->Run();
+    }
   }
 }
 

@@ -3,16 +3,12 @@
  */
 
 // This verifies that add-ons can be installed from XPI files
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
 // install.rdf size, icon.png, icon64.png size
 const ADDON1_SIZE = 705 + 16 + 16;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 var testserver;
 var gInstallDate;
@@ -190,7 +186,7 @@ function check_test_1(installSyncGUID) {
           // Ensure that extension bundle (or icon if unpacked) has updated
           // lastModifiedDate.
           let testURI = a1.getResourceURI(TEST_UNPACKED ? "icon.png" : "");
-          let testFile = testURI.QueryInterface(Components.interfaces.nsIFileURL).file;
+          let testFile = testURI.QueryInterface(Ci.nsIFileURL).file;
           Assert.ok(testFile.exists());
           difference = testFile.lastModifiedTime - Date.now();
           Assert.ok(Math.abs(difference) < MAX_TIME_DIFFERENCE);
@@ -230,7 +226,7 @@ function run_test_2() {
       install.addListener({
         onDownloadProgress() {
           executeSoon(function() {
-            Components.utils.forceGC();
+            Cu.forceGC();
           });
         }
       });
@@ -987,7 +983,9 @@ function run_test_18_1() {
 
   Services.prefs.setBoolPref("extensions.getAddons.cache.enabled", true);
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS,
-                             "http://localhost:" + gPort + "/data/test_install.xml");
+                             "http://localhost:" + gPort + "/data/test_install_addons.json");
+  Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES,
+                             "http://localhost:" + gPort + "/data/test_install_compat.json");
 
   Services.prefs.setBoolPref("extensions.addon2@tests.mozilla.org.getAddons.cache.enabled", false);
 
@@ -1324,7 +1322,7 @@ function run_test_26() {
         return;
 
       // Request should have been cancelled
-      Assert.equal(aChannel.status, Components.results.NS_BINDING_ABORTED);
+      Assert.equal(aChannel.status, Cr.NS_BINDING_ABORTED);
 
       observerService.removeObserver(this);
 
@@ -1405,60 +1403,7 @@ function finish_test_27(aInstall) {
 
   ensure_test_completed();
 
-  run_test_28();
-}
-
-// Tests that an install that isn't strictly compatible and has
-// binary components correctly has appDisabled set (see bug 702868).
-function run_test_28() {
-  prepare_test({ }, [
-    "onNewInstall"
-  ]);
-
-  let url = "http://localhost:" + gPort + "/addons/test_install5.xpi";
-  AddonManager.getInstallForURL(url, function(install) {
-    ensure_test_completed();
-
-    Assert.notEqual(install, null);
-    Assert.equal(install.version, "1.0");
-    Assert.equal(install.name, "Real Test 5");
-    Assert.equal(install.state, AddonManager.STATE_AVAILABLE);
-
-    AddonManager.getInstallsByTypes(null, function(activeInstalls) {
-      Assert.equal(activeInstalls.length, 1);
-      Assert.equal(activeInstalls[0], install);
-
-      prepare_test({}, [
-        "onDownloadStarted",
-        "onDownloadEnded",
-        "onInstallStarted"
-      ], check_test_28);
-      install.install();
-    });
-  }, "application/x-xpinstall", null, "Real Test 5", null, "1.0");
-}
-
-function check_test_28(install) {
-  ensure_test_completed();
-  Assert.equal(install.version, "1.0");
-  Assert.equal(install.name, "Real Test 5");
-  Assert.equal(install.state, AddonManager.STATE_INSTALLING);
-  Assert.equal(install.existingAddon, null);
-  Assert.ok(!install.addon.isCompatible);
-  Assert.ok(install.addon.appDisabled);
-
-  prepare_test({}, [
-    "onInstallCancelled"
-  ], finish_test_28);
-  return false;
-}
-
-function finish_test_28(install) {
-  prepare_test({}, [
-    "onDownloadCancelled"
-  ], run_test_29);
-
-  install.cancel();
+  run_test_29();
 }
 
 // Tests that an install with a matching compatibility override has appDisabled

@@ -3,17 +3,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 browser.jar:
 %  content browser %content/browser/ contentaccessible=yes
-#ifdef XP_MACOSX
-%  overlay chrome://mozapps/content/update/updates.xul chrome://browser/content/softwareUpdateOverlay.xul
-#endif
-%  overlay chrome://global/content/viewSource.xul chrome://browser/content/viewSourceOverlay.xul
-%  overlay chrome://global/content/viewPartialSource.xul chrome://browser/content/viewSourceOverlay.xul
 
         content/browser/aboutDialog-appUpdater.js     (content/aboutDialog-appUpdater.js)
 *       content/browser/aboutDialog.xul               (content/aboutDialog.xul)
         content/browser/aboutDialog.js                (content/aboutDialog.js)
         content/browser/aboutDialog.css               (content/aboutDialog.css)
         content/browser/aboutRobots.xhtml             (content/aboutRobots.xhtml)
+        content/browser/aboutRobots.js                (content/aboutRobots.js)
+        content/browser/aboutRobots.css               (content/aboutRobots.css)
 *       content/browser/abouthome/aboutHome.xhtml     (content/abouthome/aboutHome.xhtml)
         content/browser/abouthome/aboutHome.js        (content/abouthome/aboutHome.js)
 *       content/browser/abouthome/aboutHome.css       (content/abouthome/aboutHome.css)
@@ -78,6 +75,7 @@ browser.jar:
 #endif
         content/browser/browser-thumbnails.js         (content/browser-thumbnails.js)
         content/browser/browser-trackingprotection.js (content/browser-trackingprotection.js)
+        content/browser/browser-webrender.js          (content/browser-webrender.js)
         content/browser/tab-content.js                (content/tab-content.js)
         content/browser/content.js                    (content/content.js)
         content/browser/default-theme-icon.svg        (content/default-theme-icon.svg)
@@ -96,18 +94,12 @@ browser.jar:
         content/browser/defaultthemes/5.header.png    (content/defaultthemes/5.header.png)
         content/browser/defaultthemes/5.icon.jpg      (content/defaultthemes/5.icon.jpg)
         content/browser/defaultthemes/5.preview.jpg   (content/defaultthemes/5.preview.jpg)
-        content/browser/defaultthemes/compact.header.png    (content/defaultthemes/compact.header.png)
         content/browser/defaultthemes/dark.icon.svg  (content/defaultthemes/dark.icon.svg)
         content/browser/defaultthemes/light.icon.svg (content/defaultthemes/light.icon.svg)
-        content/browser/newtab/newTab.xhtml           (content/newtab/newTab.xhtml)
-*       content/browser/newtab/newTab.js              (content/newtab/newTab.js)
-        content/browser/newtab/newTab.css             (content/newtab/newTab.css)
-        content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
         content/browser/pageinfo/feeds.js             (content/pageinfo/feeds.js)
-        content/browser/pageinfo/feeds.xml            (content/pageinfo/feeds.xml)
         content/browser/pageinfo/permissions.js       (content/pageinfo/permissions.js)
         content/browser/pageinfo/security.js          (content/pageinfo/security.js)
         content/browser/robot.ico                     (content/robot.ico)
@@ -115,13 +107,13 @@ browser.jar:
         content/browser/safeMode.css                  (content/safeMode.css)
         content/browser/safeMode.js                   (content/safeMode.js)
         content/browser/safeMode.xul                  (content/safeMode.xul)
-        content/browser/sanitize.js                   (content/sanitize.js)
         content/browser/sanitize.xul                  (content/sanitize.xul)
         content/browser/sanitizeDialog.js             (content/sanitizeDialog.js)
         content/browser/sanitizeDialog.css            (content/sanitizeDialog.css)
         content/browser/contentSearchUI.js            (content/contentSearchUI.js)
         content/browser/contentSearchUI.css           (content/contentSearchUI.css)
         content/browser/tabbrowser.css                (content/tabbrowser.css)
+        content/browser/tabbrowser.js                 (content/tabbrowser.js)
         content/browser/tabbrowser.xml                (content/tabbrowser.xml)
 *       content/browser/urlbarBindings.xml            (content/urlbarBindings.xml)
         content/browser/utilityOverlay.js             (content/utilityOverlay.js)
@@ -129,15 +121,12 @@ browser.jar:
 *       content/browser/web-panels.xul                (content/web-panels.xul)
         content/browser/webext-panels.js              (content/webext-panels.js)
 *       content/browser/webext-panels.xul             (content/webext-panels.xul)
-*       content/browser/baseMenuOverlay.xul           (content/baseMenuOverlay.xul)
         content/browser/nsContextMenu.js              (content/nsContextMenu.js)
 # XXX: We should exclude this one as well (bug 71895)
 *       content/browser/hiddenWindow.xul              (content/hiddenWindow.xul)
 #ifdef XP_MACOSX
 *       content/browser/macBrowserOverlay.xul         (content/macBrowserOverlay.xul)
-*       content/browser/softwareUpdateOverlay.xul     (content/softwareUpdateOverlay.xul)
 #endif
-*       content/browser/viewSourceOverlay.xul         (content/viewSourceOverlay.xul)
 #ifndef XP_MACOSX
 *       content/browser/webrtcIndicator.xul           (content/webrtcIndicator.xul)
         content/browser/webrtcIndicator.js            (content/webrtcIndicator.js)
@@ -145,9 +134,7 @@ browser.jar:
 # the following files are browser-specific overrides
 *       content/browser/license.html                  (/toolkit/content/license.html)
 % override chrome://global/content/license.html chrome://browser/content/license.html
-        content/browser/report-phishing-overlay.xul     (content/report-phishing-overlay.xul)
         content/browser/blockedSite.xhtml               (content/blockedSite.xhtml)
-% overlay chrome://browser/content/browser.xul chrome://browser/content/report-phishing-overlay.xul
 
 % override chrome://global/content/netError.xhtml chrome://browser/content/aboutNetError.xhtml
 

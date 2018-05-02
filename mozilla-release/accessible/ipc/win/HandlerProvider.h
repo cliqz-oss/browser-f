@@ -15,6 +15,7 @@
 #include "mozilla/mscom/StructStream.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/UniquePtr.h"
+#include "HandlerData.h"
 
 struct NEWEST_IA2_INTERFACE;
 
@@ -46,6 +47,7 @@ public:
   STDMETHODIMP WriteHandlerPayload(NotNull<mscom::IInterceptor*> aInterceptor,
                                    NotNull<IStream*> aStream) override;
   STDMETHODIMP_(REFIID) MarshalAs(REFIID aIid) override;
+  STDMETHODIMP DisconnectHandlerRemotes() override;
   STDMETHODIMP_(REFIID) GetEffectiveOutParamIid(REFIID aCallIid,
                                                 ULONG aCallMethod) override;
   STDMETHODIMP NewInstance(REFIID aIid,
@@ -62,6 +64,8 @@ public:
                                long* aNAttribRuns) override;
   STDMETHODIMP get_RelationsInfo(IARelationData** aRelations,
                                  long* aNRelations) override;
+  STDMETHODIMP get_AllChildren(AccChildData** aChildren,
+                               ULONG* aNChildren) override;
 
 private:
   ~HandlerProvider() = default;
@@ -93,6 +97,8 @@ private:
   void GetRelationsInfoMainThread(IARelationData** aRelations,
                                   long* aNRelations,
                                   HRESULT* result);
+  void GetAllChildrenMainThread(AccChildData** aChildren, ULONG* aNChildren,
+                                HRESULT* result);
 
   Atomic<uint32_t>                  mRefCnt;
   Mutex                             mMutex; // Protects mSerializer

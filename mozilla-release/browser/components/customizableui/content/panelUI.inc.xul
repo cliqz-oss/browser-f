@@ -177,7 +177,7 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons">
+        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons sync-ui-item">
           <hbox id="appMenu-fxa-status"
                 flex="1"
                 defaultlabel="&fxaSignIn.label;"
@@ -201,7 +201,7 @@
             <observes element="sync-status" attribute="tooltiptext"/>
           </toolbarbutton>
         </toolbaritem>
-        <toolbarseparator/>
+        <toolbarseparator class="sync-ui-item"/>
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"
                        label="&newNavigatorCmd.label;"
@@ -439,7 +439,7 @@
                 <label class="PanelUI-remotetabs-instruction-label">&appMenuRemoteTabs.tabsnotsyncing.label;</label>
                 <hbox pack="center">
                   <toolbarbutton class="PanelUI-remotetabs-button"
-                                 label="&appMenuRemoteTabs.openprefs.label;"
+                                 label="&appMenuRemoteTabs.opensyncprefs.label;"
                                  oncommand="gSync.openPrefs('synced-tabs');"/>
                 </hbox>
               </vbox>
@@ -450,7 +450,7 @@
             </vbox>
             <!-- Sync has only 1 (ie, this) device connected -->
             <hbox id="PanelUI-remotetabs-nodevicespane" pack="center" flex="1">
-              <vbox class="PanelUI-remotetabs-instruction-box">
+              <vbox class="PanelUI-remotetabs-instruction-box" align="center">
                 <hbox pack="center">
                   <image class="fxaSyncIllustrationIssue"/>
                 </hbox>
@@ -499,7 +499,7 @@
             <image class="fxaSyncIllustrationIssue"/>
             <label class="PanelUI-remotetabs-instruction-label">&appMenuRemoteTabs.unverified.label;</label>
             <toolbarbutton class="PanelUI-remotetabs-button"
-                           label="&appMenuRemoteTabs.openprefs.label;"
+                           label="&appMenuRemoteTabs.opensyncprefs.label;"
                            oncommand="gSync.openPrefs('synced-tabs');"/>
           </vbox>
         </hbox>
@@ -637,7 +637,7 @@
                        closemenu="none"
                        oncommand="DownloadsSubview.show(this);"/>
         <toolbarbutton id="appMenu-library-remotetabs-button"
-                       class="subviewbutton subviewbutton-iconic subviewbutton-nav"
+                       class="subviewbutton subviewbutton-iconic subviewbutton-nav sync-ui-item"
                        label="&appMenuRemoteTabs.label;"
                        closemenu="none"
                        oncommand="PanelUI.showSubView('PanelUI-remotetabs', this)"/>
@@ -659,26 +659,21 @@
     <panelview id="PanelUI-bookmarkingTools" class="PanelUI-subView">
       <vbox class="panel-subview-body">
         <toolbarbutton id="panelMenu_toggleBookmarksMenu"
-                       label="&addBookmarksMenu.label;"
-                       label-checked="&removeBookmarksMenu.label;"
                        class="subviewbutton subviewbutton-iconic"
-                       oncommand="BookmarkingUI.toggleMenuButtonInToolbar(this); PanelUI.hide();"/>
+                       label-show="&addBookmarksMenu.label;"
+                       label-hide="&removeBookmarksMenu.label;"
+                       oncommand="BookmarkingUI.toggleMenuButtonInToolbar(this);"/>
         <toolbarbutton id="panelMenu_viewBookmarksSidebar"
-                       label="&viewBookmarksSidebar2.label;"
-                       label-checked="&hideBookmarksSidebar.label;"
                        class="subviewbutton subviewbutton-iconic"
+                       label-show="&viewBookmarksSidebar2.label;"
+                       label-hide="&hideBookmarksSidebar.label;"
                        key="viewBookmarksSidebarKb"
-                       oncommand="SidebarUI.toggle('viewBookmarksSidebar', this); PanelUI.hide();">
-          <observes element="viewBookmarksSidebar" attribute="checked"/>
-        </toolbarbutton>
+                       oncommand="SidebarUI.toggle('viewBookmarksSidebar', this);"/>
         <toolbarbutton id="panelMenu_viewBookmarksToolbar"
                        class="subviewbutton subviewbutton-iconic"
-                       placesanonid="view-toolbar"
-                       toolbarId="PersonalToolbar"
-                       type="checkbox"
-                       oncommand="onViewToolbarCommand(event)"
-                       label="&viewBookmarksToolbar.label;"
-                       label-checked="&hideBookmarksToolbar.label;"/>
+                       label-show="&viewBookmarksToolbar.label;"
+                       label-hide="&hideBookmarksToolbar.label;"
+                       oncommand="BookmarkingUI.toggleBookmarksToolbar();"/>
       </vbox>
     </panelview>
   </panelmultiview>
@@ -710,15 +705,13 @@
                      label="&newTabControlled.header.message;"
                      buttonlabel="&newTabControlled.keepButton.label;"
                      buttonaccesskey="&newTabControlled.keepButton.accesskey;"
-                     secondarybuttonlabel="&newTabControlled.restoreButton.label;"
-                     secondarybuttonaccesskey="&newTabControlled.restoreButton.accesskey;"
+                     secondarybuttonlabel="&newTabControlled.disableButton.label;"
+                     secondarybuttonaccesskey="&newTabControlled.disableButton.accesskey;"
                      closebuttonhidden="true"
                      dropmarkerhidden="true"
                      checkboxhidden="true">
     <popupnotificationcontent orient="vertical">
-      <description id="extension-new-tab-notification-description">
-        &newTabControlled.message;
-      </description>
+      <description id="extension-new-tab-notification-description"/>
     </popupnotificationcontent>
   </popupnotification>
 </panel>

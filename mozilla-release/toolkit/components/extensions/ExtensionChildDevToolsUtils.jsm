@@ -11,13 +11,11 @@
  * from the child process.
  */
 
-this.EXPORTED_SYMBOLS = ["ExtensionChildDevToolsUtils"];
+var EXPORTED_SYMBOLS = ["ExtensionChildDevToolsUtils"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/EventEmitter.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // Create a variable to hold the cached ThemeChangeObserver which does not
 // get created until a devtools context has been created.
@@ -82,7 +80,7 @@ class ThemeChangeObserver extends EventEmitter {
   }
 }
 
-this.ExtensionChildDevToolsUtils = {
+var ExtensionChildDevToolsUtils = {
   /**
    * Creates an cached instance of the ThemeChangeObserver class and
    * initializes it with the current themeName. This cached instance is

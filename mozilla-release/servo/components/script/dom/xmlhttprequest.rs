@@ -14,7 +14,6 @@ use dom::bindings::codegen::UnionTypes::DocumentOrBodyInit;
 use dom::bindings::conversions::ToJSValConvertible;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::nonnull::NonNullJSObjectPtr;
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
 use dom::bindings::root::{Dom, DomRoot, MutNullableDom};
@@ -61,12 +60,12 @@ use net_traits::trim_http_whitespace;
 use network_listener::{NetworkListener, PreInvoke};
 use script_traits::DocumentActivity;
 use servo_atoms::Atom;
-use servo_config::prefs::PREFS;
 use servo_url::ServoUrl;
 use std::borrow::ToOwned;
 use std::cell::Cell;
 use std::default::Default;
 use std::ptr;
+use std::ptr::NonNull;
 use std::slice;
 use std::str;
 use std::sync::{Arc, Mutex};
@@ -75,7 +74,7 @@ use time;
 use timers::{OneshotTimerCallback, OneshotTimerHandle};
 use url::Position;
 
-#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 enum XMLHttpRequestState {
     Unsent = 0,
     Opened = 1,
@@ -572,20 +571,6 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             unreachable!()
         };
 
-        let bypass_cross_origin_check = {
-            // We want to be able to do cross-origin requests in browser.html.
-            // If the XHR happens in a top level window and the mozbrowser
-            // preference is enabled, we allow bypassing the CORS check.
-            // This is a temporary measure until we figure out Servo privilege
-            // story. See https://github.com/servo/servo/issues/9582
-            if let Some(win) = DomRoot::downcast::<Window>(self.global()) {
-                let is_root_pipeline = win.parent_info().is_none();
-                is_root_pipeline && PREFS.is_mozbrowser_enabled()
-            } else {
-                false
-            }
-        };
-
         let mut request = RequestInit {
             method: self.request_method.borrow().clone(),
             url: self.request_url.borrow().clone().unwrap(),
@@ -607,10 +592,6 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             pipeline_id: Some(self.global().pipeline_id()),
             .. RequestInit::default()
         };
-
-        if bypass_cross_origin_check {
-            request.mode = RequestMode::Navigate;
-        }
 
         // step 4 (second half)
         match extracted_or_serialized {
@@ -849,7 +830,7 @@ pub type TrustedXHRAddress = Trusted<XMLHttpRequest>;
 
 impl XMLHttpRequest {
     fn change_ready_state(&self, rs: XMLHttpRequestState) {
-        assert!(self.ready_state.get() != rs);
+        assert_ne!(self.ready_state.get(), rs);
         self.ready_state.set(rs);
         let event = Event::new(&self.global(),
                                atom!("readystatechange"),
@@ -1120,11 +1101,11 @@ impl XMLHttpRequest {
 
     // https://xhr.spec.whatwg.org/#arraybuffer-response
     #[allow(unsafe_code)]
-    unsafe fn arraybuffer_response(&self, cx: *mut JSContext) -> Option<NonNullJSObjectPtr> {
+    unsafe fn arraybuffer_response(&self, cx: *mut JSContext) -> Option<NonNull<JSObject>> {
         // Step 1
         let created = self.response_arraybuffer.get();
-        if !created.is_null() {
-            return Some(NonNullJSObjectPtr::new_unchecked(created));
+        if let Some(nonnull) = NonNull::new(created) {
+            return Some(nonnull)
         }
 
         // Step 2
@@ -1132,7 +1113,7 @@ impl XMLHttpRequest {
         rooted!(in(cx) let mut array_buffer = ptr::null_mut::<JSObject>());
         ArrayBuffer::create(cx, CreateWith::Slice(&bytes), array_buffer.handle_mut()).ok().and_then(|()| {
             self.response_arraybuffer.set(array_buffer.get());
-            Some(NonNullJSObjectPtr::new_unchecked(array_buffer.get()))
+            Some(NonNull::new_unchecked(array_buffer.get()))
         })
     }
 
@@ -1205,7 +1186,7 @@ impl XMLHttpRequest {
             };
             let last = true;
             let (_, read, written, _) = decoder.decode_to_utf16(bytes, extra, last);
-            assert!(read == bytes.len());
+            assert_eq!(read, bytes.len());
             unsafe {
                 utf16.set_len(written)
             }
@@ -1271,10 +1252,7 @@ impl XMLHttpRequest {
             Ok(parsed) => Some(parsed),
             Err(_) => None // Step 7
         };
-        let mime_type = self.final_mime_type();
-        let content_type = mime_type.map(|mime|{
-            DOMString::from(format!("{}", mime))
-        });
+        let content_type = self.final_mime_type();
         Document::new(win,
                       HasBrowsingContext::No,
                       parsed_url,

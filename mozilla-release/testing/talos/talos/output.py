@@ -255,6 +255,31 @@ class Output(object):
         score = 60 * 1000 / filter.geometric_mean(results) / correctionFactor
         return score
 
+    @classmethod
+    def benchmark_score(cls, val_list):
+        """
+        benchmark_score: ares6/jetstream self reported as 'geomean'
+        """
+        results = [i for i, j in val_list if j == 'geomean']
+        return filter.mean(results)
+
+    @classmethod
+    def stylebench_score(cls, val_list):
+        """
+        stylebench_score: https://bug-172968-attachments.webkit.org/attachment.cgi?id=319888
+        """
+        correctionFactor = 3
+        results = [i for i, j in val_list]
+        # stylebench has 4 tests, each of these are made of up 12 subtests
+        # and a sum of the 12 values.  We receive 52 values, and want to use
+        # the 4 test values, not the sub test values.
+        if len(results) != 52:
+            raise Exception("StyleBench has 52 subtests, found: %s instead" % len(results))
+
+        results = results[12::13]
+        score = 60 * 1000 / filter.geometric_mean(results) / correctionFactor
+        return score
+
     def construct_results(self, vals, testname):
         if 'responsiveness' in testname:
             return filter.responsiveness_Metric([val for (val, page) in vals])
@@ -262,8 +287,14 @@ class Output(object):
             return self.v8_Metric(vals)
         elif testname.startswith('kraken'):
             return self.JS_Metric(vals)
+        elif testname.startswith('ares6'):
+            return self.benchmark_score(vals)
+        elif testname.startswith('jetstream'):
+            return self.benchmark_score(vals)
         elif testname.startswith('speedometer'):
             return self.speedometer_score(vals)
+        elif testname.startswith('stylebench'):
+            return self.stylebench_score(vals)
         elif len(vals) > 1:
             return filter.geometric_mean([i for i, j in vals])
         else:

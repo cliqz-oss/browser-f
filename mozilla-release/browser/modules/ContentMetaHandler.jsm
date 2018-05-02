@@ -3,9 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-const {utils: Cu, interfaces: Ci, classes: Cc} = Components;
 Cu.importGlobalProperties(["URL"]);
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Debounce time in milliseconds - this should be long enough to account for
 // sync script tags that could appear between desired meta tags
@@ -69,7 +68,7 @@ function checkLoadURIStr(aURL) {
   return true;
 }
 
-this.EXPORTED_SYMBOLS = [ "ContentMetaHandler" ];
+var EXPORTED_SYMBOLS = [ "ContentMetaHandler" ];
 
 /*
  * This listens to DOMMetaAdded events and collects relevant metadata about the
@@ -77,7 +76,7 @@ this.EXPORTED_SYMBOLS = [ "ContentMetaHandler" ];
  * and the url of the page as it's payload to be inserted into moz_places.
  */
 
-this.ContentMetaHandler = {
+var ContentMetaHandler = {
   init(chromeGlobal) {
     // Store a locally-scoped (for this chromeGlobal) mapping of the best
     // description and preview image collected so far for a given URL

@@ -15,8 +15,8 @@
 #include "nsStringBuffer.h"
 
 #include "mozilla/dom/StructuredCloneTags.h"
-// for mozilla::dom::workers::kJSPrincipalsDebugToken
-#include "mozilla/dom/workers/Workers.h"
+// for mozilla::dom::workerinternals::kJSPrincipalsDebugToken
+#include "mozilla/dom/workerinternals/JSSettings.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 
 using namespace mozilla;
@@ -90,7 +90,7 @@ JSPrincipals::dump()
       nsresult rv = static_cast<nsJSPrincipals *>(this)->GetScriptLocation(str);
       fprintf(stderr, "nsIPrincipal (%p) = %s\n", static_cast<void*>(this),
               NS_SUCCEEDED(rv) ? str.get() : "(unknown)");
-    } else if (debugToken == dom::workers::kJSPrincipalsDebugToken) {
+    } else if (debugToken == dom::workerinternals::kJSPrincipalsDebugToken) {
         fprintf(stderr, "Web Worker principal singleton (%p)\n", this);
     } else {
         fprintf(stderr,
@@ -219,11 +219,21 @@ ReadPrincipalInfo(JSStructuredCloneReader* aReader,
             return false;
         }
 
+#ifdef FUZZING
+        if (originNoSuffix.IsEmpty()) {
+          return false;
+        }
+#endif
+
         MOZ_DIAGNOSTIC_ASSERT(!originNoSuffix.IsEmpty());
 
         aInfo = ContentPrincipalInfo(attrs, originNoSuffix, spec);
     } else {
+#ifdef FUZZING
+        return false;
+#else
         MOZ_CRASH("unexpected principal structured clone tag");
+#endif
     }
 
     return true;

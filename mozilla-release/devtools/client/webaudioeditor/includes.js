@@ -3,12 +3,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-const { loader, require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { loader, require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 const { Task } = require("devtools/shared/task");
-const OldEventEmitter = require("devtools/shared/old-event-emitter");
 const EventEmitter = require("devtools/shared/event-emitter");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const Services = require("Services");
@@ -83,7 +80,7 @@ var gToolbox, gTarget, gFront;
 /**
  * Convenient way of emitting events from the panel window.
  */
-OldEventEmitter.decorate(this);
+EventEmitter.decorate(this);
 
 /**
  * DOM query helper.

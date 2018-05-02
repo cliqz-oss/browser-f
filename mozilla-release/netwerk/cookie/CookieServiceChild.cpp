@@ -16,6 +16,7 @@
 #include "nsCookieService.h"
 #include "nsContentUtils.h"
 #include "nsNetCID.h"
+#include "nsNetUtil.h"
 #include "nsIChannel.h"
 #include "nsICookiePermission.h"
 #include "nsIEffectiveTLDService.h"
@@ -131,7 +132,10 @@ CookieServiceChild::TrackCookieLoad(nsIChannel *aChannel)
   }
   URIParams uriParams;
   SerializeURI(uri, uriParams);
-  SendPrepareCookieList(uriParams, isForeign, attrs);
+  bool isSafeTopLevelNav = NS_IsSafeTopLevelNav(aChannel);
+  bool isSameSiteForeign = NS_IsSameSiteForeign(aChannel, uri);
+  SendPrepareCookieList(uriParams, isForeign, isSafeTopLevelNav,
+                        isSameSiteForeign, attrs);
 }
 
 mozilla::ipc::IPCResult
@@ -256,6 +260,8 @@ CookieServiceChild::PrefChanged(nsIPrefBranch *aPrefBranch)
 void
 CookieServiceChild::GetCookieStringFromCookieHashTable(nsIURI                 *aHostURI,
                                                        bool                   aIsForeign,
+                                                       bool                   aIsSafeTopLevelNav,
+                                                       bool                   aIsSameSiteForeign,
                                                        const OriginAttributes &aOriginAttrs,
                                                        nsCString              &aCookieString)
 {
@@ -306,6 +312,21 @@ CookieServiceChild::GetCookieStringFromCookieHashTable(nsIURI                 *a
     if (cookie->IsSecure() && !isSecure)
       continue;
 
+    int32_t sameSiteAttr = 0;
+    cookie->GetSameSite(&sameSiteAttr);
+    if (aIsSameSiteForeign && nsCookieService::IsSameSiteEnabled()) {
+      // it if's a cross origin request and the cookie is same site only (strict)
+      // don't send it
+      if (sameSiteAttr == nsICookie2::SAMESITE_STRICT) {
+        continue;
+      }
+      // if it's a cross origin request, the cookie is same site lax, but it's not
+      // a top-level navigation, don't send it
+      if (sameSiteAttr == nsICookie2::SAMESITE_LAX && !aIsSafeTopLevelNav) {
+        continue;
+      }
+    }
+
     // if the nsIURI path doesn't match the cookie path, don't send it back
     if (!nsCookieService::PathMatches(cookie, pathFromURI))
       continue;
@@ -333,13 +354,15 @@ CookieServiceChild::GetCookieStringFromCookieHashTable(nsIURI                 *a
 void
 CookieServiceChild::GetCookieStringSyncIPC(nsIURI                 *aHostURI,
                                            bool                   aIsForeign,
+                                           bool                   aIsSafeTopLevelNav,
+                                           bool                   aIsSameSiteForeign,
                                            const OriginAttributes &aAttrs,
                                            nsAutoCString          &aCookieString)
 {
   URIParams uriParams;
   SerializeURI(aHostURI, uriParams);
 
-  SendGetCookieString(uriParams, aIsForeign, aAttrs, &aCookieString);
+  SendGetCookieString(uriParams, aIsForeign, aIsSafeTopLevelNav, aIsSameSiteForeign, aAttrs, &aCookieString);
 }
 
 uint32_t
@@ -412,6 +435,7 @@ CookieServiceChild::RecordDocumentCookie(nsCookie               *aCookie,
       if (cookie->Value().Equals(aCookie->Value()) &&
           cookie->Expiry() == aCookie->Expiry() &&
           cookie->IsSecure() == aCookie->IsSecure() &&
+          cookie->SameSite() == aCookie->SameSite() &&
           cookie->IsSession() == aCookie->IsSession() &&
           cookie->IsHttpOnly() == aCookie->IsHttpOnly()) {
         cookie->SetLastAccessed(aCookie->LastAccessed());
@@ -461,14 +485,20 @@ CookieServiceChild::GetCookieStringInternal(nsIURI *aHostURI,
   bool isForeign = true;
   if (RequireThirdPartyCheck())
     mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
+
+  bool isSafeTopLevelNav = NS_IsSafeTopLevelNav(aChannel);
+  bool isSameSiteForeign = NS_IsSameSiteForeign(aChannel, aHostURI);
+
   nsAutoCString result;
   if (!mIPCSync) {
-    GetCookieStringFromCookieHashTable(aHostURI, !!isForeign, attrs, result);
+    GetCookieStringFromCookieHashTable(aHostURI, !!isForeign, isSafeTopLevelNav,
+                                       isSameSiteForeign, attrs, result);
   } else {
     if (!mIPCOpen) {
       return NS_ERROR_NOT_AVAILABLE;
     }
-    GetCookieStringSyncIPC(aHostURI, !!isForeign, attrs, result);
+    GetCookieStringSyncIPC(aHostURI, !!isForeign, isSafeTopLevelNav,
+                           isSameSiteForeign, attrs, result);
   }
 
   if (!result.IsEmpty())
@@ -504,8 +534,13 @@ CookieServiceChild::SetCookieStringInternal(nsIURI *aHostURI,
   if (aServerTime)
     stringServerTime.Rebind(aServerTime);
 
-  URIParams uriParams;
-  SerializeURI(aHostURI, uriParams);
+  URIParams hostURIParams;
+  SerializeURI(aHostURI, hostURIParams);
+
+  nsCOMPtr<nsIURI> channelURI;
+  aChannel->GetURI(getter_AddRefs(channelURI));
+  URIParams channelURIParams;
+  SerializeURI(channelURI, channelURIParams);
 
   mozilla::OriginAttributes attrs;
   if (aChannel) {
@@ -517,7 +552,8 @@ CookieServiceChild::SetCookieStringInternal(nsIURI *aHostURI,
 
   // Asynchronously call the parent.
   if (mIPCOpen) {
-    SendSetCookieString(uriParams, !!isForeign, cookieString,
+    SendSetCookieString(hostURIParams, channelURIParams,
+                        !!isForeign, cookieString,
                         stringServerTime, attrs, aFromHttp);
   }
 

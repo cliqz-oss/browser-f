@@ -18,47 +18,42 @@
 #ifndef XP_WIN
 # include <sys/mman.h>
 #endif
-
 #ifdef MOZ_VALGRIND
 # include <valgrind/memcheck.h>
 #endif
 
 #include "jsapi.h"
 #include "jsarray.h"
-#include "jscntxt.h"
-#include "jscpucfg.h"
 #include "jsfriendapi.h"
 #include "jsnum.h"
-#include "jsobj.h"
 #include "jstypes.h"
 #include "jsutil.h"
-#ifdef XP_WIN
-# include "jswin.h"
-#endif
-#include "jswrapper.h"
 
 #include "builtin/DataViewObject.h"
 #include "gc/Barrier.h"
+#include "gc/FreeOp.h"
 #include "gc/Memory.h"
 #include "js/Conversions.h"
 #include "js/MemoryMetrics.h"
+#include "js/Wrapper.h"
+#include "util/Windows.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/SharedArrayObject.h"
 #include "vm/WrapperObject.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmTypes.h"
 
-#include "jsatominlines.h"
-
 #include "gc/Marking-inl.h"
 #include "gc/Nursery-inl.h"
+#include "vm/JSAtom-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
 
 using JS::ToInt32;
 
-using mozilla::DebugOnly;
 using mozilla::CheckedInt;
 using mozilla::Some;
 using mozilla::Maybe;
@@ -650,8 +645,7 @@ class js::WasmArrayRawBuffer
     size_t mappedSize_;         // Not including the header page
 
   protected:
-    WasmArrayRawBuffer(uint8_t* buffer, uint32_t length, const Maybe<uint32_t>& maxSize,
-                       size_t mappedSize)
+    WasmArrayRawBuffer(uint8_t* buffer, const Maybe<uint32_t>& maxSize, size_t mappedSize)
       : maxSize_(maxSize), mappedSize_(mappedSize)
     {
         MOZ_ASSERT(buffer == dataPointer());
@@ -765,7 +759,7 @@ WasmArrayRawBuffer::Allocate(uint32_t numBytes, const Maybe<uint32_t>& maxSize)
     uint8_t* base = reinterpret_cast<uint8_t*>(data) + gc::SystemPageSize();
     uint8_t* header = base - sizeof(WasmArrayRawBuffer);
 
-    auto rawBuf = new (header) WasmArrayRawBuffer(base, numBytes, maxSize, mappedSize);
+    auto rawBuf = new (header) WasmArrayRawBuffer(base, maxSize, mappedSize);
     return rawBuf;
 }
 
@@ -858,7 +852,7 @@ js::CreateWasmBuffer(JSContext* cx, const wasm::Limits& memory,
     }
 
 #ifndef WASM_HUGE_MEMORY
-    if (sizeof(void*) == 8 && maxSize && maxSize.value() == UINT32_MAX) {
+    if (sizeof(void*) == 8 && maxSize && maxSize.value() >= (UINT32_MAX - wasm::PageSize)) {
         // On 64-bit platforms that don't define WASM_HUGE_MEMORY
         // clamp maxSize to smaller value that satisfies the 32-bit invariants
         // maxSize + wasm::PageSize < UINT32_MAX and maxSize % wasm::PageSize == 0
@@ -970,6 +964,13 @@ ArrayBufferObject::dataPointerShared() const
     return SharedMem<uint8_t*>::unshared(getSlot(DATA_SLOT).toPrivate());
 }
 
+ArrayBufferObject::RefcountInfo*
+ArrayBufferObject::refcountInfo() const
+{
+    MOZ_ASSERT(isExternal());
+    return reinterpret_cast<RefcountInfo*>(inlineDataPointer());
+}
+
 void
 ArrayBufferObject::releaseData(FreeOp* fop)
 {
@@ -985,8 +986,16 @@ ArrayBufferObject::releaseData(FreeOp* fop)
       case WASM:
         WasmArrayRawBuffer::Release(dataPointer());
         break;
-      case KIND_MASK:
-        MOZ_CRASH("bad bufferKind()");
+      case EXTERNAL:
+        if (refcountInfo()->unref) {
+            // The analyzer can't know for sure whether the embedder-supplied
+            // unref function will GC. We give the analyzer a hint here.
+            // (Doing a GC in the unref function is considered a programmer
+            // error.)
+            JS::AutoSuppressGCAnalysis nogc;
+            refcountInfo()->unref(dataPointer(), refcountInfo()->refUserData);
+        }
+        break;
     }
 }
 
@@ -996,6 +1005,18 @@ ArrayBufferObject::setDataPointer(BufferContents contents, OwnsState ownsData)
     setSlot(DATA_SLOT, PrivateValue(contents.data()));
     setOwnsData(ownsData);
     setFlags((flags() & ~KIND_MASK) | contents.kind());
+
+    if (isExternal()) {
+        auto info = refcountInfo();
+        info->ref = contents.refFunc();
+        info->unref = contents.unrefFunc();
+        info->refUserData = contents.refUserData();
+        if (info->ref) {
+            // See comment in releaseData() for the explanation for this.
+            JS::AutoSuppressGCAnalysis nogc;
+            info->ref(dataPointer(), info->refUserData);
+        }
+    }
 }
 
 uint32_t
@@ -1164,13 +1185,23 @@ ArrayBufferObject::create(JSContext* cx, uint32_t nbytes, BufferContents content
     bool allocated = false;
     if (contents) {
         if (ownsState == OwnsData) {
-            // The ABO is taking ownership, so account the bytes against the zone.
-            size_t nAllocated = nbytes;
-            if (contents.kind() == MAPPED)
-                nAllocated = JS_ROUNDUP(nbytes, js::gc::SystemPageSize());
-            else if (contents.kind() == WASM)
-                nAllocated = contents.wasmBuffer()->allocatedBytes();
-            cx->updateMallocCounter(nAllocated);
+            if (contents.kind() == EXTERNAL) {
+                // Store the RefcountInfo in the inline data slots so that we
+                // don't use up slots for it in non-refcounted array buffers.
+                size_t refcountInfoSlots = JS_HOWMANY(sizeof(RefcountInfo), sizeof(Value));
+                MOZ_ASSERT(reservedSlots + refcountInfoSlots <= NativeObject::MAX_FIXED_SLOTS,
+                           "RefcountInfo must fit in inline slots");
+                nslots += refcountInfoSlots;
+            } else {
+                // The ABO is taking ownership, so account the bytes against
+                // the zone.
+                size_t nAllocated = nbytes;
+                if (contents.kind() == MAPPED)
+                    nAllocated = JS_ROUNDUP(nbytes, js::gc::SystemPageSize());
+                else if (contents.kind() == WASM)
+                    nAllocated = contents.wasmBuffer()->allocatedBytes();
+                cx->updateMallocCounter(nAllocated);
+            }
         }
     } else {
         MOZ_ASSERT(ownsState == OwnsData);
@@ -1216,8 +1247,7 @@ ArrayBufferObject::create(JSContext* cx, uint32_t nbytes, BufferContents content
 
 ArrayBufferObject*
 ArrayBufferObject::create(JSContext* cx, uint32_t nbytes,
-                          HandleObject proto /* = nullptr */,
-                          NewObjectKind newKind /* = GenericObject */)
+                          HandleObject proto /* = nullptr */)
 {
     return create(cx, nbytes, BufferContents::createPlain(nullptr),
                   OwnsState::OwnsData, proto);
@@ -1270,7 +1300,7 @@ ArrayBufferObject::externalizeContents(JSContext* cx, Handle<ArrayBufferObject*>
     MOZ_ASSERT(!buffer->isDetached(), "must have contents to externalize");
     MOZ_ASSERT_IF(hasStealableContents, buffer->hasStealableContents());
 
-    BufferContents contents(buffer->dataPointer(), buffer->bufferKind());
+    BufferContents contents = buffer->contents();
 
     if (hasStealableContents) {
         buffer->setOwnsData(DoesntOwnData);
@@ -1298,7 +1328,7 @@ ArrayBufferObject::stealContents(JSContext* cx, Handle<ArrayBufferObject*> buffe
                                         (buffer->isWasm() && !buffer->isPreparedForAsmJS()));
     assertSameCompartment(cx, buffer);
 
-    BufferContents oldContents(buffer->dataPointer(), buffer->bufferKind());
+    BufferContents oldContents = buffer->contents();
 
     if (hasStealableContents) {
         // Return the old contents and reset the detached buffer's data
@@ -1810,8 +1840,26 @@ JS_NewArrayBufferWithContents(JSContext* cx, size_t nbytes, void* data)
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     MOZ_ASSERT_IF(!data, nbytes == 0);
+
     ArrayBufferObject::BufferContents contents =
         ArrayBufferObject::BufferContents::create<ArrayBufferObject::PLAIN>(data);
+    return ArrayBufferObject::create(cx, nbytes, contents, ArrayBufferObject::OwnsData,
+                                     /* proto = */ nullptr, TenuredObject);
+}
+
+JS_PUBLIC_API(JSObject*)
+JS_NewExternalArrayBuffer(JSContext* cx, size_t nbytes, void* data,
+                          JS::BufferContentsRefFunc ref, JS::BufferContentsRefFunc unref,
+                          void* refUserData)
+{
+    AssertHeapIsIdle();
+    CHECK_REQUEST(cx);
+
+    MOZ_ASSERT(data);
+    MOZ_ASSERT(nbytes > 0);
+
+    ArrayBufferObject::BufferContents contents =
+        ArrayBufferObject::BufferContents::createExternal(data, ref, unref, refUserData);
     return ArrayBufferObject::create(cx, nbytes, contents, ArrayBufferObject::OwnsData,
                                      /* proto = */ nullptr, TenuredObject);
 }

@@ -61,7 +61,7 @@ struct MarkupAttrInfo {
   nsStaticAtom** DOMAttrValue;
 };
 
-struct MarkupMapInfo {
+struct HTMLMarkupMapInfo {
   nsStaticAtom** tag;
   New_Accessible* new_func;
   a11y::role role;
@@ -243,8 +243,8 @@ public:
 
   mozilla::a11y::role MarkupRole(const nsIContent* aContent) const
   {
-    const mozilla::a11y::MarkupMapInfo* markupMap =
-      mMarkupMaps.Get(aContent->NodeInfo()->NameAtom());
+    const mozilla::a11y::HTMLMarkupMapInfo* markupMap =
+      mHTMLMarkupMap.Get(aContent->NodeInfo()->NameAtom());
     return markupMap ? markupMap->role : mozilla::a11y::roles::NOTHING;
   }
 
@@ -292,12 +292,6 @@ private:
   void Shutdown();
 
   /**
-   * Create accessible for the element having XBL bindings.
-   */
-  already_AddRefed<Accessible>
-    CreateAccessibleByType(nsIContent* aContent, DocAccessible* aDoc);
-
-  /**
    * Create an accessible whose type depends on the given frame.
    */
   already_AddRefed<Accessible>
@@ -317,20 +311,12 @@ private:
   /**
    * Set accessibility service consumers.
    */
-  void SetConsumers(uint32_t aConsumers);
+  void SetConsumers(uint32_t aConsumers, bool aNotify = true);
 
   /**
    * Unset accessibility service consumers.
    */
   void UnsetConsumers(uint32_t aConsumers);
-
-#ifdef MOZ_XUL
-  /**
-   * Create accessible for XUL tree element.
-   */
-  already_AddRefed<Accessible>
-    CreateAccessibleForXULTree(nsIContent* aContent, DocAccessible* aDoc);
-#endif
 
   /**
    * Reference for accessibility service instance.
@@ -348,9 +334,9 @@ private:
    */
   static uint32_t gConsumers;
 
-  nsDataHashtable<nsPtrHashKey<const nsAtom>, const mozilla::a11y::MarkupMapInfo*> mMarkupMaps;
+  nsDataHashtable<nsPtrHashKey<const nsAtom>, const mozilla::a11y::HTMLMarkupMapInfo*> mHTMLMarkupMap;
 #ifdef MOZ_XUL
-  nsDataHashtable<nsPtrHashKey<const nsAtom>, const mozilla::a11y::XULMarkupMapInfo*> mXULMarkupMaps;
+  nsDataHashtable<nsPtrHashKey<const nsAtom>, const mozilla::a11y::XULMarkupMapInfo*> mXULMarkupMap;
 #endif
 
   friend nsAccessibilityService* GetAccService();

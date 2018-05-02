@@ -9,15 +9,13 @@
  * loaded the plugin lives. It communicates with the process where the PPAPI
  * implementation lives.
  */
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                          "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                                       "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                              "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 let mm = pluginElement.frameLoader.messageManager;

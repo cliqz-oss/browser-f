@@ -4,9 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // dialog is just an array we'll use to store various properties from the dialog document...
 var dialog;
@@ -46,13 +44,13 @@ function ellipseString(aStr, doFront) {
 // all progress notifications are done through the nsIWebProgressListener implementation...
 var progressListener = {
     onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
-      if (aStateFlags & Components.interfaces.nsIWebProgressListener.STATE_START) {
+      if (aStateFlags & Ci.nsIWebProgressListener.STATE_START) {
         // Put progress meter in undetermined mode.
         // dialog.progress.setAttribute( "value", 0 );
         dialog.progress.setAttribute( "mode", "undetermined" );
       }
 
-      if (aStateFlags & Components.interfaces.nsIWebProgressListener.STATE_STOP) {
+      if (aStateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
         // we are done printing
         // Indicate completion in title area.
         var msg = getString( "printComplete" );
@@ -151,10 +149,10 @@ var progressListener = {
     },
 
     QueryInterface(iid) {
-     if (iid.equals(Components.interfaces.nsIWebProgressListener) || iid.equals(Components.interfaces.nsISupportsWeakReference))
+     if (iid.equals(Ci.nsIWebProgressListener) || iid.equals(Ci.nsISupportsWeakReference))
       return this;
 
-     throw Components.results.NS_NOINTERFACE;
+     throw Cr.NS_NOINTERFACE;
     }
 };
 
@@ -196,7 +194,7 @@ function onLoad() {
     // Set global variables.
     printProgress = window.arguments[0];
     if (window.arguments[1]) {
-      progressParams = window.arguments[1].QueryInterface(Components.interfaces.nsIPrintProgressParams);
+      progressParams = window.arguments[1].QueryInterface(Ci.nsIPrintProgressParams);
       if (progressParams) {
         docTitle = ellipseString(progressParams.docTitle, false);
         docURL   = ellipseString(progressParams.docURL, true);

@@ -34,28 +34,6 @@ LIRGeneratorX86Shared::newLTableSwitchV(MTableSwitch* tableswitch)
 }
 
 void
-LIRGeneratorX86Shared::visitGuardShape(MGuardShape* ins)
-{
-    MOZ_ASSERT(ins->object()->type() == MIRType::Object);
-
-    LGuardShape* guard = new(alloc()) LGuardShape(useRegisterAtStart(ins->object()));
-    assignSnapshot(guard, ins->bailoutKind());
-    add(guard, ins);
-    redefine(ins, ins->object());
-}
-
-void
-LIRGeneratorX86Shared::visitGuardObjectGroup(MGuardObjectGroup* ins)
-{
-    MOZ_ASSERT(ins->object()->type() == MIRType::Object);
-
-    LGuardObjectGroup* guard = new(alloc()) LGuardObjectGroup(useRegisterAtStart(ins->object()));
-    assignSnapshot(guard, ins->bailoutKind());
-    add(guard, ins);
-    redefine(ins, ins->object());
-}
-
-void
 LIRGeneratorX86Shared::visitPowHalf(MPowHalf* ins)
 {
     MDefinition* input = ins->input();
@@ -942,6 +920,8 @@ LIRGeneratorX86Shared::visitSimdGeneralShuffle(MSimdGeneralShuffle* ins)
 {
     MOZ_ASSERT(IsSimdType(ins->type()));
 
+    size_t numOperands = ins->numVectors() + ins->numLanes();
+
     LSimdGeneralShuffleBase* lir;
     if (IsIntegerSimdType(ins->type())) {
 #if defined(JS_CODEGEN_X86)
@@ -955,14 +935,14 @@ LIRGeneratorX86Shared::visitSimdGeneralShuffle(MSimdGeneralShuffle* ins)
 #else
         LDefinition t = temp();
 #endif
-        lir = new (alloc()) LSimdGeneralShuffleI(t);
+        lir = allocateVariadic<LSimdGeneralShuffleI>(numOperands, t);
     } else if (ins->type() == MIRType::Float32x4) {
-        lir = new (alloc()) LSimdGeneralShuffleF(temp());
+        lir = allocateVariadic<LSimdGeneralShuffleF>(numOperands, temp());
     } else {
         MOZ_CRASH("Unknown SIMD kind when doing a shuffle");
     }
 
-    if (!lir->init(alloc(), ins->numVectors() + ins->numLanes()))
+    if (!lir)
         return;
 
     for (unsigned i = 0; i < ins->numVectors(); i++) {

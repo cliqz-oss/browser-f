@@ -88,14 +88,9 @@
  */
 
 
-this.EXPORTED_SYMBOLS = [ "XPCOMUtils" ];
+var EXPORTED_SYMBOLS = [ "XPCOMUtils" ];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-this.XPCOMUtils = {
+var XPCOMUtils = {
   /**
    * Generate a QueryInterface implementation. The returned function must be
    * assigned to the 'QueryInterface' property of a JS object. When invoked on
@@ -321,6 +316,10 @@ this.XPCOMUtils = {
                                    aObject, aName, aResource, aSymbol,
                                    aPreLambda, aPostLambda, aProxy)
   {
+    if (arguments.length == 3) {
+      return ChromeUtils.defineModuleGetter(aObject, aName, aResource);
+    }
+
     let proxy = aProxy || {};
 
     if (typeof(aPreLambda) === "function") {
@@ -330,7 +329,7 @@ this.XPCOMUtils = {
     this.defineLazyGetter(aObject, aName, function XPCU_moduleLambda() {
       var temp = {};
       try {
-        Cu.import(aResource, temp);
+        ChromeUtils.import(aResource, temp);
 
         if (typeof(aPostLambda) === "function") {
           aPostLambda.apply(proxy);
@@ -358,7 +357,7 @@ this.XPCOMUtils = {
                                    aObject, aModules)
   {
     for (let [name, module] of Object.entries(aModules)) {
-      this.defineLazyModuleGetter(aObject, name, module);
+      ChromeUtils.defineModuleGetter(aObject, name, module);
     }
   },
 
@@ -527,7 +526,7 @@ this.XPCOMUtils = {
                   "must be that JSM's global object (hint: use this)");
 
     Cu.importGlobalProperties(["URL"]);
-    Components.utils.import(new URL(path, that.__URI__).href, scope || that);
+    ChromeUtils.import(new URL(path, that.__URI__).href, scope || that);
   },
 
   /**
@@ -570,8 +569,8 @@ this.XPCOMUtils = {
 
 var XPCU_lazyPreferenceObserverQI = XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(XPCOMUtils, "categoryManager",
                                    "@mozilla.org/categorymanager;1",

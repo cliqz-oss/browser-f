@@ -75,8 +75,6 @@ static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
 
 #ifdef XP_MACOSX
 #include "ComplexTextInputPanel.h"
-#include "nsIDOMXULDocument.h"
-#include "nsIDOMXULCommandDispatcher.h"
 #endif
 
 #ifdef MOZ_WIDGET_GTK
@@ -423,12 +421,7 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
     return NS_ERROR_FAILURE;
   }
 
-  nsIPresShell *presShell = doc->GetShell();
-  if (!presShell) {
-    return NS_ERROR_FAILURE;
-  }
-
-  nsPresContext *presContext = presShell->GetPresContext();
+  nsPresContext* presContext = doc->GetPresContext();
   if (!presContext) {
     return NS_ERROR_FAILURE;
   }
@@ -504,7 +497,7 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetDocument(nsIDocument* *aDocument)
 
   // XXX sXBL/XBL2 issue: current doc or owner doc?
   // But keep in mind bug 322414 comment 33
-  NS_IF_ADDREF(*aDocument = content->OwnerDoc());
+  NS_ADDREF(*aDocument = content->OwnerDoc());
   return NS_OK;
 }
 
@@ -3299,7 +3292,7 @@ void nsPluginInstanceOwner::SetFrame(nsPluginFrame *aFrame)
     }
 
     // Register for widget-focus events on the window root.
-    if (content && content->OwnerDoc() && content->OwnerDoc()->GetWindow()) {
+    if (content && content->OwnerDoc()->GetWindow()) {
       nsCOMPtr<EventTarget> windowRoot = content->OwnerDoc()->GetWindow()->GetTopWindowRoot();
       if (windowRoot) {
         windowRoot->AddEventListener(NS_LITERAL_STRING("activate"),

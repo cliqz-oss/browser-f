@@ -30,11 +30,11 @@
  *
  */
 
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 // const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kNS_OFFLINECACHEUPDATESERVICE_CONTRACTID =
   "@mozilla.org/offlinecacheupdate-service;1";
@@ -119,7 +119,7 @@ function init_http_server() {
 
 function init_cache_capacity() {
   let prefs = Cc["@mozilla.org/preferences-service;1"]
-    .getService(Components.interfaces.nsIPrefBranch);
+    .getService(Ci.nsIPrefBranch);
   prefs.setIntPref("browser.cache.offline.capacity", kCacheSize / 1024);
 }
 

@@ -2,20 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["FormAutoCompleteResult"];
+var EXPORTED_SYMBOLS = ["FormAutoCompleteResult"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-this.FormAutoCompleteResult = function FormAutoCompleteResult(searchString,
-                                                              searchResult,
-                                                              defaultIndex,
-                                                              errorDescription,
-                                                              values,
-                                                              labels,
-                                                              comments,
-                                                              prevResult) {
+function FormAutoCompleteResult(searchString,
+                                searchResult,
+                                defaultIndex,
+                                errorDescription,
+                                values,
+                                labels,
+                                comments,
+                                prevResult) {
   this.searchString = searchString;
   this._searchResult = searchResult;
   this._defaultIndex = defaultIndex;
@@ -25,7 +23,7 @@ this.FormAutoCompleteResult = function FormAutoCompleteResult(searchString,
   this._comments = comments;
   this._formHistResult = prevResult;
   this.entries = prevResult ? prevResult.wrappedJSObject.entries : [];
-};
+}
 
 FormAutoCompleteResult.prototype = {
 

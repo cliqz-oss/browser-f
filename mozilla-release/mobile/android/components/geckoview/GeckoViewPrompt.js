@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   EventDispatcher: "resource://gre/modules/Messaging.jsm",
@@ -871,7 +869,7 @@ FilePickerDelegate.prototype = {
 
   appendFilter: function(aTitle, aFilter) {
     // Only include filter that specify extensions (i.e. exclude generic ones like "*").
-    let filters = aFilter.split(/[\s,;]+/).filter(filter => filter.indexOf(".") >= 0);
+    let filters = aFilter.split(/[\s,;]+/).filter(filter => filter.includes("."));
     Array.prototype.push.apply(this._extensions, filters);
   },
 

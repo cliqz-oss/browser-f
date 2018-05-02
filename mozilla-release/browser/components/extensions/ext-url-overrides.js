@@ -5,12 +5,14 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
-                                  "resource://gre/modules/ExtensionSettingsStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
+                               "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
+                               "resource://gre/modules/ExtensionSettingsStore.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
                                    "@mozilla.org/browser/aboutnewtab-service;1",
@@ -19,10 +21,29 @@ XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
 const STORE_TYPE = "url_overrides";
 const NEW_TAB_SETTING_NAME = "newTabURL";
 const NEW_TAB_CONFIRMED_TYPE = "newTabNotification";
+const PREF_BRANCH_INSTALLED_ADDON = "extensions.installedDistroAddon.";
+
+XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
+  return Services.strings.createBundle("chrome://global/locale/extensions.properties");
+});
 
 function userWasNotified(extensionId) {
   let setting = ExtensionSettingsStore.getSetting(NEW_TAB_CONFIRMED_TYPE, extensionId);
   return setting && setting.value;
+}
+
+function getAddonDetails(doc, addon) {
+  const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
+
+  let image = doc.createElement("image");
+  image.setAttribute("src", addon.iconURL || defaultIcon);
+  image.classList.add("extension-controlled-icon");
+
+  let addonDetails = doc.createDocumentFragment();
+  addonDetails.appendChild(image);
+  addonDetails.appendChild(doc.createTextNode(" " + addon.name));
+
+  return addonDetails;
 }
 
 function replaceUrlInTab(gBrowser, tab, url) {
@@ -43,6 +64,16 @@ function replaceUrlInTab(gBrowser, tab, url) {
   return loaded;
 }
 
+let gDistributionAddonsList;
+
+function isDistributionAddon(id) {
+  if (!gDistributionAddonsList) {
+    gDistributionAddonsList = Services.prefs.getChildList(PREF_BRANCH_INSTALLED_ADDON)
+                                      .map(id => id.replace(PREF_BRANCH_INSTALLED_ADDON, ""));
+  }
+  return gDistributionAddonsList.includes(id);
+}
+
 async function handleNewTabOpened() {
   // We don't need to open the doorhanger again until the controlling add-on changes.
   // eslint-disable-next-line no-use-before-define
@@ -50,7 +81,7 @@ async function handleNewTabOpened() {
 
   let item = ExtensionSettingsStore.getSetting(STORE_TYPE, NEW_TAB_SETTING_NAME);
 
-  if (!item || !item.id || userWasNotified(item.id)) {
+  if (!item || !item.id || userWasNotified(item.id) || isDistributionAddon(item.id)) {
     return;
   }
 
@@ -58,6 +89,23 @@ async function handleNewTabOpened() {
   let win = windowTracker.getCurrentWindow({});
   let doc = win.document;
   let panel = doc.getElementById("extension-notification-panel");
+  let addon = await AddonManager.getAddonByID(item.id);
+
+  let description = doc.getElementById("extension-new-tab-notification-description");
+  while (description.firstChild) {
+    description.firstChild.remove();
+  }
+  let message = strBundle.GetStringFromName("newTabControlled.message2");
+  let addonDetails = getAddonDetails(doc, addon);
+  description.appendChild(
+    BrowserUtils.getLocalizedFragment(doc, message, addonDetails));
+
+  // Add the Learn more link to the description.
+  let link = doc.createElement("label");
+  link.setAttribute("class", "learnMore text-link");
+  link.href = Services.urlFormatter.formatURLPref("app.support.baseURL") + "extension-home";
+  link.textContent = strBundle.GetStringFromName("newTabControlled.learnMore");
+  description.appendChild(link);
 
   // Setup the command handler.
   let handleCommand = async (event) => {
@@ -72,7 +120,6 @@ async function handleNewTabOpened() {
       //   2. Now that this tab isn't associated with the add-on, disable the add-on
       //   3. Replace the tab's URL with the new New Tab URL
       ExtensionSettingsStore.removeSetting(NEW_TAB_CONFIRMED_TYPE, item.id);
-      let addon = await AddonManager.getAddonByID(item.id);
       let gBrowser = win.gBrowser;
       let tab = gBrowser.selectedTab;
       await replaceUrlInTab(gBrowser, tab, "about:blank");

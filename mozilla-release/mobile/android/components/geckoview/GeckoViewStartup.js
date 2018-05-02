@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   GeckoViewUtils: "resource://gre/modules/GeckoViewUtils.jsm",
@@ -19,10 +17,28 @@ GeckoViewStartup.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
 
+  /**
+   * Register resource://android as the APK root.
+   *
+   * Consumers can access Android assets using resource://android/assets/FILENAME.
+   */
+  setResourceSubstitutions: function() {
+    let registry = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIChromeRegistry);
+    // Like jar:jar:file:///data/app/org.mozilla.geckoview.test.apk!/assets/omni.ja!/chrome/geckoview/content/geckoview.js
+    let url = registry.convertChromeURL(Services.io.newURI("chrome://geckoview/content/geckoview.js")).spec;
+    // Like jar:file:///data/app/org.mozilla.geckoview.test.apk!/
+    url = url.substring(4, url.indexOf("!/") + 2);
+
+    let protocolHandler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
+    protocolHandler.setSubstitution("android", Services.io.newURI(url));
+  },
+
   /* ----------  nsIObserver  ---------- */
   observe: function(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "app-startup": {
+        this.setResourceSubstitutions();
+
         // Parent and content process.
         Services.obs.addObserver(this, "chrome-document-global-created");
         Services.obs.addObserver(this, "content-document-global-created");

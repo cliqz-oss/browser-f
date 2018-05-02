@@ -38,6 +38,7 @@ DIRS += [
     'customizableui',
     'dirprovider',
     'downloads',
+    'enterprisepolicies',
     'extensions',
     'feeds',
     'migration',
@@ -58,7 +59,6 @@ DIRS += [
 DIRS += ['build']
 
 XPIDL_SOURCES += [
-    'nsIBrowserGlue.idl',
     'nsIBrowserHandler.idl',
 ]
 

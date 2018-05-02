@@ -7,7 +7,8 @@ loader: taskgraph.loader.transform:loader
 kind-dependencies:
    - post-balrog-dummy
    - post-beetmover-dummy
-   - release-updates-builder
+   - release-secondary-balrog-submit-toplevel
+   - release-secondary-update-verify-config
 
 transforms:
    - taskgraph.transforms.release_deps:transforms
@@ -24,7 +25,7 @@ job-defaults:
       os: linux
       docker-image: mozillareleases/python-test-runner@sha256:0729c2e6e7bc0d6a4cbccb2e66a78e1d8e8cbb5e44105d56e3c9c610230ebd69
       max-run-time: 7200
-      retry-exit-status: 1
+      retry-exit-status: [1]
       env:
          BUILD_TOOLS_REPO:
             by-project:
@@ -37,12 +38,6 @@ jobs:
       description: secondary final verify
       shipping-phase: promote
       shipping-product: firefox
-      worker:
-         env:
-            FINAL_VERIFY_CONFIGS:
-               by-project:
-                  mozilla-release: "beta-firefox-linux.cfg beta-firefox-linux64.cfg beta-firefox-macosx64.cfg beta-firefox-win32.cfg beta-firefox-win64.cfg"
-                  default: ""
       treeherder:
          platform: linux64/opt
          kind: test

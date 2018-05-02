@@ -34,11 +34,6 @@ function dumpLog(msg) {
 
 netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 
-if (Cc === undefined) {
-  var Cc = Components.classes;
-  var Ci = Components.interfaces;
-}
-
 const FOSTREAM_CID = "@mozilla.org/network/file-output-stream;1";
 const LF_CID = "@mozilla.org/file/local;1";
 
@@ -89,7 +84,7 @@ MozFileLogger.getLogCallback = function() {
     if (MozFileLogger._foStream)
       MozFileLogger._foStream.write(data, data.length);
 
-    if (data.indexOf("SimpleTest FINISH") >= 0) {
+    if (data.includes("SimpleTest FINISH")) {
       MozFileLogger.close();
     }
   };
@@ -121,8 +116,9 @@ MozFileLogger.close = function() {
 };
 
 try {
-  var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-    .getService(Components.interfaces.nsIPrefBranch);
-  var filename = prefs.getCharPref("talos.logfile");
+  // ChromeUtils is not available in this scope.
+  // eslint-disable-next-line mozilla/use-chromeutils-import
+  Cu.import("resource://gre/modules/Services.jsm");
+  var filename = Services.prefs.getCharPref("talos.logfile");
   MozFileLogger.init(filename);
 } catch (ex) {} // pref does not exist, return empty string

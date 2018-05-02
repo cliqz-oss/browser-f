@@ -391,7 +391,8 @@ public:
 
   virtual mozilla::ipc::IPCResult RecvRealDragEvent(const WidgetDragEvent& aEvent,
                                                     const uint32_t& aDragAction,
-                                                    const uint32_t& aDropEffect) override;
+                                                    const uint32_t& aDropEffect,
+                                                    const nsCString& aPrincipalURISpec) override;
 
   virtual mozilla::ipc::IPCResult
   RecvRealKeyEvent(const mozilla::WidgetKeyboardEvent& aEvent) override;
@@ -431,12 +432,6 @@ public:
                                        const uint64_t& aInputBlockId,
                                        const nsEventStatus& aApzResponse) override;
 
-  virtual mozilla::ipc::IPCResult RecvKeyEvent(const nsString& aType,
-                                               const int32_t& aKeyCode,
-                                               const int32_t& aCharCode,
-                                               const int32_t& aModifiers,
-                                               const bool& aPreventDefault) override;
-
   virtual mozilla::ipc::IPCResult RecvNativeSynthesisResponse(const uint64_t& aObserverId,
                                                               const nsCString& aResponse) override;
 
@@ -459,7 +454,8 @@ public:
   virtual mozilla::ipc::IPCResult
   RecvPasteTransferable(const IPCDataTransfer& aDataTransfer,
                         const bool& aIsPrivateData,
-                        const IPC::Principal& aRequestingPrincipal) override;
+                        const IPC::Principal& aRequestingPrincipal,
+                        const uint32_t& aContentPolicyType) override;
 
   virtual mozilla::ipc::IPCResult
   RecvActivateFrameEvent(const nsString& aType, const bool& aCapture) override;

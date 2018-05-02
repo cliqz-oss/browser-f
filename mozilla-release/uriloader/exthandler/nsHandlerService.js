@@ -2,12 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-
 const CLASS_MIMEINFO        = "mimetype";
 const CLASS_PROTOCOLINFO    = "scheme";
 
@@ -73,7 +67,7 @@ const NC_OBJPATH            = NC_NS + "objectPath";
 // nsIDBusHandlerApp::dbusInterface
 const NC_INTERFACE            = NC_NS + "dBusInterface";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 
 function HandlerService() {

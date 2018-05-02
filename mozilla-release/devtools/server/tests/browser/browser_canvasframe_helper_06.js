@@ -12,7 +12,7 @@ const TEST_URL = "data:text/html;charset=utf-8,CanvasFrameAnonymousContentHelper
 add_task(async function () {
   let browser = await addTab(TEST_URL);
   await ContentTask.spawn(browser, null, async function () {
-    const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     const {HighlighterEnvironment} = require("devtools/server/actors/highlighters");
     const {
       CanvasFrameAnonymousContentHelper
@@ -99,8 +99,8 @@ add_task(async function () {
       let EventUtils = {
         window: content,
         parent: content,
-        _EU_Ci: Components.interfaces,
-        _EU_Cc: Components.classes,
+        _EU_Ci: Ci,
+        _EU_Cc: Cc,
       };
       Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
       EventUtils.synthesizeMouseAtPoint(x, y, {type: "mousedown"}, win);

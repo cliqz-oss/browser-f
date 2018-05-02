@@ -185,7 +185,7 @@ struct gfxFontStyle {
 
     PLDHashNumber Hash() const {
         return ((style + (systemFont << 7) +
-            (weight << 8)) + uint32_t(size*1000) + uint32_t(sizeAdjust*1000)) ^
+            (weight << 8)) + uint32_t(size*1000) + int32_t(sizeAdjust*1000)) ^
             nsRefPtrHashKey<nsAtom>::HashKey(language);
     }
 
@@ -809,7 +809,12 @@ public:
             // which is not combined with any combining characters. This flag is
             // set for all those characters except 0x20 whitespace.
             FLAG_CHAR_NO_EMPHASIS_MARK    = 0x20,
-            CHAR_TYPE_FLAGS_MASK          = 0x38,
+            // Per CSS Text, letter-spacing is not applied to formatting chars
+            // (category Cf). We mark those in the textrun so as to be able to
+            // skip them when setting up spacing in nsTextFrame.
+            FLAG_CHAR_IS_FORMATTING_CONTROL = 0x40,
+
+            CHAR_TYPE_FLAGS_MASK          = 0x78,
 
             GLYPH_COUNT_MASK = 0x00FFFF00U,
             GLYPH_COUNT_SHIFT = 8
@@ -863,6 +868,10 @@ public:
         bool CharMayHaveEmphasisMark() const {
             return !CharIsSpace() &&
                 (IsSimpleGlyph() || !(mValue & FLAG_CHAR_NO_EMPHASIS_MARK));
+        }
+        bool CharIsFormattingControl() const {
+            return !IsSimpleGlyph() &&
+                (mValue & FLAG_CHAR_IS_FORMATTING_CONTROL) != 0;
         }
 
         uint32_t CharTypeFlags() const {
@@ -968,6 +977,10 @@ public:
         void SetNoEmphasisMark() {
             NS_ASSERTION(!IsSimpleGlyph(), "Expected non-simple-glyph");
             mValue |= FLAG_CHAR_NO_EMPHASIS_MARK;
+        }
+        void SetIsFormattingControl() {
+            NS_ASSERTION(!IsSimpleGlyph(), "Expected non-simple-glyph");
+            mValue |= FLAG_CHAR_IS_FORMATTING_CONTROL;
         }
 
     private:

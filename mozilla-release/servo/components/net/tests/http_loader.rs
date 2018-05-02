@@ -343,16 +343,16 @@ fn test_redirected_request_to_devtools() {
     let devhttprequest = expect_devtools_http_request(&devtools_port);
     let devhttpresponse = expect_devtools_http_response(&devtools_port);
 
-    assert!(devhttprequest.method == Method::Post);
-    assert!(devhttprequest.url == pre_url);
-    assert!(devhttpresponse.status == Some((301, b"Moved Permanently".to_vec())));
+    assert_eq!(devhttprequest.method, Method::Post);
+    assert_eq!(devhttprequest.url, pre_url);
+    assert_eq!(devhttpresponse.status, Some((301, b"Moved Permanently".to_vec())));
 
     let devhttprequest = expect_devtools_http_request(&devtools_port);
     let devhttpresponse = expect_devtools_http_response(&devtools_port);
 
-    assert!(devhttprequest.method == Method::Get);
-    assert!(devhttprequest.url == post_url);
-    assert!(devhttpresponse.status == Some((200, b"OK".to_vec())));
+    assert_eq!(devhttprequest.method, Method::Get);
+    assert_eq!(devhttprequest.url, post_url);
+    assert_eq!(devhttpresponse.status, Some((200, b"OK".to_vec())));
 }
 
 
@@ -394,7 +394,7 @@ fn test_load_when_redirecting_from_a_post_should_rewrite_next_request_as_get() {
 fn test_load_should_decode_the_response_as_deflate_when_response_headers_have_content_encoding_deflate() {
     let handler = move |_: HyperRequest, mut response: HyperResponse| {
         response.headers_mut().set(ContentEncoding(vec![Encoding::Deflate]));
-        let mut e = DeflateEncoder::new(Vec::new(), Compression::Default);
+        let mut e = DeflateEncoder::new(Vec::new(), Compression::default());
         e.write(b"Yay!").unwrap();
         let encoded_content = e.finish().unwrap();
         response.send(&encoded_content).unwrap();
@@ -424,7 +424,7 @@ fn test_load_should_decode_the_response_as_deflate_when_response_headers_have_co
 fn test_load_should_decode_the_response_as_gzip_when_response_headers_have_content_encoding_gzip() {
     let handler = move |_: HyperRequest, mut response: HyperResponse| {
         response.headers_mut().set(ContentEncoding(vec![Encoding::Gzip]));
-        let mut e = GzEncoder::new(Vec::new(), Compression::Default);
+        let mut e = GzEncoder::new(Vec::new(), Compression::default());
         e.write(b"Yay!").unwrap();
         let encoded_content = e.finish().unwrap();
         response.send(&encoded_content).unwrap();

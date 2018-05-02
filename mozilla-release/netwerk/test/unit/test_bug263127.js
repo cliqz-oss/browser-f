@@ -1,5 +1,5 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var server;
 const BUGID = "263127";
@@ -8,7 +8,7 @@ var listener = {
   QueryInterface: function(iid) {
     if (!iid.equals(nsIDownloadObserver) &&
         !iid.equals(nsISupports))
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
 
     return this;
   },

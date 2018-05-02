@@ -1,0 +1,28 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>Autoplay policy frame</title>
+    <script type="text/javascript" src="AutoplayTestUtils.js"></script>
+    <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+    <style>
+      video {
+        width: 50%;
+        height: 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      window.addEventListener("message",
+        (event) => {
+          if (event.data == "click") {
+            synthesizeMouseAtCenter(document.body, {});
+          } else if (event.data == "play-audible") {
+            playAndPostResult(false, event.source);
+          } else if (event.data == "play-muted") {
+            playAndPostResult(true, event.source);
+          }
+        }, false);
+    </script>
+  </body>
+</html>

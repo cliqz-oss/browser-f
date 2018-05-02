@@ -4,27 +4,25 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["UserAgentUpdates"];
+var EXPORTED_SYMBOLS = ["UserAgentUpdates"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-XPCOMUtils.defineLazyModuleGetter(
+ChromeUtils.defineModuleGetter(
   this, "FileUtils", "resource://gre/modules/FileUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(
+ChromeUtils.defineModuleGetter(
   this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(
+ChromeUtils.defineModuleGetter(
   this, "OS", "resource://gre/modules/osfile.jsm");
 
 
-XPCOMUtils.defineLazyModuleGetter(
+ChromeUtils.defineModuleGetter(
   this, "UpdateUtils", "resource://gre/modules/UpdateUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -87,7 +85,7 @@ function readChannel(url) {
   });
 }
 
-this.UserAgentUpdates = {
+var UserAgentUpdates = {
   init: function(callback) {
     if (gInitialized) {
       return;
@@ -207,8 +205,7 @@ this.UserAgentUpdates = {
   },
 
   _fetchUpdate: function(url, success, error) {
-    let request = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                    .createInstance(Ci.nsIXMLHttpRequest);
+    let request = new XMLHttpRequest();
     request.mozBackgroundRequest = true;
     request.timeout = this._getPref(PREF_UPDATES_TIMEOUT, 60000);
     request.open("GET", url, true);

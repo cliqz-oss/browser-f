@@ -6,21 +6,16 @@
 /* eslint-env mozilla/frame-script */
 /* global sendAsyncMessage */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SelectContentHelper",
+ChromeUtils.defineModuleGetter(this, "SelectContentHelper",
   "resource://gre/modules/SelectContentHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FindContent",
+ChromeUtils.defineModuleGetter(this, "FindContent",
   "resource://gre/modules/FindContent.jsm");
 
 var global = this;
@@ -28,7 +23,7 @@ var global = this;
 
 // Lazily load the finder code
 addMessageListener("Finder:Initialize", function() {
-  let {RemoteFinderListener} = Cu.import("resource://gre/modules/RemoteFinder.jsm", {});
+  let {RemoteFinderListener} = ChromeUtils.import("resource://gre/modules/RemoteFinder.jsm", {});
   new RemoteFinderListener(global);
 });
 
@@ -146,13 +141,13 @@ var ClickEventHandler = {
       // overflow property
       var scrollVert = node.scrollTopMax &&
         (node instanceof content.HTMLSelectElement ||
-         scrollingAllowed.indexOf(overflowy) >= 0);
+         scrollingAllowed.includes(overflowy));
 
       // do not allow horizontal scrolling for select elements, it leads
       // to visual artifacts and is not the expected behavior anyway
       if (!(node instanceof content.HTMLSelectElement) &&
           node.scrollLeftMin != node.scrollLeftMax &&
-          scrollingAllowed.indexOf(overflowx) >= 0) {
+          scrollingAllowed.includes(overflowx)) {
         this._scrolldir = scrollVert ? "NSEW" : "EW";
         this._scrollable = node;
         break;
@@ -489,7 +484,7 @@ PopupBlocking.init();
 
 XPCOMUtils.defineLazyGetter(this, "console", () => {
   // Set up console.* for frame scripts.
-  let Console = Components.utils.import("resource://gre/modules/Console.jsm", {});
+  let Console = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   return new Console.ConsoleAPI();
 });
 
@@ -616,7 +611,7 @@ var Printing = {
 
       return printSettings;
     } catch (e) {
-      Components.utils.reportError(e);
+      Cu.reportError(e);
     }
 
     return null;
@@ -657,14 +652,11 @@ var Printing = {
       };
 
       // Here we QI the docShell into a nsIWebProgress passing our web progress listener in.
-      let webProgress =  docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIWebProgress);
+      let webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                                .getInterface(Ci.nsIWebProgress);
       webProgress.addProgressListener(webProgressListener, Ci.nsIWebProgress.NOTIFY_STATE_REQUEST);
 
       content.document.head.innerHTML = "";
-
-      // Set title of document
-      content.document.title = article.title;
 
       // Set base URI of document. Print preview code will read this value to
       // populate the URL field in print settings so that it doesn't show
@@ -694,47 +686,68 @@ var Printing = {
       containerElement.setAttribute("id", "container");
       content.document.body.appendChild(containerElement);
 
-      // Create header div and append it to container
-      let headerElement = content.document.createElement("div");
-      headerElement.setAttribute("id", "reader-header");
-      headerElement.setAttribute("class", "header");
-      containerElement.appendChild(headerElement);
+      // Reader Mode might return null if there's a failure when parsing the document.
+      // We'll render the error message for the Simplify Page document when that happens.
+      if (article) {
+        // Set title of document
+        content.document.title = article.title;
 
-      // Jam the article's title and byline into header div
-      let titleElement = content.document.createElement("h1");
-      titleElement.setAttribute("id", "reader-title");
-      titleElement.textContent = article.title;
-      headerElement.appendChild(titleElement);
+        // Create header div and append it to container
+        let headerElement = content.document.createElement("div");
+        headerElement.setAttribute("id", "reader-header");
+        headerElement.setAttribute("class", "header");
+        containerElement.appendChild(headerElement);
 
-      let bylineElement = content.document.createElement("div");
-      bylineElement.setAttribute("id", "reader-credits");
-      bylineElement.setAttribute("class", "credits");
-      bylineElement.textContent = article.byline;
-      headerElement.appendChild(bylineElement);
+        // Jam the article's title and byline into header div
+        let titleElement = content.document.createElement("h1");
+        titleElement.setAttribute("id", "reader-title");
+        titleElement.textContent = article.title;
+        headerElement.appendChild(titleElement);
 
-      // Display header element
-      headerElement.style.display = "block";
+        let bylineElement = content.document.createElement("div");
+        bylineElement.setAttribute("id", "reader-credits");
+        bylineElement.setAttribute("class", "credits");
+        bylineElement.textContent = article.byline;
+        headerElement.appendChild(bylineElement);
 
-      // Create content div and append it to container
-      let contentElement = content.document.createElement("div");
-      contentElement.setAttribute("class", "content");
-      containerElement.appendChild(contentElement);
+        // Display header element
+        headerElement.style.display = "block";
 
-      // Jam the article's content into content div
-      let readerContent = content.document.createElement("div");
-      readerContent.setAttribute("id", "moz-reader-content");
-      contentElement.appendChild(readerContent);
+        // Create content div and append it to container
+        let contentElement = content.document.createElement("div");
+        contentElement.setAttribute("class", "content");
+        containerElement.appendChild(contentElement);
 
-      let articleUri = Services.io.newURI(article.url);
-      let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
-      let contentFragment = parserUtils.parseFragment(article.content,
-        Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
-        false, articleUri, readerContent);
+        // Jam the article's content into content div
+        let readerContent = content.document.createElement("div");
+        readerContent.setAttribute("id", "moz-reader-content");
+        contentElement.appendChild(readerContent);
 
-      readerContent.appendChild(contentFragment);
+        let articleUri = Services.io.newURI(article.url);
+        let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
+        let contentFragment = parserUtils.parseFragment(article.content,
+          Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
+          false, articleUri, readerContent);
 
-      // Display reader content element
-      readerContent.style.display = "block";
+        readerContent.appendChild(contentFragment);
+
+        // Display reader content element
+        readerContent.style.display = "block";
+      } else {
+        let aboutReaderStrings = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
+        let errorMessage = aboutReaderStrings.GetStringFromName("aboutReader.loadError");
+
+        content.document.title = errorMessage;
+
+        // Create reader message div and append it to body
+        let readerMessageElement = content.document.createElement("div");
+        readerMessageElement.setAttribute("class", "reader-message");
+        readerMessageElement.textContent = errorMessage;
+        containerElement.appendChild(readerMessageElement);
+
+        // Display reader message element
+        readerMessageElement.style.display = "block";
+      }
     });
   },
 
@@ -758,7 +771,7 @@ var Printing = {
         } catch (error) {
           // This might fail if we, for example, attempt to print a XUL document.
           // In that case, we inform the parent to bail out of print preview.
-          Components.utils.reportError(error);
+          Cu.reportError(error);
           this.printPreviewInitializingInfo = null;
           sendAsyncMessage("Printing:Preview:Entered", { failed: true });
         }
@@ -777,7 +790,7 @@ var Printing = {
     } catch (error) {
       // This might fail if we, for example, attempt to print a XUL document.
       // In that case, we inform the parent to bail out of print preview.
-      Components.utils.reportError(error);
+      Cu.reportError(error);
       sendAsyncMessage("Printing:Preview:Entered", { failed: true });
     }
   },
@@ -976,7 +989,7 @@ var FindBar = {
       fakeEvent,
       shouldFastFind: fastFind.should
     });
-    if (rv.indexOf(false) !== -1) {
+    if (rv.includes(false)) {
       event.preventDefault();
       return false;
     }
@@ -1180,8 +1193,8 @@ addMessageListener("Browser:PurgeSessionHistory", function BrowserPurgeHistory()
   // place the entry at current index at the end of the history list, so it won't get removed
   if (sessionHistory.index < sessionHistory.count - 1) {
     let indexEntry = sessionHistory.getEntryAtIndex(sessionHistory.index, false);
-    sessionHistory.QueryInterface(Components.interfaces.nsISHistoryInternal);
-    indexEntry.QueryInterface(Components.interfaces.nsISHEntry);
+    sessionHistory.QueryInterface(Ci.nsISHistoryInternal);
+    indexEntry.QueryInterface(Ci.nsISHEntry);
     sessionHistory.addEntry(indexEntry, true);
   }
 
@@ -1402,7 +1415,8 @@ var ViewSelectionSource = {
     var source =
       "<!DOCTYPE html>"
     + "<html>"
-    + "<head><title>" + title + "</title>"
+    + '<head><meta name="viewport" content="width=device-width"/>'
+    + "<title>" + title + "</title>"
     + '<link rel="stylesheet" type="text/css" href="' + VIEW_SOURCE_CSS + '">'
     + '<style type="text/css">'
     + "#target { border: dashed 1px; background-color: lightyellow; }"

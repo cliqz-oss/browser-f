@@ -8,8 +8,7 @@
  * An API for being informed of slow tabs (content process scripts).
  */
 
-const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 /**
  * `true` if this is a content process, `false` otherwise.
@@ -18,7 +17,7 @@ let isContent = Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CO
 
 if (isContent) {
 
-const { PerformanceWatcher } = Cu.import("resource://gre/modules/PerformanceWatcher.jsm", {});
+const { PerformanceWatcher } = ChromeUtils.import("resource://gre/modules/PerformanceWatcher.jsm", {});
 
 let toMsg = function(alerts) {
   let result = [];

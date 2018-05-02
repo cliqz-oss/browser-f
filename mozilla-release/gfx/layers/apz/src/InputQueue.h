@@ -52,7 +52,7 @@ public:
    * return values from this function, including |aOutInputBlockId|.
    */
   nsEventStatus ReceiveInputEvent(const RefPtr<AsyncPanZoomController>& aTarget,
-                                  bool aTargetConfirmed,
+                                  TargetConfirmationFlags aFlags,
                                   const InputData& aEvent,
                                   uint64_t* aOutInputBlockId);
   /**
@@ -139,8 +139,18 @@ public:
 private:
   ~InputQueue();
 
+  // RAII class for automatically running a timeout task that may
+  // need to be run immediately after an event has been queued.
+  class AutoRunImmediateTimeout {
+  public:
+    explicit AutoRunImmediateTimeout(InputQueue* aQueue);
+    ~AutoRunImmediateTimeout();
+  private:
+    InputQueue* mQueue;
+  };
+
   TouchBlockState* StartNewTouchBlock(const RefPtr<AsyncPanZoomController>& aTarget,
-                                      bool aTargetConfirmed,
+                                      TargetConfirmationFlags aFlags,
                                       bool aCopyPropertiesFromCurrent);
 
   /**
@@ -157,21 +167,21 @@ private:
                                    CancelableBlockState* aBlock);
 
   nsEventStatus ReceiveTouchInput(const RefPtr<AsyncPanZoomController>& aTarget,
-                                  bool aTargetConfirmed,
+                                  TargetConfirmationFlags aFlags,
                                   const MultiTouchInput& aEvent,
                                   uint64_t* aOutInputBlockId);
   nsEventStatus ReceiveMouseInput(const RefPtr<AsyncPanZoomController>& aTarget,
-                                  bool aTargetConfirmed,
+                                  TargetConfirmationFlags aFlags,
                                   const MouseInput& aEvent,
                                   uint64_t* aOutInputBlockId);
   nsEventStatus ReceiveScrollWheelInput(const RefPtr<AsyncPanZoomController>& aTarget,
-                                        bool aTargetConfirmed,
+                                        TargetConfirmationFlags aFlags,
                                         const ScrollWheelInput& aEvent,
                                         uint64_t* aOutInputBlockId);
   nsEventStatus ReceivePanGestureInput(const RefPtr<AsyncPanZoomController>& aTarget,
-                                        bool aTargetConfirmed,
-                                        const PanGestureInput& aEvent,
-                                        uint64_t* aOutInputBlockId);
+                                       TargetConfirmationFlags aFlags,
+                                       const PanGestureInput& aEvent,
+                                       uint64_t* aOutInputBlockId);
   nsEventStatus ReceiveKeyboardInput(const RefPtr<AsyncPanZoomController>& aTarget,
                                      const KeyboardInput& aEvent,
                                      uint64_t* aOutInputBlockId);
@@ -218,6 +228,10 @@ private:
 
   // Track mouse inputs so we know if we're in a drag or not
   DragTracker mDragTracker;
+
+  // Temporarily stores a timeout task that needs to be run as soon as
+  // as the event that triggered it has been queued.
+  RefPtr<Runnable> mImmediateTimeout;
 };
 
 } // namespace layers

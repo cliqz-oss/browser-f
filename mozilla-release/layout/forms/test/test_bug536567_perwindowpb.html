@@ -16,12 +16,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=536567
 <script type="application/javascript">
 /** Test for Bug 536567 **/
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
 const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
 MockFilePicker.init(window);

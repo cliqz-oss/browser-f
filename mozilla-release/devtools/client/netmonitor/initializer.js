@@ -8,7 +8,7 @@
  * This script is the entry point of Network monitor panel.
  * See README.md for more information.
  */
-const { BrowserLoader } = Components.utils.import(
+const { BrowserLoader } = ChromeUtils.import(
   "resource://devtools/client/shared/browser-loader.js", {});
 
 const require = window.windowRequire = BrowserLoader({
@@ -22,10 +22,13 @@ const { render, unmountComponentAtNode } = require("devtools/client/shared/vendo
 const Provider = createFactory(require("devtools/client/shared/vendor/react-redux").Provider);
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
 const { Connector } = require("./src/connector/index");
-const { configureStore } = require("./src/utils/create-store");
+const { configureStore } = require("./src/create-store");
 const App = createFactory(require("./src/components/App"));
-const { getDisplayedRequestById } = require("./src/selectors/index");
 const { EVENTS } = require("./src/constants");
+const {
+  getDisplayedRequestById,
+  getSortedRequests
+} = require("./src/selectors/index");
 
 // Inject EventEmitter into global window.
 EventEmitter.decorate(window);
@@ -38,15 +41,17 @@ const actions = bindActionCreators(require("./src/actions/index"), store.dispatc
 // Inject to global window for testing
 window.store = store;
 window.connector = connector;
+window.actions = actions;
 
 /**
  * Global Netmonitor object in this panel. This object can be consumed
  * by other panels (e.g. Console is using inspectRequest), by the
- * Launchpad (bootstrap), etc.
+ * Launchpad (bootstrap), WebExtension API (getHAR), etc.
  */
 window.Netmonitor = {
   bootstrap({ toolbox, panel }) {
     this.mount = document.querySelector("#mount");
+    this.toolbox = toolbox;
 
     const connection = {
       tabConnection: {
@@ -63,9 +68,24 @@ window.Netmonitor = {
       top.openUILinkIn(link, "tab");
     };
 
+    const openSplitConsole = (err) => {
+      toolbox.openSplitConsole().then(() => {
+        toolbox.target.logErrorInPage(err, "har");
+      });
+    };
+
+    this.onRequestAdded = this.onRequestAdded.bind(this);
+    window.on(EVENTS.REQUEST_ADDED, this.onRequestAdded);
+
     // Render the root Application component.
     const sourceMapService = toolbox.sourceMapURLService;
-    const app = App({ connector, openLink, sourceMapService });
+    const app = App({
+      actions,
+      connector,
+      openLink,
+      openSplitConsole,
+      sourceMapService
+    });
     render(Provider({ store }, app), this.mount);
 
     // Connect to the Firefox backend by default.
@@ -74,7 +94,62 @@ window.Netmonitor = {
 
   destroy() {
     unmountComponentAtNode(this.mount);
+    window.off(EVENTS.REQUEST_ADDED, this.onRequestAdded);
     return connector.disconnect();
+  },
+
+  // Support for WebExtensions API
+
+  /**
+   * Support for `devtools.network.getHAR` (get collected data as HAR)
+   */
+  getHar() {
+    let { HarExporter } = require("devtools/client/netmonitor/src/har/har-exporter");
+    let state = store.getState();
+
+    let options = {
+      connector,
+      items: getSortedRequests(state),
+      // Always generate HAR log even if there are no requests.
+      forceExport: true,
+    };
+
+    return HarExporter.getHar(options);
+  },
+
+  /**
+   * Support for `devtools.network.onRequestFinished`. A hook for
+   * every finished HTTP request used by WebExtensions API.
+   */
+  onRequestAdded(event, requestId) {
+    let listeners = this.toolbox.getRequestFinishedListeners();
+    if (!listeners.size) {
+      return;
+    }
+
+    let { HarExporter } = require("devtools/client/netmonitor/src/har/har-exporter");
+    let options = {
+      connector,
+      includeResponseBodies: false,
+      items: [getDisplayedRequestById(store.getState(), requestId)],
+    };
+
+    // Build HAR for specified request only.
+    HarExporter.getHar(options).then(har => {
+      let harEntry = har.log.entries[0];
+      delete harEntry.pageref;
+      listeners.forEach(listener => listener({
+        harEntry,
+        requestId,
+      }));
+    });
+  },
+
+  /**
+   * Support for `Request.getContent` WebExt API (lazy loading response body)
+   */
+  fetchResponseContent(requestId) {
+    return connector.requestData(requestId, "responseContent");
   },
 
   /**

@@ -23,12 +23,12 @@
 #include "nsQueryObject.h"
 #include "nsIContentInlines.h"
 #include "nsIContentViewer.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/css/Declaration.h"
+#endif
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
-#include "nsIDOMHTMLDocument.h"
 #include "nsIDOMDocumentFragment.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMDocument.h"
 #include "nsMappedAttributes.h"
@@ -111,69 +111,10 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-/**
- * nsAutoFocusEvent is used to dispatch a focus event when a
- * nsGenericHTMLFormElement is binded to the tree with the autofocus attribute
- * enabled.
- */
-class nsAutoFocusEvent : public Runnable
-{
-public:
-  explicit nsAutoFocusEvent(nsGenericHTMLFormElement* aElement)
-    : mozilla::Runnable("nsAutoFocusEvent")
-    , mElement(aElement)
-  {
-  }
-
-  NS_IMETHOD Run() override {
-    nsFocusManager* fm = nsFocusManager::GetFocusManager();
-    if (!fm) {
-      return NS_ERROR_NULL_POINTER;
-    }
-
-    nsIDocument* document = mElement->OwnerDoc();
-
-    nsPIDOMWindowOuter* window = document->GetWindow();
-    if (!window) {
-      return NS_OK;
-    }
-
-    // Trying to found the top window (equivalent to window.top).
-    if (nsCOMPtr<nsPIDOMWindowOuter> top = window->GetTop()) {
-      window = top;
-    }
-
-    if (window->GetFocusedNode()) {
-      return NS_OK;
-    }
-
-    nsCOMPtr<nsIDocument> topDoc = window->GetExtantDoc();
-    if (topDoc && topDoc->GetReadyStateEnum() == nsIDocument::READYSTATE_COMPLETE) {
-      return NS_OK;
-    }
-
-    // If something is focused in the same document, ignore autofocus.
-    if (!fm->GetFocusedContent() ||
-        fm->GetFocusedContent()->OwnerDoc() != document) {
-      mozilla::ErrorResult rv;
-      mElement->Focus(rv);
-      return rv.StealNSResult();
-    }
-
-    return NS_OK;
-  }
-private:
-  // NOTE: nsGenericHTMLFormElement is saved as a nsGenericHTMLElement
-  // because AddRef/Release are ambiguous with nsGenericHTMLFormElement
-  // and Focus() is declared (and defined) in nsGenericHTMLElement class.
-  RefPtr<nsGenericHTMLElement> mElement;
-};
-
 NS_IMPL_ADDREF_INHERITED(nsGenericHTMLElement, nsGenericHTMLElementBase)
 NS_IMPL_RELEASE_INHERITED(nsGenericHTMLElement, nsGenericHTMLElementBase)
 
 NS_INTERFACE_MAP_BEGIN(nsGenericHTMLElement)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMHTMLElement)
   NS_INTERFACE_MAP_ENTRY(nsIDOMElement)
   NS_INTERFACE_MAP_ENTRY(nsIDOMNode)
 NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElementBase)
@@ -343,12 +284,10 @@ nsGenericHTMLElement::GetOffsetRect(CSSIntRect& aRect)
       // frame for the HTML element so we fail to find the body in the
       // parent chain. We want the offset parent in this case to be
       // the body, so we just get the body element from the document.
-
-      nsCOMPtr<nsIDOMHTMLDocument> html_doc(do_QueryInterface(GetComposedDoc()));
-
-      if (html_doc) {
-        offsetParent = static_cast<nsHTMLDocument*>(html_doc.get())->GetBody();
-      }
+      //
+      // We use GetBodyElement() here, not GetBody(), because we don't want to
+      // end up with framesets here.
+      offsetParent = GetComposedDoc()->GetBodyElement();
     }
   }
 
@@ -469,7 +408,7 @@ nsGenericHTMLElement::IntrinsicState() const
 uint32_t
 nsGenericHTMLElement::EditableInclusiveDescendantCount()
 {
-  bool isEditable = IsInUncomposedDoc() && HasFlag(NODE_IS_EDITABLE) &&
+  bool isEditable = IsInComposedDoc() && HasFlag(NODE_IS_EDITABLE) &&
     GetContentEditableValue() == eTrue;
   return EditableDescendantCount() + isEditable;
 }
@@ -490,12 +429,14 @@ nsGenericHTMLElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
       aDocument->
         AddToNameTable(this, GetParsedAttr(nsGkAtoms::name)->GetAtomValue());
     }
+  }
 
-    if (HasFlag(NODE_IS_EDITABLE) && GetContentEditableValue() == eTrue) {
-      nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(aDocument);
-      if (htmlDocument) {
-        htmlDocument->ChangeContentEditableCount(this, +1);
-      }
+  if (HasFlag(NODE_IS_EDITABLE) && GetContentEditableValue() == eTrue &&
+      IsInComposedDoc()) {
+    nsCOMPtr<nsIHTMLDocument> htmlDocument =
+      do_QueryInterface(GetComposedDoc());
+    if (htmlDocument) {
+      htmlDocument->ChangeContentEditableCount(this, +1);
     }
   }
 
@@ -520,8 +461,7 @@ nsGenericHTMLElement::UnbindFromTree(bool aDeep, bool aNullParent)
   RemoveFromNameTable();
 
   if (GetContentEditableValue() == eTrue) {
-    //XXXsmaug Fix this for Shadow DOM, bug 1066965.
-    nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(GetUncomposedDoc());
+    nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(GetComposedDoc());
     if (htmlDocument) {
       htmlDocument->ChangeContentEditableCount(this, -1);
     }
@@ -559,7 +499,7 @@ nsGenericHTMLElement::FindAncestorForm(HTMLFormElement* aCurrentForm)
         // anonymous.  Check for this the hard way.
         for (nsIContent* child = this; child != content;
              child = child->GetParent()) {
-          NS_ASSERTION(child->GetParent()->IndexOf(child) != -1,
+          NS_ASSERTION(child->GetParent()->ComputeIndexOf(child) != -1,
                        "Walked too far?");
         }
       }
@@ -1050,11 +990,7 @@ nsGenericHTMLElement::GetPresContext(PresContextFor aFor)
   nsIDocument* doc = (aFor == eForComposedDoc) ?
     GetComposedDoc() : GetUncomposedDoc();
   if (doc) {
-    // Get presentation shell.
-    nsIPresShell *presShell = doc->GetShell();
-    if (presShell) {
-      return presShell->GetPresContext();
-    }
+    return doc->GetPresContext();
   }
 
   return nullptr;
@@ -1580,12 +1516,6 @@ nsGenericHTMLElement::MapBackgroundAttributesInto(const nsMappedAttributes* aAtt
 
 //----------------------------------------------------------------------
 
-nsresult
-nsGenericHTMLElement::SetAttrHelper(nsAtom* aAttr, const nsAString& aValue)
-{
-  return SetAttr(kNameSpaceID_None, aAttr, aValue, true);
-}
-
 int32_t
 nsGenericHTMLElement::GetIntAttr(nsAtom* aAttr, int32_t aDefault) const
 {
@@ -1885,10 +1815,8 @@ nsGenericHTMLFormElement::BindToTree(nsIDocument* aDocument,
   // the document should not be already loaded and the "browser.autofocus"
   // preference should be 'true'.
   if (IsAutofocusable() && HasAttr(kNameSpaceID_None, nsGkAtoms::autofocus) &&
-      nsContentUtils::AutoFocusEnabled()) {
-    nsCOMPtr<nsIRunnable> event = new nsAutoFocusEvent(this);
-    rv = NS_DispatchToCurrentThread(event);
-    NS_ENSURE_SUCCESS(rv, rv);
+      nsContentUtils::AutoFocusEnabled() && aDocument) {
+    aDocument->SetAutoFocusElement(this);
   }
 
   // If @form is set, the element *has* to be in a document, otherwise it
@@ -2097,13 +2025,6 @@ nsGenericHTMLFormElement::PreHandleEvent(EventChainVisitor& aVisitor)
   return nsGenericHTMLElement::PreHandleEvent(aVisitor);
 }
 
-/* virtual */
-bool
-nsGenericHTMLFormElement::IsDisabled() const
-{
-  return State().HasState(NS_EVENT_STATE_DISABLED);
-}
-
 void
 nsGenericHTMLFormElement::ForgetFieldSet(nsIContent* aFieldset)
 {
@@ -2120,6 +2041,52 @@ nsGenericHTMLFormElement::CanBeDisabled() const
   return
     type != NS_FORM_OBJECT &&
     type != NS_FORM_OUTPUT;
+}
+
+bool
+nsGenericHTMLFormElement::DoesReadOnlyApply() const
+{
+  int32_t type = ControlType();
+  if (!(type & NS_FORM_INPUT_ELEMENT) && type != NS_FORM_TEXTAREA) {
+    return false;
+  }
+
+  switch (type)
+  {
+    case NS_FORM_INPUT_HIDDEN:
+    case NS_FORM_INPUT_BUTTON:
+    case NS_FORM_INPUT_IMAGE:
+    case NS_FORM_INPUT_RESET:
+    case NS_FORM_INPUT_SUBMIT:
+    case NS_FORM_INPUT_RADIO:
+    case NS_FORM_INPUT_FILE:
+    case NS_FORM_INPUT_CHECKBOX:
+    case NS_FORM_INPUT_RANGE:
+    case NS_FORM_INPUT_COLOR:
+      return false;
+#ifdef DEBUG
+    case NS_FORM_TEXTAREA:
+    case NS_FORM_INPUT_TEXT:
+    case NS_FORM_INPUT_PASSWORD:
+    case NS_FORM_INPUT_SEARCH:
+    case NS_FORM_INPUT_TEL:
+    case NS_FORM_INPUT_EMAIL:
+    case NS_FORM_INPUT_URL:
+    case NS_FORM_INPUT_NUMBER:
+    case NS_FORM_INPUT_DATE:
+    case NS_FORM_INPUT_TIME:
+    case NS_FORM_INPUT_MONTH:
+    case NS_FORM_INPUT_WEEK:
+    case NS_FORM_INPUT_DATETIME_LOCAL:
+      return true;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesReadOnlyApply()");
+      return true;
+#else // DEBUG
+    default:
+      return true;
+#endif // DEBUG
+  }
 }
 
 bool
@@ -2155,10 +2122,8 @@ nsGenericHTMLFormElement::IntrinsicState() const
 
   // Make the text controls read-write
   if (!state.HasState(NS_EVENT_STATE_MOZ_READWRITE) &&
-      IsTextOrNumberControl(/*aExcludePassword*/ false)) {
-    bool roState = GetBoolAttr(nsGkAtoms::readonly);
-
-    if (!roState) {
+      DoesReadOnlyApply()) {
+    if (!GetBoolAttr(nsGkAtoms::readonly)) {
       state |= NS_EVENT_STATE_MOZ_READWRITE;
       state &= ~NS_EVENT_STATE_MOZ_READONLY;
     }
@@ -2284,14 +2249,14 @@ nsGenericHTMLFormElement::IsElementDisabledForEvents(EventMessage aMessage,
       break;
   }
 
-  bool disabled = IsDisabled();
-  if (!disabled && aFrame) {
-    const nsStyleUserInterface* uiStyle = aFrame->StyleUserInterface();
-    disabled = uiStyle->mUserInput == StyleUserInput::None ||
-               uiStyle->mUserInput == StyleUserInput::Disabled;
-
+  // FIXME(emilio): This poking at the style of the frame is slightly bogus
+  // unless we flush before every event, which we don't really want to do.
+  if (aFrame &&
+      aFrame->StyleUserInterface()->mUserInput == StyleUserInput::None) {
+    return true;
   }
-  return disabled;
+
+  return IsDisabled();
 }
 
 void
@@ -2413,14 +2378,14 @@ nsGenericHTMLFormElement::UpdateFieldSet(bool aNotify)
   }
 }
 
-void nsGenericHTMLFormElement::UpdateDisabledState(bool aNotify)
+void
+nsGenericHTMLFormElement::UpdateDisabledState(bool aNotify)
 {
   if (!CanBeDisabled()) {
     return;
   }
 
   bool isDisabled = HasAttr(kNameSpaceID_None, nsGkAtoms::disabled);
-
   if (!isDisabled && mFieldSet) {
     isDisabled = mFieldSet->IsDisabled();
   }
@@ -2530,13 +2495,9 @@ nsGenericHTMLElement::Click(CallerType aCallerType)
   // Strong in case the event kills it
   nsCOMPtr<nsIDocument> doc = GetComposedDoc();
 
-  nsCOMPtr<nsIPresShell> shell;
   RefPtr<nsPresContext> context;
   if (doc) {
-    shell = doc->GetShell();
-    if (shell) {
-      context = shell->GetPresContext();
-    }
+    context = doc->GetPresContext();
   }
 
   SetHandlingClick();
@@ -2682,26 +2643,6 @@ nsGenericHTMLElement::GetAssociatedEditor()
   return textEditor.forget();
 }
 
-bool
-nsGenericHTMLElement::IsCurrentBodyElement()
-{
-  // TODO Bug 698498: Should this handle the case where GetBody returns a
-  //                  frameset?
-  if (!IsHTMLElement(nsGkAtoms::body)) {
-    return false;
-  }
-
-  nsCOMPtr<nsIDOMHTMLDocument> htmlDocument =
-    do_QueryInterface(GetUncomposedDoc());
-  if (!htmlDocument) {
-    return false;
-  }
-
-  nsCOMPtr<nsIDOMHTMLElement> htmlElement;
-  htmlDocument->GetBody(getter_AddRefs(htmlElement));
-  return htmlElement == static_cast<HTMLBodyElement*>(this);
-}
-
 // static
 void
 nsGenericHTMLElement::SyncEditorsOnSubtree(nsIContent* content)
@@ -2797,8 +2738,7 @@ MakeContentDescendantsEditable(nsIContent *aContent, nsIDocument *aDocument)
 void
 nsGenericHTMLElement::ChangeEditableState(int32_t aChange)
 {
-  //XXXsmaug Fix this for Shadow DOM, bug 1066965.
-  nsIDocument* document = GetUncomposedDoc();
+  nsIDocument* document = GetComposedDoc();
   if (!document) {
     return;
   }
@@ -2811,7 +2751,8 @@ nsGenericHTMLElement::ChangeEditableState(int32_t aChange)
     }
 
     nsIContent* parent = GetParent();
-    while (parent) {
+    // Don't update across Shadow DOM boundary.
+    while (parent && parent->IsElement()) {
       parent->ChangeEditableDescendantCount(aChange);
       parent = parent->GetParent();
     }
@@ -3029,6 +2970,11 @@ nsGenericHTMLElement::NewURIFromString(const nsAString& aURISpec,
 static bool
 IsOrHasAncestorWithDisplayNone(Element* aElement, nsIPresShell* aPresShell)
 {
+  if (aPresShell->StyleSet()->IsServo()) {
+    return !aElement->HasServoData() || Servo_Element_IsDisplayNone(aElement);
+  }
+
+#ifdef MOZ_OLD_STYLE
   AutoTArray<Element*, 10> elementsToCheck;
   // Style and layout work on the flattened tree, so this is what we need to
   // check in order to figure out whether we're in a display: none subtree.
@@ -3045,27 +2991,22 @@ IsOrHasAncestorWithDisplayNone(Element* aElement, nsIPresShell* aPresShell)
     return false;
   }
 
-  StyleSetHandle styleSet = aPresShell->StyleSet();
-  RefPtr<nsStyleContext> sc;
+  nsStyleSet* styleSet = aPresShell->StyleSet()->AsGecko();
+  RefPtr<GeckoStyleContext> sc;
   for (auto* element : Reversed(elementsToCheck)) {
     if (sc) {
-      if (styleSet->IsGecko()) {
-        sc = styleSet->ResolveStyleFor(element, sc,
-                                       LazyComputeBehavior::Assert);
-      } else {
-        // Call ResolveStyleLazily to protect against stale element data in
-        // the tree when styled by Servo.
-        sc = styleSet->AsServo()->ResolveStyleLazily(
-            element, CSSPseudoElementType::NotPseudo);
-      }
+      sc = styleSet->ResolveStyleFor(element, sc, LazyComputeBehavior::Assert);
     } else {
-      sc = nsComputedDOMStyle::GetStyleContextNoFlush(element,
-                                                      nullptr, aPresShell);
+      sc = nsComputedDOMStyle::GetStyleContextNoFlush(element, nullptr)
+        .downcast<GeckoStyleContext>();
     }
     if (sc->StyleDisplay()->mDisplay == StyleDisplay::None) {
       return true;
     }
   }
+#else
+  MOZ_CRASH("Old style system disabled");
+#endif
 
   return false;
 }
@@ -3075,7 +3016,7 @@ nsGenericHTMLElement::GetInnerText(mozilla::dom::DOMString& aValue,
                                    mozilla::ErrorResult& aError)
 {
   if (!GetPrimaryFrame(FlushType::Layout)) {
-    nsIPresShell* presShell = nsComputedDOMStyle::GetPresShellForContent(this);
+    nsIPresShell* presShell = nsContentUtils::GetPresShellForContent(this);
     // NOTE(emilio): We need to check the presshell is initialized in order to
     // ensure the document is styled.
     if (!presShell || !presShell->DidInitialize() ||
@@ -3130,7 +3071,7 @@ nsGenericHTMLElement::SetInnerText(const nsAString& aValue)
       str.Truncate();
       already_AddRefed<mozilla::dom::NodeInfo> ni =
         NodeInfo()->NodeInfoManager()->GetNodeInfo(nsGkAtoms::br,
-          nullptr, kNameSpaceID_XHTML, nsIDOMNode::ELEMENT_NODE);
+          nullptr, kNameSpaceID_XHTML, ELEMENT_NODE);
       RefPtr<HTMLBRElement> br = new HTMLBRElement(ni);
       AppendChildTo(br, true);
     } else {

@@ -27,6 +27,7 @@ module.exports = {
     // subdirectories of this directory.
     "mozilla/reject-some-requires": ["error", "^devtools/shared/platform/(chome|content)/"],
     "mozilla/var-only-at-top-level": "error",
+    "mozilla/use-chromeutils-import": ["error", {allowCu: true}],
 
     // Rules from the React plugin
     "react/display-name": "error",
@@ -80,7 +81,7 @@ module.exports = {
     // impair readability, but also not required either.
     "comma-dangle": "off",
     // Warn about cyclomatic complexity in functions.
-    "complexity": ["error", 35],
+    "complexity": ["error", 53],
     // Don't warn for inconsistent naming when capturing this (not so important
     // with auto-binding fat arrow functions).
     "consistent-this": "off",
@@ -214,7 +215,7 @@ module.exports = {
     "no-undefined": "off",
     // Disallow global and local variables that aren't used, but allow unused
     // function arguments.
-    "no-unused-vars": ["error", {"vars": "all", "args": "none"}],
+    "no-unused-vars": ["error", {"args": "none", "vars": "all"}],
     // Allow using variables before they are defined.
     "no-use-before-define": "off",
     // We use var-only-at-top-level instead of no-var as we allow top level

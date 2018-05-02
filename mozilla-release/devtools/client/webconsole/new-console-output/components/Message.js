@@ -46,7 +46,6 @@ class Message extends Component {
       messageId: PropTypes.string,
       scrollToMessage: PropTypes.bool,
       exceptionDocURL: PropTypes.string,
-      parameters: PropTypes.object,
       request: PropTypes.object,
       dispatch: PropTypes.func,
       timeStamp: PropTypes.number,
@@ -76,6 +75,7 @@ class Message extends Component {
   constructor(props) {
     super(props);
     this.onLearnMoreClick = this.onLearnMoreClick.bind(this);
+    this.toggleMessage = this.toggleMessage.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
   }
 
@@ -98,6 +98,15 @@ class Message extends Component {
     this.props.serviceContainer.openLink(exceptionDocURL, e);
   }
 
+  toggleMessage(e) {
+    let { open, dispatch, messageId } = this.props;
+    if (open) {
+      dispatch(actions.messageClose(messageId));
+    } else {
+      dispatch(actions.messageOpen(messageId));
+    }
+  }
+
   onContextMenu(e) {
     let { serviceContainer, source, request, messageId } = this.props;
     let messageInfo = {
@@ -112,7 +121,6 @@ class Message extends Component {
 
   render() {
     const {
-      messageId,
       open,
       collapsible,
       collapseTitle,
@@ -125,7 +133,6 @@ class Message extends Component {
       frame,
       stacktrace,
       serviceContainer,
-      dispatch,
       exceptionDocURL,
       timeStamp = Date.now(),
       timestampsVisible,
@@ -157,8 +164,10 @@ class Message extends Component {
         },
         StackTrace({
           stacktrace: stacktrace,
-          onViewSourceInDebugger: serviceContainer.onViewSourceInDebugger,
-          onViewSourceInScratchpad: serviceContainer.onViewSourceInScratchpad,
+          onViewSourceInDebugger: serviceContainer.onViewSourceInDebugger
+            || serviceContainer.onViewSource,
+          onViewSourceInScratchpad: serviceContainer.onViewSourceInScratchpad
+            || serviceContainer.onViewSource,
           sourceMapService: serviceContainer.sourceMapService,
         })
       );
@@ -170,13 +179,7 @@ class Message extends Component {
       collapse = CollapseButton({
         open,
         title: collapseTitle,
-        onClick: function () {
-          if (open) {
-            dispatch(actions.messageClose(messageId));
-          } else {
-            dispatch(actions.messageOpen(messageId));
-          }
-        },
+        onClick: this.toggleMessage
       });
     }
 
@@ -191,7 +194,7 @@ class Message extends Component {
           note.frame ? FrameView({
             frame: note.frame,
             onClick: serviceContainer
-              ? serviceContainer.onViewSourceInDebugger
+              ? serviceContainer.onViewSourceInDebugger || serviceContainer.onViewSource
               : undefined,
             showEmptyPathAsHost: true,
             sourceMapService: serviceContainer
@@ -209,13 +212,16 @@ class Message extends Component {
     let onFrameClick;
     if (serviceContainer && frame) {
       if (source === MESSAGE_SOURCE.CSS) {
-        onFrameClick = serviceContainer.onViewSourceInStyleEditor;
+        onFrameClick = serviceContainer.onViewSourceInStyleEditor
+          || serviceContainer.onViewSource;
       } else if (/^Scratchpad\/\d+$/.test(frame.source)) {
-        onFrameClick = serviceContainer.onViewSourceInScratchpad;
+        onFrameClick = serviceContainer.onViewSourceInScratchpad
+          || serviceContainer.onViewSource;
       } else {
         // Point everything else to debugger, if source not available,
         // it will fall back to view-source.
-        onFrameClick = serviceContainer.onViewSourceInDebugger;
+        onFrameClick = serviceContainer.onViewSourceInDebugger
+          || serviceContainer.onViewSource;
       }
     }
 
@@ -253,7 +259,10 @@ class Message extends Component {
       icon,
       collapse,
       dom.span({ className: "message-body-wrapper" },
-        dom.span({ className: "message-flex-body" },
+        dom.span({
+          className: "message-flex-body",
+          onClick: collapsible ? this.toggleMessage : undefined,
+        },
           // Add whitespaces for formatting when copying to the clipboard.
           timestampEl ? " " : null,
           dom.span({ className: "message-body devtools-monospace" },

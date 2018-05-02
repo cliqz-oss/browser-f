@@ -7,6 +7,7 @@
 #ifndef jit_mips32_Architecture_mips32_h
 #define jit_mips32_Architecture_mips32_h
 
+#include "mozilla/EndianUtils.h"
 #include "mozilla/MathAlgorithms.h"
 
 #include <limits.h>
@@ -68,7 +69,7 @@ class FloatRegisters : public FloatRegistersMIPSShared
     static const uint32_t TotalDouble = 16;
     static const uint32_t TotalSingle = 16;
 
-    static const uint32_t Allocatable = 28;
+    static const uint32_t Allocatable = 30;
     static const SetType AllSingleMask = (1ULL << TotalSingle) - 1;
 
     static const SetType AllDoubleMask = ((1ULL << TotalDouble) - 1) << TotalSingle;
@@ -94,11 +95,7 @@ class FloatRegisters : public FloatRegistersMIPSShared
     static const SetType WrapperMask = VolatileMask;
 
     static const SetType NonAllocatableMask =
-        ((SetType(1) << (FloatRegisters::f16 >> 1)) |
-         (SetType(1) << (FloatRegisters::f18 >> 1))) * ((1 << TotalSingle) + 1);
-
-    // Registers that can be allocated without being saved, generally.
-    static const SetType TempMask = VolatileMask & ~NonAllocatableMask;
+        (SetType(1) << (FloatRegisters::f18 >> 1)) * ((1 << TotalSingle) + 1);
 
     static const SetType AllocatableMask = AllMask & ~NonAllocatableMask;
 };
@@ -134,6 +131,7 @@ class FloatRegister : public FloatRegisterMIPSShared
     }
     bool equiv(const FloatRegister& other) const { return other.kind_ == kind_; }
     size_t size() const { return (kind_ == Double) ? 8 : 4; }
+    size_t pushSize() const { return size(); }
     bool isInvalid() const {
         return code_ == FloatRegisters::invalid_freg;
     }

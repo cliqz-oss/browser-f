@@ -7,15 +7,16 @@
 #include "gc/Zone.h"
 
 #include "gc/Policy.h"
+#include "gc/PublicIterators.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/JitCompartment.h"
 #include "vm/Debugger.h"
 #include "vm/Runtime.h"
 
-#include "jscompartmentinlines.h"
-#include "jsgcinlines.h"
+#include "gc/GC-inl.h"
 #include "gc/Marking-inl.h"
+#include "vm/JSCompartment-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -36,7 +37,6 @@ JS::Zone::Zone(JSRuntime* rt, ZoneGroup* group)
     gcWeakRefs_(group),
     weakCaches_(group),
     gcWeakKeys_(group, SystemAllocPolicy(), rt->randomHashCodeScrambler()),
-    gcSweepGroupEdges_(group),
     typeDescrObjects_(group, this),
     regExps(this),
     markedAtoms_(group),
@@ -46,6 +46,8 @@ JS::Zone::Zone(JSRuntime* rt, ZoneGroup* group)
     usage(&rt->gc.usage),
     threshold(),
     gcDelayBytes(0),
+    tenuredStrings(group, 0),
+    allocNurseryStrings(group, true),
     propertyTree_(group, this),
     baseShapes_(group, this),
     initialShapes_(group, this),
@@ -60,7 +62,7 @@ JS::Zone::Zone(JSRuntime* rt, ZoneGroup* group)
     gcScheduledSaved_(false),
     gcPreserveCode_(group, false),
     keepShapeTables_(group, false),
-    listNext_(group, NotOnList)
+    listNext_(NotOnList)
 {
     /* Ensure that there are no vtables to mess us up here. */
     MOZ_ASSERT(reinterpret_cast<JS::shadow::Zone*>(this) ==
@@ -112,10 +114,10 @@ Zone::setNeedsIncrementalBarrier(bool needs)
 }
 
 void
-Zone::beginSweepTypes(FreeOp* fop, bool releaseTypes)
+Zone::beginSweepTypes(bool releaseTypes)
 {
     AutoClearTypeInferenceStateOnOOM oom(this);
-    types.beginSweep(fop, releaseTypes, oom);
+    types.beginSweep(releaseTypes, oom);
 }
 
 Zone::DebuggerVector*
@@ -468,7 +470,7 @@ ZoneList::transferFrom(ZoneList& other)
     other.tail = nullptr;
 }
 
-void
+Zone*
 ZoneList::removeFront()
 {
     MOZ_ASSERT(!isEmpty());
@@ -480,6 +482,8 @@ ZoneList::removeFront()
         tail = nullptr;
 
     front->listNext_ = Zone::NotOnList;
+
+    return front;
 }
 
 void

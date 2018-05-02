@@ -4,7 +4,7 @@
 
 const {Cu} = require("chrome");
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const Services = require("Services");
 const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.properties");
 
@@ -98,7 +98,7 @@ ConfigView.prototype = {
     let table = this._doc.querySelector("table");
     let sResetDefault = Strings.GetStringFromName("device_reset_default");
 
-    if (this._keys.indexOf(name) === -1) {
+    if (!this._keys.includes(name)) {
       this._keys.push(name);
     }
 

@@ -1,10 +1,7 @@
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-this.EXPORTED_SYMBOLS = ["Roles", "Events", "Relations",
-                         "Filters", "States", "Prefilters"];
+var EXPORTED_SYMBOLS = ["Roles", "Events", "Relations",
+                        "Filters", "States", "Prefilters"];
 
 function ConstantsMap(aObject, aPrefix, aMap = {}, aModifier = null) {
   let offset = aPrefix.length;

@@ -11,8 +11,10 @@ const { Provider } = require("devtools/client/shared/vendor/react-redux");
 const actions = require("devtools/client/webconsole/new-console-output/actions/index");
 const { createContextMenu } = require("devtools/client/webconsole/new-console-output/utils/context-menu");
 const { configureStore } = require("devtools/client/webconsole/new-console-output/store");
+const { isPacketPrivate } = require("devtools/client/webconsole/new-console-output/utils/messages");
+const { getAllMessagesById, getMessage } = require("devtools/client/webconsole/new-console-output/selectors/messages");
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const ConsoleOutput = createFactory(require("devtools/client/webconsole/new-console-output/components/ConsoleOutput"));
 const FilterBar = createFactory(require("devtools/client/webconsole/new-console-output/components/FilterBar"));
 const SideBar = createFactory(require("devtools/client/webconsole/new-console-output/components/SideBar"));
@@ -100,6 +102,11 @@ NewConsoleOutputWrapper.prototype = {
         requestData(id, type) {
           return hud.proxy.networkDataProvider.requestData(id, type);
         },
+        onViewSource(frame) {
+          if (hud && hud.owner && hud.owner.viewSource) {
+            hud.owner.viewSource(frame.url, frame.line);
+          }
+        }
       };
 
       // Set `openContextMenu` this way so, `serviceContainer` variable
@@ -139,7 +146,7 @@ NewConsoleOutputWrapper.prototype = {
 
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
-        menu.popup(screenX, screenY, this.toolbox);
+        menu.popup(screenX, screenY, { doc: this.owner.chromeWindow.document });
 
         return menu;
       };
@@ -197,6 +204,7 @@ NewConsoleOutputWrapper.prototype = {
       });
 
       let filterBar = FilterBar({
+        hidePersistLogsCheckbox: this.jsterm.hud.isBrowserConsole,
         serviceContainer: {
           attachRefToHud
         }
@@ -235,7 +243,7 @@ NewConsoleOutputWrapper.prototype = {
 
       promise = new Promise(resolve => {
         let jsterm = this.jsterm;
-        jsterm.hud.on("new-messages", function onThisMessage(e, messages) {
+        jsterm.hud.on("new-messages", function onThisMessage(messages) {
           for (let m of messages) {
             if (m.timeStamp === timeStampToMatch) {
               resolve(m.node);
@@ -258,7 +266,56 @@ NewConsoleOutputWrapper.prototype = {
   },
 
   dispatchMessagesClear: function () {
+    // We might still have pending message additions and updates when the clear action is
+    // triggered, so we need to flush them to make sure we don't have unexpected behavior
+    // in the ConsoleOutput.
+    this.queuedMessageAdds = [];
+    this.queuedMessageUpdates = [];
+    this.queuedRequestUpdates = [];
     store.dispatch(actions.messagesClear());
+  },
+
+  dispatchPrivateMessagesClear: function () {
+    // We might still have pending private message additions when the private messages
+    // clear action is triggered. We need to remove any private-window-issued packets from
+    // the queue so they won't appear in the output.
+
+    // For (network) message updates, we need to check both messages queue and the state
+    // since we can receive updates even if the message isn't rendered yet.
+    const messages = [...getAllMessagesById(store.getState()).values()];
+    this.queuedMessageUpdates = this.queuedMessageUpdates.filter(({networkInfo}) => {
+      const { actor } = networkInfo;
+
+      const queuedNetworkMessage = this.queuedMessageAdds.find(p => p.actor === actor);
+      if (queuedNetworkMessage && isPacketPrivate(queuedNetworkMessage)) {
+        return false;
+      }
+
+      const requestMessage = messages.find(message => actor === message.actor);
+      if (requestMessage && requestMessage.private === true) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // For (network) requests updates, we can check only the state, since there must be a
+    // user interaction to get an update (i.e. the network message is displayed and thus
+    // in the state).
+    this.queuedRequestUpdates = this.queuedRequestUpdates.filter(({id}) => {
+      const requestMessage = getMessage(store.getState(), id);
+      if (requestMessage && requestMessage.private === true) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Finally we clear the messages queue. This needs to be done here since we use it to
+    // clean the other queues.
+    this.queuedMessageAdds = this.queuedMessageAdds.filter(p => !isPacketPrivate(p));
+
+    store.dispatch(actions.privateMessagesClear());
   },
 
   dispatchTimestampsToggle: function (enabled) {
@@ -273,7 +330,7 @@ NewConsoleOutputWrapper.prototype = {
     // to count with that.
     const NUMBER_OF_NETWORK_UPDATE = 8;
     let expectedLength = NUMBER_OF_NETWORK_UPDATE;
-    if (res.networkInfo.updates.indexOf("requestPostData") != -1) {
+    if (res.networkInfo.updates.includes("requestPostData")) {
       expectedLength++;
     }
 

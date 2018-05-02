@@ -8,14 +8,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "PlacesSearchAutocompleteProvider" ];
+var EXPORTED_SYMBOLS = [ "PlacesSearchAutocompleteProvider" ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "SearchSuggestionController",
+ChromeUtils.defineModuleGetter(this, "SearchSuggestionController",
   "resource://gre/modules/SearchSuggestionController.jsm");
 
 const SEARCH_ENGINE_TOPIC = "browser-search-engine-modified";
@@ -199,7 +197,7 @@ SearchSuggestionControllerWrapper.prototype = {
 
 var gInitializationPromise = null;
 
-this.PlacesSearchAutocompleteProvider = Object.freeze({
+var PlacesSearchAutocompleteProvider = Object.freeze({
   /**
    * Starts initializing the component and returns a promise that is resolved or
    * rejected when initialization finished.  The same promise is returned if

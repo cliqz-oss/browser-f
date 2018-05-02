@@ -7,8 +7,6 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 -->
 
-<!-- eslint-env mozilla/browser-window -->
-
 <!DOCTYPE bindings [
 <!ENTITY % notificationDTD SYSTEM "chrome://global/locale/notification.dtd">
 %notificationDTD;
@@ -57,22 +55,23 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
     <implementation implements="nsIObserver, nsIDOMEventListener">
       <field name="ExtensionSearchHandler" readonly="true">
-        (Components.utils.import("resource://gre/modules/ExtensionSearchHandler.jsm", {})).ExtensionSearchHandler;
+        (ChromeUtils.import("resource://gre/modules/ExtensionSearchHandler.jsm", {})).ExtensionSearchHandler;
       </field>
 
       <constructor><![CDATA[
-        this._prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                                .getService(Components.interfaces.nsIPrefService)
-                                .getBranch("browser.urlbar.");
+        this._prefs = Cc["@mozilla.org/preferences-service;1"]
+                        .getService(Ci.nsIPrefService)
+                        .getBranch("browser.urlbar.");
         this._prefs.addObserver("", this);
 
-        this._defaultPrefs = Components.classes["@mozilla.org/preferences-service;1"]
-                                       .getService(Components.interfaces.nsIPrefService)
-                                       .getDefaultBranch("browser.urlbar.");
+        this._defaultPrefs = Cc["@mozilla.org/preferences-service;1"]
+                               .getService(Ci.nsIPrefService)
+                               .getDefaultBranch("browser.urlbar.");
 
         Services.prefs.addObserver("browser.search.suggest.enabled", this);
         this.browserSearchSuggestEnabled = Services.prefs.getBoolPref("browser.search.suggest.enabled");
 
+        this.openInTab = this._prefs.getBoolPref("openintab");
         this.clickSelectsAll = this._prefs.getBoolPref("clickSelectsAll");
         this.doubleClickSelectsAll = this._prefs.getBoolPref("doubleClickSelectsAll");
         this.completeDefaultIndex = this._prefs.getBoolPref("autoFill");
@@ -134,14 +133,14 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             this.removeAttribute("open");
           });
         });
-
-        // The autocomplete controller uses heuristic on some internal caches
-        // to handle cases like backspace, autofill or repeated searches.
-        // Ensure to clear those internal caches when switching tabs.
-        gBrowser.tabContainer.addEventListener("TabSelect", this);
       ]]></constructor>
 
       <destructor><![CDATA[
+        // Somehow, it's possible for the XBL destructor to fire without the
+        // constructor ever having fired. Fix:
+        if (!this._prefs) {
+          return;
+        }
         this._prefs.removeObserver("", this);
         this._prefs = null;
         Services.prefs.removeObserver("browser.search.suggest.enabled", this);
@@ -265,10 +264,19 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               // simply closes the popup without trying to fill anything.
               this.popup.selectedIndex = -1;
               break;
+            case KeyEvent.DOM_VK_TAB:
+              this.userSelectionBehavior = "tab";
+              break;
+            case KeyEvent.DOM_VK_UP:
+            case KeyEvent.DOM_VK_DOWN:
+            case KeyEvent.DOM_VK_PAGE_UP:
+            case KeyEvent.DOM_VK_PAGE_DOWN:
+              if (this.userSelectionBehavior != "tab")
+                this.userSelectionBehavior = "arrow";
+              break;
           }
           if (!this.popup.disableKeyNavigation) {
-            if (this._keyCodesToDefer.has(aEvent.keyCode) &&
-                this._shouldDeferKeyEvent(aEvent)) {
+            if (this._shouldDeferKeyEvent(aEvent)) {
               this._deferKeyEvent(aEvent, "onKeyPress");
               return false;
             }
@@ -292,33 +300,86 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         keys are buffered and deferred until more results arrive, at which time
         they're replayed.
 
-        @param event
-               The key event that should maybe be deferred.  You can pass null
-               or undefined if you don't have one to see whether the next key
-               event in general should be deferred.
+        @param  event
+                The key event that should maybe be deferred.
         @return True if the event should be deferred, false if not.
        -->
       <method name="_shouldDeferKeyEvent">
         <parameter name="event"/>
         <body><![CDATA[
-          let waitedLongEnough =
-            this._searchStartDate + this._deferredKeyEventTimeoutMs < Date.now();
-          if (waitedLongEnough && !this._deferredKeyEventTimeout) {
-            return false;
-          }
-          if (event && event.keyCode == KeyEvent.DOM_VK_TAB && !this.popupOpen) {
-            // In this case, the popup is closed and the user pressed the Tab
-            // key.  The focus should move out of the urlbar immediately.
-            return false;
-          }
-          if (!this.gotResultForCurrentQuery || !this.popupOpen) {
+          // If any event has been deferred for this search, then defer all
+          // subsequent events so that the user does not experience any
+          // keypresses out of order.  All events will be replayed when this
+          // timeout fires.
+          if (this._deferredKeyEventTimeout) {
             return true;
           }
+
+          // At this point, no events have been deferred for this search, and we
+          // need to decide whether `event` is the first one that should be.
+
+          if (!this._keyCodesToDefer.has(event.keyCode)) {
+            // Not a key that should trigger deferring.
+            return false;
+          }
+
+          let waitedLongEnough =
+            this._searchStartDate + this._deferredKeyEventTimeoutMs <= Cu.now();
+          if (waitedLongEnough) {
+            // This is a key that we would defer, but enough time has passed
+            // since the start of the search that we don't want to block the
+            // user's keypresses anymore.
+            return false;
+          }
+
+          if (event.keyCode == KeyEvent.DOM_VK_TAB && !this.popupOpen) {
+            // The popup is closed and the user pressed the Tab key.  The
+            // focus should move out of the urlbar immediately.
+            return false;
+          }
+
+          return !this._safeToPlayDeferredKeyEvent(event);
+        ]]></body>
+      </method>
+
+      <!--
+        Returns true if the given deferred key event can be played now without
+        possibly surprising the user.  This depends on the state of the popup,
+        its results, and the type of keypress.  Use this method only after
+        determining that the event should be deferred, or after it's already
+        been deferred and you want to know if it can be played now.
+
+        @param  event
+                The key event.
+        @return True if the event can be played, false if not.
+      -->
+      <method name="_safeToPlayDeferredKeyEvent">
+        <parameter name="event"/>
+        <body><![CDATA[
+          if (!this.gotResultForCurrentQuery || !this.popupOpen) {
+            // We're still waiting on the first result, or the popup hasn't
+            // opened yet, so not safe.
+            return false;
+          }
+
           let maxResultsRemaining =
-            this.popup.maxResults - this.popup._matchCount;
-          let lastResultSelected =
-            this.popup.selectedIndex + 1 == this.popup._matchCount;
-          return maxResultsRemaining > 0 && lastResultSelected;
+            this.popup.maxResults - this.popup.matchCount;
+          if (maxResultsRemaining == 0) {
+            // The popup can't possibly have any more results, so there's no
+            // need to defer any event now.
+            return true;
+          }
+
+          if (event.keyCode == KeyEvent.DOM_VK_DOWN) {
+            // Don't play the event if the last result is selected so that the
+            // user doesn't accidentally arrow down into the one-off buttons
+            // when they didn't mean to.
+            let lastResultSelected =
+              this.popup.selectedIndex + 1 == this.popup.matchCount;
+            return !lastResultSelected;
+          }
+
+          return true;
         ]]></body>
       </method>
 
@@ -350,42 +411,79 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           });
 
           if (!this._deferredKeyEventTimeout) {
-            this._deferredKeyEventTimeout = setTimeout(() => {
-              this._deferredKeyEventTimeout = null;
-              this.maybeReplayDeferredKeyEvents();
-            }, this._deferredKeyEventTimeoutMs);
+            // Start the timeout that will unconditionally replay all deferred
+            // events when it fires so that, after a certain point, we don't
+            // keep blocking the user's keypresses when nothing else has caused
+            // the events to be replayed.  Do not check whether it's safe to
+            // replay the events because otherwise it may look like we ignored
+            // the user's input.
+            let elapsed = Cu.now() - this._searchStartDate;
+            let remaining = this._deferredKeyEventTimeoutMs - elapsed;
+            if (remaining <= 0) {
+              this.replayAllDeferredKeyEvents();
+            } else {
+              this._deferredKeyEventTimeout = setTimeout(() => {
+                this.replayAllDeferredKeyEvents();
+                this._deferredKeyEventTimeout = null;
+              }, remaining);
+            }
           }
         ]]></body>
       </method>
 
       <!-- The enter key is always deferred, so it's not included here. -->
       <field name="_keyCodesToDefer">new Set([
-        Ci.nsIDOMKeyEvent.DOM_VK_DOWN,
-        Ci.nsIDOMKeyEvent.DOM_VK_TAB,
+        KeyboardEvent.DOM_VK_DOWN,
+        KeyboardEvent.DOM_VK_TAB,
       ])</field>
       <field name="_deferredKeyEventQueue">[]</field>
       <field name="_deferredKeyEventTimeout">null</field>
       <field name="_deferredKeyEventTimeoutMs">200</field>
       <field name="_searchStartDate">0</field>
 
-      <method name="maybeReplayDeferredKeyEvents">
+      <method name="replaySafeDeferredKeyEvents">
         <body><![CDATA[
-          if (!this._deferredKeyEventQueue.length ||
-              this._shouldDeferKeyEvent()) {
+          if (!this._deferredKeyEventQueue.length) {
             return;
           }
-          if (this._deferredKeyEventTimeout) {
-            clearTimeout(this._deferredKeyEventTimeout);
-            this._deferredKeyEventTimeout = null;
+          let instance = this._deferredKeyEventQueue[0];
+          if (!this._safeToPlayDeferredKeyEvent(instance.event)) {
+            return;
           }
+          this._deferredKeyEventQueue.shift();
+          this._replayKeyEventInstance(instance);
+          Services.tm.dispatchToMainThread(() => {
+            this.replaySafeDeferredKeyEvents();
+          });
+        ]]></body>
+      </method>
+
+      <!--
+        Unconditionally replays all deferred key events.  This does not check
+        whether it's safe to replay the events; use replaySafeDeferredKeyEvents
+        for that.  Use this method when you must replay all events so that it
+        does not appear that we ignored the user's input.
+      -->
+      <method name="replayAllDeferredKeyEvents">
+        <body><![CDATA[
           let instance = this._deferredKeyEventQueue.shift();
+          if (!instance) {
+            return;
+          }
+          this._replayKeyEventInstance(instance);
+          Services.tm.dispatchToMainThread(() => {
+            this.replayAllDeferredKeyEvents();
+          });
+        ]]></body>
+      </method>
+
+      <method name="_replayKeyEventInstance">
+        <parameter name="instance"/>
+        <body><![CDATA[
           // Safety check: handle only if the search string didn't change.
           if (this.mController.searchString == instance.searchString) {
             this[instance.methodName](instance.event);
           }
-          setTimeout(() => {
-            this.maybeReplayDeferredKeyEvents();
-          });
         ]]></body>
       </method>
 
@@ -432,7 +530,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           if (!uriInfo ||
               !uriInfo.fixedURI ||
               uriInfo.keywordProviderName ||
-              ["http", "https", "ftp"].indexOf(uriInfo.fixedURI.scheme) == -1) {
+              !["http", "https", "ftp"].includes(uriInfo.fixedURI.scheme)) {
             return;
           }
 
@@ -518,6 +616,33 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         ]]></body>
       </method>
 
+      <method name="_whereToOpen">
+        <parameter name="event"/>
+        <body><![CDATA[
+          let isMouseEvent = event instanceof MouseEvent;
+          let reuseEmpty = !isMouseEvent;
+          let where = undefined;
+          if (isMouseEvent) {
+            where = whereToOpenLink(event, false, false);
+          } else {
+            let altEnter = event && event.altKey;
+            where = altEnter ? "tab" : "current";
+          }
+          if (this.openInTab) {
+            if (where == "current") {
+              where = "tab";
+            } else if (where == "tab") {
+              where = "current";
+            }
+            reuseEmpty = true;
+          }
+          if (where == "tab" && reuseEmpty && isTabEmpty(gBrowser.selectedTab)) {
+            where = "current";
+          }
+          return where;
+        ]]></body>
+      </method>
+
       <!--
         This is ultimately called by the autocomplete controller as the result
         of handleEnter when the Return key is pressed in the textbox.  Since
@@ -539,6 +664,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         <parameter name="event"/>
         <parameter name="openUILinkWhere"/>
         <parameter name="openUILinkParams"/>
+        <parameter name="triggeringPrincipal"/>
         <body><![CDATA[
           let isMouseEvent = event instanceof MouseEvent;
           if (isMouseEvent && event.button == 2) {
@@ -546,7 +672,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             return;
           }
 
-          BrowserUsageTelemetry.recordUrlbarSelectedResultMethod(event);
+          BrowserUsageTelemetry.recordUrlbarSelectedResultMethod(
+            event, this.userSelectionBehavior);
 
           // Determine whether to use the selected one-off search button.  In
           // one-off search buttons parlance, "selected" means that the button
@@ -566,19 +693,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             return;
           }
 
-          let where = openUILinkWhere;
-          if (!where) {
-            if (isMouseEvent) {
-              where = whereToOpenLink(event, false, false);
-            } else {
-              // If the current tab is empty, ignore Alt+Enter (reuse this tab)
-              let altEnter = !isMouseEvent &&
-                             event &&
-                             event.altKey &&
-                             !isTabEmpty(gBrowser.selectedTab);
-              where = altEnter ? "tab" : "current";
-            }
-          }
+          let where = openUILinkWhere || this._whereToOpen(event);
 
           let url = this.value;
           if (!url) {
@@ -681,7 +796,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
                 if (where != "current" ||
                     browser.lastLocationChange == lastLocationChange) {
                   this._loadURL(data.url, browser, data.postData, where,
-                                openUILinkParams, data.mayInheritPrincipal);
+                                openUILinkParams, data.mayInheritPrincipal,
+                                triggeringPrincipal);
                 }
               });
               return;
@@ -689,7 +805,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           }
 
           this._loadURL(url, browser, postData, where, openUILinkParams,
-                        mayInheritPrincipal);
+                        mayInheritPrincipal, triggeringPrincipal);
         ]]></body>
       </method>
 
@@ -718,6 +834,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         <parameter name="openUILinkWhere"/>
         <parameter name="openUILinkParams"/>
         <parameter name="mayInheritPrincipal"/>
+        <parameter name="triggeringPrincipal"/>
         <body><![CDATA[
           this.value = url;
           browser.userTypedValue = url;
@@ -735,6 +852,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           let params = {
             postData,
             allowThirdPartyFixup: true,
+            triggeringPrincipal,
           };
           if (openUILinkWhere == "current") {
             params.targetBrowser = browser;
@@ -900,6 +1018,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // The URL bar automatically handles inputs with newline characters,
           // so we can get away with treating text/x-moz-url flavours as text/plain.
           if (links.length > 0 && links[0].url) {
+            let triggeringPrincipal = browserDragAndDrop.getTriggeringPrincipal(aEvent);
             aEvent.preventDefault();
             let url = links[0].url;
             let strippedURL = stripUnsafeProtocolOnPaste(url);
@@ -918,7 +1037,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               // URL object. If the *security checks* fail, return null.
               try {
                 urlSecurityCheck(url,
-                                 gBrowser.contentPrincipal,
+                                 triggeringPrincipal,
                                  Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
                 return urlObj;
               } catch (ex) {
@@ -946,10 +1065,11 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         <body><![CDATA[
           let droppedItem = this._getDroppableItem(aEvent);
           if (droppedItem) {
+            let triggeringPrincipal = browserDragAndDrop.getTriggeringPrincipal(aEvent);
             this.value = droppedItem instanceof URL ? droppedItem.href : droppedItem;
             SetPageProxyState("invalid");
             this.focus();
-            this.handleCommand();
+            this.handleCommand(null, undefined, undefined, triggeringPrincipal);
             // Force not showing the dropped URI immediately.
             gBrowser.userTypedValue = null;
             URLBarSetURI();
@@ -1119,6 +1239,9 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               case "speculativeConnect.enabled":
                 this.speculativeConnectEnabled = this._prefs.getBoolPref(aData);
                 break;
+              case "openintab":
+                this.openInTab = this._prefs.getBoolPref(aData);
+                break;
               case "browser.search.suggest.enabled":
                 this.browserSearchSuggestEnabled = Services.prefs.getBoolPref(aData);
                 break;
@@ -1217,6 +1340,9 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
               this._hideURLTooltip();
               break;
             case "TabSelect":
+              // The autocomplete controller uses heuristic on some internal caches
+              // to handle cases like backspace, autofill or repeated searches.
+              // Ensure to clear those internal caches when switching tabs.
               this.controller.resetInternalState();
               break;
           }
@@ -1341,7 +1467,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             // a new search and we won't get a result.
             if (this.mController.handleText()) {
               this.gotResultForCurrentQuery = false;
-              this._searchStartDate = Date.now();
+              this._searchStartDate = Cu.now();
               this._deferredKeyEventQueue = [];
               if (this._deferredKeyEventTimeout) {
                 clearTimeout(this._deferredKeyEventTimeout);
@@ -1714,8 +1840,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             return;
           }
           // Otherwise "call super" -- do what autocomplete-base-popup does.
-          let controller = this.view.QueryInterface(Components.interfaces.nsIAutoCompleteController);
-          controller.handleEnter(true, aEvent);
+          this.input.controller.handleEnter(true, aEvent);
         ]]></body>
       </method>
 
@@ -1936,8 +2061,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           // Now that the margins have been set, start adding items (via
           // _invalidate).
           this.mInput = aInput;
-          aInput.controller.setInitiallySelectedIndex(this._isFirstResultHeuristic ? 0 : -1);
-          this.view = aInput.controller.QueryInterface(Components.interfaces.nsITreeView);
+          this.input.controller.setInitiallySelectedIndex(this._isFirstResultHeuristic ? 0 : -1);
+          this.input.userSelectionBehavior = "none";
           this._invalidate();
 
           try {
@@ -1957,7 +2082,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             }
           } catch (ex) {
             // Not critical for the urlbar functionality, just report the error.
-            Components.utils.reportError(ex);
+            Cu.reportError(ex);
           }
 
           // Position the popup below the navbar.  To get the y-coordinate,
@@ -2017,8 +2142,8 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           this.classList.add("showSearchSuggestionsNotification");
           // Don't show the one-off buttons if we are showing onboarding and
           // there's no result, since it would be ugly and pointless.
-          this.footer.collapsed = this._matchCount == 0;
-          this.input.tabScrolling = this._matchCount != 0;
+          this.footer.collapsed = this.matchCount == 0;
+          this.input.tabScrolling = this.matchCount != 0;
 
           // This event allows accessibility APIs to see the notification.
           if (!this.popupOpen) {
@@ -2037,7 +2162,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           this.richlistbox.flex = 1;
           this.removeAttribute("dontanimate");
           this.searchSuggestionsNotification.removeAttribute("animate");
-          if (this._matchCount) {
+          if (this.matchCount) {
             // Update popup height.
             this._invalidate();
           } else {
@@ -2072,7 +2197,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       <method name="handleKeyPress">
         <parameter name="aEvent"/>
         <body><![CDATA[
-          this.oneOffSearchButtons.handleKeyPress(aEvent, this._matchCount,
+          this.oneOffSearchButtons.handleKeyPress(aEvent, this.matchCount,
                                                   !this._isFirstResultHeuristic,
                                                   gBrowser.userTypedValue);
           return aEvent.defaultPrevented && !aEvent.urlbarDeferred;
@@ -2107,7 +2232,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           <![CDATA[
             let parts = [proposedLabel];
 
-            let action = this.mInput._parseActionUrl(item.getAttribute("url"));
+            let action = this.input._parseActionUrl(item.getAttribute("url"));
             if (action) {
               switch (action.type) {
               case "searchengine":
@@ -2195,7 +2320,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
             this.input.tabScrolling = true;
 
             this.input.gotResultForCurrentQuery = true;
-            this.input.maybeReplayDeferredKeyEvents();
+            this.input.replaySafeDeferredKeyEvents();
           ]]>
         </body>
       </method>
@@ -2414,7 +2539,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       <property name="DownloadUtils" readonly="true">
         <getter><![CDATA[
           let module = {};
-          Components.utils.import("resource://gre/modules/DownloadUtils.jsm", module);
+          ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm", module);
           Object.defineProperty(this, "DownloadUtils", {
             configurable: true,
             enumerable: true,

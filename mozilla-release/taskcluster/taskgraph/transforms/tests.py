@@ -20,7 +20,7 @@ for example - use `all_tests.py` instead.
 from __future__ import absolute_import, print_function, unicode_literals
 
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.schema import resolve_keyed_by
+from taskgraph.util.schema import resolve_keyed_by, OptimizationSchema
 from taskgraph.util.treeherder import split_symbol, join_symbol
 from taskgraph.util.platforms import platform_family
 from taskgraph.util.schema import (
@@ -28,6 +28,7 @@ from taskgraph.util.schema import (
     optionally_keyed_by,
     Schema,
 )
+from taskgraph.util.taskcluster import get_artifact_path
 from mozbuild.schedules import INCLUSIVE_COMPONENTS
 
 from voluptuous import (
@@ -52,22 +53,22 @@ WINDOWS_WORKER_TYPES = {
     'windows7-32': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
-      'hardware': 'releng-hardware/gecko-t-win7-32-hw',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows7-32-pgo': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
-      'hardware': 'releng-hardware/gecko-t-win7-32-hw',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows7-32-nightly': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
-      'hardware': 'releng-hardware/gecko-t-win7-32-hw',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows7-32-devedition': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
-      'hardware': 'releng-hardware/gecko-t-win7-32-hw',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows7-32-stylo-disabled': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
@@ -265,7 +266,7 @@ test_description_schema = Schema({
         int),
 
     # the exit status code that indicates the task should be retried
-    Optional('retry-exit-status'): int,
+    Optional('retry-exit-status'): [int],
 
     # Whether to perform a gecko checkout.
     Required('checkout'): bool,
@@ -384,11 +385,24 @@ test_description_schema = Schema({
         Optional('files-changed'): [basestring],
     }),
 
+    # Optimization to perform on this task during the optimization phase.
+    # Optimizations are defined in taskcluster/taskgraph/optimize.py.
+    Exclusive(Optional('optimization'), 'optimization'): OptimizationSchema,
+
     # The SCHEDULES component for this task; this defaults to the suite
     # (not including the flavor) but can be overridden here.
     Exclusive(Optional('schedules-component'), 'optimization'): basestring,
 
     Optional('worker-type'): optionally_keyed_by(
+        'test-platform',
+        Any(basestring, None),
+    ),
+
+    # The target name, specifying the build artifact to be tested.
+    # If None or not specified, a transform sets the target based on OS:
+    # target.dmg (Mac), target.apk (Android), target.tar.bz2 (Linux),
+    # or target.zip (Windows).
+    Optional('target'): optionally_keyed_by(
         'test-platform',
         Any(basestring, None),
     ),
@@ -496,21 +510,34 @@ def setup_talos(config, tests):
 
 
 @transforms.add
+def handle_artifact_prefix(config, tests):
+    """Handle translating `artifact_prefix` appropriately"""
+    for test in tests:
+        if test['build-attributes'].get('artifact_prefix'):
+            test.setdefault("attributes", {}).setdefault(
+                'artifact_prefix', test['build-attributes']['artifact_prefix']
+            )
+        yield test
+
+
+@transforms.add
 def set_target(config, tests):
     for test in tests:
         build_platform = test['build-platform']
-        if build_platform.startswith('macosx'):
-            target = 'target.dmg'
-        elif build_platform.startswith('android'):
-            if 'geckoview' in test['test-name']:
-                target = 'geckoview_example.apk'
-            else:
+        target = None
+        if 'target' in test:
+            resolve_keyed_by(test, 'target', item_name=test['test-name'])
+            target = test['target']
+        if not target:
+            if build_platform.startswith('macosx'):
+                target = 'target.dmg'
+            elif build_platform.startswith('android'):
                 target = 'target.apk'
-        elif build_platform.startswith('win'):
-            target = 'target.zip'
-        else:
-            target = 'target.tar.bz2'
-        test['mozharness']['build-artifact-name'] = 'public/build/' + target
+            elif build_platform.startswith('win'):
+                target = 'target.zip'
+            else:
+                target = 'target.tar.bz2'
+        test['mozharness']['build-artifact-name'] = get_artifact_path(test, target)
 
         yield test
 
@@ -705,6 +732,12 @@ def enable_code_coverage(config, tests):
                     test['run-on-projects'] == 'built-projects':
                 test['run-on-projects'] = ['mozilla-central', 'try']
 
+            # Ensure we don't optimize test suites out.
+            # We always want to run all test suites for coverage purposes.
+            test.pop('schedules-component', None)
+            test.pop('when', None)
+            test['optimization'] = None
+
             if 'talos' in test['test-name']:
                 test['max-run-time'] = 7200
                 if 'linux' in test['build-platform']:
@@ -775,15 +808,6 @@ def split_chunks(config, tests):
             yield test
             continue
 
-        # HACK: Bug 1373578 appears to pass with more chunks, non-e10s only though
-        if test['test-platform'] == 'windows7-32/debug' and test['test-name'] == 'reftest':
-            test['chunks'] = 32
-
-        if (test['test-platform'] == 'windows7-32/opt' or
-            test['test-platform'] == 'windows7-32-pgo/opt') and \
-                test['test-name'] in ['reftest-e10s', 'reftest-no-accel-e10s', 'reftest-gpu-e10s']:
-            test['chunks'] = 32
-
         for this_chunk in range(1, test['chunks'] + 1):
             # copy the test and update with the chunk number
             chunked = copy.deepcopy(test)
@@ -831,7 +855,7 @@ def set_retry_exit_status(config, tests):
     """Set the retry exit status to TBPL_RETRY, the value returned by mozharness
        scripts to indicate a transient failure that should be retried."""
     for test in tests:
-        test['retry-exit-status'] = 4
+        test['retry-exit-status'] = [4]
         yield test
 
 
@@ -905,49 +929,32 @@ def set_worker_type(config, tests):
         # during the taskcluster migration, this is a bit tortured, but it
         # will get simpler eventually!
         test_platform = test['test-platform']
-        try_options = config.params['try_options'] if config.params['try_options'] else {}
         if test.get('worker-type'):
             # This test already has its worker type defined, so just use that (yields below)
             pass
         elif test_platform.startswith('macosx'):
             test['worker-type'] = MACOSX_WORKER_TYPES['macosx64']
         elif test_platform.startswith('win'):
-            win_worker_type_platform = WINDOWS_WORKER_TYPES[
-                test_platform.split('/')[0]
-            ]
-            if test.get('suite', '') == 'talos' and 'ccov' not in test['build-platform']:
-                if try_options.get('taskcluster_worker'):
-                    test['worker-type'] = win_worker_type_platform['hardware']
-                elif test['virtualization'] == 'virtual':
-                    test['worker-type'] = win_worker_type_platform[test['virtualization']]
-                else:
-                    test['worker-type'] = 'buildbot-bridge/buildbot-bridge'
+            # figure out what platform the job needs to run on
+            if test['virtualization'] == 'hardware':
+                # some jobs like talos and reftest run on real h/w - those are all win10
+                win_worker_type_platform = WINDOWS_WORKER_TYPES['windows10-64']
             else:
-                test['worker-type'] = win_worker_type_platform[test['virtualization']]
+                # the other jobs run on a vm which may or may not be a win10 vm
+                win_worker_type_platform = WINDOWS_WORKER_TYPES[
+                    test_platform.split('/')[0]
+                ]
+            # now we have the right platform set the worker type accordingly
+            test['worker-type'] = win_worker_type_platform[test['virtualization']]
         elif test_platform.startswith('linux') or test_platform.startswith('android'):
             if test.get('suite', '') == 'talos' and test['build-platform'] != 'linux64-ccov/opt':
-                if try_options.get('taskcluster_worker'):
-                    test['worker-type'] = 'releng-hardware/gecko-t-linux-talos'
-                else:
-                    test['worker-type'] = 'buildbot-bridge/buildbot-bridge'
+                test['worker-type'] = 'releng-hardware/gecko-t-linux-talos'
             else:
                 test['worker-type'] = LINUX_WORKER_TYPES[test['instance-size']]
         else:
             raise Exception("unknown test_platform {}".format(test_platform))
 
         yield test
-
-
-@transforms.add
-def skip_win10_hardware(config, tests):
-    """Windows 10 hardware isn't ready yet, don't even bother scheduling
-    unless we're on try"""
-    for test in tests:
-        if 'releng-hardware/gecko-t-win10-64-hw' not in test['worker-type']:
-            yield test
-        if config.params == 'try':
-            yield test
-        # Silently drop the test on the floor if its win10 hardware and we're not try
 
 
 @transforms.add
@@ -1024,8 +1031,10 @@ def make_job_description(config, tests):
 
         if test.get('when'):
             jobdesc['when'] = test['when']
-        elif config.params['project'] != 'try':
-            # for non-try branches, include SETA
+        elif 'optimization' in test:
+            jobdesc['optimization'] = test['optimization']
+        elif config.params['project'] != 'try' and suite not in INCLUSIVE_COMPONENTS:
+            # for non-try branches and non-inclusive suites, include SETA
             jobdesc['optimization'] = {'skip-unless-schedules-or-seta': schedules}
         else:
             # otherwise just use skip-unless-schedules

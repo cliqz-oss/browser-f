@@ -140,8 +140,9 @@ HTMLFieldSetElement::SubmitNamesValues(HTMLFormSubmission* aFormSubmission)
 }
 
 nsresult
-HTMLFieldSetElement::InsertChildAt(nsIContent* aChild, uint32_t aIndex,
-                                   bool aNotify)
+HTMLFieldSetElement::InsertChildBefore(nsIContent* aChild,
+                                       nsIContent* aBeforeThis,
+                                       bool aNotify)
 {
   bool firstLegendHasChanged = false;
 
@@ -152,14 +153,48 @@ HTMLFieldSetElement::InsertChildAt(nsIContent* aChild, uint32_t aIndex,
     } else {
       // If mFirstLegend is before aIndex, we do not change it.
       // Otherwise, mFirstLegend is now aChild.
-      if (int32_t(aIndex) <= IndexOf(mFirstLegend)) {
+      int32_t index = aBeforeThis ? ComputeIndexOf(aBeforeThis) : GetChildCount();
+      if (index <= ComputeIndexOf(mFirstLegend)) {
         mFirstLegend = aChild;
         firstLegendHasChanged = true;
       }
     }
   }
 
-  nsresult rv = nsGenericHTMLFormElement::InsertChildAt(aChild, aIndex, aNotify);
+  nsresult rv =
+    nsGenericHTMLFormElement::InsertChildBefore(aChild, aBeforeThis, aNotify);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (firstLegendHasChanged) {
+    NotifyElementsForFirstLegendChange(aNotify);
+  }
+
+  return rv;
+}
+
+nsresult
+HTMLFieldSetElement::InsertChildAt_Deprecated(nsIContent* aChild,
+                                              uint32_t aIndex,
+                                              bool aNotify)
+{
+  bool firstLegendHasChanged = false;
+
+  if (aChild->IsHTMLElement(nsGkAtoms::legend)) {
+    if (!mFirstLegend) {
+      mFirstLegend = aChild;
+      // We do not want to notify the first time mFirstElement is set.
+    } else {
+      // If mFirstLegend is before aIndex, we do not change it.
+      // Otherwise, mFirstLegend is now aChild.
+      if (int32_t(aIndex) <= ComputeIndexOf(mFirstLegend)) {
+        mFirstLegend = aChild;
+        firstLegendHasChanged = true;
+      }
+    }
+  }
+
+  nsresult rv =
+    nsGenericHTMLFormElement::InsertChildAt_Deprecated(aChild, aIndex, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (firstLegendHasChanged) {

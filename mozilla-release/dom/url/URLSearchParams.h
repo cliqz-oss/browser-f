@@ -13,7 +13,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 #include "nsISupports.h"
-#include "nsIXMLHttpRequest.h"
+#include "nsIInputStream.h"
 
 namespace mozilla {
 namespace dom {
@@ -52,6 +52,9 @@ public:
 
   static bool
   Parse(const nsACString& aInput, ForEachIterator& aIterator);
+
+  static bool
+  Extract(const nsACString& aInput, const nsAString& aName, nsAString& aValue);
 
   void
   ParseInput(const nsACString& aInput);
@@ -113,14 +116,12 @@ private:
   nsTArray<Param> mParams;
 };
 
-class URLSearchParams final : public nsIXHRSendable,
+class URLSearchParams final : public nsISupports,
                               public nsWrapperCache
 {
   ~URLSearchParams();
 
 public:
-  NS_DECL_NSIXHRSENDABLE
-
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(URLSearchParams)
 
@@ -173,6 +174,11 @@ public:
 
   bool
   WriteStructuredClone(JSStructuredCloneWriter* aWriter) const;
+
+  nsresult
+  GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
+              nsACString& aContentTypeWithCharset,
+              nsACString& aCharset) const;
 
 private:
   void AppendInternal(const nsAString& aName, const nsAString& aValue);

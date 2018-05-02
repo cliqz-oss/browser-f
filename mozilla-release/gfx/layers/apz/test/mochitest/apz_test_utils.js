@@ -115,26 +115,32 @@ function isLayerized(elementId) {
   return false;
 }
 
+function promiseApzRepaintsFlushed(aWindow = window) {
+  return new Promise(function (resolve, reject) {
+    var repaintDone = function() {
+      SpecialPowers.Services.obs.removeObserver(repaintDone, "apz-repaints-flushed");
+      setTimeout(resolve, 0);
+    };
+    SpecialPowers.Services.obs.addObserver(repaintDone, "apz-repaints-flushed");
+    if (SpecialPowers.getDOMWindowUtils(aWindow).flushApzRepaints()) {
+      dump("Flushed APZ repaints, waiting for callback...\n");
+    } else {
+      dump("Flushing APZ repaints was a no-op, triggering callback directly...\n");
+      repaintDone();
+    }
+  });
+}
+
 function flushApzRepaints(aCallback, aWindow = window) {
   if (!aCallback) {
     throw "A callback must be provided!";
   }
-  var repaintDone = function() {
-    SpecialPowers.Services.obs.removeObserver(repaintDone, "apz-repaints-flushed");
-    setTimeout(aCallback, 0);
-  };
-  SpecialPowers.Services.obs.addObserver(repaintDone, "apz-repaints-flushed");
-  if (SpecialPowers.getDOMWindowUtils(aWindow).flushApzRepaints()) {
-    dump("Flushed APZ repaints, waiting for callback...\n");
-  } else {
-    dump("Flushing APZ repaints was a no-op, triggering callback directly...\n");
-    repaintDone();
-  }
+  promiseApzRepaintsFlushed(aWindow).then(aCallback);
 }
 
 // Flush repaints, APZ pending repaints, and any repaints resulting from that
 // flush. This is particularly useful if the test needs to reach some sort of
-// "idle" state in terms of repaints. Usually just doing waitForAllPaints
+// "idle" state in terms of repaints. Usually just waiting for all paints
 // followed by flushApzRepaints is sufficient to flush all APZ state back to
 // the main thread, but it can leave a paint scheduled which will get triggered
 // at some later time. For tests that specifically test for painting at
@@ -143,16 +149,18 @@ function flushApzRepaints(aCallback, aWindow = window) {
 // most tests.
 function waitForApzFlushedRepaints(aCallback) {
   // First flush the main-thread paints and send transactions to the APZ
-  waitForAllPaints(function() {
+  promiseAllPaintsDone()
     // Then flush the APZ to make sure any repaint requests have been sent
-    // back to the main thread
-    flushApzRepaints(function() {
-      // Then flush the main-thread again to process the repaint requests.
-      // Once this is done, we should be in a stable state with nothing
-      // pending, so we can trigger the callback.
-      waitForAllPaints(aCallback);
-    });
-  });
+    // back to the main thread. Note that we need a wrapper function around
+    // promiseApzRepaintsFlushed otherwise the rect produced by
+    // promiseAllPaintsDone gets passed to it as the window parameter.
+    .then(() => promiseApzRepaintsFlushed())
+    // Then flush the main-thread again to process the repaint requests.
+    // Once this is done, we should be in a stable state with nothing
+    // pending, so we can trigger the callback.
+    .then(promiseAllPaintsDone)
+    // Then allow the callback to be triggered.
+    .then(aCallback);
 }
 
 // This function takes a set of subtests to run one at a time in new top-level
@@ -189,6 +197,10 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
     function advanceSubtestExecution() {
       var test = aSubtests[testIndex];
       if (w) {
+        // Run any cleanup functions registered in the subtest
+        if (w.ApzCleanup) { // guard against the subtest not loading apz_test_utils.js
+          w.ApzCleanup.execute();
+        }
         if (typeof test.dp_suppression != 'undefined') {
           // We modified the suppression when starting the test, so now undo that.
           SpecialPowers.getDOMWindowUtils(window).respectDisplayPortSuppression(!test.dp_suppression);
@@ -226,13 +238,27 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
       function spawnTest(aFile) {
         w = window.open('', "_blank");
         w.subtestDone = advanceSubtestExecution;
+        w.isApzSubtest = true;
         w.SimpleTest = SimpleTest;
         w.is = function(a, b, msg) { return is(a, b, aFile + " | " + msg); };
         w.ok = function(cond, name, diag) { return ok(cond, aFile + " | " + name, diag); };
         if (test.onload) {
           w.addEventListener('load', function(e) { test.onload(w); }, { once: true });
         }
-        w.location = location.href.substring(0, location.href.lastIndexOf('/') + 1) + aFile;
+        var subtestUrl = location.href.substring(0, location.href.lastIndexOf('/') + 1) + aFile;
+        function urlResolves(url) {
+          var request = new XMLHttpRequest();
+          request.open('GET', url, false);
+          request.send();
+          return request.status !== 404;
+        }
+        if (!urlResolves(subtestUrl)) {
+          SimpleTest.ok(false, "Subtest URL " + subtestUrl + " does not resolve. " +
+              "Be sure it's present in the support-files section of mochitest.ini.");
+          reject();
+          return;
+        }
+        w.location = subtestUrl;
         return w;
       }
 
@@ -254,14 +280,87 @@ function pushPrefs(prefs) {
   return SpecialPowers.pushPrefEnv({'set': prefs});
 }
 
-function waitUntilApzStable() {
-  return new Promise(function(resolve, reject) {
-    SimpleTest.waitForFocus(function() {
-      waitForAllPaints(function() {
-        flushApzRepaints(resolve);
+async function waitUntilApzStable() {
+  if (!SpecialPowers.isMainProcess()) {
+    // We use this waitUntilApzStable function during test initialization
+    // and for those scenarios we want to flush the parent-process layer
+    // tree to the compositor and wait for that as well. That way we know
+    // that not only is the content-process layer tree ready in the compositor,
+    // the parent-process layer tree in the compositor has the appropriate
+    // RefLayer pointing to the content-process layer tree.
+
+    // Sadly this helper function cannot reuse any code from other places because
+    // it must be totally self-contained to be shipped over to the parent process.
+    function parentProcessFlush() {
+      addMessageListener("apz-flush", function() {
+        ChromeUtils.import("resource://gre/modules/Services.jsm");
+        var topWin = Services.wm.getMostRecentWindow("navigator:browser");
+        var topUtils = topWin.QueryInterface(Ci.nsIInterfaceRequestor)
+                             .getInterface(Ci.nsIDOMWindowUtils);
+
+        var repaintDone = function() {
+          Services.obs.removeObserver(repaintDone, "apz-repaints-flushed");
+          // send message back to content process
+          sendAsyncMessage("apz-flush-done", null);
+        };
+        var flushRepaint = function() {
+          if (topUtils.isMozAfterPaintPending) {
+            topWin.addEventListener("MozAfterPaint", flushRepaint, { once: true });
+            return;
+          }
+
+          Services.obs.addObserver(repaintDone, "apz-repaints-flushed");
+          if (topUtils.flushApzRepaints()) {
+            dump("Parent process: flushed APZ repaints, waiting for callback...\n");
+          } else {
+            dump("Parent process: flushing APZ repaints was a no-op, triggering callback directly...\n");
+            repaintDone();
+          }
+        }
+
+        // Flush APZ repaints, but wait until all the pending paints have been
+        // sent.
+        flushRepaint();
       });
-    }, window);
-  });
+    }
+
+    // This is the first time waitUntilApzStable is being called, do initialization
+    if (typeof waitUntilApzStable.chromeHelper == "undefined") {
+      waitUntilApzStable.chromeHelper = SpecialPowers.loadChromeScript(parentProcessFlush);
+      ApzCleanup.register(() => { waitUntilApzStable.chromeHelper.destroy(); });
+    }
+
+    // Actually trigger the parent-process flush and wait for it to finish
+    waitUntilApzStable.chromeHelper.sendAsyncMessage("apz-flush", null);
+    await waitUntilApzStable.chromeHelper.promiseOneMessage("apz-flush-done");
+  }
+
+  await SimpleTest.promiseFocus(window);
+  await promiseAllPaintsDone();
+  await promiseApzRepaintsFlushed();
+}
+
+// This function returns a promise that is resolved after at least one paint
+// has been sent and processed by the compositor. This function can force
+// such a paint to happen if none are pending. This is useful to run after
+// the waitUntilApzStable() but before reading the compositor-side APZ test
+// data, because the test data for the content layers id only gets populated
+// on content layer tree updates *after* the root layer tree has a RefLayer
+// pointing to the contnet layer tree. waitUntilApzStable itself guarantees
+// that the root layer tree is pointing to the content layer tree, but does
+// not guarantee the subsequent paint; this function does that job.
+async function forceLayerTreeToCompositor() {
+  var utils = SpecialPowers.getDOMWindowUtils(window);
+  if (!utils.isMozAfterPaintPending) {
+    dump("Forcing a paint since none was pending already...\n");
+    var testMode = utils.isTestControllingRefreshes;
+    utils.advanceTimeAndRefresh(0);
+    if (!testMode) {
+      utils.restoreNormalRefresh();
+    }
+  }
+  await promiseAllPaintsDone();
+  await promiseApzRepaintsFlushed();
 }
 
 function isApzEnabled() {
@@ -331,7 +430,7 @@ function runContinuation(testFunction) {
 function getSnapshot(rect) {
   function parentProcessSnapshot() {
     addMessageListener('snapshot', function(rect) {
-      Components.utils.import('resource://gre/modules/Services.jsm');
+      ChromeUtils.import('resource://gre/modules/Services.jsm');
       var topWin = Services.wm.getMostRecentWindow('navigator:browser');
 
       // reposition the rect relative to the top-level browser window
@@ -352,7 +451,7 @@ function getSnapshot(rect) {
   if (typeof getSnapshot.chromeHelper == 'undefined') {
     // This is the first time getSnapshot is being called; do initialization
     getSnapshot.chromeHelper = SpecialPowers.loadChromeScript(parentProcessSnapshot);
-    SimpleTest.registerCleanupFunction(function() { getSnapshot.chromeHelper.destroy() });
+    ApzCleanup.register(function() { getSnapshot.chromeHelper.destroy() });
   }
 
   return getSnapshot.chromeHelper.sendSyncMessage('snapshot', JSON.stringify(rect)).toString();
@@ -405,3 +504,167 @@ function injectScript(aScript, aWindow = window) {
     });
   };
 }
+
+// Compute some configuration information used for hit testing.
+// The computed information is cached to avoid recomputing it
+// each time this function is called.
+// The computed information is an object with three fields:
+//   utils: the nsIDOMWindowUtils instance for this window
+//   isWebRender: true if WebRender is enabled
+//   isWindow: true if the platform is Windows
+function getHitTestConfig() {
+  if (!("hitTestConfig" in window)) {
+    var utils = SpecialPowers.getDOMWindowUtils(window);
+    var isWebRender = (utils.layerManagerType == 'WebRender');
+    var isWindows = (getPlatform() == 'windows');
+    window.hitTestConfig = { utils, isWebRender, isWindows };
+  }
+  return window.hitTestConfig;
+}
+
+// Compute the coordinates of the center of the given element.
+function centerOf(element) {
+  var bounds = element.getBoundingClientRect();
+  return { x: bounds.x + (bounds.width / 2), y: bounds.y + (bounds.height / 2) };
+}
+
+// Peform a compositor hit test at the given point and return the result.
+// The returned object has two fields:
+//   hitInfo: a combination of APZHitResultFlags
+//   scrollId: the view-id of the scroll frame that was hit
+function hitTest(point) {
+  var utils = getHitTestConfig().utils;
+  dump("Hit-testing point (" + point.x + ", " + point.y + ")\n");
+  utils.sendMouseEvent("MozMouseHittest", point.x, point.y, 0, 0, 0, true, 0, 0, true, true);
+  var data = utils.getCompositorAPZTestData();
+  ok(data.hitResults.length >= 1, "Expected at least one hit result in the APZTestData");
+  var result = data.hitResults[data.hitResults.length - 1];
+  return { hitInfo: result.hitResult, scrollId: result.scrollId };
+}
+
+// Symbolic constants used by hitTestScrollbar().
+var ScrollbarTrackLocation = {
+    START: 1,
+    END: 2
+};
+var LayerState = {
+    ACTIVE: 1,
+    INACTIVE: 2
+};
+
+// Perform a hit test on the scrollbar(s) of a scroll frame.
+// This function takes a single argument which is expected to be
+// an object with the following fields:
+//   element: The scroll frame to perform the hit test on.
+//   directions: The direction(s) of scrollbars to test.
+//     If directions.vertical is true, the vertical scrollbar will be tested.
+//     If directions.horizontal is true, the horizontal scrollbar will be tested.
+//     Both may be true in a single call (in which case two tests are performed).
+//   expectedScrollId: The scroll id that is expected to be hit.
+//   trackLocation: One of ScrollbarTrackLocation.{START, END}.
+//     Determines which end of the scrollbar track is targeted.
+//   expectThumb: Whether the scrollbar thumb is expected to be present
+//     at the targeted end of the scrollbar track.
+//   layerState: Whether the scroll frame is active or inactive.
+// The function performs the hit tests and asserts that the returned
+// hit test information is consistent with the passed parameters.
+// There is no return value.
+// Tests that use this function must set the pref
+// "layout.scrollbars.always-layerize-track".
+function hitTestScrollbar(params) {
+  var config = getHitTestConfig();
+
+  var elem = params.element;
+
+  var boundingClientRect = elem.getBoundingClientRect();
+
+  var verticalScrollbarWidth = boundingClientRect.width - elem.clientWidth;
+  var horizontalScrollbarHeight = boundingClientRect.height - elem.clientHeight;
+
+  // On windows, the scrollbar tracks have buttons on the end. When computing
+  // coordinates for hit-testing we need to account for this. We assume the
+  // buttons are square, and so can use the scrollbar width/height to estimate
+  // the size of the buttons
+  var scrollbarArrowButtonHeight = config.isWindows ? verticalScrollbarWidth : 0;
+  var scrollbarArrowButtonWidth = config.isWindows ? horizontalScrollbarHeight : 0;
+
+  // Compute the expected hit result flags.
+  // The direction flag (APZHitResultFlags.SCROLLBAR_VERTICAL) is added in
+  // later, for the vertical test only.
+  // The APZHitResultFlags.SCROLLBAR flag will be present regardless of whether
+  // the layer is active or inactive because we force layerization of scrollbar
+  // tracks. Unfortunately not forcing the layerization results in different
+  // behaviour on different platforms which makes testing harder.
+  var expectedHitInfo = APZHitResultFlags.VISIBLE | APZHitResultFlags.SCROLLBAR;
+  if (params.expectThumb) {
+    // WebRender will hit-test scroll thumbs even inside inactive scrollframes,
+    // because the hit-test is based on display items and we do in fact generate
+    // the display items for the scroll thumb. The user-observed behaviour is
+    // going to be unaffected because the dispatch-to-content flag will also be
+    // set on these thumbs so it's not like APZ will allow async-scrolling them
+    // before the scrollframe has been activated/layerized. In non-WebRender we
+    // do not generate the layers for thumbs on inactive scrollframes, so the
+    // hit test will be accordingly different.
+    expectedHitInfo |= APZHitResultFlags.DISPATCH_TO_CONTENT;
+    if (config.isWebRender || params.layerState == LayerState.ACTIVE) {
+        expectedHitInfo |= APZHitResultFlags.SCROLLBAR_THUMB;
+    }
+  }
+
+  var scrollframeMsg = (params.layerState == LayerState.ACTIVE)
+    ? "active scrollframe" : "inactive scrollframe";
+
+  // Hit-test the targeted areas, assuming we don't have overlay scrollbars
+  // with zero dimensions.
+  if (params.directions.vertical && verticalScrollbarWidth > 0) {
+    var verticalScrollbarPoint = {
+        x: boundingClientRect.right - (verticalScrollbarWidth / 2),
+        y: (params.trackLocation == ScrollbarTrackLocation.START)
+             ? (boundingClientRect.y + scrollbarArrowButtonHeight + 5)
+             : (boundingClientRect.bottom - horizontalScrollbarHeight - scrollbarArrowButtonHeight - 5)
+    };
+    var {hitInfo, scrollId} = hitTest(verticalScrollbarPoint);
+    is(hitInfo, expectedHitInfo | APZHitResultFlags.SCROLLBAR_VERTICAL,
+       scrollframeMsg + " - vertical scrollbar hit info");
+    is(scrollId, params.expectedScrollId,
+       scrollframeMsg + " - vertical scrollbar scrollid");
+  }
+
+  if (params.directions.horizontal && horizontalScrollbarHeight > 0) {
+    var horizontalScrollbarPoint = {
+        x: (params.trackLocation == ScrollbarTrackLocation.START)
+             ? (boundingClientRect.x + scrollbarArrowButtonWidth + 5)
+             : (boundingClientRect.right - verticalScrollbarWidth - scrollbarArrowButtonWidth - 5),
+        y: boundingClientRect.bottom - (horizontalScrollbarHeight / 2),
+    };
+    var {hitInfo, scrollId} = hitTest(horizontalScrollbarPoint);
+    is(hitInfo, expectedHitInfo,
+       scrollframeMsg + " - horizontal scrollbar hit info");
+    is(scrollId, params.expectedScrollId,
+       scrollframeMsg + " - horizontal scrollbar scrollid");
+  }
+}
+
+var ApzCleanup = {
+  _cleanups: [],
+
+  register: function(func) {
+    if (this._cleanups.length == 0) {
+      if (!window.isApzSubtest) {
+        SimpleTest.registerCleanupFunction(this.execute.bind(this));
+      } // else ApzCleanup.execute is called from runSubtestsSeriallyInFreshWindows
+    }
+    this._cleanups.push(func);
+  },
+
+  execute: function() {
+    while (this._cleanups.length > 0) {
+      var func = this._cleanups.pop();
+      try {
+        func();
+      } catch (ex) {
+        SimpleTest.ok(false, "Subtest cleanup function [" + func.toString() + "] threw exception [" + ex + "] on page [" + location.href + "]");
+      }
+    }
+  }
+};

@@ -6,10 +6,9 @@
 
 #include "threading/ProtectedData.h"
 
-#include "jscntxt.h"
-
 #include "gc/Heap.h"
 #include "vm/HelperThreads.h"
+#include "vm/JSContext.h"
 
 namespace js {
 
@@ -123,6 +122,9 @@ CheckGlobalLock<Lock, Helper>::check() const
       case GlobalLock::ExclusiveAccessLock:
         MOZ_ASSERT(TlsContext.get()->runtime()->currentThreadHasExclusiveAccess());
         break;
+      case GlobalLock::ScriptDataLock:
+        MOZ_ASSERT(TlsContext.get()->runtime()->currentThreadHasScriptDataAccess());
+        break;
       case GlobalLock::HelperThreadLock:
         MOZ_ASSERT(HelperThreadState().isLockedByCurrentThread());
         break;
@@ -132,6 +134,7 @@ CheckGlobalLock<Lock, Helper>::check() const
 template class CheckGlobalLock<GlobalLock::GCLock, AllowedHelperThread::None>;
 template class CheckGlobalLock<GlobalLock::ExclusiveAccessLock, AllowedHelperThread::None>;
 template class CheckGlobalLock<GlobalLock::ExclusiveAccessLock, AllowedHelperThread::GCTask>;
+template class CheckGlobalLock<GlobalLock::ScriptDataLock, AllowedHelperThread::None>;
 template class CheckGlobalLock<GlobalLock::HelperThreadLock, AllowedHelperThread::None>;
 
 #endif // JS_HAS_PROTECTED_DATA_CHECKS

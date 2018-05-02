@@ -18,13 +18,13 @@
 #include "nsGlobalWindow.h"
 #include "nsFocusManager.h"
 #include "nsIContent.h"
-#include "nsIDOMHTMLInputElement.h"
 #include "nsIControllers.h"
 #include "nsIController.h"
 #include "xpcpublic.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/dom/TabParent.h"
 #include "mozilla/dom/HTMLTextAreaElement.h"
+#include "mozilla/dom/HTMLInputElement.h"
 
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
@@ -238,8 +238,8 @@ nsWindowRoot::GetControllers(bool aForVisibleWindow,
     if (htmlTextArea)
       return htmlTextArea->GetControllers(aResult);
 
-    nsCOMPtr<nsIDOMHTMLInputElement> htmlInputElement =
-      do_QueryInterface(focusedContent);
+    HTMLInputElement* htmlInputElement =
+      HTMLInputElement::FromContent(focusedContent);
     if (htmlInputElement)
       return htmlInputElement->GetControllers(aResult);
 
@@ -371,15 +371,15 @@ nsWindowRoot::GetEnabledDisabledCommands(nsTArray<nsCString>& aEnabledCommands,
   }
 }
 
-nsIDOMNode*
+already_AddRefed<nsINode>
 nsWindowRoot::GetPopupNode()
 {
-  nsCOMPtr<nsIDOMNode> popupNode = do_QueryReferent(mPopupNode);
-  return popupNode;
+  nsCOMPtr<nsINode> popupNode = do_QueryReferent(mPopupNode);
+  return popupNode.forget();
 }
 
 void
-nsWindowRoot::SetPopupNode(nsIDOMNode* aNode)
+nsWindowRoot::SetPopupNode(nsINode* aNode)
 {
   mPopupNode = do_GetWeakReference(aNode);
 }

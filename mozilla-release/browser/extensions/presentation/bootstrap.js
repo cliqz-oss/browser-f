@@ -3,9 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, manager: Cm} = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const PRESENTATION_DEVICE_PROMPT_PATH =
   "chrome://presentation/content/PresentationDevicePrompt.jsm";
@@ -58,7 +58,7 @@ var Presentation = {
   init() {
     log("init");
     // Register PresentationDevicePrompt into a XPCOM component.
-    let {PresentationDevicePrompt} = Cu.import(PRESENTATION_DEVICE_PROMPT_PATH, {});
+    let {PresentationDevicePrompt} = ChromeUtils.import(PRESENTATION_DEVICE_PROMPT_PATH, {});
     this.PresentationDevicePrompt = PresentationDevicePrompt;
     this._register();
   },

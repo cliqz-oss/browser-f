@@ -19,6 +19,8 @@
 #include "mozilla/dom/MediaStreamError.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 
 #include "jsfriendapi.h"
 #include "js/StructuredClone.h"
@@ -32,8 +34,6 @@
 #include "PromiseDebugging.h"
 #include "PromiseNativeHandler.h"
 #include "PromiseWorkerProxy.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
 #include "WrapperFactory.h"
 #include "xpcpublic.h"
 
@@ -44,8 +44,6 @@ namespace {
 // Generator used by Promise::GetID.
 Atomic<uintptr_t> gIDGenerator(0);
 } // namespace
-
-using namespace workers;
 
 // Promise
 
@@ -136,37 +134,40 @@ Promise::Reject(nsIGlobalObject* aGlobal, JSContext* aCx,
 
 // static
 already_AddRefed<Promise>
-Promise::All(const GlobalObject& aGlobal,
+Promise::All(JSContext* aCx,
              const nsTArray<RefPtr<Promise>>& aPromiseList, ErrorResult& aRv)
 {
-  nsCOMPtr<nsIGlobalObject> global;
-  global = do_QueryInterface(aGlobal.GetAsSupports());
+  JS::Rooted<JSObject*> globalObj(aCx, JS::CurrentGlobalOrNull(aCx));
+  if (!globalObj) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = xpc::NativeGlobal(globalObj);
   if (!global) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
 
-  JSContext* cx = aGlobal.Context();
-
-  JS::AutoObjectVector promises(cx);
+  JS::AutoObjectVector promises(aCx);
   if (!promises.reserve(aPromiseList.Length())) {
-    aRv.NoteJSContextException(cx);
+    aRv.NoteJSContextException(aCx);
     return nullptr;
   }
 
   for (auto& promise : aPromiseList) {
-    JS::Rooted<JSObject*> promiseObj(cx, promise->PromiseObj());
+    JS::Rooted<JSObject*> promiseObj(aCx, promise->PromiseObj());
     // Just in case, make sure these are all in the context compartment.
-    if (!JS_WrapObject(cx, &promiseObj)) {
-      aRv.NoteJSContextException(cx);
+    if (!JS_WrapObject(aCx, &promiseObj)) {
+      aRv.NoteJSContextException(aCx);
       return nullptr;
     }
     promises.infallibleAppend(promiseObj);
   }
 
-  JS::Rooted<JSObject*> result(cx, JS::GetWaitForAllPromise(cx, promises));
+  JS::Rooted<JSObject*> result(aCx, JS::GetWaitForAllPromise(aCx, promises));
   if (!result) {
-    aRv.NoteJSContextException(cx);
+    aRv.NoteJSContextException(aCx);
     return nullptr;
   }
 
@@ -504,126 +505,11 @@ Promise::ReportRejectedPromise(JSContext* aCx, JS::HandleObject aPromise)
                   win ? win->AsInner()->WindowID() : 0);
 
   // Now post an event to do the real reporting async
-  NS_DispatchToMainThread(new AsyncErrorReporter(xpcReport));
-}
-
-bool
-Promise::PerformMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-
-  // On the main thread, we always use the main promise micro task queue.
-  std::queue<nsCOMPtr<nsIRunnable>>& microtaskQueue =
-    context->GetPromiseMicroTaskQueue();
-
-  if (microtaskQueue.empty()) {
-    return false;
-  }
-
-  AutoSlowOperation aso;
-
-  do {
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue.front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue.pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return false;
-    }
-    aso.CheckForInterrupt();
-    context->AfterProcessMicrotask();
-  } while (!microtaskQueue.empty());
-
-  return true;
-}
-
-bool
-Promise::IsWorkerDebuggerMicroTaskEmpty()
-{
-  MOZ_ASSERT(!NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  if (!context) {
-    return true;
-  }
-
-  std::queue<nsCOMPtr<nsIRunnable>>* microtaskQueue =
-    &context->GetDebuggerPromiseMicroTaskQueue();
-
-  return microtaskQueue->empty();
-}
-
-void
-Promise::PerformWorkerMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(!NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  if (!context) {
-    return;
-  }
-
-  for (;;) {
-    // For a normal microtask checkpoint, we try to use the debugger microtask
-    // queue first. If the debugger queue is empty, we use the normal microtask
-    // queue instead.
-    std::queue<nsCOMPtr<nsIRunnable>>* microtaskQueue =
-      &context->GetDebuggerPromiseMicroTaskQueue();
-
-    if (microtaskQueue->empty()) {
-      microtaskQueue = &context->GetPromiseMicroTaskQueue();
-      if (microtaskQueue->empty()) {
-        break;
-      }
-    }
-
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue->front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue->pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-    context->AfterProcessMicrotask();
-  }
-}
-
-void
-Promise::PerformWorkerDebuggerMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(!NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  if (!context) {
-    return;
-  }
-
-  for (;;) {
-    // For a debugger microtask checkpoint, we always use the debugger microtask
-    // queue.
-    std::queue<nsCOMPtr<nsIRunnable>>* microtaskQueue =
-      &context->GetDebuggerPromiseMicroTaskQueue();
-
-    if (microtaskQueue->empty()) {
-      break;
-    }
-
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue->front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue->pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-    context->AfterProcessMicrotask();
+  RefPtr<nsIRunnable> event = new AsyncErrorReporter(xpcReport);
+  if (win) {
+    win->Dispatch(mozilla::TaskCategory::Other, event.forget());
+  } else {
+    NS_DispatchToMainThread(event);
   }
 }
 
@@ -703,7 +589,7 @@ public:
   }
 
   bool
-  Notify(Status aStatus) override
+  Notify(WorkerStatus aStatus) override
   {
     if (aStatus >= Canceling) {
       mProxy->CleanUp();

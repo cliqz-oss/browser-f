@@ -2,8 +2,8 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 // Verify that we wipe the server if we have to regenerate keys.
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 add_task(async function test_missing_crypto_collection() {
   enableValidationPrefs();
@@ -33,7 +33,7 @@ add_task(async function test_missing_crypto_collection() {
   let collections = ["clients", "bookmarks", "forms", "history",
                      "passwords", "prefs", "tabs"];
   // Disable addon sync because AddonManager won't be initialized here.
-  Service.engineManager.unregister("addons");
+  await Service.engineManager.unregister("addons");
 
   for (let coll of collections) {
     handlers["/1.1/johndoe/storage/" + coll] =

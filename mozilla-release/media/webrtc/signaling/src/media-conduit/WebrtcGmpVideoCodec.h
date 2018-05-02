@@ -33,7 +33,6 @@
 #ifndef WEBRTCGMPVIDEOCODEC_H_
 #define WEBRTCGMPVIDEOCODEC_H_
 
-#include <iostream>
 #include <queue>
 #include <string>
 
@@ -250,9 +249,10 @@ private:
     uint32_t mMaxPayloadSize;
   };
 
-  int32_t Encode_g(const webrtc::VideoFrame* aInputImage,
-                   const webrtc::CodecSpecificInfo* aCodecSpecificInfo,
-                   const std::vector<webrtc::FrameType>* aFrameTypes);
+  static
+  void Encode_g(RefPtr<WebrtcGmpVideoEncoder>& aEncoder,
+                webrtc::VideoFrame aInputImage,
+                std::vector<webrtc::FrameType> aFrameTypes);
   void RegetEncoderForResolutionChange(
       uint32_t aWidth,
       uint32_t aHeight,
@@ -469,11 +469,8 @@ private:
     RefPtr<GmpInitDoneRunnable> mInitDone;
   };
 
-  virtual int32_t Decode_g(const webrtc::EncodedImage& aInputImage,
-                           bool aMissingFrames,
-                           const webrtc::RTPFragmentationHeader* aFragmentation,
-                           const webrtc::CodecSpecificInfo* aCodecSpecificInfo,
-                           int64_t aRenderTimeMs);
+  static void Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
+                       nsAutoPtr<GMPDecodeData> aDecodeData);
 
   nsCOMPtr<mozIGeckoMediaPluginService> mMPS;
   nsCOMPtr<nsIThread> mGMPThread;

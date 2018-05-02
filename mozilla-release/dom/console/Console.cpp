@@ -10,6 +10,7 @@
 #include "ConsoleCommon.h"
 
 #include "mozilla/dom/BlobBinding.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FunctionBinding.h"
@@ -17,6 +18,9 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
 #include "mozilla/dom/ToJSValue.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
+#include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/WorkletGlobalScope.h"
 #include "mozilla/Maybe.h"
 #include "nsCycleCollectionParticipant.h"
@@ -25,9 +29,6 @@
 #include "nsGlobalWindow.h"
 #include "nsJSUtils.h"
 #include "nsNetUtil.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
-#include "WorkerScope.h"
 #include "xpcpublic.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
@@ -37,6 +38,7 @@
 
 #include "nsIConsoleAPIStorage.h"
 #include "nsIDOMWindowUtils.h"
+#include "nsIException.h" // for nsIStackFrame
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsILoadContext.h"
 #include "nsISensitiveInfoHiddenURI.h"
@@ -63,7 +65,6 @@
 #define STORAGE_MAX_EVENTS 1000
 
 using namespace mozilla::dom::exceptions;
-using namespace mozilla::dom::workers;
 
 namespace mozilla {
 namespace dom {
@@ -790,11 +791,11 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Console)
 NS_INTERFACE_MAP_END
 
 /* static */ already_AddRefed<Console>
-Console::Create(nsPIDOMWindowInner* aWindow, ErrorResult& aRv)
+Console::Create(JSContext* aCx, nsPIDOMWindowInner* aWindow, ErrorResult& aRv)
 {
   MOZ_ASSERT_IF(NS_IsMainThread(), aWindow);
 
-  RefPtr<Console> console = new Console(aWindow);
+  RefPtr<Console> console = new Console(aCx, aWindow);
   console->Initialize(aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
@@ -803,7 +804,7 @@ Console::Create(nsPIDOMWindowInner* aWindow, ErrorResult& aRv)
   return console.forget();
 }
 
-Console::Console(nsPIDOMWindowInner* aWindow)
+Console::Console(JSContext* aCx, nsPIDOMWindowInner* aWindow)
   : mWindow(aWindow)
   , mOuterID(0)
   , mInnerID(0)
@@ -823,6 +824,11 @@ Console::Console(nsPIDOMWindowInner* aWindow)
     if (outerWindow) {
       mOuterID = outerWindow->WindowID();
     }
+  }
+
+  // Let's enable the dumping to stdout by default for chrome.
+  if (nsContentUtils::ThreadsafeIsSystemCaller(aCx)) {
+    mDumpToStdout = DOMPrefs::DumpEnabled();
   }
 
   mozilla::HoldJSObjects(this);
@@ -1085,7 +1091,7 @@ Console::ProfileMethodInternal(JSContext* aCx, MethodName aMethodName,
     return;
   }
 
-  MaybeExecuteDumpFunction(aCx, aAction, aData);
+  MaybeExecuteDumpFunction(aCx, aAction, aData, nullptr);
 
   if (!NS_IsMainThread()) {
     // Here we are in a worker thread.
@@ -1154,41 +1160,28 @@ Console::Count(const GlobalObject& aGlobal, const nsAString& aLabel)
 
 namespace {
 
-nsresult
+void
 StackFrameToStackEntry(JSContext* aCx, nsIStackFrame* aStackFrame,
                        ConsoleStackEntry& aStackEntry)
 {
   MOZ_ASSERT(aStackFrame);
 
-  nsresult rv = aStackFrame->GetFilename(aCx, aStackEntry.mFilename);
-  NS_ENSURE_SUCCESS(rv, rv);
+  aStackFrame->GetFilename(aCx, aStackEntry.mFilename);
 
-  int32_t lineNumber;
-  rv = aStackFrame->GetLineNumber(aCx, &lineNumber);
-  NS_ENSURE_SUCCESS(rv, rv);
+  aStackEntry.mLineNumber = aStackFrame->GetLineNumber(aCx);
 
-  aStackEntry.mLineNumber = lineNumber;
+  aStackEntry.mColumnNumber = aStackFrame->GetColumnNumber(aCx);
 
-  int32_t columnNumber;
-  rv = aStackFrame->GetColumnNumber(aCx, &columnNumber);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  aStackEntry.mColumnNumber = columnNumber;
-
-  rv = aStackFrame->GetName(aCx, aStackEntry.mFunctionName);
-  NS_ENSURE_SUCCESS(rv, rv);
+  aStackFrame->GetName(aCx, aStackEntry.mFunctionName);
 
   nsString cause;
-  rv = aStackFrame->GetAsyncCause(aCx, cause);
-  NS_ENSURE_SUCCESS(rv, rv);
+  aStackFrame->GetAsyncCause(aCx, cause);
   if (!cause.IsEmpty()) {
     aStackEntry.mAsyncCause.Construct(cause);
   }
-
-  return NS_OK;
 }
 
-nsresult
+void
 ReifyStack(JSContext* aCx, nsIStackFrame* aStack,
            nsTArray<ConsoleStackEntry>& aRefiedStack)
 {
@@ -1196,21 +1189,15 @@ ReifyStack(JSContext* aCx, nsIStackFrame* aStack,
 
   while (stack) {
     ConsoleStackEntry& data = *aRefiedStack.AppendElement();
-    nsresult rv = StackFrameToStackEntry(aCx, stack, data);
-    NS_ENSURE_SUCCESS(rv, rv);
+    StackFrameToStackEntry(aCx, stack, data);
 
-    nsCOMPtr<nsIStackFrame> caller;
-    rv = stack->GetCaller(aCx, getter_AddRefs(caller));
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIStackFrame> caller = stack->GetCaller(aCx);
 
     if (!caller) {
-      rv = stack->GetAsyncCaller(aCx, getter_AddRefs(caller));
-      NS_ENSURE_SUCCESS(rv, rv);
+      caller = stack->GetAsyncCaller(aCx);
     }
     stack.swap(caller);
   }
-
-  return NS_OK;
 }
 
 } // anonymous namespace
@@ -1303,11 +1290,7 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
 
   if (stack) {
     callData->mTopStackFrame.emplace();
-    nsresult rv = StackFrameToStackEntry(aCx, stack,
-                                         *callData->mTopStackFrame);
-    if (NS_FAILED(rv)) {
-      return;
-    }
+    StackFrameToStackEntry(aCx, stack, *callData->mTopStackFrame);
   }
 
   if (NS_IsMainThread()) {
@@ -1316,10 +1299,7 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
     // nsIStackFrame is not threadsafe, so we need to snapshot it now,
     // before we post our runnable to the main thread.
     callData->mReifiedStack.emplace();
-    nsresult rv = ReifyStack(aCx, stack, *callData->mReifiedStack);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
+    ReifyStack(aCx, stack, *callData->mReifiedStack);
   }
 
   DOMHighResTimeStamp monotonicTimer;
@@ -1355,10 +1335,15 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
 
   // Before processing this CallData differently, it's time to call the dump
   // function.
-  if (aMethodName == MethodTrace) {
-    MaybeExecuteDumpFunctionForTrace(aCx, stack);
+  if (aMethodName == MethodTrace || aMethodName == MethodAssert) {
+    MaybeExecuteDumpFunction(aCx, aMethodString, aData, stack);
+  } else if ((aMethodName == MethodTime ||
+              aMethodName == MethodTimeEnd) &&
+             !aData.IsEmpty()) {
+    MaybeExecuteDumpFunctionForTime(aCx, aMethodName, aMethodString,
+                                    monotonicTimer, aData[0]);
   } else {
-    MaybeExecuteDumpFunction(aCx, aMethodString, aData);
+    MaybeExecuteDumpFunction(aCx, aMethodString, aData, nullptr);
   }
 
   if (NS_IsMainThread()) {
@@ -1417,11 +1402,7 @@ LazyStackGetter(JSContext* aCx, unsigned aArgc, JS::Value* aVp)
 
   nsIStackFrame* stack = reinterpret_cast<nsIStackFrame*>(v.toPrivate());
   nsTArray<ConsoleStackEntry> reifiedStack;
-  nsresult rv = ReifyStack(aCx, stack, reifiedStack);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    Throw(aCx, rv);
-    return false;
-  }
+  ReifyStack(aCx, stack, reifiedStack);
 
   JS::Rooted<JS::Value> stackVal(aCx);
   if (NS_WARN_IF(!ToJSValue(aCx, reifiedStack, &stackVal))) {
@@ -2445,7 +2426,7 @@ Console::GetConsoleInternal(const GlobalObject& aGlobal, ErrorResult& aRv)
     nsCOMPtr<WorkletGlobalScope> workletScope =
       do_QueryInterface(aGlobal.GetAsSupports());
     if (workletScope) {
-      return workletScope->GetConsole(aRv);
+      return workletScope->GetConsole(aGlobal.Context(), aRv);
     }
   }
 
@@ -2456,7 +2437,7 @@ Console::GetConsoleInternal(const GlobalObject& aGlobal, ErrorResult& aRv)
 
     // we are probably running a chrome script.
     if (!innerWindow) {
-      RefPtr<Console> console = new Console(nullptr);
+      RefPtr<Console> console = new Console(aGlobal.Context(), nullptr);
       console->Initialize(aRv);
       if (NS_WARN_IF(aRv.Failed())) {
         return nullptr;
@@ -2466,7 +2447,7 @@ Console::GetConsoleInternal(const GlobalObject& aGlobal, ErrorResult& aRv)
     }
 
     nsGlobalWindowInner* window = nsGlobalWindowInner::Cast(innerWindow);
-    return window->GetConsole(aRv);
+    return window->GetConsole(aGlobal.Context(), aRv);
   }
 
   // Workers
@@ -2563,14 +2544,7 @@ Console::MonotonicTimer(JSContext* aCx, MethodName aMethodName,
   }
 
   if (NS_IsMainThread()) {
-    double duration = (TimeStamp::Now() - mCreationTimeStamp).ToMilliseconds();
-
-    // Round down to the nearest 5us, because if the timer is too accurate
-    // people can do nasty timing attacks with it.  See similar code in the
-    // worker Performance implementation.
-    const double maxResolutionMs = 0.005;
-    return nsRFPService::ReduceTimePrecisionAsMSecs(
-      floor(duration / maxResolutionMs) * maxResolutionMs);
+    *aTimeStamp = (TimeStamp::Now() - mCreationTimeStamp).ToMilliseconds();
     return true;
   }
 
@@ -2585,14 +2559,16 @@ Console::MonotonicTimer(JSContext* aCx, MethodName aMethodName,
 Console::CreateInstance(const GlobalObject& aGlobal,
                         const ConsoleInstanceOptions& aOptions)
 {
-  RefPtr<ConsoleInstance> console = new ConsoleInstance(aOptions);
+  RefPtr<ConsoleInstance> console =
+    new ConsoleInstance(aGlobal.Context(), aOptions);
   return console.forget();
 }
 
 void
 Console::MaybeExecuteDumpFunction(JSContext* aCx,
                                   const nsAString& aMethodName,
-                                  const Sequence<JS::Value>& aData)
+                                  const Sequence<JS::Value>& aData,
+                                  nsIStackFrame* aStack)
 {
   if (!mDumpFunction && !mDumpToStdout) {
     return;
@@ -2628,59 +2604,74 @@ Console::MaybeExecuteDumpFunction(JSContext* aCx,
   }
 
   message.AppendLiteral("\n");
+
+  // aStack can be null.
+
+  nsCOMPtr<nsIStackFrame> stack(aStack);
+
+  while (stack) {
+    nsAutoString filename;
+    stack->GetFilename(aCx, filename);
+
+    message.Append(filename);
+    message.AppendLiteral(" ");
+
+    message.AppendInt(stack->GetLineNumber(aCx));
+    message.AppendLiteral(" ");
+
+    nsAutoString functionName;
+    stack->GetName(aCx, functionName);
+
+    message.Append(functionName);
+    message.AppendLiteral("\n");
+
+    nsCOMPtr<nsIStackFrame> caller = stack->GetCaller(aCx);
+
+    if (!caller) {
+      caller = stack->GetAsyncCaller(aCx);
+    }
+
+    stack.swap(caller);
+  }
+
   ExecuteDumpFunction(message);
 }
 
 void
-Console::MaybeExecuteDumpFunctionForTrace(JSContext* aCx, nsIStackFrame* aStack)
+Console::MaybeExecuteDumpFunctionForTime(JSContext* aCx,
+                                         MethodName aMethodName,
+                                         const nsAString& aMethodString,
+                                         uint64_t aMonotonicTimer,
+                                         const JS::Value& aData)
 {
-  if (!aStack || (!mDumpFunction && !mDumpToStdout)) {
+  if (!mDumpFunction && !mDumpToStdout) {
     return;
   }
 
   nsAutoString message;
-  message.AssignLiteral("console.trace:\n");
+  message.AssignLiteral("console.");
+  message.Append(aMethodString);
+  message.AppendLiteral(": ");
 
   if (!mPrefix.IsEmpty()) {
     message.Append(mPrefix);
     message.AppendLiteral(": ");
   }
 
-  nsCOMPtr<nsIStackFrame> stack(aStack);
-
-  while (stack) {
-    nsAutoString filename;
-    nsresult rv = stack->GetFilename(aCx, filename);
-    NS_ENSURE_SUCCESS_VOID(rv);
-
-    message.Append(filename);
-    message.AppendLiteral(" ");
-
-    int32_t lineNumber;
-    rv = stack->GetLineNumber(aCx, &lineNumber);
-    NS_ENSURE_SUCCESS_VOID(rv);
-
-    message.AppendInt(lineNumber);
-    message.AppendLiteral(" ");
-
-    nsAutoString functionName;
-    rv = stack->GetName(aCx, functionName);
-    NS_ENSURE_SUCCESS_VOID(rv);
-
-    message.Append(filename);
-    message.AppendLiteral("\n");
-
-    nsCOMPtr<nsIStackFrame> caller;
-    rv = stack->GetCaller(aCx, getter_AddRefs(caller));
-    NS_ENSURE_SUCCESS_VOID(rv);
-
-    if (!caller) {
-      rv = stack->GetAsyncCaller(aCx, getter_AddRefs(caller));
-      NS_ENSURE_SUCCESS_VOID(rv);
-    }
-
-    stack.swap(caller);
+  JS::Rooted<JS::Value> v(aCx, aData);
+  JS::Rooted<JSString*> jsString(aCx, JS_ValueToSource(aCx, v));
+  if (!jsString) {
+    return;
   }
+
+  nsAutoJSString string;
+  if (NS_WARN_IF(!string.init(aCx, jsString))) {
+    return;
+  }
+
+  message.Append(string);
+  message.AppendLiteral(" @ ");
+  message.AppendInt(aMonotonicTimer);
 
   message.AppendLiteral("\n");
   ExecuteDumpFunction(message);
@@ -2690,8 +2681,7 @@ void
 Console::ExecuteDumpFunction(const nsAString& aMessage)
 {
   if (mDumpFunction) {
-    IgnoredErrorResult rv;
-    mDumpFunction->Call(aMessage, rv);
+    mDumpFunction->Call(aMessage);
     return;
   }
 

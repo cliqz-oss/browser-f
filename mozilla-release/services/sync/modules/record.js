@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "WBORecord",
   "RecordManager",
   "CryptoWrapper",
@@ -10,29 +10,24 @@ this.EXPORTED_SYMBOLS = [
   "Collection",
 ];
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var Cu = Components.utils;
-
 const CRYPTO_COLLECTION = "crypto";
 const KEYS_WBO = "keys";
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/keys.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/keys.js");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/utils.js");
 
-this.WBORecord = function WBORecord(collection, id) {
+function WBORecord(collection, id) {
   this.data = {};
   this.payload = {};
   this.collection = collection; // Optional.
   this.id = id; // Optional.
-};
+}
 WBORecord.prototype = {
   _logName: "Sync.Record.WBO",
 
@@ -108,12 +103,12 @@ WBORecord.prototype = {
 
 Utils.deferGetSet(WBORecord, "data", ["id", "modified", "sortindex", "payload"]);
 
-this.CryptoWrapper = function CryptoWrapper(collection, id) {
+function CryptoWrapper(collection, id) {
   this.cleartext = {};
   WBORecord.call(this, collection, id);
   this.ciphertext = null;
   this.id = id;
-};
+}
 CryptoWrapper.prototype = {
   __proto__: WBORecord.prototype,
   _logName: "Sync.Record.CryptoWrapper",
@@ -124,7 +119,7 @@ CryptoWrapper.prototype = {
       throw new Error("Cannot compute HMAC without an HMAC key.");
     }
 
-    return CommonUtils.bytesAsHex(Utils.digestUTF8(this.ciphertext, hasher));
+    return CommonUtils.bytesAsHex(Utils.digestBytes(this.ciphertext, hasher));
   },
 
   /*
@@ -221,12 +216,12 @@ Utils.deferGetSet(CryptoWrapper, "cleartext", "deleted");
 /**
  * An interface and caching layer for records.
  */
-this.RecordManager = function RecordManager(service) {
+function RecordManager(service) {
   this.service = service;
 
   this._log = Log.repository.getLogger(this._logName);
   this._records = {};
-};
+}
 RecordManager.prototype = {
   _recordType: CryptoWrapper,
   _logName: "Sync.RecordManager",
@@ -289,13 +284,13 @@ RecordManager.prototype = {
  * You can update this thing simply by giving it /info/collections. It'll
  * use the last modified time to bring itself up to date.
  */
-this.CollectionKeyManager = function CollectionKeyManager(lastModified, default_, collections) {
+function CollectionKeyManager(lastModified, default_, collections) {
   this.lastModified = lastModified || 0;
   this._default = default_ || null;
   this._collections = collections || {};
 
   this._log = Log.repository.getLogger("Sync.CollectionKeyManager");
-};
+}
 
 // TODO: persist this locally as an Identity. Bug 610913.
 // Note that the last modified time needs to be preserved.
@@ -582,7 +577,7 @@ CollectionKeyManager.prototype = {
   }
 };
 
-this.Collection = function Collection(uri, recordObj, service) {
+function Collection(uri, recordObj, service) {
   if (!service) {
     throw new Error("Collection constructor requires a service.");
   }
@@ -608,7 +603,7 @@ this.Collection = function Collection(uri, recordObj, service) {
   // Used for batch download operations -- note that this is explicitly an
   // opaque value and not (necessarily) a number.
   this._offset = null;
-};
+}
 Collection.prototype = {
   __proto__: Resource.prototype,
   _logName: "Sync.Collection",
@@ -646,7 +641,9 @@ Collection.prototype = {
       args.push("offset=" + encodeURIComponent(this._offset));
     }
 
-    this.uri.query = (args.length > 0) ? "?" + args.join("&") : "";
+    this.uri = this.uri.mutate()
+                       .setQuery((args.length > 0) ? "?" + args.join("&") : "")
+                       .finalize();
   },
 
   // get full items
@@ -690,6 +687,10 @@ Collection.prototype = {
   // index
   get sort() { return this._sort; },
   set sort(value) {
+    if (value && value != "oldest" && value != "newest" && value != "index") {
+      throw new TypeError(
+        `Illegal value for sort: "${value}" (should be "oldest", "newest", or "index").`);
+    }
     this._sort = value;
     this._rebuildURL();
   },

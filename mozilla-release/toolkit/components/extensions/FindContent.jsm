@@ -5,21 +5,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FindContent"];
+var EXPORTED_SYMBOLS = ["FindContent"];
 
 /* exported FindContent */
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
 class FindContent {
   constructor(docShell) {
-    const {Finder} = Cu.import("resource://gre/modules/Finder.jsm", {});
+    const {Finder} = ChromeUtils.import("resource://gre/modules/Finder.jsm", {});
     this.finder = new Finder(docShell);
   }
 
   get iterator() {
     if (!this._iterator) {
-      const {FinderIterator} = Cu.import("resource://gre/modules/FinderIterator.jsm", {});
+      const {FinderIterator} = ChromeUtils.import("resource://gre/modules/FinderIterator.jsm", {});
       this._iterator = Object.assign({}, FinderIterator);
 
       // Native FinderIterator._collectFrames skips frames if they are scrolled out
@@ -46,7 +44,7 @@ class FindContent {
 
   get highlighter() {
     if (!this._highlighter) {
-      const {FinderHighlighter} = Cu.import("resource://gre/modules/FinderHighlighter.jsm", {});
+      const {FinderHighlighter} = ChromeUtils.import("resource://gre/modules/FinderHighlighter.jsm", {});
       this._highlighter = new FinderHighlighter(this.finder);
     }
     return this._highlighter;

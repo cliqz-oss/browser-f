@@ -26,15 +26,19 @@ window.onload = async function () {
    * compared with the reference item's value as a test
    *
    * @params {Node} - Node to be compared
-   * @reference {array} - Reference array for comparison
+   * @reference {array} - Reference array for comparison. The selected index is
+   * highlighted as a single element array ie. ["[abc]", "ab", "abcPQR"],
+   * Here the element "abc" is highlighted
    */
   function compareAutocompleteList(list, reference) {
-    let items = [...list.children].map(el => el.textContent);
-    for (let i = 0; i < items.length; i++) {
-      let item = items[i];
-      let ref = reference[i];
-      is(item, ref, `Item ${i} in list is correct`);
-    }
+    const delimiter = " - ";
+    const observedList = [...list.children].map(el => {
+      return el.classList.contains("autocomplete-selected")
+        ? `[${el.textContent}]`
+        : el.textContent
+    });
+    is(observedList.join(delimiter), reference.join(delimiter),
+      "Autocomplete items are rendered as expected");
   }
 
   let React = browserRequire("devtools/client/shared/vendor/react");
@@ -96,7 +100,7 @@ window.onload = async function () {
     await forceRender(component);
 
     compareAutocompleteList($(".devtools-autocomplete-listbox"), [
-      "ABC",
+      "[ABC]",
       "a1",
       "a2",
       "a3",
@@ -104,8 +108,6 @@ window.onload = async function () {
       "a5",
       "abc",
     ]);
-
-    is(refs.autocomplete.state.selectedIndex, -1, "Initialised selectedIndex is -1");
 
     // Blur event
     $(".devtools-searchinput").blur();
@@ -119,64 +121,116 @@ window.onload = async function () {
     $(".devtools-searchinput").focus();
 
     // ArrowDown
-    synthesizeKey("VK_DOWN", {});
+    synthesizeKey("KEY_ArrowDown");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 0, "selectedIndex is 0");
-    ok($(".devtools-autocomplete-listbox .autocomplete-item:nth-child(1)")
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "ABC",
+      "[a1]",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "abc",
+    ]);
+    ok($(".devtools-autocomplete-listbox .autocomplete-item:nth-child(2)")
       .className.includes("autocomplete-selected"),
       "Selection class applied");
 
-    // ArrowUp should roll back to the bottom of the list
-    synthesizeKey("VK_UP", {});
+    // A double ArrowUp should roll back to the bottom of the list
+    synthesizeKey("KEY_ArrowUp");
+    synthesizeKey("KEY_ArrowUp");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 6, "ArrowUp works");
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "ABC",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "[abc]",
+    ]);
 
     // PageDown should take -5 places up
-    synthesizeKey("VK_PAGE_UP", {});
+    synthesizeKey("KEY_PageUp");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 1, "PageUp works");
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "ABC",
+      "[a1]",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "abc",
+    ]);
 
     // PageDown should take +5 places down
-    synthesizeKey("VK_PAGE_DOWN", {});
+    synthesizeKey("KEY_PageDown");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 6, "PageDown works");
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "ABC",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "[abc]",
+    ]);
 
     // Home should take to the top of the list
-    synthesizeKey("VK_HOME", {});
+    synthesizeKey("KEY_Home");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 0, "Home works");
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "[ABC]",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "abc",
+    ]);
 
     // End should take to the bottom of the list
-    synthesizeKey("VK_END", {});
+    synthesizeKey("KEY_End");
     await forceRender(component);
-    is(refs.autocomplete.state.selectedIndex, 6, "End works");
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "ABC",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "[abc]",
+    ]);
 
     // Key down in existing state should rollover to the top
-    synthesizeKey("VK_DOWN", {});
+    synthesizeKey("KEY_ArrowDown");
     await forceRender(component);
     // Tab should select the component and hide popup
-    synthesizeKey("VK_TAB", {});
+    synthesizeKey("KEY_Tab");
     await forceRender(component);
     is(component.state.value, "ABC", "Tab hit selects the item");
     ok(!$(".devtools-autocomplete-popup"), "Tab hit hides the popup");
 
     // Activate popup by removing a key
-    synthesizeKey("VK_BACK_SPACE", {});
+    synthesizeKey("KEY_Backspace");
     await forceRender(component);
     ok($(".devtools-autocomplete-popup"), "Popup is up");
-    compareAutocompleteList($(".devtools-autocomplete-listbox"), ["ABC", "abc"]);
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "[ABC]",
+      "abc"
+    ]);
 
     // Enter key selection
-    synthesizeKey("VK_UP", {});
+    synthesizeKey("KEY_ArrowUp");
     await forceRender(component);
-    synthesizeKey("VK_RETURN", {});
+    synthesizeKey("KEY_Enter");
     is(component.state.value, "abc", "Enter selection");
     ok(!$(".devtools-autocomplete-popup"), "Enter/Return hides the popup");
 
     // Escape should remove the autocomplete component
-    synthesizeKey("VK_BACK_SPACE", {});
+    synthesizeKey("KEY_Backspace");
     await forceRender(component);
-    synthesizeKey("VK_ESCAPE", {});
+    synthesizeKey("KEY_Escape");
     await forceRender(component);
     ok(!$(".devtools-autocomplete-popup"),
       "Autocomplete list removed from DOM on Escape");
@@ -191,7 +245,7 @@ window.onload = async function () {
     await forceRender(component);
 
     // ArrowDown
-    synthesizeKey("VK_DOWN", {});
+    synthesizeKey("KEY_ArrowDown");
     await forceRender(component);
     synthesizeMouseAtCenter($(".devtools-searchinput"), {}, window);
     await forceRender(component);
@@ -212,7 +266,10 @@ window.onload = async function () {
     // Test for string "pqr ab" which should show list of ABC, abc
     sendString(" ab");
     await forceRender(component);
-    compareAutocompleteList($(".devtools-autocomplete-listbox"), ["ABC", "abc"]);
+    compareAutocompleteList($(".devtools-autocomplete-listbox"), [
+      "[ABC]",
+      "abc"
+    ]);
 
     // Select the first element, value now should be "pqr ABC"
     synthesizeMouseAtCenter(

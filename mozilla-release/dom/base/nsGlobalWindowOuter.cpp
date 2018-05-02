@@ -64,7 +64,7 @@
 // Helper Classes
 #include "nsJSUtils.h"
 #include "jsapi.h"              // for JSAutoRequest
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsReadableUtils.h"
 #include "nsDOMClassInfo.h"
@@ -80,7 +80,7 @@
 #include "nsContentCID.h"
 #include "nsLayoutStatics.h"
 #include "nsCCUncollectableMarker.h"
-#include "mozilla/dom/workers/Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "nsJSPrincipals.h"
 #include "mozilla/Attributes.h"
@@ -106,7 +106,6 @@
 #include "nsIDeviceSensors.h"
 #include "nsIContent.h"
 #include "nsIDocShell.h"
-#include "nsIDocCharset.h"
 #include "nsIDocument.h"
 #include "Crypto.h"
 #include "nsIDOMDocument.h"
@@ -147,6 +146,7 @@
 #include "nsCSSProps.h"
 #include "nsIDOMFileList.h"
 #include "nsIURIFixup.h"
+#include "nsIURIMutator.h"
 #ifndef DEBUG
 #include "nsIAppStartup.h"
 #include "nsToolkitCompsCID.h"
@@ -180,8 +180,7 @@
 #include "nsNetCID.h"
 #include "nsIArray.h"
 
-// XXX An unfortunate dependency exists here (two XUL files).
-#include "nsIDOMXULDocument.h"
+#include "XULDocument.h"
 #include "nsIDOMXULCommandDispatcher.h"
 
 #include "nsBindingManager.h"
@@ -226,7 +225,6 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "prrng.h"
 #include "nsSandboxFlags.h"
-#include "TimeChangeObserver.h"
 #include "mozilla/dom/AudioContext.h"
 #include "mozilla/dom/BrowserElementDictionariesBinding.h"
 #include "mozilla/dom/cache/CacheStorage.h"
@@ -1376,8 +1374,7 @@ nsGlobalWindowOuter::SetInitialPrincipalToSubject()
   if (shell && !shell->DidInitialize()) {
     // Ensure that if someone plays with this document they will get
     // layout happening.
-    nsRect r = shell->GetPresContext()->GetVisibleArea();
-    shell->Initialize(r.Width(), r.Height());
+    shell->Initialize();
   }
 }
 
@@ -1647,6 +1644,7 @@ CreateNativeGlobalForInner(JSContext* aCx,
   // window's compartment with the add-on ID. See bug 1092156.
   if (nsContentUtils::IsSystemPrincipal(aPrincipal)) {
     options.creationOptions().setAddonId(MapURIToAddonID(aURI));
+    options.creationOptions().setClampAndJitterTime(false);
   }
 
   options.creationOptions().setSecureContext(aIsSecureContext);
@@ -1865,6 +1863,7 @@ nsGlobalWindowOuter::SetNewDocument(nsIDocument* aDocument,
         if (currentInner->mPerformance) {
           newInnerWindow->mPerformance =
             Performance::CreateForMainThread(newInnerWindow->AsInner(),
+                                             aDocument->NodePrincipal(),
                                              currentInner->mPerformance->GetDOMTiming(),
                                              currentInner->mPerformance->GetChannel());
         }
@@ -2603,10 +2602,10 @@ nsPIDOMWindowOuter::SetFrameElementInternal(Element* aFrameElement)
   mFrameElement = aFrameElement;
 }
 
-nsIDOMNavigator*
+Navigator*
 nsGlobalWindowOuter::GetNavigator()
 {
-  FORWARD_TO_INNER(GetNavigator, (), nullptr);
+  FORWARD_TO_INNER(Navigator, (), nullptr);
 }
 
 nsIDOMScreen*
@@ -4188,6 +4187,7 @@ FullscreenTransitionTask::Run()
                                          this);
   } else if (stage == eEnd) {
     PROFILER_ADD_MARKER("Fullscreen transition end");
+    mWidget->CleanupFullscreenTransition();
   }
   return NS_OK;
 }
@@ -5797,8 +5797,11 @@ nsGlobalWindowOuter::PostMessageMozOuter(JSContext* aCx, JS::Handle<JS::Value> a
       return;
     }
 
-    if (NS_FAILED(originURI->SetUserPass(EmptyCString())) ||
-        NS_FAILED(originURI->SetPathQueryRef(EmptyCString()))) {
+    nsresult rv = NS_MutateURI(originURI)
+                    .SetUserPass(EmptyCString())
+                    .SetPathQueryRef(EmptyCString())
+                    .Finalize(originURI);
+    if (NS_FAILED(rv)) {
       return;
     }
 
@@ -6364,7 +6367,7 @@ public:
 };
 } // anonymous namespace
 
-nsresult
+void
 nsGlobalWindowOuter::UpdateCommands(const nsAString& anAction,
                                     nsISelection* aSel,
                                     int16_t aReason)
@@ -6377,30 +6380,29 @@ nsGlobalWindowOuter::UpdateCommands(const nsAString& anAction,
         nsContentUtils::AddScriptRunner(
           new ChildCommandDispatcher(root, child, anAction));
       }
-      return NS_OK;
+      return;
     }
   }
 
   nsPIDOMWindowOuter *rootWindow = GetPrivateRoot();
-  if (!rootWindow)
-    return NS_OK;
+  if (!rootWindow) {
+    return;
+  }
 
-  nsCOMPtr<nsIDOMXULDocument> xulDoc =
-    do_QueryInterface(rootWindow->GetExtantDoc());
+  nsIDocument* doc = rootWindow->GetExtantDoc();
+  XULDocument* xulDoc = doc ? doc->AsXULDocument() : nullptr;
   // See if we contain a XUL document.
   // selectionchange action is only used for mozbrowser, not for XUL. So we bypass
   // XUL command dispatch if anAction is "selectionchange".
   if (xulDoc && !anAction.EqualsLiteral("selectionchange")) {
     // Retrieve the command dispatcher and call updateCommands on it.
-    nsCOMPtr<nsIDOMXULCommandDispatcher> xulCommandDispatcher;
-    xulDoc->GetCommandDispatcher(getter_AddRefs(xulCommandDispatcher));
+    nsIDOMXULCommandDispatcher* xulCommandDispatcher =
+      xulDoc->GetCommandDispatcher();
     if (xulCommandDispatcher) {
       nsContentUtils::AddScriptRunner(new CommandDispatcher(xulCommandDispatcher,
                                                             anAction));
     }
   }
-
-  return NS_OK;
 }
 
 Selection*
@@ -6911,15 +6913,7 @@ nsGlobalWindowOuter::GetInterfaceInternal(const nsIID& aIID, void** aSink)
   NS_ENSURE_ARG_POINTER(aSink);
   *aSink = nullptr;
 
-  if (aIID.Equals(NS_GET_IID(nsIDocCharset))) {
-    nsGlobalWindowOuter* outer = GetOuterWindowInternal();
-    NS_ENSURE_TRUE(outer, NS_ERROR_NOT_INITIALIZED);
-
-    NS_WARNING("Using deprecated nsIDocCharset: use nsIDocShell.GetCharset() instead ");
-    nsCOMPtr<nsIDocCharset> docCharset(do_QueryInterface(outer->mDocShell));
-    docCharset.forget(aSink);
-  }
-  else if (aIID.Equals(NS_GET_IID(nsIWebNavigation))) {
+  if (aIID.Equals(NS_GET_IID(nsIWebNavigation))) {
     nsGlobalWindowOuter* outer = GetOuterWindowInternal();
     NS_ENSURE_TRUE(outer, NS_ERROR_NOT_INITIALIZED);
 

@@ -28,7 +28,7 @@
 namespace mozilla {
 namespace dom {
 
-using namespace mozilla::dom::workers;
+using namespace workerinternals;
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WorkerNavigator, mStorageManager,
                                       mConnection);

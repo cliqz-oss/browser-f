@@ -28,17 +28,17 @@
 //
 // NOTE: Entire directory whitelisting should be kept to a minimum. Normally you
 //       should use "expectUncaughtRejection" to flag individual failures.
-const {PromiseTestUtils} = Cu.import("resource://testing-common/PromiseTestUtils.jsm", {});
+const {PromiseTestUtils} = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", {});
 PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
 PromiseTestUtils.whitelistRejectionsGlobally(/No matching message handler/);
 PromiseTestUtils.whitelistRejectionsGlobally(/Receiving end does not exist/);
 
-const {AppConstants} = Cu.import("resource://gre/modules/AppConstants.jsm", {});
-const {CustomizableUI} = Cu.import("resource:///modules/CustomizableUI.jsm", {});
-const {Preferences} = Cu.import("resource://gre/modules/Preferences.jsm", {});
+const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
+const {CustomizableUI} = ChromeUtils.import("resource:///modules/CustomizableUI.jsm", {});
+const {Preferences} = ChromeUtils.import("resource://gre/modules/Preferences.jsm", {});
 
 XPCOMUtils.defineLazyGetter(this, "Management", () => {
-  const {Management} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  const {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
   return Management;
 });
 
@@ -334,7 +334,11 @@ async function openExtensionContextMenu(selector = "#img1") {
 async function closeExtensionContextMenu(itemToSelect, modifiers = {}) {
   let contentAreaContextMenu = document.getElementById("contentAreaContextMenu");
   let popupHiddenPromise = BrowserTestUtils.waitForEvent(contentAreaContextMenu, "popuphidden");
-  EventUtils.synthesizeMouseAtCenter(itemToSelect, modifiers);
+  if (itemToSelect) {
+    EventUtils.synthesizeMouseAtCenter(itemToSelect, modifiers);
+  } else {
+    contentAreaContextMenu.hidePopup();
+  }
   await popupHiddenPromise;
 
   // Bug 1351638: parent menu fails to close intermittently, make sure it does.
@@ -361,11 +365,15 @@ function closeToolsMenu(itemToSelect, win = window) {
   const hidden = BrowserTestUtils.waitForEvent(menu, "popuphidden");
   if (AppConstants.platform === "macosx") {
     // Mocking on OSX, see above.
-    itemToSelect.doCommand();
+    if (itemToSelect) {
+      itemToSelect.doCommand();
+    }
     menu.dispatchEvent(new MouseEvent("popuphiding"));
     menu.dispatchEvent(new MouseEvent("popuphidden"));
-  } else {
+  } else if (itemToSelect) {
     EventUtils.synthesizeMouseAtCenter(itemToSelect, {}, win);
+  } else {
+    menu.hidePopup();
   }
   return hidden;
 }

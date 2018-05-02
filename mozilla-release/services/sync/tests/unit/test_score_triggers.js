@@ -1,13 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/rotaryengine.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://testing-common/services/sync/rotaryengine.js");
 
 // Tracking info/collections.
 var collectionsHelper = track_collections_helper();
@@ -64,8 +64,8 @@ add_task(async function test_tracker_score_updated() {
   } finally {
     Svc.Obs.remove("weave:engine:score:updated", onScoreUpdated);
     tracker.resetScore();
-    tracker.clearChangedIDs();
-    Service.engineManager.unregister(engine);
+    await tracker.clearChangedIDs();
+    await Service.engineManager.unregister(engine);
   }
 });
 
@@ -86,8 +86,8 @@ add_task(async function test_sync_triggered() {
   await Service.startOver();
   await promiseStopServer(server);
 
-  tracker.clearChangedIDs();
-  Service.engineManager.unregister(engine);
+  await tracker.clearChangedIDs();
+  await Service.engineManager.unregister(engine);
 });
 
 add_task(async function test_clients_engine_sync_triggered() {
@@ -113,8 +113,8 @@ add_task(async function test_clients_engine_sync_triggered() {
   await Service.startOver();
   await promiseStopServer(server);
 
-  tracker.clearChangedIDs();
-  Service.engineManager.unregister(engine);
+  await tracker.clearChangedIDs();
+  await Service.engineManager.unregister(engine);
 });
 
 add_task(async function test_incorrect_credentials_sync_not_triggered() {
@@ -147,6 +147,6 @@ add_task(async function test_incorrect_credentials_sync_not_triggered() {
   await Service.startOver();
   await promiseStopServer(server);
 
-  tracker.clearChangedIDs();
-  Service.engineManager.unregister(engine);
+  await tracker.clearChangedIDs();
+  await Service.engineManager.unregister(engine);
 });

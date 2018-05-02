@@ -91,10 +91,9 @@ class SnapshotListItem extends Component {
       className: "save",
     }, L10N.getStr("snapshot.io.save"));
 
-    let deleteButton = !snapshot.path ? void 0 : dom.div({
+    let deleteButton = !snapshot.path ? void 0 : dom.button({
       onClick: () => onDelete(snapshot),
       className: "delete",
-      "aria-role": "button",
       title: L10N.getStr("snapshot.io.delete")
     });
 

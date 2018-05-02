@@ -25,11 +25,17 @@
 #include "prdtoa.h"
 #include <algorithm>
 #include <stdint.h>
+#ifdef MOZ_WIDGET_ANDROID
+#include "GeneratedJNIWrappers.h"
+#endif
 
 #define PREF_VOLUME_SCALE "media.volume_scale"
 #define PREF_CUBEB_BACKEND "media.cubeb.backend"
 #define PREF_CUBEB_LATENCY_PLAYBACK "media.cubeb_latency_playback_ms"
 #define PREF_CUBEB_LATENCY_MSG "media.cubeb_latency_msg_frames"
+// Allows to get something non-default for the preferred sample-rate, to allow
+// troubleshooting in the field and testing.
+#define PREF_CUBEB_FORCE_SAMPLE_RATE "media.cubeb.force_sample_rate"
 #define PREF_CUBEB_LOGGING_LEVEL "media.cubeb.logging_level"
 #define PREF_CUBEB_SANDBOX "media.cubeb.sandbox"
 
@@ -119,8 +125,12 @@ cubeb* sCubebContext;
 double sVolumeScale = 1.0;
 uint32_t sCubebPlaybackLatencyInMilliseconds = 100;
 uint32_t sCubebMSGLatencyInFrames = 512;
-bool sCubebPlaybackLatencyPrefSet;
-bool sCubebMSGLatencyPrefSet;
+// If sCubebForcedSampleRate is zero, PreferredSampleRate will return the
+// preferred sample-rate for the audio backend in use. Otherwise, it will be
+// used as the preferred sample-rate.
+uint32_t sCubebForcedSampleRate = 0;
+bool sCubebPlaybackLatencyPrefSet = false;
+bool sCubebMSGLatencyPrefSet = false;
 bool sAudioStreamInitEverSucceeded = false;
 #ifdef MOZ_CUBEB_REMOTING
 bool sCubebSandbox;
@@ -234,6 +244,9 @@ void PrefChanged(const char* aPref, void* aClosure)
     // We don't want to limit the upper limit too much, so that people can
     // experiment.
     sCubebMSGLatencyInFrames = std::min<uint32_t>(std::max<uint32_t>(value, 128), 1e6);
+  } else if (strcmp(aPref, PREF_CUBEB_FORCE_SAMPLE_RATE) == 0) {
+    StaticMutexAutoLock lock(sMutex);
+    sCubebForcedSampleRate = Preferences::GetUint(aPref);
   } else if (strcmp(aPref, PREF_CUBEB_LOGGING_LEVEL) == 0) {
     nsAutoCString value;
     Preferences::GetCString(aPref, value);
@@ -305,17 +318,24 @@ bool InitPreferredSampleRate()
   if (!context) {
     return false;
   }
+#ifdef MOZ_WIDGET_ANDROID
+  sPreferredSampleRate = AndroidGetAudioOutputSampleRate();
+#else
   if (cubeb_get_preferred_sample_rate(context,
                                       &sPreferredSampleRate) != CUBEB_OK) {
 
     return false;
   }
+#endif
   MOZ_ASSERT(sPreferredSampleRate);
   return true;
 }
 
 uint32_t PreferredSampleRate()
 {
+  if (sCubebForcedSampleRate) {
+    return sCubebForcedSampleRate;
+  }
   if (!InitPreferredSampleRate()) {
     return 44100;
   }
@@ -527,14 +547,28 @@ bool CubebMSGLatencyPrefSet()
   return sCubebMSGLatencyPrefSet;
 }
 
-Maybe<uint32_t> GetCubebMSGLatencyInFrames()
+uint32_t GetCubebMSGLatencyInFrames(cubeb_stream_params * params)
 {
   StaticMutexAutoLock lock(sMutex);
-  if (!sCubebMSGLatencyPrefSet) {
-    return Maybe<uint32_t>();
+  if (sCubebMSGLatencyPrefSet) {
+    MOZ_ASSERT(sCubebMSGLatencyInFrames > 0);
+    return sCubebMSGLatencyInFrames;
   }
-  MOZ_ASSERT(sCubebMSGLatencyInFrames > 0);
-  return Some(sCubebMSGLatencyInFrames);
+
+#ifdef MOZ_WIDGET_ANDROID
+  return AndroidGetAudioOutputFramesPerBuffer();
+#else
+  cubeb* context = GetCubebContextUnlocked();
+  if (!context) {
+    return sCubebMSGLatencyInFrames; // default 512
+  }
+  uint32_t latency_frames = 0;
+  if (cubeb_get_min_latency(context, params, &latency_frames) != CUBEB_OK) {
+    NS_WARNING("Could not get minimal latency from cubeb.");
+    return sCubebMSGLatencyInFrames; // default 512
+  }
+  return latency_frames;
+#endif
 }
 
 void InitLibrary()
@@ -542,6 +576,7 @@ void InitLibrary()
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_VOLUME_SCALE);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_LATENCY_PLAYBACK);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_LATENCY_MSG);
+  Preferences::RegisterCallback(PrefChanged, PREF_CUBEB_FORCE_SAMPLE_RATE);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_BACKEND);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_SANDBOX);
   if (MOZ_LOG_TEST(gCubebLog, LogLevel::Verbose)) {
@@ -571,6 +606,7 @@ void ShutdownLibrary()
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_SANDBOX);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_BACKEND);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LATENCY_PLAYBACK);
+  Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_FORCE_SAMPLE_RATE);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LATENCY_MSG);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LOGGING_LEVEL);
 
@@ -740,6 +776,21 @@ void GetDeviceCollection(nsTArray<RefPtr<AudioDeviceInfo>>& aDeviceInfos,
     cubeb_device_collection_destroy(context, &collection);
   }
 }
+
+#ifdef MOZ_WIDGET_ANDROID
+uint32_t AndroidGetAudioOutputSampleRate()
+{
+  int32_t sample_rate = java::GeckoAppShell::GetAudioOutputSampleRate();
+  MOZ_ASSERT(sample_rate > 0);
+  return sample_rate;
+}
+uint32_t AndroidGetAudioOutputFramesPerBuffer()
+{
+  int32_t frames = java::GeckoAppShell::GetAudioOutputFramesPerBuffer();
+  MOZ_ASSERT(frames > 0);
+  return frames;
+}
+#endif
 
 } // namespace CubebUtils
 } // namespace mozilla

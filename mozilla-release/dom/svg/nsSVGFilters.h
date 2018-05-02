@@ -183,13 +183,14 @@ protected:
 
 public:
   // interfaces:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsSVGFELightingElement,
+                                       nsSVGFELightingElementBase)
 
   virtual bool AttributeAffectsRendering(
           int32_t aNameSpaceID, nsAtom* aAttribute) const override;
   virtual nsSVGString& GetResultImageName() override { return mStringAttributes[RESULT]; }
   virtual void GetSourceImageNames(nsTArray<nsSVGStringInfo>& aSources) override;
-  NS_FORWARD_NSIDOMSVGELEMENT(nsSVGFELightingElementBase::)
+  NS_FORWARD_NSIDOMELEMENT(nsSVGFELightingElementBase::)
 
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 

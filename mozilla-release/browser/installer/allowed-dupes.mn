@@ -22,7 +22,6 @@ browser/chrome/browser/content/browser/places/bookmarkProperties2.xul
 browser/chrome/browser/skin/classic/browser/addons/addon-install-confirm.svg
 browser/chrome/browser/skin/classic/browser/connection-secure.svg
 browser/chrome/browser/skin/classic/browser/controlcenter/warning-gray.svg
-browser/chrome/browser/skin/classic/browser/newtab/close.png
 # devtools reduction is bug 1311178
 browser/chrome/devtools/content/dom/content/dom-view.css
 browser/chrome/devtools/content/dom/dom.html
@@ -32,7 +31,6 @@ browser/chrome/devtools/content/inspector/fonts/fonts.js
 browser/chrome/devtools/content/inspector/inspector.xhtml
 browser/chrome/devtools/content/memory/initializer.js
 browser/chrome/devtools/content/projecteditor/lib/helpers/readdir.js
-browser/chrome/devtools/content/shared/frame-script-utils.js
 browser/chrome/devtools/content/shared/theme-switching.js
 browser/chrome/devtools/modules/devtools/client/dom/content/dom-view.css
 browser/chrome/devtools/modules/devtools/client/dom/dom.html
@@ -44,7 +42,6 @@ browser/chrome/devtools/modules/devtools/client/jsonview/css/controls.png
 browser/chrome/devtools/modules/devtools/client/jsonview/css/controls@2x.png
 browser/chrome/devtools/modules/devtools/client/memory/initializer.js
 browser/chrome/devtools/modules/devtools/client/projecteditor/lib/helpers/readdir.js
-browser/chrome/devtools/modules/devtools/client/shared/frame-script-utils.js
 browser/chrome/devtools/modules/devtools/client/shared/theme-switching.js
 browser/chrome/devtools/modules/devtools/client/themes/common.css
 browser/chrome/devtools/modules/devtools/client/themes/toolbars.css
@@ -113,7 +110,6 @@ chrome/toolkit/skin/classic/global/richlistbox.css
 chrome/toolkit/skin/classic/global/scale.css
 chrome/toolkit/skin/classic/global/scrollbars.css
 chrome/toolkit/skin/classic/global/scrollbox.css
-chrome/toolkit/skin/classic/global/spinbuttons.css
 chrome/toolkit/skin/classic/global/splitter.css
 chrome/toolkit/skin/classic/global/tabbox.css
 chrome/toolkit/skin/classic/global/textbox.css
@@ -146,6 +142,8 @@ res/table-remove-column.gif
 res/table-remove-row-active.gif
 res/table-remove-row-hover.gif
 res/table-remove-row.gif
+res/multilocale.txt
+update.locale
 # Aurora branding
 browser/chrome/browser/content/branding/icon64.png
 browser/chrome/devtools/content/framework/dev-edition-promo/dev-edition-logo.png

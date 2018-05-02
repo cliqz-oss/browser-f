@@ -4,14 +4,14 @@
 
 "use strict";
 
-Components.utils.import("resource:///modules/CustomizableUI.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/CustomizableUI.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var gManagers = new WeakMap();
 
 const kPaletteId = "customization-palette";
 
-this.EXPORTED_SYMBOLS = ["DragPositionManager"];
+var EXPORTED_SYMBOLS = ["DragPositionManager"];
 
 function AreaPositionManager(aContainer) {
   // Caching the direction and bounds of the container for quick access later:

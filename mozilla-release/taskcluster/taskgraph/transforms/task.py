@@ -11,20 +11,29 @@ complexities of worker implementations, scopes, and treeherder annotations.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import hashlib
-import json
 import os
 import re
 import time
 from copy import deepcopy
 
 from mozbuild.util import memoize
-from mozbuild import schedules
 from taskgraph.util.attributes import TRUNK_PROJECTS
 from taskgraph.util.hash import hash_path
 from taskgraph.util.treeherder import split_symbol
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.schema import validate_schema, Schema, optionally_keyed_by, resolve_keyed_by
-from taskgraph.util.scriptworker import get_release_config
+from taskgraph.util.schema import (
+    validate_schema,
+    Schema,
+    optionally_keyed_by,
+    resolve_keyed_by,
+    OptimizationSchema,
+)
+from taskgraph.util.scriptworker import (
+    BALROG_ACTIONS,
+    get_balrog_action_scope,
+    get_balrog_server_scope,
+    get_release_config,
+)
 from voluptuous import Any, Required, Optional, Extra
 from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
@@ -43,36 +52,6 @@ taskref_or_string = Any(
     basestring,
     {Required('task-reference'): basestring},
 )
-
-# For more details look at https://github.com/mozilla-releng/pulse-notify#task-definition
-#
-# Notification fields are keyed by project, which lets you use
-# `by-project` and define different messages or recepients for each
-# project.
-notification_schema = Schema({
-    # notification routes for this task status
-    # https://github.com/mozilla-releng/pulse-notify/tree/master/pulsenotify/plugins
-    Optional('plugins'): optionally_keyed_by('project', [basestring]),
-
-    # notification subject
-    Optional('subject'): optionally_keyed_by('project', basestring),
-
-    # notification message
-    Optional('message'): optionally_keyed_by('project', basestring),
-
-    # emails to be notified (for ses and smtp plugins only)
-    Optional('emails'): optionally_keyed_by('project', [basestring]),
-
-    # IRC nicknames to notify (for irc plugin only)
-    Optional('nicks'): optionally_keyed_by('project', [basestring]),
-
-    # IRC channels to send a notification to (for irc plugin only)
-    Optional('channels'): optionally_keyed_by('project', [basestring]),
-
-    # notify a 'name' based on a configuration in the service
-    # https://github.com/mozilla-releng/pulse-notify/blob/production/pulsenotify/id_configs/prod.yml
-    Optional('ids'): optionally_keyed_by('project', [basestring]),
-})
 
 # A task description is a general description of a TaskCluster task
 task_description_schema = Schema({
@@ -227,24 +206,7 @@ task_description_schema = Schema({
 
     # Optimization to perform on this task during the optimization phase.
     # Optimizations are defined in taskcluster/taskgraph/optimize.py.
-    Required('optimization'): Any(
-        # always run this task (default)
-        None,
-        # search the index for the given index namespaces, and replace this task if found
-        # the search occurs in order, with the first match winning
-        {'index-search': [basestring]},
-        # consult SETA and skip this task if it is low-value
-        {'seta': None},
-        # skip this task if none of the given file patterns match
-        {'skip-unless-changed': [basestring]},
-        # skip this task if unless the change files' SCHEDULES contains any of these components
-        {'skip-unless-schedules': list(schedules.ALL_COMPONENTS)},
-        # skip if SETA or skip-unless-schedules says to
-        {'skip-unless-schedules-or-seta': list(schedules.ALL_COMPONENTS)},
-        # only run this task if its dependencies will run (useful for follow-on tasks that
-        # are unnecessary if the parent tasks are not run)
-        {'only-if-dependencies-run': None}
-    ),
+    Required('optimization'): OptimizationSchema,
 
     # the provisioner-id/worker-type for the task.  The following parameters will
     # be substituted in this string:
@@ -253,22 +215,6 @@ task_description_schema = Schema({
 
     # Whether the job should use sccache compiler caching.
     Required('needs-sccache'): bool,
-
-    # Send notifications using pulse-notifier[1] service:
-    #
-    #     https://github.com/mozilla-releng/pulse-notify
-    #
-    # Notifications are send uppon task completion, failure or when exception
-    # is raised.
-    Optional('notifications'): {
-        Optional('defined'): notification_schema,
-        Optional('pending'): notification_schema,
-        Optional('running'): notification_schema,
-        Optional('artifact-created'): notification_schema,
-        Optional('completed'): notification_schema,
-        Optional('failed'): notification_schema,
-        Optional('exception'): notification_schema,
-    },
 
     # information specific to the worker implementation that will run this task
     'worker': Any({
@@ -350,10 +296,11 @@ task_description_schema = Schema({
         Required('max-run-time'): int,
 
         # the exit status code(s) that indicates the task should be retried
-        Optional('retry-exit-status'): Any(
-            int,
-            [int],
-        ),
+        Optional('retry-exit-status'): [int],
+
+        # the exit status code(s) that indicates the caches used by the task
+        # should be purged
+        Optional('purge-caches-exit-status'): [int],
     }, {
         Required('implementation'): 'generic-worker',
         Required('os'): Any('windows', 'macosx'),
@@ -431,6 +378,7 @@ task_description_schema = Schema({
 
         # optional features
         Required('chain-of-trust'): bool,
+        Optional('taskcluster-proxy'): bool,
     }, {
         Required('implementation'): 'buildbot-bridge',
 
@@ -455,6 +403,9 @@ task_description_schema = Schema({
     }, {
         Required('implementation'): 'native-engine',
         Required('os'): Any('macosx', 'linux'),
+
+        # the maximum time to run, in seconds
+        Required('max-run-time'): int,
 
         # A link for an executable to download
         Optional('context'): basestring,
@@ -508,10 +459,21 @@ task_description_schema = Schema({
         Required('implementation'): 'beetmover',
 
         # the maximum time to run, in seconds
-        Required('max-run-time'): int,
+        Required('max-run-time', default=600): int,
 
         # locale key, if this is a locale beetmover job
         Optional('locale'): basestring,
+
+        Optional('partner-public'): bool,
+
+        Required('release-properties'): {
+            'app-name': basestring,
+            'app-version': basestring,
+            'branch': basestring,
+            'build-id': basestring,
+            'hash-type': basestring,
+            'platform': basestring,
+        },
 
         # list of artifact URLs for the artifacts that should be beetmoved
         Required('upstream-artifacts'): [{
@@ -535,9 +497,18 @@ task_description_schema = Schema({
         Required('product'): basestring,
     }, {
         Required('implementation'): 'balrog',
+        Required('balrog-action'): Any(*BALROG_ACTIONS),
+        Optional('product'): basestring,
+        Optional('platforms'): [basestring],
+        Optional('channel-names'): optionally_keyed_by('project', [basestring]),
+        Optional('require-mirrors'): bool,
+        Optional('publish-rules'): optionally_keyed_by('project', [int]),
+        Optional('rules-to-update'): optionally_keyed_by('project', [basestring]),
+        Optional('archive-domain'): optionally_keyed_by('project', basestring),
+        Optional('download-domain'): optionally_keyed_by('project', basestring),
 
         # list of artifact URLs for the artifacts that should be beetmoved
-        Required('upstream-artifacts'): [{
+        Optional('upstream-artifacts'): [{
             # taskId of the task with the artifact
             Required('taskId'): taskref_or_string,
 
@@ -548,9 +519,12 @@ task_description_schema = Schema({
             Required('paths'): [basestring],
         }],
     }, {
-        Required('implementation'): 'push-apk-breakpoint',
-        Required('payload'): object,
-
+        Required('implementation'): 'bouncer-aliases',
+        Required('entries'): object,
+    }, {
+        Required('implementation'): 'bouncer-submission',
+        Required('locales'): [basestring],
+        Required('entries'): object,
     }, {
         Required('implementation'): 'invalid',
         # an invalid task is one which should never actually be created; this is used in
@@ -563,19 +537,10 @@ task_description_schema = Schema({
 
     }, {
         Required('implementation'): 'push-apk',
-
-        # list of artifact URLs for the artifacts that should be beetmoved
         Required('upstream-artifacts'): [{
-            # taskId of the task with the artifact
             Required('taskId'): taskref_or_string,
-
-            # type of signing task (for CoT)
             Required('taskType'): basestring,
-
-            # Paths to the artifacts to sign
             Required('paths'): [basestring],
-
-            # Artifact is optional to run the task
             Optional('optional', default=False): bool,
         }],
 
@@ -584,8 +549,30 @@ task_description_schema = Schema({
         Required('commit'): bool,
         Optional('rollout-percentage'): Any(int, None),
     }, {
+        Required('implementation'): 'push-snap',
+        Required('upstream-artifacts'): [{
+            Required('taskId'): taskref_or_string,
+            Required('taskType'): basestring,
+            Required('paths'): [basestring],
+        }],
+    }, {
+        Required('implementation'): 'sign-and-push-addons',
+        Required('channel'): Any('listed', 'unlisted'),
+        Required('upstream-artifacts'): [{
+            Required('taskId'): taskref_or_string,
+            Required('taskType'): basestring,
+            Required('paths'): [basestring],
+        }],
+    }, {
         Required('implementation'): 'shipit',
         Required('release-name'): basestring,
+    }, {
+        Required('implementation'): 'treescript',
+        Required('tag'): bool,
+        Required('bump'): bool,
+        Optional('bump-files'): [basestring],
+        Required('force-dry-run', default=True): bool,
+        Required('push', default=False): bool
     }),
 })
 
@@ -600,31 +587,31 @@ V2_ROUTE_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.latest.{product}.{job-name}",
     "index.{trust-domain}.v2.{project}.pushdate.{build_date_long}.{product}.{job-name}",
     "index.{trust-domain}.v2.{project}.pushlog-id.{pushlog_id}.{product}.{job-name}",
-    "index.{trust-domain}.v2.{project}.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.revision.{branch_rev}.{product}.{job-name}",
 ]
 
 # {central, inbound, autoland} write to a "trunk" index prefix. This facilitates
 # walking of tasks with similar configurations.
 V2_TRUNK_ROUTE_TEMPLATES = [
-    "index.{trust-domain}.v2.trunk.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.trunk.revision.{branch_rev}.{product}.{job-name}",
 ]
 
 V2_NIGHTLY_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.nightly.latest.{product}.{job-name}",
-    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{head_rev}.{product}.{job-name}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{branch_rev}.{product}.{job-name}",  # noqa - too long
     "index.{trust-domain}.v2.{project}.nightly.{build_date}.latest.{product}.{job-name}",
-    "index.{trust-domain}.v2.{project}.nightly.revision.{head_rev}.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.nightly.revision.{branch_rev}.{product}.{job-name}",
 ]
 
 V2_NIGHTLY_L10N_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.nightly.latest.{product}-l10n.{job-name}.{locale}",
-    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
     "index.{trust-domain}.v2.{project}.nightly.{build_date}.latest.{product}-l10n.{job-name}.{locale}",  # noqa - too long
-    "index.{trust-domain}.v2.{project}.nightly.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.nightly.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
 ]
 
 V2_L10N_TEMPLATES = [
-    "index.{trust-domain}.v2.{project}.revision.{head_rev}.{product}-l10n.{job-name}.{locale}",
+    "index.{trust-domain}.v2.{project}.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",
     "index.{trust-domain}.v2.{project}.pushdate.{build_date_long}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
     "index.{trust-domain}.v2.{project}.latest.{product}-l10n.{job-name}.{locale}",
 ]
@@ -642,6 +629,16 @@ BRANCH_REV_PARAM = {
     'comm-aurora': 'comm_head_rev',
     'try-comm-central': 'comm_head_rev',
 }
+
+
+def get_branch_rev(config):
+    return config.params[
+        BRANCH_REV_PARAM.get(
+            config.params['project'],
+            DEFAULT_BRANCH_REV_PARAM
+        )
+    ]
+
 
 COALESCE_KEY = '{project}.{job-identifier}'
 SUPERSEDER_URL = 'https://coalesce.mozilla-releng.net/v1/list/{age}/{size}/{key}'
@@ -819,11 +816,11 @@ def build_docker_worker_payload(config, task, task_def):
     if 'max-run-time' in worker:
         payload['maxRunTime'] = worker['max-run-time']
 
+    payload['onExitStatus'] = {}
     if 'retry-exit-status' in worker:
-        if isinstance(worker['retry-exit-status'], int):
-            payload['onExitStatus'] = {'retry': [worker['retry-exit-status']]}
-        elif isinstance(worker['retry-exit-status'], list):
-            payload['onExitStatus'] = {'retry': worker['retry-exit-status']}
+        payload['onExitStatus']['retry'] = worker['retry-exit-status']
+    if 'purge-caches-exit-status' in worker:
+        payload['onExitStatus']['purgeCaches'] = worker['purge-caches-exit-status']
 
     if 'artifacts' in worker:
         artifacts = {}
@@ -869,15 +866,22 @@ def build_docker_worker_payload(config, task, task_def):
         # the run-task content into the cache name. However, doing so preserves
         # the mechanism whereby changing run-task results in new caches
         # everywhere.
+
+        # As an additional mechanism to force the use of different caches, the
+        # string literal in the variable below can be changed. This is
+        # preferred to changing run-task because it doesn't require images
+        # to be rebuilt.
+        cache_version = 'v3'
+
         if run_task:
-            suffix = '-%s' % _run_task_suffix()
+            suffix = '-%s-%s' % (cache_version, _run_task_suffix())
 
             if out_of_tree_image:
                 name_hash = hashlib.sha256(out_of_tree_image).hexdigest()
                 suffix += name_hash[0:12]
 
         else:
-            suffix = ''
+            suffix = '-%s' % cache_version
 
         skip_untrusted = config.params.is_try() or level == 1
 
@@ -955,16 +959,19 @@ def build_generic_worker_payload(config, task, task_def):
         'osGroups': worker.get('os-groups', []),
     }
 
-    # needs-sccache is handled in mozharness_on_windows
-
-    if 'retry-exit-status' in worker:
-        raise Exception("retry-exit-status not supported in generic-worker")
+    if task.get('needs-sccache'):
+        worker['env']['USE_SCCACHE'] = '1'
+    else:
+        worker['env']['SCCACHE_DISABLE'] = '1'
 
     # currently only support one feature (chain of trust) but this will likely grow
     features = {}
 
     if worker.get('chain-of-trust'):
         features['chainOfTrust'] = True
+
+    if worker.get('taskcluster-proxy'):
+        features['taskclusterProxy'] = True
 
     if features:
         task_def['payload']['features'] = features
@@ -1009,14 +1016,25 @@ def build_binary_transparency_payload(config, task, task_def):
 def build_beetmover_payload(config, task, task_def):
     worker = task['worker']
     release_config = get_release_config(config)
+    release_properties = worker['release-properties']
 
     task_def['payload'] = {
         'maxRunTime': worker['max-run-time'],
+        'releaseProperties': {
+            'appName': release_properties['app-name'],
+            'appVersion': release_properties['app-version'],
+            'branch': release_properties['branch'],
+            'buildid': release_properties['build-id'],
+            'hashType': release_properties['hash-type'],
+            'platform': release_properties['platform'],
+        },
         'upload_date': config.params['build_date'],
-        'upstreamArtifacts':  worker['upstream-artifacts']
+        'upstreamArtifacts':  worker['upstream-artifacts'],
     }
     if worker.get('locale'):
         task_def['payload']['locale'] = worker['locale']
+    if worker.get('partner-public'):
+        task_def['payload']['is_partner_repack_public'] = worker['partner-public']
     if release_config:
         task_def['payload'].update(release_config)
 
@@ -1037,9 +1055,63 @@ def build_beetmover_cdns_payload(config, task, task_def):
 @payload_builder('balrog')
 def build_balrog_payload(config, task, task_def):
     worker = task['worker']
+    release_config = get_release_config(config)
+
+    server_scope = get_balrog_server_scope(config)
+    action_scope = get_balrog_action_scope(config, action=worker['balrog-action'])
+    task_def['scopes'] = [server_scope, action_scope]
+
+    if worker['balrog-action'] == 'submit-locale':
+        task_def['payload'] = {
+            'upstreamArtifacts':  worker['upstream-artifacts']
+        }
+    else:
+        for prop in ('archive-domain', 'channel-names', 'download-domain',
+                     'publish-rules', 'rules-to-update'):
+            if prop in worker:
+                resolve_keyed_by(
+                    worker, prop, task['description'],
+                    **config.params
+                )
+        task_def['payload'] = {
+            'build_number': release_config['build_number'],
+            'product': worker['product'],
+            'version': release_config['version'],
+        }
+        if worker['balrog-action'] == 'submit-toplevel':
+            task_def['payload'].update({
+                'app_version': release_config['appVersion'],
+                'archive_domain': worker['archive-domain'],
+                'channel_names': worker['channel-names'],
+                'download_domain': worker['download-domain'],
+                'partial_versions': release_config.get('partial_versions', ""),
+                'platforms': worker['platforms'],
+                'rules_to_update': worker['rules-to-update'],
+                'require_mirrors': worker['require-mirrors'],
+            })
+        else:  # schedule / ship
+            task_def['payload'].update({
+                'publish_rules': worker['publish-rules'],
+                'release_eta': config.params.get('release_eta') or '',
+            })
+
+
+@payload_builder('bouncer-aliases')
+def build_bouncer_aliases_payload(config, task, task_def):
+    worker = task['worker']
 
     task_def['payload'] = {
-        'upstreamArtifacts':  worker['upstream-artifacts']
+        'aliases_entries': worker['entries']
+    }
+
+
+@payload_builder('bouncer-submission')
+def build_bouncer_submission_payload(config, task, task_def):
+    worker = task['worker']
+
+    task_def['payload'] = {
+        'locales':  worker['locales'],
+        'submission_entries': worker['entries']
     }
 
 
@@ -1049,7 +1121,7 @@ def build_push_apk_payload(config, task, task_def):
 
     task_def['payload'] = {
         'commit': worker['commit'],
-        'upstreamArtifacts':  worker['upstream-artifacts'],
+        'upstreamArtifacts': worker['upstream-artifacts'],
         'google_play_track': worker['google-play-track'],
     }
 
@@ -1057,9 +1129,13 @@ def build_push_apk_payload(config, task, task_def):
         task_def['payload']['rollout_percentage'] = worker['rollout-percentage']
 
 
-@payload_builder('push-apk-breakpoint')
-def build_push_apk_breakpoint_payload(config, task, task_def):
-    task_def['payload'] = task['worker']['payload']
+@payload_builder('push-snap')
+def build_push_snap_payload(config, task, task_def):
+    worker = task['worker']
+
+    task_def['payload'] = {
+        'upstreamArtifacts':  worker['upstream-artifacts'],
+    }
 
 
 @payload_builder('shipit')
@@ -1069,6 +1145,55 @@ def build_ship_it_payload(config, task, task_def):
     task_def['payload'] = {
         'release_name': worker['release-name']
     }
+
+
+@payload_builder('sign-and-push-addons')
+def build_sign_and_push_addons_payload(config, task, task_def):
+    worker = task['worker']
+
+    task_def['payload'] = {
+        'channel': worker['channel'],
+        'upstreamArtifacts': worker['upstream-artifacts'],
+    }
+
+
+@payload_builder('treescript')
+def build_treescript_payload(config, task, task_def):
+    worker = task['worker']
+    release_config = get_release_config(config)
+
+    task_def['payload'] = {}
+    task_def.setdefault('scopes', [])
+    if worker['tag']:
+        product = task['shipping-product'].upper()
+        version = release_config['version'].replace('.', '_')
+        buildnum = release_config['build_number']
+        tag_names = [
+            "{}_{}_BUILD{}".format(product, version, buildnum),
+            "{}_{}_RELEASE".format(product, version)
+        ]
+        tag_info = {
+            'tags': tag_names,
+            'revision': config.params['head_rev']
+        }
+        task_def['payload']['tag_info'] = tag_info
+        task_def['scopes'].append('project:releng:treescript:action:tagging')
+
+    if worker['bump']:
+        if not worker['bump-files']:
+            raise Exception("Version Bump requested without bump-files")
+
+        bump_info = {}
+        bump_info['next_version'] = release_config['next_version']
+        bump_info['files'] = worker['bump-files']
+        task_def['payload']['version_bump_info'] = bump_info
+        task_def['scopes'].append('project:releng:treescript:action:version_bump')
+
+    if worker['push']:
+        task_def['scopes'].append('project:releng:treescript:action:push')
+
+    if worker.get('force-dry-run'):
+        task_def['payload']['dry_run'] = True
 
 
 @payload_builder('invalid')
@@ -1096,6 +1221,7 @@ def build_macosx_engine_payload(config, task, task_def):
         'command': worker['command'],
         'env': worker['env'],
         'artifacts': artifacts,
+        'maxRunTime': worker['max-run-time'],
     }
     if worker.get('reboot'):
         task_def['payload'] = worker['reboot']
@@ -1203,6 +1329,7 @@ def add_generic_index_routes(config, task):
                                             time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
 
     project = config.params.get('project')
 
@@ -1233,6 +1360,7 @@ def add_nightly_index_routes(config, task):
                                        time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
 
     for tpl in V2_NIGHTLY_TEMPLATES:
         routes.append(tpl.format(**subs))
@@ -1255,6 +1383,7 @@ def add_release_index_routes(config, task):
     subs['underscore_version'] = release_config['version'].replace('.', '_')
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
     subs['branch'] = subs['project']
     if 'channel' in index:
         resolve_keyed_by(
@@ -1290,6 +1419,7 @@ def add_l10n_index_routes(config, task, force_locale=None):
                                             time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
 
     locales = task['attributes'].get('chunk_locales',
                                      task['attributes'].get('all_locales'))
@@ -1329,6 +1459,7 @@ def add_nightly_l10n_index_routes(config, task, force_locale=None):
                                             time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
 
     locales = task['attributes'].get('chunk_locales',
                                      task['attributes'].get('all_locales'))
@@ -1422,15 +1553,12 @@ def build_task(config, tasks):
             treeherder['jobKind'] = task_th['kind']
             treeherder['tier'] = task_th['tier']
 
-            treeherder_rev = config.params[
-                BRANCH_REV_PARAM.get(
-                    config.params['project'],
-                    DEFAULT_BRANCH_REV_PARAM)]
+            branch_rev = get_branch_rev(config)
 
             routes.append(
                 '{}.v2.{}.{}.{}'.format(TREEHERDER_ROUTE_ROOT,
                                         config.params['project'],
-                                        treeherder_rev,
+                                        branch_rev,
                                         config.params['pushlog_id'])
             )
 
@@ -1481,7 +1609,7 @@ def build_task(config, tasks):
         if task_th:
             # link back to treeherder in description
             th_push_link = 'https://treeherder.mozilla.org/#/jobs?repo={}&revision={}'.format(
-                config.params['project'], treeherder_rev)
+                config.params['project'], branch_rev)
             task_def['metadata']['description'] += ' ([Treeherder push]({}))'.format(
                 th_push_link)
 
@@ -1527,45 +1655,6 @@ def build_task(config, tasks):
             if payload:
                 env = payload.setdefault('env', {})
                 env['MOZ_AUTOMATION'] = '1'
-
-        notifications = task.get('notifications')
-        if notifications:
-            release_config = get_release_config(config)
-            task_def['extra'].setdefault('notifications', {})
-            for notification_event, notification in notifications.items():
-
-                for notification_option, notification_option_value in notification.items():
-
-                    # resolve by-project
-                    resolve_keyed_by(
-                        notification,
-                        notification_option,
-                        'notifications',
-                        project=config.params['project'],
-                    )
-
-                    # resolve formatting for each of the fields
-                    format_kwargs = dict(
-                            task=task,
-                            task_def=task_def,
-                            config=config.__dict__,
-                            release_config=release_config,
-                    )
-                    if isinstance(notification_option_value, basestring):
-                        notification[notification_option] = notification_option_value.format(
-                            **format_kwargs
-                        )
-                    elif isinstance(notification_option_value, list):
-                        notification[notification_option] = [
-                            i.format(**format_kwargs) for i in notification_option_value
-                        ]
-
-                # change event to correct event
-                if notification_event != 'artifact-created':
-                    notification_event = 'task-' + notification_event
-
-                # update notifications
-                task_def['extra']['notifications'][notification_event] = notification
 
         yield {
             'label': task['label'],
@@ -1635,9 +1724,10 @@ def check_caches_are_volumes(task):
         return
 
     raise Exception('task %s (image %s) has caches that are not declared as '
-                    'Docker volumes: %s' % (task['label'],
-                                            task['worker']['docker-image'],
-                                            ', '.join(sorted(missing))))
+                    'Docker volumes: %s'
+                    'Have you added them as VOLUMEs in the Dockerfile?'
+                    % (task['label'], task['worker']['docker-image'],
+                       ', '.join(sorted(missing))))
 
 
 @transforms.add
@@ -1708,41 +1798,3 @@ def check_run_task_caches(config, tasks):
                             'cache name so it is sparse aware' % task['label'])
 
         yield task
-
-
-# Check that the v2 route templates match those used by Mozharness.  This can
-# go away once Mozharness builds are no longer performed in Buildbot, and the
-# Mozharness code referencing routes.json is deleted.
-def check_v2_routes():
-    with open(os.path.join(GECKO, "testing/mozharness/configs/routes.json"), "rb") as f:
-        routes_json = json.load(f)
-
-    for key in ('routes', 'nightly', 'l10n', 'nightly-l10n'):
-        if key == 'routes':
-            tc_template = V2_ROUTE_TEMPLATES
-        elif key == 'nightly':
-            tc_template = V2_NIGHTLY_TEMPLATES
-        elif key == 'l10n':
-            tc_template = V2_L10N_TEMPLATES
-        elif key == 'nightly-l10n':
-            tc_template = V2_NIGHTLY_L10N_TEMPLATES + V2_L10N_TEMPLATES
-
-        routes = routes_json[key]
-
-        # we use different variables than mozharness
-        for mh, tg in [
-                ('{index}', 'index'),
-                ('gecko', '{trust-domain}'),
-                ('{build_product}', '{product}'),
-                ('{build_name}-{build_type}', '{job-name}'),
-                ('{year}.{month}.{day}.{pushdate}', '{build_date_long}'),
-                ('{pushid}', '{pushlog_id}'),
-                ('{year}.{month}.{day}', '{build_date}')]:
-            routes = [r.replace(mh, tg) for r in routes]
-
-        if sorted(routes) != sorted(tc_template):
-            raise Exception("V2 TEMPLATES do not match Mozharness's routes.json: "
-                            "(tc):%s vs (mh):%s" % (tc_template, routes))
-
-
-check_v2_routes()

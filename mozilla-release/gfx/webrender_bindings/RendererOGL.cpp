@@ -84,13 +84,25 @@ RendererOGL::GetExternalImageHandler()
 void
 RendererOGL::Update()
 {
-  wr_renderer_update(mRenderer);
+  uint32_t flags = gfx::gfxVars::WebRenderDebugFlags();
+  if (mDebugFlags.mBits != flags) {
+    mDebugFlags.mBits = flags;
+    wr_renderer_set_debug_flags(mRenderer, mDebugFlags);
+  }
+
+  if (gl()->MakeCurrent()) {
+    wr_renderer_update(mRenderer);
+  }
 }
 
 bool
-RendererOGL::Render()
+RendererOGL::UpdateAndRender(bool aReadback)
 {
   uint32_t flags = gfx::gfxVars::WebRenderDebugFlags();
+  // Disable debug flags during readback
+  if (aReadback) {
+    flags = 0;
+  }
 
   if (mDebugFlags.mBits != flags) {
     mDebugFlags.mBits = flags;
@@ -117,7 +129,9 @@ RendererOGL::Render()
     return false;
   }
 
-  auto size = mCompositor->GetClientSize();
+  wr_renderer_update(mRenderer);
+
+  auto size = mCompositor->GetBufferSize();
 
   if (!wr_renderer_render(mRenderer, size.width, size.height)) {
     NotifyWebRenderError(WebRenderError::RENDER);
@@ -177,10 +191,10 @@ RendererOGL::SetFrameStartTime(const TimeStamp& aTime)
   mFrameStartTime = aTime;
 }
 
-wr::WrRenderedEpochs*
-RendererOGL::FlushRenderedEpochs()
+wr::WrPipelineInfo*
+RendererOGL::FlushPipelineInfo()
 {
-  return wr_renderer_flush_rendered_epochs(mRenderer);
+  return wr_renderer_flush_pipeline_info(mRenderer);
 }
 
 RenderTextureHost*

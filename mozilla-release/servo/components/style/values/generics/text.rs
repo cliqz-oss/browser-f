@@ -121,10 +121,25 @@ pub enum LineHeight<Number, LengthOrPercentage> {
     Length(LengthOrPercentage),
 }
 
+impl<N, L> ToAnimatedZero for LineHeight<N, L> {
+    #[inline]
+    fn to_animated_zero(&self) -> Result<Self, ()> { Err(()) }
+}
+
 impl<N, L> LineHeight<N, L> {
     /// Returns `normal`.
     #[inline]
     pub fn normal() -> Self {
         LineHeight::Normal
     }
+}
+
+/// A generic value for the `-moz-tab-size` property.
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf)]
+#[derive(PartialEq, ToAnimatedValue, ToAnimatedZero, ToComputedValue, ToCss)]
+pub enum MozTabSize<Number, Length> {
+    /// A number.
+    Number(Number),
+    /// A length.
+    Length(Length),
 }

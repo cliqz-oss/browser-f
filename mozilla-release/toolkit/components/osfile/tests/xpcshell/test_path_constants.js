@@ -4,13 +4,13 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/ctypes.jsm", this);
-Cu.import("resource://testing-common/AppData.jsm", this);
+ChromeUtils.import("resource://gre/modules/ctypes.jsm", this);
+ChromeUtils.import("resource://testing-common/AppData.jsm", this);
 
 function compare_paths(ospath, key) {
   let file;
   try {
-    file = Services.dirsvc.get(key, Components.interfaces.nsIFile);
+    file = Services.dirsvc.get(key, Ci.nsIFile);
   } catch (ex) {}
 
   if (file) {
@@ -56,19 +56,12 @@ add_task(async function test_desktop_paths() {
   if (OS.Constants.Sys.Name == "Android") {
     return;
   }
-  Assert.ok(!!OS.Constants.Path.desktopDir);
   Assert.ok(!!OS.Constants.Path.homeDir);
 
   compare_paths(OS.Constants.Path.homeDir, "Home");
-  compare_paths(OS.Constants.Path.desktopDir, "Desk");
   compare_paths(OS.Constants.Path.userApplicationDataDir, "UAppData");
 
-  compare_paths(OS.Constants.Path.winAppDataDir, "AppData");
-  compare_paths(OS.Constants.Path.winStartMenuProgsDir, "Progs");
-
   compare_paths(OS.Constants.Path.macUserLibDir, "ULibDir");
-  compare_paths(OS.Constants.Path.macLocalApplicationsDir, "LocApp");
-  compare_paths(OS.Constants.Path.macTrashDir, "Trsh");
 });
 
 // Open libxul

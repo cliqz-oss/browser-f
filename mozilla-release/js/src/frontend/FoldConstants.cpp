@@ -13,9 +13,10 @@
 #include "frontend/ParseNode.h"
 #include "frontend/Parser.h"
 #include "js/Conversions.h"
+#include "vm/StringType.h"
 
-#include "jscntxtinlines.h"
-#include "jsobjinlines.h"
+#include "vm/JSContext-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 using namespace js::frontend;
@@ -102,14 +103,14 @@ ContainsHoistedDeclaration(JSContext* cx, ParseNode* node, bool* result)
         return true;
 
       // Statements with no sub-components at all.
-      case ParseNodeKind::Nop: // induced by function f() {} function f() {}
+      case ParseNodeKind::EmptyStatement:
       case ParseNodeKind::Debugger:
         MOZ_ASSERT(node->isArity(PN_NULLARY));
         *result = false;
         return true;
 
       // Statements containing only an expression have no declarations.
-      case ParseNodeKind::Semi:
+      case ParseNodeKind::ExpressionStatement:
       case ParseNodeKind::Throw:
       case ParseNodeKind::Return:
         MOZ_ASSERT(node->isArity(PN_UNARY));
@@ -1590,7 +1591,7 @@ Fold(JSContext* cx, ParseNode** pnp, PerHandlerParser<FullParseHandler>& parser)
     ParseNode* pn = *pnp;
 
     switch (pn->getKind()) {
-      case ParseNodeKind::Nop:
+      case ParseNodeKind::EmptyStatement:
       case ParseNodeKind::RegExp:
       case ParseNodeKind::String:
       case ParseNodeKind::True:
@@ -1655,6 +1656,7 @@ Fold(JSContext* cx, ParseNode** pnp, PerHandlerParser<FullParseHandler>& parser)
       case ParseNodeKind::PostDecrement:
         return FoldIncrementDecrement(cx, pn, parser);
 
+      case ParseNodeKind::ExpressionStatement:
       case ParseNodeKind::Throw:
       case ParseNodeKind::MutateProto:
       case ParseNodeKind::ComputedName:
@@ -1668,7 +1670,6 @@ Fold(JSContext* cx, ParseNode** pnp, PerHandlerParser<FullParseHandler>& parser)
         MOZ_ASSERT(pn->isArity(PN_BINARY));
         return Fold(cx, &pn->pn_left, parser);
 
-      case ParseNodeKind::Semi:
       case ParseNodeKind::This:
         MOZ_ASSERT(pn->isArity(PN_UNARY));
         if (ParseNode*& expr = pn->pn_kid)

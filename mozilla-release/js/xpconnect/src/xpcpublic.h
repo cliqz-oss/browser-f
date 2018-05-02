@@ -254,6 +254,17 @@ xpc_TryUnmarkWrappedGrayObject(nsISupports* aWrappedJS);
 extern void
 xpc_UnmarkSkippableJSHolders();
 
+// Defined in XPCDebug.cpp.
+extern bool
+xpc_DumpJSStack(bool showArgs, bool showLocals, bool showThisProps);
+
+// Return a newly-allocated string containing a representation of the
+// current JS stack. Defined in XPCDebug.cpp.
+extern JS::UniqueChars
+xpc_PrintJSStack(JSContext* cx, bool showArgs, bool showLocals,
+                 bool showThisProps);
+
+
 // readable string conversions, static methods and members only
 class XPCStringConvert
 {
@@ -666,10 +677,16 @@ AreNonLocalConnectionsDisabled()
 inline bool
 IsInAutomation()
 {
-    const char* prefName =
-      "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer";
-    return mozilla::Preferences::GetBool(prefName) &&
-        AreNonLocalConnectionsDisabled();
+    static bool sAutomationPrefIsSet;
+    static bool sPrefCacheAdded = false;
+    if (!sPrefCacheAdded) {
+        mozilla::Preferences::AddBoolVarCache(
+          &sAutomationPrefIsSet,
+          "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer",
+          false);
+        sPrefCacheAdded = true;
+    }
+    return sAutomationPrefIsSet && AreNonLocalConnectionsDisabled();
 }
 
 void

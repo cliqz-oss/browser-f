@@ -20,7 +20,7 @@
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "nsTArrayForwardDeclare.h"
-#include "nsString.h"
+#include "nsStringFwd.h"
 #include "mozilla/CORSMode.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/net/ReferrerPolicy.h"
@@ -118,7 +118,7 @@ public:
   already_AddRefed<StyleSheet> Clone(StyleSheet* aCloneParent,
     dom::CSSImportRule* aCloneOwnerRule,
     nsIDocument* aCloneDocument,
-    nsINode* aCloneOwningNode) const final override;
+    nsINode* aCloneOwningNode) const final;
 
   nsresult AddRuleProcessor(nsCSSRuleProcessor* aProcessor);
   nsresult DropRuleProcessor(nsCSSRuleProcessor* aProcessor);

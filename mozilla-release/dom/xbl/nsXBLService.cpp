@@ -1084,11 +1084,6 @@ nsXBLService::FetchBindingDocument(nsIContent* aBoundElement, nsIDocument* aBoun
   // sometimes not the case.
   doc->ForceEnableXULXBL();
 
-  // Set the style backend type before loading the XBL document. Assume
-  // gecko if there's no bound document.
-  doc->SetStyleBackendType(aBoundDocument ? aBoundDocument->GetStyleBackendType()
-                                          : StyleBackendType::Gecko);
-
   nsCOMPtr<nsIXMLContentSink> xblSink;
   rv = NS_NewXBLContentSink(getter_AddRefs(xblSink), doc, aDocumentURI, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1112,6 +1107,7 @@ nsXBLService::FetchBindingDocument(nsIContent* aBoundElement, nsIDocument* aBoun
                                               nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS |
                                               nsILoadInfo::SEC_ALLOW_CHROME,
                                               nsIContentPolicy::TYPE_XBL,
+                                              nullptr, // aPerformanceStorage
                                               loadGroup);
   }
   else {
@@ -1120,6 +1116,7 @@ nsXBLService::FetchBindingDocument(nsIContent* aBoundElement, nsIDocument* aBoun
                        nsContentUtils::GetSystemPrincipal(),
                        nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS,
                        nsIContentPolicy::TYPE_XBL,
+                       nullptr, // PerformanceStorage
                        loadGroup);
   }
   NS_ENSURE_SUCCESS(rv, rv);

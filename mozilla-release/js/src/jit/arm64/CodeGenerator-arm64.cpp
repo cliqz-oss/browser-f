@@ -8,8 +8,6 @@
 
 #include "mozilla/MathAlgorithms.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
 #include "jsnum.h"
 
 #include "jit/CodeGenerator.h"
@@ -17,12 +15,13 @@
 #include "jit/JitFrames.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/Shape.h"
 #include "vm/TraceLogging.h"
 
-#include "jsscriptinlines.h"
-
 #include "jit/shared/CodeGenerator-shared-inl.h"
+#include "vm/JSScript-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -403,13 +402,6 @@ CodeGeneratorARM64::ToValue(LInstruction* ins, size_t pos)
 }
 
 ValueOperand
-CodeGeneratorARM64::ToOutValue(LInstruction* ins)
-{
-    Register payloadReg = ToRegister(ins->getDef(0));
-    return ValueOperand(payloadReg);
-}
-
-ValueOperand
 CodeGeneratorARM64::ToTempValue(LInstruction* ins, size_t pos)
 {
     MOZ_CRASH("CodeGeneratorARM64::ToTempValue");
@@ -445,8 +437,8 @@ CodeGeneratorARM64::visitFloat32(LFloat32* ins)
     MOZ_CRASH("visitFloat32");
 }
 
-Register
-CodeGeneratorARM64::splitTagForTest(const ValueOperand& value)
+void
+CodeGeneratorARM64::splitTagForTest(const ValueOperand& value, ScratchTagScope& tag)
 {
     MOZ_CRASH("splitTagForTest");
 }
@@ -585,24 +577,6 @@ CodeGeneratorARM64::storeElementTyped(const LAllocation* value, MIRType valueTyp
 }
 
 void
-CodeGeneratorARM64::visitGuardShape(LGuardShape* guard)
-{
-    MOZ_CRASH("visitGuardShape");
-}
-
-void
-CodeGeneratorARM64::visitGuardObjectGroup(LGuardObjectGroup* guard)
-{
-    MOZ_CRASH("visitGuardObjectGroup");
-}
-
-void
-CodeGeneratorARM64::visitGuardClass(LGuardClass* guard)
-{
-    MOZ_CRASH("CodeGeneratorARM64::visitGuardClass");
-}
-
-void
 CodeGeneratorARM64::visitInterruptCheck(LInterruptCheck* lir)
 {
     MOZ_CRASH("CodeGeneratorARM64::visitInterruptCheck");
@@ -622,18 +596,6 @@ getBase(U* mir)
       case U::Heap: return HeapReg;
     }
     return InvalidReg;
-}
-
-void
-CodeGeneratorARM64::visitLoadTypedArrayElementStatic(LLoadTypedArrayElementStatic* ins)
-{
-    MOZ_CRASH("CodeGeneratorARM64::visitLoadTypedArrayElementStatic");
-}
-
-void
-CodeGeneratorARM64::visitStoreTypedArrayElementStatic(LStoreTypedArrayElementStatic* ins)
-{
-    MOZ_CRASH("CodeGeneratorARM64::visitStoreTypedArrayElementStatic");
 }
 
 void

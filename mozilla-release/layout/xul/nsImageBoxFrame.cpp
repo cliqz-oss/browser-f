@@ -86,12 +86,7 @@ private:
 NS_IMETHODIMP
 nsImageBoxFrameEvent::Run()
 {
-  nsIPresShell *pres_shell = mContent->OwnerDoc()->GetShell();
-  if (!pres_shell) {
-    return NS_OK;
-  }
-
-  RefPtr<nsPresContext> pres_context = pres_shell->GetPresContext();
+  RefPtr<nsPresContext> pres_context = mContent->OwnerDoc()->GetPresContext();
   if (!pres_context) {
     return NS_OK;
   }
@@ -111,8 +106,7 @@ nsImageBoxFrameEvent::Run()
 // cache the notifications come back synchronously, but if the image
 // is loaded from the network the notifications come back
 // asynchronously.
-
-void
+static void
 FireImageDOMEvent(nsIContent* aContent, EventMessage aMessage)
 {
   NS_ASSERTION(aMessage == eLoad || aMessage == eLoadError,
@@ -347,7 +341,7 @@ nsImageBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   nsDisplayList list;
   list.AppendToTop(
-    new (aBuilder) nsDisplayXULImage(aBuilder, this));
+    MakeDisplayItem<nsDisplayXULImage>(aBuilder, this));
 
   CreateOwnLayerIfNeeded(aBuilder, &list);
 

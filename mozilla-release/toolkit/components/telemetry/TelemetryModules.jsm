@@ -4,15 +4,15 @@
 
 "use strict";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
+ChromeUtils.defineModuleGetter(this, "Preferences",
   "resource://gre/modules/Preferences.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Log",
+ChromeUtils.defineModuleGetter(this, "Log",
   "resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
+ChromeUtils.defineModuleGetter(this, "TelemetryController",
   "resource://gre/modules/TelemetryController.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gUpdateTimerManager",
@@ -20,7 +20,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "gUpdateTimerManager",
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
   "@mozilla.org/base/telemetry;1", "nsITelemetry");
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetryModules",
 ];
 
@@ -35,7 +35,7 @@ const MAX_MODULES_NUM = 512;
 const MAX_NAME_LENGTH = 64;
 const TRUNCATION_DELIMITER = "\u2026";
 
-this.TelemetryModules = Object.freeze({
+var TelemetryModules = Object.freeze({
   _log: Log.repository.getLoggerWithMessagePrefix(LOGGER_NAME, LOGGER_PREFIX),
 
   start() {
@@ -75,6 +75,10 @@ this.TelemetryModules = Object.freeze({
 
             if (module.debugName !== null && module.debugName.length > MAX_NAME_LENGTH) {
               module.debugName = module.debugName.substr(0, MAX_NAME_LENGTH - 1) + TRUNCATION_DELIMITER;
+            }
+
+            if (module.certSubject !== undefined && module.certSubject.length > MAX_NAME_LENGTH) {
+              module.certSubject = module.certSubject.substr(0, MAX_NAME_LENGTH - 1) + TRUNCATION_DELIMITER;
             }
           }
 

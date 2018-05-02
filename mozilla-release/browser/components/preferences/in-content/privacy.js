@@ -2,25 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 
 /* FIXME: ESlint globals workaround should be removed once bug 1395426 gets fixed */
 /* globals DownloadUtils, LoadContextInfo */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/PluralForm.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/PluralForm.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
+ChromeUtils.defineModuleGetter(this, "PluralForm",
   "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
   "resource://gre/modules/LoginHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SiteDataManager",
+ChromeUtils.defineModuleGetter(this, "SiteDataManager",
   "resource:///modules/SiteDataManager.jsm");
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "trackingprotectionUiEnabled",
                                       "privacy.trackingprotection.ui.enabled");
 
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
@@ -110,25 +111,18 @@ Preferences.addAll([
 
   { id: "browser.safebrowsing.downloads.remote.block_potentially_unwanted", type: "bool" },
   { id: "browser.safebrowsing.downloads.remote.block_uncommon", type: "bool" },
-
-  // Network tab
-  { id: "browser.cache.disk.capacity", type: "int" },
-
-  { id: "browser.cache.disk.smart_size.enabled", type: "bool", inverted: "true" },
 ]);
 
 // Data Choices tab
+if (AppConstants.NIGHTLY_BUILD) {
+  Preferences.add({ id: "browser.chrome.errorReporter.enabled", type: "bool" });
+}
 if (AppConstants.MOZ_CRASHREPORTER) {
   Preferences.add({ id: "browser.crashReports.unsubmittedCheck.autoSubmit2", type: "bool" });
 }
 
 var gPrivacyPane = {
   _pane: null,
-
-  /**
-   * Whether the use has selected the auto-start private browsing mode in the UI.
-   */
-  _autoStartPrivateBrowsing: false,
 
   /**
    * Whether the prompt to restart Firefox should appear when changing the autostart pref.
@@ -231,8 +225,8 @@ var gPrivacyPane = {
    * Initialize autocomplete to ensure prefs are in sync.
    */
   _initAutocomplete() {
-    Components.classes["@mozilla.org/autocomplete/search;1?name=unifiedcomplete"]
-      .getService(Components.interfaces.mozIPlacesAutoComplete);
+    Cc["@mozilla.org/autocomplete/search;1?name=unifiedcomplete"]
+      .getService(Ci.mozIPlacesAutoComplete);
   },
 
   /**
@@ -269,23 +263,11 @@ var gPrivacyPane = {
       gPrivacyPane.updatePrivacyMicroControls();
       gPrivacyPane.updateAutostart();
     });
-    setEventListener("historyRememberClear", "click", function(event) {
-      if (event.button == 0) {
-        gPrivacyPane.clearPrivateDataNow(false);
-      }
-      return false;
-    });
-    setEventListener("historyRememberCookies", "click", function(event) {
-      if (event.button == 0) {
-        gPrivacyPane.showCookies();
-      }
-      return false;
-    });
-    setEventListener("historyDontRememberClear", "click", function(event) {
-      if (event.button == 0) {
-        gPrivacyPane.clearPrivateDataNow(true);
-      }
-      return false;
+    setEventListener("clearHistoryButton", "command", function() {
+      let historyMode = document.getElementById("historyMode");
+      // Select "everything" in the clear history dialog if the
+      // user has set their history mode to never remember history.
+      gPrivacyPane.clearPrivateDataNow(historyMode.value == "dontremember");
     });
     setEventListener("openSearchEnginePreferences", "click", function(event) {
       if (event.button == 0) {
@@ -297,8 +279,6 @@ var gPrivacyPane = {
       gPrivacyPane.updateAutostart);
     setEventListener("cookieExceptions", "command",
       gPrivacyPane.showCookieExceptions);
-    setEventListener("showCookiesButton", "command",
-      gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
       gPrivacyPane.showClearPrivateDataSettings);
     setEventListener("disableTrackingProtectionExtension", "command",
@@ -324,14 +304,10 @@ var gPrivacyPane = {
       gPrivacyPane.showCertificates);
     setEventListener("viewSecurityDevicesButton", "command",
       gPrivacyPane.showSecurityDevices);
-    setEventListener("clearCacheButton", "command",
-      gPrivacyPane.clearCache);
 
     this._pane = document.getElementById("panePrivacy");
     this._initMasterPasswordUI();
     this._initSafeBrowsing();
-    this.updateCacheSizeInputField();
-    this.updateActualCacheSize();
 
     setEventListener("notificationSettingsButton", "command",
       gPrivacyPane.showNotificationExceptions);
@@ -365,9 +341,6 @@ var gPrivacyPane = {
         notificationsDoNotDisturb.setAttribute("checked", true);
       }
     }
-
-    setEventListener("cacheSize", "change",
-      gPrivacyPane.updateCacheSizePref);
 
     if (Services.prefs.getBoolPref("browser.storageManager.enabled")) {
       Services.obs.addObserver(this, "sitedatamanager:sites-updated");
@@ -407,13 +380,18 @@ var gPrivacyPane = {
       document.getElementById("drmGroup").setAttribute("style", "display: none !important");
     }
 
-    this.initDataCollection();
-    if (AppConstants.MOZ_CRASHREPORTER) {
-      this.initSubmitCrashes();
+    if (AppConstants.MOZ_DATA_REPORTING) {
+      this.initDataCollection();
+      if (AppConstants.NIGHTLY_BUILD) {
+        this.initCollectBrowserErrors();
+      }
+      if (AppConstants.MOZ_CRASHREPORTER) {
+        this.initSubmitCrashes();
+      }
+      this.initSubmitHealthReport();
+      setEventListener("submitHealthReportBox", "command",
+        gPrivacyPane.updateSubmitHealthReport);
     }
-    this.initSubmitHealthReport();
-    setEventListener("submitHealthReportBox", "command",
-      gPrivacyPane.updateSubmitHealthReport);
     this._initA11yState();
     let signonBundle = document.getElementById("signonBundle");
     let pkiBundle = document.getElementById("pkiBundle");
@@ -425,13 +403,7 @@ var gPrivacyPane = {
       signonBundle.getString("loginsDescriptionAll2"),
     ]);
     appendSearchKeywords("cookieExceptions", [
-      bundlePrefs.getString("cookiepermissionstext"),
-    ]);
-    appendSearchKeywords("showCookiesButton", [
-      bundlePrefs.getString("cookiesAll"),
-      bundlePrefs.getString("removeAllCookies.label"),
-      bundlePrefs.getString("removeAllShownCookies.label"),
-      bundlePrefs.getString("removeSelectedCookies.label"),
+      bundlePrefs.getString("cookiepermissionstext1"),
     ]);
     appendSearchKeywords("trackingProtectionExceptions", [
       bundlePrefs.getString("trackingprotectionpermissionstitle"),
@@ -477,10 +449,15 @@ var gPrivacyPane = {
       pkiBundle.getString("enable_fips"),
     ]);
     appendSearchKeywords("siteDataSettings", [
-      bundlePrefs.getString("siteDataSettings2.description"),
+      bundlePrefs.getString("siteDataSettings3.description"),
       bundlePrefs.getString("removeAllCookies.label"),
       bundlePrefs.getString("removeSelectedCookies.label"),
     ]);
+
+    if (!PrivateBrowsingUtils.enabled) {
+      document.getElementById("privateBrowsingAutoStart").hidden = true;
+      document.querySelector("menuitem[value='dontremember']").hidden = true;
+    }
 
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "privacy-pane-loaded");
@@ -549,8 +526,6 @@ var gPrivacyPane = {
   prefsForKeepingHistory: {
     "places.history.enabled": true, // History is enabled
     "browser.formfill.enable": true, // Form information is saved
-    "network.cookie.cookieBehavior": 0, // All cookies are enabled
-    "network.cookie.lifetimePolicy": 0, // Cookies use supplied lifetime
     "privacy.sanitize.sanitizeOnShutdown": false, // Private date is NOT cleared on shutdown
   },
 
@@ -564,8 +539,6 @@ var gPrivacyPane = {
   dependentControls: [
     "rememberHistory",
     "rememberForms",
-    "keepUntil",
-    "keepCookiesUntil",
     "alwaysClear",
     "clearDataSettings"
   ],
@@ -642,11 +615,6 @@ var gPrivacyPane = {
         // select the remember forms history option
         Preferences.get("browser.formfill.enable").value = true;
 
-        // select the allow cookies option
-        Preferences.get("network.cookie.cookieBehavior").value = 0;
-        // select the cookie lifetime policy option
-        Preferences.get("network.cookie.lifetimePolicy").value = 0;
-
         // select the clear on close option
         Preferences.get("privacy.sanitize.sanitizeOnShutdown").value = false;
         break;
@@ -659,12 +627,16 @@ var gPrivacyPane = {
 
   /**
    * Update the privacy micro-management controls based on the
-   * value of the private browsing auto-start checkbox.
+   * value of the private browsing auto-start preference.
    */
   updatePrivacyMicroControls() {
+    // Set "Keep cookies until..." to "I close Nightly" and disable the setting
+    // when we're in auto private mode (or reset it back otherwise).
+    document.getElementById("keepCookiesUntil").value = this.readKeepCookiesUntil();
+    this.readAcceptCookies();
+
     if (document.getElementById("historyMode").value == "custom") {
-      let disabled = this._autoStartPrivateBrowsing =
-        Preferences.get("browser.privatebrowsing.autostart").value;
+      let disabled = Preferences.get("browser.privatebrowsing.autostart").value;
       this.dependentControls.forEach(function(aElement) {
         let control = document.getElementById(aElement);
         let preferenceId = control.getAttribute("preference");
@@ -679,16 +651,6 @@ var gPrivacyPane = {
         let preference = preferenceId ? Preferences.get(preferenceId) : {};
         control.disabled = disabled || preference.locked;
       });
-
-      // adjust the cookie controls status
-      this.readAcceptCookies();
-      let lifetimePolicy = Preferences.get("network.cookie.lifetimePolicy").value;
-      if (lifetimePolicy != Ci.nsICookieService.ACCEPT_NORMALLY &&
-        lifetimePolicy != Ci.nsICookieService.ACCEPT_SESSION &&
-        lifetimePolicy != Ci.nsICookieService.ACCEPT_FOR_N_DAYS) {
-        lifetimePolicy = Ci.nsICookieService.ACCEPT_NORMALLY;
-      }
-      document.getElementById("keepCookiesUntil").value = disabled ? 2 : lifetimePolicy;
 
       // adjust the checked state of the sanitizeOnShutdown checkbox
       document.getElementById("alwaysClear").checked = disabled ? false :
@@ -705,215 +667,6 @@ var gPrivacyPane = {
         this._updateSanitizeSettingsButton();
       }
     }
-  },
-
-  // PRIVATE BROWSING
-
-  /**
-   * Initialize the starting state for the auto-start private browsing mode pref reverter.
-   */
-  initAutoStartPrivateBrowsingReverter() {
-    let mode = document.getElementById("historyMode");
-    let autoStart = document.getElementById("privateBrowsingAutoStart");
-    this._lastMode = mode.selectedIndex;
-    this._lastCheckState = autoStart.hasAttribute("checked");
-  },
-
-  _lastMode: null,
-  _lastCheckState: null,
-  updateAutostart() {
-    let mode = document.getElementById("historyMode");
-    let autoStart = document.getElementById("privateBrowsingAutoStart");
-    let pref = Preferences.get("browser.privatebrowsing.autostart");
-    if ((mode.value == "custom" && this._lastCheckState == autoStart.checked) ||
-      (mode.value == "remember" && !this._lastCheckState) ||
-      (mode.value == "dontremember" && this._lastCheckState)) {
-      // These are all no-op changes, so we don't need to prompt.
-      this._lastMode = mode.selectedIndex;
-      this._lastCheckState = autoStart.hasAttribute("checked");
-      return;
-    }
-
-    if (!this._shouldPromptForRestart) {
-      // We're performing a revert. Just let it happen.
-      return;
-    }
-
-    let buttonIndex = confirmRestartPrompt(autoStart.checked, 1,
-      true, false);
-    if (buttonIndex == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
-      pref.value = autoStart.hasAttribute("checked");
-      Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
-      return;
-    }
-
-    this._shouldPromptForRestart = false;
-
-    if (this._lastCheckState) {
-      autoStart.checked = "checked";
-    } else {
-      autoStart.removeAttribute("checked");
-    }
-    pref.value = autoStart.hasAttribute("checked");
-    mode.selectedIndex = this._lastMode;
-    mode.doCommand();
-
-    this._shouldPromptForRestart = true;
-  },
-
-  /**
-   * Displays fine-grained, per-site preferences for tracking protection.
-   */
-  showTrackingProtectionExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
-    let params = {
-      permissionType: "trackingprotection",
-      hideStatusColumn: true,
-      windowTitle: bundlePreferences.getString("trackingprotectionpermissionstitle"),
-      introText: bundlePreferences.getString("trackingprotectionpermissionstext2"),
-    };
-    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
-      null, params);
-  },
-
-  /**
-   * Displays the available block lists for tracking protection.
-   */
-  showBlockLists() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
-    let brandName = document.getElementById("bundleBrand")
-      .getString("brandShortName");
-    var params = {
-      brandShortName: brandName,
-      windowTitle: bundlePreferences.getString("blockliststitle"),
-      introText: bundlePreferences.getString("blockliststext")
-    };
-    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul",
-      null, params);
-  },
-
-  // HISTORY
-
-  /*
-   * Preferences:
-   *
-   * places.history.enabled
-   * - whether history is enabled or not
-   * browser.formfill.enable
-   * - true if entries in forms and the search bar should be saved, false
-   *   otherwise
-   */
-
-  // COOKIES
-
-  /*
-   * Preferences:
-   *
-   * network.cookie.cookieBehavior
-   * - determines how the browser should handle cookies:
-   *     0   means enable all cookies
-   *     1   means reject all third party cookies
-   *     2   means disable all cookies
-   *     3   means reject third party cookies unless at least one is already set for the eTLD
-   *         see netwerk/cookie/src/nsCookieService.cpp for details
-   * network.cookie.lifetimePolicy
-   * - determines how long cookies are stored:
-   *     0   means keep cookies until they expire
-   *     2   means keep cookies until the browser is closed
-   */
-
-  /**
-   * Reads the network.cookie.cookieBehavior preference value and
-   * enables/disables the rest of the cookie UI accordingly, returning true
-   * if cookies are enabled.
-   */
-  readAcceptCookies() {
-    var pref = Preferences.get("network.cookie.cookieBehavior");
-    var acceptThirdPartyLabel = document.getElementById("acceptThirdPartyLabel");
-    var acceptThirdPartyMenu = document.getElementById("acceptThirdPartyMenu");
-    var keepUntil = document.getElementById("keepUntil");
-    var menu = document.getElementById("keepCookiesUntil");
-
-    // enable the rest of the UI for anything other than "disable all cookies"
-    var acceptCookies = (pref.value != 2);
-
-    acceptThirdPartyLabel.disabled = acceptThirdPartyMenu.disabled = !acceptCookies;
-    keepUntil.disabled = menu.disabled = this._autoStartPrivateBrowsing || !acceptCookies;
-
-    return acceptCookies;
-  },
-
-  /**
-   * Enables/disables the "keep until" label and menulist in response to the
-   * "accept cookies" checkbox being checked or unchecked.
-   */
-  writeAcceptCookies() {
-    var accept = document.getElementById("acceptCookies");
-    var acceptThirdPartyMenu = document.getElementById("acceptThirdPartyMenu");
-
-    // if we're enabling cookies, automatically select 'accept third party always'
-    if (accept.checked)
-      acceptThirdPartyMenu.selectedIndex = 0;
-
-    return accept.checked ? 0 : 2;
-  },
-
-  /**
-   * Converts between network.cookie.cookieBehavior and the third-party cookie UI
-   */
-  readAcceptThirdPartyCookies() {
-    var pref = Preferences.get("network.cookie.cookieBehavior");
-    switch (pref.value) {
-      case 0:
-        return "always";
-      case 1:
-        return "never";
-      case 2:
-        return "never";
-      case 3:
-        return "visited";
-      default:
-        return undefined;
-    }
-  },
-
-  writeAcceptThirdPartyCookies() {
-    var accept = document.getElementById("acceptThirdPartyMenu").selectedItem;
-    switch (accept.value) {
-      case "always":
-        return 0;
-      case "visited":
-        return 3;
-      case "never":
-        return 1;
-      default:
-        return undefined;
-    }
-  },
-
-  /**
-   * Displays fine-grained, per-site preferences for cookies.
-   */
-  showCookieExceptions() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
-    var params = {
-      blockVisible: true,
-      sessionVisible: true,
-      allowVisible: true,
-      prefilledHost: "",
-      permissionType: "cookie",
-      windowTitle: bundlePreferences.getString("cookiepermissionstitle"),
-      introText: bundlePreferences.getString("cookiepermissionstext")
-    };
-    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
-      null, params);
-  },
-
-  /**
-   * Displays all the user's cookies in a dialog.
-   */
-  showCookies(aCategory) {
-    gSubDialog.open("chrome://browser/content/preferences/cookies.xul");
   },
 
   // CLEAR PRIVATE DATA
@@ -969,6 +722,252 @@ var gPrivacyPane = {
 
   toggleDoNotDisturbNotifications(event) {
     AlertsServiceDND.manualDoNotDisturb = event.target.checked;
+  },
+
+  // PRIVATE BROWSING
+
+  /**
+   * Initialize the starting state for the auto-start private browsing mode pref reverter.
+   */
+  initAutoStartPrivateBrowsingReverter() {
+    let mode = document.getElementById("historyMode");
+    let autoStart = document.getElementById("privateBrowsingAutoStart");
+    this._lastMode = mode.selectedIndex;
+    this._lastCheckState = autoStart.hasAttribute("checked");
+  },
+
+  _lastMode: null,
+  _lastCheckState: null,
+  async updateAutostart() {
+    let mode = document.getElementById("historyMode");
+    let autoStart = document.getElementById("privateBrowsingAutoStart");
+    let pref = Preferences.get("browser.privatebrowsing.autostart");
+    if ((mode.value == "custom" && this._lastCheckState == autoStart.checked) ||
+      (mode.value == "remember" && !this._lastCheckState) ||
+      (mode.value == "dontremember" && this._lastCheckState)) {
+      // These are all no-op changes, so we don't need to prompt.
+      this._lastMode = mode.selectedIndex;
+      this._lastCheckState = autoStart.hasAttribute("checked");
+      return;
+    }
+
+    if (!this._shouldPromptForRestart) {
+      // We're performing a revert. Just let it happen.
+      return;
+    }
+
+    let buttonIndex = await confirmRestartPrompt(autoStart.checked, 1,
+      true, false);
+    if (buttonIndex == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+      pref.value = autoStart.hasAttribute("checked");
+      Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+      return;
+    }
+
+    this._shouldPromptForRestart = false;
+
+    if (this._lastCheckState) {
+      autoStart.checked = "checked";
+    } else {
+      autoStart.removeAttribute("checked");
+    }
+    pref.value = autoStart.hasAttribute("checked");
+    mode.selectedIndex = this._lastMode;
+    mode.doCommand();
+
+    this._shouldPromptForRestart = true;
+  },
+
+  /**
+   * Displays fine-grained, per-site preferences for tracking protection.
+   */
+  showTrackingProtectionExceptions() {
+    let bundlePreferences = document.getElementById("bundlePreferences");
+    let params = {
+      permissionType: "trackingprotection",
+      hideStatusColumn: true,
+      windowTitle: bundlePreferences.getString("trackingprotectionpermissionstitle"),
+      introText: bundlePreferences.getString("trackingprotectionpermissionstext2"),
+    };
+    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
+      null, params);
+  },
+
+  /**
+   * Displays the available block lists for tracking protection.
+   */
+  showBlockLists() {
+    var bundlePreferences = document.getElementById("bundlePreferences");
+    let brandName = document.getElementById("bundleBrand")
+      .getString("brandShortName");
+    var params = {
+      brandShortName: brandName,
+      windowTitle: bundlePreferences.getString("blockliststitle"),
+      introText: bundlePreferences.getString("blockliststext")
+    };
+    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul",
+      null, params);
+  },
+
+  // COOKIES AND SITE DATA
+
+  /*
+   * Preferences:
+   *
+   * network.cookie.cookieBehavior
+   * - determines how the browser should handle cookies:
+   *     0   means enable all cookies
+   *     1   means reject all third party cookies
+   *     2   means disable all cookies
+   *     3   means reject third party cookies unless at least one is already set for the eTLD
+   *         see netwerk/cookie/src/nsCookieService.cpp for details
+   * network.cookie.lifetimePolicy
+   * - determines how long cookies are stored:
+   *     0   means keep cookies until they expire
+   *     2   means keep cookies until the browser is closed
+   */
+
+  readKeepCookiesUntil() {
+    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
+    if (privateBrowsing) {
+      return "2";
+    }
+
+    let lifetimePolicy = Preferences.get("network.cookie.lifetimePolicy").value;
+    if (lifetimePolicy != Ci.nsICookieService.ACCEPT_NORMALLY &&
+      lifetimePolicy != Ci.nsICookieService.ACCEPT_SESSION &&
+      lifetimePolicy != Ci.nsICookieService.ACCEPT_FOR_N_DAYS) {
+      return Ci.nsICookieService.ACCEPT_NORMALLY;
+    }
+
+    return lifetimePolicy;
+  },
+
+  /**
+   * Reads the network.cookie.cookieBehavior preference value and
+   * enables/disables the rest of the cookie UI accordingly.
+   *
+   * Returns "0" if cookies are accepted and "2" if they are entirely disabled.
+   */
+  readAcceptCookies() {
+    let pref = Preferences.get("network.cookie.cookieBehavior");
+    let acceptThirdPartyLabel = document.getElementById("acceptThirdPartyLabel");
+    let acceptThirdPartyMenu = document.getElementById("acceptThirdPartyMenu");
+    let keepUntilLabel = document.getElementById("keepUntil");
+    let keepUntilMenu = document.getElementById("keepCookiesUntil");
+
+    // enable the rest of the UI for anything other than "disable all cookies"
+    let acceptCookies = (pref.value != 2);
+    let cookieBehaviorLocked = Services.prefs.prefIsLocked("network.cookie.cookieBehavior");
+    const acceptThirdPartyControlsDisabled = !acceptCookies || cookieBehaviorLocked;
+
+    acceptThirdPartyLabel.disabled = acceptThirdPartyMenu.disabled = acceptThirdPartyControlsDisabled;
+
+    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
+    let cookieExpirationLocked = Services.prefs.prefIsLocked("network.cookie.lifetimePolicy");
+    const keepUntilControlsDisabled = privateBrowsing || !acceptCookies || cookieExpirationLocked;
+    keepUntilLabel.disabled = keepUntilMenu.disabled = keepUntilControlsDisabled;
+
+    // Our top-level setting is a radiogroup that only sets "enable all"
+    // and "disable all", so convert the pref value accordingly.
+    return acceptCookies ? "0" : "2";
+  },
+
+  /**
+   * Updates the "accept third party cookies" menu based on whether the
+   * "accept cookies" or "block cookies" radio buttons are selected.
+   */
+  writeAcceptCookies() {
+    var accept = document.getElementById("acceptCookies");
+    var acceptThirdPartyMenu = document.getElementById("acceptThirdPartyMenu");
+
+    // if we're enabling cookies, automatically select 'accept third party always'
+    if (accept.value == "0")
+      acceptThirdPartyMenu.selectedIndex = 0;
+
+    return parseInt(accept.value, 10);
+  },
+
+  /**
+   * Converts between network.cookie.cookieBehavior and the third-party cookie UI
+   */
+  readAcceptThirdPartyCookies() {
+    var pref = Preferences.get("network.cookie.cookieBehavior");
+    switch (pref.value) {
+      case 0:
+        return "always";
+      case 1:
+        return "never";
+      case 2:
+        return "never";
+      case 3:
+        return "visited";
+      default:
+        return undefined;
+    }
+  },
+
+  writeAcceptThirdPartyCookies() {
+    var accept = document.getElementById("acceptThirdPartyMenu").selectedItem;
+    switch (accept.value) {
+      case "always":
+        return 0;
+      case "visited":
+        return 3;
+      case "never":
+        return 1;
+      default:
+        return undefined;
+    }
+  },
+
+  /**
+   * Displays fine-grained, per-site preferences for cookies.
+   */
+  showCookieExceptions() {
+    var bundlePreferences = document.getElementById("bundlePreferences");
+    var params = {
+      blockVisible: true,
+      sessionVisible: true,
+      allowVisible: true,
+      prefilledHost: "",
+      permissionType: "cookie",
+      windowTitle: bundlePreferences.getString("cookiepermissionstitle1"),
+      introText: bundlePreferences.getString("cookiepermissionstext1")
+    };
+    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
+      null, params);
+  },
+
+  showSiteDataSettings() {
+    gSubDialog.open("chrome://browser/content/preferences/siteDataSettings.xul");
+  },
+
+  toggleSiteData(shouldShow) {
+    let clearButton = document.getElementById("clearSiteDataButton");
+    let settingsButton = document.getElementById("siteDataSettings");
+    clearButton.disabled = !shouldShow;
+    settingsButton.disabled = !shouldShow;
+  },
+
+  showSiteDataLoading() {
+    let totalSiteDataSizeLabel = document.getElementById("totalSiteDataSize");
+    let prefStrBundle = document.getElementById("bundlePreferences");
+    totalSiteDataSizeLabel.textContent = prefStrBundle.getString("loadingSiteDataSize1");
+  },
+
+  updateTotalDataSizeLabel(siteDataUsage) {
+    SiteDataManager.getCacheSize().then(function(cacheUsage) {
+      let prefStrBundle = document.getElementById("bundlePreferences");
+      let totalSiteDataSizeLabel = document.getElementById("totalSiteDataSize");
+      let totalUsage = siteDataUsage + cacheUsage;
+      let size = DownloadUtils.convertByteUnits(totalUsage);
+      totalSiteDataSizeLabel.textContent = prefStrBundle.getFormattedString("totalSiteDataSize2", size);
+    });
+  },
+
+  clearSiteData() {
+    gSubDialog.open("chrome://browser/content/preferences/clearSiteData.xul");
   },
 
   // GEOLOCATION
@@ -1077,7 +1076,7 @@ var gPrivacyPane = {
   updateButtons(aButtonID, aPreferenceID) {
     var button = document.getElementById(aButtonID);
     var preference = Preferences.get(aPreferenceID);
-    button.disabled = preference.value != true;
+    button.disabled = !preference.value;
     return undefined;
   },
 
@@ -1127,6 +1126,7 @@ var gPrivacyPane = {
 
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
+    checkbox.disabled = noMP && !Services.policies.isAllowed("createMasterPassword");
   },
 
   /**
@@ -1282,7 +1282,7 @@ var gPrivacyPane = {
                      x !== "test-unwanted-simple");
 
       if (blockUncommonUnwanted.checked) {
-        if (malware.indexOf("goog-malware-shavar") != -1) {
+        if (malware.includes("goog-malware-shavar")) {
           malware.push("goog-unwanted-shavar");
         } else {
           malware.push("goog-unwanted-proto");
@@ -1297,8 +1297,8 @@ var gPrivacyPane = {
       malwareTable.value = malware.join(",");
 
       // Force an update after changing the malware table.
-      let listmanager = Components.classes["@mozilla.org/url-classifier/listmanager;1"]
-                        .getService(Components.interfaces.nsIUrlListManager);
+      let listmanager = Cc["@mozilla.org/url-classifier/listmanager;1"]
+                        .getService(Ci.nsIUrlListManager);
       if (listmanager) {
         listmanager.forceUpdates(malwareTable.value);
       }
@@ -1409,133 +1409,14 @@ var gPrivacyPane = {
     gSubDialog.open("chrome://pippki/content/device_manager.xul");
   },
 
-  /**
-   * Clears the cache.
-   */
-  clearCache() {
-    try {
-      Services.cache2.clear();
-    } catch (ex) { }
-    this.updateActualCacheSize();
-  },
-
-  showSiteDataSettings() {
-    gSubDialog.open("chrome://browser/content/preferences/siteDataSettings.xul");
-  },
-
-  toggleSiteData(shouldShow) {
-    let clearButton = document.getElementById("clearSiteDataButton");
-    let settingsButton = document.getElementById("siteDataSettings");
-    clearButton.disabled = !shouldShow;
-    settingsButton.disabled = !shouldShow;
-  },
-
-  updateTotalDataSizeLabel(usage) {
-    let prefStrBundle = document.getElementById("bundlePreferences");
-    let totalSiteDataSizeLabel = document.getElementById("totalSiteDataSize");
-    if (usage < 0) {
-      totalSiteDataSizeLabel.textContent = prefStrBundle.getString("loadingSiteDataSize");
-    } else {
-      let size = DownloadUtils.convertByteUnits(usage);
-      totalSiteDataSizeLabel.textContent = prefStrBundle.getFormattedString("totalSiteDataSize", size);
-    }
-  },
-
-  // Retrieves the amount of space currently used by disk cache
-  updateActualCacheSize() {
-    var actualSizeLabel = document.getElementById("actualDiskCacheSize");
-    var prefStrBundle = document.getElementById("bundlePreferences");
-
-    // Needs to root the observer since cache service keeps only a weak reference.
-    this.observer = {
-      onNetworkCacheDiskConsumption(consumption) {
-        var size = DownloadUtils.convertByteUnits(consumption);
-        // The XBL binding for the string bundle may have been destroyed if
-        // the page was closed before this callback was executed.
-        if (!prefStrBundle.getFormattedString) {
-          return;
-        }
-        actualSizeLabel.textContent = prefStrBundle.getFormattedString("actualDiskCacheSize", size);
-      },
-
-      QueryInterface: XPCOMUtils.generateQI([
-        Components.interfaces.nsICacheStorageConsumptionObserver,
-        Components.interfaces.nsISupportsWeakReference
-      ])
-    };
-
-    actualSizeLabel.textContent = prefStrBundle.getString("actualDiskCacheSizeCalculated");
-
-    try {
-      Services.cache2.asyncGetDiskConsumption(this.observer);
-    } catch (e) { }
-  },
-
-  updateCacheSizeUI(smartSizeEnabled) {
-    document.getElementById("useCacheBefore").disabled = smartSizeEnabled;
-    document.getElementById("cacheSize").disabled = smartSizeEnabled;
-    document.getElementById("useCacheAfter").disabled = smartSizeEnabled;
-  },
-
-  readSmartSizeEnabled() {
-    // The smart_size.enabled preference element is inverted="true", so its
-    // value is the opposite of the actual pref value
-    var disabled = Preferences.get("browser.cache.disk.smart_size.enabled").value;
-    this.updateCacheSizeUI(!disabled);
-  },
-
-  /**
-   * Converts the cache size from units of KB to units of MB and stores it in
-   * the textbox element.
-   *
-   * Preferences:
-   *
-   * browser.cache.disk.capacity
-   * - the size of the browser cache in KB
-   * - Only used if browser.cache.disk.smart_size.enabled is disabled
-   */
-  updateCacheSizeInputField() {
-    let cacheSizeElem = document.getElementById("cacheSize");
-    let cachePref = Preferences.get("browser.cache.disk.capacity");
-    cacheSizeElem.value = cachePref.value / 1024;
-    if (cachePref.locked)
-      cacheSizeElem.disabled = true;
-  },
-
-  /**
-   * Updates the cache size preference once user enters a new value.
-   * We intentionally do not set preference="browser.cache.disk.capacity"
-   * onto the textbox directly, as that would update the pref at each keypress
-   * not only after the final value is entered.
-   */
-  updateCacheSizePref() {
-    let cacheSizeElem = document.getElementById("cacheSize");
-    let cachePref = Preferences.get("browser.cache.disk.capacity");
-    // Converts the cache size as specified in UI (in MB) to KB.
-    let intValue = parseInt(cacheSizeElem.value, 10);
-    cachePref.value = isNaN(intValue) ? 0 : intValue * 1024;
-  },
-
-  clearSiteData() {
-    let flags =
-      Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0 +
-      Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
-      Services.prompt.BUTTON_POS_0_DEFAULT;
-    let prefStrBundle = document.getElementById("bundlePreferences");
-    let title = prefStrBundle.getString("clearSiteDataPromptTitle");
-    let text = prefStrBundle.getString("clearSiteDataPromptText");
-    let btn0Label = prefStrBundle.getString("clearSiteDataNow");
-
-    let result = Services.prompt.confirmEx(
-      window, title, text, flags, btn0Label, null, null, null, {});
-    if (result == 0) {
-      SiteDataManager.removeAll();
-    }
-  },
-
   initDataCollection() {
     this._setupLearnMoreLink("toolkit.datacollection.infoURL",
       "dataCollectionPrivacyNotice");
+  },
+
+  initCollectBrowserErrors() {
+    this._setupLearnMoreLink("browser.chrome.errorReporter.infoURL",
+      "collectBrowserErrorsLearnMore");
   },
 
   initSubmitCrashes() {
@@ -1548,7 +1429,7 @@ var gPrivacyPane = {
    */
   _setupLearnMoreLink(pref, element) {
     // set up the Learn More link with the correct URL
-    let url = Services.prefs.getCharPref(pref);
+    let url = Services.urlFormatter.formatURLPref(pref);
     let el = document.getElementById(element);
 
     if (url) {
@@ -1592,7 +1473,7 @@ var gPrivacyPane = {
       case "sitedatamanager:updating-sites":
         // While updating, we want to disable this section and display loading message until updated
         this.toggleSiteData(false);
-        this.updateTotalDataSizeLabel(-1);
+        this.showSiteDataLoading();
         break;
 
       case "sitedatamanager:sites-updated":
@@ -1625,8 +1506,8 @@ var gPrivacyPane = {
       .setAttribute("href", a11yLearnMoreLink);
   },
 
-  updateA11yPrefs(checked) {
-    let buttonIndex = confirmRestartPrompt(checked, 0, true, false);
+  async updateA11yPrefs(checked) {
+    let buttonIndex = await confirmRestartPrompt(checked, 0, true, false);
     if (buttonIndex == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
       Services.prefs.setIntPref("accessibility.force_disabled", checked ? 1 : 0);
       Services.telemetry.scalarSet("preferences.prevent_accessibility_services", true);

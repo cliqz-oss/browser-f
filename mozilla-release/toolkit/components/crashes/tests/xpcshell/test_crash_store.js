@@ -7,10 +7,8 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-var {CrashManager, CrashStore, dateToDays} = Cu.import("resource://gre/modules/CrashManager.jsm", {});
-Cu.import("resource://gre/modules/osfile.jsm", this);
+var {CrashManager, CrashStore, dateToDays} = ChromeUtils.import("resource://gre/modules/CrashManager.jsm", {});
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 const DUMMY_DATE = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 DUMMY_DATE.setMilliseconds(0);
@@ -564,8 +562,8 @@ add_task(async function test_setCrashClassification() {
   Assert.ok(s.setCrashClassifications("crash1", ["foo", "bar"]));
   classifications = s.crashes[0].classifications;
   Assert.equal(classifications.length, 2);
-  Assert.ok(classifications.indexOf("foo") != -1);
-  Assert.ok(classifications.indexOf("bar") != -1);
+  Assert.ok(classifications.includes("foo"));
+  Assert.ok(classifications.includes("bar"));
 });
 
 add_task(async function test_setRemoteCrashID() {

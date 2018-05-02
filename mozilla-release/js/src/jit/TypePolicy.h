@@ -99,7 +99,10 @@ class AllDoublePolicy final : public TypePolicy
 {
   public:
     EMPTY_DATA_;
-    MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* def) override;
+    static MOZ_MUST_USE bool staticAdjustInputs(TempAllocator& alloc, MInstruction* def);
+    MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* def) override {
+        return staticAdjustInputs(alloc, def);
+    }
 };
 
 class BitwisePolicy final : public TypePolicy
@@ -110,6 +113,13 @@ class BitwisePolicy final : public TypePolicy
 };
 
 class ComparePolicy final : public TypePolicy
+{
+  public:
+    EMPTY_DATA_;
+    virtual MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* def) override;
+};
+
+class SameValuePolicy final : public TypePolicy
 {
   public:
     EMPTY_DATA_;
@@ -182,9 +192,9 @@ class BooleanPolicy final : private TypePolicy
     }
 };
 
-// Expect an Int for operand Op. If the input is a Value, it is unboxed.
+// Expects either an Int32 or a boxed Int32 for operand Op; may unbox if needed.
 template <unsigned Op>
-class IntPolicy final : private TypePolicy
+class UnboxedInt32Policy final : private TypePolicy
 {
   public:
     EMPTY_DATA_;
@@ -454,7 +464,6 @@ class InstanceOfPolicy final : public TypePolicy
 };
 
 class StoreTypedArrayHolePolicy;
-class StoreTypedArrayElementStaticPolicy;
 
 class StoreUnboxedScalarPolicy : public TypePolicy
 {
@@ -464,7 +473,6 @@ class StoreUnboxedScalarPolicy : public TypePolicy
                                               int valueOperand);
 
     friend class StoreTypedArrayHolePolicy;
-    friend class StoreTypedArrayElementStaticPolicy;
 
   public:
     EMPTY_DATA_;
@@ -478,14 +486,14 @@ class StoreTypedArrayHolePolicy final : public StoreUnboxedScalarPolicy
     virtual MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* ins) override;
 };
 
-class StoreTypedArrayElementStaticPolicy final : public StoreUnboxedScalarPolicy
+class StoreUnboxedObjectOrNullPolicy final : public TypePolicy
 {
   public:
     EMPTY_DATA_;
-    virtual MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* ins) override;
+    virtual MOZ_MUST_USE bool adjustInputs(TempAllocator& alloc, MInstruction* def) override;
 };
 
-class StoreUnboxedObjectOrNullPolicy final : public TypePolicy
+class StoreUnboxedStringPolicy final : public TypePolicy
 {
   public:
     EMPTY_DATA_;

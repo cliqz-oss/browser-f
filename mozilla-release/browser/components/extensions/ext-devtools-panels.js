@@ -6,10 +6,10 @@
 /* import-globals-from ext-devtools.js */
 /* import-globals-from ext-browser.js */
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-                                  "resource://gre/modules/E10SUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
+                               "resource://gre/modules/E10SUtils.jsm");
 
 var {
   IconDetails,
@@ -84,7 +84,7 @@ class ParentDevToolsPanel {
 
     this.toolbox.addAdditionalTool({
       id: this.id,
-      url: "about:blank",
+      url: "chrome://browser/content/webext-panels.xul",
       icon: icon,
       label: title,
       tooltip: `DevTools Panel added by "${extensionName}" add-on.`,
@@ -216,14 +216,29 @@ class ParentDevToolsPanel {
     const {url} = this.panelOptions;
     const {document} = window;
 
+    // TODO Bug 1442601: Refactor ext-devtools-panels.js to reuse the helpers
+    // functions defined in webext-panels.xul (e.g. create the browser element
+    // using an helper function defined in webext-panels.js and shared with the
+    // extension sidebar pages).
+    let stack = document.getElementById("webext-panels-stack");
+    if (!stack) {
+      stack = document.createElementNS(XUL_NS, "stack");
+      stack.setAttribute("flex", "1");
+      stack.setAttribute("id", "webext-panels-stack");
+      document.documentElement.appendChild(stack);
+    }
+
     const browser = document.createElementNS(XUL_NS, "browser");
+    browser.setAttribute("id", "webext-panels-browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
-    browser.setAttribute("style", "width: 100%; height: 100%;");
-    browser.setAttribute("transparent", "true");
+    browser.setAttribute("flex", "1");
     browser.setAttribute("class", "webextension-devtoolsPanel-browser");
     browser.setAttribute("webextension-view-type", "devtools_panel");
-    browser.setAttribute("flex", "1");
+    // TODO Bug 1442604: Add additional tests for the select and autocompletion
+    // popups used in an extension devtools panels (in oop and non-oop mode).
+    browser.setAttribute("selectmenulist", "ContentSelectDropdown");
+    browser.setAttribute("autocompletepopup", "PopupAutoComplete");
 
     // Ensure that the devtools panel browser is going to run in the same
     // process of the other extension pages from the same addon.
@@ -254,8 +269,7 @@ class ParentDevToolsPanel {
       }
     });
 
-    document.body.setAttribute("style", "margin: 0; padding: 0;");
-    document.body.appendChild(browser);
+    stack.appendChild(browser);
 
     extensions.emit("extension-browser-inserted", browser, {
       devtoolsToolboxInfo: {
@@ -264,7 +278,9 @@ class ParentDevToolsPanel {
       },
     });
 
-    browser.loadURI(url);
+    browser.loadURIWithFlags(url, {
+      triggeringPrincipal: extension.principal,
+    });
   }
 
   destroyBrowserElement() {
@@ -379,6 +395,11 @@ class ParentDevToolsInspectorSidebar {
     // Set by setObject if the sidebar has not been created yet.
     this._initializeSidebar = null;
 
+    // Set by _updateLastObjectValueGrip to keep track of the last
+    // object value grip (to release the previous selected actor
+    // on the remote debugging server when the actor changes).
+    this._lastObjectValueGrip = null;
+
     this.toolbox.registerInspectorExtensionSidebar(this.id, {
       title: sidebarOptions.title,
     });
@@ -389,12 +410,15 @@ class ParentDevToolsInspectorSidebar {
       throw new Error("Unable to close a destroyed DevToolsSelectionObserver");
     }
 
+    // Release the last selected actor on the remote debugging server.
+    this._updateLastObjectValueGrip(null);
+
     this.toolbox.off(`extension-sidebar-created-${this.id}`, this.onSidebarCreated);
     this.toolbox.off(`inspector-sidebar-select`, this.onSidebarSelect);
 
     this.toolbox.unregisterInspectorExtensionSidebar(this.id);
     this.extensionSidebar = null;
-    this._initializeSidebar = null;
+    this._lazySidebarInit = null;
 
     this.destroyed = true;
   }
@@ -402,9 +426,11 @@ class ParentDevToolsInspectorSidebar {
   onSidebarCreated(evt, sidebar) {
     this.extensionSidebar = sidebar;
 
-    if (typeof this._initializeSidebar === "function") {
-      this._initializeSidebar();
-      this._initializeSidebar = null;
+    const {_lazySidebarInit} = this;
+    this._lazySidebarInit = null;
+
+    if (typeof _lazySidebarInit === "function") {
+      _lazySidebarInit();
     }
   }
 
@@ -428,6 +454,8 @@ class ParentDevToolsInspectorSidebar {
   }
 
   setObject(object, rootTitle) {
+    this._updateLastObjectValueGrip(null);
+
     // Nest the object inside an object, as the value of the `rootTitle` property.
     if (rootTitle) {
       object = {[rootTitle]: object};
@@ -437,7 +465,38 @@ class ParentDevToolsInspectorSidebar {
       this.extensionSidebar.setObject(object);
     } else {
       // Defer the sidebar.setObject call.
-      this._initializeSidebar = () => this.extensionSidebar.setObject(object);
+      this._setLazySidebarInit(() => this.extensionSidebar.setObject(object));
+    }
+  }
+
+  _setLazySidebarInit(cb) {
+    this._lazySidebarInit = cb;
+  }
+
+  setObjectValueGrip(objectValueGrip, rootTitle) {
+    this._updateLastObjectValueGrip(objectValueGrip);
+
+    if (this.extensionSidebar) {
+      this.extensionSidebar.setObjectValueGrip(objectValueGrip, rootTitle);
+    } else {
+      // Defer the sidebar.setObjectValueGrip call.
+      this._setLazySidebarInit(() => {
+        this.extensionSidebar.setObjectValueGrip(objectValueGrip, rootTitle);
+      });
+    }
+  }
+
+  _updateLastObjectValueGrip(newObjectValueGrip = null) {
+    const {_lastObjectValueGrip} = this;
+
+    this._lastObjectValueGrip = newObjectValueGrip;
+
+    const oldActor = _lastObjectValueGrip && _lastObjectValueGrip.actor;
+    const newActor = newObjectValueGrip && newObjectValueGrip.actor;
+
+    // Release the previously active actor on the remote debugging server.
+    if (oldActor && oldActor !== newActor) {
+      this.toolbox.target.client.release(oldActor);
     }
   }
 }
@@ -450,8 +509,9 @@ this.devtools_panels = class extends ExtensionAPI {
     // (used by Sidebar.setExpression).
     let waitForInspectedWindowFront;
 
-    // TODO(rpl): retrive a more detailed callerInfo object, like the filename and
-    // lineNumber of the actual extension called, in the child process.
+    // TODO - Bug 1448878: retrive a more detailed callerInfo object,
+    // like the filename and lineNumber of the actual extension called
+    // in the child process.
     const callerInfo = {
       addonId: context.extension.id,
       url: context.extension.baseURI.spec,
@@ -513,18 +573,20 @@ this.devtools_panels = class extends ExtensionAPI {
                 }
 
                 const front = await waitForInspectedWindowFront;
-                const evalOptions = Object.assign({}, getToolboxEvalOptions(context));
+                const evalOptions = Object.assign({
+                  evalResultAsGrip: true,
+                }, getToolboxEvalOptions(context));
                 const evalResult = await front.eval(callerInfo, evalExpression, evalOptions);
 
                 let jsonObject;
 
                 if (evalResult.exceptionInfo) {
                   jsonObject = evalResult.exceptionInfo;
-                } else {
-                  jsonObject = evalResult.value;
+
+                  return sidebar.setObject(jsonObject, rootTitle);
                 }
 
-                return sidebar.setObject(jsonObject, rootTitle);
+                return sidebar.setObjectValueGrip(evalResult.valueGrip, rootTitle);
               },
             },
           },

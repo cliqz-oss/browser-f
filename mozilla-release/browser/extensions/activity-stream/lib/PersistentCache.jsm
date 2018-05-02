@@ -3,10 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 XPCOMUtils.defineLazyGetter(this, "gTextDecoder", () => new TextDecoder());
 
 /**
@@ -80,4 +79,4 @@ this.PersistentCache = class PersistentCache {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["PersistentCache"];
+const EXPORTED_SYMBOLS = ["PersistentCache"];

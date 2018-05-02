@@ -10,16 +10,14 @@
  * Use the WebChannel component to receive messages about account
  * state changes.
  */
-this.EXPORTED_SYMBOLS = ["EnsureFxAccountsWebChannel"];
+var EXPORTED_SYMBOLS = ["EnsureFxAccountsWebChannel"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components; /* global Components */
+ChromeUtils.import("resource://gre/modules/Accounts.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/WebChannel.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Accounts.jsm"); /* global Accounts */
-Cu.import("resource://gre/modules/Services.jsm"); /* global Services */
-Cu.import("resource://gre/modules/WebChannel.jsm"); /* global WebChannel */
-Cu.import("resource://gre/modules/XPCOMUtils.jsm"); /* global XPCOMUtils */
-
-const log = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.bind("FxAccounts");
+const log = ChromeUtils.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.bind("FxAccounts");
 
 const WEBCHANNEL_ID = "account_updates";
 
@@ -34,11 +32,11 @@ const COMMAND_SYNC_PREFERENCES     = "fxaccounts:sync_preferences";
 const PREF_LAST_FXA_USER           = "identity.fxaccounts.lastSignedInUserHash";
 
 XPCOMUtils.defineLazyGetter(this, "strings",
-                            () => Services.strings.createBundle("chrome://browser/locale/aboutAccounts.properties")); /* global strings */
+                            () => Services.strings.createBundle("chrome://browser/locale/aboutAccounts.properties"));
 
-XPCOMUtils.defineLazyModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Prompt", "resource://gre/modules/Prompt.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
+ChromeUtils.defineModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
+ChromeUtils.defineModuleGetter(this, "Prompt", "resource://gre/modules/Prompt.jsm");
+ChromeUtils.defineModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
 
 this.FxAccountsWebChannelHelpers = function() {
 };
@@ -381,7 +379,7 @@ var singleton;
 // ever created - we require this because the WebChannel is global in scope and
 // allowing multiple channels would cause such notifications to be sent multiple
 // times.
-this.EnsureFxAccountsWebChannel = () => {
+var EnsureFxAccountsWebChannel = () => {
   if (!singleton) {
     let contentUri = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.webchannel.uri");
     // The FxAccountsWebChannel listens for events and updates the Java layer.

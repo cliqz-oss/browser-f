@@ -64,10 +64,7 @@ function setOldModificationTime() {
   shutdownManager();
   let extension = gProfD.clone();
   extension.append("extensions");
-  if (Services.prefs.getBoolPref("extensions.alwaysUnpack"))
-    extension.append("addon1@tests.mozilla.org");
-  else
-    extension.append("addon1@tests.mozilla.org.xpi");
+  extension.append("addon1@tests.mozilla.org.xpi");
   setExtensionModifiedTime(extension, Date.now() - MAKE_FILE_OLD_DIFFERENCE);
   startupManager(false);
 }
@@ -96,7 +93,7 @@ function run_test_1() {
     // Modification time should be updated when the addon is copied to the
     // profile.
     let testURI = a1.getResourceURI(TEST_UNPACKED ? "install.rdf" : "");
-    let testFile = testURI.QueryInterface(Components.interfaces.nsIFileURL).file;
+    let testFile = testURI.QueryInterface(Ci.nsIFileURL).file;
 
     Assert.ok(testFile.exists());
     let difference = testFile.lastModifiedTime - Date.now();

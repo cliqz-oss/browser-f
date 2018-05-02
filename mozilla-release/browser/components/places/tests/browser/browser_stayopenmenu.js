@@ -22,9 +22,9 @@ async function testContextmenu(menuitem) {
   EventUtils.synthesizeMouseAtCenter(menuitem, {type: "contextmenu", button: 2});
   await promiseEvent;
   let promiseTabOpened = BrowserTestUtils.waitForNewTab(gBrowser, null);
-  EventUtils.synthesizeKey("KEY_ArrowDown", {code: "ArrowDown"});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   BrowserTestUtils.waitForEvent(menuitem, "DOMMenuItemActive");
-  EventUtils.synthesizeKey("KEY_ArrowDown", {code: "ArrowDown"});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   BrowserTestUtils.waitForEvent(menuitem, "DOMMenuItemActive");
   EventUtils.sendKey("return");
   let newTab = await promiseTabOpened;
@@ -146,7 +146,7 @@ add_task(async function testStayopenBookmarksClicks() {
   newTab = await promiseTabOpened;
   ok(true, "Bookmark middle-click opened new tab.");
   await BrowserTestUtils.removeTab(newTab);
-  is(PanelUI.multiView.current.id, "PanelUI-bookmarks", "Should still show the bookmarks subview");
+  ok(PanelView.forNode(BMview).active, "Should still show the bookmarks subview");
   ok(appMenu.open, "Menu should remain open.");
 
   // Close the App Menu

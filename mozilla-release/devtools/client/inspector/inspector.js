@@ -150,8 +150,7 @@ Inspector.prototype = {
     // Localize all the nodes containing a data-localization attribute.
     localizeMarkup(this.panelDoc);
 
-    this._cssPropertiesLoaded = initCssProperties(this.toolbox);
-    yield this._cssPropertiesLoaded;
+    this._cssProperties = yield initCssProperties(this.toolbox);
     yield this.target.makeRemote();
     yield this._getPageStyle();
 
@@ -391,7 +390,7 @@ Inspector.prototype = {
       window: this.panelDoc.defaultView,
     });
     let key = INSPECTOR_L10N.getStr("inspector.searchHTML.key");
-    shortcuts.on(key, (name, event) => {
+    shortcuts.on(key, event => {
       // Prevent overriding same shortcut from the computed/rule views
       if (event.target.closest("#sidebar-panel-ruleview") ||
           event.target.closest("#sidebar-panel-computedview")) {
@@ -708,10 +707,14 @@ Inspector.prototype = {
 
     await this.addRuleView(defaultTab);
 
-    this.sidebar.addExistingTab(
-      "computedview",
-      INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
-      defaultTab == "computedview");
+    // If the 3 Pane Inspector feature is disabled, use the old order:
+    // Rules, Computed, Layout, etc.
+    if (!this.showSplitSidebarToggle) {
+      this.sidebar.addExistingTab(
+        "computedview",
+        INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
+        defaultTab == "computedview");
+    }
 
     // Inject a lazy loaded react tab by exposing a fake React object
     // with a lazy defined Tab thanks to `panel` being a function
@@ -736,6 +739,15 @@ Inspector.prototype = {
         }
       },
       defaultTab == layoutId);
+
+    // If the 3 Pane Inspector feature is enabled, use the new order:
+    // Rules, Layout, Computed, etc.
+    if (this.showSplitSidebarToggle) {
+      this.sidebar.addExistingTab(
+        "computedview",
+        INSPECTOR_L10N.getStr("inspector.sidebar.computedViewTitle"),
+        defaultTab == "computedview");
+    }
 
     if (Services.prefs.getBoolPref("devtools.changesview.enabled")) {
       // Inject a lazy loaded react tab by exposing a fake React object
@@ -1139,8 +1151,8 @@ Inspector.prototype = {
            selection.isElementNode() &&
            !selection.isPseudoElementNode() &&
            !selection.isAnonymousNode() &&
-           invalidTagNames.indexOf(
-            selection.nodeFront.nodeName.toLowerCase()) === -1;
+           !invalidTagNames.includes(
+            selection.nodeFront.nodeName.toLowerCase());
   },
 
   /**
@@ -1284,11 +1296,7 @@ Inspector.prototype = {
       this.animationinspector.destroy();
     }
 
-    let cssPropertiesDestroyer = this._cssPropertiesLoaded.then(({front}) => {
-      if (front) {
-        front.destroy();
-      }
-    });
+    let cssPropertiesDestroyer = this._cssProperties.front.destroy();
 
     this.sidebar.off("select", this.onSidebarSelect);
     let sidebarDestroyer = this.sidebar.destroy();

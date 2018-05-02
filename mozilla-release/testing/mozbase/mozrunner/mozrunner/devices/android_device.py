@@ -59,41 +59,48 @@ AVD_DICT = {
     '4.3': AvdInfo('Android 4.3',
                    'mozemulator-4.3',
                    'testing/config/tooltool-manifests/androidarm_4_3/mach-emulator.manifest',
-                   ['-show-kernel', '-debug',
-                    'init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket'],
+                   ['-skip-adb-auth', '-verbose', '-show-kernel'],
                    False),
     '6.0': AvdInfo('Android 6.0',
                    'mozemulator-6.0',
                    'testing/config/tooltool-manifests/androidarm_6_0/mach-emulator.manifest',
-                   ['-show-kernel', '-debug',
-                    'init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket'],
+                   ['-skip-adb-auth', '-verbose', '-show-kernel'
+                    # -ranchu fails
+                    # -memory has no effect
+                    ],
                    False),
     '7.0': AvdInfo('Android 7.0',
                    'mozemulator-7.0',
                    'testing/config/tooltool-manifests/androidarm_7_0/mach-emulator.manifest',
-                   ['-debug',
-                    'init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket',
-                    '-qemu', '-m', '2048'],
+                   ['-skip-adb-auth', '-verbose',
+                    # does not boot if '-show-kernel' -- how strange!
+                    '-ranchu',
+                    '-selinux', 'permissive',
+                    '-memory', '3072', '-cores', '4'],
                    False),
     'x86': AvdInfo('Android 4.2 x86',
                    'mozemulator-x86',
                    'testing/config/tooltool-manifests/androidx86/mach-emulator.manifest',
-                   ['-debug',
-                    'init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket',
+                   ['-skip-adb-auth', '-verbose', '-show-kernel',
                     '-qemu', '-m', '1024', '-enable-kvm'],
                    True),
     'x86-6.0': AvdInfo('Android 6.0 x86',
                        'mozemulator-x86-6.0',
                        'testing/config/tooltool-manifests/androidx86_6_0/mach-emulator.manifest',
-                       ['-debug',
-                        'init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket',
+                       ['-skip-adb-auth', '-verbose', '-show-kernel',
                         '-ranchu',
-                        '-qemu', '-m', '2048'],
+                        # does not boot if '-engine', 'qemu2',
+                        '-memory', '3072', '-cores', '4',
+                        '-qemu', '-enable-kvm'],
                        True),
     'x86-7.0': AvdInfo('Android 7.0 x86',
                        'mozemulator-x86-7.0',
                        'testing/config/tooltool-manifests/androidx86_7_0/mach-emulator.manifest',
-                       ['-show-kernel', '-verbose',
+                       ['-skip-adb-auth', '-verbose', '-show-kernel',
+                        '-ranchu',
+                        '-selinux', 'permissive',
+                        # does not boot if '-engine', 'qemu2',
+                        '-memory', '3072', '-cores', '4',
                         '-qemu', '-enable-kvm'],
                        True)
 }
@@ -170,7 +177,8 @@ def _maybe_update_host_utils(build_obj):
                 _install_host_utils(build_obj)
 
 
-def verify_android_device(build_obj, install=False, xre=False, debugger=False, verbose=False):
+def verify_android_device(build_obj, install=False, xre=False, debugger=False,
+                          verbose=False, app=None):
     """
        Determine if any Android device is connected via adb.
        If no device is found, prompt to start an emulator.
@@ -218,14 +226,22 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False, v
         #  - installation may take a couple of minutes.
         installed = emulator.dm.shellCheckOutput(['pm', 'list',
                                                   'packages', 'org.mozilla.'])
-        if 'fennec' not in installed and 'firefox' not in installed:
-            response = raw_input(
-                "It looks like Firefox is not installed on this device.\n"
-                "Install Firefox? (Y/n) ").strip()
-            if response.lower().startswith('y') or response == '':
-                _log_info("Installing Firefox. This may take a while...")
-                build_obj._run_make(directory=".", target='install',
-                                    ensure_exit_code=False)
+        if not app:
+            app = build_obj.substs["ANDROID_PACKAGE_NAME"]
+        if app not in installed:
+            if 'fennec' not in app and 'firefox' not in app:
+                raw_input(
+                    "It looks like %s is not installed on this device,\n"
+                    "but I don't know how to install it.\n"
+                    "Install it now, then hit Enter " % app)
+            else:
+                response = raw_input(
+                    "It looks like %s is not installed on this device.\n"
+                    "Install Firefox? (Y/n) " % app).strip()
+                if response.lower().startswith('y') or response == '':
+                    _log_info("Installing Firefox. This may take a while...")
+                    build_obj._run_make(directory=".", target='install',
+                                        ensure_exit_code=False)
 
     if device_verified and xre:
         # Check whether MOZ_HOST_BIN has been set to a valid xre; if not,
@@ -289,7 +305,7 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False, v
                             proc.wait()
                             if proc.proc.returncode == 0:
                                 git_pull_complete = True
-                        except:
+                        except Exception:
                             if proc.poll() is None:
                                 proc.kill(signal.SIGTERM)
                         if not git_pull_complete:
@@ -350,12 +366,11 @@ def run_firefox_for_android(build_obj, params):
     return 0
 
 
-def grant_runtime_permissions(build_obj):
+def grant_runtime_permissions(build_obj, app):
     """
     Grant required runtime permissions to the specified app
     (typically org.mozilla.fennec_$USER).
     """
-    app = build_obj.substs['ANDROID_PACKAGE_NAME']
     adb_path = _find_sdk_exe(build_obj.substs, 'adb', False)
     if not adb_path:
         adb_path = 'adb'
@@ -367,6 +382,7 @@ def grant_runtime_permissions(build_obj):
             _log_info("Granting important runtime permissions to %s" % app)
             dm.shellCheckOutput(['pm', 'grant', app, 'android.permission.WRITE_EXTERNAL_STORAGE'])
             dm.shellCheckOutput(['pm', 'grant', app, 'android.permission.READ_EXTERNAL_STORAGE'])
+            dm.shellCheckOutput(['pm', 'grant', app, 'android.permission.ACCESS_COARSE_LOCATION'])
             dm.shellCheckOutput(['pm', 'grant', app, 'android.permission.ACCESS_FINE_LOCATION'])
             dm.shellCheckOutput(['pm', 'grant', app, 'android.permission.CAMERA'])
     except DMError:
@@ -495,8 +511,7 @@ class AndroidEmulator(object):
                 self.gpu = False
         env = os.environ
         env['ANDROID_AVD_HOME'] = os.path.join(EMULATOR_HOME_DIR, "avd")
-        command = [self.emulator_path, "-avd",
-                   self.avd_info.name, "-port", "5554"]
+        command = [self.emulator_path, "-avd", self.avd_info.name]
         if self.gpu:
             command += ['-gpu', 'swiftshader']
         if self.avd_info.extra_args:
@@ -580,7 +595,7 @@ class AndroidEmulator(object):
         """
         try:
             self.proc.wait()
-        except:
+        except Exception:
             if self.proc.poll() is None:
                 self.cleanup()
         return self.proc.poll()
@@ -644,7 +659,7 @@ class AndroidEmulator(object):
                     telnet_ok = True
                 else:
                     _log_warning("Unable to connect to port 5554")
-            except:
+            except Exception:
                 _log_warning("Trying again after unexpected exception")
             finally:
                 if tn is not None:
@@ -733,7 +748,7 @@ def _find_sdk_exe(substs, exe, tools):
         try:
             creation_time = os.path.getctime(exe_path)
             _log_debug("  ...with creation time %s" % time.ctime(creation_time))
-        except:
+        except Exception:
             _log_warning("Could not get creation time for %s" % exe_path)
 
         prop_path = os.path.join(os.path.dirname(exe_path), "source.properties")
@@ -809,7 +824,7 @@ def _tooltool_fetch():
     proc.run()
     try:
         proc.wait()
-    except:
+    except Exception:
         if proc.poll() is None:
             proc.kill(signal.SIGTERM)
 
@@ -839,7 +854,7 @@ def _get_device_platform(substs):
         output = dm.shellCheckOutput(cmd, timeout=10)
         if output:
             sdk_level = int(output)
-    except:
+    except Exception:
         _log_warning("unable to determine Android sdk level")
     pie = ''
     if sdk_level and sdk_level >= 21:

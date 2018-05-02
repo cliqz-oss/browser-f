@@ -16,6 +16,8 @@
 
 #include "mozAutoDocUpdate.h"
 
+using namespace mozilla::dom;
+
 namespace mozilla {
 
 // -- ServoStyleRuleDeclaration ---------------------------------------
@@ -58,13 +60,6 @@ nsINode*
 ServoStyleRuleDeclaration::GetParentObject()
 {
   return Rule()->GetDocument();
-}
-
-DocGroup*
-ServoStyleRuleDeclaration::GetDocGroup() const
-{
-  nsIDocument* document = Rule()->GetDocument();
-  return document ? document->GetDocGroup() : nullptr;
 }
 
 DeclarationBlock*
@@ -208,7 +203,7 @@ ServoStyleRule::Type() const
 }
 
 void
-ServoStyleRule::GetCssTextImpl(nsAString& aCssText) const
+ServoStyleRule::GetCssText(nsAString& aCssText) const
 {
   Servo_StyleRule_GetCssText(mRawRule, &aCssText);
 }

@@ -3,13 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/EventEmitter.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
 
 /*
  * Generators for built in sections, keyed by the pref name for their feed.
@@ -21,7 +20,7 @@ const BUILT_IN_SECTIONS = {
     id: "topstories",
     pref: {
       titleString: {id: "header_recommended_by", values: {provider: options.provider_name}},
-      descString: {id: options.provider_description || "pocket_feedback_body"},
+      descString: {id: options.provider_description || "pocket_description"},
       nestedPrefs: options.show_spocs ? [{
         name: "showSponsored",
         titleString: {id: "settings_pane_topstories_options_sponsored"},
@@ -41,19 +40,14 @@ const BUILT_IN_SECTIONS = {
       },
       button: {id: options.disclaimer_buttontext || "section_disclaimer_topstories_buttontext"}
     },
+    privacyNoticeURL: options.privacy_notice_link || "https://www.mozilla.org/privacy/firefox/#suggest-relevant-content",
     maxRows: 1,
-    availableContextMenuOptions: ["CheckBookmark", "SaveToPocket", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl"],
-    infoOption: {
-      header: {id: options.provider_header || "pocket_feedback_header"},
-      body: {id: options.provider_description || "pocket_feedback_body"},
-      link: {href: options.info_link, id: "section_info_privacy_notice"}
-    },
+    availableLinkMenuOptions: ["CheckBookmarkOrArchive", "CheckSavedToPocket", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl"],
     emptyState: {
       message: {id: "topstories_empty_state", values: {provider: options.provider_name}},
       icon: "check"
     },
     shouldSendImpressionStats: true,
-    order: 0,
     dedupeFrom: ["highlights"]
   }),
   "feeds.section.highlights": options => ({
@@ -67,22 +61,17 @@ const BUILT_IN_SECTIONS = {
     icon: "highlights",
     title: {id: "header_highlights"},
     maxRows: 3,
-    availableContextMenuOptions: ["CheckBookmark", "SaveToPocket", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl", "DeleteUrl"],
-    infoOption: {
-      header: {id: "settings_pane_highlights_header"},
-      body: {id: "settings_pane_highlights_body2"}
-    },
+    availableLinkMenuOptions: ["CheckBookmarkOrArchive", "CheckSavedToPocket", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl", "CheckDeleteHistoryOrEmpty"],
     emptyState: {
       message: {id: "highlights_empty_state"},
       icon: "highlights"
     },
-    shouldSendImpressionStats: false,
-    order: 1
+    shouldSendImpressionStats: false
   })
 };
 
 const SectionsManager = {
-  ACTIONS_TO_PROXY: ["SYSTEM_TICK", "NEW_TAB_LOAD"],
+  ACTIONS_TO_PROXY: ["WEBEXT_CLICK", "WEBEXT_DISMISS"],
   CONTEXT_MENU_PREFS: {"SaveToPocket": "extensions.pocket.enabled"},
   initialized: false,
   sections: new Map(),
@@ -125,14 +114,14 @@ const SectionsManager = {
       options = JSON.parse(optionsPrefValue);
     } catch (e) {
       options = {};
-      Cu.reportError("Problem parsing options pref", e);
+      Cu.reportError(`Problem parsing options pref for ${feedPrefName}`);
     }
     const section = BUILT_IN_SECTIONS[feedPrefName](options);
     section.pref.feed = feedPrefName;
     this.addSection(section.id, Object.assign(section, {options}));
   },
   addSection(id, options) {
-    this.updateSectionContextMenuOptions(options);
+    this.updateLinkMenuOptions(options);
     this.sections.set(id, options);
     this.emit(this.ADD_SECTION, id, options);
   },
@@ -152,7 +141,7 @@ const SectionsManager = {
     this.sections.forEach((section, id) => this.updateSection(id, section, true));
   },
   updateSection(id, options, shouldBroadcast) {
-    this.updateSectionContextMenuOptions(options);
+    this.updateLinkMenuOptions(options);
     if (this.sections.has(id)) {
       const optionsWithDedupe = Object.assign({}, options, {dedupeConfigurations: this._dedupeConfiguration});
       this.sections.set(id, Object.assign(this.sections.get(id), options));
@@ -197,9 +186,9 @@ const SectionsManager = {
    *
    * @param options section options
    */
-  updateSectionContextMenuOptions(options) {
-    if (options.availableContextMenuOptions) {
-      options.contextMenuOptions = options.availableContextMenuOptions.filter(
+  updateLinkMenuOptions(options) {
+    if (options.availableLinkMenuOptions) {
+      options.contextMenuOptions = options.availableLinkMenuOptions.filter(
         o => !this.CONTEXT_MENU_PREFS[o] || Services.prefs.getBoolPref(this.CONTEXT_MENU_PREFS[o]));
     }
   },
@@ -222,6 +211,13 @@ const SectionsManager = {
       }
       this.emit(this.UPDATE_SECTION_CARD, id, url, options, shouldBroadcast);
     }
+  },
+  removeSectionCard(sectionId, url) {
+    if (!this.sections.has(sectionId)) {
+      return;
+    }
+    const rows = this.sections.get(sectionId).rows.filter(row => row.url !== url);
+    this.updateSection(sectionId, {rows}, true);
   },
   onceInitialized(callback) {
     if (this.initialized) {
@@ -284,6 +280,13 @@ class SectionsFeed {
   onAddSection(event, id, options) {
     if (options) {
       this.store.dispatch(ac.BroadcastToContent({type: at.SECTION_REGISTER, data: Object.assign({id}, options)}));
+
+      // Make sure the section is in sectionOrder pref. Otherwise, prepend it.
+      const orderedSections = this.orderedSectionIds;
+      if (!orderedSections.includes(id)) {
+        orderedSections.unshift(id);
+        this.store.dispatch(ac.SetPref("sectionOrder", orderedSections.join(",")));
+      }
     }
   }
 
@@ -294,15 +297,58 @@ class SectionsFeed {
   onUpdateSection(event, id, options, shouldBroadcast = false) {
     if (options) {
       const action = {type: at.SECTION_UPDATE, data: Object.assign(options, {id})};
-      this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.SendToPreloaded(action));
+      this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.AlsoToPreloaded(action));
     }
   }
 
   onUpdateSectionCard(event, id, url, options, shouldBroadcast = false) {
     if (options) {
       const action = {type: at.SECTION_UPDATE_CARD, data: {id, url, options}};
-      this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.SendToPreloaded(action));
+      this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.AlsoToPreloaded(action));
     }
+  }
+
+  get orderedSectionIds() {
+    return this.store.getState().Prefs.values.sectionOrder.split(",");
+  }
+
+  get enabledSectionIds() {
+    let sections = this.store.getState().Sections.filter(section => section.enabled).map(s => s.id);
+    // Top Sites is a special case. Append if show pref is on.
+    if (this.store.getState().Prefs.values.showTopSites) {
+      sections.push("topsites");
+    }
+    return sections;
+  }
+
+  moveSection(id, direction) {
+    const orderedSections = this.orderedSectionIds;
+    const enabledSections = this.enabledSectionIds;
+    let index = orderedSections.indexOf(id);
+    orderedSections.splice(index, 1);
+    if (direction > 0) {
+      // "Move Down"
+      while (index < orderedSections.length) {
+        // If the section at the index is enabled/visible, insert moved section after.
+        // Otherwise, move on to the next spot and check it.
+        if (enabledSections.includes(orderedSections[index++])) {
+          break;
+        }
+      }
+    } else {
+      // "Move Up"
+      while (index > 0) {
+        // If the section at the previous index is enabled/visible, insert moved section there.
+        // Otherwise, move on to the previous spot and check it.
+        index--;
+        if (enabledSections.includes(orderedSections[index])) {
+          break;
+        }
+      }
+    }
+
+    orderedSections.splice(index, 0, id);
+    this.store.dispatch(ac.SetPref("sectionOrder", orderedSections.join(",")));
   }
 
   onAction(action) {
@@ -327,11 +373,19 @@ class SectionsFeed {
       case at.PLACES_BOOKMARK_ADDED:
         SectionsManager.updateBookmarkMetadata(action.data);
         break;
+      case at.WEBEXT_DISMISS:
+        if (action.data) {
+          SectionsManager.removeSectionCard(action.data.source, action.data.url);
+        }
+        break;
       case at.SECTION_DISABLE:
         SectionsManager.disableSection(action.data);
         break;
       case at.SECTION_ENABLE:
         SectionsManager.enableSection(action.data);
+        break;
+      case at.SECTION_MOVE:
+        this.moveSection(action.data.id, action.data.direction);
         break;
       case at.UNINIT:
         this.uninit();
@@ -345,4 +399,4 @@ class SectionsFeed {
 
 this.SectionsFeed = SectionsFeed;
 this.SectionsManager = SectionsManager;
-this.EXPORTED_SYMBOLS = ["SectionsFeed", "SectionsManager"];
+const EXPORTED_SYMBOLS = ["SectionsFeed", "SectionsManager"];

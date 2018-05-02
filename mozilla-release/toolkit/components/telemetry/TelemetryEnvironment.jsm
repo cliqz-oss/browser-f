@@ -4,37 +4,36 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetryEnvironment",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 const myScope = this;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/ObjectUtils.jsm");
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const Utils = TelemetryUtils;
 
-const { AddonManager, AddonManagerPrivate } = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+const { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "AttributionCode",
-                                  "resource:///modules/AttributionCode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
-                                  "resource://gre/modules/ctypes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
-                                  "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
-                                  "resource://gre/modules/ProfileAge.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WindowsRegistry",
-                                  "resource://gre/modules/WindowsRegistry.jsm");
+ChromeUtils.defineModuleGetter(this, "AttributionCode",
+                               "resource:///modules/AttributionCode.jsm");
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
+                               "resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.defineModuleGetter(this, "ProfileAge",
+                               "resource://gre/modules/ProfileAge.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 // The maximum length of a string (e.g. description) in the addons section.
 const MAX_ADDON_STRING_LENGTH = 100;
@@ -48,6 +47,7 @@ const MAX_EXPERIMENT_TYPE_LENGTH = 20;
 /**
  * This is a policy object used to override behavior for testing.
  */
+// eslint-disable-next-line no-unused-vars
 var Policy = {
   now: () => new Date(),
 };
@@ -65,7 +65,7 @@ function getGlobal() {
   return gGlobalEnvironment;
 }
 
-this.TelemetryEnvironment = {
+var TelemetryEnvironment = {
   get currentEnvironment() {
     return getGlobal().currentEnvironment;
   },
@@ -187,6 +187,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["app.support.baseURL", {what: RECORD_PREF_VALUE}],
   ["accessibility.browsewithcaret", {what: RECORD_PREF_VALUE}],
   ["accessibility.force_disabled", {what:  RECORD_PREF_VALUE}],
+  ["app.shield.optoutstudies.enabled", {what: RECORD_PREF_VALUE}],
   ["app.update.auto", {what: RECORD_PREF_VALUE}],
   ["app.update.enabled", {what: RECORD_PREF_VALUE}],
   ["app.update.interval", {what: RECORD_PREF_VALUE}],
@@ -199,7 +200,6 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.cache.offline.enable", {what: RECORD_PREF_VALUE}],
   ["browser.formfill.enable", {what: RECORD_PREF_VALUE}],
   ["browser.newtabpage.enabled", {what: RECORD_PREF_VALUE}],
-  ["browser.newtabpage.enhanced", {what: RECORD_PREF_VALUE}],
   ["browser.shell.checkDefaultBrowser", {what: RECORD_PREF_VALUE}],
   ["browser.search.ignoredJAREngines", {what: RECORD_DEFAULTPREF_VALUE}],
   ["browser.search.region", {what: RECORD_PREF_VALUE}],
@@ -268,7 +268,6 @@ const PREF_DISTRIBUTION_ID = "distribution.id";
 const PREF_DISTRIBUTION_VERSION = "distribution.version";
 const PREF_DISTRIBUTOR = "app.distributor";
 const PREF_DISTRIBUTOR_CHANNEL = "app.distributor.channel";
-const PREF_HOTFIX_LASTVERSION = "extensions.hotfix.lastVersion";
 const PREF_APP_PARTNER_BRANCH = "app.partner.";
 const PREF_PARTNER_ID = "mozilla.partner.id";
 const PREF_UPDATE_ENABLED = "app.update.enabled";
@@ -284,6 +283,7 @@ const SEARCH_ENGINE_MODIFIED_TOPIC = "browser-search-engine-modified";
 const SEARCH_SERVICE_TOPIC = "browser-search-service";
 const SESSIONSTORE_WINDOWS_RESTORED_TOPIC = "sessionstore-windows-restored";
 const PREF_CHANGED_TOPIC = "nsPref:changed";
+const BLOCKLIST_LOADED_TOPIC = "blocklist-loaded";
 
 /**
  * Enforces the parameter to a boolean value.
@@ -490,6 +490,10 @@ function EnvironmentAddonBuilder(environment) {
   // or a change load.
   this._pendingTask = null;
 
+  // Have we added an observer to listen for blocklist changes that still needs to be
+  // removed:
+  this._blocklistObserverAdded = false;
+
   // Set to true once initial load is complete and we're watching for changes.
   this._loaded = false;
 }
@@ -571,7 +575,21 @@ EnvironmentAddonBuilder.prototype = {
   // nsIObserver
   observe(aSubject, aTopic, aData) {
     this._environment._log.trace("observe - Topic " + aTopic);
-    this._checkForChanges("experiment-changed");
+    if (aTopic == "experiment-changed") {
+      this._checkForChanges("experiment-changed");
+    } else if (aTopic == BLOCKLIST_LOADED_TOPIC) {
+      Services.obs.removeObserver(this, BLOCKLIST_LOADED_TOPIC);
+      this._blocklistObserverAdded = false;
+      let plugins = this._getActivePlugins();
+      let gmpPluginsPromise = this._getActiveGMPlugins();
+      gmpPluginsPromise.then(gmpPlugins => {
+        let {addons} = this._environment._currentEnvironment;
+        addons.activePlugins = plugins;
+        addons.activeGMPlugins = gmpPlugins;
+      }, err => {
+        this._environment._log.error("blocklist observe: Error collecting plugins", err);
+      });
+    }
   },
 
   _checkForChanges(changeReason) {
@@ -597,6 +615,9 @@ EnvironmentAddonBuilder.prototype = {
     if (this._loaded) {
       AddonManager.removeAddonListener(this);
       Services.obs.removeObserver(this, EXPERIMENTS_CHANGED_TOPIC);
+      if (this._blocklistObserverAdded) {
+        Services.obs.removeObserver(this, BLOCKLIST_LOADED_TOPIC);
+      }
     }
 
     // At startup, _pendingTask is set to a Promise that does not resolve
@@ -686,7 +707,7 @@ EnvironmentAddonBuilder.prototype = {
             userDisabled: enforceBoolean(addon.userDisabled),
             appDisabled: addon.appDisabled,
             foreignInstall: enforceBoolean(addon.foreignInstall),
-            hasBinaryComponents: addon.hasBinaryComponents,
+            hasBinaryComponents: false,
             installDay: Utils.millisecondsToDays(installDate.getTime()),
             signedState: addon.signedState,
           });
@@ -726,7 +747,7 @@ EnvironmentAddonBuilder.prototype = {
         version: limitStringToLength(theme.version, MAX_ADDON_STRING_LENGTH),
         scope: theme.scope,
         foreignInstall: enforceBoolean(theme.foreignInstall),
-        hasBinaryComponents: theme.hasBinaryComponents,
+        hasBinaryComponents: false,
         installDay: Utils.millisecondsToDays(installDate.getTime()),
         updateDay: Utils.millisecondsToDays(updateDate.getTime()),
       };
@@ -740,6 +761,20 @@ EnvironmentAddonBuilder.prototype = {
    * @return Object containing the plugins data.
    */
   _getActivePlugins() {
+    // If we haven't yet loaded the blocklist, pass back dummy data for now,
+    // and add an observer to update this data as soon as we get it.
+    if (!Services.blocklist.isLoaded) {
+      if (!this._blocklistObserverAdded) {
+        Services.obs.addObserver(this, BLOCKLIST_LOADED_TOPIC);
+        this._blocklistObserverAdded = true;
+      }
+      return [{
+        name: "dummy", version: "0.1", description: "Blocklist unavailable",
+        blocklisted: false, disabled: true, clicktoplay: false,
+        mimeTypes: ["text/there.is.only.blocklist"],
+        updateDay: Utils.millisecondsToDays(Date.now()),
+      }];
+    }
     let pluginTags =
       Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost).getPluginTags({});
 
@@ -781,6 +816,17 @@ EnvironmentAddonBuilder.prototype = {
    * running this during addon manager shutdown.
    */
   async _getActiveGMPlugins() {
+    // If we haven't yet loaded the blocklist, pass back dummy data for now,
+    // and add an observer to update this data as soon as we get it.
+    if (!Services.blocklist.isLoaded) {
+      if (!this._blocklistObserverAdded) {
+        Services.obs.addObserver(this, BLOCKLIST_LOADED_TOPIC);
+        this._blocklistObserverAdded = true;
+      }
+      return {
+        "dummy-gmp": {version: "0.1", userDisabled: false, applyBackgroundUpdates: true}
+      };
+    }
     // Request plugins, asynchronously.
     let allPlugins = await AddonManager.getAddonsByTypes(["plugin"]);
 
@@ -814,7 +860,7 @@ EnvironmentAddonBuilder.prototype = {
     let experimentInfo = {};
     try {
       let scope = {};
-      Cu.import("resource:///modules/experiments/Experiments.jsm", scope);
+      ChromeUtils.import("resource:///modules/experiments/Experiments.jsm", scope);
       let experiments = scope.Experiments.instance();
       let activeExperiment = experiments.getActiveExperimentID();
       if (activeExperiment) {
@@ -1034,41 +1080,55 @@ EnvironmentCache.prototype = {
   _getPrefData() {
     let prefData = {};
     for (let [pref, policy] of this._watchedPrefs.entries()) {
-      let prefType = Services.prefs.getPrefType(pref);
+      let prefValue = this._getPrefValue(pref, policy.what);
 
-      let what = policy.what;
-      if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE ||
-          what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
-        // For default prefs, make sure they exist
-        if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
-          continue;
-        }
-      } else if (!Services.prefs.prefHasUserValue(pref)) {
-        // For user prefs, make sure they are set
+      if (prefValue === undefined) {
         continue;
       }
 
-      // Check the policy for the preference and decide if we need to store its value
-      // or whether it changed from the default value.
-      let prefValue;
-      if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
-        prefValue = "<set>";
-      } else if (what == TelemetryEnvironment.RECORD_PREF_STATE) {
-        prefValue = "<user-set>";
-      } else if (prefType == Ci.nsIPrefBranch.PREF_STRING) {
-        prefValue = Services.prefs.getStringPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_BOOL) {
-        prefValue = Services.prefs.getBoolPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_INT) {
-        prefValue = Services.prefs.getIntPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
-        prefValue = null;
-      } else {
-        throw new Error(`Unexpected preference type ("${prefType}") for "${pref}".`);
-      }
       prefData[pref] = prefValue;
     }
     return prefData;
+  },
+
+  /**
+   * Get the value of a preference given the preference name and the policy.
+   * @param pref Name of the preference.
+   * @param what Policy of the preference.
+   *
+   * @returns The value we need to store for this preference. It can be undefined
+   *          or null if the preference is invalid or has a value set by the user.
+   */
+  _getPrefValue(pref, what) {
+    // Check the policy for the preference and decide if we need to store its value
+    // or whether it changed from the default value.
+    let prefType = Services.prefs.getPrefType(pref);
+
+    if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE ||
+      what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
+      // For default prefs, make sure they exist
+      if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
+        return undefined;
+      }
+    } else if (!Services.prefs.prefHasUserValue(pref)) {
+      // For user prefs, make sure they are set
+      return undefined;
+    }
+
+    if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
+      return "<set>";
+    } else if (what == TelemetryEnvironment.RECORD_PREF_STATE) {
+      return "<user-set>";
+    } else if (prefType == Ci.nsIPrefBranch.PREF_STRING) {
+      return Services.prefs.getStringPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_BOOL) {
+      return Services.prefs.getBoolPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_INT) {
+      return Services.prefs.getIntPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
+      return null;
+    }
+    throw new Error(`Unexpected preference type ("${prefType}") for "${pref}".`);
   },
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference]),
@@ -1086,10 +1146,10 @@ EnvironmentCache.prototype = {
     }
   },
 
-  _onPrefChanged() {
+  _onPrefChanged(aData) {
     this._log.trace("_onPrefChanged");
     let oldEnvironment = Cu.cloneInto(this._currentEnvironment, myScope);
-    this._updateSettings();
+    this._currentEnvironment.settings.userPrefs[aData] = this._getPrefValue(aData, this._watchedPrefs.get(aData).what);
     this._onEnvironmentChange("pref-changed", oldEnvironment);
   },
 
@@ -1176,7 +1236,7 @@ EnvironmentCache.prototype = {
         break;
       case PREF_CHANGED_TOPIC:
         if (this._watchedPrefs.has(aData)) {
-          this._onPrefChanged();
+          this._onPrefChanged(aData);
         }
         break;
     }
@@ -1301,7 +1361,6 @@ EnvironmentCache.prototype = {
       vendor: Services.appinfo.vendor || null,
       platformVersion: Services.appinfo.platformVersion || null,
       xpcomAbi: Services.appinfo.XPCOMABI,
-      hotfixVersion: Services.prefs.getStringPref(PREF_HOTFIX_LASTVERSION, null),
       updaterAvailable: AppConstants.MOZ_UPDATER,
     };
 
@@ -1329,7 +1388,7 @@ EnvironmentCache.prototype = {
     let shellService;
     try {
       let scope = {};
-      Cu.import("resource:///modules/ShellService.jsm", scope);
+      ChromeUtils.import("resource:///modules/ShellService.jsm", scope);
       shellService = scope.ShellService;
     } catch (ex) {
       this._log.error("_isDefaultBrowser - Could not obtain shell service JSM");

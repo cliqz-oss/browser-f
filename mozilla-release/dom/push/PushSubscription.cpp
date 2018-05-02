@@ -16,14 +16,12 @@
 #include "mozilla/dom/PromiseWorkerProxy.h"
 #include "mozilla/dom/PushSubscriptionOptions.h"
 #include "mozilla/dom/PushUtil.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
-#include "mozilla/dom/workers/Workers.h"
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 namespace {
 

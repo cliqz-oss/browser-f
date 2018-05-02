@@ -1,5 +1,4 @@
 import os
-import sys
 
 platform = "win32"
 
@@ -13,20 +12,23 @@ download_config = {
 
 repackage_config = [[
         "installer",
+        "--package-name", "firefox",
         "--package", "{abs_work_dir}\\inputs\\target.zip",
         "--tag", "{abs_mozilla_dir}\\browser\\installer\\windows\\app.tag",
         "--setupexe", "{abs_work_dir}\\inputs\\setup.exe",
-        "-o", "{output_home}\\target.installer.exe"
+        "-o", "{output_home}\\target.installer.exe",
+        "--sfx-stub", "other-licenses/7zstub/firefox/7zSD.sfx",
     ], [
         "mar",
         "-i", "{abs_work_dir}\\inputs\\target.zip",
         "--mar", "{abs_work_dir}\\inputs\\mar.exe",
-        "-o", "{output_home}\\target.complete.mar"
+        "-o", "{output_home}\\target.complete.mar",
     ], [
         "installer",
         "--tag", "{abs_mozilla_dir}\\browser\\installer\\windows\\stub.tag",
          "--setupexe", "{abs_work_dir}\\inputs\\setup-stub.exe",
-         "-o", "{output_home}\\target.stub-installer.exe"
+         "-o", "{output_home}\\target.stub-installer.exe",
+        "--sfx-stub", "other-licenses/7zstub/firefox/7zSD.sfx",
     ]]
 
 config = {
@@ -42,8 +44,6 @@ config = {
     # ToolTool
     "tooltool_manifest_src": 'browser\\config\\tooltool-manifests\\{}\\releng.manifest'.format(platform),
     'tooltool_url': 'https://tooltool.mozilla-releng.net/',
-    'tooltool_script': [sys.executable,
-                        'C:/mozilla-build/tooltool.py'],
     'tooltool_cache': os.environ.get('TOOLTOOL_CACHE'),
 
     'run_configure': False,

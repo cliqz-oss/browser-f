@@ -110,7 +110,6 @@ GetObject(const MDefinition* ins)
       case MDefinition::Opcode::GuardReceiverPolymorphic:
       case MDefinition::Opcode::GuardObjectGroup:
       case MDefinition::Opcode::GuardObjectIdentity:
-      case MDefinition::Opcode::GuardClass:
       case MDefinition::Opcode::GuardUnboxedExpando:
       case MDefinition::Opcode::LoadUnboxedExpando:
       case MDefinition::Opcode::LoadSlot:
@@ -124,8 +123,6 @@ GetObject(const MDefinition* ins)
         object = ins->getOperand(0);
         break;
       case MDefinition::Opcode::GetPropertyCache:
-      case MDefinition::Opcode::LoadTypedArrayElementStatic:
-      case MDefinition::Opcode::StoreTypedArrayElementStatic:
       case MDefinition::Opcode::GetDOMProperty:
       case MDefinition::Opcode::GetDOMMember:
       case MDefinition::Opcode::Call:

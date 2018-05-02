@@ -130,6 +130,18 @@
 <!ENTITY sortAttachmentsTogglePanelBtn.ZA.label "Auswahl sortieren: Z - A">
 <!ENTITY sortAttachmentsTogglePanelBtn.ZA.accesskey "s">
 
+<!-- LOCALIZATION NOTE (sortAttachmentsPanelBtn.Sort.AZ.label):
+     Please ensure that this translation matches
+     sortAttachmentsPanelBtn.Sort.ZA.label, except for the sort direction. -->
+<!ENTITY sortAttachmentsPanelBtn.Sort.AZ.label "Sortieren: A - Z">
+<!ENTITY sortAttachmentsPanelBtn.Sort.ZA.label "Sortieren: Z - A">
+<!-- LOCALIZATION NOTE (sortAttachmentsPanelBtn.SortSelection.AZ.label):
+     Please ensure that this translation matches
+     sortAttachmentsPanelBtn.SortSelection.ZA.label, except for the sort direction. -->
+<!ENTITY sortAttachmentsPanelBtn.SortSelection.AZ.label "Auswahl sortieren: A - Z">
+<!ENTITY sortAttachmentsPanelBtn.SortSelection.ZA.label "Auswahl sortieren: Z - A">
+<!ENTITY sortAttachmentsPanelBtn.key "y">
+
 <!-- View Menu -->
 <!ENTITY viewMenu.label "Ansicht">
 <!ENTITY viewMenu.accesskey "A">

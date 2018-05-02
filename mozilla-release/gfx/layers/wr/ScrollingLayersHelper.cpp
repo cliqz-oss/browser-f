@@ -53,7 +53,7 @@ ScrollingLayersHelper::EndBuild()
 void
 ScrollingLayersHelper::BeginList(const StackingContextHelper& aStackingContext)
 {
-  if (aStackingContext.IsReferenceFrame()) {
+  if (aStackingContext.AffectsClipPositioning()) {
     mCacheStack.emplace_back();
   }
   mItemClipStack.emplace_back(nullptr, nullptr);
@@ -65,7 +65,7 @@ ScrollingLayersHelper::EndList(const StackingContextHelper& aStackingContext)
   MOZ_ASSERT(!mItemClipStack.empty());
   mItemClipStack.back().Unapply(mBuilder);
   mItemClipStack.pop_back();
-  if (aStackingContext.IsReferenceFrame()) {
+  if (aStackingContext.AffectsClipPositioning()) {
     mCacheStack.pop_back();
   }
 }
@@ -91,7 +91,13 @@ ScrollingLayersHelper::BeginItem(nsDisplayItem* aItem,
   mItemClipStack.back().Unapply(mBuilder);
   mItemClipStack.pop_back();
 
+  // Zoom display items report their bounds etc using the parent document's
+  // APD because zoom items act as a conversion layer between the two different
+  // APDs.
   int32_t auPerDevPixel = aItem->Frame()->PresContext()->AppUnitsPerDevPixel();
+  if (aItem->GetType() == DisplayItemType::TYPE_ZOOM) {
+    auPerDevPixel = static_cast<nsDisplayZoom*>(aItem)->GetParentAppUnitsPerDevPixel();
+  }
 
   // There are two ASR chains here that we need to be fully defined. One is the
   // ASR chain pointed to by aItem->GetActiveScrolledRoot(). The other is the
@@ -118,10 +124,15 @@ ScrollingLayersHelper::BeginItem(nsDisplayItem* aItem,
   // nested ScrollingLayersHelper may rely on things like TopmostScrollId and
   // TopmostClipId, so now we need to push at most two things onto the stack.
 
-  FrameMetrics::ViewID leafmostId = ids.first.valueOr(FrameMetrics::NULL_SCROLL_ID);
-  FrameMetrics::ViewID scrollId = aItem->GetActiveScrolledRoot()
+  wr::WrScrollId rootId = wr::WrScrollId { 0 };
+  wr::WrScrollId leafmostId = ids.first.valueOr(rootId);
+
+  FrameMetrics::ViewID viewId = aItem->GetActiveScrolledRoot()
       ? aItem->GetActiveScrolledRoot()->GetViewId()
       : FrameMetrics::NULL_SCROLL_ID;
+  wr::WrScrollId scrollId =
+      mBuilder->GetScrollIdForDefinedScrollLayer(viewId).valueOr(rootId);
+
   // If the leafmost ASR is not the same as the item's ASR then we are dealing
   // with a case where the item's clip chain is scrolled by something other than
   // the item's ASR. So for those cases we need to use the ClipAndScroll API.
@@ -163,6 +174,7 @@ ScrollingLayersHelper::BeginItem(nsDisplayItem* aItem,
     if (!clipId) {
       clipId = mBuilder->TopmostClipId();
     }
+
     clips.mClipAndScroll = Some(std::make_pair(scrollId, clipId));
   }
 
@@ -172,7 +184,7 @@ ScrollingLayersHelper::BeginItem(nsDisplayItem* aItem,
   SLH_LOG("done setup for %p\n", aItem);
 }
 
-std::pair<Maybe<FrameMetrics::ViewID>, Maybe<wr::WrClipId>>
+std::pair<Maybe<wr::WrScrollId>, Maybe<wr::WrClipId>>
 ScrollingLayersHelper::DefineClipChain(nsDisplayItem* aItem,
                                        const ActiveScrolledRoot* aAsr,
                                        const DisplayItemClipChain* aChain,
@@ -221,7 +233,7 @@ ScrollingLayersHelper::DefineClipChain(nsDisplayItem* aItem,
   return std::make_pair(Nothing(), Nothing());
 }
 
-std::pair<Maybe<FrameMetrics::ViewID>, Maybe<wr::WrClipId>>
+std::pair<Maybe<wr::WrScrollId>, Maybe<wr::WrClipId>>
 ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
                                             const ActiveScrolledRoot* aAsr,
                                             const DisplayItemClipChain* aChain,
@@ -231,7 +243,7 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
   MOZ_ASSERT(aChain);
 
   // This will hold our return value
-  std::pair<Maybe<FrameMetrics::ViewID>, Maybe<wr::WrClipId>> ids;
+  std::pair<Maybe<wr::WrScrollId>, Maybe<wr::WrClipId>> ids;
 
   if (mBuilder->HasExtraClip()) {
     // We can't use the clip cache directly. However if there's an out-of-band clip that
@@ -249,9 +261,8 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
   if (ids.second) {
     // If we've already got an id for this clip, we can early-exit
     if (aAsr) {
-      FrameMetrics::ViewID scrollId = aAsr->GetViewId();
-      MOZ_ASSERT(mBuilder->IsScrollLayerDefined(scrollId));
-      ids.first = Some(scrollId);
+      ids.first = mBuilder->GetScrollIdForDefinedScrollLayer(aAsr->GetViewId());
+      MOZ_ASSERT(ids.first);
     }
     return ids;
   }
@@ -288,7 +299,10 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
     }
   } else {
     MOZ_ASSERT(!ancestorIds.second);
-    FrameMetrics::ViewID scrollId = aChain->mASR ? aChain->mASR->GetViewId() : FrameMetrics::NULL_SCROLL_ID;
+    FrameMetrics::ViewID viewId = aChain->mASR ? aChain->mASR->GetViewId() : FrameMetrics::NULL_SCROLL_ID;
+
+    wr::WrScrollId rootId = wr::WrScrollId { 0 };
+    auto scrollId = mBuilder->GetScrollIdForDefinedScrollLayer(viewId).valueOr(rootId);
     if (mBuilder->TopmostScrollId() == scrollId) {
       if (mBuilder->TopmostIsClip()) {
         // If aChain->mASR is already the topmost scroll layer on the stack, but
@@ -344,7 +358,7 @@ ScrollingLayersHelper::RecurseAndDefineClip(nsDisplayItem* aItem,
   return ids;
 }
 
-std::pair<Maybe<FrameMetrics::ViewID>, Maybe<wr::WrClipId>>
+std::pair<Maybe<wr::WrScrollId>, Maybe<wr::WrClipId>>
 ScrollingLayersHelper::RecurseAndDefineAsr(nsDisplayItem* aItem,
                                            const ActiveScrolledRoot* aAsr,
                                            const DisplayItemClipChain* aChain,
@@ -354,12 +368,12 @@ ScrollingLayersHelper::RecurseAndDefineAsr(nsDisplayItem* aItem,
   MOZ_ASSERT(aAsr);
 
   // This will hold our return value
-  std::pair<Maybe<FrameMetrics::ViewID>, Maybe<wr::WrClipId>> ids;
+  std::pair<Maybe<wr::WrScrollId>, Maybe<wr::WrClipId>> ids;
 
-  FrameMetrics::ViewID scrollId = aAsr->GetViewId();
-  if (mBuilder->IsScrollLayerDefined(scrollId)) {
+  FrameMetrics::ViewID viewId = aAsr->GetViewId();
+  if (auto scrollId = mBuilder->GetScrollIdForDefinedScrollLayer(viewId)) {
     // If we've already defined this scroll layer before, we can early-exit
-    ids.first = Some(scrollId);
+    ids.first = scrollId;
     if (aChain) {
       if (mBuilder->HasExtraClip()) {
         ids.second = mBuilder->GetCacheOverride(aChain);
@@ -439,7 +453,9 @@ ScrollingLayersHelper::RecurseAndDefineAsr(nsDisplayItem* aItem,
   // bounds.
   contentRect.MoveTo(clipBounds.TopLeft());
 
-  mBuilder->DefineScrollLayer(scrollId, ancestorIds.first, ancestorIds.second,
+  auto scrollId = mBuilder->DefineScrollLayer(viewId,
+      ancestorIds.first,
+      ancestorIds.second,
       aSc.ToRelativeLayoutRect(contentRect),
       aSc.ToRelativeLayoutRect(clipBounds));
 

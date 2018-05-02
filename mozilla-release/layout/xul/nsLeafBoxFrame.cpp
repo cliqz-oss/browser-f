@@ -112,8 +112,8 @@ nsLeafBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   if (!aBuilder->IsForEventDelivery() || !IsVisibleForPainting(aBuilder))
     return;
 
-  aLists.Content()->AppendToTop(new (aBuilder)
-    nsDisplayEventReceiver(aBuilder, this));
+  aLists.Content()->AppendToTop(
+    MakeDisplayItem<nsDisplayEventReceiver>(aBuilder, this));
 }
 
 /* virtual */ nscoord
@@ -326,7 +326,7 @@ nsLeafBoxFrame::GetFrameName(nsAString& aResult) const
 #endif
 
 nsresult
-nsLeafBoxFrame::CharacterDataChanged(CharacterDataChangeInfo* aInfo)
+nsLeafBoxFrame::CharacterDataChanged(const CharacterDataChangeInfo& aInfo)
 {
   MarkIntrinsicISizesDirty();
   return nsLeafFrame::CharacterDataChanged(aInfo);

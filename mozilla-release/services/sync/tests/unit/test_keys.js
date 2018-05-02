@@ -1,12 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/keys.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/keys.js");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
 
 var collectionKeys = new CollectionKeyManager();
 
@@ -121,12 +121,9 @@ add_task(async function test_ensureLoggedIn() {
   let log = Log.repository.getLogger("Test");
   Log.repository.rootLogger.addAppender(new Log.DumpAppender());
 
-  let identityConfig = makeIdentityConfig();
-  let browseridManager = new BrowserIDManager();
-  configureFxAccountIdentity(browseridManager, identityConfig);
-  await browseridManager.ensureLoggedIn();
+  await configureIdentity();
 
-  let keyBundle = browseridManager.syncKeyBundle;
+  let keyBundle = Weave.Service.identity.syncKeyBundle;
 
   /*
    * Build a test version of storage/crypto/keys.
@@ -261,10 +258,10 @@ add_task(async function test_ensureLoggedIn() {
   Assert.ok(d7.same);
   Assert.ok(d8.same);
 
-  do_check_array_eq(d1.changed, []);
-  do_check_array_eq(d2.changed, ["bar"]);
-  do_check_array_eq(d3.changed, ["bar"]);
-  do_check_array_eq(d4.changed, ["bar", "foo"]);
-  do_check_array_eq(d5.changed, ["baz", "foo"]);
-  do_check_array_eq(d6.changed, ["bar", "foo"]);
+  Assert.deepEqual(d1.changed, []);
+  Assert.deepEqual(d2.changed, ["bar"]);
+  Assert.deepEqual(d3.changed, ["bar"]);
+  Assert.deepEqual(d4.changed, ["bar", "foo"]);
+  Assert.deepEqual(d5.changed, ["baz", "foo"]);
+  Assert.deepEqual(d6.changed, ["bar", "foo"]);
 });

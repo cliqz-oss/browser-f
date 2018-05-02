@@ -14,7 +14,7 @@ const TEST_PATH = getRootDirectory(gTestPath).replace("chrome://mochitests/conte
 
 var readerButton = document.getElementById("reader-mode-button");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
 
 add_task(async function test_reader_button() {
@@ -122,7 +122,7 @@ add_task(async function test_reader_button() {
 });
 
 add_task(async function test_getOriginalUrl() {
-  let { ReaderMode } = Cu.import("resource://gre/modules/ReaderMode.jsm", {});
+  let { ReaderMode } = ChromeUtils.import("resource://gre/modules/ReaderMode.jsm", {});
   let url = "http://foo.com/article.html";
 
   is(ReaderMode.getOriginalUrl("about:reader?url=" + encodeURIComponent(url)), url, "Found original URL from encoded URL");

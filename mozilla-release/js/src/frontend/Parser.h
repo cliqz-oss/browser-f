@@ -168,7 +168,6 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/TypeTraits.h"
 
-#include "jsiter.h"
 #include "jspubtd.h"
 
 #include "ds/Nestable.h"
@@ -181,6 +180,7 @@
 #include "frontend/SharedContext.h"
 #include "frontend/SyntaxParseHandler.h"
 #include "frontend/TokenStream.h"
+#include "vm/Iteration.h"
 
 namespace js {
 
@@ -291,7 +291,7 @@ class ParserBase
     bool checkOptionsCalled:1;
 #endif
 
-    /* Unexpected end of input, i.e. TOK_EOF not at top-level. */
+    /* Unexpected end of input, i.e. Eof not at top-level. */
     bool isUnexpectedEOF_:1;
 
     /* AwaitHandling */ uint8_t awaitHandling_:2;
@@ -340,7 +340,9 @@ class ParserBase
 
     bool hasValidSimpleStrictParameterNames();
 
-
+    bool allowExpressionClosures() const {
+        return options().expressionClosuresOption;
+    }
     /*
      * Create a new function object given a name (which is optional if this is
      * a function expression).
@@ -383,7 +385,7 @@ class ParserBase
     enum InvokedPrediction { PredictUninvoked = false, PredictInvoked = true };
     enum ForInitLocation { InForInit, NotInForInit };
 
-    // While on a |let| TOK_NAME token, examine |next| (which must already be
+    // While on a |let| Name token, examine |next| (which must already be
     // gotten).  Indicate whether |next|, the next token already gotten with
     // modifier TokenStream::None, continues a LexicalDeclaration.
     bool nextTokenContinuesLetDeclaration(TokenKind next);
@@ -626,10 +628,10 @@ class ParserAnyCharsAccess
 {
   public:
     using TokenStreamSpecific = typename Parser::TokenStream;
-    using TokenStreamChars = typename TokenStreamSpecific::CharsBase;
+    using GeneralTokenStreamChars = typename TokenStreamSpecific::GeneralCharsBase;
 
-    static inline TokenStreamAnyChars& anyChars(TokenStreamChars* ts);
-    static inline const TokenStreamAnyChars& anyChars(const TokenStreamChars* ts);
+    static inline TokenStreamAnyChars& anyChars(GeneralTokenStreamChars* ts);
+    static inline const TokenStreamAnyChars& anyChars(const GeneralTokenStreamChars* ts);
 };
 
 // Specify a value for an ES6 grammar parametrization.  We have no enum for
@@ -703,6 +705,7 @@ class GeneralParser
     using Base::isValidSimpleAssignmentTarget;
     using Base::pc;
     using Base::usedNames;
+    using Base::allowExpressionClosures;
 
   private:
     using Base::checkAndMarkSuperScope;
@@ -938,7 +941,7 @@ class GeneralParser
     bool addExprAndGetNextTemplStrToken(YieldHandling yieldHandling, Node nodeList,
                                         TokenKind* ttp);
 
-    inline bool trySyntaxParseInnerFunction(Node funcNode, HandleFunction fun,
+    inline bool trySyntaxParseInnerFunction(Node* funcNode, HandleFunction fun,
                                             uint32_t toStringStart, InHandling inHandling,
                                             YieldHandling yieldHandling, FunctionSyntaxKind kind,
                                             GeneratorKind generatorKind,
@@ -955,14 +958,15 @@ class GeneralParser
 
     // Parse an inner function given an enclosing ParseContext and a
     // FunctionBox for the inner function.
-    bool innerFunctionForFunctionBox(Node funcNode, ParseContext* outerpc, FunctionBox* funbox,
-                                     InHandling inHandling, YieldHandling yieldHandling,
-                                     FunctionSyntaxKind kind, Directives* newDirectives);
+    MOZ_MUST_USE Node
+    innerFunctionForFunctionBox(Node funcNode, ParseContext* outerpc, FunctionBox* funbox,
+                                InHandling inHandling, YieldHandling yieldHandling,
+                                FunctionSyntaxKind kind, Directives* newDirectives);
 
     // Parse a function's formal parameters and its body assuming its function
     // ParseContext is already on the stack.
     bool functionFormalParametersAndBody(InHandling inHandling, YieldHandling yieldHandling,
-                                         Node pn, FunctionSyntaxKind kind,
+                                         Node* pn, FunctionSyntaxKind kind,
                                          const mozilla::Maybe<uint32_t>& parameterListEnd = mozilla::Nothing(),
                                          bool isStandaloneFunction = false);
 
@@ -1152,7 +1156,10 @@ class GeneralParser
                                                      TokenKind tt);
 
     inline bool checkExportedName(JSAtom* exportName);
+    inline bool checkExportedNamesForArrayBinding(Node node);
+    inline bool checkExportedNamesForObjectBinding(Node node);
     inline bool checkExportedNamesForDeclaration(Node node);
+    inline bool checkExportedNamesForDeclarationList(Node node);
     inline bool checkExportedNameForFunction(Node node);
     inline bool checkExportedNameForClass(Node node);
     inline bool checkExportedNameForClause(Node node);
@@ -1164,7 +1171,7 @@ class GeneralParser
     bool checkBindingIdentifier(PropertyName* ident,
                                 uint32_t offset,
                                 YieldHandling yieldHandling,
-                                TokenKind hint = TokenKind::TOK_LIMIT);
+                                TokenKind hint = TokenKind::Limit);
 
     PropertyName* labelOrIdentifierReference(YieldHandling yieldHandling);
 
@@ -1239,15 +1246,16 @@ class GeneralParser
 
     bool checkLabelOrIdentifierReference(PropertyName* ident, uint32_t offset,
                                          YieldHandling yieldHandling,
-                                         TokenKind hint = TokenKind::TOK_LIMIT);
+                                         TokenKind hint = TokenKind::Limit);
 
     Node statementList(YieldHandling yieldHandling);
 
-    bool innerFunction(Node funcNode, ParseContext* outerpc, HandleFunction fun,
-                       uint32_t toStringStart, InHandling inHandling, YieldHandling yieldHandling,
-                       FunctionSyntaxKind kind, GeneratorKind generatorKind,
-                       FunctionAsyncKind asyncKind, bool tryAnnexB, Directives inheritedDirectives,
-                       Directives* newDirectives);
+    MOZ_MUST_USE Node
+    innerFunction(Node funcNode, ParseContext* outerpc, HandleFunction fun,
+                  uint32_t toStringStart, InHandling inHandling, YieldHandling yieldHandling,
+                  FunctionSyntaxKind kind, GeneratorKind generatorKind,
+                  FunctionAsyncKind asyncKind, bool tryAnnexB, Directives inheritedDirectives,
+                  Directives* newDirectives);
 
     bool matchOrInsertSemicolon();
 
@@ -1345,12 +1353,15 @@ class Parser<SyntaxParseHandler, CharT> final
     inline Node importDeclaration();
     inline bool checkLocalExportNames(Node node);
     inline bool checkExportedName(JSAtom* exportName);
+    inline bool checkExportedNamesForArrayBinding(Node node);
+    inline bool checkExportedNamesForObjectBinding(Node node);
     inline bool checkExportedNamesForDeclaration(Node node);
+    inline bool checkExportedNamesForDeclarationList(Node node);
     inline bool checkExportedNameForFunction(Node node);
     inline bool checkExportedNameForClass(Node node);
     inline bool checkExportedNameForClause(Node node);
 
-    bool trySyntaxParseInnerFunction(Node funcNode, HandleFunction fun, uint32_t toStringStart,
+    bool trySyntaxParseInnerFunction(Node* funcNode, HandleFunction fun, uint32_t toStringStart,
                                      InHandling inHandling, YieldHandling yieldHandling,
                                      FunctionSyntaxKind kind, GeneratorKind generatorKind,
                                      FunctionAsyncKind asyncKind, bool tryAnnexB,
@@ -1403,6 +1414,7 @@ class Parser<FullParseHandler, CharT> final
     using Base::pos;
     using Base::ss;
     using Base::tokenStream;
+    using Base::allowExpressionClosures;
 
   private:
     using Base::alloc;
@@ -1460,12 +1472,15 @@ class Parser<FullParseHandler, CharT> final
     Node importDeclaration();
     bool checkLocalExportNames(Node node);
     bool checkExportedName(JSAtom* exportName);
+    bool checkExportedNamesForArrayBinding(Node node);
+    bool checkExportedNamesForObjectBinding(Node node);
     bool checkExportedNamesForDeclaration(Node node);
+    bool checkExportedNamesForDeclarationList(Node node);
     bool checkExportedNameForFunction(Node node);
     bool checkExportedNameForClass(Node node);
     inline bool checkExportedNameForClause(Node node);
 
-    bool trySyntaxParseInnerFunction(Node funcNode, HandleFunction fun, uint32_t toStringStart,
+    bool trySyntaxParseInnerFunction(Node* funcNode, HandleFunction fun, uint32_t toStringStart,
                                      InHandling inHandling, YieldHandling yieldHandling,
                                      FunctionSyntaxKind kind, GeneratorKind generatorKind,
                                      FunctionAsyncKind asyncKind, bool tryAnnexB,
@@ -1514,8 +1529,8 @@ class Parser<FullParseHandler, CharT> final
 };
 
 template<class Parser>
-/* static */ inline TokenStreamAnyChars&
-ParserAnyCharsAccess<Parser>::anyChars(TokenStreamChars* ts)
+/* static */ inline const TokenStreamAnyChars&
+ParserAnyCharsAccess<Parser>::anyChars(const GeneralTokenStreamChars* ts)
 {
     // The structure we're walking through looks like this:
     //
@@ -1525,35 +1540,21 @@ ParserAnyCharsAccess<Parser>::anyChars(TokenStreamChars* ts)
     //       TokenStreamAnyChars anyChars;
     //       ...;
     //   };
-    //   struct Parser : ParserBase
+    //   struct Parser : <class that ultimately inherits from ParserBase>
     //   {
     //       ...;
     //       TokenStreamSpecific tokenStream;
     //       ...;
     //   };
     //
-    // We're passed a TokenStreamChars* corresponding to a base class of
-    // Parser::tokenStream.  We cast that pointer to a TokenStreamSpecific*,
+    // We're passed a GeneralTokenStreamChars* (this being a base class of
+    // Parser::tokenStream).  We cast that pointer to a TokenStreamSpecific*,
     // then translate that to the enclosing Parser*, then return the |anyChars|
     // member within.
 
-    auto* tss = static_cast<TokenStreamSpecific*>(ts);
-
-    auto tssAddr = reinterpret_cast<uintptr_t>(tss);
-
-    using ActualTokenStreamType = decltype(static_cast<Parser*>(nullptr)->tokenStream);
-    static_assert(mozilla::IsSame<ActualTokenStreamType, TokenStreamSpecific>::value,
-                                  "Parser::tokenStream must have type TokenStreamSpecific");
-
-    uintptr_t parserAddr = tssAddr - offsetof(Parser, tokenStream);
-
-    return reinterpret_cast<Parser*>(parserAddr)->anyChars;
-}
-
-template<class Parser>
-/* static */ inline const TokenStreamAnyChars&
-ParserAnyCharsAccess<Parser>::anyChars(const typename Parser::TokenStream::CharsBase* ts)
-{
+    static_assert(mozilla::IsBaseOf<GeneralTokenStreamChars,
+                                    TokenStreamSpecific>::value,
+                  "the static_cast<> below assumes a base-class relationship");
     const auto* tss = static_cast<const TokenStreamSpecific*>(ts);
 
     auto tssAddr = reinterpret_cast<uintptr_t>(tss);
@@ -1565,6 +1566,16 @@ ParserAnyCharsAccess<Parser>::anyChars(const typename Parser::TokenStream::Chars
     uintptr_t parserAddr = tssAddr - offsetof(Parser, tokenStream);
 
     return reinterpret_cast<const Parser*>(parserAddr)->anyChars;
+}
+
+template<class Parser>
+/* static */ inline TokenStreamAnyChars&
+ParserAnyCharsAccess<Parser>::anyChars(GeneralTokenStreamChars* ts)
+{
+    const TokenStreamAnyChars& anyCharsConst =
+        anyChars(const_cast<const GeneralTokenStreamChars*>(ts));
+
+    return const_cast<TokenStreamAnyChars&>(anyCharsConst);
 }
 
 template <class ParseHandler, typename CharT>

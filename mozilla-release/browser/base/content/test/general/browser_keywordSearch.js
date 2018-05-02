@@ -40,8 +40,6 @@ function test() {
   // the request. For everything else, we can do the work in the
   // parent, since it's easier.
   ContentTask.spawn(gBrowser.selectedBrowser, null, function* gen() {
-    const Ci = Components.interfaces;
-
     let listener = {
       onStateChange: function onLocationChange(webProgress, req, flags, status) {
         let docStart = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT |
@@ -50,7 +48,7 @@ function test() {
           return;
         }
 
-        req.cancel(Components.results.NS_ERROR_FAILURE);
+        req.cancel(Cr.NS_ERROR_FAILURE);
       },
 
       QueryInterface: function QueryInterface(aIID) {
@@ -61,7 +59,7 @@ function test() {
           return this;
         }
 
-        throw Components.results.NS_ERROR_NO_INTERFACE;
+        throw Cr.NS_ERROR_NO_INTERFACE;
       }
     };
 
@@ -121,5 +119,5 @@ function doTest() {
   // Simulate a user entering search terms
   gURLBar.value = gCurrTest.testText;
   gURLBar.focus();
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
 }

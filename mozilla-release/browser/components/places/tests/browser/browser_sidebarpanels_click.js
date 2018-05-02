@@ -55,7 +55,7 @@ add_task(async function test_sidebarpanels_click() {
   tests.push({
     async init() {
       // Add a history entry.
-      let uri = PlacesUtils._uri(TEST_URL);
+      let uri = Services.io.newURI(TEST_URL);
       await PlacesTestUtils.addVisits({
         uri, visitDate: Date.now() * 1000,
         transition: PlacesUtils.history.TRANSITION_TYPED
@@ -70,7 +70,7 @@ add_task(async function test_sidebarpanels_click() {
       is(tree.selectedNode.itemId, -1, "The selected node is not bookmarked");
     },
     cleanup(aCallback) {
-      return PlacesTestUtils.clearHistory();
+      return PlacesUtils.history.clear();
     },
     sidebarName: HISTORY_SIDEBAR_ID,
     treeName: HISTORY_SIDEBAR_TREE_ID,

@@ -2,15 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["Preferences"];
+var EXPORTED_SYMBOLS = ["Preferences"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // The minimum and maximum integers that can be set as preferences.
 // The range of valid values is narrower than the range of valid JS values
@@ -19,19 +14,18 @@ Cu.import("resource://gre/modules/Services.jsm");
 const MAX_INT = 0x7FFFFFFF; // Math.pow(2, 31) - 1
 const MIN_INT = -0x80000000;
 
-this.Preferences =
-  function Preferences(args) {
-    this._cachedPrefBranch = null;
-    if (isObject(args)) {
-      if (args.branch)
-        this._branchStr = args.branch;
-      if (args.defaultBranch)
-        this._defaultBranch = args.defaultBranch;
-      if (args.privacyContext)
-        this._privacyContext = args.privacyContext;
-    } else if (args)
-      this._branchStr = args;
-  };
+function Preferences(args) {
+  this._cachedPrefBranch = null;
+  if (isObject(args)) {
+    if (args.branch)
+      this._branchStr = args.branch;
+    if (args.defaultBranch)
+      this._defaultBranch = args.defaultBranch;
+    if (args.privacyContext)
+      this._privacyContext = args.privacyContext;
+  } else if (args)
+    this._branchStr = args;
+}
 
 /**
  * Get the value of a pref, if any; otherwise return the default value.

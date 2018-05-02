@@ -12,16 +12,19 @@ ${helpers.predefined_type("font-family",
                           initial_value="computed::FontFamily::serif()",
                           animation_value_type="discrete",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-family")}
+                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-family",
+                          servo_restyle_damage="rebuild_and_reflow")}
 
-${helpers.single_keyword_system("font-style",
-                                "normal italic oblique",
-                                gecko_constant_prefix="NS_FONT_STYLE",
-                                gecko_ffi_name="mFont.style",
-                                spec="https://drafts.csswg.org/css-fonts/#propdef-font-style",
-                                flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                                animation_value_type="discrete")}
-
+${helpers.single_keyword_system(
+    "font-style",
+    "normal italic oblique",
+    gecko_constant_prefix="NS_FONT_STYLE",
+    gecko_ffi_name="mFont.style",
+    spec="https://drafts.csswg.org/css-fonts/#propdef-font-style",
+    flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
+    animation_value_type="discrete",
+    servo_restyle_damage="rebuild_and_reflow"
+)}
 
 <% font_variant_caps_custom_consts= { "small-caps": "SMALLCAPS",
                                       "all-small-caps": "ALLSMALL",
@@ -37,7 +40,8 @@ ${helpers.single_keyword_system("font-variant-caps",
                                 spec="https://drafts.csswg.org/css-fonts/#propdef-font-variant-caps",
                                 custom_consts=font_variant_caps_custom_consts,
                                 flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                                animation_value_type="discrete")}
+                                animation_value_type="discrete",
+                                servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.predefined_type("font-weight",
                           "FontWeight",
@@ -45,7 +49,8 @@ ${helpers.predefined_type("font-weight",
                           initial_specified_value="specified::FontWeight::Normal",
                           animation_value_type="ComputedValue",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-weight")}
+                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-weight",
+                          servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.predefined_type("font-size",
                           "FontSize",
@@ -54,7 +59,8 @@ ${helpers.predefined_type("font-size",
                           animation_value_type="NonNegativeLength",
                           allow_quirks=True,
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-size")}
+                          spec="https://drafts.csswg.org/css-fonts/#propdef-font-size",
+                          servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.predefined_type("font-size-adjust",
                           "FontSizeAdjust",
@@ -82,7 +88,8 @@ ${helpers.single_keyword_system("font-stretch",
                                 cast_type='i16',
                                 spec="https://drafts.csswg.org/css-fonts/#propdef-font-stretch",
                                 flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                                animation_value_type="ComputedValue")}
+                                animation_value_type="ComputedValue",
+                                servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.single_keyword_system("font-kerning",
                                 "auto none normal",
@@ -144,7 +151,6 @@ ${helpers.predefined_type("font-feature-settings",
                           initial_value="computed::FontFeatureSettings::normal()",
                           initial_specified_value="specified::FontFeatureSettings::normal()",
                           extra_prefixes="moz",
-                          boxed=True,
                           animation_value_type="discrete",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
                           spec="https://drafts.csswg.org/css-fonts/#propdef-font-feature-settings")}
@@ -157,10 +163,11 @@ https://drafts.csswg.org/css-fonts-4/#low-level-font-variation-settings-control-
 %>
 
 ${helpers.predefined_type("font-variation-settings",
-                          "FontVariantSettings",
+                          "FontVariationSettings",
                           products="gecko",
                           gecko_pref="layout.css.font-variations.enabled",
-                          initial_value="specified::FontVariantSettings::normal()",
+                          initial_value="computed::FontVariationSettings::normal()",
+                          initial_specified_value="specified::FontVariationSettings::normal()",
                           animation_value_type="ComputedValue",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
                           spec="${variation_spec}")}
@@ -174,6 +181,16 @@ ${helpers.predefined_type("font-language-override",
                           extra_prefixes="moz",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
                           spec="https://drafts.csswg.org/css-fonts-3/#propdef-font-language-override")}
+
+${helpers.single_keyword_system("font-optical-sizing",
+                                "auto none",
+                                products="gecko",
+                                gecko_pref="layout.css.font-variations.enabled",
+                                gecko_ffi_name="mFont.opticalSizing",
+                                gecko_constant_prefix="NS_FONT_OPTICAL_SIZING",
+                                animation_value_type="discrete",
+                                flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
+                                spec="https://www.w3.org/TR/css-fonts-4/#font-optical-sizing-def")}
 
 ${helpers.predefined_type("-x-lang",
                           "XLang",
@@ -273,9 +290,11 @@ ${helpers.predefined_type("-x-text-zoom",
                               -moz-list -moz-field""".split()
             kw_font_props = """font_style font_variant_caps font_stretch
                                font_kerning font_variant_position font_variant_ligatures
-                               font_variant_east_asian font_variant_numeric""".split()
+                               font_variant_east_asian font_variant_numeric
+                               font_optical_sizing""".split()
             kw_cast = """font_style font_variant_caps font_stretch
-                         font_kerning font_variant_position""".split()
+                         font_kerning font_variant_position
+                         font_optical_sizing""".split()
         %>
         #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToCss)]
         pub enum SystemFont {
@@ -353,6 +372,7 @@ ${helpers.predefined_type("-x-text-zoom",
                     font_language_override: longhands::font_language_override::computed_value
                                                      ::T(system.languageOverride),
                     font_feature_settings: longhands::font_feature_settings::get_initial_value(),
+                    font_variation_settings: longhands::font_variation_settings::get_initial_value(),
                     font_variant_alternates: longhands::font_variant_alternates::get_initial_value(),
                     system_font: *self,
                     default_font_type: system.fontlist.mDefaultFontType,

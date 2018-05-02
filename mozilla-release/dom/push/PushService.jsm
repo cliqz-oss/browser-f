@@ -5,31 +5,26 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const {
   PushCrypto,
   getCryptoParams,
   CryptoError,
-} = Cu.import("resource://gre/modules/PushCrypto.jsm");
-const {PushDB} = Cu.import("resource://gre/modules/PushDB.jsm");
+} = ChromeUtils.import("resource://gre/modules/PushCrypto.jsm");
+const {PushDB} = ChromeUtils.import("resource://gre/modules/PushDB.jsm");
 
 const CONNECTION_PROTOCOLS = (function() {
   if ('android' != AppConstants.MOZ_WIDGET_TOOLKIT) {
-    const {PushServiceWebSocket} = Cu.import("resource://gre/modules/PushServiceWebSocket.jsm");
-    const {PushServiceHttp2} = Cu.import("resource://gre/modules/PushServiceHttp2.jsm");
+    const {PushServiceWebSocket} = ChromeUtils.import("resource://gre/modules/PushServiceWebSocket.jsm");
+    const {PushServiceHttp2} = ChromeUtils.import("resource://gre/modules/PushServiceHttp2.jsm");
     return [PushServiceWebSocket, PushServiceHttp2];
   } else {
-    const {PushServiceAndroidGCM} = Cu.import("resource://gre/modules/PushServiceAndroidGCM.jsm");
+    const {PushServiceAndroidGCM} = ChromeUtils.import("resource://gre/modules/PushServiceAndroidGCM.jsm");
     return [PushServiceAndroidGCM];
   }
 })();
@@ -38,10 +33,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "gPushNotifier",
                                    "@mozilla.org/push/Notifier;1",
                                    "nsIPushNotifier");
 
-this.EXPORTED_SYMBOLS = ["PushService"];
+var EXPORTED_SYMBOLS = ["PushService"];
 
 XPCOMUtils.defineLazyGetter(this, "console", () => {
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   return new ConsoleAPI({
     maxLogLevelPref: "dom.push.loglevel",
     prefix: "PushService",
@@ -122,7 +117,7 @@ function hasRootDomain(str, aDomain)
  * (PushServiceWebSocket) to communicate with the server and PushDB (IndexedDB)
  * for persistence.
  */
-this.PushService = {
+var PushService = {
   _service: null,
   _state: PUSH_SERVICE_UNINIT,
   _db: null,
@@ -220,13 +215,13 @@ this.PushService = {
     this._state = aNewState;
   },
 
-  _changeStateOfflineEvent: function(offline, calledFromConnEnabledEvent) {
+  async _changeStateOfflineEvent(offline, calledFromConnEnabledEvent) {
     console.debug("changeStateOfflineEvent()", offline);
 
     if (this._state < PUSH_SERVICE_ACTIVE_OFFLINE &&
         this._state != PUSH_SERVICE_ACTIVATING &&
         !calledFromConnEnabledEvent) {
-      return Promise.resolve();
+      return;
     }
 
     if (offline) {
@@ -234,7 +229,7 @@ this.PushService = {
         this._service.disconnect();
       }
       this._setState(PUSH_SERVICE_ACTIVE_OFFLINE);
-      return Promise.resolve();
+      return;
     }
 
     if (this._state == PUSH_SERVICE_RUNNING) {
@@ -243,13 +238,16 @@ this.PushService = {
       // Disconnect first.
       this._service.disconnect();
     }
-    return this.getAllUnexpired().then(records => {
-      this._setState(PUSH_SERVICE_RUNNING);
-      if (records.length > 0) {
-        // if there are request waiting
-        this._service.connect(records);
-      }
-    });
+
+    let records = await this.getAllUnexpired();
+
+    this._setState(PUSH_SERVICE_RUNNING);
+
+    if (records.length > 0 || prefs.get("alwaysConnect")) {
+      // Connect if we have existing subscriptions, or if the always-on pref
+      // is set.
+      this._service.connect(records);
+    }
   },
 
   _changeStateConnectionEnabledEvent: function(enabled) {

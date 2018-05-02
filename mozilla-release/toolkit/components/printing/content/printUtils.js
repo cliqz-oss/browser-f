@@ -85,13 +85,13 @@ var PrintUtils = {
   showPageSetup() {
     try {
       var printSettings = this.getPrintSettings();
-      var PRINTPROMPTSVC = Components.classes["@mozilla.org/embedcomp/printingprompt-service;1"]
-                                     .getService(Components.interfaces.nsIPrintingPromptService);
+      var PRINTPROMPTSVC = Cc["@mozilla.org/embedcomp/printingprompt-service;1"]
+                             .getService(Ci.nsIPrintingPromptService);
       PRINTPROMPTSVC.showPageSetup(window, printSettings, null);
       if (gSavePrintSettings) {
         // Page Setup data is a "native" setting on the Mac
-        var PSSVC = Components.classes["@mozilla.org/gfx/printsettings-service;1"]
-                              .getService(Components.interfaces.nsIPrintSettingsService);
+        var PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"]
+                      .getService(Ci.nsIPrintSettingsService);
         PSSVC.savePrintSettingsToPrefs(printSettings, true, printSettings.kInitSaveNativeData);
       }
     } catch (e) {
@@ -103,12 +103,12 @@ var PrintUtils = {
 
   getDefaultPrinterName() {
     try {
-      let PSSVC = Components.classes["@mozilla.org/gfx/printsettings-service;1"]
-                            .getService(Components.interfaces.nsIPrintSettingsService);
+      let PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"]
+                    .getService(Ci.nsIPrintSettingsService);
 
       return PSSVC.defaultPrinterName;
     } catch (e) {
-      Components.utils.reportError(e);
+      Cu.reportError(e);
     }
 
     return null;
@@ -130,45 +130,6 @@ var PrintUtils = {
       simplifiedMode: this._shouldSimplify,
       defaultPrinterName,
     });
-  },
-
-  /**
-   * Deprecated.
-   *
-   * Starts the process of printing the contents of window.content.
-   *
-   */
-  print() {
-    if (gBrowser) {
-      return this.printWindow(gBrowser.selectedBrowser.outerWindowID,
-                              gBrowser.selectedBrowser);
-    }
-
-    if (this.usingRemoteTabs) {
-      throw new Error("PrintUtils.print cannot be run in windows running with " +
-                      "remote tabs. Use PrintUtils.printWindow instead.");
-    }
-
-    let domWindow = window.content;
-    let ifReq = domWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor);
-    let browser = ifReq.getInterface(Components.interfaces.nsIWebNavigation)
-                       .QueryInterface(Components.interfaces.nsIDocShell)
-                       .chromeEventHandler;
-    if (!browser) {
-      throw new Error("PrintUtils.print could not resolve content window " +
-                      "to a browser.");
-    }
-
-    let windowID = ifReq.getInterface(Components.interfaces.nsIDOMWindowUtils)
-                        .outerWindowID;
-
-    let Deprecated = Components.utils.import("resource://gre/modules/Deprecated.jsm", {}).Deprecated;
-    let msg = "PrintUtils.print is now deprecated. Please use PrintUtils.printWindow.";
-    let url = "https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Printing";
-    Deprecated.warning(msg, url);
-
-    this.printWindow(windowID, browser);
-    return undefined;
   },
 
   /**
@@ -251,8 +212,8 @@ var PrintUtils = {
     // automatically opened from the print engine because the XUL scrollbars in the PP window
     // will layout before the content window and a crash will occur.
     // Doing it all from script, means it lays out before hand and we can let printing do its own thing
-    let PPROMPTSVC = Components.classes["@mozilla.org/embedcomp/printingprompt-service;1"]
-                               .getService(Components.interfaces.nsIPrintingPromptService);
+    let PPROMPTSVC = Cc["@mozilla.org/embedcomp/printingprompt-service;1"]
+                       .getService(Ci.nsIPrintingPromptService);
     // just in case we are already printing,
     // an error code could be returned if the Progress Dialog is already displayed
     try {
@@ -273,54 +234,6 @@ var PrintUtils = {
     }
   },
 
-  /**
-   * Returns the nsIWebBrowserPrint associated with some content window.
-   * This method is being kept here for compatibility reasons, but should not
-   * be called by code hoping to support e10s / remote browsers.
-   *
-   * @param aWindow
-   *        The window from which to get the nsIWebBrowserPrint from.
-   * @return nsIWebBrowserPrint
-   */
-  getWebBrowserPrint(aWindow) {
-    let Deprecated = Components.utils.import("resource://gre/modules/Deprecated.jsm", {}).Deprecated;
-    let text = "getWebBrowserPrint is now deprecated, and fully unsupported for " +
-               "multi-process browsers. Please use a frame script to get " +
-               "access to nsIWebBrowserPrint from content.";
-    let url = "https://developer.mozilla.org/en-US/docs/Printing_from_a_XUL_App";
-    Deprecated.warning(text, url);
-
-    if (this.usingRemoteTabs) {
-      return {};
-    }
-
-    var contentWindow = aWindow || window.content;
-    return contentWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                        .getInterface(Components.interfaces.nsIWebBrowserPrint);
-  },
-
-  /**
-   * Returns the nsIWebBrowserPrint from the print preview browser's docShell.
-   * This method is being kept here for compatibility reasons, but should not
-   * be called by code hoping to support e10s / remote browsers.
-   *
-   * @return nsIWebBrowserPrint
-   */
-  getPrintPreview() {
-    let Deprecated = Components.utils.import("resource://gre/modules/Deprecated.jsm", {}).Deprecated;
-    let text = "getPrintPreview is now deprecated, and fully unsupported for " +
-               "multi-process browsers. Please use a frame script to get " +
-               "access to nsIWebBrowserPrint from content.";
-    let url = "https://developer.mozilla.org/en-US/docs/Printing_from_a_XUL_App";
-    Deprecated.warning(text, url);
-
-    if (this.usingRemoteTabs) {
-      return {};
-    }
-
-    return this._currentPPBrowser.docShell.printPreview;
-  },
-
   // "private" methods and members. Don't use them.
 
   _listener: null,
@@ -330,18 +243,6 @@ var PrintUtils = {
   _originalTitle: "",
   _originalURL: "",
   _shouldSimplify: false,
-
-  get usingRemoteTabs() {
-    // We memoize this, since it's highly unlikely to change over the lifetime
-    // of the window.
-    let usingRemoteTabs =
-      window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-            .getInterface(Components.interfaces.nsIWebNavigation)
-            .QueryInterface(Components.interfaces.nsILoadContext)
-            .useRemoteTabs;
-    delete this.usingRemoteTabs;
-    return this.usingRemoteTabs = usingRemoteTabs;
-  },
 
   displayPrintingError(nsresult, isPrinting) {
     // The nsresults from a printing error are mapped to strings that have
@@ -374,7 +275,7 @@ var PrintUtils = {
 
     for (let code of MSG_CODES) {
       let nsErrorResult = "NS_ERROR_" + code;
-      if (Components.results[nsErrorResult] == nsresult) {
+      if (Cr[nsErrorResult] == nsresult) {
         msgName = "PERR_" + code;
         break;
       }
@@ -432,7 +333,7 @@ var PrintUtils = {
       }
 
       case "Printing:Preview:StateChange": {
-        if (data.stateFlags & Components.interfaces.nsIWebProgressListener.STATE_STOP) {
+        if (data.stateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
           // Strangely, the printing engine sends 2 STATE_STOP messages when
           // print preview is finishing. One has the STATE_IS_DOCUMENT flag,
           // the other has the STATE_IS_NETWORK flag. However, the webProgressPP
@@ -471,8 +372,8 @@ var PrintUtils = {
 
     var printSettings;
     try {
-      var PSSVC = Components.classes["@mozilla.org/gfx/printsettings-service;1"]
-                            .getService(Components.interfaces.nsIPrintSettingsService);
+      var PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"]
+                    .getService(Ci.nsIPrintSettingsService);
       if (gPrintSettingsAreGlobal) {
         printSettings = PSSVC.globalPrintSettings;
         this.setPrinterDefaultsForSelectedPrinter(PSSVC, printSettings);
@@ -499,11 +400,11 @@ var PrintUtils = {
     },
 
     QueryInterface(iid) {
-      if (iid.equals(Components.interfaces.nsIObserver) ||
-          iid.equals(Components.interfaces.nsISupportsWeakReference) ||
-          iid.equals(Components.interfaces.nsISupports))
+      if (iid.equals(Ci.nsIObserver) ||
+          iid.equals(Ci.nsISupportsWeakReference) ||
+          iid.equals(Ci.nsISupports))
         return this;
-      throw Components.results.NS_NOINTERFACE;
+      throw Cr.NS_NOINTERFACE;
     }
   },
 
@@ -776,7 +677,7 @@ var PrintUtils = {
   ensureProgressDialogClosed() {
     if (this._webProgressPP && this._webProgressPP.value) {
       this._webProgressPP.value.onStateChange(null, null,
-        Components.interfaces.nsIWebProgressListener.STATE_STOP, 0);
+        Ci.nsIWebProgressListener.STATE_STOP, 0);
     }
   },
 };

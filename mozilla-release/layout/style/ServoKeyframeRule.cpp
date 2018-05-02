@@ -6,6 +6,8 @@
 
 #include "mozilla/ServoKeyframeRule.h"
 
+#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/ServoDeclarationBlock.h"
 #include "nsDOMCSSDeclaration.h"
 #include "mozAutoDocUpdate.h"
 
@@ -29,18 +31,18 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(
     ServoKeyframeDeclaration, nsICSSDeclaration)
 
-  css::Rule* GetParentRule() final override { return mRule; }
+  css::Rule* GetParentRule() final { return mRule; }
 
   void DropReference() {
     mRule = nullptr;
     mDecls->SetOwningRule(nullptr);
   }
 
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final override
+  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final
   {
     return mDecls;
   }
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecls) final override
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecls) final
   {
     if (!mRule) {
       return NS_OK;
@@ -56,32 +58,22 @@ public:
     return NS_OK;
   }
   void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
-                                nsIPrincipal* aSubjectPrincipal) final override
+                                nsIPrincipal* aSubjectPrincipal) final
   {
     MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
                            "shouldn't be calling for a Servo rule");
     GetCSSParsingEnvironmentForRule(mRule, aCSSParseEnv);
   }
   ServoCSSParsingEnvironment GetServoCSSParsingEnvironment(
-      nsIPrincipal* aSubjectPrincipal) const final override
+      nsIPrincipal* aSubjectPrincipal) const final
   {
     return GetServoCSSParsingEnvironmentForRule(mRule);
   }
-  nsIDocument* DocToUpdate() final override { return nullptr; }
+  nsIDocument* DocToUpdate() final { return nullptr; }
 
-  nsINode* GetParentObject() final override
+  nsINode* GetParentObject() final
   {
     return mRule ? mRule->GetDocument() : nullptr;
-  }
-
-  DocGroup* GetDocGroup() const final override
-  {
-    if (!mRule) {
-      return nullptr;
-    }
-
-    nsIDocument* document = mRule->GetDocument();
-    return document ? document->GetDocGroup() : nullptr;
   }
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
@@ -200,7 +192,7 @@ ServoKeyframeRule::SetKeyText(const nsAString& aKeyText)
 }
 
 void
-ServoKeyframeRule::GetCssTextImpl(nsAString& aCssText) const
+ServoKeyframeRule::GetCssText(nsAString& aCssText) const
 {
   Servo_Keyframe_GetCssText(mRaw, &aCssText);
 }

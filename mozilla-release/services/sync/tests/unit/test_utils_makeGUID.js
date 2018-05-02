@@ -1,4 +1,4 @@
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 const base64url =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
@@ -17,7 +17,7 @@ function run_test() {
 
     // Verify that the GUID only contains base64url characters
     Assert.ok(Array.every(newGuid, function(chr) {
-      return base64url.indexOf(chr) != -1;
+      return base64url.includes(chr);
     }));
 
     // Verify that Utils.checkGUID() correctly identifies them as valid.

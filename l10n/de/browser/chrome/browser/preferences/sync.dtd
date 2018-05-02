@@ -106,3 +106,6 @@ both, to better adapt this sentence to their language.
 <!ENTITY mobilePromo3.iOSLink          "iOS">
 
 <!ENTITY mobilePromo3.end              " herunterladen, um mit Ihrem Handy zu synchronisieren.">
+
+<!ENTITY mobilepromo.singledevice      "Weiteres Gerät verbinden">
+<!ENTITY mobilepromo.multidevice       "Geräte verwalten">

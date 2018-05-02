@@ -143,17 +143,22 @@ class JitcodeGlobalEntry
 
     struct BaseEntry
     {
+        static const uint64_t kNoSampleInBuffer = UINT64_MAX;
+
         JitCode* jitcode_;
         void* nativeStartAddr_;
         void* nativeEndAddr_;
-        uint32_t gen_;
+        // If this entry is referenced from the profiler buffer, this is the
+        // position where the most recent sample that references it starts.
+        // Otherwise set to kNoSampleInBuffer.
+        uint64_t samplePositionInBuffer_;
         Kind kind_ : 7;
 
         void init() {
             jitcode_ = nullptr;
             nativeStartAddr_ = nullptr;
             nativeEndAddr_ = nullptr;
-            gen_ = UINT32_MAX;
+            samplePositionInBuffer_ = kNoSampleInBuffer;
             kind_ = INVALID;
         }
 
@@ -167,21 +172,20 @@ class JitcodeGlobalEntry
             jitcode_ = code;
             nativeStartAddr_ = nativeStartAddr;
             nativeEndAddr_ = nativeEndAddr;
-            gen_ = UINT32_MAX;
+            samplePositionInBuffer_ = kNoSampleInBuffer;
             kind_ = kind;
         }
 
-        uint32_t generation() const {
-            return gen_;
+        void setSamplePositionInBuffer(uint64_t bufferWritePos) {
+            samplePositionInBuffer_ = bufferWritePos;
         }
-        void setGeneration(uint32_t gen) {
-            gen_ = gen;
+        void setAsExpired() {
+            samplePositionInBuffer_ = kNoSampleInBuffer;
         }
-        bool isSampled(uint32_t currentGen, uint32_t lapCount) {
-            if (gen_ == UINT32_MAX || currentGen == UINT32_MAX)
+        bool isSampled(uint64_t bufferRangeStart) {
+            if (samplePositionInBuffer_ == kNoSampleInBuffer)
                 return false;
-            MOZ_ASSERT(currentGen >= gen_);
-            return (currentGen - gen_) <= lapCount;
+            return bufferRangeStart <= samplePositionInBuffer_;
         }
 
         Kind kind() const {
@@ -325,15 +329,15 @@ class JitcodeGlobalEntry
             return -1;
         }
 
-        void* canonicalNativeAddrFor(JSRuntime*rt, void* ptr) const;
+        void* canonicalNativeAddrFor(void* ptr) const;
 
-        MOZ_MUST_USE bool callStackAtAddr(JSRuntime* rt, void* ptr, BytecodeLocationVector& results,
+        MOZ_MUST_USE bool callStackAtAddr(void* ptr, BytecodeLocationVector& results,
                                           uint32_t* depth) const;
 
-        uint32_t callStackAtAddr(JSRuntime* rt, void* ptr, const char** results,
+        uint32_t callStackAtAddr(void* ptr, const char** results,
                                  uint32_t maxResults) const;
 
-        void youngestFrameLocationAtAddr(JSRuntime* rt, void* ptr,
+        void youngestFrameLocationAtAddr(void* ptr,
                                          JSScript** script, jsbytecode** pc) const;
 
         bool hasTrackedOptimizations() const {
@@ -366,13 +370,12 @@ class JitcodeGlobalEntry
         }
 
         mozilla::Maybe<uint8_t> trackedOptimizationIndexAtAddr(
-            JSRuntime *rt,
             void* ptr,
             uint32_t* entryOffsetOut);
 
-        void forEachOptimizationAttempt(JSRuntime* rt, uint8_t index,
+        void forEachOptimizationAttempt(uint8_t index,
                                         JS::ForEachTrackedOptimizationAttemptOp& op);
-        void forEachOptimizationTypeInfo(JSRuntime* rt, uint8_t index,
+        void forEachOptimizationTypeInfo(uint8_t index,
                                          IonTrackedOptimizationsTypeInfo::ForEachOpAdapter& op);
 
         template <class ShouldTraceProvider> bool trace(JSTracer* trc);
@@ -422,15 +425,15 @@ class JitcodeGlobalEntry
 
         void destroy();
 
-        void* canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const;
+        void* canonicalNativeAddrFor(void* ptr) const;
 
-        MOZ_MUST_USE bool callStackAtAddr(JSRuntime* rt, void* ptr, BytecodeLocationVector& results,
+        MOZ_MUST_USE bool callStackAtAddr(void* ptr, BytecodeLocationVector& results,
                                           uint32_t* depth) const;
 
-        uint32_t callStackAtAddr(JSRuntime* rt, void* ptr, const char** results,
+        uint32_t callStackAtAddr(void* ptr, const char** results,
                                  uint32_t maxResults) const;
 
-        void youngestFrameLocationAtAddr(JSRuntime* rt, void* ptr,
+        void youngestFrameLocationAtAddr(void* ptr,
                                          JSScript** script, jsbytecode** pc) const;
 
         template <class ShouldTraceProvider> bool trace(JSTracer* trc);
@@ -461,7 +464,7 @@ class JitcodeGlobalEntry
 
         void destroy() {}
 
-        void* canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const;
+        void* canonicalNativeAddrFor() const;
 
         MOZ_MUST_USE bool callStackAtAddr(JSRuntime* rt, void* ptr, BytecodeLocationVector& results,
                                           uint32_t* depth) const;
@@ -637,17 +640,14 @@ class JitcodeGlobalEntry
         return base_.nativeEndAddr();
     }
 
-    uint32_t generation() const {
-        return baseEntry().generation();
-    }
-    void setGeneration(uint32_t gen) {
-        baseEntry().setGeneration(gen);
+    void setSamplePositionInBuffer(uint64_t samplePositionInBuffer) {
+        baseEntry().setSamplePositionInBuffer(samplePositionInBuffer);
     }
     void setAsExpired() {
-        baseEntry().setGeneration(UINT32_MAX);
+        baseEntry().setAsExpired();
     }
-    bool isSampled(uint32_t currentGen, uint32_t lapCount) {
-        return baseEntry().isSampled(currentGen, lapCount);
+    bool isSampled(uint64_t bufferRangeStart) {
+        return baseEntry().isSampled(bufferRangeStart);
     }
 
     bool startsBelowPointer(void* ptr) const {
@@ -748,11 +748,11 @@ class JitcodeGlobalEntry
     void* canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const {
         switch (kind()) {
           case Ion:
-            return ionEntry().canonicalNativeAddrFor(rt, ptr);
+            return ionEntry().canonicalNativeAddrFor(ptr);
           case Baseline:
-            return baselineEntry().canonicalNativeAddrFor(rt, ptr);
+            return baselineEntry().canonicalNativeAddrFor(ptr);
           case IonCache:
-            return ionCacheEntry().canonicalNativeAddrFor(rt, ptr);
+            return ionCacheEntry().canonicalNativeAddrFor();
           case Dummy:
             return dummyEntry().canonicalNativeAddrFor(rt, ptr);
           default:
@@ -771,9 +771,9 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            return ionEntry().callStackAtAddr(rt, ptr, results, depth);
+            return ionEntry().callStackAtAddr(ptr, results, depth);
           case Baseline:
-            return baselineEntry().callStackAtAddr(rt, ptr, results, depth);
+            return baselineEntry().callStackAtAddr(ptr, results, depth);
           case IonCache:
             return ionCacheEntry().callStackAtAddr(rt, ptr, results, depth);
           case Dummy:
@@ -789,9 +789,9 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            return ionEntry().callStackAtAddr(rt, ptr, results, maxResults);
+            return ionEntry().callStackAtAddr(ptr, results, maxResults);
           case Baseline:
-            return baselineEntry().callStackAtAddr(rt, ptr, results, maxResults);
+            return baselineEntry().callStackAtAddr(ptr, results, maxResults);
           case IonCache:
             return ionCacheEntry().callStackAtAddr(rt, ptr, results, maxResults);
           case Dummy:
@@ -807,9 +807,9 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            return ionEntry().youngestFrameLocationAtAddr(rt, ptr, script, pc);
+            return ionEntry().youngestFrameLocationAtAddr(ptr, script, pc);
           case Baseline:
-            return baselineEntry().youngestFrameLocationAtAddr(rt, ptr, script, pc);
+            return baselineEntry().youngestFrameLocationAtAddr(ptr, script, pc);
           case IonCache:
             return ionCacheEntry().youngestFrameLocationAtAddr(rt, ptr, script, pc);
           case Dummy:
@@ -858,7 +858,7 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            return ionEntry().trackedOptimizationIndexAtAddr(rt, addr, entryOffsetOut);
+            return ionEntry().trackedOptimizationIndexAtAddr(addr, entryOffsetOut);
           case IonCache:
             return ionCacheEntry().trackedOptimizationIndexAtAddr(rt, addr, entryOffsetOut);
           case Baseline:
@@ -875,7 +875,7 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            ionEntry().forEachOptimizationAttempt(rt, index, op);
+            ionEntry().forEachOptimizationAttempt(index, op);
             return;
           case IonCache:
             ionCacheEntry().forEachOptimizationAttempt(rt, index, op);
@@ -893,7 +893,7 @@ class JitcodeGlobalEntry
     {
         switch (kind()) {
           case Ion:
-            ionEntry().forEachOptimizationTypeInfo(rt, index, op);
+            ionEntry().forEachOptimizationTypeInfo(index, op);
             return;
           case IonCache:
             ionCacheEntry().forEachOptimizationTypeInfo(rt, index, op);
@@ -1053,31 +1053,31 @@ class JitcodeGlobalTable
     }
 
     const JitcodeGlobalEntry& lookupForSamplerInfallible(void* ptr, JSRuntime* rt,
-                                                         uint32_t sampleBufferGen);
+                                                         uint64_t samplePosInBuffer);
 
-    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::IonEntry& entry, JSRuntime* rt) {
-        return addEntry(JitcodeGlobalEntry(entry), rt);
+    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::IonEntry& entry) {
+        return addEntry(JitcodeGlobalEntry(entry));
     }
-    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::BaselineEntry& entry, JSRuntime* rt) {
-        return addEntry(JitcodeGlobalEntry(entry), rt);
+    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::BaselineEntry& entry) {
+        return addEntry(JitcodeGlobalEntry(entry));
     }
-    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::IonCacheEntry& entry, JSRuntime* rt) {
-        return addEntry(JitcodeGlobalEntry(entry), rt);
+    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::IonCacheEntry& entry) {
+        return addEntry(JitcodeGlobalEntry(entry));
     }
-    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::DummyEntry& entry, JSRuntime* rt) {
-        return addEntry(JitcodeGlobalEntry(entry), rt);
+    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry::DummyEntry& entry) {
+        return addEntry(JitcodeGlobalEntry(entry));
     }
 
-    void removeEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower, JSRuntime* rt);
+    void removeEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower);
     void releaseEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower, JSRuntime* rt);
 
-    void setAllEntriesAsExpired(JSRuntime* rt);
+    void setAllEntriesAsExpired();
     void traceForMinorGC(JSTracer* trc);
     MOZ_MUST_USE bool markIteratively(GCMarker* marker);
     void sweep(JSRuntime* rt);
 
   private:
-    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry& entry, JSRuntime* rt);
+    MOZ_MUST_USE bool addEntry(const JitcodeGlobalEntry& entry);
 
     JitcodeGlobalEntry* lookupInternal(void* ptr);
 

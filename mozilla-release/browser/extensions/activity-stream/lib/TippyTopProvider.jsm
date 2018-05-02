@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {utils: Cu} = Components;
-
 Cu.importGlobalProperties(["fetch", "URL"]);
 
 const TIPPYTOP_JSON_PATH = "resource://activity-stream/data/content/tippytop/top_sites.json";
@@ -19,13 +17,13 @@ function getDomain(url) {
   }
   return domain;
 }
-this.getDomain = getDomain;
 
 this.TippyTopProvider = class TippyTopProvider {
   constructor() {
     this._sitesByDomain = new Map();
     this.initialized = false;
   }
+
   async init() {
     // Load the Tippy Top sites from the json manifest.
     try {
@@ -41,6 +39,7 @@ this.TippyTopProvider = class TippyTopProvider {
       Cu.reportError("Failed to load tippy top manifest.");
     }
   }
+
   processSite(site) {
     const tippyTop = this._sitesByDomain.get(getDomain(site.url));
     if (tippyTop) {
@@ -51,4 +50,4 @@ this.TippyTopProvider = class TippyTopProvider {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["TippyTopProvider", "getDomain"];
+const EXPORTED_SYMBOLS = ["TippyTopProvider", "getDomain"];

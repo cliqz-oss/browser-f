@@ -8,12 +8,10 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ControllerStateMachine"]; // jshint ignore:line
-
-const { utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["ControllerStateMachine"]; // jshint ignore:line
 
 /* globals State, CommandType */
-Cu.import("resource://gre/modules/presentation/StateMachineHelper.jsm");
+ChromeUtils.import("resource://gre/modules/presentation/StateMachineHelper.jsm");
 
 const DEBUG = false;
 function debug(str) {
@@ -237,4 +235,3 @@ ControllerStateMachine.prototype = {
   },
 };
 
-this.ControllerStateMachine = ControllerStateMachine; // jshint ignore:line

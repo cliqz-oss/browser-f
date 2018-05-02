@@ -1,10 +1,11 @@
-const { Services } = Components.utils.import("resource://gre/modules/Services.jsm", {});
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 const gMgr = Cc["@mozilla.org/memory-reporter-manager;1"].getService(Ci.nsIMemoryReporterManager);
+const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
 
 XPCOMUtils.defineLazyGetter(this, "require", function() {
   let { require } =
-    Components.utils.import("resource://devtools/shared/Loader.jsm", {});
+    ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   return require;
 });
 XPCOMUtils.defineLazyGetter(this, "gDevTools", function() {
@@ -19,15 +20,20 @@ XPCOMUtils.defineLazyGetter(this, "TargetFactory", function() {
   let { TargetFactory } = require("devtools/client/framework/target");
   return TargetFactory;
 });
-XPCOMUtils.defineLazyGetter(this, "ChromeUtils", function() {
-  return require("ChromeUtils");
-});
 
 const webserver = Services.prefs.getCharPref("addon.test.damp.webserver");
 
-const SIMPLE_URL = webserver + "/tests/devtools/addon/content/pages/simple.html";
+const PAGES_BASE_URL = webserver + "/tests/devtools/addon/content/pages/";
+const SIMPLE_URL = PAGES_BASE_URL + "simple.html";
 const COMPLICATED_URL = webserver + "/tests/tp5n/bild.de/www.bild.de/index.html";
-const CUSTOM_URL = webserver + "/tests/devtools/addon/content/pages/custom/$TOOL.html";
+const CUSTOM_URL = PAGES_BASE_URL + "custom/$TOOL/index.html";
+const PANELS_IN_BACKGROUND = PAGES_BASE_URL +
+  "custom/panels-in-background/panels-in-background.html";
+
+// Record allocation count in new subtests if DEBUG_DEVTOOLS_ALLOCATIONS is set to
+// "normal". Print allocation sites to stdout if DEBUG_DEVTOOLS_ALLOCATIONS is set to
+// "verbose".
+const DEBUG_ALLOCATIONS = env.get("DEBUG_DEVTOOLS_ALLOCATIONS");
 
 function getMostRecentBrowserWindow() {
   return Services.wm.getMostRecentWindow("navigator:browser");
@@ -35,6 +41,51 @@ function getMostRecentBrowserWindow() {
 
 function getActiveTab(window) {
   return window.gBrowser.selectedTab;
+}
+
+let gmm = window.getGroupMessageManager("browsers");
+
+const frameScript = "data:," + encodeURIComponent(`(${
+  function() {
+    addEventListener("load", function(event) {
+      let subframe = event.target != content.document;
+      sendAsyncMessage("browser-test-utils:loadEvent",
+        {subframe, url: event.target.documentURI});
+    }, true);
+  }
+})()`);
+
+gmm.loadFrameScript(frameScript, true);
+
+// This is duplicated from BrowserTestUtils.jsm
+function awaitBrowserLoaded(browser, includeSubFrames = false, wantLoad = null) {
+  // If browser belongs to tabbrowser-tab, ensure it has been
+  // inserted into the document.
+  let tabbrowser = browser.ownerGlobal.gBrowser;
+  if (tabbrowser && tabbrowser.getTabForBrowser) {
+    tabbrowser._insertBrowser(tabbrowser.getTabForBrowser(browser));
+  }
+
+  function isWanted(url) {
+    if (!wantLoad) {
+      return true;
+    } else if (typeof(wantLoad) == "function") {
+      return wantLoad(url);
+    }
+    // It's a string.
+    return wantLoad == url;
+  }
+
+  return new Promise(resolve => {
+    let mm = browser.ownerGlobal.messageManager;
+    mm.addMessageListener("browser-test-utils:loadEvent", function onLoad(msg) {
+      if (msg.target == browser && (!msg.data.subframe || includeSubFrames) &&
+          isWanted(msg.data.url)) {
+        mm.removeMessageListener("browser-test-utils:loadEvent", onLoad);
+        resolve(msg.data.url);
+      }
+    });
+  });
 }
 
 /* ************* Debugger Helper ***************/
@@ -51,15 +102,21 @@ const DEBUGGER_POLLING_INTERVAL = 50;
 const debuggerHelper = {
   waitForState(dbg, predicate, msg) {
     return new Promise(resolve => {
-      dump(`Waiting for state change: ${msg}\n`);
+      if (msg) {
+        dump(`Waiting for state change: ${msg}\n`);
+      }
       if (predicate(dbg.store.getState())) {
-        dump(`Finished waiting for state change: ${msg}\n`);
+        if (msg) {
+          dump(`Finished waiting for state change: ${msg}\n`);
+        }
         return resolve();
       }
 
       const unsubscribe = dbg.store.subscribe(() => {
         if (predicate(dbg.store.getState())) {
-          dump(`Finished waiting for state change: ${msg}\n`);
+          if (msg) {
+            dump(`Finished waiting for state change: ${msg}\n`);
+          }
           unsubscribe();
           resolve();
         }
@@ -88,12 +145,16 @@ const debuggerHelper = {
   },
 
   async waitUntil(predicate, msg) {
-    dump(`Waiting until: ${msg}\n`);
+    if (msg) {
+      dump(`Waiting until: ${msg}\n`);
+    }
     return new Promise(resolve => {
       const timer = setInterval(() => {
         if (predicate()) {
           clearInterval(timer);
-          dump(`Finished Waiting until: ${msg}\n`);
+          if (msg) {
+            dump(`Finished Waiting until: ${msg}\n`);
+          }
           resolve();
         }
       }, DEBUGGER_POLLING_INTERVAL);
@@ -178,6 +239,92 @@ const debuggerHelper = {
       },
       "selected source"
     );
+  },
+
+  async addBreakpoint(dbg, line, url) {
+    dump(`add breakpoint\n`);
+    const source = this.findSource(dbg, url);
+    const location = {
+      sourceId: source.get("id"),
+      line,
+      column: 0
+    };
+    const onDispatched = debuggerHelper.waitForDispatch(dbg, "ADD_BREAKPOINT");
+    dbg.actions.addBreakpoint(location);
+    return onDispatched;
+  },
+
+  async removeBreakpoints(dbg, line, url) {
+    dump(`remove all breakpoints\n`);
+    const breakpoints = dbg.selectors.getBreakpoints(dbg.getState());
+
+    const onBreakpointsCleared =  this.waitForState(
+      dbg,
+      state => !dbg.selectors.getBreakpoints(state).length
+    );
+    await dbg.actions.removeBreakpoints(breakpoints);
+    return onBreakpointsCleared;
+  },
+
+  async pauseDebugger(dbg, tab, testFunction, { line, file }) {
+    await this.addBreakpoint(dbg, line, file);
+    const onPaused = this.waitForPaused(dbg);
+    await this.evalInContent(dbg, tab, testFunction);
+    return onPaused;
+  },
+
+  async waitForPaused(dbg) {
+    const onLoadedScope = this.waitForLoadedScopes(dbg);
+    const onStateChange =  this.waitForState(
+      dbg,
+      state => {
+        return dbg.selectors.getSelectedScope(state) && dbg.selectors.isPaused(state);
+      },
+    );
+    return Promise.all([onLoadedScope, onStateChange]);
+  },
+
+  async resume(dbg) {
+    const onResumed = this.waitForResumed(dbg);
+    dbg.actions.resume();
+    return onResumed;
+  },
+
+  async waitForResumed(dbg) {
+    return this.waitForState(
+      dbg,
+      state => !dbg.selectors.isPaused(state)
+    );
+  },
+
+  evalInContent(dbg, tab, testFunction) {
+    dump(`Run function in content process: ${testFunction}\n`);
+    // Load a frame script using a data URI so we can run a script
+    // inside of the content process and trigger debugger functionality
+    // as needed
+    const messageManager = tab.linkedBrowser.messageManager;
+    return messageManager.loadFrameScript("data:,(" + encodeURIComponent(
+      `function () {
+          content.window.eval("${testFunction}");
+      }`
+    ) + ")()", true);
+  },
+
+  async waitForElement(dbg, name) {
+    await this.waitUntil(() => dbg.win.document.querySelector(name));
+    return dbg.win.document.querySelector(name);
+  },
+
+  async waitForLoadedScopes(dbg) {
+    const element = ".scopes-list .tree-node[aria-level=\"1\"]";
+    return this.waitForElement(dbg, element);
+  },
+
+  async step(dbg, stepType) {
+    const resumed = this.waitForResumed(dbg);
+    dbg.actions[stepType]();
+    await resumed;
+    return this.waitForPaused(dbg);
   }
 };
 
@@ -231,6 +378,14 @@ Damp.prototype = {
    *         and we should record its duration.
    */
   runTest(label) {
+    if (DEBUG_ALLOCATIONS) {
+      if (!this.allocationTracker) {
+        this.allocationTracker = this.startAllocationTracker();
+      }
+      // Flush the current allocations before running the test
+      this.allocationTracker.flushAllocations();
+    }
+
     let startLabel = label + ".start";
     performance.mark(startLabel);
     let start = performance.now();
@@ -244,18 +399,24 @@ Damp.prototype = {
           name: label,
           value: duration
         });
+
+        if (DEBUG_ALLOCATIONS == "normal") {
+          this._results.push({
+            name: label + ".allocations",
+            value: this.allocationTracker.countAllocations()
+          });
+        } else if (DEBUG_ALLOCATIONS == "verbose") {
+          this.allocationTracker.logAllocationSites();
+        }
       }
     };
   },
 
-  addTab(url) {
-    return new Promise((resolve, reject) => {
-      let tab = this._win.gBrowser.selectedTab = this._win.gBrowser.addTab(url);
-      let browser = tab.linkedBrowser;
-      browser.addEventListener("load", function onload() {
-        resolve(tab);
-      }, {capture: true, once: true});
-    });
+  async addTab(url) {
+    let tab = this._win.gBrowser.selectedTab = this._win.gBrowser.addTab(url);
+    let browser = tab.linkedBrowser;
+    await awaitBrowserLoaded(browser);
+    return tab;
   },
 
   closeCurrentTab() {
@@ -266,10 +427,10 @@ Damp.prototype = {
   reloadPage(onReload) {
     return new Promise(resolve => {
       let browser = gBrowser.selectedBrowser;
-      if (typeof (onReload) == "function") {
+      if (typeof(onReload) == "function") {
         onReload().then(resolve);
       } else {
-        browser.addEventListener("load", resolve, {capture: true, once: true});
+        resolve(awaitBrowserLoaded(browser));
       }
       browser.reload();
     });
@@ -332,7 +493,7 @@ Damp.prototype = {
 
     // Resolve once the last message has been received.
     let allMessagesReceived = new Promise(resolve => {
-      function receiveMessages(e, messages) {
+      function receiveMessages(messages) {
         for (let m of messages) {
           if (m.node.textContent.includes("damp " + TOTAL_MESSAGES)) {
             webconsole.hud.ui.off("new-messages", receiveMessages);
@@ -424,7 +585,7 @@ Damp.prototype = {
 
     // Resolve once the first message is received.
     let onMessageReceived = new Promise(resolve => {
-      function receiveMessages(e, messages) {
+      function receiveMessages(messages) {
         for (let m of messages) {
           resolve(m);
         }
@@ -577,13 +738,10 @@ async _consoleOpenWithCachedMessagesTest() {
       ) + ")()", false);
     });
 
-    // Open the toolbox and record the time.
-    let start = performance.now();
+    // Record the time needed to open the toolbox.
+    let test = this.runTest("inspector.layout.open");
     await this.openToolbox("inspector");
-    this._results.push({
-      name: "inspector.layout.open",
-      value: performance.now() - start
-    });
+    test.done();
 
     await this.closeToolbox();
 
@@ -686,6 +844,15 @@ async _consoleOpenWithCachedMessagesTest() {
     test.done();
   },
 
+  async exportHar(label, toolbox) {
+    let test = this.runTest(label + ".exportHar");
+
+    // Export HAR from the Network panel.
+    await toolbox.getHARFromNetMonitor();
+
+    test.done();
+  },
+
   async _coldInspectorOpen() {
     await this.testSetup(SIMPLE_URL);
     await this.openToolboxAndLog("cold.inspector", "inspector");
@@ -694,25 +861,46 @@ async _consoleOpenWithCachedMessagesTest() {
   },
 
   async _panelsInBackgroundReload() {
-    let url = "data:text/html;charset=UTF-8," + encodeURIComponent(`
-      <script>
-      // Log a significant amount of messages
-      for(let i = 0; i < 2000; i++) {
-        console.log("log in background", i);
-      }
-      </script>
-    `);
-    await this.testSetup(url);
-    let toolbox = await this.openToolbox("webconsole");
+    await this.testSetup(PANELS_IN_BACKGROUND);
 
-    // Select the options panel to make the console be in background.
+    // Make sure the Console and Network panels are initialized
+    let toolbox = await this.openToolbox("webconsole");
+    let monitor = await toolbox.selectTool("netmonitor");
+
+    // Select the options panel to make both the Console and Network
+    // panel be in background.
     // Options panel should not do anything on page reload.
     await toolbox.selectTool("options");
 
+    // Reload the page and wait for all HTTP requests
+    // to finish (1 doc + 600 XHRs).
+    let payloadReady = this.waitForPayload(601, monitor.panelWin);
     await this.reloadPageAndLog("panelsInBackground", toolbox);
+    await payloadReady;
 
+    // Clean up
     await this.closeToolbox();
     await this.testTeardown();
+  },
+
+  waitForPayload(count, panelWin) {
+    return new Promise(resolve => {
+      let payloadReady = 0;
+
+      function onPayloadReady(_, id) {
+        payloadReady++;
+        maybeResolve();
+      }
+
+      function maybeResolve() {
+        if (payloadReady >= count) {
+          panelWin.off(EVENTS.PAYLOAD_READY, onPayloadReady);
+          resolve();
+        }
+      }
+
+      panelWin.on(EVENTS.PAYLOAD_READY, onPayloadReady);
+    });
   },
 
   async reloadInspectorAndLog(label, toolbox) {
@@ -730,12 +918,50 @@ async _consoleOpenWithCachedMessagesTest() {
     let url = CUSTOM_URL.replace(/\$TOOL/, "inspector");
     await this.testSetup(url);
     let toolbox = await this.openToolboxAndLog("custom.inspector", "inspector");
+
     await this.reloadInspectorAndLog("custom", toolbox);
+    await this.selectNodeWithManyRulesAndLog(toolbox);
     await this.closeToolboxAndLog("custom.inspector", toolbox);
     await this.testTeardown();
   },
 
-  async openDebuggerAndLog(label, expectedSources, selectedFile, expectedText) {
+  /**
+   * Measure the time necessary to select a node and display the rule view when many rules
+   * match the element.
+   */
+  async selectNodeWithManyRulesAndLog(toolbox) {
+    let inspector = toolbox.getPanel("inspector");
+
+    // Local helper to select a node front and wait for the ruleview to be refreshed.
+    let selectNodeFront = (nodeFront) => {
+      let onRuleViewRefreshed = inspector.once("rule-view-refreshed");
+      inspector.selection.setNodeFront(nodeFront);
+      return onRuleViewRefreshed;
+    };
+
+    let initialNodeFront = inspector.selection.nodeFront;
+
+    // Retrieve the node front for the test node.
+    let root = await inspector.walker.getRootNode();
+    let referenceNodeFront = await inspector.walker.querySelector(root, ".no-css-rules");
+    let testNodeFront = await inspector.walker.querySelector(root, ".many-css-rules");
+
+    // Select test node and measure the time to display the rule view with many rules.
+    dump("Selecting .many-css-rules test node front\n");
+    let test = this.runTest("custom.inspector.manyrules.selectnode");
+    await selectNodeFront(testNodeFront);
+    test.done();
+
+    // Select reference node and measure the time to empty the rule view.
+    dump("Move the selection to a node with no rules\n");
+    test = this.runTest("custom.inspector.manyrules.deselectnode");
+    await selectNodeFront(referenceNodeFront);
+    test.done();
+
+    await selectNodeFront(initialNodeFront);
+  },
+
+  async openDebuggerAndLog(label, { expectedSources, selectedFile, expectedText }) {
    const onLoad = async (toolbox, panel) => {
     const dbg = await debuggerHelper.createContext(panel);
     await debuggerHelper.waitForSources(dbg, expectedSources);
@@ -747,7 +973,61 @@ async _consoleOpenWithCachedMessagesTest() {
    return toolbox;
   },
 
-  async reloadDebuggerAndLog(label, toolbox, expectedSources, selectedFile, expectedText) {
+  async pauseDebuggerAndLog(tab, toolbox, { testFunction }) {
+    const panel = await toolbox.getPanelWhenReady("jsdebugger");
+    const dbg = await debuggerHelper.createContext(panel);
+    const pauseLocation = { line: 22, file: "App.js" };
+
+    dump("Pausing debugger\n");
+    let test = this.runTest("custom.jsdebugger.pause.DAMP");
+    await debuggerHelper.pauseDebugger(dbg, tab, testFunction, pauseLocation);
+    test.done();
+
+    await debuggerHelper.removeBreakpoints(dbg);
+    await debuggerHelper.resume(dbg);
+    await garbageCollect();
+  },
+
+  async stepDebuggerAndLog(tab, toolbox, { testFunction }) {
+    const panel = await toolbox.getPanelWhenReady("jsdebugger");
+    const dbg = await debuggerHelper.createContext(panel);
+    const stepCount = 2;
+
+    /*
+     * Each Step test has a max step count of at least 200;
+     * see https://github.com/codehag/debugger-talos-example/blob/master/src/ and the specific test
+     * file for more information
+     */
+
+    const stepTests = [
+      {
+        location: { line: 10194, file: "step-in-test.js" },
+        key: "stepIn"
+      },
+      {
+        location: { line: 16, file: "step-over-test.js" },
+        key: "stepOver"
+      },
+      {
+        location: { line: 998, file: "step-out-test.js" },
+        key: "stepOut"
+      }
+    ];
+
+    for (const stepTest of stepTests) {
+      await debuggerHelper.pauseDebugger(dbg, tab, testFunction, stepTest.location);
+      const test = this.runTest(`custom.jsdebugger.${stepTest.key}.DAMP`);
+      for (let i = 0; i < stepCount; i++) {
+        await debuggerHelper.step(dbg, stepTest.key);
+      }
+      test.done();
+      await debuggerHelper.removeBreakpoints(dbg);
+      await debuggerHelper.resume(dbg);
+      await garbageCollect();
+    }
+  },
+
+  async reloadDebuggerAndLog(label, toolbox, { expectedSources, selectedFile, expectedText }) {
     const onReload = async () => {
       const panel = await toolbox.getPanelWhenReady("jsdebugger");
       const dbg = await debuggerHelper.createContext(panel);
@@ -761,23 +1041,59 @@ async _consoleOpenWithCachedMessagesTest() {
 
   async customDebugger() {
     const label = "custom";
-    const expectedSources = 7;
-    let url = CUSTOM_URL.replace(/\$TOOL/, "debugger/index");
-    await this.testSetup(url);
-    const selectedFile = "App.js";
-    const expectedText = "import React, { Component } from 'react';";
-    const toolbox = await this.openDebuggerAndLog(label, expectedSources, selectedFile, expectedText);
-    await this.reloadDebuggerAndLog(label, toolbox, expectedSources, selectedFile, expectedText);
+    let url = CUSTOM_URL.replace(/\$TOOL/, "debugger");
+
+    const tab = await this.testSetup(url);
+    const debuggerTestData = {
+      expectedSources: 7,
+      testFunction: "window.hitBreakpoint()",
+      selectedFile: "App.js",
+      expectedText: "import React, { Component } from 'react';"
+    };
+    const toolbox = await this.openDebuggerAndLog(label, debuggerTestData);
+    await this.reloadDebuggerAndLog(label, toolbox, debuggerTestData);
+
+    // these tests are only run on custom.jsdebugger
+    await this.pauseDebuggerAndLog(tab, toolbox, debuggerTestData);
+    await this.stepDebuggerAndLog(tab, toolbox, debuggerTestData);
+
     await this.closeToolboxAndLog("custom.jsdebugger", toolbox);
+    await this.testTeardown();
+  },
+
+  async reloadConsoleAndLog(label, toolbox, expectedMessages) {
+    let onReload = async function() {
+      let webconsole = toolbox.getPanel("webconsole");
+      await new Promise(done => {
+        let messages = 0;
+        let receiveMessages = () => {
+          if (++messages == expectedMessages) {
+            webconsole.hud.ui.off("new-messages", receiveMessages);
+            done();
+          }
+        };
+        webconsole.hud.ui.on("new-messages", receiveMessages);
+      });
+    };
+    await this.reloadPageAndLog(label + ".webconsole", toolbox, onReload);
+  },
+
+  async customConsole() {
+    // These numbers controls the number of console api calls we do in the test
+    let sync = 250, stream = 250, async = 250;
+    let params = `?sync=${sync}&stream=${stream}&async=${async}`;
+    let url = CUSTOM_URL.replace(/\$TOOL/, "console") + params;
+    await this.testSetup(url);
+    let toolbox = await this.openToolboxAndLog("custom.webconsole", "webconsole");
+    await this.reloadConsoleAndLog("custom", toolbox, sync + stream + async);
+    await this.closeToolboxAndLog("custom.webconsole", toolbox);
     await this.testTeardown();
   },
 
   _getToolLoadingTests(url, label, {
     expectedMessages,
     expectedRequests,
-    expectedSources,
-    selectedFile,
-    expectedText,
+    debuggerTestData
   }) {
     let tests = {
       async inspector() {
@@ -791,28 +1107,15 @@ async _consoleOpenWithCachedMessagesTest() {
       async webconsole() {
         await this.testSetup(url);
         let toolbox = await this.openToolboxAndLog(label + ".webconsole", "webconsole");
-        let onReload = async function() {
-          let webconsole = toolbox.getPanel("webconsole");
-          await new Promise(done => {
-            let messages = 0;
-            let receiveMessages = () => {
-              if (++messages == expectedMessages) {
-                webconsole.hud.ui.off("new-messages", receiveMessages);
-                done();
-              }
-            };
-            webconsole.hud.ui.on("new-messages", receiveMessages);
-          });
-        };
-        await this.reloadPageAndLog(label + ".webconsole", toolbox, onReload);
+        await this.reloadConsoleAndLog(label, toolbox, expectedMessages);
         await this.closeToolboxAndLog(label + ".webconsole", toolbox);
         await this.testTeardown();
       },
 
       async debugger() {
         await this.testSetup(url);
-        let toolbox = await this.openDebuggerAndLog(label, expectedSources, selectedFile, expectedText);
-        await this.reloadDebuggerAndLog(label, toolbox, expectedSources, selectedFile, expectedText);
+        let toolbox = await this.openDebuggerAndLog(label, debuggerTestData);
+        await this.reloadDebuggerAndLog(label, toolbox, debuggerTestData);
         await this.closeToolboxAndLog(label + ".jsdebugger", toolbox);
         await this.testTeardown();
       },
@@ -839,6 +1142,7 @@ async _consoleOpenWithCachedMessagesTest() {
         const requestsDone = this.waitForNetworkRequests(label + ".netmonitor", toolbox, expectedRequests);
         await this.reloadPageAndLog(label + ".netmonitor", toolbox);
         await requestsDone;
+        await this.exportHar(label + ".netmonitor", toolbox);
         await this.closeToolboxAndLog(label + ".netmonitor", toolbox);
         await this.testTeardown();
       },
@@ -944,6 +1248,10 @@ async _consoleOpenWithCachedMessagesTest() {
   _onTestComplete: null,
 
   _doneInternal() {
+    if (this.allocationTracker) {
+      this.allocationTracker.stop();
+      this.allocationTracker = null;
+    }
     this._logLine("DAMP_RESULTS_JSON=" + JSON.stringify(this._results));
     this._reportAllResults();
     this._win.gBrowser.selectedTab = this._dampTab;
@@ -992,7 +1300,7 @@ async _consoleOpenWithCachedMessagesTest() {
 
       function maybeResolve() {
         // Have all the requests finished yet?
-        if (payloadReady === expectedRequests && timingsUpdated === expectedRequests) {
+        if (payloadReady >= expectedRequests && timingsUpdated >= expectedRequests) {
           // All requests are done - unsubscribe from events and resolve!
           window.off(EVENTS.PAYLOAD_READY, onPayloadReady);
           window.off(EVENTS.RECEIVED_EVENT_TIMINGS, onTimingsUpdated);
@@ -1005,6 +1313,11 @@ async _consoleOpenWithCachedMessagesTest() {
     });
   },
 
+  startAllocationTracker() {
+    const { allocationTracker } = require("devtools/shared/test-helpers/allocation-tracker");
+    return allocationTracker();
+  },
+
   startTest(doneCallback, config) {
     this._onTestComplete = function(results) {
       TalosParentProfiler.pause("DAMP - end");
@@ -1012,9 +1325,7 @@ async _consoleOpenWithCachedMessagesTest() {
     };
     this._config = config;
 
-    const Ci = Components.interfaces;
-    var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
-    this._win = wm.getMostRecentWindow("navigator:browser");
+    this._win = Services.wm.getMostRecentWindow("navigator:browser");
     this._dampTab = this._win.gBrowser.selectedTab;
     this._win.gBrowser.selectedBrowser.focus(); // Unfocus the URL bar to avoid caret blink
 
@@ -1035,31 +1346,39 @@ async _consoleOpenWithCachedMessagesTest() {
     Object.assign(tests, this._getToolLoadingTests(SIMPLE_URL, "simple", {
       expectedMessages: 1,
       expectedRequests: 1,
-      expectedSources: 1,
-      selectedFile: "simple.html",
-      expectedText: "This is a simple page"
+      debuggerTestData: {
+        expectedSources: 1,
+        selectedFile: "simple.html",
+        expectedText: "This is a simple page"
+      }
     }));
 
     // Run all tests against "complicated" document
     Object.assign(tests, this._getToolLoadingTests(COMPLICATED_URL, "complicated", {
       expectedMessages: 7,
       expectedRequests: 280,
-      expectedSources: 14,
-      selectedFile: "ga.js",
-      expectedText: "Math;function ga(a,b){return a.name=b}"
+      debuggerTestData: {
+        expectedSources: 14,
+        selectedFile: "ga.js",
+        expectedText: "Math;function ga(a,b){return a.name=b}"
+      }
     }));
 
     // Run all tests against a document specific to each tool
     tests["custom.inspector"] = this.customInspector;
     tests["custom.debugger"] = this.customDebugger;
+    tests["custom.webconsole"] = this.customConsole;
 
-    // Run individual tests covering a very precise tool feature
+    // Run individual tests covering a very precise tool feature.
     tests["console.bulklog"] = this._consoleBulkLoggingTest;
     tests["console.streamlog"] = this._consoleStreamLoggingTest;
     tests["console.objectexpand"] = this._consoleObjectExpansionTest;
     tests["console.openwithcache"] = this._consoleOpenWithCachedMessagesTest;
     tests["inspector.mutations"] = this._inspectorMutationsTest;
     tests["inspector.layout"] = this._inspectorLayoutTest;
+    // ⚠  Adding new individual tests slows down DAMP execution ⚠
+    // ⚠  Consider contributing to custom.${tool} rather than adding isolated tests ⚠
+    // ⚠  See http://docs.firefox-dev.tools/tests/writing-perf-tests.html ⚠
 
     // Filter tests via `./mach --subtests filter` command line argument
     let filter = Services.prefs.getCharPref("talos.subtests", "");
@@ -1083,7 +1402,6 @@ async _consoleOpenWithCachedMessagesTest() {
         if (!config.subtests[i] || !tests[config.subtests[i]]) {
           continue;
         }
-
         sequenceArray.push(tests[config.subtests[i]]);
       }
     }
@@ -1092,6 +1410,8 @@ async _consoleOpenWithCachedMessagesTest() {
     // related to Firefox startup or DAMP setup during the first test.
     garbageCollect().then(() => {
       this._doSequence(sequenceArray, this._doneInternal);
+    }).catch(e => {
+      dump("Exception while running DAMP tests: " + e + "\n" + e.stack + "\n");
     });
   }
 };

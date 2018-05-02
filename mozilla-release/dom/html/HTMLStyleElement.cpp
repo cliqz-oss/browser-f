@@ -64,33 +64,26 @@ HTMLStyleElement::SetDisabled(bool aDisabled)
 }
 
 void
-HTMLStyleElement::CharacterDataChanged(nsIDocument* aDocument,
-                                       nsIContent* aContent,
-                                       CharacterDataChangeInfo* aInfo)
+HTMLStyleElement::CharacterDataChanged(nsIContent* aContent,
+                                       const CharacterDataChangeInfo&)
 {
   ContentChanged(aContent);
 }
 
 void
-HTMLStyleElement::ContentAppended(nsIDocument* aDocument,
-                                  nsIContent* aContainer,
-                                  nsIContent* aFirstNewContent)
+HTMLStyleElement::ContentAppended(nsIContent* aFirstNewContent)
 {
-  ContentChanged(aContainer);
+  ContentChanged(aFirstNewContent->GetParent());
 }
 
 void
-HTMLStyleElement::ContentInserted(nsIDocument* aDocument,
-                                  nsIContent* aContainer,
-                                  nsIContent* aChild)
+HTMLStyleElement::ContentInserted(nsIContent* aChild)
 {
   ContentChanged(aChild);
 }
 
 void
-HTMLStyleElement::ContentRemoved(nsIDocument* aDocument,
-                                 nsIContent* aContainer,
-                                 nsIContent* aChild,
+HTMLStyleElement::ContentRemoved(nsIContent* aChild,
                                  nsIContent* aPreviousSibling)
 {
   ContentChanged(aChild);
@@ -185,6 +178,16 @@ HTMLStyleElement::SetTextContentInternal(const nsAString& aTextContent,
                                          nsIPrincipal* aScriptedPrincipal,
                                          ErrorResult& aError)
 {
+  // Per spec, if we're setting text content to an empty string and don't
+  // already have any children, we should not trigger any mutation observers, or
+  // re-parse the stylesheet.
+  if (aTextContent.IsEmpty() && !GetFirstChild()) {
+    nsIPrincipal* principal = mTriggeringPrincipal ? mTriggeringPrincipal.get() : NodePrincipal();
+    if (principal == aScriptedPrincipal) {
+      return;
+    }
+  }
+
   SetEnableUpdates(false);
 
   aError = nsContentUtils::SetNodeTextContent(this, aTextContent, true);

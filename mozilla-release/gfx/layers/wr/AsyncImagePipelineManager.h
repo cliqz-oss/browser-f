@@ -48,7 +48,8 @@ public:
   void RemovePipeline(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
 
   void HoldExternalImage(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch, WebRenderTextureHost* aTexture);
-  void Update(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
+  void PipelineRendered(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
+  void PipelineRemoved(const wr::PipelineId& aPipelineId);
 
   TimeStamp GetCompositionTime() const {
     return mCompositionTime;
@@ -155,11 +156,11 @@ private:
   };
 
   Maybe<TextureHost::ResourceUpdateOp>
-  UpdateImageKeys(wr::ResourceUpdateQueue& aResourceUpdates,
+  UpdateImageKeys(wr::TransactionBuilder& aResourceUpdates,
                   AsyncImagePipeline* aPipeline,
                   nsTArray<wr::ImageKey>& aKeys);
   Maybe<TextureHost::ResourceUpdateOp>
-  UpdateWithoutExternalImage(wr::ResourceUpdateQueue& aResources,
+  UpdateWithoutExternalImage(wr::TransactionBuilder& aResources,
                              TextureHost* aTexture,
                              wr::ImageKey aKey,
                              TextureHost::ResourceUpdateOp);

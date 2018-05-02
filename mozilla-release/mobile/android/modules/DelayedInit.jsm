@@ -5,11 +5,9 @@
 
 /* globals MessageLoop */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["DelayedInit"];
 
-this.EXPORTED_SYMBOLS = ["DelayedInit"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "MessageLoop",
                                    "@mozilla.org/message-loop;1",

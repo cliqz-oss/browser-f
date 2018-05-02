@@ -8,14 +8,12 @@
 #include "IPCBlobInputStreamThread.h"
 
 #include "mozilla/ipc/IPCStreamUtils.h"
-#include "WorkerHolder.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
+#include "mozilla/dom/WorkerHolder.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 namespace {
 
@@ -99,7 +97,7 @@ public:
     : WorkerHolder("IPCBlobInputStreamWorkerHolder")
   {}
 
-  bool Notify(Status aStatus) override
+  bool Notify(WorkerStatus aStatus) override
   {
     // We must keep the worker alive until the migration is completed.
     return true;
@@ -109,8 +107,7 @@ public:
 class ReleaseWorkerHolderRunnable final : public CancelableRunnable
 {
 public:
-  explicit ReleaseWorkerHolderRunnable(
-    UniquePtr<workers::WorkerHolder>&& aWorkerHolder)
+  explicit ReleaseWorkerHolderRunnable(UniquePtr<WorkerHolder>&& aWorkerHolder)
     : CancelableRunnable("dom::ReleaseWorkerHolderRunnable")
     , mWorkerHolder(Move(aWorkerHolder))
   {}
@@ -129,7 +126,7 @@ public:
   }
 
 private:
-  UniquePtr<workers::WorkerHolder> mWorkerHolder;
+  UniquePtr<WorkerHolder> mWorkerHolder;
 };
 
 } // anonymous

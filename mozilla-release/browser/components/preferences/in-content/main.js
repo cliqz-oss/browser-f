@@ -2,19 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 /* import-globals-from ../../../../toolkit/mozapps/preferences/fontbuilder.js */
 /* import-globals-from ../../../base/content/aboutDialog-appUpdater.js */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Downloads.jsm");
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("resource:///modules/ShellService.jsm");
-Components.utils.import("resource:///modules/TransientPrefs.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
-Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CloudStorage",
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Downloads.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource:///modules/ShellService.jsm");
+ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "CloudStorage",
   "resource://gre/modules/CloudStorage.jsm");
 
 // Constants & Enumeration Values
@@ -41,6 +41,7 @@ const CONTAINERS_KEY = "privacy.containers";
 const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
 const URL_OVERRIDES_TYPE = "url_overrides";
 const NEW_TAB_KEY = "newTabURL";
+const NEW_TAB_STRING_ID = "extensionControlled.newTabURL2";
 
 /*
  * Preferences where we store handling information about the feed type.
@@ -94,11 +95,13 @@ const ICON_URL_APP = AppConstants.platform == "linux" ?
 // was set by us to a custom handler icon and CSS should not try to override it.
 const APP_ICON_ATTR_NAME = "appHandlerIcon";
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
+ChromeUtils.defineModuleGetter(this, "OS",
   "resource://gre/modules/osfile.jsm");
 
 if (AppConstants.MOZ_DEV_EDITION) {
-  XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
+  ChromeUtils.defineModuleGetter(this, "fxAccounts",
+    "resource://gre/modules/FxAccounts.jsm");
+  ChromeUtils.defineModuleGetter(this, "FxAccounts",
     "resource://gre/modules/FxAccounts.jsm");
 }
 
@@ -357,16 +360,25 @@ var gMainPane = {
 
     this.updateBrowserStartupLastSession();
 
-    handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
+    handleControllingExtension(
+      URL_OVERRIDES_TYPE, NEW_TAB_KEY, NEW_TAB_STRING_ID);
     let newTabObserver = {
       observe(subject, topic, data) {
-          handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
+        handleControllingExtension(
+          URL_OVERRIDES_TYPE, NEW_TAB_KEY, NEW_TAB_STRING_ID);
       },
     };
     Services.obs.addObserver(newTabObserver, "newtab-url-changed");
     window.addEventListener("unload", () => {
       Services.obs.removeObserver(newTabObserver, "newtab-url-changed");
     });
+
+    let connectionSettingsLink = document.getElementById("connectionSettingsLearnMore");
+    let connectionSettingsUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") +
+                                "prefs-connection-settings";
+    connectionSettingsLink.setAttribute("href", connectionSettingsUrl);
+    this.updateProxySettingsUI();
+    initializeProxyUI(gMainPane);
 
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
@@ -438,7 +450,7 @@ var gMainPane = {
       let row = document.getElementById("translationBox");
       row.removeAttribute("hidden");
       // Showing attribution only for Bing Translator.
-      Components.utils.import("resource:///modules/translation/Translation.jsm");
+      ChromeUtils.import("resource:///modules/translation/Translation.jsm");
       if (Translation.translationEngine == "bing") {
         document.getElementById("bingAttribution").removeAttribute("hidden");
       }
@@ -455,10 +467,12 @@ var gMainPane = {
       OS.File.stat(ignoreSeparateProfile).then(() => separateProfileModeCheckbox.checked = false,
         () => separateProfileModeCheckbox.checked = true);
 
-      fxAccounts.getSignedInUser().then(data => {
-        document.getElementById("getStarted").selectedIndex = data ? 1 : 0;
-      })
-        .catch(Cu.reportError);
+      if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+        document.getElementById("sync-dev-edition-root").hidden = false;
+        fxAccounts.getSignedInUser().then(data => {
+          document.getElementById("getStarted").selectedIndex = data ? 1 : 0;
+        }).catch(Cu.reportError);
+      }
     }
 
     // Initialize the Firefox Updates section.
@@ -481,7 +495,11 @@ var gMainPane = {
     let arch = bundle.GetStringFromName(archResource);
     version += ` (${arch})`;
 
-    document.getElementById("version").textContent = version;
+    document.l10n.setAttributes(
+      document.getElementById("updateAppInfo"),
+      "update-application-info",
+      { version }
+    );
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
@@ -557,6 +575,7 @@ var gMainPane = {
     setEventListener("typeColumn", "click", gMainPane.sort);
     setEventListener("actionColumn", "click", gMainPane.sort);
     setEventListener("chooseFolder", "command", gMainPane.chooseFolder);
+    setEventListener("saveWhere", "command", gMainPane.handleSaveToCommand);
     Preferences.get("browser.download.dir").on("change",
       gMainPane.displayDownloadDirPref.bind(gMainPane));
 
@@ -654,7 +673,7 @@ var gMainPane = {
     this.readBrowserContainersCheckbox();
   },
 
-  separateProfileModeChange() {
+  async separateProfileModeChange() {
     if (AppConstants.MOZ_DEV_EDITION) {
       function quitApp() {
         Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestartNotSameProfile);
@@ -677,14 +696,13 @@ var gMainPane = {
       }
 
       let separateProfileModeCheckbox = document.getElementById("separateProfileMode");
-      let button_index = confirmRestartPrompt(separateProfileModeCheckbox.checked,
+      let button_index = await confirmRestartPrompt(separateProfileModeCheckbox.checked,
         0, false, true);
       switch (button_index) {
         case CONFIRM_RESTART_PROMPT_CANCEL:
           revertCheckbox();
           return;
         case CONFIRM_RESTART_PROMPT_RESTART_NOW:
-          const Cc = Components.classes, Ci = Components.interfaces;
           let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
             .createInstance(Ci.nsISupportsPRBool);
           Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
@@ -717,7 +735,7 @@ var gMainPane = {
       win.openUILinkIn("about:preferences#sync", "current");
       return;
     }
-    let url = await fxAccounts.promiseAccountsSignInURI("dev-edition-setup");
+    let url = await FxAccounts.config.promiseSignInURI("dev-edition-setup");
     let accountsTab = win.gBrowser.addTab(url);
     win.gBrowser.selectedTab = accountsTab;
   },
@@ -750,22 +768,32 @@ var gMainPane = {
     this._updateUseCurrentButton();
 
     function setInputDisabledStates(isControlled) {
+      let tabCount = this._getTabsForHomePage().length;
+
       // Disable or enable the inputs based on if this is controlled by an extension.
       document.querySelectorAll("#browserHomePage, .homepage-button")
         .forEach((element) => {
-          let isLocked = Preferences.get(element.getAttribute("preference")).locked;
-          element.disabled = isLocked || isControlled;
+          let pref = element.getAttribute("preference");
+
+          let isDisabled = Preferences.get(pref).locked || isControlled;
+          if (pref == "pref.browser.disable_button.current_page") {
+            // Special case for current_page to disable it if tabCount is 0
+            isDisabled = isDisabled || tabCount < 1;
+          }
+
+          element.disabled = isDisabled;
         });
     }
 
     if (homePref.locked) {
       // An extension can't control these settings if they're locked.
       hideControllingExtension(HOMEPAGE_OVERRIDE_KEY);
-      setInputDisabledStates(false);
+      setInputDisabledStates.call(this, false);
     } else {
       // Asynchronously update the extension controlled UI.
-      handleControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)
-        .then(setInputDisabledStates);
+      handleControllingExtension(
+        PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY, "extensionControlled.homepage_override2")
+        .then(setInputDisabledStates.bind(this));
     }
 
     // If the pref is set to about:home or about:newtab, set the value to ""
@@ -867,14 +895,12 @@ var gMainPane = {
     let useCurrent = document.getElementById("useCurrent");
     let tabs = this._getTabsForHomePage();
 
-    if (tabs.length > 1)
-      useCurrent.label = useCurrent.getAttribute("label2");
-    else
-      useCurrent.label = useCurrent.getAttribute("label1");
+    const tabCount = tabs.length;
+
+    document.l10n.setAttributes(useCurrent, "use-current-pages", { tabCount });
 
     // If the homepage is controlled by an extension then you can't use this.
     if (await getControllingExtensionInfo(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)) {
-      useCurrent.disabled = true;
       return;
     }
 
@@ -883,15 +909,12 @@ var gMainPane = {
     if (Preferences.get(prefName).locked)
       return;
 
-    useCurrent.disabled = !tabs.length;
+    useCurrent.disabled = tabCount < 1;
   },
 
   _getTabsForHomePage() {
-    var win;
     var tabs = [];
-
-    const Cc = Components.classes, Ci = Components.interfaces;
-    win = Services.wm.getMostRecentWindow("navigator:browser");
+    var win = Services.wm.getMostRecentWindow("navigator:browser");
 
     if (win && win.document.documentElement
       .getAttribute("windowtype") == "navigator:browser") {
@@ -899,6 +922,8 @@ var gMainPane = {
 
       tabs = win.gBrowser.visibleTabs.slice(win.gBrowser._numPinnedTabs);
       tabs = tabs.filter(this.isNotAboutPreferences);
+      // XXX: Bug 1441637 - Fix tabbrowser to report tab.closing before it blurs it
+      tabs = tabs.filter(tab => !tab.closing);
     }
 
     return tabs;
@@ -926,7 +951,7 @@ var gMainPane = {
   updateButtons(aButtonID, aPreferenceID) {
     var button = document.getElementById(aButtonID);
     var preference = Preferences.get(aPreferenceID);
-    button.disabled = preference.value != true;
+    button.disabled = !preference.value;
     return undefined;
   },
 
@@ -1066,7 +1091,7 @@ var gMainPane = {
   },
 
   openTranslationProviderAttribution() {
-    Components.utils.import("resource:///modules/translation/Translation.jsm");
+    ChromeUtils.import("resource:///modules/translation/Translation.jsm");
     Translation.openProviderAttribution();
   },
 
@@ -1091,10 +1116,32 @@ var gMainPane = {
    * Displays a dialog in which proxy settings may be changed.
    */
   showConnections() {
-    gSubDialog.open("chrome://browser/content/preferences/connection.xul");
+    gSubDialog.open("chrome://browser/content/preferences/connection.xul",
+                    null, null, this.updateProxySettingsUI.bind(this));
   },
 
-  checkBrowserContainers(event) {
+  // Update the UI to show the proper description depending on whether an
+  // extension is in control or not.
+  async updateProxySettingsUI() {
+    let controllingExtension = await getControllingExtension(PREF_SETTING_TYPE, PROXY_KEY);
+    let fragment = controllingExtension ?
+      getControllingExtensionFragment(
+        "extensionControlled.proxyConfig", controllingExtension, this._brandShortName) :
+      BrowserUtils.getLocalizedFragment(
+        document,
+        this._prefsBundle.getString("connectionDesc.label"),
+        this._brandShortName);
+    let description = document.getElementById("connectionSettingsDescription");
+
+    // Remove the old content from the description.
+    while (description.firstChild) {
+      description.firstChild.remove();
+    }
+
+    description.appendChild(fragment);
+  },
+
+  async checkBrowserContainers(event) {
     let checkbox = document.getElementById("browserContainersCheckbox");
     if (checkbox.checked) {
       Services.prefs.setBoolPref("privacy.userContext.enabled", true);
@@ -1107,14 +1154,14 @@ var gMainPane = {
       return;
     }
 
-    let bundlePreferences = document.getElementById("bundlePreferences");
-
-    let title = bundlePreferences.getString("disableContainersAlertTitle");
-    let message = PluralForm.get(count, bundlePreferences.getString("disableContainersMsg"))
-      .replace("#S", count);
-    let okButton = PluralForm.get(count, bundlePreferences.getString("disableContainersOkButton"))
-      .replace("#S", count);
-    let cancelButton = bundlePreferences.getString("disableContainersButton2");
+    let [
+      title, message, okButton, cancelButton
+    ] = await document.l10n.formatValues([
+      ["containers-disable-alert-title"],
+      ["containers-disable-alert-desc", { tabCount: count }],
+      ["containers-disable-alert-ok-button", { tabCount: count }],
+      ["containers-disable-alert-cancel-button"]
+    ]);
 
     let buttonFlags = (Ci.nsIPrompt.BUTTON_TITLE_IS_STRING * Ci.nsIPrompt.BUTTON_POS_0) +
       (Ci.nsIPrompt.BUTTON_TITLE_IS_STRING * Ci.nsIPrompt.BUTTON_POS_1);
@@ -1239,7 +1286,7 @@ var gMainPane = {
         }
       }
     })()
-      .catch(Components.utils.reportError);
+      .catch(Cu.reportError);
   },
 
   /**
@@ -1313,29 +1360,15 @@ var gMainPane = {
     if (Services.appinfo.browserTabsRemoteAutostart) {
       let processCountPref = Preferences.get("dom.ipc.processCount");
       let defaultProcessCount = processCountPref.defaultValue;
-      let bundlePreferences = document.getElementById("bundlePreferences");
 
       let contentProcessCount =
         document.querySelector(`#contentProcessCount > menupopup >
                                 menuitem[value="${defaultProcessCount}"]`);
 
-      // New localization API experiment (October 2017).
-      // See bug 1402061 for details.
-      //
-      // The `intl.l10n.fluent.disabled` pref can be used
-      // to opt-out of the experiment in case of any
-      // unforseen problems. The legacy API will then
-      // be used.
-      if (Services.prefs.getBoolPref("intl.l10n.fluent.disabled", false)) {
-        let label = bundlePreferences.getFormattedString("defaultContentProcessCount",
-          [defaultProcessCount]);
-        contentProcessCount.label = label;
-      } else {
-        document.l10n.setAttributes(
-          contentProcessCount,
-          "default-content-process-count",
-          { num: defaultProcessCount });
-      }
+      document.l10n.setAttributes(
+        contentProcessCount,
+        "performance-default-content-process-count",
+        { num: defaultProcessCount });
 
       document.getElementById("limitContentProcess").disabled = false;
       document.getElementById("contentProcessCount").disabled = false;
@@ -1385,30 +1418,35 @@ var gMainPane = {
     if (AppConstants.MOZ_UPDATER) {
       var enabledPref = Preferences.get("app.update.enabled");
       var autoPref = Preferences.get("app.update.auto");
+      let disabledByPolicy = Services.policies &&
+                             !Services.policies.isAllowed("appUpdate");
       var radiogroup = document.getElementById("updateRadioGroup");
 
-      if (!enabledPref.value) // Don't care for autoPref.value in this case.
+      if (!enabledPref.value || disabledByPolicy) // Don't care for autoPref.value in this case.
         radiogroup.value = "manual"; // 3. Never check for updates.
       else if (autoPref.value) // enabledPref.value && autoPref.value
         radiogroup.value = "auto"; // 1. Automatically install updates
       else // enabledPref.value && !autoPref.value
         radiogroup.value = "checkOnly"; // 2. Check, but let me choose
 
-      var canCheck = Components.classes["@mozilla.org/updates/update-service;1"].
-        getService(Components.interfaces.nsIApplicationUpdateService).
+      var canCheck = Cc["@mozilla.org/updates/update-service;1"].
+        getService(Ci.nsIApplicationUpdateService).
         canCheckForUpdates;
       // canCheck is false if the enabledPref is false and locked,
       // or the binary platform or OS version is not known.
       // A locked pref is sufficient to disable the radiogroup.
-      radiogroup.disabled = !canCheck || enabledPref.locked || autoPref.locked;
+      radiogroup.disabled = !canCheck ||
+                            enabledPref.locked ||
+                            autoPref.locked ||
+                            disabledByPolicy;
 
       if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
         // Check to see if the maintenance service is installed.
         // If it is don't show the preference at all.
         var installed;
         try {
-          var wrk = Components.classes["@mozilla.org/windows-registry-key;1"]
-            .createInstance(Components.interfaces.nsIWindowsRegKey);
+          var wrk = Cc["@mozilla.org/windows-registry-key;1"]
+            .createInstance(Ci.nsIWindowsRegKey);
           wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
             "SOFTWARE\\Mozilla\\MaintenanceService",
             wrk.ACCESS_READ | wrk.WOW64_64);
@@ -1427,7 +1465,9 @@ var gMainPane = {
    * Sets the pref values based on the selected item of the radiogroup.
    */
   updateWritePrefs() {
-    if (AppConstants.MOZ_UPDATER) {
+    let disabledByPolicy = Services.policies &&
+                           !Services.policies.isAllowed("appUpdate");
+    if (AppConstants.MOZ_UPDATER && !disabledByPolicy) {
       var enabledPref = Preferences.get("app.update.enabled");
       var autoPref = Preferences.get("app.update.auto");
       var radiogroup = document.getElementById("updateRadioGroup");
@@ -1693,8 +1733,8 @@ var gMainPane = {
 
   _matchesFilter(aType) {
     var filterValue = this._filter.value.toLowerCase();
-    return this._describeType(aType).toLowerCase().indexOf(filterValue) != -1 ||
-      this._describePreferredAction(aType).toLowerCase().indexOf(filterValue) != -1;
+    return this._describeType(aType).toLowerCase().includes(filterValue) ||
+      this._describePreferredAction(aType).toLowerCase().includes(filterValue);
   },
 
   /**
@@ -2497,7 +2537,7 @@ var gMainPane = {
     downloadFolder.disabled = !preference.value || preference.locked;
     chooseFolder.disabled = !preference.value || preference.locked;
 
-    this.readCloudStorage().catch(Components.utils.reportError);
+    this.readCloudStorage().catch(Cu.reportError);
     // don't override the preference's value in UI
     return undefined;
   },
@@ -2542,7 +2582,7 @@ var gMainPane = {
    * button based on option selected.
    */
   handleSaveToCommand(event) {
-    return this.handleSaveToCommandTask(event).catch(Components.utils.reportError);
+    return this.handleSaveToCommandTask(event).catch(Cu.reportError);
   },
   async handleSaveToCommandTask(event) {
     if (event.target.id !== "saveToCloud" && event.target.id !== "saveTo") {
@@ -2587,7 +2627,7 @@ var gMainPane = {
    * response to the choice, if one is made.
    */
   chooseFolder() {
-    return this.chooseFolderTask().catch(Components.utils.reportError);
+    return this.chooseFolderTask().catch(Cu.reportError);
   },
   async chooseFolderTask() {
     let bundlePreferences = document.getElementById("bundlePreferences");
@@ -2595,11 +2635,11 @@ var gMainPane = {
     let folderListPref = Preferences.get("browser.download.folderList");
     let currentDirPref = await this._indexToFolder(folderListPref.value);
     let defDownloads = await this._indexToFolder(1);
-    let fp = Components.classes["@mozilla.org/filepicker;1"].
-      createInstance(Components.interfaces.nsIFilePicker);
+    let fp = Cc["@mozilla.org/filepicker;1"].
+      createInstance(Ci.nsIFilePicker);
 
-    fp.init(window, title, Components.interfaces.nsIFilePicker.modeGetFolder);
-    fp.appendFilters(Components.interfaces.nsIFilePicker.filterAll);
+    fp.init(window, title, Ci.nsIFilePicker.modeGetFolder);
+    fp.appendFilters(Ci.nsIFilePicker.filterAll);
     // First try to open what's currently configured
     if (currentDirPref && currentDirPref.exists()) {
       fp.displayDirectory = currentDirPref;
@@ -2612,7 +2652,7 @@ var gMainPane = {
     }
 
     let result = await new Promise(resolve => fp.open(resolve));
-    if (result != Components.interfaces.nsIFilePicker.returnOK) {
+    if (result != Ci.nsIFilePicker.returnOK) {
       return;
     }
 
@@ -2630,7 +2670,7 @@ var gMainPane = {
    * preferences.
    */
   displayDownloadDirPref() {
-    this.displayDownloadDirPrefTask().catch(Components.utils.reportError);
+    this.displayDownloadDirPrefTask().catch(Cu.reportError);
 
     // don't override the preference's value in UI
     return undefined;
@@ -2644,7 +2684,7 @@ var gMainPane = {
 
     // Used in defining the correct path to the folder icon.
     var fph = Services.io.getProtocolHandler("file")
-      .QueryInterface(Components.interfaces.nsIFileProtocolHandler);
+      .QueryInterface(Ci.nsIFileProtocolHandler);
     var iconUrlSpec;
 
     let folderIndex = folderListPref.value;
@@ -2694,7 +2734,7 @@ var gMainPane = {
   async _getDownloadsFolder(aFolder) {
     switch (aFolder) {
       case "Desktop":
-        return Services.dirsvc.get("Desk", Components.interfaces.nsIFile);
+        return Services.dirsvc.get("Desk", Ci.nsIFile);
       case "Downloads":
         let downloadsDir = await Downloads.getSystemDownloadsDirectory();
         return new FileUtils.File(downloadsDir);
@@ -3022,7 +3062,7 @@ HandlerInfoWrapper.prototype = {
   handledOnlyByPlugin: undefined,
 
   get isDisabledPluginType() {
-    return this._getDisabledPluginTypes().indexOf(this.type) != -1;
+    return this._getDisabledPluginTypes().includes(this.type);
   },
 
   _getDisabledPluginTypes() {
@@ -3042,7 +3082,7 @@ HandlerInfoWrapper.prototype = {
   disablePluginType() {
     var disabledPluginTypes = this._getDisabledPluginTypes();
 
-    if (disabledPluginTypes.indexOf(this.type) == -1)
+    if (!disabledPluginTypes.includes(this.type))
       disabledPluginTypes.push(this.type);
 
     Services.prefs.setCharPref(PREF_DISABLED_PLUGIN_TYPES,
@@ -3355,7 +3395,7 @@ FeedHandlerInfo.prototype = {
   },
 
   set alwaysAskBeforeHandling(aNewValue) {
-    if (aNewValue == true)
+    if (aNewValue)
       Preferences.get(this._prefSelectedAction).value = "ask";
     else
       Preferences.get(this._prefSelectedAction).value = "reader";
@@ -3477,6 +3517,7 @@ var pdfHandlerInfo = {
   _handlerChanged: TOPIC_PDFJS_HANDLER_CHANGED,
   _appPrefLabel: "portableDocumentFormat",
   get enabled() {
-    return !Services.prefs.getBoolPref(PREF_PDFJS_DISABLED);
+    return !Services.prefs.getBoolPref(PREF_PDFJS_DISABLED) &&
+           Services.policies.isAllowed("PDF.js");
   },
 };

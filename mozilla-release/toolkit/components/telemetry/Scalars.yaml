@@ -1184,6 +1184,24 @@ gfx.omtp:
     record_in_processes:
       - 'content'
 
+gfx:
+  small_paint_phase_weight:
+    bug_numbers:
+      - 1430897
+    description: >
+      Time that is spent in each phase of painting, as a percentage of
+      paint time. See also CONTENT_LARGE_PAINT_PHASE_WEIGHT in Histograms.json.
+      Keys are r (rasterization), dl (display list construction), and flb
+      (FrameLayerBuilder).
+    keyed: true
+    kind: uint
+    expires: "66"
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - mwoodrow@mozilla.com
+    record_in_processes:
+      - 'content'
+
 # The following section contains the form autofill related scalars.
 formautofill:
   availability:
@@ -1344,7 +1362,7 @@ idb.type:
       - 1360567
     description: >
       Number of times indexeddb.open(name, {storage: "persistent"}) has been used.
-    expires: "60"
+    expires: "62"
     kind: uint
     notification_emails:
       - shuang@mozilla.com
@@ -1358,7 +1376,7 @@ idb.type:
       - 1360567
     description: >
       Number of times indexeddb.open(name, {storage: "temporary"}) has been used.
-    expires: "60"
+    expires: "62"
     kind: uint
     notification_emails:
       - shuang@mozilla.com
@@ -1488,7 +1506,7 @@ telemetry.test:
     bug_numbers:
       - 1276190
     description: This is an expired testing scalar; not meant to be touched.
-    expires: 4.0a1
+    expires: "4"
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
@@ -1499,7 +1517,7 @@ telemetry.test:
     bug_numbers:
       - 1276190
     description: This is an unexpired testing scalar; not meant to be touched.
-    expires: "375.0"
+    expires: "375"
     kind: uint
     notification_emails:
       - telemetry-client-dev@mozilla.com
@@ -1560,7 +1578,7 @@ telemetry.test:
     bug_numbers:
       - 1277806
     description: This is an expired testing scalar; not meant to be touched.
-    expires: 4.0a1
+    expires: "4"
     kind: uint
     keyed: true
     notification_emails:

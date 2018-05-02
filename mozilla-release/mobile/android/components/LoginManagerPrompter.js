@@ -2,12 +2,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   DoorHanger: "resource://gre/modules/Prompt.jsm",
@@ -47,11 +42,9 @@ LoginManagerPrompter.prototype = {
   __strBundle: null, // String bundle for L10N
   get _strBundle() {
     if (!this.__strBundle) {
-      let bunService = Cc["@mozilla.org/intl/stringbundle;1"].
-                       getService(Ci.nsIStringBundleService);
       this.__strBundle = {
-        pwmgr: bunService.createBundle("chrome://browser/locale/passwordmgr.properties"),
-        brand: bunService.createBundle("chrome://branding/locale/brand.properties")
+        pwmgr: Services.strings.createBundle("chrome://browser/locale/passwordmgr.properties"),
+        brand: Services.strings.createBundle("chrome://branding/locale/brand.properties")
       };
 
       if (!this.__strBundle)
@@ -170,8 +163,6 @@ LoginManagerPrompter.prototype = {
     let brandShortName = this._strBundle.brand.GetStringFromName("brandShortName");
     let notificationText  = this._getLocalizedString("saveLogin", [brandShortName]);
 
-    let username = aLogin.username ? this._sanitizeUsername(aLogin.username) : "";
-
     // The callbacks in |buttons| have a closure to access the variables
     // in scope here; set one to |Services.logins| so we can get back to pwmgr
     // without a getService() call.
@@ -273,8 +264,6 @@ LoginManagerPrompter.prototype = {
    * Note; XPCOM stupidity: |count| is just |logins.length|.
    */
   promptToChangePasswordWithUsernames: function(logins, count, aNewLogin) {
-    const buttonFlags = Ci.nsIPrompt.STD_YES_NO_BUTTONS;
-
     var usernames = logins.map(l => l.username);
     var dialogText  = this._getLocalizedString("userSelectText2");
     var dialogTitle = this._getLocalizedString("passwordChangeTitle");

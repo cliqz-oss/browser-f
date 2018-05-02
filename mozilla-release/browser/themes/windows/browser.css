@@ -12,11 +12,6 @@
 %define glassShadowColor hsla(240,5%,5%,0.3)
 
 :root {
-  --titlebar-text-color: currentColor;
-
-  --tabs-border-color: threedshadow;
-  --tab-line-color: highlight;
-
   --toolbar-non-lwt-bgcolor: -moz-dialog;
   --toolbar-non-lwt-textcolor: -moz-dialogtext;
   --toolbar-non-lwt-bgimage: linear-gradient(rgba(255,255,255,.15), rgba(255,255,255,.15));
@@ -37,11 +32,16 @@
   --toolbox-border-bottom-color: ThreeDShadow;
 }
 
+#navigator-toolbox {
+  --tabs-border-color: threedshadow;
+}
+
+#tabbrowser-tabs {
+  --tab-line-color: highlight;
+}
+
 @media (-moz-windows-default-theme) {
   :root {
-    --tabs-border-color: rgba(0,0,0,.3);
-    --tab-line-color: #0a84ff;
-
     --toolbar-non-lwt-bgcolor: #f9f9fa;
     --toolbar-non-lwt-textcolor: #0c0c0d;
     --toolbar-non-lwt-bgimage: none;
@@ -52,15 +52,25 @@
 
     --toolbox-border-bottom-color: #e1e1e2;
   }
+
+  #navigator-toolbox {
+    --tabs-border-color: rgba(0,0,0,.3);
+  }
+
+  #tabbrowser-tabs {
+    --tab-line-color: #0a84ff;
+  }
 }
 
 :root:-moz-lwtheme {
-  --tabs-border-color: rgba(0,0,0,.3);
-
   --toolbar-bgcolor: rgba(255,255,255,.4);
   --toolbar-bgimage: none;
 
   --toolbox-border-bottom-color: rgba(0,0,0,.3);
+}
+
+#navigator-toolbox:-moz-lwtheme {
+  --tabs-border-color: rgba(0,0,0,.3);
 }
 
 #menubar-items {
@@ -102,18 +112,13 @@
   color: var(--toolbar-color, inherit);
 }
 
-#toolbar-menubar,
-#TabsToolbar {
-  color: var(--titlebar-text-color);
-}
-
 /*
  * Windows 7 draws the chrome background color as the tab background
  * instead of in the tabs toolbar.
  */
 @media (-moz-os-version: windows-win7) {
   @media (-moz-windows-default-theme) {
-    :root:not(:-moz-lwtheme) {
+    #navigator-toolbox:not(:-moz-lwtheme) {
       --tabs-border-color: @glassShadowColor@;
     }
 
@@ -158,12 +163,12 @@
   /* Please keep the menu text colors in this media block in sync with
    * compacttheme.css, minus the :not(:-moz-lwtheme) condition - see Bug 1165718.
    */
-  :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme) {
-    --titlebar-text-color: CaptionText;
+  :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color:not(:-moz-lwtheme) {
+    color: CaptionText;
   }
 
-  :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme):-moz-window-inactive {
-    --titlebar-text-color: InactiveCaptionText;
+  :root[tabsintitlebar]:not([inFullscreen]) .titlebar-color:not(:-moz-lwtheme):-moz-window-inactive {
+    color: InactiveCaptionText;
   }
 }
 
@@ -173,8 +178,8 @@
   }
 
   #main-window[tabsintitlebar] #titlebar-content:-moz-lwtheme {
-    -moz-binding: url("chrome://global/content/bindings/general.xml#windowdragbox");
     visibility: visible;
+    -moz-window-dragging: drag;
   }
 
   /* Top-level menu appearance has transparent background, so the text color
@@ -609,125 +614,35 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
   font-size: 12px;
 }
 
-html|span.ac-tag {
-  border-radius: 2px;
-  border: 1px solid transparent;
-  padding: 0 1px;
-}
-
 .ac-separator,
 .ac-url,
 .ac-action {
   font-size: 12px;
 }
 
-html|span.ac-emphasize-text-title,
-html|span.ac-emphasize-text-tag,
-html|span.ac-emphasize-text-url {
-  font-weight: 600;
-}
-
 @media (-moz-windows-default-theme) {
-  .ac-title:not([selected=true]) {
-    color: hsl(0, 0%, 0%);
-  }
-
-  .ac-separator:not([selected=true]) {
-    color: hsl(0, 0%, 50%);
-  }
-
-  .ac-url:not([selected=true]) {
-    color: hsl(210, 77%, 47%);
-  }
-
-  .ac-action:not([selected=true]) {
-    color: hsl(178, 100%, 28%);
-  }
-
-  html|span.ac-tag {
-    background-color: hsl(216, 0%, 88%);
-    color: hsl(0, 0%, 0%);
-  }
-
-  .ac-tags-text[selected] > html|span.ac-tag {
-    background-color: hsl(0, 0%, 100%);
-    color: hsl(210, 80%, 40%);
+  :root {
+    --urlbar-popup-url-color: hsl(210, 77%, 47%);
+    --urlbar-popup-action-color: hsl(178, 100%, 28%);
   }
 }
 
 @media (-moz-windows-default-theme: 0) {
-  .ac-separator:not([selected=true]),
-  .ac-url:not([selected=true]),
-  .ac-action:not([selected=true]) {
-    color: -moz-nativehyperlinktext;
+  :root {
+    --urlbar-popup-url-color: -moz-nativehyperlinktext;
+    --urlbar-popup-action-color: -moz-nativehyperlinktext;
   }
-
-  html|span.ac-tag {
-    background-color: -moz-FieldText;
-    color: -moz-Field;
-  }
-
-  .ac-tags-text[selected] > html|span.ac-tag {
-    background-color: HighlightText;
-    color: Highlight;
-  }
-}
-
-.ac-type-icon[type=bookmark] {
-  list-style-image: url("chrome://browser/skin/bookmark.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=bookmark][selected][current] {
-  fill: white;
-}
-
-.ac-type-icon[type=keyword],
-.ac-site-icon[type=searchengine] {
-  list-style-image: url(chrome://browser/skin/search-glass.svg);
-  -moz-context-properties: fill;
-  fill: GrayText;
-}
-
-.ac-type-icon[type=keyword][selected],
-.ac-site-icon[type=searchengine][selected] {
-  fill: highlighttext;
-}
-
-.ac-type-icon[type=switchtab],
-.ac-type-icon[type=remotetab] {
-  list-style-image: url("chrome://browser/skin/urlbar-tab.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=switchtab][selected],
-.ac-type-icon[type=remotetab][selected] {
-  fill: white;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(treecolAutoCompleteComment) {
-  color: GrayText;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(suggesthint, treecolAutoCompleteComment),
-.autocomplete-treebody::-moz-tree-cell-text(suggestfirst, treecolAutoCompleteComment)
-{
-  color: GrayText;
-  font-size: smaller;
-}
-
-.autocomplete-treebody::-moz-tree-cell(suggesthint) {
-  border-top: 1px solid GrayText;
 }
 
 /* bookmarking panel */
 
 #editBookmarkPanelStarIcon {
-  list-style-image: url("chrome://browser/skin/places/starred48.png");
-  width: 48px;
-  height: 48px;
+  list-style-image: url("chrome://browser/skin/bookmark.svg");
+  -moz-context-properties: fill;
+  fill: var(--toolbarbutton-icon-fill-attention);
+  width: 40px;
+  height: 40px;
+  margin: 4px;
 }
 
 #editBookmarkPanelTitle {

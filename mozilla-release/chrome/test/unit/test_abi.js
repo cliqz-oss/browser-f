@@ -1,4 +1,4 @@
-Components.utils.import("resource://testing-common/AppInfo.jsm", this);
+ChromeUtils.import("resource://testing-common/AppInfo.jsm", this);
 updateAppInfo({
   name: "XPCShell",
   ID: "{39885e5f-f6b4-4e2a-87e5-6259ecf79011}",
@@ -8,8 +8,8 @@ updateAppInfo({
 
 registerManifests([do_get_file("data/test_abi.manifest")]);
 
-const catman = Components.classes["@mozilla.org/categorymanager;1"].
-  getService(Components.interfaces.nsICategoryManager);
+const catman = Cc["@mozilla.org/categorymanager;1"].
+  getService(Ci.nsICategoryManager);
 
 function is_registered(name) {
   try {

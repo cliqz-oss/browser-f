@@ -32,7 +32,7 @@ public:
   NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLOptionElement, option)
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLOptionElement, nsGenericHTMLElement)
 
   using mozilla::dom::Element::SetText;
   using mozilla::dom::Element::GetText;
@@ -89,10 +89,6 @@ public:
                          bool aPreallocateChildren) const override;
 
   nsresult CopyInnerTo(mozilla::dom::Element* aDest, bool aPreallocateChildren);
-
-  virtual bool IsDisabled() const override {
-    return State().HasState(NS_EVENT_STATE_DISABLED);
-  }
 
   bool Disabled() const
   {

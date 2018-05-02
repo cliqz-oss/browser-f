@@ -41,6 +41,7 @@ enum nsLinkState {
 };
 
 // IID for the nsIContent interface
+// Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_ICONTENT_IID \
 { 0x8e1bab9d, 0x8815, 0x4d2c, \
   { 0xa2, 0x4d, 0x7a, 0xba, 0x52, 0x39, 0xdc, 0x22 } }
@@ -202,7 +203,7 @@ public:
    * Returns |this| if it is not chrome-only/native anonymous, otherwise
    * first non chrome-only/native anonymous ancestor.
    */
-  virtual nsIContent* FindFirstNonChromeOnlyAccessContent() const;
+  nsIContent* FindFirstNonChromeOnlyAccessContent() const;
 
   /**
    * Returns true if and only if this node has a parent, but is not in
@@ -263,7 +264,7 @@ public:
   /**
    * Returns true if in a chrome document
    */
-  virtual bool IsInChromeDocument() const;
+  inline bool IsInChromeDocument() const;
 
   /**
    * Get the namespace that this element's tag is defined in
@@ -614,16 +615,6 @@ public:
    * non-nsIContent.
    */
   inline nsIContent* GetFlattenedTreeParent() const;
-
-  /**
-   * Get the flattened tree parent for NAC holding from the document element,
-   * from the point of view of the style system.
-   *
-   * Document-level anonymous content holds from the document element, even
-   * though they should not be treated as such (they should be parented to the
-   * document instead, and shouldn't inherit from the document element).
-   */
-  nsINode* GetFlattenedTreeParentForDocumentElementNAC() const;
 
   /**
    * API to check if this is a link that's traversed in response to user input

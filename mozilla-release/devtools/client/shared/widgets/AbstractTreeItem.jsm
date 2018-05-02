@@ -5,17 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { interfaces: Ci, utils: Cu } = Components;
-
-const { require, loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
 const { KeyCodes } = require("devtools/client/shared/keycodes");
 
-loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/old-event-emitter");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 this.EXPORTED_SYMBOLS = ["AbstractTreeItem"];
 
@@ -444,7 +439,7 @@ AbstractTreeItem.prototype = {
     this._onArrowClick = this._onArrowClick.bind(this);
     this._onClick = this._onClick.bind(this);
     this._onDoubleClick = this._onDoubleClick.bind(this);
-    this._onKeyPress = this._onKeyPress.bind(this);
+    this._onKeyDown = this._onKeyDown.bind(this);
     this._onFocus = this._onFocus.bind(this);
     this._onBlur = this._onBlur.bind(this);
 
@@ -459,7 +454,7 @@ AbstractTreeItem.prototype = {
 
     targetNode.addEventListener("mousedown", this._onClick);
     targetNode.addEventListener("dblclick", this._onDoubleClick);
-    targetNode.addEventListener("keypress", this._onKeyPress);
+    targetNode.addEventListener("keydown", this._onKeyDown);
     targetNode.addEventListener("focus", this._onFocus);
     targetNode.addEventListener("blur", this._onBlur);
 
@@ -581,9 +576,9 @@ AbstractTreeItem.prototype = {
   },
 
   /**
-   * Handler for the "keypress" event on the element displaying this tree item.
+   * Handler for the "keydown" event on the element displaying this tree item.
    */
-  _onKeyPress: function (e) {
+  _onKeyDown: function (e) {
     // Prevent scrolling when pressing navigation keys.
     ViewHelpers.preventScrolling(e);
 

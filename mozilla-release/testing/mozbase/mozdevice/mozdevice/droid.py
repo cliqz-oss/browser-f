@@ -101,7 +101,7 @@ class DroidMixin(object):
         if extraArgs:
             extras['args'] = " ".join(extraArgs)
 
-        self.launchApplication(appName, "org.mozilla.gecko.BrowserApp", intent, url=url,
+        self.launchApplication(appName, ".App", intent, url=url,
                                extras=extras,
                                wait=wait, failIfRunning=failIfRunning)
 
@@ -163,7 +163,7 @@ class DroidADB(DeviceManagerADB, DroidMixin):
             # Increased timeout to 60 seconds after intermittent timeouts at 30.
             data = self.shellCheckOutput(
                 ["dumpsys", "window", "windows"], timeout=60)
-        except:
+        except Exception:
             # dumpsys seems to intermittently fail (seen on 4.3 emulator), producing
             # no output.
             return ""

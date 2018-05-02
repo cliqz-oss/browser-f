@@ -20,7 +20,6 @@ const {
 } = require("../types");
 
 function prepareMessage(packet, idGenerator) {
-  // This packet is already in the expected packet structure. Simply return.
   if (!packet.source) {
     packet = transformPacket(packet);
   }
@@ -87,9 +86,15 @@ function transformConsoleAPICallPacket(packet) {
       // Chrome RDP doesn't have a special type for count.
       type = MESSAGE_TYPE.LOG;
       let {counter} = message;
-      let label = counter.label ? counter.label : l10n.getStr("noCounterLabel");
-      messageText = `${label}: ${counter.count}`;
-      parameters = null;
+
+      if (!counter) {
+        // We don't show anything if we don't have counter data.
+        type = MESSAGE_TYPE.NULL_MESSAGE;
+      } else {
+        let label = counter.label ? counter.label : l10n.getStr("noCounterLabel");
+        messageText = `${label}: ${counter.count}`;
+        parameters = null;
+      }
       break;
     case "time":
       parameters = null;
@@ -167,6 +172,8 @@ function transformConsoleAPICallPacket(packet) {
     frame,
     timeStamp: message.timeStamp,
     userProvidedStyles: message.styles,
+    prefix: message.prefix,
+    private: message.private,
   });
 }
 
@@ -176,19 +183,25 @@ function transformNavigationMessagePacket(packet) {
     source: MESSAGE_SOURCE.CONSOLE_API,
     type: MESSAGE_TYPE.LOG,
     level: MESSAGE_LEVEL.LOG,
-    messageText: "Navigated to " + message.url,
-    timeStamp: message.timeStamp
+    messageText: l10n.getFormatStr("webconsole.navigated", [message.url]),
+    timeStamp: message.timeStamp,
+    private: message.private,
   });
 }
 
 function transformLogMessagePacket(packet) {
-  let { message } = packet;
+  let {
+    message,
+    timeStamp,
+  } = packet;
+
   return new ConsoleMessage({
     source: MESSAGE_SOURCE.CONSOLE_API,
     type: MESSAGE_TYPE.LOG,
     level: MESSAGE_LEVEL.LOG,
-    messageText: message.message,
-    timeStamp: message.timeStamp
+    messageText: message,
+    timeStamp,
+    private: message.private,
   });
 }
 
@@ -220,6 +233,7 @@ function transformPageErrorPacket(packet) {
     exceptionDocURL: pageError.exceptionDocURL,
     timeStamp: pageError.timeStamp,
     notes: pageError.notes,
+    private: pageError.private,
   });
 }
 
@@ -238,13 +252,15 @@ function transformNetworkEventPacket(packet) {
     method: networkEvent.request.method,
     updates: networkEvent.updates,
     cause: networkEvent.cause,
+    private: networkEvent.private,
   });
 }
 
 function transformEvaluationResultPacket(packet) {
   let {
-    exceptionMessage: messageText,
+    exceptionMessage,
     exceptionDocURL,
+    exception,
     frame,
     result,
     helperResult,
@@ -258,24 +274,31 @@ function transformEvaluationResultPacket(packet) {
 
   if (helperResult && helperResult.type === "error") {
     try {
-      messageText = l10n.getStr(helperResult.message);
+      exceptionMessage = l10n.getStr(helperResult.message);
     } catch (ex) {
-      messageText = helperResult.message;
+      exceptionMessage = helperResult.message;
     }
+  } else if (typeof exception === "string") {
+    // Wrap thrown strings in Error objects, so `throw "foo"` outputs "Error: foo"
+    exceptionMessage = new Error(exceptionMessage).toString();
   }
 
-  const level = messageText ? MESSAGE_LEVEL.ERROR : MESSAGE_LEVEL.LOG;
+  const level = typeof exceptionMessage !== "undefined" && exceptionMessage !== null
+    ? MESSAGE_LEVEL.ERROR
+    : MESSAGE_LEVEL.LOG;
+
   return new ConsoleMessage({
     source: MESSAGE_SOURCE.JAVASCRIPT,
     type: MESSAGE_TYPE.RESULT,
     helperType: helperResult ? helperResult.type : null,
     level,
-    messageText,
+    messageText: exceptionMessage,
     parameters: [parameter],
     exceptionDocURL,
     frame,
     timeStamp,
     notes,
+    private: packet.private,
   });
 }
 
@@ -291,6 +314,7 @@ function getRepeatId(message) {
     source: message.source,
     type: message.type,
     userProvidedStyles: message.userProvidedStyles,
+    private: message.private,
   });
 }
 
@@ -311,8 +335,10 @@ function convertCachedPacket(packet) {
     convertPacket.networkEvent = packet;
     convertPacket.type = "networkEvent";
   } else if (packet._type === "LogMessage") {
-    convertPacket.message = packet;
-    convertPacket.type = "logMessage";
+    convertPacket = {
+      ...packet,
+      type: "logMessage"
+    };
   } else {
     throw new Error("Unexpected packet type: " + packet._type);
   }
@@ -368,9 +394,19 @@ function getInitialMessageCountForViewport(win) {
   return Math.ceil(win.innerHeight / minMessageHeight);
 }
 
+function isPacketPrivate(packet) {
+  return (
+    packet.private === true ||
+    (packet.message && packet.message.private === true) ||
+    (packet.pageError && packet.pageError.private === true) ||
+    (packet.networkEvent && packet.networkEvent.private === true)
+  );
+}
+
 module.exports = {
   getInitialMessageCountForViewport,
   isGroupType,
+  isPacketPrivate,
   l10n,
   prepareMessage,
   // Export for use in testing.

@@ -1,11 +1,11 @@
 /* global ChromeUtils */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 try {
   // We might be running without privileges, in which case it's up to the
   // harness to give us the 'ctypes' object.
-  Components.utils.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
 } catch (e) {
 }
 
@@ -113,7 +113,7 @@ function structural_check_eq_aux(a, b) {
 
 function trigger_gc() {
   dump("Triggering garbage-collection");
-  Components.utils.forceGC();
+  Cu.forceGC();
 }
 
 function must_throw(f, expected) {

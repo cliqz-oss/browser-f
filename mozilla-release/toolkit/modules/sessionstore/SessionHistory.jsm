@@ -4,16 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionHistory"];
+var EXPORTED_SYMBOLS = ["SessionHistory"];
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "uuidGenerator",
   "@mozilla.org/uuid-generator;1", "nsIUUIDGenerator");
@@ -25,7 +21,7 @@ function debug(msg) {
 /**
  * The external API exported by this module.
  */
-this.SessionHistory = Object.freeze({
+var SessionHistory = Object.freeze({
   isEmpty(docShell) {
     return SessionHistoryInternal.isEmpty(docShell);
   },

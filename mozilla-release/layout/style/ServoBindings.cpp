@@ -19,8 +19,10 @@
 #include "nsCSSProps.h"
 #include "nsCSSParser.h"
 #include "nsCSSPseudoElements.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRuleProcessor.h"
 #include "nsCSSRules.h"
+#endif
 #include "nsContentUtils.h"
 #include "nsDOMTokenList.h"
 #include "nsDeviceContext.h"
@@ -36,14 +38,12 @@
 #include "nsIPresShellInlines.h"
 #include "nsIPrincipal.h"
 #include "nsIURI.h"
-#include "nsIXULRuntime.h"
 #include "nsFontMetrics.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsMappedAttributes.h"
 #include "nsMediaFeatures.h"
 #include "nsNameSpaceManager.h"
 #include "nsNetUtil.h"
-#include "nsRuleNode.h"
 #include "nsString.h"
 #include "nsStyleStruct.h"
 #include "nsStyleUtil.h"
@@ -51,11 +51,14 @@
 #include "nsTArray.h"
 #include "nsTransitionManager.h"
 
+#include "mozilla/CORSMode.h"
 #include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/EventStates.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/GeckoStyleContext.h"
+#endif
 #include "mozilla/Keyframe.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
@@ -73,6 +76,7 @@
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/URLExtraData.h"
+#include "mozilla/dom/CSSMozDocumentRule.h"
 
 #if defined(MOZ_MEMORY)
 # include "mozmemory.h"
@@ -124,40 +128,16 @@ AssertIsMainThreadOrServoLangFontPrefsCacheLocked()
 }
 
 
-void
-Gecko_RecordTraversalStatistics(uint32_t total, uint32_t parallel,
-                                uint32_t total_t, uint32_t parallel_t,
-                                uint32_t total_s, uint32_t parallel_s)
-{
-
-#ifdef NIGHTLY_BUILD
-  // we ignore cases where a page just didn't restyle a lot
-  if (total > 30) {
-    uint32_t percent = parallel * 100 / total;
-    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION, percent);
-  }
-  if (total_t > 0) {
-    uint32_t percent = parallel_t * 100 / total_t;
-    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION_WEIGHTED_TRAVERSED, percent);
-  }
-  if (total_s > 0) {
-    uint32_t percent = parallel_s * 100 / total_s;
-    Telemetry::Accumulate(Telemetry::STYLO_PARALLEL_RESTYLE_FRACTION_WEIGHTED_STYLED, percent);
-  }
-#endif
-}
-
 /*
  * Does this child count as significant for selector matching?
  *
  * See nsStyleUtil::IsSignificantChild for details.
  */
 bool
-Gecko_IsSignificantChild(RawGeckoNodeBorrowed aNode, bool aTextIsSignificant,
+Gecko_IsSignificantChild(RawGeckoNodeBorrowed aNode,
                          bool aWhitespaceIsSignificant)
 {
   return nsStyleUtil::ThreadSafeIsSignificantChild(aNode->AsContent(),
-                                                   aTextIsSignificant,
                                                    aWhitespaceIsSignificant);
 }
 
@@ -363,6 +343,14 @@ Gecko_NoteAnimationOnlyDirtyElement(RawGeckoElementBorrowed aElement)
   const_cast<Element*>(aElement)->NoteAnimationOnlyDirtyForServo();
 }
 
+bool Gecko_AnimationNameMayBeReferencedFromStyle(
+  RawGeckoPresContextBorrowed aPresContext,
+  nsAtom* aName)
+{
+  MOZ_ASSERT(aPresContext);
+  return aPresContext->AnimationManager()->AnimationMayBeReferenced(aName);
+}
+
 CSSPseudoElementType
 Gecko_GetImplementedPseudo(RawGeckoElementBorrowed aElement)
 {
@@ -452,7 +440,7 @@ Gecko_UnsetDirtyStyleAttr(RawGeckoElementBorrowed aElement)
   decl->UnsetDirty();
 }
 
-const RawServoDeclarationBlockStrong*
+static const RawServoDeclarationBlockStrong*
 AsRefRawStrong(const RefPtr<RawServoDeclarationBlock>& aDecl)
 {
   static_assert(sizeof(RefPtr<RawServoDeclarationBlock>) ==
@@ -581,10 +569,10 @@ Gecko_GetAnimationRule(RawGeckoElementBorrowed aElement,
   MOZ_ASSERT(aElement);
 
   nsIDocument* doc = aElement->GetComposedDoc();
-  if (!doc || !doc->GetShell()) {
+  if (!doc) {
     return false;
   }
-  nsPresContext* presContext = doc->GetShell()->GetPresContext();
+  nsPresContext* presContext = doc->GetPresContext();
   if (!presContext || !presContext->IsDynamic()) {
     // For print or print preview, ignore animations.
     return false;
@@ -681,9 +669,26 @@ Gecko_UpdateAnimations(RawGeckoElementBorrowed aElement,
   }
 
   if (aTasks & UpdateAnimationsTasks::CascadeResults) {
-    // This task will be scheduled if we detected any changes to !important
-    // rules. We post a restyle here so that we can update the cascade
-    // results in the pre-traversal of the next restyle.
+    EffectSet* effectSet = EffectSet::GetEffectSet(aElement, pseudoType);
+    // CSS animations/transitions might have been destroyed as part of the above
+    // steps so before updating cascade results, we check if there are still any
+    // animations to update.
+    if (effectSet) {
+      // We call UpdateCascadeResults directly (intead of
+      // MaybeUpdateCascadeResults) since we know for sure that the cascade has
+      // changed, but we were unable to call MarkCascadeUpdated when we noticed
+      // it since we avoid mutating state as part of the Servo parallel
+      // traversal.
+      presContext->EffectCompositor()
+                 ->UpdateCascadeResults(StyleBackendType::Servo,
+                                        *effectSet,
+                                        const_cast<Element*>(aElement),
+                                        pseudoType,
+                                        nullptr);
+    }
+  }
+
+  if (aTasks & UpdateAnimationsTasks::DisplayChangedFromNone) {
     presContext->EffectCompositor()
                ->RequestRestyle(const_cast<Element*>(aElement),
                                 pseudoType,
@@ -1038,6 +1043,21 @@ AttrHasSuffix(Implementor* aElement, nsAtom* aNS, nsAtom* aName,
 }
 
 /**
+ * Returns whether an element contains a class in its class list or not.
+ */
+template <typename Implementor>
+static bool
+HasClass(Implementor* aElement, nsAtom* aClass, bool aIgnoreCase)
+{
+  const nsAttrValue* attr = aElement->DoGetClasses();
+  if (!attr) {
+    return false;
+  }
+
+  return attr->Contains(aClass, aIgnoreCase ? eIgnoreCase : eCaseMatters);
+}
+
+/**
  * Gets the class or class list (if any) of the implementor. The calling
  * convention here is rather hairy, and is optimized for getting Servo the
  * information it needs for hot calls.
@@ -1106,53 +1126,58 @@ ClassOrClassList(Implementor* aElement, nsAtom** aClass, nsAtom*** aClassList)
 }
 
 #define SERVO_IMPL_ELEMENT_ATTR_MATCHING_FUNCTIONS(prefix_, implementor_)        \
-  nsAtom* prefix_##AtomAttrValue(implementor_ aElement, nsAtom* aName)         \
+  nsAtom* prefix_##AtomAttrValue(implementor_ aElement, nsAtom* aName)           \
   {                                                                              \
     return AtomAttrValue(aElement, aName);                                       \
   }                                                                              \
-  nsAtom* prefix_##LangValue(implementor_ aElement)                             \
+  nsAtom* prefix_##LangValue(implementor_ aElement)                              \
   {                                                                              \
     return LangValue(aElement);                                                  \
   }                                                                              \
-  bool prefix_##HasAttr(implementor_ aElement, nsAtom* aNS, nsAtom* aName)     \
+  bool prefix_##HasAttr(implementor_ aElement, nsAtom* aNS, nsAtom* aName)       \
   {                                                                              \
     return HasAttr(aElement, aNS, aName);                                        \
   }                                                                              \
-  bool prefix_##AttrEquals(implementor_ aElement, nsAtom* aNS,                  \
-                           nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)      \
+  bool prefix_##AttrEquals(implementor_ aElement, nsAtom* aNS,                   \
+                           nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)        \
   {                                                                              \
     return AttrEquals(aElement, aNS, aName, aStr, aIgnoreCase);                  \
   }                                                                              \
-  bool prefix_##AttrDashEquals(implementor_ aElement, nsAtom* aNS,              \
-                               nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)  \
+  bool prefix_##AttrDashEquals(implementor_ aElement, nsAtom* aNS,               \
+                               nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)    \
   {                                                                              \
     return AttrDashEquals(aElement, aNS, aName, aStr, aIgnoreCase);              \
   }                                                                              \
-  bool prefix_##AttrIncludes(implementor_ aElement, nsAtom* aNS,                \
-                             nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)    \
+  bool prefix_##AttrIncludes(implementor_ aElement, nsAtom* aNS,                 \
+                             nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)      \
   {                                                                              \
     return AttrIncludes(aElement, aNS, aName, aStr, aIgnoreCase);                \
   }                                                                              \
-  bool prefix_##AttrHasSubstring(implementor_ aElement, nsAtom* aNS,            \
-                                 nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)\
+  bool prefix_##AttrHasSubstring(implementor_ aElement, nsAtom* aNS,             \
+                                 nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)  \
   {                                                                              \
     return AttrHasSubstring(aElement, aNS, aName, aStr, aIgnoreCase);            \
   }                                                                              \
-  bool prefix_##AttrHasPrefix(implementor_ aElement, nsAtom* aNS,               \
-                              nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)   \
+  bool prefix_##AttrHasPrefix(implementor_ aElement, nsAtom* aNS,                \
+                              nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)     \
   {                                                                              \
     return AttrHasPrefix(aElement, aNS, aName, aStr, aIgnoreCase);               \
   }                                                                              \
-  bool prefix_##AttrHasSuffix(implementor_ aElement, nsAtom* aNS,               \
-                              nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)   \
+  bool prefix_##AttrHasSuffix(implementor_ aElement, nsAtom* aNS,                \
+                              nsAtom* aName, nsAtom* aStr, bool aIgnoreCase)     \
   {                                                                              \
     return AttrHasSuffix(aElement, aNS, aName, aStr, aIgnoreCase);               \
   }                                                                              \
-  uint32_t prefix_##ClassOrClassList(implementor_ aElement, nsAtom** aClass,    \
-                                     nsAtom*** aClassList)                      \
+  uint32_t prefix_##ClassOrClassList(implementor_ aElement, nsAtom** aClass,     \
+                                     nsAtom*** aClassList)                       \
   {                                                                              \
     return ClassOrClassList(aElement, aClass, aClassList);                       \
-  }
+  }                                                                              \
+  bool prefix_##HasClass(implementor_ aElement, nsAtom* aClass, bool aIgnoreCase)\
+  {                                                                              \
+    return HasClass(aElement, aClass, aIgnoreCase);                              \
+  }                                                                              \
+
 
 SERVO_IMPL_ELEMENT_ATTR_MATCHING_FUNCTIONS(Gecko_, RawGeckoElementBorrowed)
 SERVO_IMPL_ELEMENT_ATTR_MATCHING_FUNCTIONS(Gecko_Snapshot, const ServoElementSnapshot*)
@@ -1181,44 +1206,6 @@ void
 Gecko_ReleaseAtom(nsAtom* aAtom)
 {
   NS_RELEASE(aAtom);
-}
-
-const uint16_t*
-Gecko_GetAtomAsUTF16(nsAtom* aAtom, uint32_t* aLength)
-{
-  static_assert(sizeof(char16_t) == sizeof(uint16_t), "Servo doesn't know what a char16_t is");
-  MOZ_ASSERT(aAtom);
-  *aLength = aAtom->GetLength();
-
-  // We need to manually cast from char16ptr_t to const char16_t* to handle the
-  // MOZ_USE_CHAR16_WRAPPER we use on WIndows.
-  return reinterpret_cast<const uint16_t*>(static_cast<const char16_t*>(aAtom->GetUTF16String()));
-}
-
-bool
-Gecko_AtomEqualsUTF8(nsAtom* aAtom, const char* aString, uint32_t aLength)
-{
-  // XXXbholley: We should be able to do this without converting, I just can't
-  // find the right thing to call.
-  nsDependentAtomString atomStr(aAtom);
-  NS_ConvertUTF8toUTF16 inStr(nsDependentCSubstring(aString, aLength));
-  return atomStr.Equals(inStr);
-}
-
-bool
-Gecko_AtomEqualsUTF8IgnoreCase(nsAtom* aAtom, const char* aString, uint32_t aLength)
-{
-  // XXXbholley: We should be able to do this without converting, I just can't
-  // find the right thing to call.
-  nsDependentAtomString atomStr(aAtom);
-  NS_ConvertUTF8toUTF16 inStr(nsDependentCSubstring(aString, aLength));
-  return nsContentUtils::EqualsIgnoreASCIICase(atomStr, inStr);
-}
-
-void
-Gecko_EnsureMozBorderColors(nsStyleBorder* aBorder)
-{
-  aBorder->EnsureBorderColors();
 }
 
 void
@@ -1438,18 +1425,19 @@ Gecko_CounterStyle_GetAnonymous(const CounterStylePtr* aPtr)
 already_AddRefed<css::URLValue>
 ServoBundledURI::IntoCssUrl()
 {
-  if (!mURLString) {
-    return nullptr;
-  }
-
   MOZ_ASSERT(mExtraData->GetReferrer());
   MOZ_ASSERT(mExtraData->GetPrincipal());
 
-  NS_ConvertUTF8toUTF16 url(reinterpret_cast<const char*>(mURLString),
-                            mURLStringLength);
-
   RefPtr<css::URLValue> urlValue =
-    new css::URLValue(url, do_AddRef(mExtraData));
+    new css::URLValue(mURLString, do_AddRef(mExtraData));
+  return urlValue.forget();
+}
+
+already_AddRefed<css::ImageValue>
+ServoBundledURI::IntoCssImage(mozilla::CORSMode aCorsMode)
+{
+  RefPtr<css::ImageValue> urlValue =
+    new css::ImageValue(mURLString, do_AddRef(mExtraData), aCorsMode);
   return urlValue.forget();
 }
 
@@ -1479,11 +1467,10 @@ CreateStyleImageRequest(nsStyleImageRequest::Mode aModeFlags,
 }
 
 mozilla::css::ImageValue*
-Gecko_ImageValue_Create(ServoBundledURI aURI, ServoRawOffsetArc<RustString> aURIString)
+Gecko_ImageValue_Create(ServoBundledURI aURI)
 {
-  RefPtr<css::ImageValue> value(
-    new css::ImageValue(aURIString, do_AddRef(aURI.mExtraData)));
-  return value.forget().take();
+  // Bug 1434963: Change this to accept a CORS mode from the caller.
+  return aURI.IntoCssImage(mozilla::CORSMode::CORS_NONE).take();
 }
 
 MOZ_DEFINE_MALLOC_SIZE_OF(GeckoImageValueMallocSizeOf)
@@ -1974,10 +1961,9 @@ Gecko_DestroyShapeSource(mozilla::StyleShapeSource* aShape)
 }
 
 void
-Gecko_StyleShapeSource_SetURLValue(mozilla::StyleShapeSource* aShape, ServoBundledURI aURI)
+Gecko_StyleShapeSource_SetURLValue(StyleShapeSource* aShape, URLValue* aURL)
 {
-  RefPtr<css::URLValue> url = aURI.IntoCssUrl();
-  aShape->SetURL(url.get());
+  aShape->SetURL(aURL);
 }
 
 void
@@ -2008,10 +1994,9 @@ Gecko_CopyFiltersFrom(nsStyleEffects* aSrc, nsStyleEffects* aDest)
 }
 
 void
-Gecko_nsStyleFilter_SetURLValue(nsStyleFilter* aEffects, ServoBundledURI aURI)
+Gecko_nsStyleFilter_SetURLValue(nsStyleFilter* aEffects, URLValue* aURL)
 {
-  RefPtr<css::URLValue> url = aURI.IntoCssUrl();
-  aEffects->SetURL(url.get());
+  aEffects->SetURL(aURL);
 }
 
 void
@@ -2021,10 +2006,9 @@ Gecko_nsStyleSVGPaint_CopyFrom(nsStyleSVGPaint* aDest, const nsStyleSVGPaint* aS
 }
 
 void
-Gecko_nsStyleSVGPaint_SetURLValue(nsStyleSVGPaint* aPaint, ServoBundledURI aURI)
+Gecko_nsStyleSVGPaint_SetURLValue(nsStyleSVGPaint* aPaint, URLValue* aURL)
 {
-  RefPtr<css::URLValue> url = aURI.IntoCssUrl();
-  aPaint->SetPaintServer(url.get());
+  aPaint->SetPaintServer(aURL);
 }
 
 void Gecko_nsStyleSVGPaint_Reset(nsStyleSVGPaint* aPaint)
@@ -2065,6 +2049,15 @@ Gecko_NewURLValue(ServoBundledURI aURI)
 {
   RefPtr<css::URLValue> url = aURI.IntoCssUrl();
   return url.forget().take();
+}
+
+MOZ_DEFINE_MALLOC_SIZE_OF(GeckoURLValueMallocSizeOf)
+
+size_t
+Gecko_URLValue_SizeOfIncludingThis(URLValue* aURL)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  return aURL->SizeOfIncludingThis(GeckoURLValueMallocSizeOf);
 }
 
 NS_IMPL_THREADSAFE_FFI_REFCOUNTING(css::URLValue, CSSURLValue);
@@ -2218,12 +2211,10 @@ Gecko_CSSValue_SetArray(nsCSSValueBorrowedMut aCSSValue, int32_t aLength)
 }
 
 void
-Gecko_CSSValue_SetURL(nsCSSValueBorrowedMut aCSSValue,
-                      ServoBundledURI aURI)
+Gecko_CSSValue_SetURL(nsCSSValueBorrowedMut aCSSValue, URLValue* aURL)
 {
   MOZ_ASSERT(aCSSValue->GetUnit() == eCSSUnit_Null);
-  RefPtr<css::URLValue> url = aURI.IntoCssUrl();
-  aCSSValue->SetURLValue(url.get());
+  aCSSValue->SetURLValue(aURL);
 }
 
 void
@@ -2231,6 +2222,13 @@ Gecko_CSSValue_SetInt(nsCSSValueBorrowedMut aCSSValue,
                       int32_t aInteger, nsCSSUnit aUnit)
 {
   aCSSValue->SetIntValue(aInteger, aUnit);
+}
+
+void
+Gecko_CSSValue_SetFloat(nsCSSValueBorrowedMut aCSSValue,
+                        float aValue, nsCSSUnit aUnit)
+{
+  aCSSValue->SetFloatValue(aValue, aUnit);
 }
 
 nsCSSValueBorrowedMut
@@ -2391,17 +2389,10 @@ Gecko_GetBindingParent(RawGeckoElementBorrowed aElement)
   return parent ? parent->AsElement() : nullptr;
 }
 
-RawGeckoXBLBindingBorrowedOrNull
-Gecko_GetXBLBinding(RawGeckoElementBorrowed aElement)
+RawServoAuthorStylesBorrowedOrNull
+Gecko_XBLBinding_GetRawServoStyles(RawGeckoXBLBindingBorrowed aXBLBinding)
 {
-  return aElement->GetXBLBinding();
-}
-
-RawServoStyleSetBorrowedOrNull
-Gecko_XBLBinding_GetRawServoStyleSet(RawGeckoXBLBindingBorrowed aXBLBinding)
-{
-  const ServoStyleSet* set = aXBLBinding->GetServoStyleSet();
-  return set ? set->RawSet() : nullptr;
+  return aXBLBinding->GetServoStyles();
 }
 
 bool
@@ -2493,6 +2484,7 @@ Gecko_GetAppUnitsPerPhysicalInch(RawGeckoPresContextBorrowed aPresContext)
 ServoStyleSheet*
 Gecko_LoadStyleSheet(css::Loader* aLoader,
                      ServoStyleSheet* aParent,
+                     SheetLoadData* aParentLoadData,
                      css::LoaderReusableStyleSheets* aReusableSheets,
                      RawGeckoURLExtraData* aURLExtraData,
                      const uint8_t* aURLString,
@@ -2514,7 +2506,7 @@ Gecko_LoadStyleSheet(css::Loader* aLoader,
 
   StyleSheet* previousFirstChild = aParent->GetFirstChild();
   if (NS_SUCCEEDED(rv)) {
-    rv = aLoader->LoadChildSheet(aParent, uri, media, nullptr, aReusableSheets);
+    rv = aLoader->LoadChildSheet(aParent, aParentLoadData, uri, media, nullptr, aReusableSheets);
   }
 
   if (NS_FAILED(rv) ||
@@ -2613,13 +2605,6 @@ Gecko_RegisterNamespace(nsAtom* aNamespace)
     return -1;
   }
   return id;
-}
-
-bool
-Gecko_ShouldCreateStyleThreadPool()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  return !mozilla::BrowserTabsRemoteAutostart() || XRE_IsContentProcess();
 }
 
 NS_IMPL_FFI_REFCOUNTING(nsCSSFontFaceRule, CSSFontFaceRule);
@@ -2807,6 +2792,7 @@ Gecko_ContentList_AppendAll(
   const Element** aElements,
   size_t aLength)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aElements);
   MOZ_ASSERT(aLength);
   MOZ_ASSERT(aList);

@@ -6,7 +6,7 @@
 /* import-globals-from ext-browser.js */
 /* globals WINDOW_ID_CURRENT */
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 
 var {
   IconDetails,
@@ -136,22 +136,8 @@ this.sidebarAction = class extends ExtensionAPI {
     }
   }
 
-  sidebarUrl(panel) {
-    let url = `${sidebarURL}?panel=${encodeURIComponent(panel)}`;
-
-    if (this.extension.remote) {
-      url += "&remote=1";
-    }
-
-    if (this.browserStyle) {
-      url += "&browser-style=1";
-    }
-
-    return url;
-  }
-
   createMenuItem(window, details) {
-    let {document} = window;
+    let {document, SidebarUI} = window;
 
     // Use of the broadcaster allows browser-sidebar.js to properly manage the
     // checkmarks in the menus.
@@ -161,7 +147,14 @@ this.sidebarAction = class extends ExtensionAPI {
     broadcaster.setAttribute("type", "checkbox");
     broadcaster.setAttribute("group", "sidebar");
     broadcaster.setAttribute("label", details.title);
-    broadcaster.setAttribute("sidebarurl", this.sidebarUrl(details.panel));
+    broadcaster.setAttribute("sidebarurl", sidebarURL);
+    broadcaster.setAttribute("panel", details.panel);
+    if (this.browserStyle) {
+      broadcaster.setAttribute("browserStyle", "true");
+    }
+    broadcaster.setAttribute("extensionId", this.extension.id);
+    let id = `ext-key-id-${this.id}`;
+    broadcaster.setAttribute("key", id);
 
     // oncommand gets attached to menuitem, so we use the observes attribute to
     // get the command id we pass to SidebarUI.
@@ -188,6 +181,7 @@ this.sidebarAction = class extends ExtensionAPI {
     document.getElementById("viewSidebarMenu").appendChild(menuitem);
     let separator = document.getElementById("sidebar-extensions-separator");
     separator.parentNode.insertBefore(toolbarbutton, separator);
+    SidebarUI.updateShortcut({button: toolbarbutton});
 
     return menuitem;
   }
@@ -224,10 +218,9 @@ this.sidebarAction = class extends ExtensionAPI {
     broadcaster.setAttribute("tooltiptext", title);
     broadcaster.setAttribute("label", title);
 
-    let url = this.sidebarUrl(tabData.panel);
-    let urlChanged = url !== broadcaster.getAttribute("sidebarurl");
+    let urlChanged = tabData.panel !== broadcaster.getAttribute("panel");
     if (urlChanged) {
-      broadcaster.setAttribute("sidebarurl", url);
+      broadcaster.setAttribute("panel", tabData.panel);
     }
 
     this.setMenuIcon(menu, tabData);

@@ -15,7 +15,7 @@ content.addEventListener(SERVICE_EVENT_TYPE, event => {
   // up with an XrayWrapper to it here, which will screw us up when trying to
   // serialize the object in sendAsyncMessage. Waive Xrays for the benefit of
   // the test machinery.
-  sendAsyncMessage(TEST_MSG, Components.utils.waiveXrays(event.detail));
+  sendAsyncMessage(TEST_MSG, Cu.waiveXrays(event.detail));
 });
 
 // Forward messages from the test to the in-content service.
@@ -52,7 +52,6 @@ var webProgressListener;
 
 function waitForLoadAndStopIt(expectedURL) {
   return new Promise(resolve => {
-    let Ci = Components.interfaces;
     let webProgress = content.document.docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                                                .getInterface(Ci.nsIWebProgress);
     webProgressListener = {
@@ -65,7 +64,7 @@ function waitForLoadAndStopIt(expectedURL) {
           if ((flags & docStart) && webProg.isTopLevel && url == expectedURL) {
             webProgress.removeProgressListener(webProgressListener);
             webProgressListener = null;
-            req.cancel(Components.results.NS_ERROR_FAILURE);
+            req.cancel(Cr.NS_ERROR_FAILURE);
             resolve(url);
           }
         }

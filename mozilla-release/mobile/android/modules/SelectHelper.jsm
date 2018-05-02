@@ -3,11 +3,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = ["SelectHelper"];
 
-this.EXPORTED_SYMBOLS = ["SelectHelper"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   Prompt: "resource://gre/modules/Prompt.jsm",
@@ -57,10 +55,10 @@ var SelectHelper = {
       let changed = false;
       let i = 0; // The index for the element from `data.list` that we are currently examining.
       this.forVisibleOptions(element, function(node) {
-        if (node.selected && selected.indexOf(i) == -1) {
+        if (node.selected && !selected.includes(i)) {
           changed = true;
           node.selected = false;
-        } else if (!node.selected && selected.indexOf(i) != -1) {
+        } else if (!node.selected && selected.includes(i)) {
           changed = true;
           node.selected = true;
         }

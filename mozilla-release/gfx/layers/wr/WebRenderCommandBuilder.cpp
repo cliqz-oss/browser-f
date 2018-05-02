@@ -59,7 +59,8 @@ WebRenderCommandBuilder::BuildWebRenderCommands(wr::DisplayListBuilder& aBuilder
                                                 nsDisplayList* aDisplayList,
                                                 nsDisplayListBuilder* aDisplayListBuilder,
                                                 WebRenderScrollData& aScrollData,
-                                                wr::LayoutSize& aContentSize)
+                                                wr::LayoutSize& aContentSize,
+                                                const nsTArray<wr::WrFilterOp>& aFilters)
 {
   { // scoping for StackingContextHelper RAII
 
@@ -72,7 +73,7 @@ WebRenderCommandBuilder::BuildWebRenderCommands(wr::DisplayListBuilder& aBuilder
     mScrollingHelper.BeginBuild(mManager, aBuilder);
 
     {
-      StackingContextHelper pageRootSc(sc, aBuilder);
+      StackingContextHelper pageRootSc(sc, aBuilder, aFilters);
       CreateWebRenderCommandsFromDisplayList(aDisplayList, aDisplayListBuilder,
                                              pageRootSc, aBuilder, aResourceUpdates);
     }
@@ -197,7 +198,8 @@ WebRenderCommandBuilder::CreateWebRenderCommandsFromDisplayList(nsDisplayList* a
             regionsItem->DispatchToContentHitRegion().ScaleToOutsidePixels(1.0f, 1.0f, auPerDevPixel),
             regionsItem->NoActionRegion().ScaleToOutsidePixels(1.0f, 1.0f, auPerDevPixel),
             regionsItem->HorizontalPanRegion().ScaleToOutsidePixels(1.0f, 1.0f, auPerDevPixel),
-            regionsItem->VerticalPanRegion().ScaleToOutsidePixels(1.0f, 1.0f, auPerDevPixel));
+            regionsItem->VerticalPanRegion().ScaleToOutsidePixels(1.0f, 1.0f, auPerDevPixel),
+            /* mDTCRequiresTargetConfirmation = */ false);
 
         eventRegions.OrWith(regions);
         if (mLayerScrollData.empty()) {

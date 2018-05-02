@@ -15,10 +15,12 @@ import sys
 # to record from.
 KNOWN_PROCESS_FLAGS = {
     'all': 'All',
-    'all_childs': 'AllChilds',
+    'all_children': 'AllChildren',
     'main': 'Main',
     'content': 'Content',
     'gpu': 'Gpu',
+    # Historical Values
+    'all_childs': 'AllChildren',  # Supporting files from before bug 1363725
 }
 
 PROCESS_ENUM_PREFIX = "mozilla::Telemetry::Common::RecordedProcessType::"
@@ -146,13 +148,13 @@ def static_assert(output, expression, message):
 def validate_expiration_version(expiration):
     """ Makes sure the expiration version has the expected format.
 
-    Allowed examples: "1.0", "20", "300.0a1", "60.0a1", "30.5a1", "never"
-    Disallowed examples: "Never", "asd", "4000000", "60a1"
+    Allowed examples: "10", "20", "60", "never"
+    Disallowed examples: "Never", "asd", "4000000", "60a1", "30.5a1"
 
     :param expiration: the expiration version string.
     :return: True if the expiration validates correctly, False otherwise.
     """
-    if expiration != 'never' and not re.match(r'^\d{1,3}(\.\d|\.\da1)?$', expiration):
+    if expiration != 'never' and not re.match(r'^\d{1,3}$', expiration):
         return False
 
     return True

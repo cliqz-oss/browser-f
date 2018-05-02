@@ -6,11 +6,7 @@
 
 // see http://mxr.mozilla.org/mozilla-central/source/services/sync/Weave.js#76
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const rph = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
 
@@ -72,7 +68,7 @@ function load_modules_under(spec, uri) {
   for (let entry of entries) {
     try {
       dump(spec + entry + "\n");
-      Cu.import(spec + entry, null);
+      ChromeUtils.import(spec + entry, null);
     } catch (e) {}
   }
 }

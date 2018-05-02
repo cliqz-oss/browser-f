@@ -4,17 +4,14 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 /* exported MatchURLFilters */
 
-this.EXPORTED_SYMBOLS = ["MatchURLFilters"];
+var EXPORTED_SYMBOLS = ["MatchURLFilters"];
 
 // Match WebNavigation URL Filters.
 class MatchURLFilters {

@@ -531,8 +531,8 @@ AsyncCompositionManager::AlignFixedAndStickyLayers(Layer* aTransformedSubtreeRoo
     // the layer should not move relative to the scroll container. To
     // accomplish this, we limit each dimension of the |translation| to that
     // part of it which overlaps those intervals.
-    const LayerRect& stickyOuter = layer->GetStickyScrollRangeOuter();
-    const LayerRect& stickyInner = layer->GetStickyScrollRangeInner();
+    const LayerRectAbsolute& stickyOuter = layer->GetStickyScrollRangeOuter();
+    const LayerRectAbsolute& stickyInner = layer->GetStickyScrollRangeInner();
 
     LayerPoint originalTranslation = translation;
     translation.y = IntervalOverlap(translation.y, stickyOuter.Y(), stickyOuter.YMost()) -
@@ -939,7 +939,7 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
               mRootScrollableId = metrics.GetScrollId();
               Compositor* compositor = mLayerManager->GetCompositor();
               if (CompositorBridgeParent* bridge = compositor->GetCompositorBridgeParent()) {
-                AndroidDynamicToolbarAnimator* animator = bridge->GetAPZCTreeManager()->GetAndroidDynamicToolbarAnimator();
+                AndroidDynamicToolbarAnimator* animator = bridge->GetAndroidDynamicToolbarAnimator();
                 MOZ_ASSERT(animator);
                 if (mIsFirstPaint) {
                   animator->UpdateRootFrameMetrics(metrics);
@@ -1269,18 +1269,15 @@ AsyncCompositionManager::ComputeTransformForScrollThumb(
     Matrix4x4 contentTransform = aScrollableContentTransform;
     Matrix4x4 contentUntransform = contentTransform.Inverse();
 
-    AsyncTransformComponentMatrix asyncCompensation =
-        ViewAs<AsyncTransformComponentMatrix>(
-            contentTransform
-          * asyncUntransform
-          * contentUntransform);
+    compensation *= ViewAs<AsyncTransformComponentMatrix>(
+                        contentTransform
+                      * asyncUntransform
+                      * contentUntransform);
 
-    compensation = compensation * asyncCompensation;
-
-    // Pass the async compensation out to the caller so that it can use it
+    // Pass the total compensation out to the caller so that it can use it
     // to transform clip transforms as needed.
     if (aOutClipTransform) {
-      *aOutClipTransform = asyncCompensation;
+      *aOutClipTransform = compensation;
     }
   }
   transform = transform * compensation;
@@ -1406,7 +1403,7 @@ AsyncCompositionManager::TransformShadowTree(TimeStamp aCurrentFrame,
 #if defined(MOZ_WIDGET_ANDROID)
   Compositor* compositor = mLayerManager->GetCompositor();
   if (CompositorBridgeParent* bridge = compositor->GetCompositorBridgeParent()) {
-    AndroidDynamicToolbarAnimator* animator = bridge->GetAPZCTreeManager()->GetAndroidDynamicToolbarAnimator();
+    AndroidDynamicToolbarAnimator* animator = bridge->GetAndroidDynamicToolbarAnimator();
     MOZ_ASSERT(animator);
     wantNextFrame |= animator->UpdateAnimation(nextFrame);
   }

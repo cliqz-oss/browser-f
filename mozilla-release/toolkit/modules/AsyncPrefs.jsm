@@ -4,10 +4,9 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["AsyncPrefs"];
+var EXPORTED_SYMBOLS = ["AsyncPrefs"];
 
-const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const kInChildProcess = Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
 
@@ -20,6 +19,8 @@ const kAllowedPrefs = new Set([
 
   "narrate.rate",
   "narrate.voice",
+
+  "privacy.trackingprotection.pbmode.enabled",
 
   "reader.font_size",
   "reader.font_type",

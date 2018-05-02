@@ -3,13 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PeerConnectionIdp"];
+var EXPORTED_SYMBOLS = ["PeerConnectionIdp"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "IdpSandbox",
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "IdpSandbox",
   "resource://gre/modules/media/IdpSandbox.jsm");
 
 /**
@@ -173,8 +171,8 @@ PeerConnectionIdp.prototype = {
     if (providerPortIdx > 0) {
       provider = provider.substring(0, providerPortIdx);
     }
-    let idnService = Components.classes["@mozilla.org/network/idn-service;1"]
-        .getService(Components.interfaces.nsIIDNService);
+    let idnService = Cc["@mozilla.org/network/idn-service;1"]
+        .getService(Ci.nsIIDNService);
     if (idnService.convertUTF8toACE(tail) !==
         idnService.convertUTF8toACE(provider)) {
       error('name "' + name +
@@ -338,4 +336,3 @@ PeerConnectionIdp.prototype = {
   }
 };
 
-this.PeerConnectionIdp = PeerConnectionIdp;

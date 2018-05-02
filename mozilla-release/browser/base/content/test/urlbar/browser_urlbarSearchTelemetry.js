@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource:///modules/BrowserUITelemetry.jsm");
+ChromeUtils.import("resource:///modules/BrowserUITelemetry.jsm");
 
 const SUGGEST_URLBAR_PREF = "browser.urlbar.suggest.searches";
 const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
@@ -19,7 +19,7 @@ add_task(async function prepare() {
 
     // Clicking urlbar results causes visits to their associated pages, so clear
     // that history now.
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
 
     // Make sure the popup is closed for the next test.
     gURLBar.blur();

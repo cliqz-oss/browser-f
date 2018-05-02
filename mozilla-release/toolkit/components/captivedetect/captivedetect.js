@@ -5,10 +5,10 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 const DEBUG = false; // set to true to show debug messages
 
@@ -22,8 +22,7 @@ const kCaptivePortalCheckComplete = "captive-portal-check-complete";
 
 function URLFetcher(url, timeout) {
   let self = this;
-  let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-              .createInstance(Ci.nsIXMLHttpRequest);
+  let xhr = new XMLHttpRequest();
   xhr.open("GET", url, true);
   // Prevent the request from reading from the cache.
   xhr.channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;

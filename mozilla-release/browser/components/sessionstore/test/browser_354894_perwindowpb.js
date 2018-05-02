@@ -30,7 +30,7 @@
 //
 // NOTE: Whitelisting a class of rejections should be limited. Normally you
 //       should use "expectUncaughtRejection" to flag individual failures.
-Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", this);
 PromiseTestUtils.whitelistRejectionsGlobally(/getMostRecentBrowserWindow/);
 
 // Some urls that might be opened in tabs and/or popups
@@ -141,7 +141,7 @@ let setupTest = async function(options, testFunction) {
   let private = options.private || false;
   let newWin = await promiseNewWindowLoaded({ private });
 
-  injectTestTabs(newWin);
+  await injectTestTabs(newWin);
 
   await testFunction(newWin, observing);
 
@@ -163,9 +163,9 @@ let setupTest = async function(options, testFunction) {
  *        The browser window to load the tabs in
  */
 function injectTestTabs(win) {
-  TEST_URLS.forEach(function(url) {
-    win.gBrowser.addTab(url);
-  });
+  let promises = TEST_URLS.map(url => win.gBrowser.addTab(url))
+                          .map(tab => BrowserTestUtils.browserLoaded(tab.linkedBrowser));
+  return Promise.all(promises);
 }
 
 /**

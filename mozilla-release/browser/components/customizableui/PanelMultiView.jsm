@@ -2,157 +2,170 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/**
+ * Allows a popup panel to host multiple subviews. The main view shown when the
+ * panel is opened may slide out to display a subview, which in turn may lead to
+ * other subviews in a cascade menu pattern.
+ *
+ * The <panel> element should contain a <panelmultiview> element. Views are
+ * declared using <panelview> elements that are usually children of the main
+ * <panelmultiview> element, although they don't need to be, as views can also
+ * be imported into the panel from other panels or popup sets.
+ *
+ * The panel should be opened asynchronously using the openPopup static method
+ * on the PanelMultiView object. This will display the view specified using the
+ * mainViewId attribute on the contained <panelmultiview> element.
+ *
+ * Specific subviews can slide in using the showSubView method, and backwards
+ * navigation can be done using the goBack method or through a button in the
+ * subview headers.
+ *
+ * The process of displaying the main view or a new subview requires multiple
+ * steps to be completed, hence at any given time the <panelview> element may
+ * be in different states:
+ *
+ * -- Open or closed
+ *
+ *    All the <panelview> elements start "closed", meaning that they are not
+ *    associated to a <panelmultiview> element and can be located anywhere in
+ *    the document. When the openPopup or showSubView methods are called, the
+ *    relevant view becomes "open" and the <panelview> element may be moved to
+ *    ensure it is a descendant of the <panelmultiview> element.
+ *
+ *    The "ViewShowing" event is fired at this point, when the view is not
+ *    visible yet. The event is allowed to cancel the operation, in which case
+ *    the view is closed immediately.
+ *
+ *    Closing the view does not move the node back to its original position.
+ *
+ * -- Visible or invisible
+ *
+ *    This indicates whether the view is visible in the document from a layout
+ *    perspective, regardless of whether it is currently scrolled into view. In
+ *    fact, all subviews are already visible before they start sliding in.
+ *
+ *    Before scrolling into view, a view may become visible but be placed in a
+ *    special off-screen area of the document where layout and measurements can
+ *    take place asyncronously.
+ *
+ *    When navigating forward, an open view may become invisible but stay open
+ *    after sliding out of view. The last known size of these views is still
+ *    taken into account for determining the overall panel size.
+ *
+ *    When navigating backwards, an open subview will first become invisible and
+ *    then will be closed.
+ *
+ * -- Active or inactive
+ *
+ *    This indicates whether the view is fully scrolled into the visible area
+ *    and ready to receive mouse and keyboard events. An active view is always
+ *    visible, but a visible view may be inactive. For example, during a scroll
+ *    transition, both views will be inactive.
+ *
+ *    When a view becomes active, the ViewShown event is fired synchronously,
+ *    and the showSubView and goBack methods can be called for navigation.
+ *
+ *    For the main view of the panel, the ViewShown event is dispatched during
+ *    the "popupshown" event, which means that other "popupshown" handlers may
+ *    be called before the view is active. Thus, code that needs to perform
+ *    further navigation automatically should either use the ViewShown event or
+ *    wait for an event loop tick, like BrowserTestUtils.waitForEvent does.
+ *
+ * -- Navigating with the keyboard
+ *
+ *    An open view may keep state related to keyboard navigation, even if it is
+ *    invisible. When a view is closed, keyboard navigation state is cleared.
+ *
+ * This diagram shows how <panelview> nodes move during navigation:
+ *
+ *   In this <panelmultiview>     In other panels    Action
+ *             ┌───┬───┬───┐        ┌───┬───┐
+ *             │(A)│ B │ C │        │ D │ E │          Open panel
+ *             └───┴───┴───┘        └───┴───┘
+ *         ┌───┬───┬───┐            ┌───┬───┐
+ *         │{A}│(C)│ B │            │ D │ E │          Show subview C
+ *         └───┴───┴───┘            └───┴───┘
+ *     ┌───┬───┬───┬───┐            ┌───┐
+ *     │{A}│{C}│(D)│ B │            │ E │              Show subview D
+ *     └───┴───┴───┴───┘            └───┘
+ *       │ ┌───┬───┬───┬───┐        ┌───┐
+ *       │ │{A}│(C)│ D │ B │        │ E │              Go back
+ *       │ └───┴───┴───┴───┘        └───┘
+ *       │   │   │
+ *       │   │   └── Currently visible view
+ *       │   │   │
+ *       └───┴───┴── Open views
+ */
+
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PanelMultiView"];
+var EXPORTED_SYMBOLS = [
+  "PanelMultiView",
+  "PanelView",
+];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "gBundle", function() {
+  return Services.strings.createBundle(
+    "chrome://browser/locale/browser.properties");
+});
+
+/**
+ * Safety timeout after which asynchronous events will be canceled if any of the
+ * registered blockers does not return.
+ */
+const BLOCKERS_TIMEOUT_MS = 10000;
 
 const TRANSITION_PHASES = Object.freeze({
   START: 1,
   PREPARE: 2,
   TRANSITION: 3,
-  END: 4
 });
 
-/**
- * Simple implementation of the sliding window pattern; panels are added to a
- * linked list, in-order, and the currently shown panel is remembered using a
- * marker. The marker shifts as navigation between panels is continued, where
- * the panel at index 0 is always the starting point:
- *           ┌────┬────┬────┬────┐
- *           │▓▓▓▓│    │    │    │ Start
- *           └────┴────┴────┴────┘
- *      ┌────┬────┬────┬────┐
- *      │    │▓▓▓▓│    │    │      Forward
- *      └────┴────┴────┴────┘
- * ┌────┬────┬────┬────┐
- * │    │    │▓▓▓▓│    │           Forward
- * └────┴────┴────┴────┘
- *      ┌────┬────┬────┬────┐
- *      │    │▓▓▓▓│    │    │      Back
- *      └────┴────┴────┴────┘
- */
-class SlidingPanelViews extends Array {
-  constructor() {
-    super();
-    this._marker = 0;
-  }
-
-  /**
-   * Get the index that points to the currently selected view.
-   *
-   * @return {Number}
-   */
-  get current() {
-    return this._marker;
-  }
-
-  /**
-   * Setter for the current index, which changes the order of elements and
-   * updates the internal marker for the currently selected view.
-   * We're manipulating the array directly to have it reflect the order of
-   * navigation, instead of continuously growing the array with the next selected
-   * view to keep memory usage within reasonable proportions. With this method,
-   * the data structure grows no larger than the number of panels inside the
-   * panelMultiView.
-   *
-   * @param  {Number} index Index of the item to move to the current position.
-   * @return {Number} The new marker index.
-   */
-  set current(index) {
-    if (index == this._marker) {
-      // Never change a winning team.
-      return index;
-    }
-    if (index == -1 || index > (this.length - 1)) {
-      throw new Error(`SlidingPanelViews :: index ${index} out of bounds`);
-    }
-
-    let view = this.splice(index, 1)[0];
-    if (this._marker > index) {
-      // Correct the current marker if the view-to-select was removed somewhere
-      // before it.
-      --this._marker;
-    }
-    // Then add the view-to-select right after the currently selected view.
-    this.splice(++this._marker, 0, view);
-    return this._marker;
-  }
-
-  /**
-   * Getter for the currently selected view node.
-   *
-   * @return {panelview}
-   */
-  get currentView() {
-    return this[this._marker];
-  }
-
-  /**
-   * Setter for the currently selected view node.
-   *
-   * @param  {panelview} view
-   * @return {Number} Index of the currently selected view.
-   */
-  set currentView(view) {
-    if (!view)
-      return this.current;
-    // This will throw an error if the view could not be found.
-    return this.current = this.indexOf(view);
-  }
-
-  /**
-   * Getter for the previous view, which is always positioned one position after
-   * the current view.
-   *
-   * @return {panelview}
-   */
-  get previousView() {
-    return this[this._marker + 1];
-  }
-
-  /**
-   * Going back is an explicit action on the data structure, moving the marker
-   * one step back.
-   *
-   * @return {Array} A list of two items: the newly selected view and the previous one.
-   */
-  back() {
-    if (this._marker > 0)
-      --this._marker;
-    return [this.currentView, this.previousView];
-  }
-
-  /**
-   * Reset the data structure to its original construct, removing all references
-   * to view nodes.
-   */
-  clear() {
-    this._marker = 0;
-    this.splice(0, this.length);
-  }
-}
+let gNodeToObjectMap = new WeakMap();
+let gWindowsWithUnloadHandler = new WeakSet();
+let gMultiLineElementsMap = new WeakMap();
 
 /**
- * This is the implementation of the panelUI.xml XBL binding, moved to this
- * module, to make it easier to fork the logic for the newer photon structure.
- * Goals are:
- * 1. to make it easier to programmatically extend the list of panels,
- * 2. allow for navigation between panels multiple levels deep and
- * 3. maintain the pre-photon structure with as little effort possible.
+ * Allows associating an object to a node lazily using a weak map.
  *
- * @type {PanelMultiView}
+ * Classes deriving from this one may be easily converted to Custom Elements,
+ * although they would lose the ability of being associated lazily.
  */
-this.PanelMultiView = class {
+var AssociatedToNode = class {
+  constructor(node) {
+    /**
+     * Node associated to this object.
+     */
+    this.node = node;
+
+    /**
+     * This promise is resolved when the current set of blockers set by event
+     * handlers have all been processed.
+     */
+    this._blockersPromise = Promise.resolve();
+  }
+
+  /**
+   * Retrieves the instance associated with the given node, constructing a new
+   * one if necessary. When the last reference to the node is released, the
+   * object instance will be garbage collected as well.
+   */
+  static forNode(node) {
+    let associatedToNode = gNodeToObjectMap.get(node);
+    if (!associatedToNode) {
+      associatedToNode = new this(node);
+      gNodeToObjectMap.set(node, associatedToNode);
+    }
+    return associatedToNode;
+  }
+
   get document() {
     return this.node.ownerDocument;
   }
@@ -161,29 +174,181 @@ this.PanelMultiView = class {
     return this.node.ownerGlobal;
   }
 
+  /**
+   * nsIDOMWindowUtils for the window of this node.
+   */
+  get _dwu() {
+    if (this.__dwu)
+      return this.__dwu;
+    return this.__dwu = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
+                                   .getInterface(Ci.nsIDOMWindowUtils);
+  }
+
+  /**
+   * Dispatches a custom event on this element.
+   *
+   * @param  {String}    eventName Name of the event to dispatch.
+   * @param  {Object}    [detail]  Event detail object. Optional.
+   * @param  {Boolean}   cancelable If the event can be canceled.
+   * @return {Boolean} `true` if the event was canceled by an event handler, `false`
+   *                   otherwise.
+   */
+  dispatchCustomEvent(eventName, detail, cancelable = false) {
+    let event = new this.window.CustomEvent(eventName, {
+      detail,
+      bubbles: true,
+      cancelable,
+    });
+    this.node.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  /**
+   * Dispatches a custom event on this element and waits for any blocking
+   * promises registered using the "addBlocker" function on the details object.
+   * If this function is called again, the event is only dispatched after all
+   * the previously registered blockers have returned.
+   *
+   * The event can be canceled either by resolving any blocking promise to the
+   * boolean value "false" or by calling preventDefault on the event. Rejections
+   * and exceptions will be reported and will cancel the event.
+   *
+   * Blocking should be used sporadically because it slows down the interface.
+   * Also, non-reentrancy is not strictly guaranteed because a safety timeout of
+   * BLOCKERS_TIMEOUT_MS is implemented, after which the event will be canceled.
+   * This helps to prevent deadlocks if any of the event handlers does not
+   * resolve a blocker promise.
+   *
+   * @note Since there is no use case for dispatching different asynchronous
+   *       events in parallel for the same element, this function will also wait
+   *       for previous blockers when the event name is different.
+   *
+   * @param eventName
+   *        Name of the custom event to dispatch.
+   *
+   * @resolves True if the event was canceled by a handler, false otherwise.
+   */
+  async dispatchAsyncEvent(eventName) {
+    // Wait for all the previous blockers before dispatching the event.
+    let blockersPromise = this._blockersPromise.catch(() => {});
+    return this._blockersPromise = blockersPromise.then(async () => {
+      let blockers = new Set();
+      let cancel = this.dispatchCustomEvent(eventName, {
+        addBlocker(promise) {
+          // Any exception in the blocker will cancel the operation.
+          blockers.add(promise.catch(ex => {
+            Cu.reportError(ex);
+            return true;
+          }));
+        },
+      }, true);
+      if (blockers.size) {
+        let timeoutPromise = new Promise((resolve, reject) => {
+          this.window.setTimeout(reject, BLOCKERS_TIMEOUT_MS);
+        });
+        try {
+          let results = await Promise.race([Promise.all(blockers),
+                                            timeoutPromise]);
+          cancel = cancel || results.some(result => result === false);
+        } catch (ex) {
+          Cu.reportError(new Error(
+            `One of the blockers for ${eventName} timed out.`));
+          return true;
+        }
+      }
+      return cancel;
+    });
+  }
+};
+
+/**
+ * This is associated to <panelmultiview> elements.
+ */
+var PanelMultiView = class extends AssociatedToNode {
+  /**
+   * Tries to open the specified <panel> and displays the main view specified
+   * with the "mainViewId" attribute on the <panelmultiview> node it contains.
+   *
+   * If the panel does not contain a <panelmultiview>, it is opened directly.
+   * This allows consumers like page actions to accept different panel types.
+   *
+   * @see The non-static openPopup method for details.
+   */
+  static async openPopup(panelNode, ...args) {
+    let panelMultiViewNode = panelNode.querySelector("panelmultiview");
+    if (panelMultiViewNode) {
+      return this.forNode(panelMultiViewNode).openPopup(...args);
+    }
+    panelNode.openPopup(...args);
+    return true;
+  }
+
+  /**
+   * Closes the specified <panel> which contains a <panelmultiview> node.
+   *
+   * If the panel does not contain a <panelmultiview>, it is closed directly.
+   * This allows consumers like page actions to accept different panel types.
+   *
+   * @see The non-static hidePopup method for details.
+   */
+  static hidePopup(panelNode) {
+    let panelMultiViewNode = panelNode.querySelector("panelmultiview");
+    if (panelMultiViewNode) {
+      this.forNode(panelMultiViewNode).hidePopup();
+    } else {
+      panelNode.hidePopup();
+    }
+  }
+
+  /**
+   * Removes the specified <panel> from the document, ensuring that any
+   * <panelmultiview> node it contains is destroyed properly.
+   *
+   * If the viewCacheId attribute is present on the <panelmultiview> element,
+   * imported subviews will be moved out again to the element it specifies, so
+   * that the panel element can be removed safely.
+   *
+   * If the panel does not contain a <panelmultiview>, it is removed directly.
+   * This allows consumers like page actions to accept different panel types.
+   */
+  static removePopup(panelNode) {
+    try {
+      let panelMultiViewNode = panelNode.querySelector("panelmultiview");
+      if (panelMultiViewNode) {
+        let panelMultiView = this.forNode(panelMultiViewNode);
+        panelMultiView._moveOutKids();
+        panelMultiView.disconnect();
+      }
+    } finally {
+      // Make sure to remove the panel element even if disconnecting fails.
+      panelNode.remove();
+    }
+  }
+
+  /**
+   * Ensures that when the specified window is closed all the <panelmultiview>
+   * node it contains are destroyed properly.
+   */
+  static ensureUnloadHandlerRegistered(window) {
+    if (gWindowsWithUnloadHandler.has(window)) {
+      return;
+    }
+
+    window.addEventListener("unload", () => {
+      for (let panelMultiViewNode of
+           window.document.querySelectorAll("panelmultiview")) {
+        this.forNode(panelMultiViewNode).disconnect();
+      }
+    }, { once: true });
+
+    gWindowsWithUnloadHandler.add(window);
+  }
+
   get _panel() {
     return this.node.parentNode;
   }
 
-  get showingSubView() {
-    return this._showingSubView;
-  }
-  get _mainViewId() {
-    return this.node.getAttribute("mainViewId");
-  }
-  set _mainViewId(val) {
-    this.node.setAttribute("mainViewId", val);
-    return val;
-  }
-  get _mainView() {
-    return this._mainViewId ? this.document.getElementById(this._mainViewId) : null;
-  }
-
-  get _transitioning() {
-    return this.__transitioning;
-  }
   set _transitioning(val) {
-    this.__transitioning = val;
     if (val) {
       this.node.setAttribute("transitioning", "true");
     } else {
@@ -191,394 +356,472 @@ this.PanelMultiView = class {
     }
   }
 
-  /**
-   * @return {Boolean} |true| when the 'ephemeral' attribute is set, which means
-   *                   that this instance should be ready to be thrown away at
-   *                   any time.
-   */
-  get _ephemeral() {
-    return this.node.hasAttribute("ephemeral");
-  }
-
-  get panelViews() {
-    if (this._panelViews)
-      return this._panelViews;
-
-    this._panelViews = new SlidingPanelViews();
-    this._panelViews.push(...this.node.getElementsByTagName("panelview"));
-    return this._panelViews;
-  }
-  get _dwu() {
-    if (this.__dwu)
-      return this.__dwu;
-    return this.__dwu = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                                   .getInterface(Ci.nsIDOMWindowUtils);
-  }
   get _screenManager() {
     if (this.__screenManager)
       return this.__screenManager;
     return this.__screenManager = Cc["@mozilla.org/gfx/screenmanager;1"]
                                     .getService(Ci.nsIScreenManager);
   }
-  /**
-   * @return {panelview} the currently visible subview OR the subview that is
-   *                     about to be shown whilst a 'ViewShowing' event is being
-   *                     dispatched.
-   */
-  get current() {
-    return this._viewShowing || this._currentSubView;
-  }
-  get _currentSubView() {
-    return this.panelViews.currentView;
-  }
-  set _currentSubView(panel) {
-    this.panelViews.currentView = panel;
-  }
-  /**
-   * @return {Promise} showSubView() returns a promise, which is kept here for
-   *                   random access.
-   */
-  get currentShowPromise() {
-    return this._currentShowPromise || Promise.resolve();
-  }
-  get _keyNavigationMap() {
-    if (!this.__keyNavigationMap)
-      this.__keyNavigationMap = new Map();
-    return this.__keyNavigationMap;
-  }
-  get _multiLineElementsMap() {
-    if (!this.__multiLineElementsMap)
-      this.__multiLineElementsMap = new WeakMap();
-    return this.__multiLineElementsMap;
+
+  constructor(node) {
+    super(node);
+    this._openPopupPromise = Promise.resolve(false);
+    this._openPopupCancelCallback = () => {};
   }
 
-  constructor(xulNode, testMode = false) {
-    this.node = xulNode;
-    // If `testMode` is `true`, the consumer is only interested in accessing the
-    // methods of this instance. (E.g. in unit tests.)
-    if (testMode)
-      return;
+  connect() {
+    this.connected = true;
 
-    this._currentSubView = this._subViewObserver = null;
-    this._mainViewHeight = 0;
-    this.__transitioning = this._ignoreMutations = this._showingSubView = false;
+    PanelMultiView.ensureUnloadHandlerRegistered(this.window);
 
-    const {document, window} = this;
+    let viewContainer = this._viewContainer =
+      this.document.createElement("box");
+    viewContainer.classList.add("panel-viewcontainer");
 
-    this._viewContainer =
-      document.getAnonymousElementByAttribute(this.node, "anonid", "viewContainer");
-    this._viewStack =
-      document.getAnonymousElementByAttribute(this.node, "anonid", "viewStack");
-    this._offscreenViewStack =
-      document.getAnonymousElementByAttribute(this.node, "anonid", "offscreenViewStack");
+    let viewStack = this._viewStack = this.document.createElement("box");
+    viewStack.classList.add("panel-viewstack");
+    viewContainer.append(viewStack);
 
-    XPCOMUtils.defineLazyGetter(this, "_panelViewCache", () => {
-      let viewCacheId = this.node.getAttribute("viewCacheId");
-      return viewCacheId ? document.getElementById(viewCacheId) : null;
-    });
+    let offscreenViewContainer = this.document.createElement("box");
+    offscreenViewContainer.classList.add("panel-viewcontainer", "offscreen");
+
+    let offscreenViewStack = this._offscreenViewStack =
+      this.document.createElement("box");
+    offscreenViewStack.classList.add("panel-viewstack");
+    offscreenViewContainer.append(offscreenViewStack);
+
+    this.node.prepend(offscreenViewContainer);
+    this.node.prepend(viewContainer);
+
+    this.openViews = [];
 
     this._panel.addEventListener("popupshowing", this);
     this._panel.addEventListener("popuppositioned", this);
     this._panel.addEventListener("popuphidden", this);
     this._panel.addEventListener("popupshown", this);
-    let cs = window.getComputedStyle(document.documentElement);
+    let cs = this.window.getComputedStyle(this.document.documentElement);
     // Set CSS-determined attributes now to prevent a layout flush when we do
     // it when transitioning between panels.
     this._dir = cs.direction;
-    this.setMainView(this.panelViews.currentView);
-    this.showMainView();
-
-    this._showingSubView = false;
 
     // Proxy these public properties and methods, as used elsewhere by various
     // parts of the browser, to this instance.
-    ["_mainView", "ignoreMutations", "showingSubView",
-     "_panelViews"].forEach(property => {
-      Object.defineProperty(this.node, property, {
-        enumerable: true,
-        get: () => this[property],
-        set: (val) => this[property] = val
-      });
-    });
-    ["goBack", "descriptionHeightWorkaround", "setMainView", "showMainView",
-     "showSubView"].forEach(method => {
+    ["goBack", "showSubView"].forEach(method => {
       Object.defineProperty(this.node, method, {
         enumerable: true,
         value: (...args) => this[method](...args)
       });
     });
-    ["current", "currentShowPromise"].forEach(property => {
-      Object.defineProperty(this.node, property, {
-        enumerable: true,
-        get: () => this[property]
-      });
-    });
   }
 
-  destructor() {
+  disconnect() {
     // Guard against re-entrancy.
-    if (!this.node)
+    if (!this.node || !this.connected)
       return;
 
-    this._cleanupTransitionPhase();
-    if (this._ephemeral)
-      this.hideAllViewsExcept(null);
-    let mainView = this._mainView;
-    if (mainView) {
-      if (this._panelViewCache)
-        this._panelViewCache.appendChild(mainView);
-      mainView.removeAttribute("mainview");
-    }
-
-    this._moveOutKids(this._viewStack);
-    this.panelViews.clear();
     this._panel.removeEventListener("mousemove", this);
     this._panel.removeEventListener("popupshowing", this);
     this._panel.removeEventListener("popuppositioned", this);
     this._panel.removeEventListener("popupshown", this);
     this._panel.removeEventListener("popuphidden", this);
     this.window.removeEventListener("keydown", this);
-    this.node = this._viewContainer = this._viewStack = this.__dwu =
-      this._panelViewCache = this._transitionDetails = null;
+    this.node = this._openPopupPromise = this._openPopupCancelCallback =
+      this._viewContainer = this._viewStack = this.__dwu =
+      this._transitionDetails = null;
   }
 
   /**
-   * Remove any child subviews into the panelViewCache, to ensure
-   * they remain usable even if this panelmultiview instance is removed
-   * from the DOM.
-   * @param viewNodeContainer the container from which to remove subviews
+   * Tries to open the panel associated with this PanelMultiView, and displays
+   * the main view specified with the "mainViewId" attribute.
+   *
+   * The hidePopup method can be called while the operation is in progress to
+   * prevent the panel from being displayed. View events may also cancel the
+   * operation, so there is no guarantee that the panel will become visible.
+   *
+   * The "popuphidden" event will be fired either when the operation is canceled
+   * or when the popup is closed later. This event can be used for example to
+   * reset the "open" state of the anchor or tear down temporary panels.
+   *
+   * If this method is called again before the panel is shown, the result
+   * depends on the operation currently in progress. If the operation was not
+   * canceled, the panel is opened using the arguments from the previous call,
+   * and this call is ignored. If the operation was canceled, it will be
+   * retried again using the arguments from this call.
+   *
+   * It's not necessary for the <panelmultiview> binding to be connected when
+   * this method is called, but the containing panel must have its display
+   * turned on, for example it shouldn't have the "hidden" attribute.
+   *
+   * @param args
+   *        Arguments to be forwarded to the openPopup method of the panel.
+   *
+   * @resolves With true as soon as the request to display the panel has been
+   *           sent, or with false if the operation was canceled. The state of
+   *           the panel at this point is not guaranteed. It may be still
+   *           showing, completely shown, or completely hidden.
+   * @rejects If an exception is thrown at any point in the process before the
+   *          request to display the panel is sent.
    */
-  _moveOutKids(viewNodeContainer) {
-    if (!this._panelViewCache)
+  async openPopup(...args) {
+    // Set up the function that allows hidePopup or a second call to showPopup
+    // to cancel the specific panel opening operation that we're starting below.
+    // This function must be synchronous, meaning we can't use Promise.race,
+    // because hidePopup wants to dispatch the "popuphidden" event synchronously
+    // even if the panel has not been opened yet.
+    let canCancel = true;
+    let cancelCallback = this._openPopupCancelCallback = () => {
+      // If the cancel callback is called and the panel hasn't been prepared
+      // yet, cancel showing it. Setting canCancel to false will prevent the
+      // popup from opening. If the panel has opened by the time the cancel
+      // callback is called, canCancel will be false already, and we will not
+      // fire the "popuphidden" event.
+      if (canCancel && this.node) {
+        canCancel = false;
+        this.dispatchCustomEvent("popuphidden");
+      }
+    };
+
+    // Create a promise that is resolved with the result of the last call to
+    // this method, where errors indicate that the panel was not opened.
+    let openPopupPromise = this._openPopupPromise.catch(() => {
+      return false;
+    });
+
+    // Make the preparation done before showing the panel non-reentrant. The
+    // promise created here will be resolved only after the panel preparation is
+    // completed, even if a cancellation request is received in the meantime.
+    return this._openPopupPromise = openPopupPromise.then(async wasShown => {
+      // The panel may have been destroyed in the meantime.
+      if (!this.node) {
+        return false;
+      }
+      // If the panel has been already opened there is nothing more to do. We
+      // check the actual state of the panel rather than setting some state in
+      // our handler of the "popuphidden" event because this has a lower chance
+      // of locking indefinitely if events aren't raised in the expected order.
+      if (wasShown && ["open", "showing"].includes(this._panel.state)) {
+        return true;
+      }
+      try {
+        if (!this.connected) {
+          this.connect();
+        }
+        // Allow any of the ViewShowing handlers to prevent showing the main view.
+        if (!(await this._showMainView())) {
+          cancelCallback();
+        }
+      } catch (ex) {
+        cancelCallback();
+        throw ex;
+      }
+      // If a cancellation request was received there is nothing more to do.
+      if (!canCancel || !this.node) {
+        return false;
+      }
+      // We have to set canCancel to false before opening the popup because the
+      // hidePopup method of PanelMultiView can be re-entered by event handlers.
+      // If the openPopup call fails, however, we still have to dispatch the
+      // "popuphidden" event even if canCancel was set to false.
+      try {
+        canCancel = false;
+        this._panel.openPopup(...args);
+        return true;
+      } catch (ex) {
+        this.dispatchCustomEvent("popuphidden");
+        throw ex;
+      }
+    });
+  }
+
+  /**
+   * Closes the panel associated with this PanelMultiView.
+   *
+   * If the openPopup method was called but the panel has not been displayed
+   * yet, the operation is canceled and the panel will not be displayed, but the
+   * "popuphidden" event is fired synchronously anyways.
+   *
+   * This means that by the time this method returns all the operations handled
+   * by the "popuphidden" event are completed, for example resetting the "open"
+   * state of the anchor, and the panel is already invisible.
+   */
+  hidePopup() {
+    if (!this.node || !this.connected) {
       return;
+    }
+
+    // If we have already reached the _panel.openPopup call in the openPopup
+    // method, we can call hidePopup. Otherwise, we have to cancel the latest
+    // request to open the panel, which will have no effect if the request has
+    // been canceled already.
+    if (["open", "showing"].includes(this._panel.state)) {
+      this._panel.hidePopup();
+    } else {
+      this._openPopupCancelCallback();
+    }
+
+    // We close all the views synchronously, so that they are ready to be opened
+    // in other PanelMultiView instances. The "popuphidden" handler may also
+    // call this function, but the second time openViews will be empty.
+    this.closeAllViews();
+  }
+
+  /**
+   * Move any child subviews into the element defined by "viewCacheId" to make
+   * sure they will not be removed together with the <panelmultiview> element.
+   */
+  _moveOutKids() {
+    let viewCacheId = this.node.getAttribute("viewCacheId");
+    if (!viewCacheId) {
+      return;
+    }
 
     // Node.children and Node.childNodes is live to DOM changes like the
     // ones we're about to do, so iterate over a static copy:
-    let subviews = Array.from(viewNodeContainer.childNodes);
+    let subviews = Array.from(this._viewStack.childNodes);
+    let viewCache = this.document.getElementById(viewCacheId);
     for (let subview of subviews) {
-      // XBL lists the 'children' XBL element explicitly. :-(
-      if (subview.nodeName != "children")
-        this._panelViewCache.appendChild(subview);
+      viewCache.appendChild(subview);
     }
-  }
-
-  _placeSubView(viewNode) {
-    this._viewStack.appendChild(viewNode);
-    if (!this.panelViews.includes(viewNode))
-      this.panelViews.push(viewNode);
-  }
-
-  _setHeader(viewNode, titleText) {
-    // If the header already exists, update or remove it as requested.
-    let header = viewNode.firstChild;
-    if (header && header.classList.contains("panel-header")) {
-      if (titleText) {
-        header.querySelector("label").setAttribute("value", titleText);
-      } else {
-        header.remove();
-      }
-      return;
-    }
-
-    // The header doesn't exist, only create it if needed.
-    if (!titleText) {
-      return;
-    }
-
-    header = this.document.createElement("box");
-    header.classList.add("panel-header");
-
-    let backButton = this.document.createElement("toolbarbutton");
-    backButton.className =
-      "subviewbutton subviewbutton-iconic subviewbutton-back";
-    backButton.setAttribute("closemenu", "none");
-    backButton.setAttribute("tabindex", "0");
-    backButton.setAttribute("tooltip",
-      this.node.getAttribute("data-subviewbutton-tooltip"));
-    backButton.addEventListener("command", () => {
-      // The panelmultiview element may change if the view is reused.
-      viewNode.panelMultiView.goBack();
-      backButton.blur();
-    });
-
-    let label = this.document.createElement("label");
-    label.setAttribute("value", titleText);
-
-    header.append(backButton, label);
-    viewNode.prepend(header);
-  }
-
-  goBack() {
-    let [current, previous] = this.panelViews.back();
-    return this.showSubView(current, null, previous);
   }
 
   /**
-   * Checks whether it is possible to navigate backwards currently. Returns
-   * false if this is the panelmultiview's mainview, true otherwise.
+   * Slides in the specified view as a subview.
    *
-   * @param  {panelview} view View to check, defaults to the currently active view.
-   * @return {Boolean}
+   * @param viewIdOrNode
+   *        DOM element or string ID of the <panelview> to display.
+   * @param anchor
+   *        DOM element that triggered the subview, which will be highlighted
+   *        and whose "label" attribute will be used for the title of the
+   *        subview when a "title" attribute is not specified.
    */
-  _canGoBack(view = this._currentSubView) {
-    return view.id != this._mainViewId;
+  showSubView(viewIdOrNode, anchor) {
+    this._showSubView(viewIdOrNode, anchor).catch(Cu.reportError);
   }
-
-  setMainView(aNewMainView) {
-    if (!aNewMainView)
+  async _showSubView(viewIdOrNode, anchor) {
+    let viewNode = typeof viewIdOrNode == "string" ?
+                   this.document.getElementById(viewIdOrNode) : viewIdOrNode;
+    if (!viewNode) {
+      Cu.reportError(new Error(`Subview ${viewIdOrNode} doesn't exist.`));
       return;
-
-    if (this._mainView) {
-      this._mainView.removeAttribute("mainview");
-    }
-    this._mainViewId = aNewMainView.id;
-    aNewMainView.setAttribute("mainview", "true");
-    // If the new main view is not yet in the zeroth position, make sure it's
-    // inserted there.
-    if (aNewMainView.parentNode != this._viewStack &&
-        this._viewStack.firstChild != aNewMainView) {
-      this._viewStack.insertBefore(aNewMainView, this._viewStack.firstChild);
-    }
-  }
-
-  showMainView() {
-    if (!this._mainViewId)
-      return Promise.resolve();
-
-    return this.showSubView(this._mainView);
-  }
-
-  /**
-   * Ensures that all the panelviews, that are currently part of this instance,
-   * are hidden, except one specifically.
-   *
-   * @param {panelview} [theOne] The panelview DOM node to ensure is visible.
-   *                             Optional.
-   */
-  hideAllViewsExcept(theOne = null) {
-    for (let panelview of this._panelViews) {
-      // When the panelview was already reparented, don't interfere any more.
-      if (panelview == theOne || !this.node || panelview.panelMultiView != this.node)
-        continue;
-      if (panelview.hasAttribute("current"))
-        this._dispatchViewEvent(panelview, "ViewHiding");
-      panelview.removeAttribute("current");
     }
 
-    this._viewShowing = null;
-
-    if (!this.node || !theOne)
+    if (!this.openViews.length) {
+      Cu.reportError(new Error(`Cannot show a subview in a closed panel.`));
       return;
-
-    this._currentSubView = theOne;
-    if (!theOne.hasAttribute("current")) {
-      theOne.setAttribute("current", true);
-      this.descriptionHeightWorkaround(theOne);
-      this._dispatchViewEvent(theOne, "ViewShown");
     }
-    this._showingSubView = theOne.id != this._mainViewId;
-  }
 
-  showSubView(aViewId, aAnchor, aPreviousView) {
-    this._currentShowPromise = (async () => {
-      // Support passing in the node directly.
-      let viewNode = typeof aViewId == "string" ? this.node.querySelector("#" + aViewId) : aViewId;
-      if (!viewNode) {
-        viewNode = this.document.getElementById(aViewId);
-        if (viewNode) {
-          this._placeSubView(viewNode);
-        } else {
-          throw new Error(`Subview ${aViewId} doesn't exist!`);
+    let prevPanelView = this.openViews[this.openViews.length - 1];
+    let nextPanelView = PanelView.forNode(viewNode);
+    if (this.openViews.includes(nextPanelView)) {
+      Cu.reportError(new Error(`Subview ${viewNode.id} is already open.`));
+      return;
+    }
+
+    // Do not re-enter the process if navigation is already in progress. Since
+    // there is only one active view at any given time, we can do this check
+    // safely, even considering that during the navigation process the actual
+    // view to which prevPanelView refers will change.
+    if (!prevPanelView.active) {
+      return;
+    }
+    // Marking the view that is about to scrolled out of the visible area as
+    // inactive will prevent re-entrancy and also disable keyboard navigation.
+    // From this point onwards, "await" statements can be used safely.
+    prevPanelView.active = false;
+
+    // Provide visual feedback while navigation is in progress, starting before
+    // the transition starts and ending when the previous view is invisible.
+    if (anchor) {
+      anchor.setAttribute("open", "true");
+    }
+    try {
+      // If the ViewShowing event cancels the operation we have to re-enable
+      // keyboard navigation, but this must be avoided if the panel was closed.
+      if (!(await this._openView(nextPanelView))) {
+        if (prevPanelView.isOpenIn(this)) {
+          // We don't raise a ViewShown event because nothing actually changed.
+          // Technically we should use a different state flag just because there
+          // is code that could check the "active" property to determine whether
+          // to wait for a ViewShown event later, but this only happens in
+          // regression tests and is less likely to be a technique used in
+          // production code, where use of ViewShown is less common.
+          prevPanelView.active = true;
         }
-      } else if (viewNode.parentNode == this._panelViewCache) {
-        this._placeSubView(viewNode);
+        return;
       }
 
-      viewNode.panelMultiView = this.node;
+      prevPanelView.captureKnownSize();
 
-      let reverse = !!aPreviousView;
-      if (!reverse) {
-        this._setHeader(viewNode, viewNode.getAttribute("title") ||
-                                  (aAnchor && aAnchor.getAttribute("label")));
-      }
+      // The main view of a panel can be a subview in another one. Make sure to
+      // reset all the properties that may be set on a subview.
+      nextPanelView.mainview = false;
+      // The header may change based on how the subview was opened.
+      nextPanelView.headerText = viewNode.getAttribute("title") ||
+                                 (anchor && anchor.getAttribute("label"));
+      // The constrained width of subviews may also vary between panels.
+      nextPanelView.minMaxWidth = prevPanelView.knownWidth;
 
-      let previousViewNode = aPreviousView || this._currentSubView;
-      // If the panelview to show is the same as the previous one, the 'ViewShowing'
-      // event has already been dispatched. Don't do it twice.
-      let showingSameView = viewNode == previousViewNode;
-      let playTransition = (!!previousViewNode && !showingSameView && this._panel.state == "open");
-      let isMainView = viewNode.id == this._mainViewId;
-
-      let dwu = this._dwu;
-      let previousRect = previousViewNode.__lastKnownBoundingRect =
-          dwu.getBoundsWithoutFlushing(previousViewNode);
-      // Cache the measures that have the same caching lifetime as the width
-      // or height of the main view, i.e. whilst the panel is shown and/ or
-      // visible.
-      if (!this._mainViewWidth) {
-        this._mainViewWidth = previousRect.width;
-        let top = dwu.getBoundsWithoutFlushing(previousViewNode.firstChild || previousViewNode).top;
-        let bottom = dwu.getBoundsWithoutFlushing(previousViewNode.lastChild || previousViewNode).bottom;
-        this._viewVerticalPadding = previousRect.height - (bottom - top);
-      }
-      if (!this._mainViewHeight) {
-        this._mainViewHeight = previousRect.height;
-        this._viewContainer.style.minHeight = this._mainViewHeight + "px";
-      }
-
-      this._viewShowing = viewNode;
-      // Because the 'mainview' attribute may be out-of-sync, due to view node
-      // reparenting in combination with ephemeral PanelMultiView instances,
-      // this is the best place to correct it (just before showing).
-      if (isMainView)
-        viewNode.setAttribute("mainview", true);
-      else
-        viewNode.removeAttribute("mainview");
-
-      if (aAnchor) {
+      if (anchor) {
         viewNode.classList.add("PanelUI-subView");
       }
-      if (!isMainView && this._mainViewWidth)
-        viewNode.style.maxWidth = viewNode.style.minWidth = this._mainViewWidth + "px";
 
-      if (!showingSameView || !viewNode.hasAttribute("current")) {
-        // Emit the ViewShowing event so that the widget definition has a chance
-        // to lazily populate the subview with things or perhaps even cancel this
-        // whole operation.
-        let detail = {
-          blockers: new Set(),
-          addBlocker(promise) {
-            this.blockers.add(promise);
-          }
-        };
-        let cancel = this._dispatchViewEvent(viewNode, "ViewShowing", aAnchor, detail);
-        if (detail.blockers.size) {
-          try {
-            let results = await Promise.all(detail.blockers);
-            cancel = cancel || results.some(val => val === false);
-          } catch (e) {
-            Cu.reportError(e);
-            cancel = true;
-          }
-        }
-
-        if (cancel) {
-          this._viewShowing = null;
-          return;
-        }
+      await this._transitionViews(prevPanelView.node, viewNode, false, anchor);
+    } finally {
+      if (anchor) {
+        anchor.removeAttribute("open");
       }
+    }
 
-      // Now we have to transition the panel. If we've got an older transition
-      // still running, make sure to clean it up.
-      await this._cleanupTransitionPhase();
-      if (playTransition) {
-        await this._transitionViews(previousViewNode, viewNode, reverse, previousRect, aAnchor);
-        this._updateKeyboardFocus(viewNode);
-      } else {
-        this.hideAllViewsExcept(viewNode);
-      }
-    })().catch(e => Cu.reportError(e));
-    return this._currentShowPromise;
+    this._activateView(nextPanelView);
+  }
+
+  /**
+   * Navigates backwards by sliding out the most recent subview.
+   */
+  goBack() {
+    this._goBack().catch(Cu.reportError);
+  }
+  async _goBack() {
+    if (this.openViews.length < 2) {
+      // This may be called by keyboard navigation or external code when only
+      // the main view is open.
+      return;
+    }
+
+    let prevPanelView = this.openViews[this.openViews.length - 1];
+    let nextPanelView = this.openViews[this.openViews.length - 2];
+
+    // Like in the showSubView method, do not re-enter navigation while it is
+    // in progress, and make the view inactive immediately. From this point
+    // onwards, "await" statements can be used safely.
+    if (!prevPanelView.active) {
+      return;
+    }
+    prevPanelView.active = false;
+
+    prevPanelView.captureKnownSize();
+    await this._transitionViews(prevPanelView.node, nextPanelView.node, true);
+
+    this._closeLatestView();
+
+    this._activateView(nextPanelView);
+  }
+
+  /**
+   * Prepares the main view before showing the panel.
+   */
+  async _showMainView() {
+    let nextPanelView = PanelView.forNode(this.document.getElementById(
+      this.node.getAttribute("mainViewId")));
+
+    // If the view is already open in another panel, close the panel first.
+    let oldPanelMultiViewNode = nextPanelView.node.panelMultiView;
+    if (oldPanelMultiViewNode) {
+      PanelMultiView.forNode(oldPanelMultiViewNode).hidePopup();
+      // Wait for a layout flush after hiding the popup, otherwise the view may
+      // not be displayed correctly for some time after the new panel is opened.
+      // This is filed as bug 1441015.
+      await this.window.promiseDocumentFlushed(() => {});
+    }
+
+    if (!(await this._openView(nextPanelView))) {
+      return false;
+    }
+
+    // The main view of a panel can be a subview in another one. Make sure to
+    // reset all the properties that may be set on a subview.
+    nextPanelView.mainview = true;
+    nextPanelView.headerText = "";
+    nextPanelView.minMaxWidth = 0;
+
+    // Ensure the view will be visible once the panel is opened.
+    nextPanelView.visible = true;
+    nextPanelView.descriptionHeightWorkaround();
+
+    return true;
+  }
+
+  /**
+   * Opens the specified PanelView and dispatches the ViewShowing event, which
+   * can be used to populate the subview or cancel the operation.
+   *
+   * This also clears all the attributes and styles that may be left by a
+   * transition that was interrupted.
+   *
+   * @resolves With true if the view was opened, false otherwise.
+   */
+  async _openView(panelView) {
+    if (panelView.node.parentNode != this._viewStack) {
+      this._viewStack.appendChild(panelView.node);
+    }
+
+    panelView.node.panelMultiView = this.node;
+    this.openViews.push(panelView);
+
+    let canceled = await panelView.dispatchAsyncEvent("ViewShowing");
+
+    // The panel can be hidden while we are processing the ViewShowing event.
+    // This results in all the views being closed synchronously, and at this
+    // point the ViewHiding event has already been dispatched for all of them.
+    if (!this.openViews.length) {
+      return false;
+    }
+
+    // Check if the event requested cancellation but the panel is still open.
+    if (canceled) {
+      // Handlers for ViewShowing can't know if a different handler requested
+      // cancellation, so this will dispatch a ViewHiding event to give a chance
+      // to clean up.
+      this._closeLatestView();
+      return false;
+    }
+
+    // Clean up all the attributes and styles related to transitions. We do this
+    // here rather than when the view is closed because we are likely to make
+    // other DOM modifications soon, which isn't the case when closing.
+    let { style } = panelView.node;
+    style.removeProperty("outline");
+    style.removeProperty("width");
+
+    return true;
+  }
+
+  /**
+   * Activates the specified view and raises the ViewShown event, unless the
+   * view was closed in the meantime.
+   */
+  _activateView(panelView) {
+    if (panelView.isOpenIn(this)) {
+      panelView.active = true;
+      panelView.dispatchCustomEvent("ViewShown");
+    }
+  }
+
+  /**
+   * Closes the most recent PanelView and raises the ViewHiding event.
+   *
+   * @note The ViewHiding event is not cancelable and should probably be renamed
+   *       to ViewHidden or ViewClosed instead, see bug 1438507.
+   */
+  _closeLatestView() {
+    let panelView = this.openViews.pop();
+    panelView.clearNavigation();
+    panelView.dispatchCustomEvent("ViewHiding");
+    panelView.node.panelMultiView = null;
+    // Views become invisible synchronously when they are closed, and they won't
+    // become visible again until they are opened. When this is called at the
+    // end of backwards navigation, the view is already invisible.
+    panelView.visible = false;
+  }
+
+  /**
+   * Closes all the views that are currently open.
+   */
+  closeAllViews() {
+    // Raise ViewHiding events for open views in reverse order.
+    while (this.openViews.length) {
+      this._closeLatestView();
+    }
   }
 
   /**
@@ -588,82 +831,82 @@ this.PanelMultiView = class {
    * is and the active panelview slides in from the left in LTR mode, right in
    * RTL mode.
    *
-   * @param {panelview} previousViewNode Node that is currently shown as active,
-   *                                     but is about to be transitioned away.
+   * @param {panelview} previousViewNode Node that is currently displayed, but
+   *                                     is about to be transitioned away. This
+   *                                     must be already inactive at this point.
    * @param {panelview} viewNode         Node that will becode the active view,
    *                                     after the transition has finished.
    * @param {Boolean}   reverse          Whether we're navigation back to a
    *                                     previous view or forward to a next view.
-   * @param {Object}    previousRect     Rect object, with the same structure as
-   *                                     a DOMRect, of the `previousViewNode`.
-   * @param {Element}   anchor           the anchor for which we're opening
-   *                                     a new panelview, if any
    */
-  async _transitionViews(previousViewNode, viewNode, reverse, previousRect, anchor) {
-    // There's absolutely no need to show off our epic animation skillz when
-    // the panel's not even open.
-    if (this._panel.state != "open") {
-      return;
-    }
+  async _transitionViews(previousViewNode, viewNode, reverse) {
+    const { window } = this;
 
-    const {window, document} = this;
-
-    if (this._autoResizeWorkaroundTimer)
-      window.clearTimeout(this._autoResizeWorkaroundTimer);
+    let nextPanelView = PanelView.forNode(viewNode);
+    let prevPanelView = PanelView.forNode(previousViewNode);
 
     let details = this._transitionDetails = {
       phase: TRANSITION_PHASES.START,
-      previousViewNode, viewNode, reverse, anchor
     };
 
-    if (anchor)
-      anchor.setAttribute("open", "true");
-
-    // Since we're going to show two subview at the same time, don't abuse the
-    // 'current' attribute, since it's needed for other state-keeping, but use
-    // a separate 'in-transition' attribute instead.
-    previousViewNode.setAttribute("in-transition", true);
     // Set the viewContainer dimensions to make sure only the current view is
     // visible.
-    this._viewContainer.style.height = Math.max(previousRect.height, this._mainViewHeight) + "px";
-    this._viewContainer.style.width = previousRect.width + "px";
+    let olderView = reverse ? nextPanelView : prevPanelView;
+    this._viewContainer.style.minHeight = olderView.knownHeight + "px";
+    this._viewContainer.style.height = prevPanelView.knownHeight + "px";
+    this._viewContainer.style.width = prevPanelView.knownWidth + "px";
     // Lock the dimensions of the window that hosts the popup panel.
     let rect = this._panel.popupBoxObject.getOuterScreenRect();
     this._panel.setAttribute("width", rect.width);
     this._panel.setAttribute("height", rect.height);
 
     let viewRect;
-    if (viewNode.__lastKnownBoundingRect) {
-      viewRect = viewNode.__lastKnownBoundingRect;
-      viewNode.setAttribute("in-transition", true);
+    if (reverse) {
+      // Use the cached size when going back to a previous view, but not when
+      // reopening a subview, because its contents may have changed.
+      viewRect = { width: nextPanelView.knownWidth,
+                   height: nextPanelView.knownHeight };
+      nextPanelView.visible = true;
     } else if (viewNode.customRectGetter) {
-      // Can't use Object.assign directly with a DOM Rect object because its properties
-      // aren't enumerable.
-      let {height, width} = previousRect;
+      // We use a customRectGetter for WebExtensions panels, because they need
+      // to query the size from an embedded browser. The presence of this
+      // getter also provides an indication that the view node shouldn't be
+      // moved around, otherwise the state of the browser would get disrupted.
+      let width = prevPanelView.knownWidth;
+      let height = prevPanelView.knownHeight;
       viewRect = Object.assign({height, width}, viewNode.customRectGetter());
+      nextPanelView.visible = true;
+      // Until the header is visible, it has 0 height.
+      // Wait for layout before measuring it
       let header = viewNode.firstChild;
       if (header && header.classList.contains("panel-header")) {
-        viewRect.height += this._dwu.getBoundsWithoutFlushing(header).height;
+        viewRect.height += await window.promiseDocumentFlushed(() => {
+          return this._dwu.getBoundsWithoutFlushing(header).height;
+        });
       }
-      viewNode.setAttribute("in-transition", true);
+      await nextPanelView.descriptionHeightWorkaround();
     } else {
-      let oldSibling = viewNode.nextSibling || null;
+      this._offscreenViewStack.style.minHeight = olderView.knownHeight + "px";
       this._offscreenViewStack.appendChild(viewNode);
-      viewNode.setAttribute("in-transition", true);
+      nextPanelView.visible = true;
 
       // Now that the subview is visible, we can check the height of the
       // description elements it contains.
-      this.descriptionHeightWorkaround(viewNode);
+      await nextPanelView.descriptionHeightWorkaround();
 
-      viewRect = await BrowserUtils.promiseLayoutFlushed(this.document, "layout", () => {
+      viewRect = await window.promiseDocumentFlushed(() => {
         return this._dwu.getBoundsWithoutFlushing(viewNode);
       });
-
-      try {
-        this._viewStack.insertBefore(viewNode, oldSibling);
-      } catch (ex) {
-        this._viewStack.appendChild(viewNode);
+      // Bail out if the panel was closed in the meantime.
+      if (!nextPanelView.isOpenIn(this)) {
+        return;
       }
+
+      // Place back the view after all the other views that are already open in
+      // order for the transition to work as expected.
+      this._viewStack.appendChild(viewNode);
+
+      this._offscreenViewStack.style.removeProperty("min-height");
     }
 
     this._transitioning = true;
@@ -671,7 +914,7 @@ this.PanelMultiView = class {
 
     // The 'magic' part: build up the amount of pixels to move right or left.
     let moveToLeft = (this._dir == "rtl" && !reverse) || (this._dir == "ltr" && reverse);
-    let deltaX = previousRect.width;
+    let deltaX = prevPanelView.knownWidth;
     let deepestNode = reverse ? previousViewNode : viewNode;
 
     // With a transition when navigating backwards - user hits the 'back'
@@ -687,19 +930,26 @@ this.PanelMultiView = class {
     this._viewStack.style.transition = "transform var(--animation-easing-function)" +
       " var(--panelui-subview-transition-duration)";
     this._viewStack.style.willChange = "transform";
-    deepestNode.style.borderInlineStart = "1px solid var(--panel-separator-color)";
+    // Use an outline instead of a border so that the size is not affected.
+    deepestNode.style.outline = "1px solid var(--panel-separator-color)";
+
+    // Now that all the elements are in place for the start of the transition,
+    // give the layout code a chance to set the initial values.
+    await window.promiseDocumentFlushed(() => {});
+    // Bail out if the panel was closed in the meantime.
+    if (!nextPanelView.isOpenIn(this)) {
+      return;
+    }
 
     // Now set the viewContainer dimensions to that of the new view, which
     // kicks of the height animation.
-    this._viewContainer.style.height = Math.max(viewRect.height, this._mainViewHeight) + "px";
+    this._viewContainer.style.height = viewRect.height + "px";
     this._viewContainer.style.width = viewRect.width + "px";
     this._panel.removeAttribute("width");
     this._panel.removeAttribute("height");
     // We're setting the width property to prevent flickering during the
     // sliding animation with smaller views.
     viewNode.style.width = viewRect.width + "px";
-
-    await BrowserUtils.promiseLayoutFlushed(document, "layout", () => {});
 
     // Kick off the transition!
     details.phase = TRANSITION_PHASES.TRANSITION;
@@ -726,64 +976,46 @@ this.PanelMultiView = class {
       });
     });
 
-    details.phase = TRANSITION_PHASES.END;
+    // Bail out if the panel was closed during the transition.
+    if (!nextPanelView.isOpenIn(this)) {
+      return;
+    }
+    prevPanelView.visible = false;
 
-    await this._cleanupTransitionPhase(details);
+    // This will complete the operation by removing any transition properties.
+    nextPanelView.node.style.removeProperty("width");
+    deepestNode.style.removeProperty("outline");
+    this._cleanupTransitionPhase();
+
+    nextPanelView.focusSelectedElement();
   }
 
   /**
    * Attempt to clean up the attributes and properties set by `_transitionViews`
    * above. Which attributes and properties depends on the phase the transition
-   * was left from - normally that'd be `TRANSITION_PHASES.END`.
-   *
-   * @param {Object} details Dictionary object containing details of the transition
-   *                         that should be cleaned up after. Defaults to the most
-   *                         recent details.
+   * was left from.
    */
-  async _cleanupTransitionPhase(details = this._transitionDetails) {
-    if (!details || !this.node)
+  _cleanupTransitionPhase() {
+    if (!this._transitionDetails) {
       return;
+    }
 
-    let {phase, previousViewNode, viewNode, reverse, resolve, listener, cancelListener, anchor} = details;
-    if (details == this._transitionDetails)
-      this._transitionDetails = null;
-
-    // Do the things we _always_ need to do whenever the transition ends or is
-    // interrupted.
-    this.hideAllViewsExcept(viewNode);
-    previousViewNode.removeAttribute("in-transition");
-    viewNode.removeAttribute("in-transition");
-    if (reverse)
-      this._resetKeyNavigation(previousViewNode);
-
-    if (anchor)
-      anchor.removeAttribute("open");
+    let {phase, resolve, listener, cancelListener} = this._transitionDetails;
+    this._transitionDetails = null;
 
     if (phase >= TRANSITION_PHASES.START) {
       this._panel.removeAttribute("width");
       this._panel.removeAttribute("height");
-      // Myeah, panel layout auto-resizing is a funky thing. We'll wait
-      // another few milliseconds to remove the width and height 'fixtures',
-      // to be sure we don't flicker annoyingly.
-      // NB: HACK! Bug 1363756 is there to fix this.
-      this._autoResizeWorkaroundTimer = this.window.setTimeout(() => {
-        if (!this._viewContainer)
-          return;
-        this._viewContainer.style.removeProperty("height");
-        this._viewContainer.style.removeProperty("width");
-      }, 500);
+      this._viewContainer.style.removeProperty("height");
+      this._viewContainer.style.removeProperty("width");
     }
     if (phase >= TRANSITION_PHASES.PREPARE) {
       this._transitioning = false;
-      if (reverse)
-        this._viewStack.style.removeProperty("margin-inline-start");
-      let deepestNode = reverse ? previousViewNode : viewNode;
-      deepestNode.style.removeProperty("border-inline-start");
+      this._viewStack.style.removeProperty("margin-inline-start");
       this._viewStack.style.removeProperty("transition");
     }
     if (phase >= TRANSITION_PHASES.TRANSITION) {
       this._viewStack.style.removeProperty("transform");
-      viewNode.style.removeProperty("width");
       if (listener)
         this._viewContainer.removeEventListener("transitionend", listener);
       if (cancelListener)
@@ -791,42 +1023,6 @@ this.PanelMultiView = class {
       if (resolve)
         resolve();
     }
-    if (phase >= TRANSITION_PHASES.END) {
-      // We force 'display: none' on the previous view node to make sure that it
-      // doesn't cause an annoying flicker whilst resetting the styles above.
-      previousViewNode.style.display = "none";
-      await BrowserUtils.promiseLayoutFlushed(this.document, "layout", () => {});
-      previousViewNode.style.removeProperty("display");
-    }
-  }
-
-  /**
-   * Helper method to emit an event on a panelview, whilst also making sure that
-   * the correct method is called on CustomizableWidget instances.
-   *
-   * @param  {panelview} viewNode  Target of the event to dispatch.
-   * @param  {String}    eventName Name of the event to dispatch.
-   * @param  {DOMNode}   [anchor]  Node where the panel is anchored to. Optional.
-   * @param  {Object}    [detail]  Event detail object. Optional.
-   * @return {Boolean} `true` if the event was canceled by an event handler, `false`
-   *                   otherwise.
-   */
-  _dispatchViewEvent(viewNode, eventName, anchor, detail) {
-    let cancel = false;
-    if (eventName != "PanelMultiViewHidden") {
-      // Don't need to do this for PanelMultiViewHidden event
-      CustomizableUI.ensureSubviewListeners(viewNode);
-    }
-
-    let evt = new this.window.CustomEvent(eventName, {
-      detail,
-      bubbles: true,
-      cancelable: eventName == "ViewShowing"
-    });
-    viewNode.dispatchEvent(evt);
-    if (!cancel)
-      cancel = evt.defaultPrevented;
-    return cancel;
   }
 
   _calculateMaxHeight() {
@@ -875,14 +1071,18 @@ this.PanelMultiView = class {
     }
     switch (aEvent.type) {
       case "keydown":
-        this._keyNavigation(aEvent);
+        // Since we start listening for the "keydown" event when the popup is
+        // already showing and stop listening when the panel is hidden, we
+        // always have at least one view open.
+        let currentView = this.openViews[this.openViews.length - 1];
+        currentView.keyNavigation(aEvent, this._dir);
         break;
       case "mousemove":
-        this._resetKeyNavigation();
+        this.openViews.forEach(panelView => panelView.clearNavigation());
         break;
       case "popupshowing": {
-        this.node.setAttribute("panelopen", "true");
-        if (this.panelViews && !this.node.hasAttribute("disablekeynav")) {
+        this._viewContainer.setAttribute("panelopen", "true");
+        if (!this.node.hasAttribute("disablekeynav")) {
           this.window.addEventListener("keydown", this);
           this._panel.addEventListener("mousemove", this);
         }
@@ -901,59 +1101,308 @@ this.PanelMultiView = class {
         if (this._panel.state == "showing") {
           let maxHeight = this._calculateMaxHeight();
           this._viewStack.style.maxHeight = maxHeight + "px";
+          this._offscreenViewStack.style.maxHeight = maxHeight + "px";
         }
         break;
       }
       case "popupshown":
-        // Now that the main view is visible, we can check the height of the
-        // description elements it contains.
-        this.descriptionHeightWorkaround();
+        // The main view is always open and visible when the panel is first
+        // shown, so we can check the height of the description elements it
+        // contains and notify consumers using the ViewShown event. In order to
+        // minimize flicker we need to allow synchronous reflows, and we still
+        // make sure the ViewShown event is dispatched synchronously.
+        let mainPanelView = this.openViews[0];
+        mainPanelView.descriptionHeightWorkaround(true).catch(Cu.reportError);
+        this._activateView(mainPanelView);
         break;
       case "popuphidden": {
         // WebExtensions consumers can hide the popup from viewshowing, or
         // mid-transition, which disrupts our state:
-        this._viewShowing = null;
         this._transitioning = false;
-        this.node.removeAttribute("panelopen");
-        this.showMainView();
-        for (let panelView of this._viewStack.children) {
-          if (panelView.nodeName != "children") {
-            panelView.__lastKnownBoundingRect = null;
-            panelView.style.removeProperty("min-width");
-            panelView.style.removeProperty("max-width");
-          }
-        }
+        this._viewContainer.removeAttribute("panelopen");
+        this._cleanupTransitionPhase();
         this.window.removeEventListener("keydown", this);
         this._panel.removeEventListener("mousemove", this);
-        this._resetKeyNavigation();
+        this.closeAllViews();
 
         // Clear the main view size caches. The dimensions could be different
         // when the popup is opened again, e.g. through touch mode sizing.
-        this._mainViewHeight = 0;
-        this._mainViewWidth = 0;
         this._viewContainer.style.removeProperty("min-height");
         this._viewStack.style.removeProperty("max-height");
-        this._viewContainer.style.removeProperty("min-width");
-        this._viewContainer.style.removeProperty("max-width");
+        this._viewContainer.style.removeProperty("width");
+        this._viewContainer.style.removeProperty("height");
 
-        this._dispatchViewEvent(this.node, "PanelMultiViewHidden");
+        this.dispatchCustomEvent("PanelMultiViewHidden");
         break;
       }
     }
   }
+};
+
+/**
+ * This is associated to <panelview> elements.
+ */
+var PanelView = class extends AssociatedToNode {
+  constructor(node) {
+    super(node);
+
+    /**
+     * Indicates whether the view is active. When this is false, consumers can
+     * wait for the ViewShown event to know when the view becomes active.
+     */
+    this.active = false;
+  }
 
   /**
-   * Based on going up or down, select the previous or next focusable button
-   * in the current view.
+   * Indicates whether the view is open in the specified PanelMultiView object.
+   */
+  isOpenIn(panelMultiView) {
+    return this.node.panelMultiView == panelMultiView.node;
+  }
+
+  /**
+   * The "mainview" attribute is set before the panel is opened when this view
+   * is displayed as the main view, and is removed before the <panelview> is
+   * displayed as a subview. The same view element can be displayed as a main
+   * view and as a subview at different times.
+   */
+  set mainview(value) {
+    if (value) {
+      this.node.setAttribute("mainview", true);
+    } else {
+      this.node.removeAttribute("mainview");
+    }
+  }
+
+  /**
+   * Determines whether the view is visible. Setting this to false also resets
+   * the "active" property.
+   */
+  set visible(value) {
+    if (value) {
+      this.node.setAttribute("visible", true);
+    } else {
+      this.node.removeAttribute("visible");
+      this.active = false;
+    }
+  }
+
+  /**
+   * Constrains the width of this view using the "min-width" and "max-width"
+   * styles. Setting this to zero removes the constraints.
+   */
+  set minMaxWidth(value) {
+    let style = this.node.style;
+    if (value) {
+      style.minWidth = style.maxWidth = value + "px";
+    } else {
+      style.removeProperty("min-width");
+      style.removeProperty("max-width");
+    }
+  }
+
+  /**
+   * Adds a header with the given title, or removes it if the title is empty.
+   */
+  set headerText(value) {
+    // If the header already exists, update or remove it as requested.
+    let header = this.node.firstChild;
+    if (header && header.classList.contains("panel-header")) {
+      if (value) {
+        header.querySelector("label").setAttribute("value", value);
+      } else {
+        header.remove();
+      }
+      return;
+    }
+
+    // The header doesn't exist, only create it if needed.
+    if (!value) {
+      return;
+    }
+
+    header = this.document.createElement("box");
+    header.classList.add("panel-header");
+
+    let backButton = this.document.createElement("toolbarbutton");
+    backButton.className =
+      "subviewbutton subviewbutton-iconic subviewbutton-back";
+    backButton.setAttribute("closemenu", "none");
+    backButton.setAttribute("tabindex", "0");
+    backButton.setAttribute("aria-label",
+      gBundle.GetStringFromName("panel.back"));
+    backButton.addEventListener("command", () => {
+      // The panelmultiview element may change if the view is reused.
+      this.node.panelMultiView.goBack();
+      backButton.blur();
+    });
+
+    let label = this.document.createElement("label");
+    label.setAttribute("value", value);
+
+    header.append(backButton, label);
+    this.node.prepend(header);
+  }
+
+  /**
+   * Also make sure that the correct method is called on CustomizableWidget.
+   */
+  dispatchCustomEvent(...args) {
+    CustomizableUI.ensureSubviewListeners(this.node);
+    return super.dispatchCustomEvent(...args);
+  }
+
+  /**
+   * Populates the "knownWidth" and "knownHeight" properties with the current
+   * dimensions of the view. These may be zero if the view is invisible.
    *
-   * @param {Object}  navMap   the navigation keyboard map object for the view
-   * @param {Array}   buttons  an array of focusable buttons to select an item from.
-   * @param {Boolean} isDown   whether we're going down (true) or up (false) in this view.
+   * These values are relevant during transitions and are retained for backwards
+   * navigation if the view is still open but is invisible.
+   */
+  captureKnownSize() {
+    let rect = this._dwu.getBoundsWithoutFlushing(this.node);
+    this.knownWidth = rect.width;
+    this.knownHeight = rect.height;
+  }
+
+  /**
+   * If the main view or a subview contains wrapping elements, the attribute
+   * "descriptionheightworkaround" should be set on the view to force all the
+   * wrapping "description", "label" or "toolbarbutton" elements to a fixed
+   * height. If the attribute is set and the visibility, contents, or width
+   * of any of these elements changes, this function should be called to
+   * refresh the calculated heights.
+   *
+   * @param allowSyncReflows
+   *        If set to true, the function takes a path that allows synchronous
+   *        reflows, but minimizes flickering. This is used for the main view
+   *        because we cannot use the workaround off-screen.
+   */
+  async descriptionHeightWorkaround(allowSyncReflows = false) {
+    if (!this.node.hasAttribute("descriptionheightworkaround")) {
+      // This view does not require the workaround.
+      return;
+    }
+
+    // We batch DOM changes together in order to reduce synchronous layouts.
+    // First we reset any change we may have made previously. The first time
+    // this is called, and in the best case scenario, this has no effect.
+    let items = [];
+    let collectItems = () => {
+      // Non-hidden <label> or <description> elements that also aren't empty
+      // and also don't have a value attribute can be multiline (if their
+      // text content is long enough).
+      let isMultiline = ":not(:-moz-any([hidden],[value],:empty))";
+      let selector = [
+        "description" + isMultiline,
+        "label" + isMultiline,
+        "toolbarbutton[wrap]:not([hidden])",
+      ].join(",");
+      for (let element of this.node.querySelectorAll(selector)) {
+        // Ignore items in hidden containers.
+        if (element.closest("[hidden]")) {
+          continue;
+        }
+        // Take the label for toolbarbuttons; it only exists on those elements.
+        element = element.labelElement || element;
+
+        let bounds = element.getBoundingClientRect();
+        let previous = gMultiLineElementsMap.get(element);
+        // We don't need to (re-)apply the workaround for invisible elements or
+        // on elements we've seen before and haven't changed in the meantime.
+        if (!bounds.width || !bounds.height ||
+            (previous && element.textContent == previous.textContent &&
+                         bounds.width == previous.bounds.width)) {
+          continue;
+        }
+
+        items.push({ element });
+      }
+    };
+    if (allowSyncReflows) {
+      collectItems();
+    } else {
+      await this.window.promiseDocumentFlushed(collectItems);
+      // Bail out if the panel was closed in the meantime.
+      if (!this.node.panelMultiView) {
+        return;
+      }
+    }
+
+    // Removing the 'height' property will only cause a layout flush in the next
+    // loop below if it was set.
+    for (let item of items) {
+      item.element.style.removeProperty("height");
+    }
+
+    // We now read the computed style to store the height of any element that
+    // may contain wrapping text.
+    let measureItems = () => {
+      for (let item of items) {
+        item.bounds = item.element.getBoundingClientRect();
+      }
+    };
+    if (allowSyncReflows) {
+      measureItems();
+    } else {
+      await this.window.promiseDocumentFlushed(measureItems);
+      // Bail out if the panel was closed in the meantime.
+      if (!this.node.panelMultiView) {
+        return;
+      }
+    }
+
+    // Now we can make all the necessary DOM changes at once.
+    for (let { element, bounds } of items) {
+      gMultiLineElementsMap.set(element, { bounds, textContent: element.textContent });
+      element.style.height = bounds.height + "px";
+    }
+  }
+
+  /**
+   * Retrieves the button elements that can be used for navigation using the
+   * keyboard, that is all enabled buttons including the back button if visible.
+   *
+   * @return {Array}
+   */
+  getNavigableElements() {
+    let buttons = Array.from(this.node.querySelectorAll(".subviewbutton:not([disabled])"));
+    let dwu = this._dwu;
+    return buttons.filter(button => {
+      let bounds = dwu.getBoundsWithoutFlushing(button);
+      return bounds.width > 0 && bounds.height > 0;
+    });
+  }
+
+  /**
+   * Element that is currently selected with the keyboard, or null if no element
+   * is selected. Since the reference is held weakly, it can become null or
+   * undefined at any time.
+   *
+   * The element is usually, but not necessarily, in the "buttons" property
+   * which in turn is initialized from the getNavigableElements list.
+   */
+  get selectedElement() {
+    return this._selectedElement && this._selectedElement.get();
+  }
+  set selectedElement(value) {
+    if (!value) {
+      delete this._selectedElement;
+    } else {
+      this._selectedElement = Cu.getWeakReference(value);
+    }
+  }
+
+  /**
+   * Based on going up or down, select the previous or next focusable button.
+   *
+   * @param {Boolean} isDown   whether we're going down (true) or up (false).
    *
    * @return {DOMNode} the button we selected.
    */
-  _updateSelectedKeyNav(navMap, buttons, isDown) {
-    let lastSelected = navMap.selected && navMap.selected.get();
+  moveSelection(isDown) {
+    let buttons = this.buttons;
+    let lastSelected = this.selectedElement;
     let newButton = null;
     let maxIdx = buttons.length - 1;
     if (lastSelected) {
@@ -994,7 +1443,7 @@ this.PanelMultiView = class {
     if (!newButton) {
       newButton = buttons[isDown ? 0 : maxIdx];
     }
-    navMap.selected = Cu.getWeakReference(newButton);
+    this.selectedElement = newButton;
     return newButton;
   }
 
@@ -1010,22 +1459,21 @@ this.PanelMultiView = class {
    *  - The Right key functions the same as the Enter key, simulating a click
    *  - The Left key triggers a navigation back to the previous view.
    *
+   * Key navigation is only enabled while the view is active, meaning that this
+   * method will return early if it is invoked during a sliding transition.
+   *
    * @param {KeyEvent} event
+   * @param {String} dir
+   *        Direction for arrow navigation, either "ltr" or "rtl".
    */
-  _keyNavigation(event) {
-    if (this._transitioning)
+  keyNavigation(event, dir) {
+    if (!this.active) {
       return;
-
-    let view = this._currentSubView;
-    let navMap = this._keyNavigationMap.get(view);
-    if (!navMap) {
-      navMap = {};
-      this._keyNavigationMap.set(view, navMap);
     }
 
-    let buttons = navMap.buttons;
+    let buttons = this.buttons;
     if (!buttons || !buttons.length) {
-      buttons = navMap.buttons = this._getNavigableElements(view);
+      buttons = this.buttons = this.getNavigableElements();
       // Set the 'tabindex' attribute on the buttons to make sure they're focussable.
       for (let button of buttons) {
         if (!button.classList.contains("subviewbutton-back") &&
@@ -1050,31 +1498,29 @@ this.PanelMultiView = class {
         stop();
         let isDown = (keyCode == "ArrowDown") ||
                      (keyCode == "Tab" && !event.shiftKey);
-        let button = this._updateSelectedKeyNav(navMap, buttons, isDown);
+        let button = this.moveSelection(isDown);
         button.focus();
         break;
       }
       case "ArrowLeft":
       case "ArrowRight": {
         stop();
-        let dir = this._dir;
         if ((dir == "ltr" && keyCode == "ArrowLeft") ||
             (dir == "rtl" && keyCode == "ArrowRight")) {
-          if (this._canGoBack(view))
-            this.goBack();
+          this.node.panelMultiView.goBack();
           break;
         }
         // If the current button is _not_ one that points to a subview, pressing
         // the arrow key shouldn't do anything.
-        if (!navMap.selected || !navMap.selected.get() ||
-            !navMap.selected.get().classList.contains("subviewbutton-nav")) {
+        let button = this.selectedElement;
+        if (!button || !button.classList.contains("subviewbutton-nav")) {
           break;
         }
         // Fall-through...
       }
       case "Space":
       case "Enter": {
-        let button = navMap.selected && navMap.selected.get();
+        let button = this.selectedElement;
         if (!button)
           break;
         stop();
@@ -1093,129 +1539,24 @@ this.PanelMultiView = class {
   }
 
   /**
-   * Clear all traces of keyboard navigation happening right now.
-   *
-   * @param {panelview} view View to reset the key navigation attributes of.
-   *                         If no view is passed, all navigation attributes for
-   *                         this panelmultiview are cleared.
-   */
-  _resetKeyNavigation(view) {
-    let viewToBlur = view || this._currentSubView;
-    let navMap = this._keyNavigationMap.get(viewToBlur);
-    if (navMap && navMap.selected && navMap.selected.get()) {
-      navMap.selected.get().blur();
-    }
-
-    // We clear the entire key navigation map ONLY if *no* view was passed in.
-    // This happens e.g. when the popup is hidden completely, or the user moves
-    // their mouse.
-    // If a view is passed in, we just delete the map for that view. This happens
-    // when going back from a view (which resets the map for that view only)
-    if (view) {
-      this._keyNavigationMap.delete(view);
-    } else {
-      this._keyNavigationMap.clear();
-    }
-  }
-
-  /**
-   * Retrieve the button elements from a view node that can be used for navigation
-   * using the keyboard; enabled buttons and the back button, if visible.
-   *
-   * @param  {nsIDOMNode} view
-   * @return {Array}
-   */
-  _getNavigableElements(view) {
-    let buttons = Array.from(view.querySelectorAll(".subviewbutton:not([disabled])"));
-    let dwu = this._dwu;
-    return buttons.filter(button => {
-      let bounds = dwu.getBoundsWithoutFlushing(button);
-      return bounds.width > 0 && bounds.height > 0;
-    });
-  }
-
-  /**
    * Focus the last selected element in the view, if any.
-   *
-   * @param {panelview} view the view in which to update keyboard focus.
    */
-  _updateKeyboardFocus(view) {
-    let navMap = this._keyNavigationMap.get(view);
-    if (navMap && navMap.selected && navMap.selected.get()) {
-      navMap.selected.get().focus();
+  focusSelectedElement() {
+    let selected = this.selectedElement;
+    if (selected) {
+      selected.focus();
     }
   }
 
   /**
-   * If the main view or a subview contains wrapping elements, the attribute
-   * "descriptionheightworkaround" should be set on the view to force all the
-   * wrapping "description", "label" or "toolbarbutton" elements to a fixed
-   * height. If the attribute is set and the visibility, contents, or width
-   * of any of these elements changes, this function should be called to
-   * refresh the calculated heights.
-   *
-   * This may trigger a synchronous layout.
-   *
-   * @param viewNode
-   *        Indicates the node to scan for descendant elements. This is the main
-   *        view if omitted.
+   * Clear all traces of keyboard navigation happening right now.
    */
-  descriptionHeightWorkaround(viewNode = this._mainView) {
-    if (!viewNode || !viewNode.hasAttribute("descriptionheightworkaround")) {
-      // This view does not require the workaround.
-      return;
-    }
-
-    // We batch DOM changes together in order to reduce synchronous layouts.
-    // First we reset any change we may have made previously. The first time
-    // this is called, and in the best case scenario, this has no effect.
-    let items = [];
-    // Non-hidden <label> or <description> elements that also aren't empty
-    // and also don't have a value attribute can be multiline (if their
-    // text content is long enough).
-    let isMultiline = ":not(:-moz-any([hidden],[value],:empty))";
-    let selector = [
-      "description" + isMultiline,
-      "label" + isMultiline,
-      "toolbarbutton[wrap]:not([hidden])",
-    ].join(",");
-    for (let element of viewNode.querySelectorAll(selector)) {
-      // Ignore items in hidden containers.
-      if (element.closest("[hidden]")) {
-        continue;
-      }
-      // Take the label for toolbarbuttons; it only exists on those elements.
-      element = element.labelElement || element;
-
-      let bounds = element.getBoundingClientRect();
-      let previous = this._multiLineElementsMap.get(element);
-      // We don't need to (re-)apply the workaround for invisible elements or
-      // on elements we've seen before and haven't changed in the meantime.
-      if (!bounds.width || !bounds.height ||
-          (previous && element.textContent == previous.textContent &&
-                       bounds.width == previous.bounds.width)) {
-        continue;
-      }
-
-      items.push({ element });
-    }
-
-    // Removing the 'height' property will only cause a layout flush in the next
-    // loop below if it was set.
-    for (let item of items) {
-      item.element.style.removeProperty("height");
-    }
-
-    // We now read the computed style to store the height of any element that
-    // may contain wrapping text.
-    for (let item of items) {
-      item.bounds = item.element.getBoundingClientRect();
-    }
-
-    // Now we can make all the necessary DOM changes at once.
-    for (let { element, bounds } of items) {
-      this._multiLineElementsMap.set(element, { bounds, textContent: element.textContent });
-      element.style.height = bounds.height + "px";
+  clearNavigation() {
+    delete this.buttons;
+    let selected = this.selectedElement;
+    if (selected) {
+      selected.blur();
+      this.selectedElement = null;
     }
   }
 };

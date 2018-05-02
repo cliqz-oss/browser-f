@@ -22,9 +22,14 @@
 
 #include "js-config.h"
 
+typedef uint8_t jsbytecode;
+
+class JSAtom;
+struct JSCompartment;
 struct JSContext;
 class JSFunction;
 class JSObject;
+struct JSRuntime;
 class JSScript;
 class JSString;
 class JSAddonId;
@@ -39,6 +44,9 @@ typedef unsigned char Latin1Char;
 class Symbol;
 class Value;
 class Realm;
+struct Runtime;
+struct Zone;
+
 template <typename T> class Handle;
 template <typename T> class MutableHandle;
 template <typename T> class Rooted;

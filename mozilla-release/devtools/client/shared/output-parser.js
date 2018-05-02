@@ -8,7 +8,7 @@ const Services = require("Services");
 const {angleUtils} = require("devtools/client/shared/css-angle");
 const {colorUtils} = require("devtools/shared/css/color");
 const {getCSSLexer} = require("devtools/shared/css/lexer");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const {appendText} = require("devtools/client/inspector/shared/utils");
 
 loader.lazyRequireGetter(this, "ANGLE_TAKING_FUNCTIONS",
@@ -376,7 +376,7 @@ OutputParser.prototype = {
 
         case "ident":
           if (options.expectCubicBezier &&
-              BEZIER_KEYWORDS.indexOf(token.text) >= 0) {
+              BEZIER_KEYWORDS.includes(token.text)) {
             this._appendCubicBezier(token.text, options);
           } else if (this._isDisplayFlex(text, token, options) &&
                      Services.prefs.getBoolPref(FLEXBOX_HIGHLIGHTER_ENABLED_PREF)) {
@@ -617,14 +617,16 @@ OutputParser.prototype = {
     let container = this._createNode("span", {});
 
     let toggle = this._createNode("span", {
-      class: options.shapeClass
+      class: options.shapeSwatchClass
     });
 
     for (let { prefix, coordParser } of shapeTypes) {
       if (shape.includes(prefix)) {
         let coordsBegin = prefix.length;
         let coordsEnd = shape.lastIndexOf(")");
-        let valContainer = this._createNode("span", {});
+        let valContainer = this._createNode("span", {
+          class: options.shapeClass
+        });
 
         container.appendChild(toggle);
 
@@ -1518,7 +1520,9 @@ OutputParser.prototype = {
    *                                    // previewing with the filter swatch.
    *           - flexClass: ""          // The class to use for the flex icon.
    *           - gridClass: ""          // The class to use for the grid icon.
-   *           - shapeClass: ""         // The class to use for the shape icon.
+   *           - shapeClass: ""         // The class to use for the shape value
+   *                                    // that follows the swatch.
+   *           - shapeSwatchClass: ""   // The class to use for the shape swatch.
    *           - supportsColor: false   // Does the CSS property support colors?
    *           - urlClass: ""           // The class to be used for url() links.
    *           - fontFamilyClass: ""    // The class to be used for font families.
@@ -1548,6 +1552,7 @@ OutputParser.prototype = {
       flexClass: "",
       gridClass: "",
       shapeClass: "",
+      shapeSwatchClass: "",
       supportsColor: false,
       urlClass: "",
       fontFamilyClass: "",

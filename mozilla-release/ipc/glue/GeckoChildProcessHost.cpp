@@ -25,9 +25,7 @@
 
 #if defined(MOZ_CONTENT_SANDBOX)
 #include "mozilla/SandboxSettings.h"
-#if defined(XP_MACOSX)
 #include "nsAppDirectoryServiceDefs.h"
-#endif
 #endif
 
 #include "nsExceptionHandler.h"
@@ -65,6 +63,7 @@
 #include "nsHashKeys.h"
 #include "nsNativeCharsetUtils.h"
 #include "nscore.h" // for NS_FREE_PERMANENT_DATA
+#include "private/pprio.h"
 
 using mozilla::MonitorAutoLock;
 using mozilla::ipc::GeckoChildProcessHost;
@@ -124,6 +123,16 @@ GeckoChildProcessHost::~GeckoChildProcessHost()
   if (mChildTask != MACH_PORT_NULL)
     mach_port_deallocate(mach_task_self(), mChildTask);
 #endif
+
+  if (mChildProcessHandle != 0) {
+#if defined(XP_WIN)
+    CrashReporter::DeregisterChildCrashAnnotationFileDescriptor(
+      base::GetProcId(mChildProcessHandle));
+#else
+    CrashReporter::DeregisterChildCrashAnnotationFileDescriptor(
+      mChildProcessHandle);
+#endif
+  }
 }
 
 //static
@@ -279,6 +288,18 @@ GeckoChildProcessHost::PrepareLaunch()
   // them to turn on logging via an environment variable.
   mEnableSandboxLogging = mEnableSandboxLogging
                           || !!PR_GetEnv("MOZ_SANDBOX_LOGGING");
+#endif
+#elif defined(XP_LINUX)
+#if defined(MOZ_CONTENT_SANDBOX)
+  // Get and remember the path to the per-content-process tmpdir
+  if (ShouldHaveDirectoryService()) {
+    nsCOMPtr<nsIFile> contentTempDir;
+    nsresult rv = NS_GetSpecialDirectory(NS_APP_CONTENT_PROCESS_TEMP_DIR,
+                                         getter_AddRefs(contentTempDir));
+    if (NS_SUCCEEDED(rv)) {
+      contentTempDir->GetNativePath(mTmpDirName);
+    }
+  }
 #endif
 #endif
 }
@@ -506,6 +527,18 @@ GeckoChildProcessHost::PerformAsyncLaunch(std::vector<std::string> aExtraOpts)
         = ENVIRONMENT_STRING(childRustLog);
   }
 
+#if defined(XP_LINUX) && defined(MOZ_CONTENT_SANDBOX)
+  if (!mTmpDirName.IsEmpty()) {
+    // Point a bunch of things that might want to write from content to our
+    // shiny new content-process specific tmpdir
+    mLaunchOptions->env_map[ENVIRONMENT_LITERAL("TMPDIR")] =
+      ENVIRONMENT_STRING(mTmpDirName);
+    // Partial fix for bug 1380051 (not persistent - should be)
+    mLaunchOptions->env_map[ENVIRONMENT_LITERAL("MESA_GLSL_CACHE_DIR")] =
+      ENVIRONMENT_STRING(mTmpDirName);
+  }
+#endif
+
   return PerformAsyncLaunchInternal(aExtraOpts);
 }
 
@@ -598,6 +631,12 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 
   const char* const childProcessType =
       XRE_ChildProcessTypeToString(mProcessType);
+
+  PRFileDesc* crashAnnotationReadPipe;
+  PRFileDesc* crashAnnotationWritePipe;
+  if (PR_CreatePipe(&crashAnnotationReadPipe, &crashAnnotationWritePipe) != PR_SUCCESS) {
+    return false;
+  }
 
 //--------------------------------------------------
 #if defined(OS_POSIX)
@@ -747,6 +786,10 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 #endif  // defined(OS_LINUX) || defined(OS_BSD) || defined(OS_SOLARIS)
   }
 
+  int fd = PR_FileDesc2NativeHandle(crashAnnotationWritePipe);
+  mLaunchOptions->fds_to_remap.push_back(
+    std::make_pair(fd, CrashReporter::GetAnnotationTimeCrashFd()));
+
 # ifdef MOZ_WIDGET_COCOA
   // Add a mach port to the command line so the child can communicate its
   // 'task_t' back to the parent.
@@ -873,7 +916,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
     }
   }
 
-# if defined(XP_WIN) && defined(MOZ_SANDBOX)
+# if defined(MOZ_SANDBOX)
   bool shouldSandboxCurrentProcess = false;
 
   // XXX: Bug 1124167: We should get rid of the process specific logic for
@@ -954,7 +997,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
       mSandboxBroker.AllowReadFile(it->c_str());
     }
   }
-# endif // defined(XP_WIN) && defined(MOZ_SANDBOX)
+# endif // defined(MOZ_SANDBOX)
 
   // Add the application directory path (-appdir path)
   AddAppDirToCommandLine(cmdLine);
@@ -985,10 +1028,20 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   cmdLine.AppendLooseValue(
     UTF8ToWide(CrashReporter::GetChildNotificationPipe()));
 
+  if (!CrashReporter::IsDummy()) {
+    PROsfd h = PR_FileDesc2NativeHandle(crashAnnotationWritePipe);
+# if defined(MOZ_SANDBOX)
+    mSandboxBroker.AddHandleToShare(reinterpret_cast<HANDLE>(h));
+# endif // defined(MOZ_SANDBOX)
+    mLaunchOptions->handles_to_inherit.push_back(reinterpret_cast<HANDLE>(h));
+    std::string hStr = std::to_string(h);
+    cmdLine.AppendLooseValue(UTF8ToWide(hStr));
+  }
+
   // Process type
   cmdLine.AppendLooseValue(UTF8ToWide(childProcessType));
 
-# if defined(XP_WIN) && defined(MOZ_SANDBOX)
+# if defined(MOZ_SANDBOX)
   if (shouldSandboxCurrentProcess) {
     if (mSandboxBroker.LaunchApp(cmdLine.program().c_str(),
                                  cmdLine.command_line_string().c_str(),
@@ -1002,7 +1055,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
         cmdLine.command_line_string().c_str());
     }
   } else
-# endif // defined(XP_WIN) && defined(MOZ_SANDBOX)
+# endif // defined(MOZ_SANDBOX)
   {
     base::LaunchApp(cmdLine, *mLaunchOptions, &process);
 
@@ -1047,6 +1100,15 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
      ) {
     MOZ_CRASH("cannot open handle to child process");
   }
+#if defined(XP_WIN)
+  CrashReporter::RegisterChildCrashAnnotationFileDescriptor(
+    base::GetProcId(process), crashAnnotationReadPipe);
+#else
+  CrashReporter::RegisterChildCrashAnnotationFileDescriptor(process,
+                                                            crashAnnotationReadPipe);
+#endif
+  PR_Close(crashAnnotationWritePipe);
+
   MonitorAutoLock lock(mMonitor);
   mProcessState = PROCESS_CREATED;
   lock.Notify();
@@ -1118,7 +1180,7 @@ GeckoChildProcessHost::LaunchAndroidService(const char* type,
                                             const base::file_handle_mapping_vector& fds_to_remap,
                                             ProcessHandle* process_handle)
 {
-  MOZ_ASSERT((fds_to_remap.size() > 0) && (fds_to_remap.size() <= 2));
+  MOZ_ASSERT((fds_to_remap.size() > 0) && (fds_to_remap.size() <= 3));
   JNIEnv* const env = mozilla::jni::GetEnvForThread();
   MOZ_ASSERT(env);
 
@@ -1131,8 +1193,17 @@ GeckoChildProcessHost::LaunchAndroidService(const char* type,
   int32_t ipcFd = it->first;
   it++;
   // If the Crash Reporter is disabled, there will not be a second file descriptor.
-  int32_t crashFd = (it != fds_to_remap.end()) ? it->first : -1;
-  int32_t handle = java::GeckoProcessManager::Start(type, jargs, crashFd, ipcFd);
+  int32_t crashFd = -1;
+  int32_t crashAnnotationFd = -1;
+  if (it != fds_to_remap.end() && !CrashReporter::IsDummy()) {
+    crashFd = it->first;
+    it++;
+  }
+  if (it != fds_to_remap.end()) {
+    crashAnnotationFd = it->first;
+    it++;
+  }
+  int32_t handle = java::GeckoProcessManager::Start(type, jargs, ipcFd, crashFd, crashAnnotationFd);
 
   if (process_handle) {
     *process_handle = handle;

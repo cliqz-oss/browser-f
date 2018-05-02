@@ -3,8 +3,8 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/FxAccountsOAuthGrantClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsOAuthGrantClient.jsm");
 
 const CLIENT_OPTIONS = {
   serverURL: "https://127.0.0.1:9010/v1",
@@ -258,7 +258,7 @@ add_test(function errorTests() {
   Assert.equal(fields2.error, "Error");
   Assert.equal(fields2.message, "Something");
 
-  Assert.ok(error2.toString().indexOf("Something") >= 0);
+  Assert.ok(error2.toString().includes("Something"));
   run_next_test();
 });
 

@@ -37,15 +37,14 @@ public:
   virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
                                         nsIPrincipal* aSubjectPrincipal) override;
   nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-  GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final override;
+  GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
   mozilla::css::Rule* GetParentRule() override;
 
   virtual nsINode* GetParentObject() override;
-  virtual mozilla::dom::DocGroup* GetDocGroup() const override;
 
-  NS_IMETHOD SetPropertyValue(const nsCSSPropertyID aPropID,
-                              const nsAString& aValue,
-                              nsIPrincipal* aSubjectPrincipal) override;
+  nsresult SetPropertyValue(const nsCSSPropertyID aPropID,
+                            const nsAString& aValue,
+                            nsIPrincipal* aSubjectPrincipal) override;
 
 protected:
   ~nsDOMCSSAttributeDeclaration();

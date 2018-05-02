@@ -44,7 +44,8 @@ var Profiler;
   } catch (e) {}
 
   try {
-    _profiler = Components.classes["@mozilla.org/tools/profiler;1"].getService(Components.interfaces.nsIProfiler);
+    // eslint-disable-next-line mozilla/use-services
+    _profiler = Cc["@mozilla.org/tools/profiler;1"].getService(Ci.nsIProfiler);
   } catch (ex) { (typeof(dumpLog) == "undefined" ? dump : dumpLog)(ex + "\n"); }
 
   // Parses an url query string into a JS object.

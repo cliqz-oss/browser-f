@@ -7,12 +7,11 @@
 #ifndef builtin_TypedObject_h
 #define builtin_TypedObject_h
 
-#include "jsobj.h"
-#include "jsweakmap.h"
-
 #include "builtin/TypedObjectConstants.h"
+#include "gc/WeakMap.h"
 #include "js/Conversions.h"
 #include "vm/ArrayBufferObject.h"
+#include "vm/JSObject.h"
 #include "vm/ShapedObject.h"
 
 /*
@@ -592,7 +591,9 @@ class TypedObject : public ShapedObject
     static MOZ_MUST_USE bool GetBuffer(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool GetByteOffset(JSContext* cx, unsigned argc, Value* vp);
 
-    Shape** addressOfShapeFromGC() { return shape_.unsafeUnbarrieredForTracing(); }
+    Shape** addressOfShapeFromGC() {
+        return shapeRef().unsafeUnbarrieredForTracing();
+    }
 };
 
 typedef Handle<TypedObject*> HandleTypedObject;
@@ -752,7 +753,7 @@ class InlineOpaqueTypedObject : public InlineTypedObject
 };
 
 // Class for the global SIMD object.
-class SimdObject : public JSObject
+class SimdObject : public NativeObject
 {
   public:
     static const Class class_;

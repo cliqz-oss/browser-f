@@ -200,7 +200,6 @@
 #endif
 @RESPATH@/components/dom_file.xpt
 @RESPATH@/components/dom_system.xpt
-@RESPATH@/components/dom_canvas.xpt
 @RESPATH@/components/dom_core.xpt
 @RESPATH@/components/dom_events.xpt
 @RESPATH@/components/dom_geolocation.xpt
@@ -217,18 +216,16 @@
 @RESPATH@/components/dom_security.xpt
 @RESPATH@/components/dom_sidebar.xpt
 @RESPATH@/components/dom_storage.xpt
-@RESPATH@/components/dom_traversal.xpt
+@RESPATH@/components/dom_webauthn.xpt
 #ifdef MOZ_WEBSPEECH
 @RESPATH@/components/dom_webspeechrecognition.xpt
 #endif
 @RESPATH@/components/dom_workers.xpt
-@RESPATH@/components/dom_xbl.xpt
-@RESPATH@/components/dom_xhr.xpt
-@RESPATH@/components/dom_xpath.xpt
 @RESPATH@/components/dom_xul.xpt
 @RESPATH@/components/dom_presentation.xpt
 @RESPATH@/components/downloads.xpt
 @RESPATH@/components/editor.xpt
+@RESPATH@/components/enterprisepolicies.xpt
 @RESPATH@/components/extensions.xpt
 @RESPATH@/components/exthandler.xpt
 @RESPATH@/components/fastfind.xpt
@@ -241,7 +238,6 @@
 @RESPATH@/components/intl.xpt
 @RESPATH@/components/jar.xpt
 @RESPATH@/components/jsdebugger.xpt
-@RESPATH@/components/jsdownloads.xpt
 @RESPATH@/browser/components/jsinspector.xpt
 @RESPATH@/components/layout_base.xpt
 #ifdef MOZ_DEBUG
@@ -374,11 +370,16 @@
 @RESPATH@/browser/components/aboutdevtools.manifest
 @RESPATH@/browser/components/aboutdevtoolstoolbox-registration.js
 @RESPATH@/browser/components/aboutdevtoolstoolbox.manifest
+@RESPATH@/browser/components/nsAboutCapabilities.js
+@RESPATH@/browser/components/aboutcapabilities.manifest
 @RESPATH@/browser/components/Experiments.manifest
 @RESPATH@/browser/components/ExperimentsService.js
 @RESPATH@/browser/components/browser-newtab.xpt
 @RESPATH@/browser/components/aboutNewTabService.js
 @RESPATH@/browser/components/NewTabComponents.manifest
+@RESPATH@/browser/components/EnterprisePolicies.js
+@RESPATH@/browser/components/EnterprisePoliciesContent.js
+@RESPATH@/browser/components/EnterprisePolicies.manifest
 @RESPATH@/components/Downloads.manifest
 @RESPATH@/components/DownloadLegacy.js
 @RESPATH@/components/thumbnails.xpt
@@ -416,7 +417,6 @@
 @RESPATH@/components/amInstallTrigger.js
 @RESPATH@/components/amWebAPI.js
 @RESPATH@/components/nsBlocklistService.js
-@RESPATH@/components/nsBlocklistServiceContent.js
 #ifdef MOZ_UPDATER
 @RESPATH@/components/nsUpdateService.manifest
 @RESPATH@/components/nsUpdateService.js
@@ -424,9 +424,6 @@
 #endif
 @RESPATH@/components/nsUpdateTimerManager.manifest
 @RESPATH@/components/nsUpdateTimerManager.js
-@RESPATH@/components/addoncompat.manifest
-@RESPATH@/components/multiprocessShims.js
-@RESPATH@/components/defaultShims.js
 @RESPATH@/components/utils.manifest
 @RESPATH@/components/simpleServices.js
 @RESPATH@/components/pluginGlue.manifest
@@ -700,8 +697,6 @@
 
 ; svg
 @RESPATH@/res/svg.css
-@RESPATH@/components/dom_svg.xpt
-@RESPATH@/components/dom_smil.xpt
 
 ; [Personal Security Manager]
 ;

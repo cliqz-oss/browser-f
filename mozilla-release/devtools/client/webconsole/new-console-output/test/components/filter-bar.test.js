@@ -21,22 +21,22 @@ const {
   PREFS,
 } = require("devtools/client/webconsole/new-console-output/constants");
 
-const { setupStore } = require("devtools/client/webconsole/new-console-output/test/helpers");
+const { setupStore, prefsService, clearPrefs } = require("devtools/client/webconsole/new-console-output/test/helpers");
 const serviceContainer = require("devtools/client/webconsole/new-console-output/test/fixtures/serviceContainer");
-const ServicesMock = require("Services");
 
 describe("FilterBar component:", () => {
   afterEach(() => {
-    ServicesMock.prefs.testHelpers.clearPrefs();
+    clearPrefs();
   });
 
   it("initial render", () => {
     const store = setupStore();
 
-    const wrapper = render(Provider({store}, FilterBar({ serviceContainer })));
-    const toolbar = wrapper.find(
-      ".devtools-toolbar.webconsole-filterbar-primary"
-    );
+    const wrapper = render(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
+    const toolbar = wrapper.find(".devtools-toolbar.webconsole-filterbar-primary");
 
     // Clear button
     const clearButton = toolbar.children().eq(0);
@@ -57,6 +57,9 @@ describe("FilterBar component:", () => {
     expect(textFilter.attr("placeholder")).toBe("Filter output");
     expect(textFilter.attr("type")).toBe("search");
     expect(textFilter.attr("value")).toBe("");
+
+    // "Persist logs" checkbox
+    expect(wrapper.find(".filter-checkbox input").length).toBe(1);
   });
 
   it("displays the number of hidden messages when there are one hidden message", () => {
@@ -66,7 +69,10 @@ describe("FilterBar component:", () => {
     // Filter-out LOG messages
     store.dispatch(actions.filterToggle(FILTERS.LOG));
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeTruthy();
 
@@ -103,7 +109,10 @@ describe("FilterBar component:", () => {
     ]);
     store.dispatch(actions.filterTextSet("qwerty"));
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeTruthy();
 
@@ -133,7 +142,10 @@ describe("FilterBar component:", () => {
     store.dispatch(actions.filterToggle(FILTERS.DEBUG));
     store.dispatch(actions.filterTextSet("qwerty"));
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     const message = wrapper.find(".filter-message-text");
 
     expect(message.prop("title")).toBe("text: 10");
@@ -159,7 +171,10 @@ describe("FilterBar component:", () => {
     store.dispatch(actions.filterToggle(FILTERS.INFO));
     store.dispatch(actions.filterToggle(FILTERS.DEBUG));
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeTruthy();
 
@@ -170,7 +185,10 @@ describe("FilterBar component:", () => {
 
   it("does not display the number of hidden messages when there are no messages", () => {
     const store = setupStore();
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     const toolbar = wrapper.find(".webconsole-filterbar-filtered-messages");
     expect(toolbar.exists()).toBeFalsy();
   });
@@ -181,7 +199,10 @@ describe("FilterBar component:", () => {
       "GET request",
       "XHR GET request"
     ]);
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
 
     // Let's make sure those non-default filters are off.
     const filters = getAllFilters(store.getState());
@@ -197,13 +218,16 @@ describe("FilterBar component:", () => {
     const store = setupStore();
 
     expect(getAllUi(store.getState()).filterBarVisible).toBe(false);
-    expect(ServicesMock.prefs.getBoolPref(PREFS.UI.FILTER_BAR), false);
+    expect(prefsService.getBoolPref(PREFS.UI.FILTER_BAR), false);
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     wrapper.find(".devtools-filter-icon").simulate("click");
 
     expect(getAllUi(store.getState()).filterBarVisible).toBe(true);
-    expect(ServicesMock.prefs.getBoolPref(PREFS.UI.FILTER_BAR), true);
+    expect(prefsService.getBoolPref(PREFS.UI.FILTER_BAR), true);
 
     const secondaryBar = wrapper.find(".webconsole-filterbar-secondary");
     expect(secondaryBar.length).toBe(1);
@@ -239,7 +263,10 @@ describe("FilterBar component:", () => {
     const store = setupStore();
     store.dispatch = sinon.spy();
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     wrapper.find(".devtools-clear-icon").simulate("click");
     const call = store.dispatch.getCall(0);
     expect(call.args[0]).toEqual({
@@ -250,7 +277,10 @@ describe("FilterBar component:", () => {
   it("sets filter text when text is typed", () => {
     const store = setupStore();
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     wrapper.find(".devtools-plaininput").simulate("input", { target: { value: "a" } });
     expect(store.getState().filters.text).toBe("a");
   });
@@ -259,12 +289,25 @@ describe("FilterBar component:", () => {
     const store = setupStore();
 
     expect(getAllUi(store.getState()).persistLogs).toBe(false);
-    expect(ServicesMock.prefs.getBoolPref(PREFS.UI.PERSIST), false);
+    expect(prefsService.getBoolPref(PREFS.UI.PERSIST), false);
 
-    const wrapper = mount(Provider({store}, FilterBar({ serviceContainer })));
+    const wrapper = mount(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: false,
+    })));
     wrapper.find(".filter-checkbox input").simulate("change");
 
     expect(getAllUi(store.getState()).persistLogs).toBe(true);
-    expect(ServicesMock.prefs.getBoolPref(PREFS.UI.PERSIST), true);
+    expect(prefsService.getBoolPref(PREFS.UI.PERSIST), true);
+  });
+
+  it(`doesn't render "Persist logs" input when "hidePersistLogsCheckbox" is true`, () => {
+    const store = setupStore();
+
+    const wrapper = render(Provider({store}, FilterBar({
+      serviceContainer,
+      hidePersistLogsCheckbox: true,
+    })));
+    expect(wrapper.find(".filter-checkbox input").length).toBe(0);
   });
 });

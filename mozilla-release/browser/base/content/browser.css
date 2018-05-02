@@ -18,9 +18,17 @@
 
 :root:-moz-lwtheme {
   background-color: var(--lwt-accent-color) !important;
-  background-image: var(--lwt-header-image), var(--lwt-additional-images) !important;
+  background-image: var(--lwt-additional-images) !important;
   background-position: var(--lwt-background-alignment) !important;
   background-repeat: var(--lwt-background-tiling) !important;
+}
+
+:root:-moz-lwtheme[lwtheme-image] {
+  background-image: var(--lwt-header-image), var(--lwt-additional-images) !important;
+}
+
+:root:-moz-lwtheme:-moz-window-inactive {
+  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color)) !important;
 }
 
 #main-window:not([chromehidden~="toolbar"]) {
@@ -68,18 +76,18 @@ toolbar[customizable="true"] {
 }
 
 panelmultiview {
-  -moz-binding: url("chrome://browser/content/customizableui/panelUI.xml#panelmultiview");
+  -moz-box-align: start;
+}
+
+panelmultiview[transitioning] {
+  pointer-events: none;
 }
 
 panelview {
   -moz-box-orient: vertical;
 }
 
-panel[hidden] panelmultiview {
-  -moz-binding: none;
-}
-
-panelview:not([current]):not([in-transition]) {
+panelview:not([visible]) {
   visibility: collapse;
 }
 
@@ -88,13 +96,41 @@ panelview[mainview] > .panel-header {
   display: none;
 }
 
-tabbrowser {
-  -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser");
+.panel-viewcontainer {
+  overflow: hidden;
+}
+
+.panel-viewcontainer[panelopen] {
+  transition-property: height;
+  transition-timing-function: var(--animation-easing-function);
+  transition-duration: var(--panelui-subview-transition-duration);
+  will-change: height;
+}
+
+.panel-viewcontainer.offscreen {
+  position: absolute;
+}
+
+.panel-viewstack {
+  overflow: visible;
+  transition: height var(--panelui-subview-transition-duration);
 }
 
 #tabbrowser-tabs {
   -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-tabs");
 }
+
+@supports -moz-bool-pref("layout.css.emulate-moz-box-with-flex") {
+  #tabbrowser-tabs {
+    /* Without this, the tabs container width extends beyond the window width */
+    width: 0;
+  }
+  .tab-stack {
+    /* Without this, pinned tabs get a bit too tall when the tabstrip overflows. */
+    vertical-align: top;
+  }
+}
+
 
 #tabbrowser-tabs:not([overflow="true"]) ~ #alltabs-button,
 #tabbrowser-tabs[hasadjacentnewtabbutton]:not([overflow="true"]) ~ #new-tab-button,
@@ -132,6 +168,7 @@ tabbrowser {
   visibility: hidden;
 }
 
+.tab-icon-image,
 .tab-close-button,
 .tabbrowser-tab::after,
 .tab-background {
@@ -140,6 +177,7 @@ tabbrowser {
   visibility: visible;
 }
 
+.tab-icon-image[fadein],
 .tab-close-button[fadein],
 .tabbrowser-tab[fadein]::after,
 .tab-background[fadein] {
@@ -147,6 +185,7 @@ tabbrowser {
   transition: visibility 0ms 25ms;
 }
 
+.tab-icon-image:not([fadein]),
 .tab-close-button:not([fadein]),
 .tabbrowser-tab:not([fadein])::after,
 .tab-background:not([fadein]) {
@@ -155,8 +194,7 @@ tabbrowser {
 
 .tab-label:not([fadein]),
 .tab-throbber:not([fadein]),
-.tab-throbber-fallback:not([fadein]),
-.tab-icon-image:not([fadein]) {
+.tab-throbber-fallback:not([fadein]) {
   display: none;
 }
 
@@ -247,7 +285,6 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 }
 
 #titlebar {
-  -moz-binding: url("chrome://global/content/bindings/general.xml#windowdragbox");
   -moz-window-dragging: drag;
 }
 
@@ -289,12 +326,6 @@ toolbarpaletteitem {
 .titlebar-placeholder[type="caption-buttons"]:-moz-locale-dir(ltr),
 .titlebar-placeholder[type="fullscreen-button"]:-moz-locale-dir(rtl) {
   -moz-box-ordinal-group: 0;
-}
-
-%else
-/* On non-OSX, these should be start-aligned */
-#titlebar-buttonbox-container {
-  -moz-box-align: start;
 }
 %endif
 
@@ -573,17 +604,31 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
   direction: ltr !important;
 }
 
-/* For non-action items, hide the action text; for action items, hide the URL
-   text. */
-.ac-url[actiontype],
-.ac-action:not([actiontype]) {
-  display: none;
-}
-
 /* Never show a scrollbar for the Location Bar popup.  This overrides the
    richlistbox inline overflow: auto style.*/
 #PopupAutoCompleteRichResult > richlistbox > scrollbox {
   overflow: hidden !important;
+}
+
+/* For non-action items, hide the action text; for action items, hide the URL
+   text. Don't show the separator for keyword results. */
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-type-icon,
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-site-icon,
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-tags:not([empty]),
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-separator:not([type=keyword]),
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-url:not([actiontype]),
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-action[actiontype] {
+  display: -moz-box;
+}
+
+/* Only show the "Search with" label on hover or selection. */
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover) > .ac-action[actiontype=searchengine],
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:not([selected]):not(:hover) > .ac-separator[actiontype=searchengine] {
+  display: none;
+}
+
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-site-icon {
+  margin-inline-start: 0;
 }
 
 /* For action items in a noactions popup, show the URL text and hide the action
@@ -604,14 +649,6 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
   display: none;
 }
 
-#PopupAutoComplete > richlistbox > richlistitem > .ac-type-icon,
-#PopupAutoComplete > richlistbox > richlistitem > .ac-site-icon,
-#PopupAutoComplete > richlistbox > richlistitem > .ac-tags,
-#PopupAutoComplete > richlistbox > richlistitem > .ac-separator,
-#PopupAutoComplete > richlistbox > richlistitem > .ac-url {
-  display: none;
-}
-
 #PopupAutoComplete[firstresultstyle="insecureWarning"] {
   min-width: 200px;
 }
@@ -622,6 +659,7 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
 }
 
 #PopupAutoComplete > richlistbox > richlistitem[originaltype="insecureWarning"] > .ac-site-icon {
+  margin-inline-start: 0;
   display: initial;
 }
 
@@ -1329,6 +1367,10 @@ toolbarpaletteitem[place="palette"][hidden] {
 
 .popup-notification-invalid-input[focused] {
   box-shadow: 0 0 2px 2px rgba(255,0,0,0.4);
+}
+
+.popup-notification-description[popupid=webauthn-prompt-register-direct] {
+  white-space: pre-line;
 }
 
 .dragfeedback-tab {

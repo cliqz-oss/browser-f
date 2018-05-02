@@ -63,6 +63,9 @@ with Files("mozilla/meta/**"):
 with Files("mozilla/tests/dom/**"):
     BUG_COMPONENT = ("Core", "DOM")
 
+with Files("mozilla/tests/editor/**"):
+    BUG_COMPONENT = ("Core", "Editor")
+
 with Files("mozilla/tests/fetch/**"):
     BUG_COMPONENT = ("Core", "DOM")
 
@@ -146,7 +149,7 @@ with Files("tests/WebCryptoAPI/**"):
 with Files("tests/WebIDL/**"):
     BUG_COMPONENT = ("Core", "DOM")
 
-with Files("tests/XMLHttpRequest/**"):
+with Files("tests/xhr/**"):
     BUG_COMPONENT = ("Core", "DOM")
 
 with Files("tests/accelerometer/**"):
@@ -235,7 +238,7 @@ with Files("tests/css/css-paint-api/**"):
     BUG_COMPONENT = ("Core", "Layout: Web Painting")
 
 with Files("tests/css/css-scoping/**"):
-    BUG_COMPONENT = ("Core", "DOM: CSS Object Model")
+    BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
 with Files("tests/css/css-timing/**"):
     BUG_COMPONENT = ("Core", "Layout")
@@ -250,7 +253,7 @@ with Files("tests/css/cssom-view/**"):
     BUG_COMPONENT = ("Core", "DOM: CSS Object Model")
 
 with Files("tests/css/selectors/**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
 with Files("tests/custom-elements/**"):
     BUG_COMPONENT = ("Core", "DOM")
@@ -474,7 +477,7 @@ with Files("tests/presentation-api/**"):
 with Files("tests/proximity/**"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
 
-with Files("tests/quirks-mode/**"):
+with Files("tests/quirks/**"):
     BUG_COMPONENT = ("Core", "Layout")
 
 with Files("tests/remote-playback/**"):

@@ -14,10 +14,10 @@ var gTestFuncs = [];
   */
 var gIterator;
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/accessibility/Utils.jsm");
-Components.utils.import("resource://gre/modules/accessibility/EventManager.jsm");
-Components.utils.import("resource://gre/modules/accessibility/Gestures.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/accessibility/Utils.jsm");
+ChromeUtils.import("resource://gre/modules/accessibility/EventManager.jsm");
+ChromeUtils.import("resource://gre/modules/accessibility/Gestures.jsm");
 
 var AccessFuTest = {
 
@@ -31,10 +31,10 @@ var AccessFuTest = {
     var listener = {
       observe: function observe(aMessage) {
         // Ignore unexpected messages.
-        if (!(aMessage instanceof Components.interfaces.nsIConsoleMessage)) {
+        if (!(aMessage instanceof Ci.nsIConsoleMessage)) {
           return;
         }
-        if (aMessage.message.indexOf(aWaitForMessage) < 0) {
+        if (!aMessage.message.includes(aWaitForMessage)) {
           return;
         }
         aListenerFunc.apply(listener);
@@ -139,7 +139,7 @@ var AccessFuTest = {
     })();
 
     // Start AccessFu and put it in stand-by.
-    Components.utils.import("resource://gre/modules/accessibility/AccessFu.jsm");
+    ChromeUtils.import("resource://gre/modules/accessibility/AccessFu.jsm");
 
     AccessFu.attach(getMainChromeWindow(window));
 

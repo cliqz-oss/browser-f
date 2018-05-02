@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/ContextualIdentityService.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ContextualIdentityService.jsm");
 
 const containersBundle = Services.strings.createBundle("chrome://browser/locale/preferences/containers.properties");
 
@@ -156,11 +156,11 @@ let gContainersManager = {
     let color = document.getElementById("color").value;
     let name = document.getElementById("name").value;
 
-    if (this.icons.indexOf(icon) == -1) {
+    if (!this.icons.includes(icon)) {
       throw "Internal error. The icon value doesn't match.";
     }
 
-    if (this.colors.indexOf(color) == -1) {
+    if (!this.colors.includes(color)) {
       throw "Internal error. The color value doesn't match.";
     }
 

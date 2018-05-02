@@ -13,15 +13,9 @@
  * for tips on how to do that.
  */
 const EXPECTED_REFLOWS = [
-  {
-    stack: [
-      "onOverflow@resource:///modules/CustomizableUI.jsm",
-      "init@resource:///modules/CustomizableUI.jsm",
-      "observe@resource:///modules/CustomizableUI.jsm",
-      "_delayedStartup@chrome://browser/content/browser.js",
-    ],
-    times: 2, // This number should only ever go down - never up.
-  },
+  /**
+   * Nothing here! Please don't add anything new!
+   */
 ];
 
 if (Services.appinfo.OS == "WINNT") {
@@ -33,7 +27,7 @@ if (Services.appinfo.OS == "WINNT") {
         "init@chrome://browser/content/browser-tabsintitlebar.js",
         "handleEvent@chrome://browser/content/tabbrowser.xml",
       ],
-      times: 2, // This number should only ever go down - never up.
+      maxCount: 2, // This number should only ever go down - never up.
     },
   );
 }
@@ -42,18 +36,13 @@ if (Services.appinfo.OS == "WINNT" || Services.appinfo.OS == "Darwin") {
   EXPECTED_REFLOWS.push(
     {
       stack: [
-        "select@chrome://global/content/bindings/textbox.xml",
-        "focusAndSelectUrlBar@chrome://browser/content/browser.js",
-      ],
-    },
-    {
-      stack: [
         "rect@chrome://browser/content/browser-tabsintitlebar.js",
         "_update@chrome://browser/content/browser-tabsintitlebar.js",
         "init@chrome://browser/content/browser-tabsintitlebar.js",
         "handleEvent@chrome://browser/content/tabbrowser.xml",
       ],
-      times: 4, // This number should only ever go down - never up.
+      // These numbers should only ever go down - never up.
+      maxCount: Services.appinfo.OS == "WINNT" ? 5 : 4,
     },
   );
 }

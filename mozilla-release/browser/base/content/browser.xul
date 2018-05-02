@@ -7,14 +7,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <?xml-stylesheet href="chrome://browser/content/browser.css" type="text/css"?>
+<?xml-stylesheet href="chrome://browser/content/downloads/downloads.css"?>
 <?xml-stylesheet href="chrome://browser/content/places/places.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/usercontext/usercontext.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/controlcenter/panel.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/customizableui/panelUI.css" type="text/css"?>
+<?xml-stylesheet href="chrome://browser/skin/downloads/downloads.css"?>
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://browser/content/tabbrowser.css" type="text/css"?>
 
-<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
-<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
@@ -51,7 +52,6 @@
         tabsintitlebar="true"
 #endif
         titlemenuseparator="&mainWindow.titlemodifiermenuseparator;"
-        lightweightthemes="true"
         windowtype="navigator:browser"
         macanimationtype="document"
         screenX="4" screenY="4"
@@ -67,6 +67,7 @@
 
 <script type="application/javascript">
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
+  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser.js", this);
 </script>
 
 # All sets except for popupsets (commands, keys, stringbundles and broadcasters) *must* go into the
@@ -96,8 +97,9 @@
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-      <menuseparator id="context_sendTabToDevice_separator"/>
+      <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
+            class="sync-ui-item"
             accesskey="&sendTabToDevice.accesskey;">
         <menupopup id="context_sendTabToDevicePopupMenu"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle);"/>
@@ -136,6 +138,7 @@
 
     <panel type="autocomplete-richlistbox"
            id="PopupAutoComplete"
+           role="group"
            noautofocus="true"
            hidden="true"
            overflowpadding="4"
@@ -143,11 +146,16 @@
            nomaxresults="true" />
 
     <!-- for search with one-off buttons -->
-    <panel type="autocomplete" id="PopupSearchAutoComplete" noautofocus="true" hidden="true"/>
+    <panel type="autocomplete-richlistbox"
+           id="PopupSearchAutoComplete"
+           role="group"
+           noautofocus="true"
+           hidden="true" />
 
     <!-- for url bar autocomplete -->
     <panel type="autocomplete-richlistbox"
            id="PopupAutoCompleteRichResult"
+           role="group"
            noautofocus="true"
            hidden="true"
            flip="none"
@@ -290,7 +298,7 @@
       </toolbarbutton>
       <toolbarbutton id="sidebar-switcher-tabs"
                      label="&syncedTabs.sidebar.label;"
-                     class="subviewbutton subviewbutton-iconic"
+                     class="subviewbutton subviewbutton-iconic sync-ui-item"
                      observes="viewTabsSidebar"
                      oncommand="SidebarUI.show('viewTabsSidebar');">
         <observes element="viewTabsSidebar" attribute="checked"/>
@@ -491,6 +499,7 @@
 
 #include ../../components/customizableui/content/panelUI.inc.xul
 #include ../../components/controlcenter/content/panel.inc.xul
+#include ../../components/downloads/content/downloadsPanel.inc.xul
 
     <hbox id="downloads-animation-container" mousethrough="always">
       <vbox id="downloads-notification-anchor" hidden="true">
@@ -577,7 +586,7 @@
   <hbox id="titlebar-content">
     <spacer id="titlebar-spacer" flex="1"/>
     <hbox id="titlebar-buttonbox-container">
-      <hbox id="titlebar-buttonbox">
+      <hbox id="titlebar-buttonbox" class="titlebar-color">
         <toolbarbutton class="titlebar-button" id="titlebar-min" oncommand="window.minimize();"/>
         <toolbarbutton class="titlebar-button" id="titlebar-max" oncommand="onTitlebarMaxClick();"/>
         <toolbarbutton class="titlebar-button" id="titlebar-close" command="cmd_closeWindow"/>
@@ -598,7 +607,9 @@
 
   <toolbox id="navigator-toolbox">
     <!-- Menu -->
-    <toolbar type="menubar" id="toolbar-menubar" class="chromeclass-menubar" customizable="true"
+    <toolbar type="menubar" id="toolbar-menubar"
+             class="chromeclass-menubar titlebar-color"
+             customizable="true"
              mode="icons"
 #ifdef MENUBAR_CAN_AUTOHIDE
              toolbarname="&menubarCmd.label;"
@@ -615,13 +626,13 @@
 #ifdef CAN_DRAW_IN_TITLEBAR
 #ifndef XP_MACOSX
       <hbox class="titlebar-placeholder" type="caption-buttons" ordinal="1000"
-            persist="width"
             skipintoolbarset="true"/>
 #endif
 #endif
     </toolbar>
 
     <toolbar id="TabsToolbar"
+             class="titlebar-color"
              fullscreentoolbar="true"
              customizable="true"
              mode="icons"
@@ -635,7 +646,6 @@
 #endif
 
       <tabs id="tabbrowser-tabs"
-            tabbrowser="content"
             flex="1"
             setfocus="false"
             tooltip="tabbrowser-tab-tooltip"
@@ -690,7 +700,6 @@
             ordinal="1000"/>
 #ifdef CAN_DRAW_IN_TITLEBAR
       <hbox class="titlebar-placeholder" type="caption-buttons"
-            persist="width"
 #ifndef XP_MACOSX
             ordinal="1000"
 #endif
@@ -698,7 +707,6 @@
 
 #ifdef XP_MACOSX
       <hbox class="titlebar-placeholder" type="fullscreen-button"
-            persist="width"
             skipintoolbarset="true"/>
 #endif
 #endif
@@ -769,6 +777,8 @@
                      class="chromeclass-location" overflows="false">
             <textbox id="urlbar" flex="1"
                      placeholder="&urlbar.placeholder2;"
+                     defaultPlaceholder="&urlbar.placeholder2;"
+                     focused="true"
                      type="autocomplete"
                      autocompletesearch="unifiedcomplete"
                      autocompletesearchparam="enable-actions"
@@ -776,8 +786,6 @@
                      completeselectedindex="true"
                      shrinkdelay="250"
                      tabscrolling="true"
-                     showcommentcolumn="true"
-                     showimagecolumn="true"
                      newlines="stripsurroundingwhitespace"
                      ontextentered="this.handleCommand(param);"
                      ontextreverted="return this.handleRevert();"
@@ -812,6 +820,10 @@
                          tooltiptext="&urlbar.popupBlocked.tooltip;"/>
                   <image data-permission-id="canvas" class="blocked-permission-icon canvas-icon" role="button"
                          tooltiptext="&urlbar.canvasBlocked.tooltip;"/>
+                  <image data-permission-id="plugin:flash" class="blocked-permission-icon plugin-icon" role="button"
+                         tooltiptext="&urlbar.flashPluginBlocked.tooltip;"/>
+                  <image data-permission-id="midi" class="blocked-permission-icon midi-icon" role="button"
+                         tooltiptext="&urlbar.midiBlocked.tooltip;"/>
                 </box>
                 <box id="notification-popup-box"
                      hidden="true"
@@ -853,6 +865,10 @@
                          tooltiptext="&urlbar.emeNotificationAnchor.tooltip;"/>
                   <image id="persistent-storage-notification-icon" class="notification-anchor-icon persistent-storage-icon" role="button"
                          tooltiptext="&urlbar.persistentStorageNotificationAnchor.tooltip;"/>
+                  <image id="midi-notification-icon" class="notification-anchor-icon midi-icon" role="button"
+                         tooltiptext="&urlbar.midiNotificationAnchor.tooltip;"/>
+                  <image id="webauthn-notification-icon" class="notification-anchor-icon" role="button"
+                         tooltiptext="&urlbar.defaultNotificationAnchor.tooltip;"/>
                 </box>
                 <image id="connection-icon"/>
                 <image id="extension-icon"/>
@@ -874,6 +890,7 @@
                 </hbox>
                 <image id="reader-mode-button"
                        class="urlbar-icon urlbar-page-action"
+                       tooltip="dynamic-shortcut-tooltip"
                        role="button"
                        hidden="true"
                        onclick="ReaderParent.buttonClick(event);"/>
@@ -922,7 +939,20 @@
                        overflows="false"
                        cui-areatype="toolbar"
                        hidden="true"
-                       tooltip="dynamic-shortcut-tooltip"/>
+                       tooltip="dynamic-shortcut-tooltip"
+                       indicator="true">
+            <!-- The panel's anchor area is smaller than the outer button, but must
+                 always be visible and must not move or resize when the indicator
+                 state changes, otherwise the panel could change its position or lose
+                 its arrow unexpectedly. -->
+            <stack id="downloads-indicator-anchor"
+                   consumeanchor="downloads-button">
+              <box id="downloads-indicator-icon"/>
+              <stack id="downloads-indicator-progress-outer">
+                <box id="downloads-indicator-progress-inner"/>
+              </stack>
+            </stack>
+          </toolbarbutton>
 
         <toolbarbutton id="library-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                        removable="true"
@@ -1080,12 +1110,10 @@
                                    BookmarkingUI.attachPlacesView(event, this);"
                    tooltip="bhTooltip" popupsinherittooltip="true">
           <menuitem id="BMB_viewBookmarksSidebar"
-                    class="subviewbutton"
-                    label="&viewBookmarksSidebar2.label;"
-                    type="checkbox"
-                    oncommand="SidebarUI.toggle('viewBookmarksSidebar');">
-            <observes element="viewBookmarksSidebar" attribute="checked"/>
-          </menuitem>
+                    class="menuitem-iconic subviewbutton"
+                    label-show="&viewBookmarksSidebar2.label;"
+                    label-hide="&hideBookmarksSidebar.label;"
+                    oncommand="SidebarUI.toggle('viewBookmarksSidebar');"/>
           <!-- NB: temporary solution for bug 985024, this should go away soon. -->
           <menuitem id="BMB_bookmarksShowAllTop"
                     class="menuitem-iconic subviewbutton"
@@ -1104,11 +1132,10 @@
                                          new PlacesMenu(event, 'place:folder=TOOLBAR',
                                                         PlacesUIUtils.getViewForNode(this.parentNode.parentNode).options);">
               <menuitem id="BMB_viewBookmarksToolbar"
-                        placesanonid="view-toolbar"
-                        toolbarId="PersonalToolbar"
-                        type="checkbox"
-                        oncommand="onViewToolbarCommand(event)"
-                        label="&viewBookmarksToolbar.label;"/>
+                        class="menuitem-iconic subviewbutton"
+                        label-show="&viewBookmarksToolbar.label;"
+                        label-hide="&hideBookmarksToolbar.label;"
+                        oncommand="BookmarkingUI.toggleBookmarksToolbar();"/>
               <menuseparator/>
               <!-- Bookmarks toolbar items -->
             </menupopup>
@@ -1188,13 +1215,28 @@
       <splitter id="sidebar-splitter" class="chromeclass-extrachrome sidebar-splitter" hidden="true"/>
       <vbox id="appcontent" flex="1">
         <notificationbox id="high-priority-global-notificationbox" notificationside="top"/>
-        <tabbrowser id="content"
-                    flex="1" contenttooltip="aHTMLTooltip"
-                    tabcontainer="tabbrowser-tabs"
-                    contentcontextmenu="contentAreaContextMenu"
-                    autocompletepopup="PopupAutoComplete"
-                    selectmenulist="ContentSelectDropdown"
-                    datetimepicker="DateTimePickerPanel"/>
+        <tabbox id="tabbrowser-tabbox"
+                    flex="1" eventnode="document" tabcontainer="tabbrowser-tabs"
+                    onselect="if (event.target.localName == 'tabpanels') gBrowser.updateCurrentBrowser();">
+          <tabpanels flex="1" class="plain" selectedIndex="0" id="tabbrowser-tabpanels">
+            <notificationbox flex="1" notificationside="top">
+              <hbox flex="1" class="browserSidebarContainer">
+                <vbox flex="1" class="browserContainer">
+                  <stack flex="1" class="browserStack">
+                    <browser id="tabbrowser-initialBrowser" type="content"
+                             message="true" messagemanagergroup="browsers"
+                             primary="true" blank="true"
+                             tooltip="aHTMLTooltip"
+                             contextmenu="contentAreaContextMenu"
+                             autocompletepopup="PopupAutoComplete"
+                             selectmenulist="ContentSelectDropdown"
+                             datetimepicker="DateTimePickerPanel"/>
+                  </stack>
+                </vbox>
+              </hbox>
+            </notificationbox>
+          </tabpanels>
+        </tabbox>
       </vbox>
       <vbox id="browser-border-end" hidden="true" layer="true"/>
     </hbox>

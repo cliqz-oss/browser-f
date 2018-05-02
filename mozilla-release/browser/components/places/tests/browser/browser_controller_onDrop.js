@@ -17,7 +17,7 @@ add_task(async function setup() {
     sandbox.restore();
     delete window.sinon;
     await PlacesUtils.bookmarks.eraseEverything();
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   });
 
   sandbox.stub(PlacesUIUtils, "getTransactionForData");
@@ -59,11 +59,6 @@ add_task(async function setup() {
 
 async function run_drag_test(startBookmarkIndex, insertionIndex, newParentGuid,
                              expectedInsertionIndex, expectTransactionCreated = true) {
-  if (!PlacesUIUtils.useAsyncTransactions) {
-    Assert.ok(true, "Skipping test as async transactions are turned off");
-    return;
-  }
-
   if (!newParentGuid) {
     newParentGuid = PlacesUtils.bookmarks.unfiledGuid;
   }
@@ -81,7 +76,7 @@ async function run_drag_test(startBookmarkIndex, insertionIndex, newParentGuid,
     // Simulating a drag-drop with a tree view turns out to be really difficult
     // as you can't get a node for the source/target. Hence, we fake the
     // insertion point and drag data and call the function direct.
-    let ip = new InsertionPoint({
+    let ip = new PlacesInsertionPoint({
       parentId: await PlacesUtils.promiseItemId(PlacesUtils.bookmarks.unfiledGuid),
       parentGuid: newParentGuid,
       index: insertionIndex,

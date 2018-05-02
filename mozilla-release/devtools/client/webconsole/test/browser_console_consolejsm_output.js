@@ -7,7 +7,7 @@
 
 "use strict";
 
-function onNewMessage(aEvent, aNewMessages) {
+function onNewMessage(aNewMessages) {
   for (let msg of aNewMessages) {
     // Messages that shouldn't be output contain the substring FAIL_TEST
     if (msg.node.textContent.includes("FAIL_TEST")) {
@@ -21,7 +21,7 @@ add_task(function* () {
   let storage = consoleStorage.getService(Ci.nsIConsoleAPIStorage);
   storage.clearEvents();
 
-  let {console} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {console} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   console.log("bug861338-log-cached");
 
   let hud = yield HUDService.toggleBrowserConsole();
@@ -119,7 +119,7 @@ add_task(function* () {
 
   let deferred = defer();
 
-  let onFetch = (aEvent, aVar) => {
+  let onFetch = (aVar) => {
     // Skip the notification from console.dir variablesview-fetched.
     if (aVar._variablesView != hud.jsterm._variablesView) {
       return;
@@ -153,7 +153,7 @@ add_task(function* testPrefix() {
   let storage = consoleStorage.getService(Ci.nsIConsoleAPIStorage);
   storage.clearEvents();
 
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   let consoleOptions = {
     maxLogLevel: "error",
     prefix: "Log Prefix",
@@ -184,7 +184,7 @@ add_task(function* testMaxLogLevelPrefMissing() {
   let storage = consoleStorage.getService(Ci.nsIConsoleAPIStorage);
   storage.clearEvents();
 
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   let consoleOptions = {
     maxLogLevel: "error",
     maxLogLevelPref: "testing.maxLogLevel",
@@ -223,7 +223,7 @@ add_task(function* testMaxLogLevelPref() {
   let storage = consoleStorage.getService(Ci.nsIConsoleAPIStorage);
   storage.clearEvents();
 
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   let consoleOptions = {
     maxLogLevel: "error",
     maxLogLevelPref: "testing.maxLogLevel",
@@ -288,7 +288,7 @@ add_task(function* testMaxLogLevelPref() {
 add_task(function* testProfile() {
   let consoleStorage = Cc["@mozilla.org/consoleAPI-storage;1"];
   let storage = consoleStorage.getService(Ci.nsIConsoleAPIStorage);
-  let { console } = Cu.import("resource://gre/modules/Console.jsm", {});
+  let { console } = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
 
   storage.clearEvents();
 

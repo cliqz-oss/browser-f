@@ -1,6 +1,6 @@
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://services-sync/engines/passwords.js");
-Cu.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://services-sync/engines/passwords.js");
+ChromeUtils.import("resource://services-sync/service.js");
 
 const LoginInfo = Components.Constructor(
   "@mozilla.org/login-manager/loginInfo;1", Ci.nsILoginInfo, "init");
@@ -8,18 +8,17 @@ const LoginInfo = Components.Constructor(
 const PropertyBag = Components.Constructor(
   "@mozilla.org/hash-property-bag;1", Ci.nsIWritablePropertyBag);
 
-function run_test() {
-  Service.engineManager.unregister("addons"); // To silence errors.
-  run_next_test();
-}
-
 async function cleanup(engine, server) {
-  Svc.Obs.notify("weave:engine:stop-tracking");
+  await engine._tracker.stop();
   await engine.wipeClient();
   Svc.Prefs.resetBranch("");
   Service.recordManager.clearCache();
   await promiseStopServer(server);
 }
+
+add_task(async function setup() {
+  await Service.engineManager.unregister("addons"); // To silence errors.
+});
 
 add_task(async function test_ignored_fields() {
   _("Only changes to syncable fields should be tracked");
@@ -35,7 +34,7 @@ add_task(async function test_ignored_fields() {
     null, "username", "password", "", ""));
   login.QueryInterface(Ci.nsILoginMetaInfo); // For `guid`.
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let nonSyncableProps = new PropertyBag();
@@ -68,7 +67,7 @@ add_task(async function test_ignored_sync_credentials() {
 
   enableValidationPrefs();
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let login = Services.logins.addLogin(new LoginInfo(FXA_PWDMGR_HOST, null,
@@ -156,13 +155,12 @@ add_task(async function test_password_engine() {
     collection.insert(oldLogin.guid, encryptPayload(rec.cleartext));
   }
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  await engine._tracker.stop();
 
   try {
     await sync_engine_and_validate_telem(engine, false);
 
-    let newRec = JSON.parse(JSON.parse(
-      collection.payload(newLogin.guid)).ciphertext);
+    let newRec = collection.cleartext(newLogin.guid);
     equal(newRec.password, "password",
       "Should update remote password for newer login");
 

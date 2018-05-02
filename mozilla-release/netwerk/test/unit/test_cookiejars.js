@@ -11,9 +11,9 @@ XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver = new HttpServer();
 
@@ -91,7 +91,7 @@ function completeCheckCookie(request, data, context) {
   var j;
   for (j = 0; j < tests.length; j++) {
     var cookieToCheck = tests[j].cookieName;
-    found = (cookiesSeen.indexOf(cookieToCheck) != -1);
+    found = (cookiesSeen.includes(cookieToCheck));
     if (found && expectedCookie != cookieToCheck) {
       do_throw("test index " + i + ": found unexpected cookie '" 
           + cookieToCheck + "': in '" + cookiesSeen + "'");

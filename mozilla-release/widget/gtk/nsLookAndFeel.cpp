@@ -26,8 +26,6 @@
 #include "WidgetUtils.h"
 #include "nsWindow.h"
 
-#include <dlfcn.h>
-
 #include "mozilla/gfx/2D.h"
 
 #include <cairo-gobject.h>
@@ -737,13 +735,9 @@ GetSystemFontInfo(GtkStyleContext *aStyle,
         // |size| is in pango-points, so convert to pixels.
         size *= float(gfxPlatformGtk::GetFontScaleDPI()) / POINTS_PER_INCH_FLOAT;
     }
-
-    // Scale fonts up on HiDPI displays.
-    // This would be done automatically with cairo, but we manually manage
-    // the display scale for platform consistency.
-    size *= mozilla::widget::ScreenHelperGTK::GetGTKMonitorScaleFactor();
-
-    // |size| is now pixels
+    // |size| is now pixels but not scaled for the hidpi displays,
+    // this needs to be done in GetFontImpl where the aDevPixPerCSSPixel
+    // parameter is provided.
 
     aFontStyle->size = size;
 
@@ -760,18 +754,18 @@ nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
     case eFont_PullDownMenu: // css3
       aFontName = mMenuFontName;
       aFontStyle = mMenuFontStyle;
-      return true;
+      break;
 
     case eFont_Field:        // css3
     case eFont_List:         // css3
       aFontName = mFieldFontName;
       aFontStyle = mFieldFontStyle;
-      return true;
+      break;
 
     case eFont_Button:       // css3
       aFontName = mButtonFontName;
       aFontStyle = mButtonFontStyle;
-      return true;
+      break;
 
     case eFont_Caption:      // css2
     case eFont_Icon:         // css2
@@ -789,8 +783,18 @@ nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
     default:
       aFontName = mDefaultFontName;
       aFontStyle = mDefaultFontStyle;
-      return true;
+      break;
   }
+  // Scale the font for the current monitor
+  double scaleFactor = nsIWidget::DefaultScaleOverride();
+  if (scaleFactor > 0) {
+    aFontStyle.size *= mozilla::widget::ScreenHelperGTK::GetGTKMonitorScaleFactor();
+  } else {
+    // Remove effect of font scale because it has been already applied in
+    // GetSystemFontInfo
+    aFontStyle.size *= aDevPixPerCSSPixel / gfxPlatformGtk::GetFontScaleFactor();
+  }
+  return true;
 }
 
 void
@@ -1081,35 +1085,29 @@ nsLookAndFeel::EnsureInit()
     mCSDAvailable = (gtk_check_version(3, 10, 0) == nullptr &&
         nsWindow::GetCSDSupportLevel() != nsWindow::CSD_SUPPORT_NONE);
 
+    mCSDCloseButton = false;
+    mCSDMinimizeButton = false;
+    mCSDMaximizeButton = false;
+
     // We need to initialize whole CSD config explicitly because it's queried
     // as -moz-gtk* media features.
-    mCSDCloseButton = true;
-    mCSDMaximizeButton = false;
-    mCSDMinimizeButton = false;
+    WidgetNodeType buttonLayout[TOOLBAR_BUTTONS];
 
-    if (mCSDAvailable) {
-        static auto sGtkHeaderBarGetDecorationLayoutPtr =
-          (const gchar* (*)(GtkWidget*))
-          dlsym(RTLD_DEFAULT, "gtk_header_bar_get_decoration_layout");
-
-        if (sGtkHeaderBarGetDecorationLayoutPtr) {
-            GtkWidget* headerBar = GetWidget(MOZ_GTK_HEADER_BAR);
-            const gchar* decorationLayout =
-                sGtkHeaderBarGetDecorationLayoutPtr(headerBar);
-            if (!decorationLayout) {
-                g_object_get(settings, "gtk-decoration-layout",
-                             &decorationLayout,
-                             nullptr);
-            }
-
-            if (decorationLayout) {
-                mCSDCloseButton =
-                    (strstr(decorationLayout, "close") != nullptr);
-                mCSDMaximizeButton =
-                    (strstr(decorationLayout, "maximize") != nullptr);
-                mCSDMinimizeButton =
-                    (strstr(decorationLayout, "minimize") != nullptr);
-            }
+    int activeButtons =
+        GetGtkHeaderBarButtonLayout(buttonLayout, TOOLBAR_BUTTONS);
+    for (int i = 0; i < activeButtons; i++) {
+        switch(buttonLayout[i]) {
+        case MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE:
+            mCSDMinimizeButton = true;
+            break;
+        case MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE:
+            mCSDMaximizeButton = true;
+            break;
+        case MOZ_GTK_HEADER_BAR_BUTTON_CLOSE:
+            mCSDCloseButton = true;
+            break;
+        default:
+            break;
         }
     }
 }

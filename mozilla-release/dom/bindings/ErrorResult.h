@@ -32,6 +32,7 @@
 #include "nscore.h"
 #include "nsString.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/Move.h"
 #include "nsTArray.h"
 #include "nsISupportsImpl.h"
@@ -507,7 +508,7 @@ private:
   // (and deallocated) by SetPendingDOMException.
   union {
     Message* mMessage; // valid when IsErrorWithMessage()
-    JS::Value mJSException; // valid when IsJSException()
+    JS::UninitializedValue mJSException; // valid when IsJSException()
     DOMExceptionInfo* mDOMExceptionInfo; // valid when IsDOMException()
   };
 
@@ -600,6 +601,21 @@ binding_danger::TErrorResult<CleanupPolicy>::operator ErrorResult&()
 class IgnoredErrorResult :
     public binding_danger::TErrorResult<binding_danger::JustSuppressCleanupPolicy>
 {
+};
+
+// A class for use when an ErrorResult should just automatically be
+// ignored.  This is designed to be passed as a temporary only, like
+// so:
+//
+//    foo->Bar(IgnoreErrors());
+class MOZ_TEMPORARY_CLASS IgnoreErrors {
+public:
+  operator ErrorResult&() && { return mInner; }
+private:
+  // We don't use an ErrorResult member here so we don't make two separate calls
+  // to SuppressException (one from us, one from the ErrorResult destructor
+  // after asserting).
+  binding_danger::TErrorResult<binding_danger::JustSuppressCleanupPolicy> mInner;
 };
 
 namespace dom {

@@ -6,19 +6,15 @@
 // This test covers MozTrap test 6047
 // bug 880621
 
-var {LoadContextInfo} = Cu.import("resource://gre/modules/LoadContextInfo.jsm", null);
-
 var tmp = {};
 
-Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js", tmp);
-
-var Sanitizer = tmp.Sanitizer;
+const {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
 
 function test() {
 
   waitForExplicitFinish();
 
-  sanitizeCache();
+  Sanitizer.sanitize(["cache"], {ignoreTimespan: false});
 
   getStorageEntryCount("regular", function(nrEntriesR1) {
     is(nrEntriesR1, 0, "Disk cache reports 0KB and has no entries");
@@ -27,48 +23,14 @@ function test() {
   });
 }
 
-function cleanup() {
-  let prefs = Services.prefs.getBranch("privacy.cpd.");
-
-  prefs.clearUserPref("history");
-  prefs.clearUserPref("downloads");
-  prefs.clearUserPref("cache");
-  prefs.clearUserPref("cookies");
-  prefs.clearUserPref("formdata");
-  prefs.clearUserPref("offlineApps");
-  prefs.clearUserPref("passwords");
-  prefs.clearUserPref("sessions");
-  prefs.clearUserPref("siteSettings");
-}
-
-function sanitizeCache() {
-
-  let s = new Sanitizer();
-  s.ignoreTimespan = false;
-  s.prefDomain = "privacy.cpd.";
-
-  let prefs = Services.prefs.getBranch(s.prefDomain);
-  prefs.setBoolPref("history", false);
-  prefs.setBoolPref("downloads", false);
-  prefs.setBoolPref("cache", true);
-  prefs.setBoolPref("cookies", false);
-  prefs.setBoolPref("formdata", false);
-  prefs.setBoolPref("offlineApps", false);
-  prefs.setBoolPref("passwords", false);
-  prefs.setBoolPref("sessions", false);
-  prefs.setBoolPref("siteSettings", false);
-
-  s.sanitize();
-}
-
 function getStorageEntryCount(device, goon) {
   var storage;
   switch (device) {
   case "private":
-    storage = Services.cache2.diskCacheStorage(LoadContextInfo.private, false);
+    storage = Services.cache2.diskCacheStorage(Services.loadContextInfo.private, false);
     break;
   case "regular":
-    storage = Services.cache2.diskCacheStorage(LoadContextInfo.default, false);
+    storage = Services.cache2.diskCacheStorage(Services.loadContextInfo.default, false);
     break;
   default:
     throw "Unknown device " + device + " at getStorageEntryCount";
@@ -111,8 +73,6 @@ function get_cache_for_private_window() {
 
             getStorageEntryCount("regular", function(nrEntriesR2) {
               is(nrEntriesR2, 0, "Disk cache reports 0KB and has no entries");
-
-              cleanup();
 
               win.close();
               finish();

@@ -24,48 +24,56 @@ Test the rich-select component
 <body>
   <p id="display">
     <rich-select id="select1">
+      <!-- the class="rich-option" is required to be hard-coded due to a bug with the custom
+           elements polyfill causing the address-option constructor to happen too late. -->
       <address-option id="option1"
+                      class="rich-option"
                       email="emzembrano92@email.com"
-                      recipient="Emily Zembrano"
-                      addressLine="717 Hyde Street #6"
-                      city="San Francisco"
-                      region="CA"
-                      phone="415 203 0845"
-                      postalCode="94109"
+                      name="Emily Zembrano"
+                      street-address="717 Hyde Street #6"
+                      address-level2="San Francisco"
+                      address-level1="CA"
+                      tel="415 203 0845"
+                      postal-code="94109"
                       country="USA"></address-option>
       <address-option id="option2"
+                      class="rich-option"
                       email="jenz9382@email.com"
-                      recipient="Jennifer Zembrano"
-                      addressLine="42 Fairydust Lane"
-                      city="Lala Land"
-                      region="HI"
-                      phone="415 439 2827"
-                      postalCode="98765"
+                      name="Jennifer Zembrano"
+                      street-address="42 Fairydust Lane"
+                      address-level2="Lala Land"
+                      address-level1="HI"
+                      tel="415 439 2827"
+                      postal-code="98765"
                       country="USA"></address-option>
       <address-option id="option3"
+                      class="rich-option"
                       email="johnz9382@email.com"
-                      recipient="John Zembrano"
-                      addressLine="42 Fairydust Lane"
-                      city="Lala Land"
+                      name="John Zembrano"
+                      street-address="42 Fairydust Lane"
+                      address-level2="Lala Land"
                       missinginformation="true"
-                      region="HI"
-                      phone="415 439 2827"
-                      postalCode="98765"
+                      address-level1="HI"
+                      tel="415 439 2827"
+                      postal-code="98765"
                       country="USA"></address-option>
     </rich-select>
 
     <rich-select id="select2">
-      <basic-card-option owner="Jared Wein"
-                         expiration="01/1970"
-                         number="4024007197293599"
+      <basic-card-option cc-name="Jared Wein"
+                         class="rich-option"
+                         cc-exp="1970-01"
+                         cc-number="************3599"
                          type="Visa"></basic-card-option>
-      <basic-card-option owner="Whimsy Corn"
-                         expiration="01/1970"
-                         number="5220465104517667"
+      <basic-card-option cc-name="Whimsy Corn"
+                         class="rich-option"
+                         cc-exp="1970-01"
+                         cc-number="*************7667"
                          type="Mastercard"></basic-card-option>
-      <basic-card-option owner="Fire Fox"
-                         expiration="01/1970"
-                         number="6011777095481054"
+      <basic-card-option cc-name="Fire Fox"
+                         class="rich-option"
+                         cc-exp="1970-01"
+                         cc-number="************1054"
                          type="Discover"></basic-card-option>
     </rich-select>
   </p>
@@ -98,20 +106,20 @@ function is_hidden(element, message) {
   ok(isHidden(element), message);
 }
 
-function dispatchKeyPress(key, keyCode) {
-  select1.dispatchEvent(new KeyboardEvent("keypress", {key, keyCode}));
+function dispatchKeyDown(key, keyCode) {
+  select1.dispatchEvent(new KeyboardEvent("keydown", {key, keyCode}));
 }
 
-add_task(async function test_addressLine_combines_address_city_region_postalCode_country() {
+add_task(async function test_streetAddress_combines_street_level2_level1_postalCode_country() {
   ok(option1, "option1 exists");
-  let addressLine = option1.querySelector(".addressLine");
+  let streetAddress = option1.querySelector(".street-address");
   /* eslint-disable max-len */
-  is(addressLine.textContent,
-     `${option1.addressLine} ${option1.city} ${option1.region} ${option1.postalCode} ${option1.country}`);
+  is(streetAddress.textContent,
+     `${option1.streetAddress} ${option1.addressLevel2} ${option1.addressLevel1} ${option1.postalCode} ${option1.country}`);
   /* eslint-enable max-len */
 });
 
-add_task(async function test_no_option_selected_first_displayed() {
+add_task(async function test_no_option_selected() {
   ok(select1, "select1 exists");
 
   await asyncElementRendered();
@@ -119,25 +127,24 @@ add_task(async function test_no_option_selected_first_displayed() {
   is_hidden(option1, "option 1 should be hidden when popup is not open");
   is_hidden(option2, "option 2 should be hidden when popup is not open");
   is_hidden(option3, "option 3 should be hidden when popup is not open");
-  ok(option1.selected, "option 1 should be selected");
-  ok(option1.hasAttribute("selected"), "option 1 should have selected attribute");
+  ok(!option1.selected, "option 1 should not be selected");
+  ok(!option1.hasAttribute("selected"), "option 1 should not have selected attribute");
   let selectedClone = get_selected_clone();
   is_visible(selectedClone, "The selected clone should be visible at all times");
-  is(selectedClone.getAttribute("email"), option1.getAttribute("email"),
-     "The selected clone email should be equivalent to the selected option 1");
-  is(selectedClone.getAttribute("recipient"), option1.getAttribute("recipient"),
-     "The selected clone recipient should be equivalent to the selected option 1");
+  ok(selectedClone.classList.contains("rich-option"), "Default option should be a rich-option");
+  ok(selectedClone.textContent.includes("None selected"), "Check default text");
 });
 
 add_task(async function test_clicking_on_select_shows_all_options() {
   ok(select1, "select1 exists");
   ok(!select1.open, "select is not open by default");
-  ok(option1.selected, "option 1 should be selected by default");
+  ok(!option1.selected, "option 1 should not be selected by default");
 
   select1.click();
 
   ok(select1.open, "select is open after clicking on it");
-  ok(option1.selected, "option 1 should be selected when open");
+  is(select1.selectedOption, null, "No selected option when open");
+  ok(!option1.selected, "option 1 should not be selected when open");
   is_visible(option1, "option 1 is visible when select is open");
   is_visible(option2, "option 2 is visible when select is open");
   is_visible(option3, "option 3 is visible when select is open");
@@ -157,14 +164,14 @@ add_task(async function test_clicking_on_select_shows_all_options() {
   is_visible(selectedClone, "The selected clone should be visible at all times");
   is(selectedClone.getAttribute("email"), option2.getAttribute("email"),
      "The selected clone email should be equivalent to the selected option 2");
-  is(selectedClone.getAttribute("recipient"), option2.getAttribute("recipient"),
-     "The selected clone recipient should be equivalent to the selected option 2");
+  is(selectedClone.getAttribute("name"), option2.getAttribute("name"),
+     "The selected clone name should be equivalent to the selected option 2");
 });
 
 add_task(async function test_changing_option_selected_affects_other_options() {
   ok(option2.selected, "Option 2 should be selected from prior test");
 
-  option1.selected = true;
+  select1.selectedOption = option1;
   ok(!option2.selected, "Option 2 should no longer be selected after making option 1 selected");
   ok(option1.hasAttribute("selected"), "Option 1 should now have selected attribute");
 });
@@ -184,27 +191,27 @@ add_task(async function test_up_down_keys_change_selected_item() {
   select1.focus();
   ok(!select1.open, "select should not be open after focusing");
 
-  dispatchKeyPress("ArrowDown", 40);
+  dispatchKeyDown("ArrowDown", 40);
   ok(!option1.selected, "option 1 should no longer be selected");
   ok(option2.selected, "option 2 should now be selected");
 
-  dispatchKeyPress("ArrowDown", 40);
+  dispatchKeyDown("ArrowDown", 40);
   ok(!option2.selected, "option 2 should no longer be selected");
   ok(option3.selected, "option 3 should now be selected");
 
-  dispatchKeyPress("ArrowDown", 40);
+  dispatchKeyDown("ArrowDown", 40);
   ok(option3.selected, "option 3 should remain selected");
   ok(!option1.selected, "option 1 should not be selected");
 
-  dispatchKeyPress("ArrowUp", 38);
+  dispatchKeyDown("ArrowUp", 38);
   ok(!option3.selected, "option 3 should no longer be selected");
   ok(option2.selected, "option 2 should now be selected");
 
-  dispatchKeyPress("ArrowUp", 38);
+  dispatchKeyDown("ArrowUp", 38);
   ok(!option2.selected, "option 2 should no longer be selected");
   ok(option1.selected, "option 1 should now be selected");
 
-  dispatchKeyPress("ArrowUp", 38);
+  dispatchKeyDown("ArrowUp", 38);
   ok(option1.selected, "option 1 should remain selected");
   ok(!option3.selected, "option 3 should not be selected");
 
@@ -219,28 +226,28 @@ add_task(async function test_open_close_from_keyboard() {
 
   ok(!select1.open, "select should not be open by default");
 
-  dispatchKeyPress(" ", 32);
+  dispatchKeyDown(" ", 32);
   ok(select1.open, "select should now be open");
   ok(option1.selected, "option 1 should be selected by default");
 
-  dispatchKeyPress("ArrowDown", 40);
+  dispatchKeyDown("ArrowDown", 40);
   ok(!option1.selected, "option 1 should not be selected");
   ok(option2.selected, "option 2 should now be selected");
   ok(select1.open, "select should remain open");
 
-  dispatchKeyPress("ArrowUp", 38);
+  dispatchKeyDown("ArrowUp", 38);
   ok(option1.selected, "option 1 should now be selected");
   ok(!option2.selected, "option 2 should not be selected");
   ok(select1.open, "select should remain open");
 
-  dispatchKeyPress("Enter", 13);
+  dispatchKeyDown("Enter", 13);
   ok(option1.selected, "option 1 should now be selected");
   ok(!select1.open, "select should be closed");
 
-  dispatchKeyPress(" ", 32);
+  dispatchKeyDown(" ", 32);
   ok(select1.open, "select should now be open");
 
-  dispatchKeyPress("Escape", 27);
+  dispatchKeyDown("Escape", 27);
   ok(!select1.open, "select should be closed");
 });
 
@@ -275,12 +282,15 @@ add_task(async function test_selected_clone_should_equal_selected_option() {
 
   let clonedOption = clonedOptions[0];
   for (let attrName of AddressOption.observedAttributes) {
+    if (attrName == "selected") {
+      continue;
+    }
     is(clonedOption.attributes[attrName] && clonedOption.attributes[attrName].value,
        option1.attributes[attrName] && option1.attributes[attrName].value,
        "attributes should have matching value; name=" + attrName);
   }
 
-  option2.selected = true;
+  select1.selectedOption = option2;
   await asyncElementRendered();
 
   clonedOptions = select1.querySelectorAll(".rich-select-selected-clone");
@@ -288,6 +298,9 @@ add_task(async function test_selected_clone_should_equal_selected_option() {
 
   clonedOption = clonedOptions[0];
   for (let attrName of AddressOption.observedAttributes) {
+    if (attrName == "selected") {
+      continue;
+    }
     is(clonedOption.attributes[attrName] && clonedOption.attributes[attrName].value,
        option2.attributes[attrName] && option2.attributes[attrName].value,
        "attributes should have matching value; name=" + attrName);
@@ -297,18 +310,63 @@ add_task(async function test_selected_clone_should_equal_selected_option() {
 add_task(async function test_basic_card_simple() {
   let select2 = document.getElementById("select2");
   ok(select2, "basic card select should exist");
-  let selectPopupBox = select2.querySelector(".rich-select-popup-box");
-  ok(selectPopupBox, "basic card popup box exists");
+  let popupBox = select2.querySelector(".rich-select-popup-box");
+  ok(popupBox, "basic card popup box exists");
 
-  is(selectPopupBox.childElementCount, 3, "There should be three children in the popup box");
+  is(popupBox.childElementCount, 3, "There should be three children in the popup box");
+
+  select2.selectedOption = popupBox.firstElementChild;
+  await asyncElementRendered();
 
   let clonedOption = select2.querySelector(".rich-select-selected-clone");
-  let selectedOption = selectPopupBox.firstChild;
+  let selectedOption = popupBox.firstElementChild;
   for (let attrName of BasicCardOption.observedAttributes) {
+    if (attrName == "selected") {
+      continue;
+    }
     is(clonedOption.attributes[attrName] && clonedOption.attributes[attrName].value,
        selectedOption.attributes[attrName] && selectedOption.attributes[attrName].value,
        "attributes should have matching value; name=" + attrName);
   }
+});
+
+add_task(async function test_option_appended_after_creation() {
+  let select2 = document.getElementById("select2");
+  let select3 = document.createElement("rich-select");
+  select3.id = "select3";
+  select2.parentNode.insertBefore(select3, select2.nextElementSibling);
+
+  is(select3.childElementCount, 2, "There should be a popup child and clone");
+  let popupBox = select3.querySelector(".rich-select-popup-box");
+  ok(popupBox, "The popup box should exist");
+  is(popupBox.childElementCount, 0, "The popup should not have any children");
+
+  let newOption = document.createElement("address-option");
+  newOption.name = "Jared FooBar";
+  select3.appendChild(newOption);
+  await asyncElementRendered();
+
+  is(select3.childElementCount, 2, "There should now be two children");
+  is(popupBox.childElementCount, 1, "The popup box should have one child");
+  ok(!popupBox.children[0].selected, "The only option should not be marked selected");
+  is(select3.selectedOption, null, "Check there is no selected option");
+  let clonedOption = select3.querySelector(".rich-select-selected-clone");
+  ok(clonedOption, "cloned option exists");
+
+  // Select the new option
+  select3.selectedOption = popupBox.lastElementChild;
+  await asyncElementRendered();
+
+  clonedOption = select3.querySelector(".rich-select-selected-clone");
+  is(clonedOption.name, "Jared FooBar", "Check cloned name");
+
+  newOption.remove();
+  await asyncElementRendered();
+
+  is(select3.childElementCount, 2, "There should still be two children");
+  is(popupBox.childElementCount, 0, "The popup box should not have any children");
+  clonedOption = select3.querySelector(".rich-select-selected-clone");
+  todo(clonedOption.textContent.includes("None selected"), "the dropdown should show no selection");
 });
 
 </script>

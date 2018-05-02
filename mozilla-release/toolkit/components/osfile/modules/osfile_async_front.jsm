@@ -19,15 +19,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["OS"];
-
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+var EXPORTED_SYMBOLS = ["OS"];
 
 var SharedAll = {};
-Cu.import("resource://gre/modules/osfile/osfile_shared_allthreads.jsm", SharedAll);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile/osfile_shared_allthreads.jsm", SharedAll);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
 
 // Boilerplate, to simplify the transition to require()
@@ -37,9 +34,9 @@ var isTypedArray = SharedAll.isTypedArray;
 // The constructor for file errors.
 var SysAll = {};
 if (SharedAll.Constants.Win) {
-  Cu.import("resource://gre/modules/osfile/osfile_win_allthreads.jsm", SysAll);
+  ChromeUtils.import("resource://gre/modules/osfile/osfile_win_allthreads.jsm", SysAll);
 } else if (SharedAll.Constants.libc) {
-  Cu.import("resource://gre/modules/osfile/osfile_unix_allthreads.jsm", SysAll);
+  ChromeUtils.import("resource://gre/modules/osfile/osfile_unix_allthreads.jsm", SysAll);
 } else {
   throw new Error("I am neither under Windows nor under a Posix system");
 }
@@ -47,20 +44,20 @@ var OSError = SysAll.Error;
 var Type = SysAll.Type;
 
 var Path = {};
-Cu.import("resource://gre/modules/osfile/ospath.jsm", Path);
+ChromeUtils.import("resource://gre/modules/osfile/ospath.jsm", Path);
 
 // The library of promises.
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
-                                  "resource://gre/modules/Task.jsm");
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
+                               "resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Task",
+                               "resource://gre/modules/Task.jsm");
 
 // The implementation of communications
-Cu.import("resource://gre/modules/PromiseWorker.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
-Cu.import("resource://gre/modules/AsyncShutdown.jsm", this);
-var Native = Cu.import("resource://gre/modules/osfile/osfile_native.jsm", {});
+ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", this);
+var Native = ChromeUtils.import("resource://gre/modules/osfile/osfile_native.jsm", {});
 
 
 // It's possible for osfile.jsm to get imported before the profile is
@@ -553,9 +550,6 @@ Services.prefs.addObserver(PREF_OSFILE_NATIVE,
 if (SharedAll.Config.DEBUG && Scheduler.launched) {
   Scheduler.post("SET_DEBUG", [true]);
 }
-
-// Observer topics used for monitoring shutdown
-const WEB_WORKERS_SHUTDOWN_TOPIC = "web-workers-shutdown";
 
 // Preference used to configure test shutdown observer.
 const PREF_OSFILE_TEST_SHUTDOWN_OBSERVER =
@@ -1225,7 +1219,7 @@ File.Info.prototype = SysAll.AbstractInfo.prototype;
 // Deprecated
 Object.defineProperty(File.Info.prototype, "creationDate", {
   get: function creationDate() {
-    let {Deprecated} = Cu.import("resource://gre/modules/Deprecated.jsm", {});
+    let {Deprecated} = ChromeUtils.import("resource://gre/modules/Deprecated.jsm", {});
     Deprecated.warning("Field 'creationDate' is deprecated.", "https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.Info#Cross-platform_Attributes");
     return this._deprecatedCreationDate;
   }
@@ -1401,7 +1395,7 @@ File.POS_END = SysAll.POS_END;
 File.Error = OSError;
 File.DirectoryIterator = DirectoryIterator;
 
-this.OS = {};
+var OS = {};
 this.OS.File = File;
 this.OS.Constants = SharedAll.Constants;
 this.OS.Shared = {
@@ -1429,7 +1423,7 @@ Object.defineProperty(OS.File, "queue", {
 // able to replace that field with a custom implementation before it is first
 // called.
 // eslint-disable-next-line mozilla/use-services
-const isContent = Components.classes["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
+const isContent = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 
 /**
  * Shutdown barriers, to let clients register to be informed during shutdown.

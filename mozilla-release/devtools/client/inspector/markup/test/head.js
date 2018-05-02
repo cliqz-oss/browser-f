@@ -419,20 +419,6 @@ var getAttributesFromEditor = Task.async(function* (selector, inspector) {
   return [...nodeList].map(node => node.getAttribute("data-attr"));
 });
 
-// The expand all operation of the markup-view calls itself recursively and
-// there's not one event we can wait for to know when it's done so use this
-// helper function to wait until all recursive children updates are done.
-function* waitForMultipleChildrenUpdates(inspector) {
-  // As long as child updates are queued up while we wait for an update already
-  // wait again
-  if (inspector.markup._queuedChildUpdates &&
-      inspector.markup._queuedChildUpdates.size) {
-    yield waitForChildrenUpdated(inspector);
-    return yield waitForMultipleChildrenUpdates(inspector);
-  }
-  return undefined;
-}
-
 /**
  * Registers new backend tab actor.
  *
@@ -633,4 +619,17 @@ function* checkDeleteAndSelection(inspector, key, {selector, focusedSelector, ps
   yield undoChange(inspector);
   node = yield getNodeFront(selector, inspector);
   ok(node, "The node is back");
+}
+
+/**
+ * Expand the provided markup container by clicking on the expand arrow and waiting for
+ * inspector and children to update.
+ */
+async function expandContainer(inspector, container) {
+  let onChildren = waitForChildrenUpdated(inspector);
+  let onUpdated = inspector.once("inspector-updated");
+  EventUtils.synthesizeMouseAtCenter(container.expander, {},
+    inspector.markup.doc.defaultView);
+  await onChildren;
+  await onUpdated;
 }

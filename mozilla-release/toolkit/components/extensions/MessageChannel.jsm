@@ -97,15 +97,13 @@
  *
  */
 
-this.EXPORTED_SYMBOLS = ["MessageChannel"];
+var EXPORTED_SYMBOLS = ["MessageChannel"];
 
 /* globals MessageChannel */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const {
   MessageManagerProxy,
@@ -975,7 +973,8 @@ this.MessageChannel = {
           // Error objects are not structured-clonable, so just copy
           // over the important properties.
           for (let key of ["fileName", "filename", "lineNumber",
-                           "columnNumber", "message", "stack", "result"]) {
+                           "columnNumber", "message", "stack", "result",
+                           "mozWebExtLocation"]) {
             if (key in error) {
               response.error[key] = error[key];
             }

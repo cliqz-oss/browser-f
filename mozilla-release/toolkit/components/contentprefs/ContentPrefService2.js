@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { interfaces: Ci, classes: Cc, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/ContentPrefUtils.jsm");
-Cu.import("resource://gre/modules/ContentPrefStore.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ContentPrefUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ContentPrefStore.jsm");
 
 const CACHE_MAX_GROUP_ENTRIES = 100;
 
@@ -20,7 +18,7 @@ const GROUP_CLAUSE = `
 
 function ContentPrefService2() {
   if (Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_CONTENT) {
-    return Cu.import("resource://gre/modules/ContentPrefServiceChild.jsm")
+    return ChromeUtils.import("resource://gre/modules/ContentPrefServiceChild.jsm")
              .ContentPrefServiceChild;
   }
 
@@ -850,7 +848,7 @@ ContentPrefService2.prototype = {
     } else
       observers = this._genericObservers;
 
-    if (observers.indexOf(aObserver) == -1)
+    if (!observers.includes(aObserver))
       observers.push(aObserver);
   },
 
@@ -863,7 +861,7 @@ ContentPrefService2.prototype = {
     } else
       observers = this._genericObservers;
 
-    if (observers.indexOf(aObserver) != -1)
+    if (observers.includes(aObserver))
       observers.splice(observers.indexOf(aObserver), 1);
   },
 
@@ -1141,7 +1139,8 @@ ContentPrefService2.prototype = {
         for (let i = aOldVersion; i < aNewVersion; i++) {
           let migrationName = "_dbMigrate" + i + "To" + (i + 1);
           if (typeof this[migrationName] != "function") {
-            throw ("no migrator function from version " + aOldVersion + " to version " + aNewVersion);
+            throw new Error("no migrator function from version " + aOldVersion + " to version " +
+                            aNewVersion);
           }
           this[migrationName](aDBConnection);
         }
@@ -1233,7 +1232,7 @@ HostnameGrouper.prototype = {
 
       group = aURI.host;
       if (!group)
-        throw ("can't derive group from host; no host in URI");
+        throw new Error("can't derive group from host; no host in URI");
     } catch (ex) {
       // If we don't have a host, then use the entire URI (minus the query,
       // reference, and hash, if possible) as the group.  This means that URIs

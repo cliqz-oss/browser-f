@@ -5,6 +5,7 @@
 
 /* import-globals-from ../../base/content/utilityOverlay.js */
 /* import-globals-from ../../../toolkit/content/preferencesBindings.js */
+/* import-globals-from in-content/extensionControlled.js */
 
 Preferences.addAll([
   // Add network.proxy.autoconfig_url before network.proxy.type so they're
@@ -39,6 +40,14 @@ window.addEventListener("DOMContentLoaded", () => {
     gConnectionsDialog.proxyTypeChanged.bind(gConnectionsDialog));
   Preferences.get("network.proxy.socks_version").on("change",
     gConnectionsDialog.updateDNSPref.bind(gConnectionsDialog));
+
+  document
+    .getElementById("disableProxyExtension")
+    .addEventListener(
+      "command", makeDisableControllingExtension(
+        PREF_SETTING_TYPE, PROXY_KEY).bind(gConnectionsDialog));
+  gConnectionsDialog.updateProxySettingsUI();
+  initializeProxyUI(gConnectionsDialog);
 }, { once: true, capture: true });
 
 var gConnectionsDialog = {
@@ -90,7 +99,7 @@ var gConnectionsDialog = {
   },
 
   checkForSystemProxy() {
-    if ("@mozilla.org/system-proxy-settings;1" in Components.classes)
+    if ("@mozilla.org/system-proxy-settings;1" in Cc)
       document.getElementById("systemPref").removeAttribute("hidden");
   },
 
@@ -196,7 +205,7 @@ var gConnectionsDialog = {
   },
 
   reloadPAC() {
-    Components.classes["@mozilla.org/network/protocol-proxy-service;1"].
+    Cc["@mozilla.org/network/protocol-proxy-service;1"].
         getService().reloadPAC();
   },
 
@@ -230,5 +239,43 @@ var gConnectionsDialog = {
     if (shareProxiesPref.value)
       this.updateProtocolPrefs();
     return undefined;
+  },
+
+  getProxyControls() {
+    let controlGroup = document.getElementById("networkProxyType");
+    return [
+      ...controlGroup.querySelectorAll(":scope > radio"),
+      ...controlGroup.querySelectorAll("label"),
+      ...controlGroup.querySelectorAll("textbox"),
+      ...controlGroup.querySelectorAll("checkbox"),
+      ...document.querySelectorAll("#networkProxySOCKSVersion > radio"),
+      ...document.querySelectorAll("#ConnectionsDialogPane > checkbox"),
+    ];
+  },
+
+  // Update the UI to show/hide the extension controlled message for
+  // proxy settings.
+  async updateProxySettingsUI() {
+    let isLocked = API_PROXY_PREFS.some(
+      pref => Services.prefs.prefIsLocked(pref));
+
+    function setInputsDisabledState(isControlled) {
+      let disabled = isLocked || isControlled;
+      for (let element of gConnectionsDialog.getProxyControls()) {
+        element.disabled = disabled;
+      }
+      if (!isLocked) {
+        gConnectionsDialog.proxyTypeChanged();
+      }
+    }
+
+    if (isLocked) {
+      // An extension can't control this setting if any pref is locked.
+      hideControllingExtension(PROXY_KEY);
+      setInputsDisabledState(false);
+    } else {
+      handleControllingExtension(PREF_SETTING_TYPE, PROXY_KEY)
+        .then(setInputsDisabledState);
+    }
   }
 };

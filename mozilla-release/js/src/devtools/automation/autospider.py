@@ -141,14 +141,18 @@ def set_vars_from_script(script, vars):
 
 
 def ensure_dir_exists(name, clobber=True, creation_marker_filename="CREATED-BY-AUTOSPIDER"):
-    marker = os.path.join(name, creation_marker_filename)
+    if creation_marker_filename is None:
+        marker = None
+    else:
+        marker = os.path.join(name, creation_marker_filename)
     if clobber:
-        if not AUTOMATION and os.path.exists(name) and not os.path.exists(marker):
+        if not AUTOMATION and marker and os.path.exists(name) and not os.path.exists(marker):
             raise Exception("Refusing to delete objdir %s because it was not created by autospider" % name)
         shutil.rmtree(name, ignore_errors=True)
     try:
         os.mkdir(name)
-        open(marker, 'a').close()
+        if marker:
+            open(marker, 'a').close()
     except OSError:
         if clobber:
             raise
@@ -191,7 +195,7 @@ if opt is not None:
 # Any jobs that wish to produce additional output can save them into the upload
 # directory if there is such a thing, falling back to OBJDIR.
 env.setdefault('MOZ_UPLOAD_DIR', OBJDIR)
-ensure_dir_exists(env['MOZ_UPLOAD_DIR'], clobber=False)
+ensure_dir_exists(env['MOZ_UPLOAD_DIR'], clobber=False, creation_marker_filename=None)
 
 # Some of the variants request a particular word size (eg ARM simulators).
 word_bits = variant.get('bits')
@@ -275,8 +279,8 @@ else:
     if platform.system() == 'Windows':
         CONFIGURE_ARGS += ' --target=x86_64-pc-mingw32 --host=x86_64-pc-mingw32'
 
-if platform.system() == 'Linux':
-    CONFIGURE_ARGS += ' --enable-stdcxx-compat'
+if platform.system() == 'Linux' and AUTOMATION:
+    CONFIGURE_ARGS = '--enable-stdcxx-compat ' + CONFIGURE_ARGS
 
 # Timeouts.
 ACTIVE_PROCESSES = set()

@@ -137,7 +137,7 @@ class ReftestRunner(MozbuildObject):
         args.printDeviceInfo = False
 
         from mozrunner.devices.android_device import grant_runtime_permissions, get_adb_path
-        grant_runtime_permissions(self)
+        grant_runtime_permissions(self, args.app)
 
         if not args.adb_path:
             args.adb_path = get_adb_path(self)
@@ -231,6 +231,6 @@ class MachCommands(MachCommandBase):
         reftest = self._spawn(ReftestRunner)
         if conditions.is_android(self):
             from mozrunner.devices.android_device import verify_android_device
-            verify_android_device(self, install=True, xre=True)
+            verify_android_device(self, install=True, xre=True, app=kwargs["app"])
             return reftest.run_android_test(**kwargs)
         return reftest.run_desktop_test(**kwargs)

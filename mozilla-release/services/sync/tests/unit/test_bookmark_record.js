@@ -1,12 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/keys.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/keys.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function prepareBookmarkItem(collection, id) {
   let b = new Bookmark(collection, id);
@@ -39,4 +39,23 @@ add_task(async function test_bookmark_record() {
   Assert.equal(payload.stuff, "my payload here");
   Assert.equal(bookmarkItem.getTypeObject(bookmarkItem.type), Bookmark);
   Assert.notEqual(payload, bookmarkItem.payload); // wrap.data.payload is the encrypted one
+});
+
+add_task(async function test_query_foldername() {
+  // Bug 1443388
+  let checks = [
+    ["foo", "foo"],
+    ["", undefined]
+  ];
+  for (let [inVal, outVal] of checks) {
+    let bmk1 = new BookmarkQuery("bookmarks", Utils.makeGUID());
+    bmk1.fromSyncBookmark({url: Services.io.newURI("https://example.com"), folder: inVal});
+    Assert.strictEqual(bmk1.folderName, outVal);
+
+    // other direction
+    let bmk2 = new BookmarkQuery("bookmarks", Utils.makeGUID());
+    bmk2.folderName = inVal;
+    let record = bmk2.toSyncBookmark();
+    Assert.strictEqual(record.folder, outVal);
+  }
 });

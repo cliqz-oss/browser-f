@@ -8,9 +8,10 @@
 
 // A helper actor for inspector and markupview tests.
 
-const { Cc, Ci, Cu } = require("chrome");
+const { Ci, Cu } = require("chrome");
+const Services = require("Services");
 const {
-  getRect, getElementFromPoint, getAdjustedQuads, getWindowDimensions
+  getRect, getAdjustedQuads, getWindowDimensions
 } = require("devtools/shared/layout/utils");
 const defer = require("devtools/shared/defer");
 const {Task} = require("devtools/shared/task");
@@ -18,8 +19,6 @@ const {
   isContentStylesheet,
   getCSSStyleRules
 } = require("devtools/shared/inspector/css-logic");
-const loader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
-                 .getService(Ci.mozIJSSubScriptLoader);
 const InspectorUtils = require("InspectorUtils");
 
 // Set up a dummy environment so that EventUtils works. We need to be careful to
@@ -29,10 +28,10 @@ let EventUtils = {};
 EventUtils.window = {};
 EventUtils.parent = {};
 /* eslint-disable camelcase */
-EventUtils._EU_Ci = Components.interfaces;
-EventUtils._EU_Cc = Components.classes;
+EventUtils._EU_Ci = Ci;
+EventUtils._EU_Cc = Cc;
 /* eslint-disable camelcase */
-loader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
 const protocol = require("devtools/shared/protocol");
 const {Arg, RetVal} = protocol;
@@ -124,16 +123,6 @@ var testSpec = protocol.generateActorSpec({
         actorID: Arg(1, "string"),
       },
       response: {}
-    },
-    assertElementAtPoint: {
-      request: {
-        x: Arg(0, "number"),
-        y: Arg(1, "number"),
-        selector: Arg(2, "string")
-      },
-      response: {
-        value: RetVal("boolean")
-      }
     },
     getAllAdjustedQuads: {
       request: {
@@ -471,15 +460,6 @@ var TestActor = exports.TestActor = protocol.ActorClassWithSpec(testSpec, {
                                  .QueryInterface(Ci.nsIDocShell);
       docShell.contentViewer.fullZoom = level;
     });
-  },
-
-  assertElementAtPoint: function (x, y, selector) {
-    let elementAtPoint = getElementFromPoint(this.content.document, x, y);
-    if (!elementAtPoint) {
-      throw new Error("Unable to find element at (" + x + ", " + y + ")");
-    }
-    let node = this._querySelector(selector);
-    return node == elementAtPoint;
   },
 
   /**

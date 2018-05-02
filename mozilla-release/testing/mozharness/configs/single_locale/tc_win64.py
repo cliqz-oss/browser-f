@@ -17,7 +17,6 @@ config = {
         "MOZ_UPDATE_CHANNEL": "%(update_channel)s",
         "DIST": "%(abs_objdir)s",
         "L10NBASEDIR": "../../l10n",
-        "MOZ_MAKE_COMPLETE_MAR": "1",
         'TOOLTOOL_CACHE': os.environ.get('TOOLTOOL_CACHE', 'c:/builds/tooltool_cache'),
         'EN_US_PACKAGE_NAME': 'target.zip',
         'EN_US_PKG_INST_BASENAME': 'target.installer',
@@ -29,11 +28,5 @@ config = {
 
     "tooltool_url": 'https://tooltool.mozilla-releng.net/',
     'tooltool_manifest_src': "browser/config/tooltool-manifests/win64/releng.manifest",
-    "mozilla_dir": "src/",
-    "simple_name_move": True,
-    "update_gecko_source_to_enUS": False,
-
-    # Override the buildbot path to not read it
-    "buildbot_json_path": None,
 }
 

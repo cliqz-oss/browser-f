@@ -4,12 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PromiseUtils"];
+var EXPORTED_SYMBOLS = ["PromiseUtils"];
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-this.PromiseUtils = {
+var PromiseUtils = {
   /*
    * Creates a new pending Promise and provide methods to resolve and reject this Promise.
    *

@@ -18,18 +18,10 @@ add_task(async function setup() {
 });
 
 add_task(async function test_keyword() {
-  // This is set because we see (undiagnosed) test timeouts without it
-  let timerPrecision = Preferences.get("privacy.reduceTimerPrecision");
-  Preferences.set("privacy.reduceTimerPrecision", false);
-
-  registerCleanupFunction(function() {
-    Preferences.set("privacy.reduceTimerPrecision", timerPrecision);
-  });
-
   await promiseAutocompleteResultPopup("keyword bear");
   gURLBar.focus();
-  EventUtils.synthesizeKey("d", {});
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.sendString("d");
+  EventUtils.synthesizeKey("KEY_Enter");
   info("wait for the page to load");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedTab.linkedBrowser,
                                       false, "http://example.com/?q=beard");
@@ -45,7 +37,7 @@ add_task(async function test_sametext() {
   let event = document.createEvent("Events");
   event.initEvent("input", true, true);
   gURLBar.dispatchEvent(event);
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
 
   info("wait for the page to load");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedTab.linkedBrowser,
@@ -55,13 +47,14 @@ add_task(async function test_sametext() {
 add_task(async function test_after_empty_search() {
   await promiseAutocompleteResultPopup("");
   gURLBar.focus();
-  gURLBar.value = "e";
-  EventUtils.synthesizeKey("x", {});
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  // Add www. to avoid a switch-to-tab.
+  gURLBar.value = "www.e";
+  EventUtils.synthesizeKey("x");
+  EventUtils.synthesizeKey("KEY_Enter");
 
   info("wait for the page to load");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedTab.linkedBrowser,
-                                       false, "http://example.com/");
+                                       false, "http://www.example.com/");
 });
 
 add_task(async function test_disabled_ac() {
@@ -94,8 +87,8 @@ add_task(async function test_disabled_ac() {
 
   gURLBar.focus();
   gURLBar.value = "e";
-  EventUtils.synthesizeKey("x", {});
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.sendString("x");
+  EventUtils.synthesizeKey("KEY_Enter");
 
   info("wait for the page to load");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedTab.linkedBrowser,
@@ -108,17 +101,8 @@ add_task(async function test_delay() {
   // Set a large delay.
   let delay = Preferences.get("browser.urlbar.delay");
   Preferences.set("browser.urlbar.delay", TIMEOUT);
-  // This may be a real test regression on Bug 1283329, if we can get it to
-  // fail at a realistic 2ms.
-  let timerPrecision = Preferences.get("privacy.reduceTimerPrecision");
-  Preferences.set("privacy.reduceTimerPrecision", true);
-  let timerPrecisionUSec = Preferences.get("privacy.resistFingerprinting.reduceTimerPrecision.microseconds");
-  Preferences.set("privacy.resistFingerprinting.reduceTimerPrecision.microseconds", 2000);
-
   registerCleanupFunction(function() {
     Preferences.set("browser.urlbar.delay", delay);
-    Preferences.set("privacy.reduceTimerPrecision", timerPrecision);
-    Preferences.set("privacy.resistFingerprinting.reduceTimerPrecision.microseconds", timerPrecisionUSec);
   });
 
   // This is needed to clear the current value, otherwise autocomplete may think
@@ -131,8 +115,8 @@ add_task(async function test_delay() {
   gURLBar.closePopup();
   gURLBar.focus();
   gURLBar.value = "e";
-  EventUtils.synthesizeKey("x", {});
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.sendString("x");
+  EventUtils.synthesizeKey("KEY_Enter");
   info("wait for the page to load");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedTab.linkedBrowser,
                                        false, "http://example.com/");

@@ -4,25 +4,23 @@
 
 "use strict";
 
-const Cu = Components.utils;
+var EXPORTED_SYMBOLS = ["BookmarkRepairRequestor", "BookmarkRepairResponder"];
 
-this.EXPORTED_SYMBOLS = ["BookmarkRepairRequestor", "BookmarkRepairResponder"];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/collection_repair.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/doctor.js");
+ChromeUtils.import("resource://services-sync/telemetry.js");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/utils.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/collection_repair.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/doctor.js");
-Cu.import("resource://services-sync/telemetry.js");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/utils.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesSyncUtils",
-                                  "resource://gre/modules/PlacesSyncUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesSyncUtils",
+                               "resource://gre/modules/PlacesSyncUtils.jsm");
 
 const log = Log.repository.getLogger("Sync.Engine.Bookmarks.Repair");
 
@@ -194,9 +192,11 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     for (let id of validationInfo.problems.serverMissing) {
       engine.addForWeakUpload(id);
     }
-    let toFetch = engine.toFetch.concat(validationInfo.problems.clientMissing,
-                                        validationInfo.problems.serverDeleted);
-    engine.toFetch = Array.from(new Set(toFetch));
+    engine.toFetch = Utils.setAddAll(
+      Utils.setAddAll(engine.toFetch,
+                      validationInfo.problems.clientMissing),
+      validationInfo.problems.serverDeleted
+    );
     return true;
   }
 
@@ -474,7 +474,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     remoteClients.sort((a, b) => b.serverLastModified - a.serverLastModified);
     for (let client of remoteClients) {
       log.trace("findNextClient considering", client);
-      if (alreadyDone.indexOf(client.id) == -1 && this._isSuitableClient(client)) {
+      if (!alreadyDone.includes(client.id) && this._isSuitableClient(client)) {
         return client.id;
       }
     }
@@ -701,7 +701,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
       return;
     }
     log.debug(`bookmarks engine has uploaded stuff - creating a repair response`, subject);
-    Async.promiseSpinningly(this._finishRepair());
+    this.service.clientsEngine._tracker.asyncObserver.enqueueCall(() => this._finishRepair());
   }
 
   async _finishRepair() {

@@ -2,12 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-XPCOMUtils.defineLazyModuleGetter(this, "AppMenuNotifications",
-                                  "resource://gre/modules/AppMenuNotifications.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
-                                  "resource://gre/modules/NewTabUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ScrollbarSampler",
-                                  "resource:///modules/ScrollbarSampler.jsm");
+ChromeUtils.defineModuleGetter(this, "AppMenuNotifications",
+                               "resource://gre/modules/AppMenuNotifications.jsm");
+ChromeUtils.defineModuleGetter(this, "NewTabUtils",
+                               "resource://gre/modules/NewTabUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PanelMultiView",
+                               "resource:///modules/PanelMultiView.jsm");
+ChromeUtils.defineModuleGetter(this, "ScrollbarSampler",
+                               "resource:///modules/ScrollbarSampler.jsm");
 
 /**
  * Maintains the state and dispatches events for the main menu panel.
@@ -164,19 +166,6 @@ const PanelUI = {
   },
 
   /**
-   * Customize mode extracts the mainView and puts it somewhere else while the
-   * user customizes. Upon completion, this function can be called to put the
-   * panel back to where it belongs in normal browsing mode.
-   *
-   * @param aMainView
-   *        The mainView node to put back into place.
-   */
-  setMainView(aMainView) {
-    this._ensureEventListenersAdded();
-    this.multiView.setMainView(aMainView);
-  },
-
-  /**
    * Opens the menu panel if it's closed, or closes it if it's
    * open.
    *
@@ -228,7 +217,9 @@ const PanelUI = {
         }, {once: true});
 
         anchor = this._getPanelAnchor(anchor);
-        this.panel.openPopup(anchor, { triggerEvent: domEvent });
+        PanelMultiView.openPopup(this.panel, anchor, {
+          triggerEvent: domEvent,
+        }).catch(Cu.reportError);
       }, (reason) => {
         console.error("Error showing the PanelUI menu", reason);
       });
@@ -243,7 +234,7 @@ const PanelUI = {
       return;
     }
 
-    this.panel.hidePopup();
+    PanelMultiView.hidePopup(this.panel);
   },
 
   observe(subject, topic, status) {
@@ -346,15 +337,6 @@ const PanelUI = {
   },
 
   /**
-   * Switch the panel to the main view if it's not already
-   * in that view.
-   */
-  showMainView() {
-    this._ensureEventListenersAdded();
-    this.multiView.showMainView();
-  },
-
-  /**
    * Switch the panel to the help view if it's not already
    * in that view.
    */
@@ -424,26 +406,14 @@ const PanelUI = {
       tempPanel.classList.toggle("cui-widget-panelWithFooter",
                                  viewNode.querySelector(".panel-subview-footer"));
 
-      // If the panelview is already selected in another PanelMultiView instance
-      // as a subview, make sure to properly hide it there.
-      let oldMultiView = viewNode.panelMultiView;
-      if (oldMultiView && oldMultiView.current == viewNode) {
-        await oldMultiView.showMainView();
-      }
-
-      let viewShown = false;
-      let listener = () => viewShown = true;
-      viewNode.addEventListener("ViewShown", listener, {once: true});
-
       let multiView = document.createElement("panelmultiview");
       multiView.setAttribute("id", "customizationui-widget-multiview");
       multiView.setAttribute("viewCacheId", "appMenu-viewCache");
       multiView.setAttribute("mainViewId", viewNode.id);
-      multiView.setAttribute("ephemeral", true);
-      document.getElementById("appMenu-viewCache").appendChild(viewNode);
       tempPanel.appendChild(multiView);
       viewNode.classList.add("cui-widget-panelview");
 
+      let viewShown = false;
       let panelRemover = () => {
         viewNode.classList.remove("cui-widget-panelview");
         if (viewShown) {
@@ -452,23 +422,8 @@ const PanelUI = {
         }
         aAnchor.open = false;
 
-        // Ensure we run the destructor:
-        multiView.instance.destructor();
-
-        tempPanel.remove();
+        PanelMultiView.removePopup(tempPanel);
       };
-
-      // Wait until all the tasks needed to show a view are done.
-      await multiView.currentShowPromise;
-
-      if (!viewShown) {
-        viewNode.removeEventListener("ViewShown", listener);
-        panelRemover();
-        return;
-      }
-
-      CustomizableUI.addPanelCloseListeners(tempPanel);
-      tempPanel.addEventListener("popuphidden", panelRemover);
 
       if (aAnchor.parentNode.id == "PersonalToolbar") {
         tempPanel.classList.add("bookmarks-toolbar");
@@ -480,10 +435,21 @@ const PanelUI = {
         anchor.setAttribute("consumeanchor", aAnchor.id);
       }
 
-      tempPanel.openPopup(anchor, {
-        position: "bottomcenter topright",
-        triggerEvent: domEvent,
-      });
+      try {
+        viewShown = await PanelMultiView.openPopup(tempPanel, anchor, {
+          position: "bottomcenter topright",
+          triggerEvent: domEvent,
+        });
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
+
+      if (viewShown) {
+        CustomizableUI.addPanelCloseListeners(tempPanel);
+        tempPanel.addEventListener("popuphidden", panelRemover);
+      } else {
+        panelRemover();
+      }
     }
   },
 
@@ -536,7 +502,8 @@ const PanelUI = {
       // As per bug 1402023, hard-coded limit, until Activity Stream develops a
       // richer list.
       numItems: 6,
-      withFavicons: true
+      withFavicons: true,
+      excludePocket: true
     }).catch(ex => {
       // Just hide the section if we can't retrieve the items from the database.
       Cu.reportError(ex);
@@ -632,9 +599,7 @@ const PanelUI = {
       this.navbar.setAttribute("nonemptyoverflow", "true");
       this.overflowPanel.setAttribute("hasfixeditems", "true");
     } else if (!hasKids && this.navbar.hasAttribute("nonemptyoverflow")) {
-      if (this.overflowPanel.state != "closed") {
-        this.overflowPanel.hidePopup();
-      }
+      PanelMultiView.hidePopup(this.overflowPanel);
       this.overflowPanel.removeAttribute("hasfixeditems");
       this.navbar.removeAttribute("nonemptyoverflow");
     }

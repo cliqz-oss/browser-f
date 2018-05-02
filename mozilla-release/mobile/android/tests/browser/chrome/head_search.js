@@ -1,9 +1,7 @@
 // Bits and pieces copied from toolkit/components/search/tests/xpcshell/head_search.js
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Task.jsm");
 
 /**
  * Adds test engines and returns a promise resolved when they are installed.

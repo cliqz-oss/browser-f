@@ -65,6 +65,9 @@ protected:
     virtual mozilla::ipc::IPCResult
     RecvInitPluginModuleChild(Endpoint<PPluginModuleChild>&& endpoint) override;
 
+    virtual mozilla::ipc::IPCResult
+    RecvInitPluginFunctionBroker(Endpoint<PFunctionBrokerChild>&& endpoint) override;
+
     virtual PPluginInstanceChild*
     AllocPPluginInstanceChild(const nsCString& aMimeType,
                               const InfallibleTArray<nsCString>& aNames,
@@ -220,10 +223,6 @@ private:
     bool InitGraphics();
     void DeinitGraphics();
 
-#if defined(OS_WIN)
-    void HookProtectedMode();
-#endif
-
 #if defined(MOZ_WIDGET_GTK)
     static gboolean DetectNestedEventLoop(gpointer data);
     static gboolean ProcessBrowserEvents(gpointer data);
@@ -314,7 +313,17 @@ public: // called by PluginInstanceChild
         return mFunctions.destroy(instance->GetNPP(), 0);
     }
 
+#if defined(OS_MACOSX) && defined(MOZ_SANDBOX)
+    void EnableFlashSandbox(bool aShouldEnableLogging);
+#endif
+
 private:
+
+#if defined(OS_MACOSX) && defined(MOZ_SANDBOX)
+    bool mEnableFlashSandbox;
+    bool mEnableFlashSandboxLogging;
+#endif
+
 #if defined(OS_WIN)
     virtual void EnteredCall() override;
     virtual void ExitedCall() override;

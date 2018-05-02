@@ -5,9 +5,9 @@
 function genericChecker() {
   let kind = "background";
   let path = window.location.pathname;
-  if (path.indexOf("popup") != -1) {
+  if (path.includes("popup")) {
     kind = "popup";
-  } else if (path.indexOf("tab") != -1) {
+  } else if (path.includes("tab")) {
     kind = "tab";
   }
   window.kind = kind;
@@ -54,7 +54,7 @@ function genericChecker() {
       browser.tabs.query({
         windowId: args[0],
       }, tabs => {
-        let tab = tabs.find(tab => tab.url.indexOf("tab.html") != -1);
+        let tab = tabs.find(tab => tab.url.includes("tab.html"));
         browser.tabs.remove(tab.id, () => {
           browser.test.sendMessage("closed");
         });
@@ -104,7 +104,7 @@ add_task(async function() {
 
   info("started");
 
-  let {Management: {global: {windowTracker}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  let {Management: {global: {windowTracker}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
   let winId1 = windowTracker.getId(win1);
   let winId2 = windowTracker.getId(win2);
@@ -148,6 +148,8 @@ add_task(async function() {
   await checkViewsWithFilter({tabId: tabId2}, 1);
 
   async function triggerPopup(win, callback) {
+    // Window needs focus to open popups.
+    await focusWindow(win);
     await clickBrowserAction(extension, win);
     await awaitExtensionPanel(extension, win);
 
@@ -157,12 +159,6 @@ add_task(async function() {
 
     closeBrowserAction(extension, win);
   }
-
-  // The popup occasionally closes prematurely if we open it immediately here.
-  // I'm not sure what causes it to close (it's something internal, and seems to
-  // be focus-related, but it's not caused by JS calling hidePopup), but even a
-  // short timeout seems to consistently fix it.
-  await new Promise(resolve => win1.setTimeout(resolve, 10));
 
   await triggerPopup(win1, async function() {
     await checkViews("background", 2, 1, 0);

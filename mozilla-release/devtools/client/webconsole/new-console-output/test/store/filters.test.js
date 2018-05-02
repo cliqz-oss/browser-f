@@ -10,11 +10,10 @@ const { messagesAdd } = require("devtools/client/webconsole/new-console-output/a
 const { ConsoleCommand } = require("devtools/client/webconsole/new-console-output/types");
 const { getVisibleMessages } = require("devtools/client/webconsole/new-console-output/selectors/messages");
 const { getAllFilters } = require("devtools/client/webconsole/new-console-output/selectors/filters");
-const { setupStore } = require("devtools/client/webconsole/new-console-output/test/helpers");
+const { setupStore, getFiltersPrefs } = require("devtools/client/webconsole/new-console-output/test/helpers");
 const { FILTERS, PREFS } = require("devtools/client/webconsole/new-console-output/constants");
 const { stubPackets } = require("devtools/client/webconsole/new-console-output/test/fixtures/stubs/index");
 const { stubPreparedMessages } = require("devtools/client/webconsole/new-console-output/test/fixtures/stubs/index");
-const ServicesMock = require("Services");
 
 describe("Filtering", () => {
   let store;
@@ -187,6 +186,37 @@ describe("Filtering", () => {
       expect(messages.length - numUnfilterableMessages).toEqual(1);
     });
 
+    it("matches prefixed log message", () => {
+      const stub = {
+        "level": "debug",
+        "filename": "resource:///modules/CustomizableUI.jsm",
+        "lineNumber": 181,
+        "functionName": "initialize",
+        "timeStamp": 1519311532912,
+        "arguments": [
+          "Initializing"
+        ],
+        "prefix": "MyNicePrefix",
+        "workerType": "none",
+        "styles": [],
+        "category": "webdev",
+        "_type": "ConsoleAPI"
+      };
+      store.dispatch(messagesAdd([stub]));
+
+      store.dispatch(actions.filterTextSet("MyNice"));
+      let messages = getVisibleMessages(store.getState());
+      expect(messages.length - numUnfilterableMessages).toEqual(1);
+
+      store.dispatch(actions.filterTextSet("MyNicePrefix"));
+      messages = getVisibleMessages(store.getState());
+      expect(messages.length - numUnfilterableMessages).toEqual(1);
+
+      store.dispatch(actions.filterTextSet("MyNicePrefix:"));
+      messages = getVisibleMessages(store.getState());
+      expect(messages.length - numUnfilterableMessages).toEqual(1);
+    });
+
     it("restores all messages once text is cleared", () => {
       store.dispatch(actions.filterTextSet("danger"));
       store.dispatch(actions.filterTextSet(""));
@@ -226,7 +256,7 @@ describe("Clear filters", () => {
       [FILTERS.NETXHR]: true,
       [FILTERS.TEXT]: "foobar",
     });
-    expect(ServicesMock.prefs.testHelpers.getFiltersPrefs()).toEqual({
+    expect(getFiltersPrefs()).toEqual({
       [PREFS.FILTER.WARN]: true,
       [PREFS.FILTER.LOG]: true,
       [PREFS.FILTER.INFO]: true,
@@ -251,7 +281,7 @@ describe("Clear filters", () => {
       [FILTERS.TEXT]: "",
     });
 
-    expect(ServicesMock.prefs.testHelpers.getFiltersPrefs()).toEqual({
+    expect(getFiltersPrefs()).toEqual({
       [PREFS.FILTER.CSS]: false,
       [PREFS.FILTER.DEBUG]: true,
       [PREFS.FILTER.ERROR]: true,
@@ -290,7 +320,7 @@ describe("Resets filters", () => {
       [FILTERS.TEXT]: "foobar",
     });
 
-    expect(ServicesMock.prefs.testHelpers.getFiltersPrefs()).toEqual({
+    expect(getFiltersPrefs()).toEqual({
       [PREFS.FILTER.WARN]: true,
       [PREFS.FILTER.INFO]: true,
       [PREFS.FILTER.DEBUG]: true,
@@ -317,7 +347,7 @@ describe("Resets filters", () => {
       [FILTERS.NETXHR]: true,
     });
 
-    expect(ServicesMock.prefs.testHelpers.getFiltersPrefs()).toEqual({
+    expect(getFiltersPrefs()).toEqual({
       [PREFS.FILTER.ERROR]: true,
       [PREFS.FILTER.WARN]: true,
       [PREFS.FILTER.LOG]: true,

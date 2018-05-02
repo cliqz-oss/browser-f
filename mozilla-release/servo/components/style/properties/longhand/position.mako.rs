@@ -14,7 +14,7 @@
                               "computed::LengthOrPercentageOrAuto::Auto",
                               spec="https://www.w3.org/TR/CSS2/visuren.html#propdef-%s" % side,
                               animation_value_type="ComputedValue",
-                              allow_quirks=True)}
+                              allow_quirks=True, servo_restyle_damage = "reflow_out_of_flow")}
 % endfor
 // offset-* logical properties, map to "top" / "left" / "bottom" / "right"
 % for side in LOGICAL_SIDES:
@@ -42,12 +42,14 @@ macro_rules! impl_align_conversions {
     };
 }
 
-${helpers.predefined_type("z-index", "IntegerOrAuto",
-                          "Either::Second(Auto)",
-                          spec="https://www.w3.org/TR/CSS2/visuren.html#z-index",
-                          flags="CREATES_STACKING_CONTEXT",
-                          animation_value_type="ComputedValue")}
-
+${helpers.predefined_type(
+    "z-index",
+    "ZIndex",
+    "computed::ZIndex::auto()",
+    spec="https://www.w3.org/TR/CSS2/visuren.html#z-index",
+    flags="CREATES_STACKING_CONTEXT",
+    animation_value_type="ComputedValue",
+)}
 
 // CSS Flexible Box Layout Module Level 1
 // http://www.w3.org/TR/css3-flexbox/
@@ -55,25 +57,29 @@ ${helpers.predefined_type("z-index", "IntegerOrAuto",
 // Flex container properties
 ${helpers.single_keyword("flex-direction", "row row-reverse column column-reverse",
                          spec="https://drafts.csswg.org/css-flexbox/#flex-direction-property",
-                         extra_prefixes="webkit", animation_value_type="discrete")}
+                         extra_prefixes="webkit", animation_value_type="discrete",
+                         servo_restyle_damage = "reflow")}
 
 ${helpers.single_keyword("flex-wrap", "nowrap wrap wrap-reverse",
                          spec="https://drafts.csswg.org/css-flexbox/#flex-wrap-property",
-                         extra_prefixes="webkit", animation_value_type="discrete")}
+                         extra_prefixes="webkit", animation_value_type="discrete",
+                         servo_restyle_damage = "reflow")}
 
 % if product == "servo":
     // FIXME: Update Servo to support the same Syntax as Gecko.
     ${helpers.single_keyword("justify-content", "flex-start stretch flex-end center space-between space-around",
                              extra_prefixes="webkit",
                              spec="https://drafts.csswg.org/css-align/#propdef-justify-content",
-                             animation_value_type="discrete")}
+                             animation_value_type="discrete",
+                             servo_restyle_damage = "reflow")}
 % else:
     ${helpers.predefined_type(name="justify-content",
-                              type="AlignJustifyContent",
-                              initial_value="specified::AlignJustifyContent::normal()",
+                              type="JustifyContent",
+                              initial_value="specified::JustifyContent(specified::ContentDistribution::normal())",
                               spec="https://drafts.csswg.org/css-align/#propdef-justify-content",
                               extra_prefixes="webkit",
-                              animation_value_type="discrete")}
+                              animation_value_type="discrete",
+                              servo_restyle_damage = "reflow")}
 % endif
 
 % if product == "servo":
@@ -81,27 +87,31 @@ ${helpers.single_keyword("flex-wrap", "nowrap wrap wrap-reverse",
     ${helpers.single_keyword("align-content", "stretch flex-start flex-end center space-between space-around",
                              extra_prefixes="webkit",
                              spec="https://drafts.csswg.org/css-align/#propdef-align-content",
-                             animation_value_type="discrete")}
+                             animation_value_type="discrete",
+                             servo_restyle_damage = "reflow")}
 
     ${helpers.single_keyword("align-items",
                              "stretch flex-start flex-end center baseline",
                              extra_prefixes="webkit",
                              spec="https://drafts.csswg.org/css-flexbox/#align-items-property",
-                             animation_value_type="discrete")}
+                             animation_value_type="discrete",
+                             servo_restyle_damage = "reflow")}
 % else:
     ${helpers.predefined_type(name="align-content",
-                              type="AlignJustifyContent",
-                              initial_value="specified::AlignJustifyContent::normal()",
+                              type="AlignContent",
+                              initial_value="specified::AlignContent(specified::ContentDistribution::normal())",
                               spec="https://drafts.csswg.org/css-align/#propdef-align-content",
                               extra_prefixes="webkit",
-                              animation_value_type="discrete")}
+                              animation_value_type="discrete",
+                              servo_restyle_damage = "reflow")}
 
     ${helpers.predefined_type(name="align-items",
                               type="AlignItems",
                               initial_value="specified::AlignItems::normal()",
                               spec="https://drafts.csswg.org/css-align/#propdef-align-items",
                               extra_prefixes="webkit",
-                              animation_value_type="discrete")}
+                              animation_value_type="discrete",
+                              servo_restyle_damage = "reflow")}
 
     #[cfg(feature = "gecko")]
     impl_align_conversions!(::values::specified::align::AlignItems);
@@ -121,13 +131,15 @@ ${helpers.predefined_type("flex-grow", "NonNegativeNumber",
                           "From::from(0.0)",
                           spec="https://drafts.csswg.org/css-flexbox/#flex-grow-property",
                           extra_prefixes="webkit",
-                          animation_value_type="NonNegativeNumber")}
+                          animation_value_type="NonNegativeNumber",
+                          servo_restyle_damage = "reflow")}
 
 ${helpers.predefined_type("flex-shrink", "NonNegativeNumber",
                           "From::from(1.0)",
                           spec="https://drafts.csswg.org/css-flexbox/#flex-shrink-property",
                           extra_prefixes="webkit",
-                          animation_value_type="NonNegativeNumber")}
+                          animation_value_type="NonNegativeNumber",
+                          servo_restyle_damage = "reflow")}
 
 // https://drafts.csswg.org/css-align/#align-self-property
 % if product == "servo":
@@ -135,43 +147,49 @@ ${helpers.predefined_type("flex-shrink", "NonNegativeNumber",
     ${helpers.single_keyword("align-self", "auto stretch flex-start flex-end center baseline",
                              extra_prefixes="webkit",
                              spec="https://drafts.csswg.org/css-flexbox/#propdef-align-self",
-                             animation_value_type="discrete")}
+                             animation_value_type="discrete",
+                             servo_restyle_damage = "reflow")}
 % else:
     ${helpers.predefined_type(name="align-self",
-                              type="AlignJustifySelf",
-                              initial_value="specified::AlignJustifySelf::auto()",
+                              type="AlignSelf",
+                              initial_value="specified::AlignSelf(specified::SelfAlignment::auto())",
                               spec="https://drafts.csswg.org/css-align/#align-self-property",
                               extra_prefixes="webkit",
                               animation_value_type="discrete")}
 
     ${helpers.predefined_type(name="justify-self",
-                              type="AlignJustifySelf",
-                              initial_value="specified::AlignJustifySelf::auto()",
+                              type="JustifySelf",
+                              initial_value="specified::JustifySelf(specified::SelfAlignment::auto())",
                               spec="https://drafts.csswg.org/css-align/#justify-self-property",
                               animation_value_type="discrete")}
 
     #[cfg(feature = "gecko")]
-    impl_align_conversions!(::values::specified::align::AlignJustifySelf);
+    impl_align_conversions!(::values::specified::align::SelfAlignment);
 % endif
 
 // https://drafts.csswg.org/css-flexbox/#propdef-order
 ${helpers.predefined_type("order", "Integer", "0",
                           extra_prefixes="webkit",
                           animation_value_type="ComputedValue",
-                          spec="https://drafts.csswg.org/css-flexbox/#order-property")}
+                          spec="https://drafts.csswg.org/css-flexbox/#order-property",
+                          servo_restyle_damage = "reflow")}
 
-// FIXME(emilio): All the sizes stuff, and the MozLength values should be
-// unified with Servo, or at least be less hacky.
-//
-// The block direction ones don't even accept extremum lengths during parsing,
-// and should be converted to just LengthOrPercentage.
 % if product == "gecko":
     // FIXME: Gecko doesn't support content value yet.
-    ${helpers.gecko_size_type("flex-basis", "MozLength", "auto()",
-                              logical=False,
-                              spec="https://drafts.csswg.org/css-flexbox/#flex-basis-property",
-                              extra_prefixes="webkit",
-                              animation_value_type="MozLength")}
+    //
+    // FIXME(emilio): I suspect this property shouldn't allow quirks, and this
+    // was just a mistake, it's kind of justificable to support it given the
+    // spec grammar is just `content | <width>`, but other browsers don't...
+    ${helpers.predefined_type(
+        "flex-basis",
+        "MozLength",
+        "computed::MozLength::auto()",
+        extra_prefixes="webkit",
+        animation_value_type="MozLength",
+        allow_quirks=True,
+        spec="https://drafts.csswg.org/css-flexbox/#flex-basis-property",
+        servo_restyle_damage = "reflow"
+    )}
 % else:
     // FIXME: This property should be animatable.
     ${helpers.predefined_type("flex-basis",
@@ -179,39 +197,69 @@ ${helpers.predefined_type("order", "Integer", "0",
                               "computed::FlexBasis::auto()",
                               spec="https://drafts.csswg.org/css-flexbox/#flex-basis-property",
                               extra_prefixes="webkit",
-                              animation_value_type="none")}
+                              animation_value_type="none",
+                              servo_restyle_damage = "reflow")}
 % endif
 % for (size, logical) in ALL_SIZES:
     <%
-      spec = "https://drafts.csswg.org/css-box/#propdef-%s"
-      if logical:
-        spec = "https://drafts.csswg.org/css-logical-props/#propdef-%s"
+        spec = "https://drafts.csswg.org/css-box/#propdef-%s"
+        if logical:
+            spec = "https://drafts.csswg.org/css-logical-props/#propdef-%s"
     %>
+    // NOTE: Block-size doesn't support -moz-*-content keywords, since they make
+    // no sense on the block axis, but it simplifies things the have that it has
+    // the same type as the other properties, since otherwise we'd need to
+    // handle logical props where the types are different, which looks like a
+    // pain.
     % if product == "gecko":
+        <%
+            parse_function = "parse" if size != "block-size" else "parse_disallow_keyword"
+        %>
         // width, height, block-size, inline-size
-        ${helpers.gecko_size_type("%s" % size, "MozLength", "auto()",
-                                  logical,
-                                  spec=spec % size,
-                                  animation_value_type="MozLength")}
+        ${helpers.predefined_type(
+            size,
+            "MozLength",
+            "computed::MozLength::auto()",
+            parse_function,
+            logical=logical,
+            allow_quirks=not logical,
+            spec=spec % size,
+            animation_value_type="MozLength",
+            servo_restyle_damage = "reflow"
+        )}
         // min-width, min-height, min-block-size, min-inline-size,
-        // max-width, max-height, max-block-size, max-inline-size
-        ${helpers.gecko_size_type("min-%s" % size, "MozLength", "auto()",
-                                  logical,
-                                  spec=spec % size,
-                                  animation_value_type="MozLength")}
-        ${helpers.gecko_size_type("max-%s" % size, "MaxLength", "none()",
-                                  logical,
-                                  spec=spec % size,
-                                  animation_value_type="MaxLength")}
+        ${helpers.predefined_type(
+            "min-%s" % size,
+            "MozLength",
+            "computed::MozLength::auto()",
+            parse_function,
+            logical=logical,
+            allow_quirks=not logical,
+            spec=spec % size,
+            animation_value_type="MozLength",
+            servo_restyle_damage = "reflow"
+        )}
+        ${helpers.predefined_type(
+            "max-%s" % size,
+            "MaxLength",
+            "computed::MaxLength::none()",
+            parse_function,
+            logical=logical,
+            allow_quirks=not logical,
+            spec=spec % size,
+            animation_value_type="MaxLength",
+            servo_restyle_damage = "reflow"
+        )}
     % else:
         // servo versions (no keyword support)
-        ${helpers.predefined_type("%s" % size,
+        ${helpers.predefined_type(size,
                                   "LengthOrPercentageOrAuto",
                                   "computed::LengthOrPercentageOrAuto::Auto",
                                   "parse_non_negative",
                                   spec=spec % size,
                                   allow_quirks=not logical,
-                                  animation_value_type="ComputedValue", logical = logical)}
+                                  animation_value_type="ComputedValue", logical = logical,
+                                  servo_restyle_damage = "reflow")}
         ${helpers.predefined_type("min-%s" % size,
                                   "LengthOrPercentage",
                                   "computed::LengthOrPercentage::Length(computed::Length::new(0.))",
@@ -219,7 +267,8 @@ ${helpers.predefined_type("order", "Integer", "0",
                                   spec=spec % ("min-%s" % size),
                                   animation_value_type="ComputedValue",
                                   logical=logical,
-                                  allow_quirks=not logical)}
+                                  allow_quirks=not logical,
+                                  servo_restyle_damage = "reflow")}
         ${helpers.predefined_type("max-%s" % size,
                                   "LengthOrPercentageOrNone",
                                   "computed::LengthOrPercentageOrNone::None",
@@ -227,7 +276,8 @@ ${helpers.predefined_type("order", "Integer", "0",
                                   spec=spec % ("min-%s" % size),
                                   animation_value_type="ComputedValue",
                                   logical=logical,
-                                  allow_quirks=not logical)}
+                                  allow_quirks=not logical,
+                                  servo_restyle_damage = "reflow")}
     % endif
 % endfor
 
@@ -237,7 +287,8 @@ ${helpers.single_keyword("box-sizing",
                          spec="https://drafts.csswg.org/css-ui/#propdef-box-sizing",
                          gecko_enum_prefix="StyleBoxSizing",
                          custom_consts={ "content-box": "Content", "border-box": "Border" },
-                         animation_value_type="discrete")}
+                         animation_value_type="discrete",
+                         servo_restyle_damage = "reflow")}
 
 ${helpers.single_keyword("object-fit", "fill contain cover none scale-down",
                          products="gecko", animation_value_type="discrete",
@@ -301,5 +352,4 @@ ${helpers.predefined_type("grid-template-areas",
                           initial_value="computed::GridTemplateAreas::none()",
                           products="gecko",
                           animation_value_type="discrete",
-                          boxed=True,
                           spec="https://drafts.csswg.org/css-grid/#propdef-grid-template-areas")}

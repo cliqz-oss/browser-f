@@ -9,6 +9,7 @@
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/dom/WebAuthnTransactionChild.h"
+#include "mozilla/dom/WebAuthnUtil.h"
 #include "nsContentUtils.h"
 #include "nsICryptoHash.h"
 #include "nsIEffectiveTLDService.h"
@@ -34,6 +35,12 @@ static mozilla::LazyLogModule gU2FLog("u2fmanager");
 
 NS_NAMED_LITERAL_STRING(kFinishEnrollment, "navigator.id.finishEnrollment");
 NS_NAMED_LITERAL_STRING(kGetAssertion, "navigator.id.getAssertion");
+
+// Bug #1436078 - Permit Google Accounts. Remove in Bug #1436085 in Jan 2023.
+NS_NAMED_LITERAL_STRING(kGoogleAccountsAppId1,
+  "https://www.gstatic.com/securitykey/origins.json");
+NS_NAMED_LITERAL_STRING(kGoogleAccountsAppId2,
+  "https://www.gstatic.com/securitykey/a/google.com/origins.json");
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(U2F)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
@@ -120,95 +127,6 @@ RegisteredKeysToScopedCredentialList(const nsAString& aAppId,
     c.id() = keyHandle;
     aList.AppendElement(c);
   }
-}
-
-static ErrorCode
-EvaluateAppID(nsPIDOMWindowInner* aParent, const nsString& aOrigin,
-              /* in/out */ nsString& aAppId)
-{
-  // Facet is the specification's way of referring to the web origin.
-  nsAutoCString facetString = NS_ConvertUTF16toUTF8(aOrigin);
-  nsCOMPtr<nsIURI> facetUri;
-  if (NS_FAILED(NS_NewURI(getter_AddRefs(facetUri), facetString))) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  // If the facetId (origin) is not HTTPS, reject
-  bool facetIsHttps = false;
-  if (NS_FAILED(facetUri->SchemeIs("https", &facetIsHttps)) || !facetIsHttps) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  // If the appId is empty or null, overwrite it with the facetId and accept
-  if (aAppId.IsEmpty() || aAppId.EqualsLiteral("null")) {
-    aAppId.Assign(aOrigin);
-    return ErrorCode::OK;
-  }
-
-  // AppID is user-supplied. It's quite possible for this parse to fail.
-  nsAutoCString appIdString = NS_ConvertUTF16toUTF8(aAppId);
-  nsCOMPtr<nsIURI> appIdUri;
-  if (NS_FAILED(NS_NewURI(getter_AddRefs(appIdUri), appIdString))) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  // if the appId URL is not HTTPS, reject.
-  bool appIdIsHttps = false;
-  if (NS_FAILED(appIdUri->SchemeIs("https", &appIdIsHttps)) || !appIdIsHttps) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  nsAutoCString appIdHost;
-  if (NS_FAILED(appIdUri->GetAsciiHost(appIdHost))) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  // Allow localhost.
-  if (appIdHost.EqualsLiteral("localhost")) {
-    nsAutoCString facetHost;
-    if (NS_FAILED(facetUri->GetAsciiHost(facetHost))) {
-      return ErrorCode::BAD_REQUEST;
-    }
-
-    if (facetHost.EqualsLiteral("localhost")) {
-      return ErrorCode::OK;
-    }
-  }
-
-  // Run the HTML5 algorithm to relax the same-origin policy, copied from W3C
-  // Web Authentication. See Bug 1244959 comment #8 for context on why we are
-  // doing this instead of implementing the external-fetch FacetID logic.
-  nsCOMPtr<nsIDocument> document = aParent->GetDoc();
-  if (!document || !document->IsHTMLDocument()) {
-    return ErrorCode::BAD_REQUEST;
-  }
-  nsHTMLDocument* html = document->AsHTMLDocument();
-  if (NS_WARN_IF(!html)) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  // Use the base domain as the facet for evaluation. This lets this algorithm
-  // relax the whole eTLD+1.
-  nsCOMPtr<nsIEffectiveTLDService> tldService =
-    do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
-  if (!tldService) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  nsAutoCString lowestFacetHost;
-  if (NS_FAILED(tldService->GetBaseDomain(facetUri, 0, lowestFacetHost))) {
-    return ErrorCode::BAD_REQUEST;
-  }
-
-  MOZ_LOG(gU2FLog, LogLevel::Debug,
-          ("AppId %s Facet %s", appIdHost.get(), lowestFacetHost.get()));
-
-  if (html->IsRegistrableDomainSuffixOfOrEqualTo(NS_ConvertUTF8toUTF16(lowestFacetHost),
-                                                 appIdHost)) {
-    return ErrorCode::OK;
-  }
-
-  return ErrorCode::BAD_REQUEST;
 }
 
 static nsresult
@@ -354,12 +272,10 @@ U2F::Register(const nsAString& aAppId,
   }
 
   // Evaluate the AppID
-  nsString adjustedAppId;
-  adjustedAppId.Assign(aAppId);
-  ErrorCode appIdResult = EvaluateAppID(mParent, mOrigin, adjustedAppId);
-  if (appIdResult != ErrorCode::OK) {
+  nsString adjustedAppId(aAppId);
+  if (!EvaluateAppID(mParent, mOrigin, U2FOperation::Register, adjustedAppId)) {
     RegisterResponse response;
-    response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::BAD_REQUEST));
     ExecuteCallback(response, callback);
     return;
   }
@@ -426,12 +342,14 @@ U2F::Register(const nsAString& aAppId,
 
   uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
 
-  WebAuthnMakeCredentialInfo info(rpIdHash,
+  WebAuthnMakeCredentialInfo info(mOrigin,
+                                  rpIdHash,
                                   clientDataHash,
                                   adjustedTimeoutMillis,
                                   excludeList,
                                   extensions,
-                                  authSelection);
+                                  authSelection,
+                                  false /* RequestDirectAttestation */);
 
   MOZ_ASSERT(mTransaction.isNothing());
   mTransaction = Some(U2FTransaction(clientData, Move(AsVariant(callback))));
@@ -440,7 +358,7 @@ U2F::Register(const nsAString& aAppId,
 
 void
 U2F::FinishMakeCredential(const uint64_t& aTransactionId,
-                          nsTArray<uint8_t>& aRegBuffer)
+                          const WebAuthnMakeCredentialResult& aResult)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -461,7 +379,7 @@ U2F::FinishMakeCredential(const uint64_t& aTransactionId,
   }
 
   CryptoBuffer regBuf;
-  if (NS_WARN_IF(!regBuf.Assign(aRegBuffer))) {
+  if (NS_WARN_IF(!regBuf.Assign(aResult.RegBuffer()))) {
     RejectTransaction(NS_ERROR_ABORT);
     return;
   }
@@ -516,12 +434,10 @@ U2F::Sign(const nsAString& aAppId,
   }
 
   // Evaluate the AppID
-  nsString adjustedAppId;
-  adjustedAppId.Assign(aAppId);
-  ErrorCode appIdResult = EvaluateAppID(mParent, mOrigin, adjustedAppId);
-  if (appIdResult != ErrorCode::OK) {
+  nsString adjustedAppId(aAppId);
+  if (!EvaluateAppID(mParent, mOrigin, U2FOperation::Sign, adjustedAppId)) {
     SignResponse response;
-    response.mErrorCode.Construct(static_cast<uint32_t>(appIdResult));
+    response.mErrorCode.Construct(static_cast<uint32_t>(ErrorCode::BAD_REQUEST));
     ExecuteCallback(response, callback);
     return;
   }
@@ -569,7 +485,8 @@ U2F::Sign(const nsAString& aAppId,
 
   uint32_t adjustedTimeoutMillis = AdjustedTimeoutMillis(opt_aTimeoutSeconds);
 
-  WebAuthnGetAssertionInfo info(rpIdHash,
+  WebAuthnGetAssertionInfo info(mOrigin,
+                                rpIdHash,
                                 clientDataHash,
                                 adjustedTimeoutMillis,
                                 permittedList,
@@ -583,8 +500,7 @@ U2F::Sign(const nsAString& aAppId,
 
 void
 U2F::FinishGetAssertion(const uint64_t& aTransactionId,
-                        nsTArray<uint8_t>& aCredentialId,
-                        nsTArray<uint8_t>& aSigBuffer)
+                        const WebAuthnGetAssertionResult& aResult)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -605,13 +521,13 @@ U2F::FinishGetAssertion(const uint64_t& aTransactionId,
   }
 
   CryptoBuffer credBuf;
-  if (NS_WARN_IF(!credBuf.Assign(aCredentialId))) {
+  if (NS_WARN_IF(!credBuf.Assign(aResult.CredentialID()))) {
     RejectTransaction(NS_ERROR_ABORT);
     return;
   }
 
   CryptoBuffer sigBuf;
-  if (NS_WARN_IF(!sigBuf.Assign(aSigBuffer))) {
+  if (NS_WARN_IF(!sigBuf.Assign(aResult.SigBuffer()))) {
     RejectTransaction(NS_ERROR_ABORT);
     return;
   }

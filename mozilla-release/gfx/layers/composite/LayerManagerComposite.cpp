@@ -1171,7 +1171,7 @@ LayerManagerComposite::GetContentShiftForToolbar()
   }
 
   if (CompositorBridgeParent* bridge = mCompositor->GetCompositorBridgeParent()) {
-    AndroidDynamicToolbarAnimator* animator = bridge->GetAPZCTreeManager()->GetAndroidDynamicToolbarAnimator();
+    AndroidDynamicToolbarAnimator* animator = bridge->GetAndroidDynamicToolbarAnimator();
     MOZ_RELEASE_ASSERT(animator);
     result.value = (float)animator->GetCurrentContentOffset().value;
   }
@@ -1187,7 +1187,7 @@ LayerManagerComposite::RenderToolbar()
   }
 
   if (CompositorBridgeParent* bridge = mCompositor->GetCompositorBridgeParent()) {
-    AndroidDynamicToolbarAnimator* animator = bridge->GetAPZCTreeManager()->GetAndroidDynamicToolbarAnimator();
+    AndroidDynamicToolbarAnimator* animator = bridge->GetAndroidDynamicToolbarAnimator();
     MOZ_RELEASE_ASSERT(animator);
 
     animator->UpdateToolbarSnapshotTexture(mCompositor->AsCompositorOGL());

@@ -198,18 +198,6 @@ LIRGeneratorARM64::newLTableSwitchV(MTableSwitch* tableswitch)
 }
 
 void
-LIRGeneratorARM64::visitGuardShape(MGuardShape* ins)
-{
-    MOZ_CRASH("visitGuardShape");
-}
-
-void
-LIRGeneratorARM64::visitGuardObjectGroup(MGuardObjectGroup* ins)
-{
-    MOZ_CRASH("visitGuardObjectGroup");
-}
-
-void
 LIRGeneratorARM64::lowerUrshD(MUrsh* mir)
 {
     MOZ_CRASH("lowerUrshD");
@@ -291,12 +279,6 @@ void
 LIRGeneratorARM64::lowerTruncateFToInt32(MTruncateToInt32* ins)
 {
     MOZ_CRASH("lowerTruncateFToInt32");
-}
-
-void
-LIRGeneratorARM64::visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic* ins)
-{
-    MOZ_CRASH("NYI");
 }
 
 void

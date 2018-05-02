@@ -19,13 +19,13 @@ use std::fmt::Debug;
 use style::attr::AttrValue;
 use style::context::SharedStyleContext;
 use style::data::ElementData;
-use style::dom::{LayoutIterator, NodeInfo, TNode};
+use style::dom::{LayoutIterator, NodeInfo, TElement, TNode};
 use style::dom::OpaqueNode;
 use style::font_metrics::ServoMetricsProvider;
-use style::properties::{CascadeFlags, ComputedValues};
+use style::properties::ComputedValues;
 use style::selector_parser::{PseudoElement, PseudoElementCascadeType, SelectorImpl};
 use style::stylist::RuleInclusion;
-use webrender_api::ClipId;
+use webrender_api::ExternalScrollId;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PseudoElementType {
@@ -148,6 +148,8 @@ impl<ConcreteNode> Iterator for TreeIterator<ConcreteNode>
 /// node does not allow any parents or siblings of nodes to be accessed, to avoid races.
 pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo + PartialEq + Sized {
     type ConcreteNode: LayoutNode<ConcreteThreadSafeLayoutNode = Self>;
+    type ConcreteElement: TElement;
+
     type ConcreteThreadSafeLayoutElement:
         ThreadSafeLayoutElement<ConcreteThreadSafeLayoutNode = Self>
         + ::selectors::Element<Impl=SelectorImpl>;
@@ -267,9 +269,9 @@ pub trait ThreadSafeLayoutNode: Clone + Copy + Debug + GetLayoutData + NodeInfo 
         self.get_pseudo_element_type().fragment_type()
     }
 
-    fn generate_scroll_root_id(&self, pipeline_id: PipelineId) -> ClipId {
+    fn generate_scroll_id(&self, pipeline_id: PipelineId) -> ExternalScrollId {
         let id = combine_id_with_fragment_type(self.opaque().id(), self.fragment_type());
-        ClipId::new(id as u64, pipeline_id.to_webrender())
+        ExternalScrollId(id as u64, pipeline_id.to_webrender())
     }
 }
 
@@ -291,6 +293,12 @@ pub trait ThreadSafeLayoutElement
 {
     type ConcreteThreadSafeLayoutNode: ThreadSafeLayoutNode<ConcreteThreadSafeLayoutElement = Self>;
 
+    /// This type alias is just a work-around to avoid writing
+    ///
+    ///   <Self::ConcreteThreadSafeLayoutNode as ThreadSafeLayoutNode>::ConcreteElement
+    ///
+    type ConcreteElement: TElement;
+
     fn as_node(&self) -> Self::ConcreteThreadSafeLayoutNode;
 
     /// Creates a new `ThreadSafeLayoutElement` for the same `LayoutElement`
@@ -307,8 +315,7 @@ pub trait ThreadSafeLayoutElement
     ///
     /// We need this so that the functions defined on this trait can call
     /// lazily_compute_pseudo_element_style, which operates on TElement.
-    unsafe fn unsafe_get(self) ->
-        <<Self::ConcreteThreadSafeLayoutNode as ThreadSafeLayoutNode>::ConcreteNode as TNode>::ConcreteElement;
+    unsafe fn unsafe_get(self) -> Self::ConcreteElement;
 
     #[inline]
     fn get_attr(&self, namespace: &Namespace, name: &LocalName) -> Option<&str>;
@@ -340,8 +347,8 @@ pub trait ThreadSafeLayoutElement
 
     #[inline]
     fn get_details_summary_pseudo(&self) -> Option<Self> {
-        if self.get_local_name() == &local_name!("details") &&
-           self.get_namespace() == &ns!(html) {
+        if self.local_name() == &local_name!("details") &&
+           self.namespace() == &ns!(html) {
             Some(self.with_pseudo(PseudoElementType::DetailsSummary))
         } else {
             None
@@ -350,8 +357,8 @@ pub trait ThreadSafeLayoutElement
 
     #[inline]
     fn get_details_content_pseudo(&self) -> Option<Self> {
-        if self.get_local_name() == &local_name!("details") &&
-           self.get_namespace() == &ns!(html) &&
+        if self.local_name() == &local_name!("details") &&
+           self.namespace() == &ns!(html) &&
            self.get_attr(&ns!(), &local_name!("open")).is_some() {
             Some(self.with_pseudo(PseudoElementType::DetailsContent))
         } else {
@@ -382,11 +389,10 @@ pub trait ThreadSafeLayoutElement
                             .unwrap().clone()
                     },
                     PseudoElementCascadeType::Precomputed => {
-                        context.stylist.precomputed_values_for_pseudo(
+                        context.stylist.precomputed_values_for_pseudo::<Self::ConcreteElement>(
                             &context.guards,
                             &style_pseudo,
                             Some(data.styles.primary()),
-                            CascadeFlags::empty(),
                             &ServoMetricsProvider,
                         )
                     }

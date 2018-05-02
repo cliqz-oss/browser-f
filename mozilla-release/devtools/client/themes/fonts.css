@@ -10,119 +10,143 @@
   height: 100%;
 }
 
-#sidebar-panel-fontinspector > .devtools-toolbar {
-  display: flex;
-}
-
 #font-container {
   overflow: auto;
   flex: auto;
 }
 
-#all-fonts {
+.fonts-list {
   padding: 0;
   margin: 0;
-}
-
-#font-showall {
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-#font-showall:hover {
-  text-decoration: underline;
-}
-
-.dim > #font-container,
-.font:not(.has-code) .font-css-code,
-.font-is-local,
-.font-is-remote,
-.font.is-local .font-format-url,
-#font-template {
-  display: none;
-}
-
-.font.is-remote .font-is-remote,
-.font.is-local .font-is-local {
-  display: inline;
-}
-
-.font-format::before {
-  content: "(";
-}
-
-.font-format::after {
-  content: ")";
-}
-
-.preview-input-toolbar {
-  display: flex;
-  width: 100%;
-}
-
-.font-preview-container {
-  overflow-x: auto;
-}
-
-#font-preview-text-input {
-  margin-top: 1px;
-  margin-bottom: 1px;
-  padding-top: 0;
-  padding-bottom: 0;
-  flex: 1;
+  list-style: none;
 }
 
 .font {
-  padding: 10px 10px;
+  border: 1px solid var(--theme-splitter-color);
+  border-width: 0 1px 1px 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-column-gap: 10px;
+  padding: 10px 20px;
 }
 
-.theme-dark .font {
-  border-bottom: 1px solid #444;
+#font-container .theme-twisty {
+  display: inline-block;
+  cursor: pointer;
+  vertical-align: bottom;
 }
 
-.theme-light .font {
-  border-bottom: 1px solid #DDD;
-}
-
-.font:last-of-type {
-  border-bottom: 0;
-}
-
-.theme-light .font:nth-child(even) {
-  background: #F4F4F4;
+.font-preview-container {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  overflow: hidden;
+  display: grid;
+  place-items: center end;
+  position: relative;
 }
 
 .font-preview {
-  margin-left: -4px;
-  height: 60px;
+  height: 50px;
   display: block;
 }
 
-.font-info {
-  display: block;
+.font-preview:hover {
+  cursor: text;
+  background-image: linear-gradient(to right,
+    var(--grey-40) 3px, transparent 3px, transparent);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position-y: 45px;
+}
+
+#font-container .font-preview-input {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  width: calc(100% - 5px);
+  height: calc(100% - 10px);
+  background: transparent;
+  color: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
+.font-preview-input::-moz-selection {
+  background: transparent;
+  color: transparent;
 }
 
 .font-name {
-  display: inline;
+  margin: 0;
+  font-size: 1.2em;
+  font-weight: normal;
+  white-space: nowrap;
 }
 
 .font-css-code {
-  max-width: 100%;
+  direction: ltr;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 5px;
-  direction: ltr;
+  color: var(--theme-toolbar-color);
+  grid-column: span 2;
+  position: relative;
+  offset-inline-start: -4px;
 }
 
-.theme-light .font-css-code,
-.theme-light .font-url {
-  border: 1px solid #CCC;
-  background: white;
+.font-css-code-expander::before {
+  content: "\2026";
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin: 0 2px;
+  line-height: 3px;
+  color: var(--theme-body-color-inactive);
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  text-align: center;
+  vertical-align: middle;
 }
 
-.theme-dark .font-css-code,
-.theme-dark .font-url {
-  border: 1px solid #333;
-  background: black;
-  color: white;
+.font-origin {
+  margin-top: .2em;
+  color: var(--grey-50);
+  justify-self: start;
+}
+
+.font-origin.system {
+  text-transform: capitalize;
+}
+
+.font-origin.remote {
+  display: grid;
+  grid-template-columns: 1fr 20px;
+}
+
+.font-origin.remote .url {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.font-origin .copy-icon {
+  border: 0;
+  padding: 0;
+  position: relative;
+  cursor: pointer;
+  width: 12px;
+  height: 12px;
+  place-self: center;
+
+  background: url(chrome://devtools/skin/images/copy.svg) no-repeat;
+  background-size: 12px;
+  background-position-x: -1px;
+  -moz-context-properties: fill;
+  fill: var(--theme-toolbar-color);
+
+}
+
+#font-container .devtools-sidepanel-no-result + .accordion {
+  border-block-start: 1px solid var(--theme-splitter-color);
 }

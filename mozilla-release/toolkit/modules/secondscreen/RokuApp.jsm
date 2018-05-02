@@ -5,16 +5,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["RokuApp"];
+var EXPORTED_SYMBOLS = ["RokuApp"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-function log(msg) {
-  // Services.console.logStringMessage(msg);
-}
+// function log(msg) {
+//   Services.console.logStringMessage(msg);
+// }
 
 const PROTOCOL_VERSION = 1;
 
@@ -34,7 +34,7 @@ RokuApp.prototype = {
     // We have no way to know if the app is running, so just return "unknown"
     // but we use this call to fetch the mediaAppID for the given app name
     let url = this.resourceURL + "query/apps";
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("GET", url, true);
     xhr.channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
     xhr.overrideMimeType("text/xml");
@@ -83,7 +83,7 @@ RokuApp.prototype = {
     // Start a given app with any extra query data. Each app uses it's own data scheme.
     // NOTE: Roku will also pass "source=external-control" as a param
     let url = this.resourceURL + "launch/" + this.mediaAppID + "?version=" + parseInt(PROTOCOL_VERSION);
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
     xhr.overrideMimeType("text/plain");
 
@@ -106,7 +106,7 @@ RokuApp.prototype = {
     // Roku doesn't seem to support stopping an app, so let's just go back to
     // the Home screen
     let url = this.resourceURL + "keypress/Home";
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
     xhr.overrideMimeType("text/plain");
 

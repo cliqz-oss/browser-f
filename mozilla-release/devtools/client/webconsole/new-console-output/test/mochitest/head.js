@@ -2,7 +2,7 @@
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
-/* import-globals-from ../../../../framework/test/shared-head.js */
+/* import-globals-from ../../../../shared/test/shared-head.js */
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
 
 "use strict";
@@ -15,7 +15,7 @@ Services.scriptloader.loadSubScript(
 // shared-head.js handles imports, constants, and utility functions
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 var {HUDService} = require("devtools/client/webconsole/hudservice");
@@ -31,14 +31,16 @@ const STATUS_CODES_GA_PARAMS = `?${new URLSearchParams({
   "utm_campaign": "default"
 })}`;
 
-Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", true);
-registerCleanupFunction(function* () {
-  Services.prefs.clearUserPref("devtools.webconsole.new-frontend-enabled");
+const wcActions = require("devtools/client/webconsole/new-console-output/actions/index");
+
+Services.prefs.setBoolPref("devtools.browserconsole.new-frontend-enabled", true);
+registerCleanupFunction(async function () {
+  Services.prefs.clearUserPref("devtools.browserconsole.new-frontend-enabled");
   Services.prefs.clearUserPref("devtools.webconsole.ui.filterbar");
 
   // Reset all filter prefs between tests. First flushPrefEnv in case one of the
   // filter prefs has been pushed for the test
-  yield SpecialPowers.flushPrefEnv();
+  await SpecialPowers.flushPrefEnv();
   Services.prefs.getChildList("devtools.webconsole.filter").forEach(pref => {
     Services.prefs.clearUserPref(pref);
   });
@@ -47,7 +49,7 @@ registerCleanupFunction(function* () {
     if (browserConsole.jsterm) {
       browserConsole.jsterm.clearOutput(true);
     }
-    yield HUDService.toggleBrowserConsole();
+    await HUDService.toggleBrowserConsole();
   }
 });
 
@@ -76,6 +78,26 @@ async function openNewTabAndConsole(url, clearJstermHistory = true) {
 }
 
 /**
+ * Subscribe to the store and log out stringinfied versions of messages.
+ * This is a helper function for debugging, to make is easier to see what
+ * happened during the test in the log.
+ *
+ * @param object hud
+ */
+function logAllStoreChanges(hud) {
+  const store = hud.ui.newConsoleOutput.getStore();
+  // Adding logging each time the store is modified in order to check
+  // the store state in case of failure.
+  store.subscribe(() => {
+    const messages = [...store.getState().messages.messagesById.values()];
+    const debugMessages = messages.map(({id, type, parameters, messageText}) => {
+      return {id, type, parameters, messageText};
+    });
+    info("messages : " + JSON.stringify(debugMessages));
+  });
+}
+
+/**
  * Wait for messages in the web console output, resolving once they are received.
  *
  * @param object options
@@ -88,7 +110,7 @@ function waitForMessages({ hud, messages }) {
   return new Promise(resolve => {
     const matchedMessages = [];
     hud.ui.on("new-messages",
-      function messagesReceived(e, newMessages) {
+      function messagesReceived(newMessages) {
         for (let message of messages) {
           if (message.matched) {
             continue;
@@ -115,6 +137,31 @@ function waitForMessages({ hud, messages }) {
           }
         }
       });
+  });
+}
+
+/**
+ * Wait for a message with the provided text and showing the provided repeat count.
+ *
+ * @param {Object} hud : the webconsole
+ * @param {String} text : text included in .message-body
+ * @param {Number} repeat : expected repeat count in .message-repeats
+ */
+function waitForRepeatedMessage(hud, text, repeat) {
+  return waitFor(() => {
+    // Wait for a message matching the provided text.
+    let node = findMessage(hud, text);
+    if (!node) {
+      return false;
+    }
+
+    // Check if there is a repeat node with the expected count.
+    let repeatNode = node.querySelector(".message-repeats");
+    if (repeatNode && parseInt(repeatNode.textContent, 10) === repeat) {
+      return node;
+    }
+
+    return false;
   });
 }
 
@@ -157,6 +204,7 @@ async function waitFor(condition, message = "waitFor", interval = 10, maxTries =
  *        A substring that can be found in the message.
  * @param selector [optional]
  *        The selector to use in finding the message.
+ * @return {Node} the node corresponding the found message
  */
 function findMessage(hud, text, selector = ".message") {
   const elements = findMessages(hud, text, selector);
@@ -196,7 +244,8 @@ async function openContextMenu(hud, element) {
   let onConsoleMenuOpened = hud.ui.newConsoleOutput.once("menu-open");
   synthesizeContextMenuEvent(element);
   await onConsoleMenuOpened;
-  return hud.ui.newConsoleOutput.toolbox.doc.getElementById("webconsole-menu");
+  const doc = hud.ui.newConsoleOutput.owner.chromeWindow.document;
+  return doc.getElementById("webconsole-menu");
 }
 
 /**
@@ -208,7 +257,8 @@ async function openContextMenu(hud, element) {
  * @return promise
  */
 function hideContextMenu(hud) {
-  let popup = hud.ui.newConsoleOutput.toolbox.doc.getElementById("webconsole-menu");
+  const doc = hud.ui.newConsoleOutput.owner.chromeWindow.document;
+  let popup = doc.getElementById("webconsole-menu");
   if (!popup) {
     return Promise.resolve();
   }
@@ -427,10 +477,12 @@ async function closeConsole(tab = gBrowser.selectedTab) {
  * @param Object clickEventProps
  *        The custom properties which would be used to dispatch a click event
  * @returns Promise
- *          A Promise that is resolved when the link click simulation occured or when the click is not dispatched.
+ *          A Promise that is resolved when the link click simulation occured or
+ *          when the click is not dispatched.
  *          The promise resolves with an object that holds the following properties
  *          - link: url of the link or null(if event not fired)
- *          - where: "tab" if tab is active or "tabshifted" if tab is inactive or null(if event not fired)
+ *          - where: "tab" if tab is active or "tabshifted" if tab is inactive
+ *            or null(if event not fired)
  */
 function simulateLinkClick(element, clickEventProps) {
   // Override openUILinkIn to prevent navigating.
@@ -453,7 +505,7 @@ function simulateLinkClick(element, clickEventProps) {
 
   // Declare a timeout Promise that we can use to make sure openUILinkIn was not called.
   let timeoutId;
-  const onTimeout = new Promise(function(resolve, reject) {
+  const onTimeout = new Promise(function (resolve) {
     timeoutId = setTimeout(() => {
       window.openUILinkIn = oldOpenUILinkIn;
       timeoutId = null;
@@ -517,11 +569,11 @@ async function openMessageInNetmonitor(toolbox, hud, url, urlInConsole) {
   ok(true, "The netmonitor panel is selected when clicking on the network message");
 
   let { store, windowRequire } = panelWin;
-  let actions = windowRequire("devtools/client/netmonitor/src/actions/index");
+  let nmActions = windowRequire("devtools/client/netmonitor/src/actions/index");
   let { getSelectedRequest } =
     windowRequire("devtools/client/netmonitor/src/selectors/index");
 
-  store.dispatch(actions.batchEnable(false));
+  store.dispatch(nmActions.batchEnable(false));
 
   await waitUntil(() => {
     const selected = getSelectedRequest(store.getState());
@@ -529,4 +581,158 @@ async function openMessageInNetmonitor(toolbox, hud, url, urlInConsole) {
   });
 
   ok(true, "The attached url is correct.");
+}
+
+function selectNode(hud, node) {
+  let outputContainer = hud.ui.outputNode.querySelector(".webconsole-output");
+
+  // We must first blur the input or else we can't select anything.
+  outputContainer.ownerDocument.activeElement.blur();
+
+  let selection = outputContainer.ownerDocument.getSelection();
+  let range = document.createRange();
+  range.selectNodeContents(node);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  return selection;
+}
+
+async function waitForBrowserConsole() {
+  return new Promise(resolve => {
+    Services.obs.addObserver(function observer(subject) {
+      Services.obs.removeObserver(observer, "web-console-created");
+      subject.QueryInterface(Ci.nsISupportsString);
+
+      let hud = HUDService.getBrowserConsole();
+      ok(hud, "browser console is open");
+      is(subject.data, hud.hudId, "notification hudId is correct");
+
+      executeSoon(() => resolve(hud));
+    }, "web-console-created");
+  });
+}
+
+/**
+ * Get the state of a console filter.
+ *
+ * @param {Object} hud
+ */
+async function getFilterState(hud) {
+  const filterBar = await setFilterBarVisible(hud, true);
+  const buttons = filterBar.querySelectorAll("button");
+  const result = { };
+
+  for (let button of buttons) {
+    let classes = new Set(button.classList.values());
+    let checked = classes.has("checked");
+
+    classes.delete("devtools-button");
+    classes.delete("checked");
+
+    let category = classes.values().next().value;
+
+    result[category] = checked;
+  }
+
+  return result;
+}
+
+/**
+ * Set the state of a console filter.
+ *
+ * @param {Object} hud
+ * @param {Object} settings
+ *        Category settings in the following format:
+ *          {
+ *            error: true,
+ *            warn: true,
+ *            log: true,
+ *            info: true,
+ *            debug: true,
+ *            css: false,
+ *            netxhr: false,
+ *            net: false
+ *          }
+ */
+async function setFilterState(hud, settings) {
+  const filterBar = await setFilterBarVisible(hud, true);
+
+  for (let category in settings) {
+    let setActive = settings[category];
+    let button = filterBar.querySelector(`.${category}`);
+
+    if (!button) {
+      ok(false, `setFilterState() called with a category of ${category}, ` +
+                `which doesn't exist.`);
+    }
+
+    info(`Setting the ${category} category to ${setActive ? "checked" : "disabled"}`);
+
+    let isChecked = button.classList.contains("checked");
+
+    if (setActive !== isChecked) {
+      button.click();
+
+      await waitFor(() => {
+        return button.classList.contains("checked") === setActive;
+      });
+    }
+  }
+}
+
+/**
+ * Set the visibility of the filter bar.
+ *
+ * @param {Object} hud
+ * @param {Boolean} state
+ *        Set filter bar visibility
+ */
+async function setFilterBarVisible(hud, state) {
+  info(`Setting the filter bar visibility to ${state}`);
+
+  const outputNode = hud.ui.outputNode;
+  const toolbar = await waitFor(() => {
+    return outputNode.querySelector(".webconsole-filterbar-primary");
+  });
+  let filterBar = outputNode.querySelector(".webconsole-filterbar-secondary");
+
+  // Show filter bar if state is true
+  if (state) {
+    if (!filterBar) {
+      // Click the filter icon to show the filter bar.
+      toolbar.querySelector(".devtools-filter-icon").click();
+      filterBar = await waitFor(() => {
+        return outputNode.querySelector(".webconsole-filterbar-secondary");
+      });
+    }
+    return filterBar;
+  }
+
+  // Hide filter bar if it is visible.
+  if (filterBar) {
+    // Click the filter icon to hide the filter bar.
+    toolbar.querySelector(".devtools-filter-icon").click();
+    await waitFor(() => {
+      return !outputNode.querySelector(".webconsole-filterbar-secondary");
+    });
+  }
+
+  return null;
+}
+
+/**
+ * Reset the filters at the end of a test that has changed them. This is
+ * important when using the `--verify` test option as when it is used you need
+ * to manually reset the filters.
+ *
+ * The css, netxhr and net filters are disabled by default.
+ *
+ * @param {Object} hud
+ */
+async function resetFilters(hud) {
+  info("Resetting filters to their default state");
+
+  const store = hud.ui.newConsoleOutput.getStore();
+  store.dispatch(wcActions.filtersClear());
 }

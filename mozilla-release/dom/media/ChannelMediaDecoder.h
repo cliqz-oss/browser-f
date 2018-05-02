@@ -119,7 +119,7 @@ private:
   // by the MediaResource read functions.
   void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset);
 
-  bool CanPlayThroughImpl() override final;
+  bool CanPlayThroughImpl() final;
 
   struct PlaybackRateInfo
   {

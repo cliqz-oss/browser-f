@@ -12,16 +12,10 @@
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMElement.h"
-#include "nsIDOMXULElement.h"
-#include "nsIDOMNodeList.h"
-#include "nsIDOMDocument.h"
-#include "nsIDOMDocumentXBL.h"
 #include "nsContentCID.h"
 #include "nsContentUtils.h"
 #include "nsXULPopupManager.h"
 #include "nsIScriptContext.h"
-#include "nsIDOMWindow.h"
-#include "nsIDOMXULDocument.h"
 #include "nsIDocument.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIPrincipal.h"
@@ -225,67 +219,61 @@ nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
 nsresult
 nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode, bool aIsTouch)
 {
-  nsresult rv;
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  rv = aTargetNode->GetOwnerDocument(getter_AddRefs(domDoc));
-  if(NS_SUCCEEDED(rv) && domDoc)
-  {
-    nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aTargetNode);
+  nsCOMPtr<nsIDocument> doc = content->OwnerDoc();
 
-    // Get nsIDOMElement for targetNode
-    nsIPresShell *shell = doc->GetShell();
-    if (!shell)
-      return NS_ERROR_FAILURE;
+  // Get nsIDOMElement for targetNode
+  // strong reference to keep this from going away between events
+  // XXXbz between what events?  We don't use this local at all!
+  RefPtr<nsPresContext> context = doc->GetPresContext();
+  if (!context) {
+    return NS_ERROR_FAILURE;
+  }
 
-    // strong reference to keep this from going away between events
-    // XXXbz between what events?  We don't use this local at all!
-    RefPtr<nsPresContext> context = shell->GetPresContext();
+  nsIFrame* targetFrame = content->GetPrimaryFrame();
+  if (!targetFrame) return NS_ERROR_FAILURE;
 
-    nsCOMPtr<nsIContent> content = do_QueryInterface(aTargetNode);
-    nsIFrame* targetFrame = content->GetPrimaryFrame();
-    if (!targetFrame) return NS_ERROR_FAILURE;
+  const nsStyleUserInterface* ui = targetFrame->StyleUserInterface();
+  bool suppressBlur = (ui->mUserFocus == StyleUserFocus::Ignore);
 
-    const nsStyleUserInterface* ui = targetFrame->StyleUserInterface();
-    bool suppressBlur = (ui->mUserFocus == StyleUserFocus::Ignore);
+  nsCOMPtr<nsIDOMElement> element;
+  nsCOMPtr<nsIContent> newFocus = content;
 
-    nsCOMPtr<nsIDOMElement> element;
-    nsCOMPtr<nsIContent> newFocus = do_QueryInterface(content);
-
-    nsIFrame* currFrame = targetFrame;
-    // Look for the nearest enclosing focusable frame.
-    while (currFrame) {
-        int32_t tabIndexUnused;
-        if (currFrame->IsFocusable(&tabIndexUnused, true)) {
-          newFocus = currFrame->GetContent();
-          nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocus));
-          if (domElement) {
-            element = domElement;
-            break;
-          }
-        }
-        currFrame = currFrame->GetParent();
-    }
-
-    nsIFocusManager* fm = nsFocusManager::GetFocusManager();
-    if (fm) {
-      if (element) {
-        uint32_t focusFlags = nsIFocusManager::FLAG_BYMOUSE |
-                              nsIFocusManager::FLAG_NOSCROLL;
-        if (aIsTouch) {
-          focusFlags |= nsIFocusManager::FLAG_BYTOUCH;
-        }
-        fm->SetFocus(element, focusFlags);
-      } else if (!suppressBlur) {
-        nsPIDOMWindowOuter *window = doc->GetWindow();
-        fm->ClearFocus(window);
+  nsIFrame* currFrame = targetFrame;
+  // Look for the nearest enclosing focusable frame.
+  while (currFrame) {
+    int32_t tabIndexUnused;
+    if (currFrame->IsFocusable(&tabIndexUnused, true)) {
+      newFocus = currFrame->GetContent();
+      nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocus));
+      if (domElement) {
+        element = domElement;
+        break;
       }
     }
-
-    EventStateManager* esm = context->EventStateManager();
-    nsCOMPtr<nsIContent> focusableContent = do_QueryInterface(element);
-    esm->SetContentState(focusableContent, NS_EVENT_STATE_ACTIVE);
+    currFrame = currFrame->GetParent();
   }
-  return rv;
+
+  nsIFocusManager* fm = nsFocusManager::GetFocusManager();
+  if (fm) {
+    if (element) {
+      uint32_t focusFlags = nsIFocusManager::FLAG_BYMOUSE |
+                            nsIFocusManager::FLAG_NOSCROLL;
+      if (aIsTouch) {
+        focusFlags |= nsIFocusManager::FLAG_BYTOUCH;
+      }
+      fm->SetFocus(element, focusFlags);
+    } else if (!suppressBlur) {
+      nsPIDOMWindowOuter *window = doc->GetWindow();
+      fm->ClearFocus(window);
+    }
+  }
+
+  EventStateManager* esm = context->EventStateManager();
+  nsCOMPtr<nsIContent> focusableContent = do_QueryInterface(element);
+  esm->SetContentState(focusableContent, NS_EVENT_STATE_ACTIVE);
+
+  return NS_OK;
 }
 #endif
 
@@ -374,18 +362,11 @@ nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
   if (identifier.EqualsLiteral("_child")) {
     popup = GetImmediateChild(mElement, nsGkAtoms::menupopup);
     if (!popup) {
-      nsCOMPtr<nsIDOMDocumentXBL> nsDoc(do_QueryInterface(document));
-      nsCOMPtr<nsIDOMNodeList> list;
-      nsCOMPtr<nsIDOMElement> el = do_QueryInterface(mElement);
-      nsDoc->GetAnonymousNodes(el, getter_AddRefs(list));
+      nsINodeList* list = document->GetAnonymousNodes(*mElement);
       if (list) {
-        uint32_t ctr,listLength;
-        nsCOMPtr<nsIDOMNode> node;
-        list->GetLength(&listLength);
-        for (ctr = 0; ctr < listLength; ctr++) {
-          list->Item(ctr, getter_AddRefs(node));
-          nsCOMPtr<nsIContent> childContent(do_QueryInterface(node));
-
+        uint32_t listLength = list->Length();
+        for (uint32_t ctr = 0; ctr < listLength; ctr++) {
+          nsIContent* childContent = list->Item(ctr);
           if (childContent->NodeInfo()->Equals(nsGkAtoms::menupopup,
                                                kNameSpaceID_XUL)) {
             popup = childContent->AsElement();

@@ -2,13 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["SafeBrowsing"];
+var EXPORTED_SYMBOLS = ["SafeBrowsing"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PREF_DEBUG_ENABLED = "browser.safebrowsing.debug";
 let loggingEnabled = false;
@@ -54,7 +50,7 @@ const tablePreferences = [
   "urlclassifier.flashInfobarTable"
 ];
 
-this.SafeBrowsing = {
+var SafeBrowsing = {
 
   init() {
     if (this.initialized) {
@@ -184,7 +180,7 @@ this.SafeBrowsing = {
 
       default:
         let err = "SafeBrowsing getReportURL() called with unknown kind: " + kind;
-        Components.utils.reportError(err);
+        Cu.reportError(err);
         throw err;
     }
 
@@ -208,7 +204,7 @@ this.SafeBrowsing = {
 
   observe(aSubject, aTopic, aData) {
     // skip nextupdatetime and lastupdatetime
-    if (aData.indexOf("lastupdatetime") >= 0 || aData.indexOf("nextupdatetime") >= 0) {
+    if (aData.includes("lastupdatetime") || aData.includes("nextupdatetime")) {
       return;
     }
 
@@ -289,7 +285,7 @@ this.SafeBrowsing = {
 
       for (let i = 0; i < obsoleteLists.length; ++i) {
         obsoleteLists[i] = obsoleteLists[i]
-          .filter(list => newLists[i].indexOf(list) == -1);
+          .filter(list => !newLists[i].includes(list));
       }
     }
 
@@ -343,6 +339,9 @@ this.SafeBrowsing = {
     }
 
     Object.keys(this.providers).forEach(function(provider) {
+      if (provider == "test") {
+        return; // skip
+      }
       let updateURL = Services.urlFormatter.formatURLPref(
         "browser.safebrowsing.provider." + provider + ".updateURL");
       let gethashURL = Services.urlFormatter.formatURLPref(

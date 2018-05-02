@@ -4,13 +4,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PageMetadata"];
+var EXPORTED_SYMBOLS = ["PageMetadata"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/microformat-shiv.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/microformat-shiv.js");
 
 XPCOMUtils.defineLazyServiceGetter(this, "UnescapeService",
                                    "@mozilla.org/feed-unescapehtml;1",
@@ -29,7 +27,7 @@ const DISCOVER_IMAGES_MAX  = 5;
  * Extract metadata and microformats from a HTML document.
  * @type {Object}
  */
-this.PageMetadata = {
+var PageMetadata = {
   /**
    * Get all metadata from an HTML document. This includes:
    * - URL
@@ -286,11 +284,13 @@ this.PageMetadata = {
     let docURI = Services.io.newURI(document.documentURI);
     let uri = Services.io.newURI(docURI.resolve(url));
 
-    if (["http", "https"].indexOf(uri.scheme) < 0) {
+    if (!["http", "https"].includes(uri.scheme)) {
       return null;
     }
 
-    uri.userPass = "";
+    uri = uri.mutate()
+             .setUserPass("")
+             .finalize();
 
     return uri.spec;
   },

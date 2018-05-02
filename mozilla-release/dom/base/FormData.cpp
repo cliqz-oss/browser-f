@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "FormData.h"
-#include "nsIVariant.h"
 #include "nsIInputStream.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/Directory.h"
@@ -94,9 +93,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(FormData)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FormData)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsIDOMFormData)
-  NS_INTERFACE_MAP_ENTRY(nsIXHRSendable)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMFormData)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 // -------------------------------------------------------------------------
@@ -104,7 +101,8 @@ NS_INTERFACE_MAP_END
 nsresult
 FormData::GetEncodedSubmission(nsIURI* aURI,
                                nsIInputStream** aPostDataStream,
-                               int64_t* aPostDataStreamLength)
+                               int64_t* aPostDataStreamLength,
+                               nsCOMPtr<nsIURI>& aOutURI)
 {
   NS_NOTREACHED("Shouldn't call FormData::GetEncodedSubmission");
   return NS_OK;
@@ -328,56 +326,6 @@ FormData::SetNameDirectoryPair(FormDataTuple* aData,
   aData->value.SetAsDirectory() = aDirectory;
 }
 
-// -------------------------------------------------------------------------
-// nsIDOMFormData
-
-NS_IMETHODIMP
-FormData::Append(const nsAString& aName, nsIVariant* aValue)
-{
-  uint16_t dataType;
-  nsresult rv = aValue->GetDataType(&dataType);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (dataType == nsIDataType::VTYPE_INTERFACE ||
-      dataType == nsIDataType::VTYPE_INTERFACE_IS) {
-    nsCOMPtr<nsISupports> supports;
-    nsID *iid;
-    rv = aValue->GetAsInterface(&iid, getter_AddRefs(supports));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    free(iid);
-
-    nsCOMPtr<nsIDOMBlob> domBlob = do_QueryInterface(supports);
-    RefPtr<Blob> blob = static_cast<Blob*>(domBlob.get());
-    if (domBlob) {
-      Optional<nsAString> temp;
-      ErrorResult rv;
-      Append(aName, *blob, temp, rv);
-      if (NS_WARN_IF(rv.Failed())) {
-        return rv.StealNSResult();
-      }
-
-      return NS_OK;
-    }
-  }
-
-  char16_t* stringData = nullptr;
-  uint32_t stringLen = 0;
-  rv = aValue->GetAsWStringWithSize(&stringLen, &stringData);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsString valAsString;
-  valAsString.Adopt(stringData, stringLen);
-
-  ErrorResult error;
-  Append(aName, valAsString, error);
-  if (NS_WARN_IF(error.Failed())) {
-    return error.StealNSResult();
-  }
-
-  return NS_OK;
-}
-
 /* virtual */ JSObject*
 FormData::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
@@ -396,12 +344,12 @@ FormData::Constructor(const GlobalObject& aGlobal,
   return formData.forget();
 }
 
-// -------------------------------------------------------------------------
-// nsIXHRSendable
-
-NS_IMETHODIMP
+// contentTypeWithCharset can be set to the contentType or
+// contentType+charset based on what the spec says.
+// See: https://fetch.spec.whatwg.org/#concept-bodyinit-extract
+nsresult
 FormData::GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
-                      nsACString& aContentTypeWithCharset, nsACString& aCharset)
+                      nsACString& aContentTypeWithCharset, nsACString& aCharset) const
 {
   FSMultipartFormData fs(UTF_8_ENCODING, nullptr);
 

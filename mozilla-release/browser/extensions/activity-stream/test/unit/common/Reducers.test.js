@@ -35,18 +35,14 @@ describe("Reducers", () => {
       const nextState = TopSites(undefined, {type: at.TOP_SITES_UPDATED});
       assert.equal(nextState, INITIAL_STATE.TopSites);
     });
-    it("should set editForm.visible to true on TOP_SITES_EDIT", () => {
-      const nextState = TopSites(undefined, {type: at.TOP_SITES_EDIT, data: {index: 3}});
-      assert.isTrue(nextState.editForm.visible);
-    });
     it("should set editForm.site to action.data on TOP_SITES_EDIT", () => {
       const data = {index: 7};
       const nextState = TopSites(undefined, {type: at.TOP_SITES_EDIT, data});
       assert.equal(nextState.editForm.index, data.index);
     });
-    it("should set editForm.visible to false on TOP_SITES_CANCEL_EDIT", () => {
+    it("should set editForm to null on TOP_SITES_CANCEL_EDIT", () => {
       const nextState = TopSites(undefined, {type: at.TOP_SITES_CANCEL_EDIT});
-      assert.isFalse(nextState.editForm.visible);
+      assert.isNull(nextState.editForm);
     });
     it("should add screenshots for SCREENSHOT_UPDATED", () => {
       const oldState = {rows: [{url: "foo.com"}, {url: "bar.com"}]};
@@ -72,7 +68,7 @@ describe("Reducers", () => {
         }
       };
       const nextState = TopSites(oldState, action);
-      const newRow = nextState.rows[1];
+      const [, newRow] = nextState.rows;
       // new row has bookmark data
       assert.equal(newRow.url, action.data.url);
       assert.equal(newRow.bookmarkGuid, action.data.bookmarkGuid);
@@ -97,7 +93,7 @@ describe("Reducers", () => {
       };
       const action = {type: at.PLACES_BOOKMARK_REMOVED, data: {url: "bar.com"}};
       const nextState = TopSites(oldState, action);
-      const newRow = nextState.rows[1];
+      const [, newRow] = nextState.rows;
       // new row no longer has bookmark data
       assert.equal(newRow.url, oldState.rows[1].url);
       assert.isUndefined(newRow.bookmarkGuid);
@@ -185,7 +181,7 @@ describe("Reducers", () => {
         id: `foo_bar_${i}`,
         title: `Foo Bar ${i}`,
         initialized: false,
-        rows: [{url: "www.foo.bar"}, {url: "www.other.url"}],
+        rows: [{url: "www.foo.bar", pocket_id: 123}, {url: "www.other.url"}],
         order: i,
         type: "history"
       }));
@@ -206,47 +202,6 @@ describe("Reducers", () => {
       assert.lengthOf(newState, 6);
       const insertedSection = newState.find(section => section.id === "foo_bar_5");
       assert.propertyVal(insertedSection, "title", action.data.title);
-    });
-    it("should ensure sections are sorted by property `order` (increasing) on SECTION_REGISTER", () => {
-      let newState = [];
-      const state = Object.assign([], oldState);
-      state.forEach(section => {
-        Object.assign(section, {order: 5 - section.order});
-        const action = {type: at.SECTION_REGISTER, data: section};
-        newState = Sections(newState, action);
-      });
-      // Should have been inserted into newState in reverse order
-      assert.deepEqual(newState.map(section => section.id), state.map(section => section.id).reverse());
-      const newSection = {id: "new_section", order: 2.5};
-      const action = {type: at.SECTION_REGISTER, data: newSection};
-      newState = Sections(newState, action);
-      // Should have been inserted at index 2, between second and third section
-      assert.equal(newState[2].id, newSection.id);
-    });
-    it("should insert sections without an `order` at the top on SECTION_REGISTER", () => {
-      const newSection = {id: "new_section"};
-      const action = {type: at.SECTION_REGISTER, data: newSection};
-      const newState = Sections(oldState, action);
-      assert.equal(newState[0].id, newSection.id);
-      assert.ok(newState[0].order < newState[1].order);
-    });
-    it("should insert sections with a 0 `order` at the top on SECTION_REGISTER", () => {
-      const newSection = {id: "new_section", order: 0};
-      const action = {type: at.SECTION_REGISTER, data: newSection};
-      const newState = Sections(oldState, action);
-      assert.equal(newState[0].id, newSection.id);
-    });
-    it("should insert sections with a 1 `order` in the right spot on SECTION_REGISTER", () => {
-      const newSection = {id: "new_section", order: 1};
-      const action = {type: at.SECTION_REGISTER, data: newSection};
-      const newState = Sections(oldState, action);
-      assert.equal(newState[1].id, newSection.id);
-    });
-    it("should insert sections with higher `order` than any existing at the bottom on SECTION_REGISTER", () => {
-      const newSection = {id: "new_section", order: 10000};
-      const action = {type: at.SECTION_REGISTER, data: newSection};
-      const newState = Sections(oldState, action);
-      assert.equal(newState[newState.length - 1].id, newSection.id);
     });
     it("should set newSection.rows === [] if no rows are provided on SECTION_REGISTER", () => {
       const action = {type: at.SECTION_REGISTER, data: {id: "foo_bar_5", title: "Foo Bar 5"}};
@@ -294,6 +249,27 @@ describe("Reducers", () => {
       const newState = Sections(oldState, action);
       const updatedSection = newState.find(section => section.id === "foo_bar_2");
       assert.propertyVal(updatedSection, "initialized", true);
+    });
+    it("should retain pinned cards on SECTION_UPDATE", () => {
+      const ROW = {id: "row"};
+      let newState = Sections(oldState, {type: at.SECTION_UPDATE, data: Object.assign({rows: [ROW]}, {id: "foo_bar_2"})});
+      let updatedSection = newState.find(section => section.id === "foo_bar_2");
+      assert.deepEqual(updatedSection.rows, [ROW]);
+
+      const PINNED_ROW = {id: "pinned", pinned: true};
+      newState = Sections(newState, {type: at.SECTION_UPDATE, data: Object.assign({rows: [PINNED_ROW]}, {id: "foo_bar_2"})});
+      updatedSection = newState.find(section => section.id === "foo_bar_2");
+      assert.deepEqual(updatedSection.rows, [PINNED_ROW]);
+
+      // Updating the section should retain pinned card at its index
+      newState = Sections(newState, {type: at.SECTION_UPDATE, data: Object.assign({rows: [ROW]}, {id: "foo_bar_2"})});
+      updatedSection = newState.find(section => section.id === "foo_bar_2");
+      assert.deepEqual(updatedSection.rows, [PINNED_ROW, ROW]);
+
+      // Clearing/Resetting the section should clear pinned cards
+      newState = Sections(newState, {type: at.SECTION_UPDATE, data: Object.assign({rows: []}, {id: "foo_bar_2"})});
+      updatedSection = newState.find(section => section.id === "foo_bar_2");
+      assert.deepEqual(updatedSection.rows, []);
     });
     it("should have no effect on SECTION_UPDATE_CARD if the id or url doesn't exist", () => {
       const noIdAction = {type: at.SECTION_UPDATE_CARD, data: {id: "non-existent", url: "www.foo.bar", options: {title: "New title"}}};
@@ -357,6 +333,20 @@ describe("Reducers", () => {
         assert.lengthOf(section.rows, 0);
       });
     });
+    it("should remove all removed pocket urls", () => {
+      const removeAction = {type: at.DELETE_FROM_POCKET, data: {pocket_id: 123}};
+      const newBlockState = Sections(oldState, removeAction);
+      newBlockState.forEach(section => {
+        assert.deepEqual(section.rows, [{url: "www.other.url"}]);
+      });
+    });
+    it("should archive all archived pocket urls", () => {
+      const removeAction = {type: at.ARCHIVE_FROM_POCKET, data: {pocket_id: 123}};
+      const newBlockState = Sections(oldState, removeAction);
+      newBlockState.forEach(section => {
+        assert.deepEqual(section.rows, [{url: "www.other.url"}]);
+      });
+    });
     it("should not update state for empty action.data on PLACES_BOOKMARK_ADDED", () => {
       const nextState = Sections(undefined, {type: at.PLACES_BOOKMARK_ADDED});
       assert.equal(nextState, INITIAL_STATE.Sections);
@@ -373,8 +363,7 @@ describe("Reducers", () => {
       };
       const nextState = Sections(oldState, action);
       // check a section to ensure the correct url was bookmarked
-      const newRow = nextState[0].rows[0];
-      const oldRow = nextState[0].rows[1];
+      const [newRow, oldRow] = nextState[0].rows;
 
       // new row has bookmark data
       assert.equal(newRow.url, action.data.url);
@@ -407,8 +396,7 @@ describe("Reducers", () => {
       });
       const nextState = Sections(oldState, action);
       // check a section to ensure the correct bookmark was removed
-      const newRow = nextState[0].rows[0];
-      const oldRow = nextState[0].rows[1];
+      const [newRow, oldRow] = nextState[0].rows;
 
       // new row isn't a bookmark
       assert.equal(newRow.url, action.data.url);
@@ -416,6 +404,32 @@ describe("Reducers", () => {
       assert.isUndefined(newRow.bookmarkGuid);
       assert.isUndefined(newRow.bookmarkTitle);
       assert.isUndefined(newRow.bookmarkDateCreated);
+
+      // old row is unchanged
+      assert.equal(oldRow, oldState[0].rows[1]);
+    });
+    it("should not update state for empty action.data on PLACES_SAVED_TO_POCKET", () => {
+      const nextState = Sections(undefined, {type: at.PLACES_SAVED_TO_POCKET});
+      assert.equal(nextState, INITIAL_STATE.Sections);
+    });
+    it("should add a pocked item on PLACES_SAVED_TO_POCKET", () => {
+      const action = {
+        type: at.PLACES_SAVED_TO_POCKET,
+        data: {
+          url: "www.foo.bar",
+          pocket_id: 1234,
+          title: "Title for bar.com"
+        }
+      };
+      const nextState = Sections(oldState, action);
+      // check a section to ensure the correct url was saved to pocket
+      const [newRow, oldRow] = nextState[0].rows;
+
+      // new row has pocket data
+      assert.equal(newRow.url, action.data.url);
+      assert.equal(newRow.type, "pocket");
+      assert.equal(newRow.pocket_id, action.data.pocket_id);
+      assert.equal(newRow.title, action.data.title);
 
       // old row is unchanged
       assert.equal(oldRow, oldState[0].rows[1]);
@@ -505,6 +519,14 @@ describe("Reducers", () => {
     it("should reset to the initial state on a SNIPPETS_RESET action", () => {
       const state = Snippets({initalized: true, foo: "bar"}, {type: at.SNIPPETS_RESET});
       assert.equal(state, INITIAL_STATE.Snippets);
+    });
+    it("should set the new blocklist on SNIPPET_BLOCKED", () => {
+      const state = Snippets({blockList: []}, {type: at.SNIPPET_BLOCKED, data: 1});
+      assert.deepEqual(state.blockList, [1]);
+    });
+    it("should clear the blocklist on SNIPPETS_BLOCKLIST_CLEARED", () => {
+      const state = Snippets({blockList: [1, 2]}, {type: at.SNIPPETS_BLOCKLIST_CLEARED});
+      assert.deepEqual(state.blockList, []);
     });
   });
   describe("PreferencesPane", () => {

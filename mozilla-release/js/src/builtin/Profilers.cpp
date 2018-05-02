@@ -29,7 +29,7 @@
 
 #include "vm/Probes.h"
 
-#include "jscntxtinlines.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 
@@ -180,7 +180,7 @@ JS_DumpProfile(const char* outfile, const char* profileName)
 {
     bool ok = true;
 #ifdef MOZ_CALLGRIND
-    js_DumpCallgrind(outfile);
+    ok = js_DumpCallgrind(outfile);
 #endif
     return ok;
 }

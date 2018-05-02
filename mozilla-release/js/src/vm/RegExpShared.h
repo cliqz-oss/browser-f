@@ -15,26 +15,23 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/MemoryReporting.h"
 
-#include "jsalloc.h"
-#include "jsatom.h"
-
 #include "builtin/SelfHostingDefines.h"
 #include "gc/Barrier.h"
 #include "gc/Heap.h"
 #include "gc/Marking.h"
+#include "js/AllocPolicy.h"
 #include "js/UbiNode.h"
 #include "js/Vector.h"
 #include "vm/ArrayObject.h"
-
-struct JSContext;
+#include "vm/JSAtom.h"
 
 namespace js {
 
 class ArrayObject;
-class MatchPairs;
 class RegExpCompartment;
 class RegExpShared;
 class RegExpStatics;
+class VectorMatchPairs;
 
 using RootedRegExpShared = JS::Rooted<RegExpShared*>;
 using HandleRegExpShared = JS::Handle<RegExpShared*>;
@@ -162,7 +159,7 @@ class RegExpShared : public gc::TenuredCell
     // matches if specified and otherwise only determining if there is a match.
     static RegExpRunStatus execute(JSContext* cx, MutableHandleRegExpShared res,
                                    HandleLinearString input, size_t searchIndex,
-                                   MatchPairs* matches, size_t* endIndex);
+                                   VectorMatchPairs* matches, size_t* endIndex);
 
     // Register a table with this RegExpShared, and take ownership.
     bool addTable(JitCodeTable table) {
@@ -372,7 +369,7 @@ class Concrete<js::RegExpShared> : TracerConcrete<js::RegExpShared>
         new (storage) Concrete(ptr);
     }
 
-    CoarseType coarseType() const final override { return CoarseType::Other; }
+    CoarseType coarseType() const final { return CoarseType::Other; }
 
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override;
 

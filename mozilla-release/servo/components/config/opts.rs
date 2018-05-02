@@ -609,7 +609,7 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     opts.optopt("", "content-process" , "Run as a content process and connect to the given pipe",
                 "servo-ipc-channel.abcdefg");
     opts.optmulti("", "pref",
-                  "A preference to set to enable", "dom.mozbrowser.enabled");
+                  "A preference to set to enable", "dom.bluetooth.enabled");
     opts.optflag("b", "no-native-titlebar", "Do not use native titlebar");
     opts.optflag("w", "webrender", "Use webrender backend");
     opts.optopt("G", "graphics", "Select graphics backend (gl or es2)", "gl");
@@ -913,7 +913,7 @@ lazy_static! {
 pub fn set_defaults(opts: Opts) {
     unsafe {
         assert!(DEFAULT_OPTIONS.is_null());
-        assert!(DEFAULT_OPTIONS != INVALID_OPTIONS);
+        assert_ne!(DEFAULT_OPTIONS, INVALID_OPTIONS);
         let box_opts = Box::new(opts);
         DEFAULT_OPTIONS = Box::into_raw(box_opts);
     }

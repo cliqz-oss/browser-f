@@ -1,8 +1,16 @@
+# Run the font loader eagerly: this also ensures we will eagerly load localized
+# family names when looking up a requested font-family. Otherwise, tests here
+# may fail if they're running too soon after browser startup, and localized
+# names have not yet been read. (See bug 1439937.)
+default-preferences pref(gfx.font_loader.delay,0)
+
 == CSS21-t1502-no-inherited-font-family.xhtml CSS21-t1502-no-inherited-font-family-ref.xhtml
 
 # tests for bug 1394311 (case-insensitive lang tag processing)
-pref(font.default.zh-CN,"serif") pref(font.default.zh-TW,"serif") pref(font.default.ja,"serif") pref(font.default.ko,"serif") == 1394311.htm 1394311-ref.htm
-pref(font.default.zh-CN,"sans-serif") pref(font.default.zh-TW,"sans-serif") pref(font.default.ja,"sans-serif") pref(font.default.ko,"sans-serif") == 1394311.htm 1394311-ref.htm
+# (First attempt is random-if(windows 7), due to intermittent failure with a
+# single missing character - see bug 1451723 & more generally bug 1392106.)
+pref(font.default.zh-CN,"serif") pref(font.default.zh-TW,"serif") pref(font.default.ja,"serif") pref(font.default.ko,"serif") random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1394311.htm 1394311-ref.htm
+pref(font.default.zh-CN,"sans-serif") pref(font.default.zh-TW,"sans-serif") pref(font.default.ja,"sans-serif") pref(font.default.ko,"sans-serif") skip-if(winWidget&&/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1394311.htm 1394311-ref.htm
 
 # tests for bug 1367860 (correct default generic font based on language)
 == 1367860-1.htm 1367860-ref.htm
@@ -145,3 +153,6 @@ skip-if(gtkWidget||/^Windows\x20NT\x206\.1/.test(http.oscpu)) == emoji-fallback-
 # and are not expected to pass on platforms that don't have those same fonts.
 skip-if(!cocoaWidget) == legacy-family-names-1.html legacy-family-names-1-ref.html
 skip-if(!winWidget) == legacy-family-names-2.html legacy-family-names-2-ref.html
+
+# Reset default prefs.
+default-preferences

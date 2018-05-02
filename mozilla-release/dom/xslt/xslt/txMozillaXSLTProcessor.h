@@ -9,8 +9,6 @@
 #include "nsAutoPtr.h"
 #include "nsStubMutationObserver.h"
 #include "nsIDocumentTransformer.h"
-#include "nsIXSLTProcessor.h"
-#include "nsIXSLTProcessorPrivate.h"
 #include "txExpandedNameMap.h"
 #include "txNamespaceMap.h"
 #include "nsCycleCollectionParticipant.h"
@@ -18,10 +16,10 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/XSLTProcessorBinding.h"
 #include "mozilla/net/ReferrerPolicy.h"
 
 class nsINode;
-class nsIDOMNode;
 class nsIURI;
 class txStylesheet;
 class txResultRecycler;
@@ -38,21 +36,12 @@ class GlobalObject;
 } // namespace dom
 } // namespace mozilla
 
-/* bacd8ad0-552f-11d3-a9f7-000064657374 */
-#define TRANSFORMIIX_XSLT_PROCESSOR_CID   \
-{ 0x618ee71d, 0xd7a7, 0x41a1, {0xa3, 0xfb, 0xc2, 0xbe, 0xdc, 0x6a, 0x21, 0x7e} }
-
-#define TRANSFORMIIX_XSLT_PROCESSOR_CONTRACTID \
-"@mozilla.org/document-transformer;1?type=xslt"
-
 #define XSLT_MSGS_URL  "chrome://global/locale/xslt/xslt.properties"
 
 /**
  * txMozillaXSLTProcessor is a front-end to the XSLT Processor.
  */
-class txMozillaXSLTProcessor final : public nsIXSLTProcessor,
-                                     public nsIXSLTProcessorPrivate,
-                                     public nsIDocumentTransformer,
+class txMozillaXSLTProcessor final : public nsIDocumentTransformer,
                                      public nsStubMutationObserver,
                                      public nsWrapperCache
 {
@@ -65,19 +54,12 @@ public:
     // nsISupports interface
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(txMozillaXSLTProcessor,
-                                                           nsIXSLTProcessor)
-
-    // nsIXSLTProcessor interface
-    NS_DECL_NSIXSLTPROCESSOR
-
-    // nsIXSLTProcessorPrivate interface
-    NS_DECL_NSIXSLTPROCESSORPRIVATE
+                                                           nsIDocumentTransformer)
 
     // nsIDocumentTransformer interface
     NS_IMETHOD SetTransformObserver(nsITransformObserver* aObserver) override;
     NS_IMETHOD LoadStyleSheet(nsIURI* aUri, nsIDocument* aLoaderDocument) override;
-    NS_IMETHOD SetSourceContentModel(nsIDocument* aDocument,
-                                     const nsTArray<nsCOMPtr<nsIContent>>& aSource) override;
+    NS_IMETHOD SetSourceContentModel(nsINode* aSource) override;
     NS_IMETHOD CancelLoads() override {return NS_OK;}
     NS_IMETHOD AddXSLTParamNamespace(const nsString& aPrefix,
                                      const nsString& aNamespace) override;
@@ -85,7 +67,7 @@ public:
                             const nsString& aNamespace,
                             const nsString& aSelect,
                             const nsString& aValue,
-                            nsIDOMNode* aContext) override;
+                            nsINode* aContext) override;
 
     // nsIMutationObserver interface
     NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
@@ -123,15 +105,14 @@ public:
                       const nsAString& aLocalName,
                       JS::Handle<JS::Value> aValue,
                       mozilla::ErrorResult& aRv);
-    nsIVariant* GetParameter(const nsAString& aNamespaceURI,
-                             const nsAString& aLocalName,
-                             mozilla::ErrorResult& aRv);
+    already_AddRefed<nsIVariant> GetParameter(const nsAString& aNamespaceURI,
+                                              const nsAString& aLocalName,
+                                              mozilla::ErrorResult& aRv);
     void RemoveParameter(const nsAString& aNamespaceURI,
                          const nsAString& aLocalName,
-                         mozilla::ErrorResult& aRv)
-    {
-        aRv = RemoveParameter(aNamespaceURI, aLocalName);
-    }
+                         mozilla::ErrorResult& aRv);
+    void ClearParameters();
+    void Reset();
 
     uint32_t Flags(mozilla::dom::SystemCallerGuarantee);
     void SetFlags(uint32_t aFlags, mozilla::dom::SystemCallerGuarantee);
@@ -145,12 +126,12 @@ public:
         return mSource;
     }
 
-    nsresult TransformToDoc(nsIDOMDocument **aResult,
+    nsresult TransformToDoc(nsIDocument **aResult,
                             bool aCreateDataDocument);
 
     bool IsLoadDisabled()
     {
-        return (mFlags & DISABLE_ALL_LOADS) != 0;
+        return (mFlags & mozilla::dom::XSLTProcessorBinding::DISABLE_ALL_LOADS) != 0;
     }
 
     static nsresult Startup();
@@ -166,6 +147,11 @@ private:
     nsresult DoTransform();
     void notifyError();
     nsresult ensureStylesheet();
+
+    // Helper method for the WebIDL SetParameter.
+    nsresult SetParameter(const nsAString& aNamespaceURI,
+                          const nsAString& aLocalName,
+                          nsIVariant* aValue);
 
     nsCOMPtr<nsISupports> mOwner;
 

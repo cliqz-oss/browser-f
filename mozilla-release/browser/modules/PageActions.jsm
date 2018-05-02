@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "PageActions",
   // PageActions.Action
   // PageActions.Button
@@ -14,16 +14,14 @@ this.EXPORTED_SYMBOLS = [
   // PageActions.ACTION_ID_BUILT_IN_SEPARATOR
 ];
 
-const { utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
+ChromeUtils.defineModuleGetter(this, "AsyncShutdown",
   "resource://gre/modules/AsyncShutdown.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BinarySearch",
+ChromeUtils.defineModuleGetter(this, "BinarySearch",
   "resource://gre/modules/BinarySearch.jsm");
 
 
@@ -35,7 +33,7 @@ const PREF_PERSISTED_ACTIONS = "browser.pageActions.persistedActions";
 const PERSISTED_ACTIONS_CURRENT_VERSION = 1;
 
 
-this.PageActions = {
+var PageActions = {
   /**
    * Inits.  Call to init.
    */
@@ -1220,8 +1218,11 @@ var gBuiltInActions = [
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
     },
-  },
+  }
+];
 
+if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+  gBuiltInActions.push(
   // send to device
   {
     id: "sendToDevice",
@@ -1249,8 +1250,8 @@ var gBuiltInActions = [
           .onShowingSubview(panelViewNode);
       },
     },
-  }
-];
+  });
+}
 
 
 /**

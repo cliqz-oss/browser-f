@@ -11,35 +11,33 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetrySend",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/ClientID.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ServiceRequest.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
-Cu.import("resource://gre/modules/AppConstants.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/ClientID.jsm");
-Cu.import("resource://gre/modules/Log.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/ServiceRequest.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
-                                  "resource://gre/modules/AsyncShutdown.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStorage",
-                                  "resource://gre/modules/TelemetryStorage.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryReportingPolicy",
-                                  "resource://gre/modules/TelemetryReportingPolicy.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "AsyncShutdown",
+                               "resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryStorage",
+                               "resource://gre/modules/TelemetryStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryReportingPolicy",
+                               "resource://gre/modules/TelemetryReportingPolicy.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
                                    "@mozilla.org/base/telemetry;1",
                                    "nsITelemetry");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryHealthPing",
-                                  "resource://gre/modules/TelemetryHealthPing.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryHealthPing",
+                               "resource://gre/modules/TelemetryHealthPing.jsm");
 
 
 const Utils = TelemetryUtils;
@@ -149,7 +147,12 @@ function gzipCompressString(string) {
   let observer = {
     buffer: "",
     onStreamComplete(loader, context, status, length, result) {
-      this.buffer = String.fromCharCode.apply(this, result);
+      // String.fromCharCode can only deal with 500,000 characters at
+      // a time, so chunk the result into parts of that size.
+      const chunkSize = 500000;
+      for (let offset = 0; offset < result.length; offset += chunkSize) {
+        this.buffer += String.fromCharCode.apply(String, result.slice(offset, offset + chunkSize));
+      }
     }
   };
 
@@ -169,7 +172,7 @@ function gzipCompressString(string) {
   return observer.buffer;
 }
 
-this.TelemetrySend = {
+var TelemetrySend = {
 
   /**
    * Age in ms of a pending ping to be considered overdue.
@@ -1110,7 +1113,8 @@ var TelemetrySendImpl = {
 
     const url = this._buildSubmissionURL(ping);
 
-    let request = new ServiceRequest();
+    // Don't send cookies with these requests.
+    let request = new ServiceRequest({mozAnon: true});
     request.mozBackgroundRequest = true;
     request.timeout = Policy.pingSubmissionTimeout();
 

@@ -61,7 +61,10 @@ public:
 
     bool RequiresAATLayout() const { return mRequiresAAT; }
 
-    bool HasVariations();
+    bool HasVariations() override;
+    void GetVariationAxes(nsTArray<gfxFontVariationAxis>& aVariationAxes) override;
+    void GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) override;
+
     bool IsCFF();
 
     // Return true if the font has a 'trak' table (and we can successfully

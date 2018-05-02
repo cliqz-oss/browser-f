@@ -23,6 +23,7 @@
 #include "mozilla/Unused.h"
 #include "nsCRTGlue.h"
 #include "nsNSSCertificate.h"
+#include "nsNSSCertValidity.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 #include "nss.h"
@@ -36,6 +37,8 @@
 #include "TrustOverrideUtils.h"
 #include "TrustOverride-StartComAndWoSignData.inc"
 #include "TrustOverride-GlobalSignData.inc"
+#include "TrustOverride-SymantecData.inc"
+#include "TrustOverride-AppleGoogleDigiCertData.inc"
 
 using namespace mozilla;
 using namespace mozilla::pkix;
@@ -59,6 +62,7 @@ NSSCertDBTrustDomain::NSSCertDBTrustDomain(SECTrustType certDBTrustType,
                                            ValidityCheckingMode validityCheckingMode,
                                            CertVerifier::SHA1Mode sha1Mode,
                                            NetscapeStepUpPolicy netscapeStepUpPolicy,
+                                           DistrustedCAPolicy distrustedCAPolicy,
                                            const OriginAttributes& originAttributes,
                                            UniqueCERTCertList& builtChain,
                               /*optional*/ PinningTelemetryInfo* pinningTelemetryInfo,
@@ -76,6 +80,8 @@ NSSCertDBTrustDomain::NSSCertDBTrustDomain(SECTrustType certDBTrustType,
   , mValidityCheckingMode(validityCheckingMode)
   , mSHA1Mode(sha1Mode)
   , mNetscapeStepUpPolicy(netscapeStepUpPolicy)
+  , mDistrustedCAPolicy(distrustedCAPolicy)
+  , mSawDistrustedCAByPolicyError(false)
   , mOriginAttributes(originAttributes)
   , mBuiltChain(builtChain)
   , mPinningTelemetryInfo(pinningTelemetryInfo)
@@ -785,18 +791,30 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
     return rv;
   }
 
-  CERTCertListNode* rootNode = CERT_LIST_TAIL(certList);
-  if (!rootNode) {
+  // Modernization in-progress: Keep certList as a CERTCertList for storage into
+  // the mBuiltChain variable at the end, but let's use nsNSSCertList for the
+  // validity calculations.
+  UniqueCERTCertList certListCopy = nsNSSCertList::DupCertList(certList);
+
+  // This adopts the list
+  RefPtr<nsNSSCertList> nssCertList = new nsNSSCertList(Move(certListCopy));
+  if (!nssCertList) {
     return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
-  CERTCertificate* root = rootNode->cert;
+
+  nsCOMPtr<nsIX509Cert> rootCert;
+  nsresult nsrv = nssCertList->GetRootCertificate(rootCert);
+  if (NS_FAILED(nsrv)) {
+    return Result::FATAL_ERROR_LIBRARY_FAILURE;
+  }
+  UniqueCERTCertificate root(rootCert->GetCert());
   if (!root) {
     return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
   bool isBuiltInRoot = false;
-  rv = IsCertBuiltInRoot(root, isBuiltInRoot);
-  if (rv != Success) {
-    return rv;
+  nsrv = rootCert->GetIsBuiltInRoot(&isBuiltInRoot);
+  if (NS_FAILED(nsrv)) {
+    return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
   bool skipPinningChecksBecauseOfMITMMode =
     (!isBuiltInRoot && mPinningMode == CertVerifier::pinningAllowUserCAMITM);
@@ -807,8 +825,8 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
     bool enforceTestMode =
       (mPinningMode == CertVerifier::pinningEnforceTestMode);
     bool chainHasValidPins;
-    nsresult nsrv = PublicKeyPinningService::ChainHasValidPins(
-      certList, mHostname, time, enforceTestMode, mOriginAttributes,
+    nsrv = PublicKeyPinningService::ChainHasValidPins(
+      nssCertList, mHostname, time, enforceTestMode, mOriginAttributes,
       chainHasValidPins, mPinningTelemetryInfo);
     if (NS_FAILED(nsrv)) {
       return Result::FATAL_ERROR_LIBRARY_FAILURE;
@@ -824,21 +842,80 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
   // chain as well. It should be possible to remove this workaround after
   // January 2019 as per bug 1349727 comment 17.
   if (requiredPolicy == sGlobalSignEVPolicy &&
-      CertMatchesStaticData(root, sGlobalSignRootCAR2SubjectBytes,
+      CertMatchesStaticData(root.get(), sGlobalSignRootCAR2SubjectBytes,
                             sGlobalSignRootCAR2SPKIBytes)) {
+
+    rootCert = nullptr; // Clear the state for Segment...
+    nsCOMPtr<nsIX509CertList> intCerts;
+    nsCOMPtr<nsIX509Cert> eeCert;
+
+    nsrv = nssCertList->SegmentCertificateChain(rootCert, intCerts, eeCert);
+    if (NS_FAILED(nsrv)) {
+      // This chain is supposed to be complete, so this is an error. There
+      // are no intermediates, so return before searching just as if the
+      // search failed.
+      return Result::ERROR_ADDITIONAL_POLICY_CONSTRAINT_FAILED;
+    }
+
     bool foundRequiredIntermediate = false;
-    for (CERTCertListNode* node = CERT_LIST_HEAD(certList);
-         !CERT_LIST_END(node, certList); node = CERT_LIST_NEXT(node)) {
-      if (CertMatchesStaticData(
-            node->cert,
+    RefPtr<nsNSSCertList> intCertList = intCerts->GetCertList();
+    nsrv = intCertList->ForEachCertificateInChain(
+      [&foundRequiredIntermediate] (nsCOMPtr<nsIX509Cert> aCert, bool aHasMore,
+                                    /* out */ bool& aContinue) {
+        // We need an owning handle when calling nsIX509Cert::GetCert().
+        UniqueCERTCertificate nssCert(aCert->GetCert());
+        if (CertMatchesStaticData(
+            nssCert.get(),
             sGlobalSignExtendedValidationCASHA256G2SubjectBytes,
             sGlobalSignExtendedValidationCASHA256G2SPKIBytes)) {
-        foundRequiredIntermediate = true;
-        break;
-      }
+          foundRequiredIntermediate = true;
+          aContinue = false;
+        }
+        return NS_OK;
+    });
+
+    if (NS_FAILED(nsrv)) {
+      return Result::FATAL_ERROR_LIBRARY_FAILURE;
     }
+
     if (!foundRequiredIntermediate) {
-      return Result::ERROR_POLICY_VALIDATION_FAILED;
+      return Result::ERROR_ADDITIONAL_POLICY_CONSTRAINT_FAILED;
+    }
+  }
+
+  // See bug 1434300. If the root is a Symantec root, see if we distrust this
+  // path. Since we already have the root available, we can check that cheaply
+  // here before proceeding with the rest of the algorithm.
+
+  // This algorithm only applies if we are verifying in the context of a TLS
+  // handshake. To determine this, we check mHostname: If it isn't set, this is
+  // not TLS, so don't run the algorithm.
+  if (mHostname && CertDNIsInList(root.get(), RootSymantecDNs) &&
+      mDistrustedCAPolicy == DistrustedCAPolicy::DistrustSymantecRoots) {
+
+    rootCert = nullptr; // Clear the state for Segment...
+    nsCOMPtr<nsIX509CertList> intCerts;
+    nsCOMPtr<nsIX509Cert> eeCert;
+
+    nsrv = nssCertList->SegmentCertificateChain(rootCert, intCerts, eeCert);
+    if (NS_FAILED(nsrv)) {
+      // This chain is supposed to be complete, so this is an error.
+      return Result::FATAL_ERROR_LIBRARY_FAILURE;
+    }
+
+    // PRTime is microseconds since the epoch, whereas JS time is milliseconds.
+    // (new Date("2016-06-01T00:00:00Z")).getTime() * 1000
+    static const PRTime JUNE_1_2016 = 1464739200000000;
+
+    bool isDistrusted = false;
+    nsrv = CheckForSymantecDistrust(intCerts, eeCert, JUNE_1_2016,
+                                    RootAppleAndGoogleSPKIs, isDistrusted);
+    if (NS_FAILED(nsrv)) {
+      return Result::FATAL_ERROR_LIBRARY_FAILURE;
+    }
+    if (isDistrusted) {
+      mSawDistrustedCAByPolicyError = true;
+      return Result::ERROR_ADDITIONAL_POLICY_CONSTRAINT_FAILED;
     }
   }
 
@@ -995,6 +1072,7 @@ NSSCertDBTrustDomain::ResetAccumulatedState()
   mOCSPStaplingStatus = CertVerifier::OCSP_STAPLING_NEVER_CHECKED;
   mSCTListFromOCSPStapling = nullptr;
   mSCTListFromCertificate = nullptr;
+  mSawDistrustedCAByPolicyError = false;
 }
 
 static Input
@@ -1022,6 +1100,12 @@ Input
 NSSCertDBTrustDomain::GetSCTListFromOCSPStapling() const
 {
   return SECItemToInput(mSCTListFromOCSPStapling);
+}
+
+bool
+NSSCertDBTrustDomain::GetIsErrorDueToDistrustedCAPolicy() const
+{
+  return mSawDistrustedCAByPolicyError;
 }
 
 void

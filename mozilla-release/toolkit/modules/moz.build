@@ -94,9 +94,6 @@ with Files('JSONFile.jsm'):
 with Files('LightweightThemeConsumer.jsm'):
     BUG_COMPONENT = ('Firefox', 'Toolbars and Customization')
 
-with Files('LoadContextInfo.jsm'):
-    BUG_COMPONENT = ('Core', 'Networking: Cache')
-
 with Files('Memory.jsm'):
     BUG_COMPONENT = ('Core', 'DOM: Content Processes')
 
@@ -210,7 +207,6 @@ EXTRA_JS_MODULES += [
     'InlineSpellCheckerContent.jsm',
     'Integration.jsm',
     'JSONFile.jsm',
-    'LoadContextInfo.jsm',
     'Log.jsm',
     'Memory.jsm',
     'NewTabUtils.jsm',
@@ -265,7 +261,7 @@ EXTRA_JS_MODULES.sessionstore += [
     'sessionstore/Utils.jsm',
 ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa', 'gtk3'):
     DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3'):

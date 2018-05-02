@@ -251,7 +251,7 @@ function testDefaultArgs() {
                       getService(Ci.nsIBrowserHandler).defaultArgs;
     is(defaultArgs, overrideArgs, "correct value returned by defaultArgs");
 
-    if (testCase.noMstoneChange === undefined || testCase.noMstoneChange != true) {
+    if (testCase.noMstoneChange === undefined || !testCase.noMstoneChange) {
       let newMstone = Services.prefs.getCharPref(PREF_MSTONE);
       is(originalMstone, newMstone, "preference " + PREF_MSTONE +
          " should have been updated");
@@ -329,8 +329,8 @@ function testShowNotification() {
     gBG.observe(null, "browser-glue-test", "post-update-notification");
 
     let updateBox = notifyBox.getNotificationWithValue("post-update-notification");
-    if (testCase.actions && testCase.actions.indexOf("showNotification") != -1 &&
-        testCase.actions.indexOf("silent") == -1) {
+    if (testCase.actions && testCase.actions.includes("showNotification") &&
+        !testCase.actions.includes("silent")) {
       ok(updateBox, "Update notification box should have been displayed");
       if (updateBox) {
         if (testCase.notificationText) {

@@ -46,11 +46,9 @@ public:
   // Derived classes need to use
   // using GfxInfoBase::GetFeatureStatus;
   // using GfxInfoBase::GetFeatureSuggestedDriverVersion;
-  // using GfxInfoBase::GetWebGLParameter;
   // to import the relevant methods into their namespace.
   NS_IMETHOD GetFeatureStatus(int32_t aFeature, nsACString& aFailureId, int32_t *_retval) override;
   NS_IMETHOD GetFeatureSuggestedDriverVersion(int32_t aFeature, nsAString & _retval) override;
-  NS_IMETHOD GetWebGLParameter(const nsAString & aParam, nsAString & _retval) override;
 
   NS_IMETHOD GetMonitors(JSContext* cx, JS::MutableHandleValue _retval) override;
   NS_IMETHOD GetFailures(uint32_t *failureCount, int32_t** indices, char ***failures) override;
@@ -63,7 +61,9 @@ public:
   NS_IMETHOD GetUsingGPUProcess(bool *aOutValue) override;
   NS_IMETHOD GetWebRenderEnabled(bool* aWebRenderEnabled) override;
   NS_IMETHOD GetIsHeadless(bool* aIsHeadless) override;
+  NS_IMETHOD GetUsesTiling(bool* aUsesTiling) override;
   NS_IMETHOD GetOffMainThreadPaintEnabled(bool* aOffMainThreadPaintEnabled) override;
+  NS_IMETHOD GetOffMainThreadPaintWorkerCount(int32_t* aOffMainThreadPaintWorkerCount) override;
 
   // Initialization function. If you override this, you must call this class's
   // version of Init first.

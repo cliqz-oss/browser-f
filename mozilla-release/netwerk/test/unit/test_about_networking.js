@@ -3,14 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const gDashboard = Cc['@mozilla.org/network/dashboard;1']
   .getService(Ci.nsIDashboard);
 
-const gServerSocket = Components.classes["@mozilla.org/network/server-socket;1"]
-                             .createInstance(Components.interfaces.nsIServerSocket);
+const gServerSocket = Cc["@mozilla.org/network/server-socket;1"]
+                             .createInstance(Ci.nsIServerSocket);
 const gHttpServer = new HttpServer();
 
 add_test(function test_http() {

@@ -4,22 +4,16 @@
 
 /* eslint-env mozilla/frame-script */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/BrowserUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/RemoteAddonsChild.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbUtils",
+ChromeUtils.defineModuleGetter(this, "PageThumbUtils",
   "resource://gre/modules/PageThumbUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
 
 if (AppConstants.MOZ_CRASHREPORTER) {
@@ -120,11 +114,7 @@ var WebProgressListener = {
   },
 
   _send(name, data, objects) {
-    if (RemoteAddonsChild.useSyncWebProgress) {
-      sendRpcMessage(name, data, objects);
-    } else {
-      sendAsyncMessage(name, data, objects);
-    }
+    sendAsyncMessage(name, data, objects);
   },
 
   onStateChange: function onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -192,10 +182,12 @@ var WebProgressListener = {
         : null;
 
       if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
-        let uri = aLocationURI.clone();
+        let uri = aLocationURI;
         try {
           // If the current URI contains a username/password, remove it.
-          uri.userPass = "";
+          uri = uri.mutate()
+                   .setUserPass("")
+                   .finalize();
         } catch (ex) { /* Ignore failures on about: URIs. */ }
         CrashReporter.annotateCrashReport("URL", uri.spec);
       }
@@ -224,6 +216,11 @@ var WebProgressListener = {
     json.state = aState;
     json.status = SecurityUI.getSSLStatusAsString();
 
+    json.matchedList = null;
+    if (aRequest && aRequest instanceof Ci.nsIClassifiedChannel) {
+      json.matchedList = aRequest.matchedList;
+    }
+
     this._send("Content:SecurityChange", json, objects);
   },
 
@@ -243,7 +240,7 @@ var WebProgressListener = {
         return this;
     }
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -340,7 +337,9 @@ var WebNavigation =  {
       try {
         let url = Services.io.newURI(uri);
         // If the current URI contains a username/password, remove it.
-        url.userPass = "";
+        url = url.mutate()
+                 .setUserPass("")
+                 .finalize();
         annotation = url.spec;
       } catch (ex) { /* Ignore failures to parse and failures
                       on about: URIs. */ }
@@ -600,15 +599,6 @@ addMessageListener("Browser:CreateAboutBlank", function(aMessage) {
   principal = BrowserUtils.principalWithMatchingOA(principal, content.document.nodePrincipal);
   docShell.createAboutBlankContentViewer(principal);
 });
-
-// The AddonsChild needs to be rooted so that it stays alive as long as
-// the tab.
-var AddonsChild = RemoteAddonsChild.init(this);
-if (AddonsChild) {
-  addEventListener("unload", () => {
-    RemoteAddonsChild.uninit(AddonsChild);
-  });
-}
 
 addMessageListener("InPermitUnload", msg => {
   let inPermitUnload = docShell.contentViewer && docShell.contentViewer.inPermitUnload;

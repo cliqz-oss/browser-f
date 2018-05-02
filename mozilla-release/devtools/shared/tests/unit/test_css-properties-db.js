@@ -22,8 +22,7 @@
 const {PSEUDO_ELEMENTS, CSS_PROPERTIES, PREFERENCES} = require("devtools/shared/css/generated/properties-db");
 const {generateCssProperties} = require("devtools/server/actors/css-properties");
 const {Preferences} = require("resource://gre/modules/Preferences.jsm");
-
-Components.utils.importGlobalProperties(["InspectorUtils"]);
+const InspectorUtils = require("InspectorUtils");
 
 function run_test() {
   const propertiesErrorMessage = "If this assertion fails, then the client side CSS " +
@@ -72,7 +71,7 @@ function run_test() {
    */
   const mismatches = getKeyMismatches(platformProperties, CSS_PROPERTIES)
     // Filter out OS-specific properties.
-    .filter(name => name && name.indexOf("-moz-osx-") === -1);
+    .filter(name => name && !name.includes("-moz-osx-"));
 
   if (mismatches.length === 0) {
     ok(true, "No client and platform CSS property database mismatches were found.");

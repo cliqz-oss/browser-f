@@ -44,7 +44,9 @@ module.exports = {
     "no-unused-expressions": "error",
 
     // No declaring variables that are never used
-    "no-unused-vars": ["error", {"args": "none", "varsIgnorePattern": "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$"}],
+    "no-unused-vars": ["error", {
+      "args": "none", "vars": "all"
+    }],
 
     // No using variables before defined
     "no-use-before-define": "error",
@@ -58,7 +60,7 @@ module.exports = {
     "comma-dangle": ["error", "always-multiline"],
 
     // Warn about cyclomatic complexity in functions.
-    "complexity": ["error", {"max": 20}],
+    "complexity": ["error", {"max": 26}],
 
     // Enforce dots on the next line with property name.
     "dot-location": ["error", "property"],

@@ -11,6 +11,7 @@
 #include "gfxFontConstants.h"
 #include "gfxFontFeatures.h"
 #include "gfxFontUtils.h"
+#include "gfxFontVariations.h"
 #include "nsTArray.h"
 #include "nsTHashtable.h"
 #include "mozilla/HashFunctions.h"
@@ -96,6 +97,14 @@ protected:
 private:
     gfxCharacterMap(const gfxCharacterMap&);
     gfxCharacterMap& operator=(const gfxCharacterMap&);
+};
+
+// Info on an individual font feature, for reporting available features
+// to DevTools via the GetFeatureInfo method.
+struct gfxFontFeatureInfo {
+    uint32_t mTag;
+    uint32_t mScript;
+    uint32_t mLangSys;
 };
 
 class gfxFontEntry {
@@ -344,6 +353,22 @@ public:
 
     bool SupportsScriptInGSUB(const hb_tag_t* aScriptTags);
 
+    // For variation font support, which is not yet implemented on all
+    // platforms; default implementations assume it is not present.
+    virtual bool HasVariations()
+    {
+        return false;
+    }
+    virtual void GetVariationAxes(nsTArray<gfxFontVariationAxis>& aVariationAxes)
+    {
+    }
+    virtual void GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances)
+    {
+    }
+
+    // Get the font's list of features (if any) for DevTools support.
+    void GetFeatureInfo(nsTArray<gfxFontFeatureInfo>& aFeatureInfo);
+
     nsString         mName;
     nsString         mFamilyName;
 
@@ -388,6 +413,7 @@ public:
     // list of gfxFonts that are using SVG glyphs
     nsTArray<gfxFont*> mFontsUsingSVGGlyphs;
     nsTArray<gfxFontFeature> mFeatureSettings;
+    nsTArray<gfxFontVariation> mVariationSettings;
     mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,bool>> mSupportedFeatures;
     mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,hb_set_t*>> mFeatureInputs;
     uint32_t         mLanguageOverride;

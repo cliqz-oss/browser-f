@@ -6,6 +6,7 @@
 
 #include "nsSVGAnimatedTransformList.h"
 
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/SVGAnimatedTransformList.h"
 #include "mozilla/dom/SVGAnimationElement.h"
 #include "mozilla/Move.h"
@@ -14,14 +15,14 @@
 #include "nsSMILValue.h"
 #include "SVGContentUtils.h"
 #include "SVGTransformListSMILType.h"
-#include "nsIDOMMutationEvent.h"
 
 namespace mozilla {
 
 using namespace dom;
 
 nsresult
-nsSVGAnimatedTransformList::SetBaseValueString(const nsAString& aValue)
+nsSVGAnimatedTransformList::SetBaseValueString(const nsAString& aValue,
+                                               nsSVGElement* aSVGElement)
 {
   SVGTransformList newBaseValue;
   nsresult rv = newBaseValue.SetValueFromString(aValue);
@@ -29,11 +30,12 @@ nsSVGAnimatedTransformList::SetBaseValueString(const nsAString& aValue)
     return rv;
   }
 
-  return SetBaseValue(newBaseValue);
+  return SetBaseValue(newBaseValue, aSVGElement);
 }
 
 nsresult
-nsSVGAnimatedTransformList::SetBaseValue(const SVGTransformList& aValue)
+nsSVGAnimatedTransformList::SetBaseValue(const SVGTransformList& aValue,
+                                         nsSVGElement* aSVGElement)
 {
   SVGAnimatedTransformList *domWrapper =
     SVGAnimatedTransformList::GetDOMWrapperIfExists(this);
@@ -60,7 +62,10 @@ nsSVGAnimatedTransformList::SetBaseValue(const SVGTransformList& aValue)
     domWrapper->InternalBaseValListWillChangeLengthTo(mBaseVal.Length());
   } else {
     mIsAttrSet = true;
-    mHadTransformBeforeLastBaseValChange = hadTransform;
+    // We only need to reconstruct the frame for aSVGElement if it already
+    // exists and the stacking context changes because a transform is created.
+    mRequiresFrameReconstruction =
+      aSVGElement->GetPrimaryFrame() && !hadTransform;
   }
   return rv;
 }
@@ -68,7 +73,7 @@ nsSVGAnimatedTransformList::SetBaseValue(const SVGTransformList& aValue)
 void
 nsSVGAnimatedTransformList::ClearBaseValue()
 {
-  mHadTransformBeforeLastBaseValChange = HasTransform();
+  mRequiresFrameReconstruction = !HasTransform();
 
   SVGAnimatedTransformList *domWrapper =
     SVGAnimatedTransformList::GetDOMWrapperIfExists(this);
@@ -119,9 +124,9 @@ nsSVGAnimatedTransformList::SetAnimValue(const SVGTransformList& aValue,
   }
   int32_t modType;
   if(prevSet) {
-    modType = nsIDOMMutationEvent::MODIFICATION;
+    modType = MutationEventBinding::MODIFICATION;
   } else {
-    modType = nsIDOMMutationEvent::ADDITION;
+    modType = MutationEventBinding::ADDITION;
   }
   aElement->DidAnimateTransformList(modType);
   return NS_OK;
@@ -143,9 +148,9 @@ nsSVGAnimatedTransformList::ClearAnimValue(nsSVGElement *aElement)
   mAnimVal = nullptr;
   int32_t modType;
   if (HasTransform() || aElement->GetAnimateMotionTransform()) {
-    modType = nsIDOMMutationEvent::MODIFICATION;
+    modType = MutationEventBinding::MODIFICATION;
   } else {
-    modType = nsIDOMMutationEvent::REMOVAL;
+    modType = MutationEventBinding::REMOVAL;
   }
   aElement->DidAnimateTransformList(modType);
 }

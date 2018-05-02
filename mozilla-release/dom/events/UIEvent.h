@@ -36,6 +36,7 @@ public:
 
   // Forward to Event
   NS_FORWARD_TO_EVENT_NO_SERIALIZATION_NO_DUPLICATION
+  using Event::GetCurrentTarget;  // Because the forwarding thing shadows it.
   NS_IMETHOD DuplicatePrivateData() override;
   NS_IMETHOD_(void) Serialize(IPC::Message* aMsg, bool aSerializeInterfaceType) override;
   NS_IMETHOD_(bool) Deserialize(const IPC::Message* aMsg, PickleIterator* aIter) override;
@@ -46,7 +47,9 @@ public:
                                                const UIEventInit& aParam,
                                                ErrorResult& aRv);
 
-  virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
+  virtual JSObject*
+    WrapObjectInternal(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override
   {
     return UIEventBinding::Wrap(aCx, this, aGivenProto);
   }
@@ -80,7 +83,7 @@ public:
   int32_t PageX() const;
   int32_t PageY() const;
 
-  virtual uint32_t Which()
+  virtual uint32_t Which(CallerType aCallerType = CallerType::System)
   {
     MOZ_ASSERT(mEvent->mClass != eKeyboardEventClass,
                "Key events should override Which()");
@@ -121,6 +124,7 @@ protected:
 #define NS_FORWARD_TO_UIEVENT                               \
   NS_FORWARD_NSIDOMUIEVENT(UIEvent::)                       \
   NS_FORWARD_TO_EVENT_NO_SERIALIZATION_NO_DUPLICATION       \
+  using Event::GetCurrentTarget;  /* Forwarding shadows */  \
   NS_IMETHOD DuplicatePrivateData() override                \
   {                                                         \
     return UIEvent::DuplicatePrivateData();                 \

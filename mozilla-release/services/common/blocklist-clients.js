@@ -4,31 +4,29 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["AddonBlocklistClient",
-                         "GfxBlocklistClient",
-                         "OneCRLBlocklistClient",
-                         "PinningBlocklistClient",
-                         "PluginBlocklistClient"];
+var EXPORTED_SYMBOLS = ["AddonBlocklistClient",
+                        "GfxBlocklistClient",
+                        "OneCRLBlocklistClient",
+                        "PinningBlocklistClient",
+                        "PluginBlocklistClient"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-const { OS } = Cu.import("resource://gre/modules/osfile.jsm", {});
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 Cu.importGlobalProperties(["fetch"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Kinto",
-                                  "resource://services-common/kinto-offline-client.js");
-XPCOMUtils.defineLazyModuleGetter(this, "KintoHttpClient",
-                                  "resource://services-common/kinto-http-client.js");
-XPCOMUtils.defineLazyModuleGetter(this, "FirefoxAdapter",
-                                  "resource://services-common/kinto-storage-adapter.js");
-XPCOMUtils.defineLazyModuleGetter(this, "CanonicalJSON",
-                                  "resource://gre/modules/CanonicalJSON.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UptakeTelemetry",
-                                  "resource://services-common/uptake-telemetry.js");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Kinto",
+                               "resource://services-common/kinto-offline-client.js");
+ChromeUtils.defineModuleGetter(this, "KintoHttpClient",
+                               "resource://services-common/kinto-http-client.js");
+ChromeUtils.defineModuleGetter(this, "FirefoxAdapter",
+                               "resource://services-common/kinto-storage-adapter.js");
+ChromeUtils.defineModuleGetter(this, "CanonicalJSON",
+                               "resource://gre/modules/CanonicalJSON.jsm");
+ChromeUtils.defineModuleGetter(this, "UptakeTelemetry",
+                               "resource://services-common/uptake-telemetry.js");
 
 const KEY_APPDIR                             = "XCurProcD";
 const PREF_SETTINGS_SERVER                   = "services.settings.server";
@@ -65,7 +63,7 @@ function mergeChanges(collection, localRecords, changes) {
 
   return Object.values(records)
     // Filter out deleted records.
-    .filter((record) => record.deleted != true)
+    .filter((record) => !record.deleted)
     // Sort list by record id.
     .sort((a, b) => {
       if (a.id < b.id) {
@@ -392,7 +390,7 @@ async function updatePinningList(records) {
   for (let item of records) {
     try {
       const {pinType, pins = [], versions} = item;
-      if (versions.indexOf(Services.appinfo.version) != -1) {
+      if (versions.includes(Services.appinfo.version)) {
         if (pinType == "KeyPin" && pins.length) {
           siteSecurityService.setKeyPins(item.hostName,
               item.includeSubdomains,
@@ -438,7 +436,7 @@ async function updateJSONBlocklist(filename, records) {
   }
 }
 
-this.OneCRLBlocklistClient = new BlocklistClient(
+var OneCRLBlocklistClient = new BlocklistClient(
   Services.prefs.getCharPref(PREF_BLOCKLIST_ONECRL_COLLECTION),
   PREF_BLOCKLIST_ONECRL_CHECKED_SECONDS,
   updateCertBlocklist,
@@ -446,28 +444,28 @@ this.OneCRLBlocklistClient = new BlocklistClient(
   "onecrl.content-signature.mozilla.org"
 );
 
-this.AddonBlocklistClient = new BlocklistClient(
+var AddonBlocklistClient = new BlocklistClient(
   Services.prefs.getCharPref(PREF_BLOCKLIST_ADDONS_COLLECTION),
   PREF_BLOCKLIST_ADDONS_CHECKED_SECONDS,
   (records) => updateJSONBlocklist(this.AddonBlocklistClient.filename, records),
   Services.prefs.getCharPref(PREF_BLOCKLIST_BUCKET)
 );
 
-this.GfxBlocklistClient = new BlocklistClient(
+var GfxBlocklistClient = new BlocklistClient(
   Services.prefs.getCharPref(PREF_BLOCKLIST_GFX_COLLECTION),
   PREF_BLOCKLIST_GFX_CHECKED_SECONDS,
   (records) => updateJSONBlocklist(this.GfxBlocklistClient.filename, records),
   Services.prefs.getCharPref(PREF_BLOCKLIST_BUCKET)
 );
 
-this.PluginBlocklistClient = new BlocklistClient(
+var PluginBlocklistClient = new BlocklistClient(
   Services.prefs.getCharPref(PREF_BLOCKLIST_PLUGINS_COLLECTION),
   PREF_BLOCKLIST_PLUGINS_CHECKED_SECONDS,
   (records) => updateJSONBlocklist(this.PluginBlocklistClient.filename, records),
   Services.prefs.getCharPref(PREF_BLOCKLIST_BUCKET)
 );
 
-this.PinningPreloadClient = new BlocklistClient(
+var PinningPreloadClient = new BlocklistClient(
   Services.prefs.getCharPref(PREF_BLOCKLIST_PINNING_COLLECTION),
   PREF_BLOCKLIST_PINNING_CHECKED_SECONDS,
   updatePinningList,

@@ -3,18 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["fetch"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
-const ACTIVITY_STREAM_ENABLED_PREF = "browser.newtabpage.activity-stream.enabled";
 const BROWSER_READY_NOTIFICATION = "sessionstore-windows-restored";
-const PREF_CHANGED_TOPIC = "nsPref:changed";
-const REASON_SHUTDOWN_ON_PREF_CHANGE = "PREF_OFF";
-const REASON_STARTUP_ON_PREF_CHANGE = "PREF_ON";
 const RESOURCE_BASE = "resource://activity-stream";
 
 const ACTIVITY_STREAM_OPTIONS = {newTabURL: "about:newtab"};
@@ -48,8 +43,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "ActivityStream",
 
 /**
  * init - Initializes an instance of ActivityStream. This could be called by
- *        the startup() function exposed by bootstrap.js, or it could be called
- *        when ACTIVITY_STREAM_ENABLED_PREF is changed from false to true.
+ *        the startup() function exposed by bootstrap.js.
  *
  * @param  {string} reason - Reason for initialization. Could be install, upgrade, or PREF_ON
  */
@@ -69,8 +63,7 @@ function init(reason) {
 
 /**
  * uninit - Uninitializes the activityStream instance, if it exsits.This could be
- *          called by the shutdown() function exposed by bootstrap.js, or it could
- *          be called when ACTIVITY_STREAM_ENABLED_PREF is changed from true to false.
+ *          called by the shutdown() function exposed by bootstrap.js.
  *
  * @param  {type} reason Reason for uninitialization. Could be uninstall, upgrade, or PREF_OFF
  */
@@ -79,18 +72,6 @@ function uninit(reason) {
   if (activityStream) {
     activityStream.uninit(reason);
     activityStream = null;
-  }
-}
-
-/**
- * onPrefChanged - handler for changes to ACTIVITY_STREAM_ENABLED_PREF
- *
- */
-function onPrefChanged() {
-  if (Services.prefs.getBoolPref(ACTIVITY_STREAM_ENABLED_PREF, false)) {
-    init(REASON_STARTUP_ON_PREF_CHANGE);
-  } else {
-    uninit(REASON_SHUTDOWN_ON_PREF_CHANGE);
   }
 }
 
@@ -131,14 +112,7 @@ function migratePref(oldPrefName, cbIfNotDefault) {
  */
 function onBrowserReady() {
   waitingForBrowserReady = false;
-
-  // Listen for changes to the pref that enables Activity Stream
-  Services.prefs.addObserver(ACTIVITY_STREAM_ENABLED_PREF, observe); // eslint-disable-line no-use-before-define
-
-  // Only initialize if the pref is true
-  if (Services.prefs.getBoolPref(ACTIVITY_STREAM_ENABLED_PREF, false)) {
-    init(startupReason);
-  }
+  init(startupReason);
 
   // Do a one time migration of Tiles about:newtab prefs that have been modified
   migratePref("browser.newtabpage.rows", rows => {
@@ -146,9 +120,13 @@ function onBrowserReady() {
     if (rows <= 0) {
       Services.prefs.setBoolPref("browser.newtabpage.activity-stream.showTopSites", false);
     } else {
-      // Assume we want a full row (6 sites per row)
-      Services.prefs.setIntPref("browser.newtabpage.activity-stream.topSitesCount", rows * 6);
+      Services.prefs.setIntPref("browser.newtabpage.activity-stream.topSitesRows", rows);
     }
+  });
+
+  // Old activity stream topSitesCount pref showed 6 per row
+  migratePref("browser.newtabpage.activity-stream.topSitesCount", count => {
+    Services.prefs.setIntPref("browser.newtabpage.activity-stream.topSitesRows", Math.ceil(count / 6));
   });
 }
 
@@ -161,11 +139,6 @@ function observe(subject, topic, data) {
       Services.obs.removeObserver(observe, BROWSER_READY_NOTIFICATION);
       // Avoid running synchronously during this event that's used for timing
       Services.tm.dispatchToMainThread(() => onBrowserReady());
-      break;
-    case PREF_CHANGED_TOPIC:
-      if (data === ACTIVITY_STREAM_ENABLED_PREF) {
-        onPrefChanged();
-      }
       break;
   }
 }
@@ -198,9 +171,6 @@ this.shutdown = function shutdown(data, reason) {
   // Stop waiting for browser to be ready
   if (waitingForBrowserReady) {
     Services.obs.removeObserver(observe, BROWSER_READY_NOTIFICATION);
-  } else {
-    // Stop listening to the pref that enables Activity Stream
-    Services.prefs.removeObserver(ACTIVITY_STREAM_ENABLED_PREF, observe);
   }
 
   // Unload any add-on modules that might might have been imported

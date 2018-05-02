@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const HAVE_CSS_WINDOW_DRAG_SUPPORT = ["win", "macosx"].includes(AppConstants.platform);
 
-this.EXPORTED_SYMBOLS = [ "WindowDraggingElement" ];
+var EXPORTED_SYMBOLS = [ "WindowDraggingElement" ];
 
-this.WindowDraggingElement = function WindowDraggingElement(elem) {
+function WindowDraggingElement(elem) {
   this._elem = elem;
   this._window = elem.ownerGlobal;
   if (HAVE_CSS_WINDOW_DRAG_SUPPORT && !this.isPanel()) {
@@ -16,7 +16,7 @@ this.WindowDraggingElement = function WindowDraggingElement(elem) {
   }
 
   this._elem.addEventListener("mousedown", this);
-};
+}
 
 WindowDraggingElement.prototype = {
   mouseDownCheck(e) { return true; },
@@ -45,14 +45,14 @@ WindowDraggingElement.prototype = {
       parent = parent.parentNode;
     }
     while (target != this._elem) {
-      if (this.dragTags.indexOf(target.localName) == -1)
+      if (!this.dragTags.includes(target.localName))
         return false;
       target = target.parentNode;
     }
     return true;
   },
   isPanel() {
-    return this._elem instanceof Components.interfaces.nsIDOMXULElement &&
+    return this._elem instanceof Ci.nsIDOMXULElement &&
            this._elem.localName == "panel";
   },
   handleEvent(aEvent) {
@@ -61,26 +61,29 @@ WindowDraggingElement.prototype = {
       case "mousedown":
         if (!this.shouldDrag(aEvent))
           return;
-
-        if (/^gtk/i.test(AppConstants.MOZ_WIDGET_TOOLKIT)) {
-          // On GTK, there is a toolkit-level function which handles
-          // window dragging, which must be used.
-          this._window.beginWindowMove(aEvent, isPanel ? this._elem : null);
-          break;
-        }
-        if (isPanel) {
-          let screenRect = this._elem.getOuterScreenRect();
-          this._deltaX = aEvent.screenX - screenRect.left;
-          this._deltaY = aEvent.screenY - screenRect.top;
-        } else {
-          this._deltaX = aEvent.screenX - this._window.screenX;
-          this._deltaY = aEvent.screenY - this._window.screenY;
+        if (!/^gtk/i.test(AppConstants.MOZ_WIDGET_TOOLKIT)) {
+          if (isPanel) {
+            let screenRect = this._elem.getOuterScreenRect();
+            this._deltaX = aEvent.screenX - screenRect.left;
+            this._deltaY = aEvent.screenY - screenRect.top;
+          } else {
+            this._deltaX = aEvent.screenX - this._window.screenX;
+            this._deltaY = aEvent.screenY - this._window.screenY;
+          }
         }
         this._draggingWindow = true;
         this._window.addEventListener("mousemove", this);
         this._window.addEventListener("mouseup", this);
         break;
       case "mousemove":
+        if (/^gtk/i.test(AppConstants.MOZ_WIDGET_TOOLKIT)) {
+          // On GTK, there is a toolkit-level function which handles
+          // window dragging. We want to start moving the window
+          // on the first mousemove event after mousedown.
+          this._window.beginWindowMove(aEvent, isPanel ? this._elem : null);
+          this._window.removeEventListener("mousemove", this);
+          break;
+        }
         if (this._draggingWindow) {
           let toDrag = this.isPanel() ? this._elem : this._window;
           toDrag.moveTo(aEvent.screenX - this._deltaX, aEvent.screenY - this._deltaY);

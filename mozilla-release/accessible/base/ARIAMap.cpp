@@ -578,7 +578,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] =
   },
   { // document
     &nsGkAtoms::document,
-    roles::DOCUMENT,
+    roles::NON_NATIVE_DOCUMENT,
     kUseMapRole,
     eNoValue,
     eNoAction,
@@ -615,6 +615,37 @@ static const nsRoleMapEntry sWAIRoleMaps[] =
     eNoAction,
     eNoLiveAttr,
     eLandmark,
+    kNoReqStates
+  },
+  { // graphics-document
+    &nsGkAtoms::graphicsDocument,
+    roles::NON_NATIVE_DOCUMENT,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
+    kNoReqStates,
+    eReadonlyUntilEditable
+  },
+  { // graphics-object
+    &nsGkAtoms::graphicsObject,
+    roles::GROUPING,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
+    kNoReqStates
+  },
+  { // graphics-symbol
+    &nsGkAtoms::graphicsSymbol,
+    roles::GRAPHIC,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
     kNoReqStates
   },
   { // grid

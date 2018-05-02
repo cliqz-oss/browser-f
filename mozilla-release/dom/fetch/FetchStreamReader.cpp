@@ -16,8 +16,6 @@
 namespace mozilla {
 namespace dom {
 
-using namespace workers;
-
 namespace {
 
 class FetchStreamReaderWorkerHolder final : public WorkerHolder
@@ -30,7 +28,7 @@ public:
     , mWasNotified(false)
   {}
 
-  bool Notify(Status aStatus) override
+  bool Notify(WorkerStatus aStatus) override
   {
     if (!mWasNotified) {
       mWasNotified = true;

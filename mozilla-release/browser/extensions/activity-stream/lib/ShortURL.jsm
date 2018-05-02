@@ -1,6 +1,5 @@
-const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "IDNService", "@mozilla.org/network/idn-service;1", "nsIIDNService");
 
@@ -34,8 +33,6 @@ function getETLD(host) {
   }
 }
 
-this.getETLD = getETLD;
-
 /**
  * shortURL - Creates a short version of a link's url, used for display purposes
  *            e.g. {url: http://www.foosite.com}  =>  "foosite"
@@ -44,7 +41,7 @@ this.getETLD = getETLD;
  *         {str} link.url (required)- The url of the link
  * @return {str}   A short url
  */
-this.shortURL = function shortURL({url}) {
+function shortURL({url}) {
   if (!url) {
     return "";
   }
@@ -68,6 +65,6 @@ this.shortURL = function shortURL({url}) {
   // Ideally get the short eTLD-less host but fall back to longer url parts
   return handleIDNHost(hostname.slice(0, eTLDExtra) || hostname) ||
     parsed.pathname || parsed.href;
-};
+}
 
-this.EXPORTED_SYMBOLS = ["shortURL", "getETLD"];
+const EXPORTED_SYMBOLS = ["shortURL", "getETLD"];

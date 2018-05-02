@@ -1,7 +1,7 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/osfile.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /**
  * Tests logging by passing OS.Shared.LOG both an object with its own
@@ -17,14 +17,14 @@ function run_test() {
   let consoleListener = {
     observe(aMessage) {
       // Ignore unexpected messages.
-      if (!(aMessage instanceof Components.interfaces.nsIConsoleMessage)) {
+      if (!(aMessage instanceof Ci.nsIConsoleMessage)) {
         return;
       }
       // This is required, as printing to the |Services.console|
       // while in the observe function causes an exception.
       executeSoon(function() {
         info("Observing message " + aMessage.message);
-        if (aMessage.message.indexOf("TEST OS") < 0) {
+        if (!aMessage.message.includes("TEST OS")) {
           return;
         }
 

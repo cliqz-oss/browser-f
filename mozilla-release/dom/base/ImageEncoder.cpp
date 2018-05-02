@@ -6,6 +6,7 @@
 
 #include "ImageEncoder.h"
 #include "mozilla/dom/CanvasRenderingContext2D.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
 #include "mozilla/layers/AsyncCanvasRenderer.h"
@@ -16,7 +17,6 @@
 #include "nsIThreadPool.h"
 #include "nsNetUtil.h"
 #include "nsXPCOMCIDInternal.h"
-#include "WorkerPrivate.h"
 #include "YCbCrUtils.h"
 
 using namespace mozilla::gfx;
@@ -89,7 +89,7 @@ public:
     , mEncodeCompleteCallback(aEncodeCompleteCallback)
     , mFailed(false)
   {
-    if (!NS_IsMainThread() && workers::GetCurrentThreadWorkerPrivate()) {
+    if (!NS_IsMainThread() && GetCurrentThreadWorkerPrivate()) {
       mCreationEventTarget = GetCurrentThreadEventTarget();
     } else {
       mCreationEventTarget = GetMainThreadEventTarget();
@@ -145,7 +145,7 @@ class EncodingRunnable : public Runnable
   virtual ~EncodingRunnable() {}
 
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(EncodingRunnable, Runnable)
 
   EncodingRunnable(const nsAString& aType,
                    const nsAString& aOptions,
@@ -242,8 +242,6 @@ private:
   bool mUsePlaceholder;
   bool mUsingCustomOptions;
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(EncodingRunnable, Runnable);
 
 StaticRefPtr<nsIThreadPool> ImageEncoder::sThreadPool;
 

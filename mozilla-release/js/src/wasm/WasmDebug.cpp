@@ -21,10 +21,12 @@
 #include "mozilla/BinarySearch.h"
 
 #include "ds/Sort.h"
+#include "gc/FreeOp.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/MacroAssembler.h"
+#include "util/StringBuffer.h"
+#include "util/Text.h"
 #include "vm/Debugger.h"
-#include "vm/StringBuffer.h"
 #include "wasm/WasmBinaryToText.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmValidate.h"
@@ -393,9 +395,9 @@ DebugState::toggleBreakpointTrap(JSRuntime* rt, uint32_t offset, bool enabled)
         return;
     size_t debugTrapOffset = callSite->returnAddressOffset();
 
-    const CodeSegment& codeSegment = code_->segment(Tier::Debug);
-    const CodeRange* codeRange = code_->lookupRange(codeSegment.base() + debugTrapOffset);
-    MOZ_ASSERT(codeRange && codeRange->isFunction());
+    const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
+    const CodeRange* codeRange = code_->lookupFuncRange(codeSegment.base() + debugTrapOffset);
+    MOZ_ASSERT(codeRange);
 
     if (stepModeCounters_.initialized() && stepModeCounters_.lookup(codeRange->funcIndex()))
         return; // no need to toggle when step mode is enabled
@@ -512,7 +514,7 @@ DebugState::adjustEnterAndLeaveFrameTrapsState(JSContext* cx, bool enabled)
     if (wasEnabled == stillEnabled)
         return;
 
-    const CodeSegment& codeSegment = code_->segment(Tier::Debug);
+    const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
     AutoWritableJitCode awjc(cx->runtime(), codeSegment.base(), codeSegment.length());
     AutoFlushICache afc("Code::adjustEnterAndLeaveFrameTrapsState");
     AutoFlushICache::setRange(uintptr_t(codeSegment.base()), codeSegment.length());
@@ -577,7 +579,7 @@ DebugState::getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleVal
         return true;
     }
 
-    uint8_t* globalData = instance.globalSegment().globalData();
+    uint8_t* globalData = instance.globalData();
     void* dataPtr = globalData + global.offset();
     switch (global.type()) {
       case ValType::I32: {
@@ -680,7 +682,17 @@ DebugState::getSourceMappingURL(JSContext* cx, MutableHandleString result) const
         if (!str)
             return false;
         result.set(str);
-        break;
+        return true;
+    }
+
+    // Check presence of "SourceMap:" HTTP response header.
+    char* sourceMapURL = metadata().sourceMapURL.get();
+    if (sourceMapURL && strlen(sourceMapURL)) {
+        UTF8Chars utf8Chars(sourceMapURL, strlen(sourceMapURL));
+        JSString* str = JS_NewStringCopyUTF8N(cx, utf8Chars);
+        if (!str)
+            return false;
+        result.set(str);
     }
     return true;
 }

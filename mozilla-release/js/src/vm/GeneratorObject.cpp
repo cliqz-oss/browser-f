@@ -6,12 +6,11 @@
 
 #include "vm/GeneratorObject.h"
 
-#include "jsobj.h"
-
-#include "jsatominlines.h"
-#include "jsscriptinlines.h"
+#include "vm/JSObject.h"
 
 #include "vm/ArrayObject-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Stack-inl.h"
 
@@ -95,7 +94,7 @@ GeneratorObject::suspend(JSContext* cx, HandleObject obj, AbstractFramePtr frame
 }
 
 void
-GeneratorObject::finalSuspend(JSContext* cx, HandleObject obj)
+GeneratorObject::finalSuspend(HandleObject obj)
 {
     GeneratorObject* genObj = &obj->as<GeneratorObject>();
     MOZ_ASSERT(genObj->isRunning() || genObj->isClosing());

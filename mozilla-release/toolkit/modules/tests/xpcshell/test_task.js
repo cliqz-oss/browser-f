@@ -8,17 +8,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 /// Globals
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
-                                  "resource://gre/modules/Task.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Task",
+                               "resource://gre/modules/Task.jsm");
 
 /**
  * Returns a promise that will be resolved with the given value, when an event
@@ -363,7 +358,7 @@ function do_check_rewritten_stack(frames, ex) {
     let line = match[0];
     let frame = frames[framesFound];
     info("Searching for " + frame + " in line " + line);
-    if (line.indexOf(frame) != -1) {
+    if (line.includes(frame)) {
       info("Found " + frame);
       ++framesFound;
     } else {
@@ -378,9 +373,9 @@ function do_check_rewritten_stack(frames, ex) {
            " in " + stack.substr(reLine.lastIndex));
 
   info("Ensuring that we have removed Task.jsm, Promise.jsm");
-  Assert.ok(stack.indexOf("Task.jsm") == -1);
-  Assert.ok(stack.indexOf("Promise.jsm") == -1);
-  Assert.ok(stack.indexOf("Promise-backend.js") == -1);
+  Assert.ok(!stack.includes("Task.jsm"));
+  Assert.ok(!stack.includes("Promise.jsm"));
+  Assert.ok(!stack.includes("Promise-backend.js"));
 }
 
 

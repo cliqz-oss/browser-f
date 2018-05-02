@@ -72,21 +72,20 @@ class CustomElementCallbackReaction final : public CustomElementReaction
 void
 CustomElementCallback::Call()
 {
-  IgnoredErrorResult rv;
   switch (mType) {
     case nsIDocument::eConnected:
-      static_cast<LifecycleConnectedCallback *>(mCallback.get())->Call(mThisObject, rv);
+      static_cast<LifecycleConnectedCallback *>(mCallback.get())->Call(mThisObject);
       break;
     case nsIDocument::eDisconnected:
-      static_cast<LifecycleDisconnectedCallback *>(mCallback.get())->Call(mThisObject, rv);
+      static_cast<LifecycleDisconnectedCallback *>(mCallback.get())->Call(mThisObject);
       break;
     case nsIDocument::eAdopted:
       static_cast<LifecycleAdoptedCallback *>(mCallback.get())->Call(mThisObject,
-        mAdoptedCallbackArgs.mOldDocument, mAdoptedCallbackArgs.mNewDocument, rv);
+        mAdoptedCallbackArgs.mOldDocument, mAdoptedCallbackArgs.mNewDocument);
       break;
     case nsIDocument::eAttributeChanged:
       static_cast<LifecycleAttributeChangedCallback *>(mCallback.get())->Call(mThisObject,
-        mArgs.name, mArgs.oldValue, mArgs.newValue, mArgs.namespaceURI, rv);
+        mArgs.name, mArgs.oldValue, mArgs.newValue, mArgs.namespaceURI);
       break;
   }
 }
@@ -284,12 +283,11 @@ CustomElementRegistry::~CustomElementRegistry()
 }
 
 CustomElementDefinition*
-CustomElementRegistry::LookupCustomElementDefinition(const nsAString& aLocalName,
+CustomElementRegistry::LookupCustomElementDefinition(nsAtom* aNameAtom,
                                                      nsAtom* aTypeAtom) const
 {
-  RefPtr<nsAtom> localNameAtom = NS_Atomize(aLocalName);
   CustomElementDefinition* data = mCustomDefinitions.GetWeak(aTypeAtom);
-  if (data && data->mLocalName == localNameAtom) {
+  if (data && data->mLocalName == aNameAtom) {
     return data;
   }
 
@@ -423,6 +421,11 @@ CustomElementRegistry::EnqueueLifecycleCallback(nsIDocument::ElementCallbackType
     definition = aCustomElement->GetCustomElementDefinition();
     if (!definition ||
         definition->mLocalName != aCustomElement->NodeInfo()->NameAtom()) {
+      return;
+    }
+
+    if (!definition->mCallbacks) {
+      // definition has been unlinked.  Don't try to mess with it.
       return;
     }
   }
@@ -1069,7 +1072,7 @@ CustomElementReactionsStack::Enqueue(Element* aElement,
 
   CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
   RefPtr<BackupQueueMicroTask> bqmt = new BackupQueueMicroTask(this);
-  context->DispatchMicroTaskRunnable(bqmt.forget());
+  context->DispatchToMicroTask(bqmt.forget());
 }
 
 void

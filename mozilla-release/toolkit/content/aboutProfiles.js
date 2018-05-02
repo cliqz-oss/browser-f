@@ -4,11 +4,9 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(
   this,
@@ -40,7 +38,7 @@ function findCurrentProfile() {
     }
   }
 
-  // selectedProfile can trow if nothing is selected or if the selected profile
+  // selectedProfile can throw if nothing is selected or if the selected profile
   // has been deleted.
   try {
     return ProfileService.selectedProfile;
@@ -60,21 +58,38 @@ function refreshUI() {
     defaultProfile = ProfileService.defaultProfile;
   } catch (e) {}
 
-  let currentProfile = findCurrentProfile() || defaultProfile;
+  let currentProfile = findCurrentProfile();
 
   let iter = ProfileService.profiles;
   while (iter.hasMoreElements()) {
     let profile = iter.getNext().QueryInterface(Ci.nsIToolkitProfile);
-    display({ profile,
-              isDefault: profile == defaultProfile,
-              isCurrentProfile: profile == currentProfile });
+    let isCurrentProfile = profile == currentProfile;
+    let isInUse = isCurrentProfile;
+    if (!isInUse) {
+      try {
+        let lock = profile.lock({});
+        lock.unlock();
+      } catch (e) {
+        isInUse = true;
+      }
+    }
+    display({
+      profile,
+      isDefault: profile == defaultProfile,
+      isCurrentProfile,
+      isInUse,
+    });
   }
 
   let createButton = document.getElementById("create-button");
   createButton.onclick = createProfileWizard;
 
   let restartSafeModeButton = document.getElementById("restart-in-safe-mode-button");
-  restartSafeModeButton.onclick = function() { restart(true); };
+  if (!Services.policies || Services.policies.isAllowed("safeMode")) {
+    restartSafeModeButton.onclick = function() { restart(true); };
+  } else {
+    restartSafeModeButton.setAttribute("disabled", "true");
+  }
 
   let restartNormalModeButton = document.getElementById("restart-button");
   restartNormalModeButton.onclick = function() { restart(false); };
@@ -102,6 +117,11 @@ function display(profileData) {
   if (profileData.isCurrentProfile) {
     let currentProfile = document.createElement("h3");
     let currentProfileStr = bundle.GetStringFromName("currentProfile");
+    currentProfile.appendChild(document.createTextNode(currentProfileStr));
+    div.appendChild(currentProfile);
+  } else if (profileData.isInUse) {
+    let currentProfile = document.createElement("h3");
+    let currentProfileStr = bundle.GetStringFromName("inUseProfile");
     currentProfile.appendChild(document.createTextNode(currentProfileStr));
     div.appendChild(currentProfile);
   }
@@ -160,7 +180,7 @@ function display(profileData) {
   };
   div.appendChild(renameButton);
 
-  if (!profileData.isCurrentProfile) {
+  if (!profileData.isInUse) {
     let removeButton = document.createElement("button");
     removeButton.appendChild(document.createTextNode(bundle.GetStringFromName("remove")));
     removeButton.onclick = function() {
@@ -179,7 +199,7 @@ function display(profileData) {
     div.appendChild(defaultButton);
   }
 
-  if (!profileData.isCurrentProfile) {
+  if (!profileData.isInUse) {
     let runButton = document.createElement("button");
     runButton.appendChild(document.createTextNode(bundle.GetStringFromName("launchProfile")));
     runButton.onclick = function() {
@@ -289,7 +309,15 @@ function removeProfile(profile) {
     }
   }
 
-  profile.removeInBackground(deleteFiles);
+  try {
+    profile.removeInBackground(deleteFiles);
+  } catch (e) {
+    let title = bundle.GetStringFromName("deleteProfileFailedTitle");
+    let msg = bundle.GetStringFromName("deleteProfileFailedMessage");
+    Services.prompt.alert(window, title, msg);
+    return;
+  }
+
   ProfileService.flush();
   refreshUI();
 }

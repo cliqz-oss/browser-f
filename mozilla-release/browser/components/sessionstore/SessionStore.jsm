@@ -4,12 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionStore"];
-
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
+var EXPORTED_SYMBOLS = ["SessionStore"];
 
 // Current version of the format used by Session Restore.
 const FORMAT_VERSION = 1;
@@ -153,13 +148,13 @@ const RESTORE_TAB_CONTENT_REASON = {
   NAVIGATE_AND_RESTORE: 1,
 };
 
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
-Cu.import("resource://gre/modules/TelemetryTimestamps.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   gSessionStartup: ["@mozilla.org/browser/sessionstartup;1", "nsISessionStartup"],
@@ -173,6 +168,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   DevToolsShim: "chrome://devtools-shim/content/DevToolsShim.jsm",
   GlobalState: "resource:///modules/sessionstore/GlobalState.jsm",
   PrivacyFilter: "resource:///modules/sessionstore/PrivacyFilter.jsm",
+  PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
   RecentWindow: "resource:///modules/RecentWindow.jsm",
   RunState: "resource:///modules/sessionstore/RunState.jsm",
   SessionCookies: "resource:///modules/sessionstore/SessionCookies.jsm",
@@ -185,7 +181,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   TabStateFlusher: "resource:///modules/sessionstore/TabStateFlusher.jsm",
   Utils: "resource://gre/modules/sessionstore/Utils.jsm",
   ViewSourceBrowser: "resource://gre/modules/ViewSourceBrowser.jsm",
-  console: "resource://gre/modules/Console.jsm",
   setTimeout: "resource://gre/modules/Timer.jsm",
 });
 
@@ -209,7 +204,7 @@ function debug(aMsg) {
  */
 var gResistFingerprintingEnabled = false;
 
-this.SessionStore = {
+var SessionStore = {
   get promiseInitialized() {
     return SessionStoreInternal.promiseInitialized;
   },
@@ -1602,37 +1597,45 @@ var SessionStoreInternal = {
     RunState.setQuitting();
 
     if (!syncShutdown) {
-      // We've got some time to shut down, so let's do this properly.
-      // To prevent blocker from breaking the 60 sec limit(which will cause a
-      // crash) of async shutdown during flushing all windows, we resolve the
-      // promise passed to blocker once:
-      // 1. the flushing exceed 50 sec, or
-      // 2. 'oop-frameloader-crashed' or 'ipc:content-shutdown' is observed.
-      // Thus, Firefox still can open the last session on next startup.
+      // We've got some time to shut down, so let's do this properly that there
+      // will be a complete session available upon next startup.
+      // To prevent a blocker from taking longer than the DELAY_CRASH_MS limit
+      // (which will cause a crash) of AsyncShutdown whilst flushing all windows,
+      // we resolve the Promise blocker once:
+      // 1. the flush duration exceeds 10 seconds before DELAY_CRASH_MS, or
+      // 2. 'oop-frameloader-crashed', or
+      // 3. 'ipc:content-shutdown' is observed.
       AsyncShutdown.quitApplicationGranted.addBlocker(
         "SessionStore: flushing all windows",
         () => {
-          var promises = [];
-          promises.push(this.flushAllWindowsAsync(progress));
-          promises.push(this.looseTimer(50000));
+          // Set up the list of promises that will signal a complete sessionstore
+          // shutdown: either all data is saved, or we crashed or the message IPC
+          // channel went away in the meantime.
+          let promises = [this.flushAllWindowsAsync(progress)];
 
-          var promiseOFC = new Promise(resolve => {
-            Services.obs.addObserver(function obs(subject, topic) {
-              Services.obs.removeObserver(obs, topic);
-              resolve();
-            }, "oop-frameloader-crashed");
-          });
-          promises.push(promiseOFC);
+          const observeTopic = topic => {
+            let deferred = PromiseUtils.defer();
+            const cleanup = () => Services.obs.removeObserver(deferred.resolve, topic);
+            Services.obs.addObserver(deferred.resolve, topic);
+            deferred.promise.then(cleanup, cleanup);
+            return deferred;
+          };
 
-          var promiseICS = new Promise(resolve => {
-            Services.obs.addObserver(function obs(subject, topic) {
-              Services.obs.removeObserver(obs, topic);
-              resolve();
-            }, "ipc:content-shutdown");
-          });
-          promises.push(promiseICS);
+          // Build a list of deferred executions that require cleanup once the
+          // Promise race is won.
+          // Ensure that the timer fires earlier than the AsyncShutdown crash timer.
+          let waitTimeMaxMs = Math.max(0, AsyncShutdown.DELAY_CRASH_MS - 10000);
+          let defers = [this.looseTimer(waitTimeMaxMs),
+            observeTopic("oop-frameloader-crashed"), observeTopic("ipc:content-shutdown")];
+          // Add these monitors to the list of Promises to start the race.
+          promises.push(...defers.map(deferred => deferred.promise));
 
-          return Promise.race(promises);
+          return Promise.race(promises)
+            .then(() => {
+              // When a Promise won the race, make sure we clean up the running
+              // monitors.
+              defers.forEach(deferred => deferred.reject());
+            });
         },
         () => progress);
     } else {
@@ -1715,7 +1718,10 @@ var SessionStoreInternal = {
    */
   onQuitApplication: function ssi_onQuitApplication(aData) {
     if (aData == "restart") {
-      this._prefBranch.setBoolPref("sessionstore.resume_session_once", true);
+      if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
+        this._prefBranch.setBoolPref("sessionstore.resume_session_once", true);
+      }
+
       // The browser:purge-session-history notification fires after the
       // quit-application notification so unregister the
       // browser:purge-session-history notification to prevent clearing
@@ -1726,8 +1732,8 @@ var SessionStoreInternal = {
     }
 
     if (aData != "restart") {
-      // Throw away the previous session on shutdown
-      LastSession.clear();
+      // Throw away the previous session on shutdown without notification
+      LastSession.clear(true);
     }
 
     this._uninit();
@@ -3074,7 +3080,7 @@ var SessionStoreInternal = {
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
       let tab = tabbrowser.tabs[i];
-      if (homePages.indexOf(tab.linkedBrowser.currentURI.spec) != -1) {
+      if (homePages.includes(tab.linkedBrowser.currentURI.spec)) {
         removableTabs.push(tab);
       }
     }
@@ -3432,7 +3438,7 @@ var SessionStoreInternal = {
       tabs.push(tab);
 
       if (tabData.hidden) {
-        tabbrowser.hideTab(tab);
+        tabbrowser.hideTab(tab, tabData.extData && tabData.extData.hiddenBy);
       }
 
       if (tabData.pinned) {
@@ -3541,7 +3547,7 @@ var SessionStoreInternal = {
    *        a tab to speculatively connect on mouse hover.
    */
   speculativeConnectOnTabHover(tab) {
-    if (this._restore_on_demand && !tab.__SS_connectionPrepared && tab.hasAttribute("pending")) {
+    if (tab.__SS_lazyData && !tab.__SS_connectionPrepared) {
       let url = this.getLazyTabValue(tab, "url");
       let prepared = this.prepareConnectionToHost(url);
       // This is used to test if a connection has been made beforehand.
@@ -3999,7 +4005,7 @@ var SessionStoreInternal = {
   restoreWindowFeatures: function ssi_restoreWindowFeatures(aWindow, aWinData) {
     var hidden = (aWinData.hidden) ? aWinData.hidden.split(",") : [];
     WINDOW_HIDEABLE_FEATURES.forEach(function(aItem) {
-      aWindow[aItem].visible = hidden.indexOf(aItem) == -1;
+      aWindow[aItem].visible = !hidden.includes(aItem);
     });
 
     if (aWinData.isPopup) {
@@ -4819,18 +4825,17 @@ var SessionStoreInternal = {
     let DELAY_BEAT = 1000;
     let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     let beats = Math.ceil(delay / DELAY_BEAT);
-    let promise =  new Promise(resolve => {
-      timer.initWithCallback(function() {
-        if (beats <= 0) {
-          resolve();
-        }
-        --beats;
-      }, DELAY_BEAT, Ci.nsITimer.TYPE_REPEATING_PRECISE_CAN_SKIP);
-    });
+    let deferred = PromiseUtils.defer();
+    timer.initWithCallback(function() {
+      if (beats <= 0) {
+        deferred.resolve();
+      }
+      --beats;
+    }, DELAY_BEAT, Ci.nsITimer.TYPE_REPEATING_PRECISE_CAN_SKIP);
     // Ensure that the timer is both canceled once we are done with it
     // and not garbage-collected until then.
-    promise.then(() => timer.cancel(), () => timer.cancel());
-    return promise;
+    deferred.promise.then(() => timer.cancel(), () => timer.cancel());
+    return deferred;
   },
 
   /**
@@ -5096,10 +5101,11 @@ var LastSession = {
     this._state = state;
   },
 
-  clear() {
+  clear(silent = false) {
     if (this._state) {
       this._state = null;
-      Services.obs.notifyObservers(null, NOTIFY_LAST_SESSION_CLEARED);
+      if (!silent)
+        Services.obs.notifyObservers(null, NOTIFY_LAST_SESSION_CLEARED);
     }
   }
 };

@@ -1,12 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines/prefs.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines/prefs.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 add_task(async function run_test() {
   let engine = Service.engineManager.get("prefs");
@@ -49,40 +49,45 @@ add_task(async function run_test() {
     Assert.equal(tracker.score, 0);
 
     _("Tell the tracker to start tracking changes.");
-    Svc.Obs.notify("weave:engine:start-tracking");
+    tracker.start();
     prefs.set("testing.int", 23);
+    await tracker.asyncObserver.promiseObserversComplete();
     Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE);
     Assert.equal(tracker.modified, true);
 
     _("Clearing changed IDs reset modified status.");
-    tracker.clearChangedIDs();
+    await tracker.clearChangedIDs();
     Assert.equal(tracker.modified, false);
 
     _("Resetting a pref ups the score, too.");
     prefs.reset("testing.int");
+    await tracker.asyncObserver.promiseObserversComplete();
     Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE * 2);
     Assert.equal(tracker.modified, true);
-    tracker.clearChangedIDs();
+    await tracker.clearChangedIDs();
 
     _("So does changing a pref sync pref.");
     Svc.Prefs.set("prefs.sync.testing.int", false);
+    await tracker.asyncObserver.promiseObserversComplete();
     Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     Assert.equal(tracker.modified, true);
-    tracker.clearChangedIDs();
+    await tracker.clearChangedIDs();
 
     _("Now that the pref sync pref has been flipped, changes to it won't be picked up.");
     prefs.set("testing.int", 42);
+    await tracker.asyncObserver.promiseObserversComplete();
     Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     Assert.equal(tracker.modified, false);
-    tracker.clearChangedIDs();
+    await tracker.clearChangedIDs();
 
     _("Changing some other random pref won't do anything.");
     prefs.set("testing.other", "blergh");
+    await tracker.asyncObserver.promiseObserversComplete();
     Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE * 3);
     Assert.equal(tracker.modified, false);
 
   } finally {
-    Svc.Obs.notify("weave:engine:stop-tracking");
+    await tracker.stop();
     prefs.resetBranch("");
   }
 });

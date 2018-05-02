@@ -11,7 +11,6 @@
 #include "jsapi.h"
 #include "xpcpublic.h"
 
-#include "nsIAddonInterposition.h"
 #include "nsIAppStartup.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsIFile.h"
@@ -66,12 +65,10 @@
 
 #if defined(MOZ_CONTENT_SANDBOX)
 #include "mozilla/SandboxSettings.h"
-#if (defined(XP_WIN) || defined(XP_MACOSX))
 #include "nsIUUIDGenerator.h"
 #include "mozilla/Unused.h"
 #if defined(XP_WIN)
 #include "WinUtils.h"
-#endif
 #endif
 #endif
 
@@ -85,7 +82,7 @@
 
 #define PREF_OVERRIDE_DIRNAME "preferences"
 
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
 static already_AddRefed<nsIFile> GetContentProcessSandboxTempDir();
 static nsresult DeleteDirIfExists(nsIFile *dir);
 static bool IsContentSandboxDisabled();
@@ -225,15 +222,10 @@ nsXREDirProvider::Release()
 }
 
 nsresult
-nsXREDirProvider::GetUserProfilesRootDir(nsIFile** aResult,
-                                         const nsACString* aProfileName,
-                                         const nsACString* aAppName,
-                                         const nsACString* aVendorName)
+nsXREDirProvider::GetUserProfilesRootDir(nsIFile** aResult)
 {
   nsCOMPtr<nsIFile> file;
-  nsresult rv = GetUserDataDirectory(getter_AddRefs(file),
-                                     false,
-                                     aProfileName, aAppName, aVendorName);
+  nsresult rv = GetUserDataDirectory(getter_AddRefs(file), false);
 
   if (NS_SUCCEEDED(rv)) {
 #if !defined(XP_UNIX) || defined(XP_MACOSX)
@@ -250,15 +242,10 @@ nsXREDirProvider::GetUserProfilesRootDir(nsIFile** aResult,
 }
 
 nsresult
-nsXREDirProvider::GetUserProfilesLocalDir(nsIFile** aResult,
-                                          const nsACString* aProfileName,
-                                          const nsACString* aAppName,
-                                          const nsACString* aVendorName)
+nsXREDirProvider::GetUserProfilesLocalDir(nsIFile** aResult)
 {
   nsCOMPtr<nsIFile> file;
-  nsresult rv = GetUserDataDirectory(getter_AddRefs(file),
-                                     true,
-                                     aProfileName, aAppName, aVendorName);
+  nsresult rv = GetUserDataDirectory(getter_AddRefs(file), true);
 
   if (NS_SUCCEEDED(rv)) {
 #if !defined(XP_UNIX) || defined(XP_MACOSX)
@@ -421,10 +408,10 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
       rv = file->AppendNative(NS_LITERAL_CSTRING(APP_REGISTRY_NAME));
   }
   else if (!strcmp(aProperty, NS_APP_USER_PROFILES_ROOT_DIR)) {
-    rv = GetUserProfilesRootDir(getter_AddRefs(file), nullptr, nullptr, nullptr);
+    rv = GetUserProfilesRootDir(getter_AddRefs(file));
   }
   else if (!strcmp(aProperty, NS_APP_USER_PROFILES_LOCAL_ROOT_DIR)) {
-    rv = GetUserProfilesLocalDir(getter_AddRefs(file), nullptr, nullptr, nullptr);
+    rv = GetUserProfilesLocalDir(getter_AddRefs(file));
   }
   else if (!strcmp(aProperty, XRE_EXECUTABLE_FILE)) {
     nsCOMPtr<nsIFile> lf;
@@ -499,7 +486,7 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     bool unused;
     rv = dirsvc->GetFile("XCurProcD", &unused, getter_AddRefs(file));
   }
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
   else if (!strcmp(aProperty, NS_APP_CONTENT_PROCESS_TEMP_DIR)) {
     if (!mContentTempDir && NS_FAILED((rv = LoadContentProcessTempDir()))) {
       return rv;
@@ -659,7 +646,7 @@ nsXREDirProvider::GetFiles(const char* aProperty, nsISimpleEnumerator** aResult)
   return NS_SUCCESS_AGGREGATE_RESULT;
 }
 
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
 
 static const char*
 GetContentProcessTempBaseDirKey()
@@ -781,11 +768,16 @@ CreateContentProcessSandboxTempDir()
 
     char uuidChars[NSID_LENGTH];
     uuid.ToProvidedString(uuidChars);
-    tempDirSuffix.AssignASCII(uuidChars);
+    tempDirSuffix.AssignASCII(uuidChars, NSID_LENGTH);
+#ifdef XP_UNIX
+    // Braces in a path are somewhat annoying to deal with
+    // and pretty alien on Unix
+    tempDirSuffix.StripChars(u"{}");
+#endif
 
     // Save the pref
-    rv = Preferences::SetCString("security.sandbox.content.tempDirSuffix",
-                                 uuidChars);
+    rv = Preferences::SetString("security.sandbox.content.tempDirSuffix",
+                                tempDirSuffix);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       // If we fail to save the pref we don't want to create the temp dir,
       // because we won't be able to clean it up later.
@@ -842,8 +834,7 @@ DeleteDirIfExists(nsIFile* dir)
   return NS_OK;
 }
 
-#endif // (defined(XP_WIN) || defined(XP_MACOSX)) &&
-  // defined(MOZ_CONTENT_SANDBOX)
+#endif // defined(MOZ_CONTENT_SANDBOX)
 
 static const char *const kAppendPrefDir[] = { "defaults", "preferences", nullptr };
 
@@ -1009,6 +1000,12 @@ nsXREDirProvider::DoStartup()
     static const char16_t kStartup[] = {'s','t','a','r','t','u','p','\0'};
     obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
 
+    // Initialize the Enterprise Policies service
+    nsCOMPtr<nsIObserver> policies(do_GetService("@mozilla.org/browser/enterprisepolicies;1"));
+    if (policies) {
+      policies->Observe(nullptr, "policies-startup", nullptr);
+    }
+
     // Init the Extension Manager
     nsCOMPtr<nsIObserver> em = do_GetService("@mozilla.org/addons/integration;1");
     if (em) {
@@ -1043,16 +1040,10 @@ nsXREDirProvider::DoStartup()
     nsCOMPtr<nsIToolkitProfileService> profileService =
       do_GetService("@mozilla.org/toolkit/profile-service;1");
     if (profileService) {
-      nsCOMPtr<nsISimpleEnumerator> profiles;
-      rv = profileService->GetProfiles(getter_AddRefs(profiles));
+      uint32_t count = 0;
+      rv = profileService->GetProfileCount(&count);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
-      }
-
-      uint32_t count = 0;
-      nsCOMPtr<nsISupports> profile;
-      while (NS_SUCCEEDED(profiles->GetNext(getter_AddRefs(profile)))) {
-        ++count;
       }
 
       mozilla::Telemetry::Accumulate(mozilla::Telemetry::NUMBER_OF_PROFILES,
@@ -1061,7 +1052,7 @@ nsXREDirProvider::DoStartup()
 
     obsSvc->NotifyObservers(nullptr, "profile-initial-state", nullptr);
 
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
     // Makes sure the content temp dir has been loaded if it hasn't been
     // already. In the parent this ensures it has been created before we attempt
     // to start any content processes.
@@ -1101,7 +1092,7 @@ nsXREDirProvider::DoShutdown()
     mProfileNotified = false;
   }
 
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
   if (XRE_IsParentProcess()) {
     Unused << DeleteDirIfExists(mContentProcessSandboxTempDir);
   }
@@ -1550,16 +1541,13 @@ nsXREDirProvider::GetSystemExtensionsDirectory(nsIFile** aFile)
 #endif
 
 nsresult
-nsXREDirProvider::GetUserDataDirectory(nsIFile** aFile, bool aLocal,
-                                       const nsACString* aProfileName,
-                                       const nsACString* aAppName,
-                                       const nsACString* aVendorName)
+nsXREDirProvider::GetUserDataDirectory(nsIFile** aFile, bool aLocal)
 {
   nsCOMPtr<nsIFile> localDir;
   nsresult rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), aLocal);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = AppendProfilePath(localDir, aProfileName, aAppName, aVendorName, aLocal);
+  rv = AppendProfilePath(localDir, aLocal);
   NS_ENSURE_SUCCESS(rv, rv);
 
 #ifdef DEBUG_jungshik
@@ -1665,11 +1653,7 @@ nsXREDirProvider::AppendSysUserExtensionsDevPath(nsIFile* aFile)
 
 
 nsresult
-nsXREDirProvider::AppendProfilePath(nsIFile* aFile,
-                                    const nsACString* aProfileName,
-                                    const nsACString* aAppName,
-                                    const nsACString* aVendorName,
-                                    bool aLocal)
+nsXREDirProvider::AppendProfilePath(nsIFile* aFile, bool aLocal)
 {
   NS_ASSERTION(aFile, "Null pointer!");
 
@@ -1680,14 +1664,7 @@ nsXREDirProvider::AppendProfilePath(nsIFile* aFile,
   nsAutoCString profile;
   nsAutoCString appName;
   nsAutoCString vendor;
-  if (aProfileName && !aProfileName->IsEmpty()) {
-    profile = *aProfileName;
-  } else if (aAppName) {
-    appName = *aAppName;
-    if (aVendorName) {
-      vendor = *aVendorName;
-    }
-  } else if (gAppData->profile) {
+  if (gAppData->profile) {
     profile = gAppData->profile;
   } else {
     appName = gAppData->name;
@@ -1726,8 +1703,6 @@ nsXREDirProvider::AppendProfilePath(nsIFile* aFile,
   // The parent of this directory is set in GetUserDataDirectoryHome
   // XXX: handle gAppData->profile properly
   // XXXsmaug ...and the rest of the profile creation!
-  MOZ_ASSERT(!aAppName,
-             "Profile creation for external applications is not implemented!");
   rv = aFile->AppendNative(nsDependentCString("mozilla"));
   NS_ENSURE_SUCCESS(rv, rv);
 #elif defined(XP_UNIX)

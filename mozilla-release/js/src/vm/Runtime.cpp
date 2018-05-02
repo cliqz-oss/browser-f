@@ -12,27 +12,22 @@
 #include "mozilla/Unused.h"
 
 #if defined(XP_DARWIN)
-#include <mach/mach.h>
+# include <mach/mach.h>
 #elif defined(XP_UNIX)
-#include <sys/resource.h>
+# include <sys/resource.h>
 #endif // defined(XP_DARWIN) || defined(XP_UNIX) || defined(XP_WIN)
-
 #include <locale.h>
 #include <string.h>
-
 #ifdef JS_CAN_CHECK_THREADSAFE_ACCESSES
 # include <sys/mman.h>
 #endif
 
-#include "jsatom.h"
 #include "jsmath.h"
-#include "jsobj.h"
-#include "jsscript.h"
-#include "jswin.h"
-#include "jswrapper.h"
 
 #include "builtin/Promise.h"
+#include "gc/FreeOp.h"
 #include "gc/GCInternals.h"
+#include "gc/PublicIterators.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/arm64/vixl/Simulator-vixl.h"
 #include "jit/JitCompartment.h"
@@ -41,13 +36,18 @@
 #include "js/Date.h"
 #include "js/MemoryMetrics.h"
 #include "js/SliceBudget.h"
+#include "js/Wrapper.h"
+#include "util/Windows.h"
 #include "vm/Debugger.h"
+#include "vm/JSAtom.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/TraceLogging.h"
 #include "vm/TraceLoggingGraph.h"
 #include "wasm/WasmSignalHandlers.h"
 
-#include "jscntxtinlines.h"
-#include "jsgcinlines.h"
+#include "gc/GC-inl.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -56,9 +56,7 @@ using mozilla::Atomic;
 using mozilla::DebugOnly;
 using mozilla::NegativeInfinity;
 using mozilla::PodZero;
-using mozilla::PodArrayZero;
 using mozilla::PositiveInfinity;
-using JS::GenericNaN;
 using JS::DoubleNaNValue;
 
 /* static */ MOZ_THREAD_LOCAL(JSContext*) js::TlsContext;
@@ -100,8 +98,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     startingSingleThreadedExecution_(false),
     beginSingleThreadedExecutionCallback(nullptr),
     endSingleThreadedExecutionCallback(nullptr),
-    profilerSampleBufferGen_(0),
-    profilerSampleBufferLapCount_(1),
+    profilerSampleBufferRangeStart_(0),
     telemetryCallback(nullptr),
     consumeStreamCallback(nullptr),
     readableStreamDataRequestCallback(nullptr),
@@ -134,6 +131,10 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     exclusiveAccessLock(mutexid::RuntimeExclusiveAccess),
 #ifdef DEBUG
     activeThreadHasExclusiveAccess(false),
+#endif
+    scriptDataLock(mutexid::RuntimeScriptData),
+#ifdef DEBUG
+    activeThreadHasScriptDataAccess(false),
 #endif
     numActiveHelperThreadZones(0),
     numCompartments(0),
@@ -311,9 +312,6 @@ JSRuntime::destroyRuntime()
         /* Allow the GC to release scripts that were being profiled. */
         profilingScripts = false;
 
-        /* Set the profiler sampler buffer generation to invalid. */
-        profilerSampleBufferGen_ = UINT32_MAX;
-
         JS::PrepareForFullGC(cx);
         gc.gc(GC_NORMAL, JS::gcreason::DESTROY_RUNTIME);
     }
@@ -321,13 +319,12 @@ JSRuntime::destroyRuntime()
     AutoNoteSingleThreadedRegion anstr;
 
     MOZ_ASSERT(!hasHelperThreadZones());
-    AutoLockForExclusiveAccess lock(this);
 
     /*
      * Even though all objects in the compartment are dead, we may have keep
      * some filenames around because of gcKeepAtoms.
      */
-    FreeScriptData(this, lock);
+    FreeScriptData(this);
 
 #if !EXPOSE_INTL_API
     FinishRuntimeNumberState(this);
@@ -458,11 +455,13 @@ JSRuntime::setUseCounterCallback(JSRuntime* rt, JSSetUseCounterCallback callback
 void
 JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::RuntimeSizes* rtSizes)
 {
-    // Several tables in the runtime enumerated below can be used off thread.
-    AutoLockForExclusiveAccess lock(this);
-
     rtSizes->object += mallocSizeOf(this);
-    rtSizes->atomsTable += atoms(lock).sizeOfIncludingThis(mallocSizeOf);
+
+    {
+        AutoLockForExclusiveAccess lock(this);
+        rtSizes->atomsTable += atoms(lock).sizeOfIncludingThis(mallocSizeOf);
+        rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf, lock);
+    }
 
     if (!parentRuntime) {
         rtSizes->atomsTable += mallocSizeOf(staticStrings);
@@ -499,16 +498,17 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
 
     rtSizes->sharedIntlData += sharedIntlData.ref().sizeOfExcludingThis(mallocSizeOf);
 
-    rtSizes->scriptData += scriptDataTable(lock).sizeOfExcludingThis(mallocSizeOf);
-    for (ScriptDataTable::Range r = scriptDataTable(lock).all(); !r.empty(); r.popFront())
-        rtSizes->scriptData += mallocSizeOf(r.front());
+    {
+        AutoLockScriptData lock(this);
+        rtSizes->scriptData += scriptDataTable(lock).sizeOfExcludingThis(mallocSizeOf);
+        for (ScriptDataTable::Range r = scriptDataTable(lock).all(); !r.empty(); r.popFront())
+            rtSizes->scriptData += mallocSizeOf(r.front());
+    }
 
     if (jitRuntime_) {
         jitRuntime_->execAlloc().addSizeOfCode(&rtSizes->code);
         jitRuntime_->backedgeExecAlloc().addSizeOfCode(&rtSizes->code);
     }
-
-    rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf);
 }
 
 static bool
@@ -638,12 +638,8 @@ JSRuntime::getDefaultLocale()
     if (defaultLocale)
         return defaultLocale;
 
-    const char* locale;
-#ifdef HAVE_SETLOCALE
-    locale = setlocale(LC_ALL, nullptr);
-#else
-    locale = getenv("LANG");
-#endif
+    const char* locale = setlocale(LC_ALL, nullptr);
+
     // convert to a well-formed BCP 47 language tag
     if (!locale || !strcmp(locale, "C"))
         locale = "und";
@@ -926,11 +922,9 @@ js::CurrentThreadIsPerformingGC()
 #endif
 
 JS_FRIEND_API(void)
-JS::UpdateJSContextProfilerSampleBufferGen(JSContext* cx, uint32_t generation,
-                                           uint32_t lapCount)
+JS::SetJSContextProfilerSampleBufferRangeStart(JSContext* cx, uint64_t rangeStart)
 {
-    cx->runtime()->setProfilerSampleBufferGen(generation);
-    cx->runtime()->updateProfilerSampleBufferLapCount(lapCount);
+    cx->runtime()->setProfilerSampleBufferRangeStart(rangeStart);
 }
 
 JS_FRIEND_API(bool)

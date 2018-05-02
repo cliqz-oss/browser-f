@@ -40,6 +40,7 @@ UNIFIED_SOURCES += [
   'ClientOpenWindowOpParent.cpp',
   'ClientOpenWindowUtils.cpp',
   'ClientPrefs.cpp',
+  'ClientPrincipalUtils.cpp',
   'ClientSource.cpp',
   'ClientSourceChild.cpp',
   'ClientSourceOpChild.cpp',
@@ -62,10 +63,6 @@ IPDL_SOURCES += [
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
-
-LOCAL_INCLUDES += [
-  '/dom/workers',
-]
 
 FINAL_LIBRARY = 'xul'
 

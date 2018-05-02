@@ -24,9 +24,9 @@
 //! address in the GPU cache of a given resource slot
 //! for this frame.
 
-use api::{LayerRect, PremultipliedColorF};
+use api::{PremultipliedColorF, TexelRect};
 use device::FrameId;
-use internal_types::UvRect;
+use euclid::TypedRect;
 use profiler::GpuCacheProfileCounters;
 use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 use std::{mem, u16, u32};
@@ -38,7 +38,8 @@ const FRAMES_BEFORE_EVICTION: usize = 10;
 const NEW_ROWS_PER_RESIZE: u32 = 512;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct Epoch(u32);
 
 impl Epoch {
@@ -48,7 +49,8 @@ impl Epoch {
 }
 
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct CacheLocation {
     block_index: BlockIndex,
     epoch: Epoch,
@@ -56,52 +58,52 @@ struct CacheLocation {
 
 /// A single texel in RGBAF32 texture - 16 bytes.
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GpuBlockData {
-    pub data: [f32; 4],
+    data: [f32; 4],
 }
 
 impl GpuBlockData {
-    pub fn empty() -> Self {
-        GpuBlockData { data: [0.0; 4] }
-    }
+    pub const EMPTY: Self = GpuBlockData { data: [0.0; 4] };
 }
 
 /// Conversion helpers for GpuBlockData
-impl Into<GpuBlockData> for PremultipliedColorF {
-    fn into(self) -> GpuBlockData {
+impl From<PremultipliedColorF> for GpuBlockData {
+    fn from(c: PremultipliedColorF) -> Self {
         GpuBlockData {
-            data: [self.r, self.g, self.b, self.a],
+            data: [c.r, c.g, c.b, c.a],
         }
     }
 }
 
-impl Into<GpuBlockData> for [f32; 4] {
-    fn into(self) -> GpuBlockData {
-        GpuBlockData { data: self }
+impl From<[f32; 4]> for GpuBlockData {
+    fn from(data: [f32; 4]) -> Self {
+        GpuBlockData { data }
     }
 }
 
-impl Into<GpuBlockData> for LayerRect {
-    fn into(self) -> GpuBlockData {
+impl<P> From<TypedRect<f32, P>> for GpuBlockData {
+    fn from(r: TypedRect<f32, P>) -> Self {
         GpuBlockData {
             data: [
-                self.origin.x,
-                self.origin.y,
-                self.size.width,
-                self.size.height,
+                r.origin.x,
+                r.origin.y,
+                r.size.width,
+                r.size.height,
             ],
         }
     }
 }
 
-impl Into<GpuBlockData> for UvRect {
-    fn into(self) -> GpuBlockData {
+impl From<TexelRect> for GpuBlockData {
+    fn from(tr: TexelRect) -> Self {
         GpuBlockData {
-            data: [self.uv0.x, self.uv0.y, self.uv1.x, self.uv1.y],
+            data: [tr.uv0.x, tr.uv0.y, tr.uv1.x, tr.uv1.y],
         }
     }
 }
+
 
 // Any data type that can be stored in the GPU cache should
 // implement this trait.
@@ -112,7 +114,8 @@ pub trait ToGpuBlocks {
 
 // A handle to a GPU resource.
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GpuCacheHandle {
     location: Option<CacheLocation>,
 }
@@ -127,7 +130,8 @@ impl GpuCacheHandle {
 // as part of the primitive instances, to allow the vertex
 // shader to fetch the specific data.
 #[derive(Copy, Debug, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GpuCacheAddress {
     pub u: u16,
     pub v: u16,
@@ -162,7 +166,8 @@ impl Add<usize> for GpuCacheAddress {
 
 // An entry in a free-list of blocks in the GPU cache.
 #[derive(Debug)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct Block {
     // The location in the cache of this block.
     address: GpuCacheAddress,
@@ -188,11 +193,13 @@ impl Block {
 }
 
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct BlockIndex(usize);
 
 // A row in the cache texture.
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct Row {
     // The fixed size of blocks that this row supports.
     // Each row becomes a slab allocator for a fixed block size.
@@ -213,7 +220,8 @@ impl Row {
 // this frame. The list of updates is created by the render backend
 // during frame construction. It's passed to the render thread
 // where GL commands can be applied.
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub enum GpuCacheUpdate {
     Copy {
         block_index: usize,
@@ -222,20 +230,26 @@ pub enum GpuCacheUpdate {
     },
 }
 
+#[must_use]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GpuCacheUpdateList {
-    // The current height of the texture. The render thread
-    // should resize the texture if required.
+    /// The frame current update list was generated from.
+    pub frame_id: FrameId,
+    /// The current height of the texture. The render thread
+    /// should resize the texture if required.
     pub height: u32,
-    // List of updates to apply.
+    /// List of updates to apply.
     pub updates: Vec<GpuCacheUpdate>,
-    // A flat list of GPU blocks that are pending upload
-    // to GPU memory.
+    /// A flat list of GPU blocks that are pending upload
+    /// to GPU memory.
     pub blocks: Vec<GpuBlockData>,
 }
 
 // Holds the free lists of fixed size blocks. Mostly
 // just serves to work around the borrow checker.
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct FreeBlockLists {
     free_list_1: Option<BlockIndex>,
     free_list_2: Option<BlockIndex>,
@@ -286,7 +300,8 @@ impl FreeBlockLists {
 }
 
 // CPU-side representation of the GPU resource cache texture.
-#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct Texture {
     // Current texture height
     height: u32,
@@ -501,7 +516,8 @@ impl<'a> Drop for GpuDataRequest<'a> {
 
 
 /// The main LRU cache interface.
-#[cfg_attr(feature = "capture", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GpuCache {
     /// Current frame ID.
     frame_id: FrameId,
@@ -595,9 +611,9 @@ impl GpuCache {
     /// End the frame. Return the list of updates to apply to the
     /// device specific cache texture.
     pub fn end_frame(
-        &mut self,
+        &self,
         profile_counters: &mut GpuCacheProfileCounters,
-    ) -> GpuCacheUpdateList {
+    ) -> FrameId {
         profile_counters
             .allocated_rows
             .set(self.texture.rows.len());
@@ -607,8 +623,13 @@ impl GpuCache {
         profile_counters
             .saved_blocks
             .set(self.saved_block_count);
+        self.frame_id
+    }
 
+    /// Extract the pending updates from the cache.
+    pub fn extract_updates(&mut self) -> GpuCacheUpdateList {
         GpuCacheUpdateList {
+            frame_id: self.frame_id,
             height: self.texture.height,
             updates: mem::replace(&mut self.texture.updates, Vec::new()),
             blocks: mem::replace(&mut self.texture.pending_blocks, Vec::new()),

@@ -4,16 +4,9 @@
 
 "use strict";
 
-const {
-  classes: Cc,
-  interfaces: Ci,
-  utils: Cu,
-  results: Cr
-} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 /** This little class ensures that redirects maintain an https:// origin */
 function RedirectHttpsOnly() {}
@@ -266,5 +259,4 @@ IdpSandbox.prototype = {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["IdpSandbox"];
-this.IdpSandbox = IdpSandbox;
+var EXPORTED_SYMBOLS = ["IdpSandbox"];

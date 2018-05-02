@@ -12,7 +12,6 @@
 #include "nsIContentViewer.h"
 #include "nsIDocument.h"
 #include "nsIDocumentLoaderFactory.h"
-#include "nsIDOMSVGLength.h"
 #include "nsIHttpChannel.h"
 #include "nsIObserverService.h"
 #include "nsIParser.h"
@@ -419,10 +418,8 @@ SVGDocumentWrapper::UnregisterForXPCOMShutdown()
 void
 SVGDocumentWrapper::FlushLayout()
 {
-  nsCOMPtr<nsIPresShell> presShell;
-  mViewer->GetPresShell(getter_AddRefs(presShell));
-  if (presShell) {
-    presShell->FlushPendingNotifications(FlushType::Layout);
+  if (nsIDocument* doc = GetDocument()) {
+    doc->FlushPendingNotifications(FlushType::Layout);
   }
 }
 

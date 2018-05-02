@@ -6,9 +6,8 @@
 "use strict";
 
 /**
- * @file Implements functionality for certViewer.xul and its tabs certDump.xul
- *       and viewCertDetails.xul: a dialog that allows various attributes of a
- *       certificate to be viewed.
+ * @file Implements functionality for certViewer.xul and its general and details
+ *       tabs.
  * @argument {nsISupports} window.arguments[0]
  *           The cert to view, queryable to nsIX509Cert.
  */
@@ -317,7 +316,7 @@ function displaySelected() {
 }
 
 function BuildPrettyPrint(cert) {
-  var certDumpTree = Components.classes[nsASN1Tree].
+  var certDumpTree = Cc[nsASN1Tree].
                           createInstance(nsIASN1Tree);
   certDumpTree.loadASN1Structure(cert.ASN1Structure);
   document.getElementById("prettyDumpTree").view = certDumpTree;
@@ -361,7 +360,7 @@ function updateCertDump() {
     var item = tree.contentView.getItemAtIndex(tree.currentIndex);
     var dbKey = item.firstChild.firstChild.getAttribute("display");
     //  Get the cert from the cert database
-    var certdb = Components.classes[nsX509CertDB].getService(nsIX509CertDB);
+    var certdb = Cc[nsX509CertDB].getService(nsIX509CertDB);
     var cert = certdb.findCertByDBKey(dbKey);
     asn1Tree.loadASN1Structure(cert.ASN1Structure);
   }
@@ -385,7 +384,7 @@ function getCurrentCert() {
   if (realIndex >= 0) {
     var item = tree.contentView.getItemAtIndex(realIndex);
     var dbKey = item.firstChild.firstChild.getAttribute("display");
-    var certdb = Components.classes[nsX509CertDB].getService(nsIX509CertDB);
+    var certdb = Cc[nsX509CertDB].getService(nsIX509CertDB);
     var cert = certdb.findCertByDBKey(dbKey);
     return cert;
   }

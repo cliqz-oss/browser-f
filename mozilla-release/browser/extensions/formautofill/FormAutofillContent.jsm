@@ -10,25 +10,25 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FormAutofillContent"];
+var EXPORTED_SYMBOLS = ["FormAutofillContent"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr, manager: Cm} = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AddressResult",
-                                  "resource://formautofill/ProfileAutoCompleteResult.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CreditCardResult",
-                                  "resource://formautofill/ProfileAutoCompleteResult.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillHandler",
-                                  "resource://formautofill/FormAutofillHandler.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormLikeFactory",
-                                  "resource://gre/modules/FormLikeFactory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "InsecurePasswordUtils",
-                                  "resource://gre/modules/InsecurePasswordUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AddressResult",
+                               "resource://formautofill/ProfileAutoCompleteResult.jsm");
+ChromeUtils.defineModuleGetter(this, "CreditCardResult",
+                               "resource://formautofill/ProfileAutoCompleteResult.jsm");
+ChromeUtils.defineModuleGetter(this, "FormAutofillHandler",
+                               "resource://formautofill/FormAutofillHandler.jsm");
+ChromeUtils.defineModuleGetter(this, "FormLikeFactory",
+                               "resource://gre/modules/FormLikeFactory.jsm");
+ChromeUtils.defineModuleGetter(this, "InsecurePasswordUtils",
+                               "resource://gre/modules/InsecurePasswordUtils.jsm");
 
 const formFillController = Cc["@mozilla.org/satchel/form-fill-controller;1"]
                              .getService(Ci.nsIFormFillController);
@@ -207,8 +207,6 @@ AutofillProfileAutoCompleteSearch.prototype = {
     });
   },
 };
-
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([AutofillProfileAutoCompleteSearch]);
 
 let ProfileAutocomplete = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
@@ -620,7 +618,7 @@ var FormAutofillContent = {
     let lastAutoCompleteResult = ProfileAutocomplete.lastProfileAutoCompleteResult;
     let focusedInput = FormAutofillContent.activeInput;
 
-    if (e.keyCode != Ci.nsIDOMKeyEvent.DOM_VK_RETURN || !lastAutoCompleteResult ||
+    if (e.keyCode != e.DOM_VK_RETURN || !lastAutoCompleteResult ||
         !focusedInput || focusedInput != ProfileAutocomplete.lastProfileAutoCompleteFocusedInput) {
       return;
     }

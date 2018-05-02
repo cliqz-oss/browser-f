@@ -44,7 +44,9 @@ module.exports = {
     "mark-test-function-used": require("../lib/rules/mark-test-function-used"),
     "no-aArgs": require("../lib/rules/no-aArgs"),
     "no-arbitrary-setTimeout": require("../lib/rules/no-arbitrary-setTimeout"),
+    "no-compare-against-boolean-literals": require("../lib/rules/no-compare-against-boolean-literals"),
     "no-cpows-in-tests": require("../lib/rules/no-cpows-in-tests"),
+    "no-define-cc-etc": require("../lib/rules/no-define-cc-etc"),
     "no-single-arg-cu-import": require("../lib/rules/no-single-arg-cu-import"),
     "no-import-into-var-and-global":
       require("../lib/rules/no-import-into-var-and-global.js"),
@@ -57,35 +59,13 @@ module.exports = {
     "reject-importGlobalProperties":
       require("../lib/rules/reject-importGlobalProperties"),
     "reject-some-requires": require("../lib/rules/reject-some-requires"),
+    "use-cc-etc": require("../lib/rules/use-cc-etc"),
+    "use-chromeutils-import": require("../lib/rules/use-chromeutils-import"),
     "use-default-preference-values":
       require("../lib/rules/use-default-preference-values"),
     "use-ownerGlobal": require("../lib/rules/use-ownerGlobal"),
+    "use-includes-instead-of-indexOf": require("../lib/rules/use-includes-instead-of-indexOf"),
     "use-services": require("../lib/rules/use-services"),
     "var-only-at-top-level": require("../lib/rules/var-only-at-top-level")
-  },
-  rulesConfig: {
-    "avoid-Date-timing": "off",
-    "avoid-removeChild": "off",
-    "balanced-listeners": "off",
-    "import-browser-window-globals": "off",
-    "import-content-task-globals": "off",
-    "import-globals": "off",
-    "import-headjs-globals": "off",
-    "mark-test-function-used": "off",
-    "no-aArgs": "off",
-    "no-arbitrary-setTimeout": "off",
-    "no-cpows-in-tests": "off",
-    "no-single-arg-cu-import": "off",
-    "no-import-into-var-and-global": "off",
-    "no-task": "off",
-    "no-useless-parameters": "off",
-    "no-useless-run-test": "off",
-    "no-useless-removeEventListener": "off",
-    "reject-importGlobalProperties": "off",
-    "reject-some-requires": "off",
-    "use-default-preference-values": "off",
-    "use-ownerGlobal": "off",
-    "use-services": "off",
-    "var-only-at-top-level": "off"
   }
 };

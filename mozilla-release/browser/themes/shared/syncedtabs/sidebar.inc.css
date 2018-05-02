@@ -110,6 +110,8 @@ body {
 
 .item.tab > .item-title-container > .item-icon-container {
   background-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 .item-icon-container {
@@ -215,8 +217,8 @@ body {
 
 .deck .syncIllustration,
 .deck .syncIllustrationIssue {
-  height: 150px;
-  margin-top: 20px;
+  height: 91px;
+  margin: 38px 8px 15px;
   background-position: center;
   background-repeat: no-repeat;
 }
@@ -234,7 +236,7 @@ body {
   color: rgba(12, 12, 13, .5);
   padding: 0 11px;
   max-width: 15em;
-  margin: 1em auto;
+  margin: 0 auto;
 }
 
 .deck .button {

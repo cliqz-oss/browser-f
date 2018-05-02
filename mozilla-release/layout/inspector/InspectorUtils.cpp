@@ -21,9 +21,11 @@
 #include "nsIPresShell.h"
 #include "nsIDOMDocument.h"
 #include "nsIDOMCharacterData.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleNode.h"
 #include "nsIStyleRule.h"
 #include "mozilla/css/StyleRule.h"
+#endif
 #include "nsIDOMWindow.h"
 #include "nsXBLBinding.h"
 #include "nsXBLPrototypeBinding.h"
@@ -36,9 +38,13 @@
 #include "nsRange.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/dom/Element.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleWalker.h"
+#endif
 #include "nsCSSPseudoClasses.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRuleProcessor.h"
+#endif
 #include "mozilla/dom/CSSLexer.h"
 #include "mozilla/dom/InspectorUtilsBinding.h"
 #include "mozilla/dom/ToJSValue.h"
@@ -183,7 +189,9 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
   }
 
 
-  if (auto gecko = styleContext->GetAsGecko()) {
+  if (styleContext->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+    auto gecko = styleContext->AsGecko();
     nsRuleNode* ruleNode = gecko->RuleNode();
     if (!ruleNode) {
       return;
@@ -204,6 +212,9 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
         }
       }
     }
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     nsIDocument* doc = aElement.OwnerDoc();
     nsIPresShell* shell = doc->GetShell();
@@ -219,7 +230,6 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
     {
       ServoStyleSet* styleSet = shell->StyleSet()->AsServo();
       ServoStyleRuleMap* map = styleSet->StyleRuleMap();
-      map->EnsureTable();
       maps.AppendElement(map);
     }
 
@@ -228,9 +238,7 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
          bindingContent = bindingContent->GetBindingParent()) {
       for (nsXBLBinding* binding = bindingContent->GetXBLBinding();
            binding; binding = binding->GetBaseBinding()) {
-        if (ServoStyleSet* styleSet = binding->GetServoStyleSet()) {
-          ServoStyleRuleMap* map = styleSet->StyleRuleMap();
-          map->EnsureTable();
+        if (auto* map = binding->PrototypeBinding()->GetServoStyleRuleMap()) {
           maps.AppendElement(map);
         }
       }
@@ -239,6 +247,17 @@ InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
       // do not apply to the element directly in those cases, their
       // rules may still show up in the list we get above due to the
       // inheritance in cascading.
+    }
+
+    // Now shadow DOM stuff...
+    if (auto* shadow = aElement.GetShadowRoot()) {
+      maps.AppendElement(&shadow->ServoStyleRuleMap());
+    }
+
+    for (auto* shadow = aElement.GetContainingShadow();
+         shadow;
+         shadow = shadow->Host()->GetContainingShadow()) {
+      maps.AppendElement(&shadow->ServoStyleRuleMap());
     }
 
     // Find matching rules in the table.
@@ -454,6 +473,14 @@ static void GetKeywordsForProperty(const nsCSSPropertyID aProperty,
   }
   const nsCSSProps::KTableEntry* keywordTable =
     nsCSSProps::kKeywordTableTable[aProperty];
+
+  // Special cases where nsCSSPropList.h doesn't hold the table.
+  if (keywordTable == nullptr) {
+    if (aProperty == eCSSProperty_clip_path) {
+      keywordTable = nsCSSProps::kClipPathGeometryBoxKTable;
+    }
+  }
+
   if (keywordTable) {
     for (size_t i = 0; !keywordTable[i].IsSentinel(); ++i) {
       nsCSSKeyword word = keywordTable[i].mKeyword;
@@ -470,6 +497,23 @@ static void GetKeywordsForProperty(const nsCSSPropertyID aProperty,
                   NS_ConvertASCIItoUTF16(nsCSSKeywords::GetStringValue(word)));
       }
     }
+  }
+
+  // More special cases.
+  if (aProperty == eCSSProperty_clip_path) {
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("circle"));
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("ellipse"));
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("inset"));
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("polygon"));
+  } else if (aProperty == eCSSProperty_clip) {
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("rect"));
+  } else if (aProperty == eCSSProperty_list_style_type) {
+    int32_t length;
+    const char* const* values = nsCSSProps::GetListStyleTypes(&length);
+    for (int32_t i = 0; i < length; ++i) {
+      InsertNoDuplicates(aArray, NS_ConvertASCIItoUTF16(values[i]));
+    }
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("symbols"));
   }
 }
 
@@ -536,6 +580,13 @@ static void GetOtherValuesForProperty(const uint32_t aParserVariant,
     InsertNoDuplicates(aArray, NS_LITERAL_STRING("-moz-radial-gradient"));
     InsertNoDuplicates(aArray, NS_LITERAL_STRING("-moz-repeating-linear-gradient"));
     InsertNoDuplicates(aArray, NS_LITERAL_STRING("-moz-repeating-radial-gradient"));
+  }
+  if (aParserVariant & VARIANT_ATTR) {
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("attr"));
+  }
+  if (aParserVariant & VARIANT_COUNTER) {
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("counter"));
+    InsertNoDuplicates(aArray, NS_LITERAL_STRING("counters"));
   }
 }
 
@@ -611,26 +662,27 @@ PropertySupportsVariant(nsCSSPropertyID aPropertyID, uint32_t aVariant)
     return false;
   }
 
-  // Properties that are parsed by functions must have their
-  // attributes hand-maintained here.
+  uint32_t supported = nsCSSProps::ParserVariant(aPropertyID);
+
+  // For the time being, properties that are parsed by functions must
+  // have some of their attributes hand-maintained here.
   if (nsCSSProps::PropHasFlags(aPropertyID, CSS_PROPERTY_VALUE_PARSER_FUNCTION) ||
       nsCSSProps::PropertyParseType(aPropertyID) == CSS_PROPERTY_PARSE_FUNCTION) {
     // These must all be special-cased.
-    uint32_t supported;
     switch (aPropertyID) {
       case eCSSProperty_border_image_slice:
       case eCSSProperty_grid_template:
       case eCSSProperty_grid:
-        supported = VARIANT_PN;
+        supported |= VARIANT_PN;
         break;
 
       case eCSSProperty_border_image_outset:
-        supported = VARIANT_LN;
+        supported |= VARIANT_LN;
         break;
 
       case eCSSProperty_border_image_width:
       case eCSSProperty_stroke_dasharray:
-        supported = VARIANT_LPN;
+        supported |= VARIANT_LPN;
         break;
 
       case eCSSProperty_border_top_left_radius:
@@ -653,52 +705,45 @@ PropertySupportsVariant(nsCSSPropertyID aPropertyID, uint32_t aVariant)
       case eCSSProperty_scroll_snap_coordinate:
       case eCSSProperty_scroll_snap_destination:
       case eCSSProperty_transform_origin:
+      case eCSSProperty_translate:
       case eCSSProperty_perspective_origin:
       case eCSSProperty__moz_outline_radius_topleft:
       case eCSSProperty__moz_outline_radius_topright:
       case eCSSProperty__moz_outline_radius_bottomleft:
       case eCSSProperty__moz_outline_radius_bottomright:
       case eCSSProperty__moz_window_transform_origin:
-        supported = VARIANT_LP;
-        break;
-
-      case eCSSProperty__moz_border_bottom_colors:
-      case eCSSProperty__moz_border_left_colors:
-      case eCSSProperty__moz_border_right_colors:
-      case eCSSProperty__moz_border_top_colors:
-        supported = VARIANT_COLOR;
+        supported |= VARIANT_LP;
         break;
 
       case eCSSProperty_text_shadow:
       case eCSSProperty_box_shadow:
-        supported = VARIANT_LENGTH | VARIANT_COLOR;
+        supported |= VARIANT_LENGTH | VARIANT_COLOR;
         break;
 
       case eCSSProperty_border_spacing:
-        supported = VARIANT_LENGTH;
+        supported |= VARIANT_LENGTH;
         break;
 
-      case eCSSProperty_content:
       case eCSSProperty_cursor:
-      case eCSSProperty_clip_path:
-        supported = VARIANT_URL;
+        supported |= VARIANT_URL;
         break;
 
       case eCSSProperty_shape_outside:
-        supported = VARIANT_IMAGE;
+        supported |= VARIANT_IMAGE;
         break;
 
       case eCSSProperty_fill:
       case eCSSProperty_stroke:
-        supported = VARIANT_COLOR | VARIANT_URL;
+        supported |= VARIANT_COLOR | VARIANT_URL;
         break;
 
       case eCSSProperty_image_orientation:
-        supported = VARIANT_ANGLE;
+      case eCSSProperty_rotate:
+        supported |= VARIANT_ANGLE;
         break;
 
       case eCSSProperty_filter:
-        supported = VARIANT_URL;
+        supported |= VARIANT_URL;
         break;
 
       case eCSSProperty_grid_column_start:
@@ -707,18 +752,16 @@ PropertySupportsVariant(nsCSSPropertyID aPropertyID, uint32_t aVariant)
       case eCSSProperty_grid_row_end:
       case eCSSProperty_font_weight:
       case eCSSProperty_initial_letter:
-        supported = VARIANT_NUMBER;
+      case eCSSProperty_scale:
+        supported |= VARIANT_NUMBER;
         break;
 
       default:
-        supported = 0;
         break;
     }
-
-    return (supported & aVariant) != 0;
   }
 
-  return (nsCSSProps::ParserVariant(aPropertyID) & aVariant) != 0;
+  return (supported & aVariant) != 0;
 }
 
 bool
@@ -988,17 +1031,18 @@ InspectorUtils::GetCleanStyleContextForElement(dom::Element* aElement,
   presContext->EnsureSafeToHandOutCSSRules();
 
   RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContext(aElement, aPseudo, presShell);
+    nsComputedDOMStyle::GetStyleContext(aElement, aPseudo);
   return styleContext.forget();
 }
 
 /* static */ void
 InspectorUtils::GetUsedFontFaces(GlobalObject& aGlobalObject,
                                  nsRange& aRange,
+                                 uint32_t aMaxRanges,
                                  nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
                                  ErrorResult& aRv)
 {
-  nsresult rv = aRange.GetUsedFontFaces(aResult);
+  nsresult rv = aRange.GetUsedFontFaces(aResult, aMaxRanges);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
   }
@@ -1111,6 +1155,7 @@ InspectorUtils::ParseStyleSheet(GlobalObject& aGlobalObject,
                                 const nsAString& aInput,
                                 ErrorResult& aRv)
 {
+#ifdef MOZ_OLD_STYLE
   RefPtr<CSSStyleSheet> geckoSheet = do_QueryObject(&aSheet);
   if (geckoSheet) {
     nsresult rv = geckoSheet->ReparseSheet(aInput);
@@ -1119,6 +1164,7 @@ InspectorUtils::ParseStyleSheet(GlobalObject& aGlobalObject,
     }
     return;
   }
+#endif
 
   RefPtr<ServoStyleSheet> servoSheet = do_QueryObject(&aSheet);
   if (servoSheet) {

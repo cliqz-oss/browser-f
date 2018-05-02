@@ -11,7 +11,8 @@ ${helpers.predefined_type("line-height",
                           "computed::LineHeight::normal()",
                           animation_value_type="LineHeight",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css2/visudet.html#propdef-line-height")}
+                          spec="https://drafts.csswg.org/css2/visudet.html#propdef-line-height",
+                          servo_restyle_damage = "reflow")}
 
 // CSS Text Module Level 3
 
@@ -21,7 +22,8 @@ ${helpers.single_keyword("text-transform",
                          extra_gecko_values="full-width",
                          animation_value_type="discrete",
                          flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                         spec="https://drafts.csswg.org/css-text/#propdef-text-transform")}
+                         spec="https://drafts.csswg.org/css-text/#propdef-text-transform",
+                         servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.single_keyword("hyphens", "manual none auto",
                          gecko_enum_prefix="StyleHyphens",
@@ -41,7 +43,7 @@ ${helpers.predefined_type("text-indent",
                           "computed::LengthOrPercentage::Length(computed::Length::new(0.))",
                           animation_value_type="ComputedValue",
                           spec="https://drafts.csswg.org/css-text/#propdef-text-indent",
-                          allow_quirks=True)}
+                          allow_quirks=True, servo_restyle_damage = "reflow")}
 
 // Also known as "word-wrap" (which is more popular because of IE), but this is the preferred
 // name per CSS-TEXT 6.2.
@@ -50,56 +52,56 @@ ${helpers.single_keyword("overflow-wrap",
                          gecko_constant_prefix="NS_STYLE_OVERFLOWWRAP",
                          animation_value_type="discrete",
                          spec="https://drafts.csswg.org/css-text/#propdef-overflow-wrap",
-                         alias="word-wrap")}
+                         alias="word-wrap",
+                         servo_restyle_damage="rebuild_and_reflow")}
 
 // TODO(pcwalton): Support `word-break: keep-all` once we have better CJK support.
 ${helpers.single_keyword("word-break",
                          "normal break-all keep-all",
                          gecko_constant_prefix="NS_STYLE_WORDBREAK",
                          animation_value_type="discrete",
-                         spec="https://drafts.csswg.org/css-text/#propdef-word-break")}
+                         spec="https://drafts.csswg.org/css-text/#propdef-word-break",
+                         servo_restyle_damage="rebuild_and_reflow")}
 
 // TODO(pcwalton): Support `text-justify: distribute`.
-<%helpers:single_keyword_computed name="text-justify"
-                                  values="auto none inter-word"
-                                  extra_gecko_values="inter-character"
-                                  extra_specified="${'distribute' if product == 'gecko' else ''}"
-                                  gecko_enum_prefix="StyleTextJustify"
-                                  animation_value_type="discrete"
-                                  gecko_pref="layout.css.text-justify.enabled"
-                                  flags="APPLIES_TO_PLACEHOLDER",
-                                  spec="https://drafts.csswg.org/css-text/#propdef-text-justify">
-
+<%helpers:single_keyword
+    name="text-justify"
+    values="auto none inter-word"
+    extra_gecko_values="inter-character"
+    extra_specified="${'distribute' if product == 'gecko' else ''}"
+    gecko_enum_prefix="StyleTextJustify"
+    animation_value_type="discrete"
+    gecko_pref="layout.css.text-justify.enabled"
+    flags="APPLIES_TO_PLACEHOLDER",
+    spec="https://drafts.csswg.org/css-text/#propdef-text-justify"
+    servo_restyle_damage="rebuild_and_reflow"
+>
+    % if product == 'gecko':
     impl ToComputedValue for SpecifiedValue {
         type ComputedValue = computed_value::T;
 
         #[inline]
         fn to_computed_value(&self, _: &Context) -> computed_value::T {
             match *self {
-                % for value in "Auto None InterWord".split():
-                    SpecifiedValue::${value} => computed_value::T::${value},
+                % for value in "Auto None InterCharacter InterWord".split():
+                SpecifiedValue::${value} => computed_value::T::${value},
                 % endfor
-                % if product == "gecko":
-                    SpecifiedValue::InterCharacter => computed_value::T::InterCharacter,
-                    // https://drafts.csswg.org/css-text-3/#valdef-text-justify-distribute
-                    SpecifiedValue::Distribute => computed_value::T::InterCharacter,
-                % endif
+                // https://drafts.csswg.org/css-text-3/#valdef-text-justify-distribute
+                SpecifiedValue::Distribute => computed_value::T::InterCharacter,
             }
         }
 
         #[inline]
         fn from_computed_value(computed: &computed_value::T) -> SpecifiedValue {
             match *computed {
-                % for value in "Auto None InterWord".split():
-                    computed_value::T::${value} => SpecifiedValue::${value},
+                % for value in "Auto None InterCharacter InterWord".split():
+                computed_value::T::${value} => SpecifiedValue::${value},
                 % endfor
-                % if product == "gecko":
-                    computed_value::T::InterCharacter => SpecifiedValue::InterCharacter,
-                % endif
             }
         }
     }
-</%helpers:single_keyword_computed>
+    % endif
+</%helpers:single_keyword>
 
 ${helpers.single_keyword("text-align-last",
                          "auto start end left right center justify",
@@ -116,33 +118,37 @@ ${helpers.predefined_type("text-align",
                           "computed::TextAlign::start()",
                           animation_value_type="discrete",
                           flags="APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-text/#propdef-text-align")}
+                          spec="https://drafts.csswg.org/css-text/#propdef-text-align",
+                          servo_restyle_damage = "reflow")}
 
 ${helpers.predefined_type("letter-spacing",
                           "LetterSpacing",
                           "computed::LetterSpacing::normal()",
                           animation_value_type="ComputedValue",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-text/#propdef-letter-spacing")}
+                          spec="https://drafts.csswg.org/css-text/#propdef-letter-spacing",
+                          servo_restyle_damage="rebuild_and_reflow")}
 
 ${helpers.predefined_type("word-spacing",
                           "WordSpacing",
                           "computed::WordSpacing::normal()",
                           animation_value_type="ComputedValue",
                           flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
-                          spec="https://drafts.csswg.org/css-text/#propdef-word-spacing")}
+                          spec="https://drafts.csswg.org/css-text/#propdef-word-spacing",
+                          servo_restyle_damage="rebuild_and_reflow")}
 
-<%helpers:single_keyword_computed name="white-space"
-                                  values="normal pre nowrap pre-wrap pre-line"
-                                  extra_gecko_values="-moz-pre-space"
-                                  gecko_enum_prefix="StyleWhiteSpace"
-                                  needs_conversion="True"
-                                  animation_value_type="discrete"
-                                  // Only allowed for UA sheets, which set it
-                                  // !important.
-                                  flags="APPLIES_TO_PLACEHOLDER"
-                                  spec="https://drafts.csswg.org/css-text/#propdef-white-space">
-    trivial_to_computed_value!(SpecifiedValue);
+<%helpers:single_keyword
+    name="white-space"
+    values="normal pre nowrap pre-wrap pre-line"
+    extra_gecko_values="-moz-pre-space"
+    gecko_enum_prefix="StyleWhiteSpace"
+    needs_conversion="True"
+    animation_value_type="discrete"
+    // Only allowed for UA sheets, which set it !important.
+    flags="APPLIES_TO_PLACEHOLDER"
+    spec="https://drafts.csswg.org/css-text/#propdef-white-space"
+    servo_restyle_damage="rebuild_and_reflow"
+>
     % if product != "gecko":
     impl SpecifiedValue {
         pub fn allow_wrap(&self) -> bool {
@@ -176,7 +182,7 @@ ${helpers.predefined_type("word-spacing",
         }
     }
     % endif
-</%helpers:single_keyword_computed>
+</%helpers:single_keyword>
 
 ${helpers.predefined_type(
     "text-shadow",
@@ -189,206 +195,32 @@ ${helpers.predefined_type(
     spec="https://drafts.csswg.org/css-text-decor-3/#text-shadow-property",
 )}
 
-<%helpers:longhand name="text-emphasis-style" products="gecko" boxed="True"
-                   animation_value_type="discrete"
-                   spec="https://drafts.csswg.org/css-text-decor/#propdef-text-emphasis-style">
-    use computed_values::writing_mode::T as WritingMode;
-    use std::fmt::{self, Write};
-    use style_traits::{CssWriter, ToCss};
-    use unicode_segmentation::UnicodeSegmentation;
-
-
-    pub mod computed_value {
-        #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
-        #[cfg_attr(feature = "servo", derive(ToComputedValue))]
-        pub enum T {
-            Keyword(KeywordValue),
-            None,
-            String(String),
-        }
-
-        #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
-        pub struct KeywordValue {
-            pub fill: bool,
-            pub shape: super::ShapeKeyword,
-        }
-    }
-
-    #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
-    pub enum SpecifiedValue {
-        Keyword(KeywordValue),
-        None,
-        String(String),
-    }
-
-    #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
-    pub enum KeywordValue {
-        Fill(bool),
-        Shape(ShapeKeyword),
-        FillAndShape(bool, ShapeKeyword),
-    }
-
-    impl ToCss for KeywordValue {
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
-            if let Some(fill) = self.fill() {
-                if fill {
-                    dest.write_str("filled")?;
-                } else {
-                    dest.write_str("open")?;
-                }
-            }
-            if let Some(shape) = self.shape() {
-                if self.fill().is_some() {
-                    dest.write_str(" ")?;
-                }
-                shape.to_css(dest)?;
-            }
-            Ok(())
-        }
-    }
-
-    impl ToCss for computed_value::KeywordValue {
-        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-        where
-            W: Write,
-        {
-            if self.fill {
-                dest.write_str("filled")?;
-            } else {
-                dest.write_str("open")?;
-            }
-            dest.write_str(" ")?;
-            self.shape.to_css(dest)
-        }
-    }
-
-    impl KeywordValue {
-        fn fill(&self) -> Option<bool> {
-            match *self {
-                KeywordValue::Fill(fill) |
-                KeywordValue::FillAndShape(fill,_) => Some(fill),
-                _ => None,
-            }
-        }
-        fn shape(&self) -> Option<ShapeKeyword> {
-            match *self {
-                KeywordValue::Shape(shape) |
-                KeywordValue::FillAndShape(_, shape) => Some(shape),
-                _ => None,
-            }
-        }
-    }
-
-    define_css_keyword_enum!(ShapeKeyword:
-                             "dot" => Dot,
-                             "circle" => Circle,
-                             "double-circle" => DoubleCircle,
-                             "triangle" => Triangle,
-                             "sesame" => Sesame);
-
-    impl ShapeKeyword {
-        pub fn char(&self, fill: bool) -> &str {
-            match *self {
-                ShapeKeyword::Dot => if fill { "\u{2022}" } else { "\u{25e6}" },
-                ShapeKeyword::Circle =>  if fill { "\u{25cf}" } else { "\u{25cb}" },
-                ShapeKeyword::DoubleCircle =>  if fill { "\u{25c9}" } else { "\u{25ce}" },
-                ShapeKeyword::Triangle =>  if fill { "\u{25b2}" } else { "\u{25b3}" },
-                ShapeKeyword::Sesame =>  if fill { "\u{fe45}" } else { "\u{fe46}" },
-            }
-        }
-    }
-
-    #[inline]
-    pub fn get_initial_value() -> computed_value::T {
-        computed_value::T::None
-    }
-
-    #[inline]
-    pub fn get_initial_specified_value() -> SpecifiedValue {
-        SpecifiedValue::None
-    }
-
-    impl ToComputedValue for SpecifiedValue {
-        type ComputedValue = computed_value::T;
-
-        #[inline]
-        fn to_computed_value(&self, context: &Context) -> computed_value::T {
-            match *self {
-                SpecifiedValue::Keyword(ref keyword) => {
-                    let default_shape = if context.style().get_inheritedbox()
-                                                  .clone_writing_mode() == WritingMode::HorizontalTb {
-                        ShapeKeyword::Circle
-                    } else {
-                        ShapeKeyword::Sesame
-                    };
-                    computed_value::T::Keyword(computed_value::KeywordValue {
-                        fill: keyword.fill().unwrap_or(true),
-                        shape: keyword.shape().unwrap_or(default_shape),
-                    })
-                },
-                SpecifiedValue::None => computed_value::T::None,
-                SpecifiedValue::String(ref s) => {
-                    // Passing `true` to iterate over extended grapheme clusters, following
-                    // recommendation at http://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries
-                    let string = s.graphemes(true).next().unwrap_or("").to_string();
-                    computed_value::T::String(string)
-                }
-            }
-        }
-        #[inline]
-        fn from_computed_value(computed: &computed_value::T) -> Self {
-            match *computed {
-                computed_value::T::Keyword(ref keyword) =>
-                    SpecifiedValue::Keyword(KeywordValue::FillAndShape(keyword.fill,keyword.shape)),
-                computed_value::T::None => SpecifiedValue::None,
-                computed_value::T::String(ref string) => SpecifiedValue::String(string.clone())
-            }
-        }
-    }
-
-    pub fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>)
-                         -> Result<SpecifiedValue, ParseError<'i>> {
-        if input.try(|input| input.expect_ident_matching("none")).is_ok() {
-            return Ok(SpecifiedValue::None);
-        }
-
-        if let Ok(s) = input.try(|i| i.expect_string().map(|s| s.as_ref().to_owned())) {
-            // Handle <string>
-            return Ok(SpecifiedValue::String(s));
-        }
-
-        // Handle a pair of keywords
-        let mut shape = input.try(ShapeKeyword::parse);
-        let fill = if input.try(|input| input.expect_ident_matching("filled")).is_ok() {
-            Some(true)
-        } else if input.try(|input| input.expect_ident_matching("open")).is_ok() {
-            Some(false)
-        } else { None };
-        if shape.is_err() {
-            shape = input.try(ShapeKeyword::parse);
-        }
-
-        // At least one of shape or fill must be handled
-        let keyword_value = match (fill, shape) {
-            (Some(fill), Ok(shape)) => KeywordValue::FillAndShape(fill,shape),
-            (Some(fill), Err(_)) => KeywordValue::Fill(fill),
-            (None, Ok(shape)) => KeywordValue::Shape(shape),
-            _ => return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
-        };
-        Ok(SpecifiedValue::Keyword(keyword_value))
-    }
-</%helpers:longhand>
+${helpers.predefined_type(
+    "text-emphasis-style",
+    "TextEmphasisStyle",
+    None,
+    initial_specified_value="SpecifiedValue::None",
+    products="gecko",
+    boxed=True,
+    animation_value_type="discrete",
+    spec="https://drafts.csswg.org/css-text-decor/#propdef-text-emphasis-style",
+)}
 
 <%helpers:longhand name="text-emphasis-position" animation_value_type="discrete" products="gecko"
                    spec="https://drafts.csswg.org/css-text-decor/#propdef-text-emphasis-position">
-    define_css_keyword_enum!(HorizontalWritingModeValue:
-                             "over" => Over,
-                             "under" => Under);
-    add_impls_for_keyword_enum!(VerticalWritingModeValue);
-    define_css_keyword_enum!(VerticalWritingModeValue:
-                             "right" => Right,
-                             "left" => Left);
-    add_impls_for_keyword_enum!(HorizontalWritingModeValue);
+    #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+    #[derive(ToComputedValue, ToCss)]
+    pub enum HorizontalWritingModeValue {
+        Over,
+        Under,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+    #[derive(ToComputedValue, ToCss)]
+    pub enum VerticalWritingModeValue {
+        Right,
+        Left,
+    }
 
     #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
     pub struct SpecifiedValue(pub HorizontalWritingModeValue, pub VerticalWritingModeValue);
@@ -474,11 +306,13 @@ ${helpers.predefined_type(
 )}
 
 ${helpers.predefined_type(
-    "-moz-tab-size", "length::NonNegativeLengthOrNumber",
-    "::values::Either::Second(From::from(8.0))",
-    products="gecko", animation_value_type="::values::computed::length::NonNegativeLengthOrNumber",
-    spec="https://drafts.csswg.org/css-text-3/#tab-size-property")}
-
+    "-moz-tab-size",
+    "MozTabSize",
+    "generics::text::MozTabSize::Number(From::from(8.0))",
+    products="gecko",
+    animation_value_type="AnimatedMozTabSize",
+    spec="https://drafts.csswg.org/css-text-3/#tab-size-property",
+)}
 
 // CSS Compatibility
 // https://compat.spec.whatwg.org
@@ -540,7 +374,8 @@ ${helpers.single_keyword("text-combine-upright", "none all",
 ${helpers.single_keyword("text-rendering",
                          "auto optimizespeed optimizelegibility geometricprecision",
                          animation_value_type="discrete",
-                         spec="https://www.w3.org/TR/SVG11/painting.html#TextRenderingProperty")}
+                         spec="https://www.w3.org/TR/SVG11/painting.html#TextRenderingProperty",
+                         servo_restyle_damage="rebuild_and_reflow")}
 
 // FIXME Firefox expects the initial value of this property to change depending
 // on the value of the layout.css.control-characters.visible pref.

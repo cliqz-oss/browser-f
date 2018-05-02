@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = [];
+var EXPORTED_SYMBOLS = [];
 
 for (let [key, val] of Object.entries({
   /* Constants */
@@ -142,6 +142,7 @@ for (let [key, val] of Object.entries({
 
     startAfter: undefined,
     suiteStarted: false,
+    manageSuite: false,
 
     // The enabled-state of the test-plugins, stored so they can be reset later
     testPluginEnabledStates: null,

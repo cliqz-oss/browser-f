@@ -1336,6 +1336,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     const nsStyleDisplay* styles = StyleDisplay();
     if (styles && styles->mAppearance == NS_THEME_WIN_EXCLUDE_GLASS) {
       aBuilder->AddWindowExcludeGlassRegion(
+          this,
           nsRect(aBuilder->ToReferenceFrame(this), GetSize()));
     }
   }
@@ -1347,11 +1348,11 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 #ifdef DEBUG_LAYOUT
   if (mState & NS_STATE_CURRENTLY_IN_DEBUG) {
-    destination.BorderBackground()->AppendToTop(new (aBuilder)
-      nsDisplayGeneric(aBuilder, this, PaintXULDebugBackground,
+    destination.BorderBackground()->AppendToTop(
+      MakeDisplayItem<nsDisplayGeneric>(aBuilder, this, PaintXULDebugBackground,
                        "XULDebugBackground"));
-    destination.Outlines()->AppendToTop(new (aBuilder)
-      nsDisplayXULDebug(aBuilder, this));
+    destination.Outlines()->AppendToTop(
+      MakeDisplayItem<nsDisplayXULDebug>(aBuilder, this));
   }
 #endif
 
@@ -1383,11 +1384,11 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     DisplayListClipState::AutoSaveRestore ownLayerClipState(aBuilder);
 
     // Wrap the list to make it its own layer
-    aLists.Content()->AppendToTop(new (aBuilder)
-      nsDisplayOwnLayer(aBuilder, this, &masterList, ownLayerASR,
-                        nsDisplayOwnLayerFlags::eNone,
-                        mozilla::layers::FrameMetrics::NULL_SCROLL_ID,
-                        mozilla::layers::ScrollThumbData{}, true, true));
+    aLists.Content()->AppendToTop(
+      MakeDisplayItem<nsDisplayOwnLayer>(aBuilder, this, &masterList, ownLayerASR,
+                                         nsDisplayOwnLayerFlags::eNone,
+                                         mozilla::layers::FrameMetrics::NULL_SCROLL_ID,
+                                         mozilla::layers::ScrollThumbData{}, true, true));
   }
 }
 
@@ -1926,7 +1927,7 @@ nsBoxFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
 
 // Helper less-than-or-equal function, used in CheckBoxOrder() as a
 // template-parameter for the sorting functions.
-bool
+static bool
 IsBoxOrdinalLEQ(nsIFrame* aFrame1,
                 nsIFrame* aFrame2)
 {
@@ -2085,14 +2086,13 @@ public:
   virtual nsDisplayItem* WrapList(nsDisplayListBuilder* aBuilder,
                                   nsIFrame* aFrame,
                                   nsDisplayList* aList) override {
-    return new (aBuilder)
-        nsDisplayXULEventRedirector(aBuilder, aFrame, aList, mTargetFrame);
+    return MakeDisplayItem<nsDisplayXULEventRedirector>(aBuilder, aFrame, aList,
+                                                        mTargetFrame);
   }
   virtual nsDisplayItem* WrapItem(nsDisplayListBuilder* aBuilder,
                                   nsDisplayItem* aItem) override {
-    return new (aBuilder)
-        nsDisplayXULEventRedirector(aBuilder, aItem->Frame(), aItem,
-                                    mTargetFrame);
+    return MakeDisplayItem<nsDisplayXULEventRedirector>(aBuilder, aItem->Frame(), aItem,
+                                                        mTargetFrame);
   }
 private:
   nsIFrame* mTargetFrame;

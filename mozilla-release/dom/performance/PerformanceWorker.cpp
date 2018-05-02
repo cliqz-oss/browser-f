@@ -6,12 +6,10 @@
 
 #include "PerformanceWorker.h"
 #include "mozilla/dom/DOMPrefs.h"
-#include "WorkerPrivate.h"
+#include "mozilla/dom/WorkerPrivate.h"
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 PerformanceWorker::PerformanceWorker(WorkerPrivate* aWorkerPrivate)
   : mWorkerPrivate(aWorkerPrivate)
@@ -49,6 +47,12 @@ DOMHighResTimeStamp
 PerformanceWorker::CreationTime() const
 {
   return mWorkerPrivate->CreationTime();
+}
+
+uint64_t
+PerformanceWorker::GetRandomTimelineSeed()
+{
+  return mWorkerPrivate->GetRandomTimelineSeed();
 }
 
 } // dom namespace

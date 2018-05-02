@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-
-const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 
 /**
  * NewTabInit - A placeholder for now. This will send a copy of the state to all
@@ -15,6 +13,7 @@ this.NewTabInit = class NewTabInit {
   constructor() {
     this._repliedEarlyTabs = new Map();
   }
+
   reply(target) {
     // Skip this reply if we already replied to an early tab
     if (this._repliedEarlyTabs.get(target)) {
@@ -22,7 +21,7 @@ this.NewTabInit = class NewTabInit {
     }
 
     const action = {type: at.NEW_TAB_INITIAL_STATE, data: this.store.getState()};
-    this.store.dispatch(ac.SendToContent(action, target));
+    this.store.dispatch(ac.AlsoToOneContent(action, target));
 
     // Remember that this early tab has already gotten a rehydration response in
     // case it thought we lost its initial REQUEST and asked again
@@ -30,6 +29,7 @@ this.NewTabInit = class NewTabInit {
       this._repliedEarlyTabs.set(target, true);
     }
   }
+
   onAction(action) {
     switch (action.type) {
       case at.NEW_TAB_STATE_REQUEST:
@@ -49,4 +49,4 @@ this.NewTabInit = class NewTabInit {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["NewTabInit"];
+const EXPORTED_SYMBOLS = ["NewTabInit"];

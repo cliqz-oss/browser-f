@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 function closeWindow(aClose, aPromptFunction) {
-  let { AppConstants } = Components.utils.import("resource://gre/modules/AppConstants.jsm", {});
+  let { AppConstants } = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
 
   // Closing the last window doesn't quit the application on OS X.
   if (AppConstants.platform != "macosx") {
@@ -38,8 +38,8 @@ function closeWindow(aClose, aPromptFunction) {
 
 function canQuitApplication(aData) {
   try {
-    var cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"]
-                              .createInstance(Components.interfaces.nsISupportsPRBool);
+    var cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                              .createInstance(Ci.nsISupportsPRBool);
     Services.obs.notifyObservers(cancelQuit, "quit-application-requested", aData || null);
 
     // Something aborted the quit process.
@@ -53,7 +53,7 @@ function goQuitApplication() {
   if (!canQuitApplication())
     return false;
 
-  Services.startup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit);
+  Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
   return true;
 }
 
@@ -71,8 +71,8 @@ function goUpdateCommand(aCommand) {
 
     goSetCommandEnabled(aCommand, enabled);
   } catch (e) {
-    Components.utils.reportError("An error occurred updating the " +
-                                 aCommand + " command: " + e);
+    Cu.reportError("An error occurred updating the " +
+                   aCommand + " command: " + e);
   }
 }
 
@@ -83,8 +83,8 @@ function goDoCommand(aCommand) {
     if (controller && controller.isCommandEnabled(aCommand))
       controller.doCommand(aCommand);
   } catch (e) {
-    Components.utils.reportError("An error occurred executing the " +
-                                 aCommand + " command: " + e);
+    Cu.reportError("An error occurred executing the " +
+                   aCommand + " command: " + e);
   }
 }
 
@@ -106,7 +106,7 @@ Object.defineProperty(this, "NS_ASSERT", {
   get() {
     delete this.NS_ASSERT;
     var tmpScope = {};
-    Components.utils.import("resource://gre/modules/debug.js", tmpScope);
+    ChromeUtils.import("resource://gre/modules/debug.js", tmpScope);
     return this.NS_ASSERT = tmpScope.NS_ASSERT;
   },
 });

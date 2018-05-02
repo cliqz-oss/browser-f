@@ -190,17 +190,12 @@ public:
 
 class nsDisplayCanvasBackgroundImage : public nsDisplayBackgroundImage {
 public:
-  explicit nsDisplayCanvasBackgroundImage(const InitData& aInitData)
-    : nsDisplayBackgroundImage(aInitData)
+  explicit nsDisplayCanvasBackgroundImage(nsDisplayListBuilder* aBuilder, const InitData& aInitData)
+    : nsDisplayBackgroundImage(aBuilder, aInitData)
   {
   }
 
   virtual void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
-
-  virtual void NotifyRenderingChanged() const override
-  {
-    mFrame->DeleteProperty(nsIFrame::CachedBackgroundImageDT());
-  }
 
   // We still need to paint a background color as well as an image for this item,
   // so we can't support this yet.

@@ -16,8 +16,10 @@
 #include "mozilla/EffectSet.h"
 #include "mozilla/GeckoStyleContext.h"
 #include "mozilla/EventStates.h"
+#include "mozilla/UndisplayedNode.h"
 #include "mozilla/ViewportFrame.h"
 #include "mozilla/css/StyleRule.h" // For nsCSSSelector
+#include "mozilla/dom/MutationEventBinding.h"
 #include "nsLayoutUtils.h"
 #include "AnimationCommon.h" // For GetLayerAnimationInfo
 #include "FrameLayerBuilder.h"
@@ -43,7 +45,6 @@
 #include "SVGTextFrame.h"
 #include "StickyScrollContainer.h"
 #include "nsIRootBox.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsContentUtils.h"
 #include "nsIFrameInlines.h"
 #include "ActiveLayerTracker.h"
@@ -394,19 +395,6 @@ GeckoRestyleManager::AttributeChanged(Element* aElement,
          tag == nsGkAtoms::listcell))
       return;
   }
-
-  if (aAttribute == nsGkAtoms::tooltiptext ||
-      aAttribute == nsGkAtoms::tooltip)
-  {
-    nsIRootBox* rootBox = nsIRootBox::GetRootBox(PresContext()->GetPresShell());
-    if (rootBox) {
-      if (aModType == nsIDOMMutationEvent::REMOVAL)
-        rootBox->RemoveTooltipSupport(aElement);
-      if (aModType == nsIDOMMutationEvent::ADDITION)
-        rootBox->AddTooltipSupport(aElement);
-    }
-  }
-
 #endif // MOZ_XUL
 
   if (primaryFrame) {
@@ -562,7 +550,15 @@ GeckoRestyleManager::ProcessPendingRestyles()
   NS_PRECONDITION(PresContext()->Document(), "No document?  Pshaw!");
   NS_PRECONDITION(!nsContentUtils::IsSafeToRunScript(),
                   "Missing a script blocker!");
-  MOZ_ASSERT(!PresContext()->HasPendingMediaQueryUpdates(),
+  // NOTE(emilio): Gecko calls into here from RebuildAllStyleData synchronously,
+  // without ensuring that all the media-query state is up-to-date.
+  //
+  // That is slightly bogus on its own, but it's long-standing and working on
+  // not rebuilding the rule tree synchronously on the old style system at this
+  // point is probably not worth the effort. Note bug 1089417 comment 21, which
+  // may or may not be an issue here.
+  MOZ_ASSERT(!PresContext()->HasPendingMediaQueryUpdates() ||
+             mDoRebuildAllStyleData,
              "Someone forgot to update media queries?");
 
   // First do any queued-up frame creation.  (We should really
@@ -1853,7 +1849,6 @@ ElementRestyler::Restyle(nsRestyleHint aRestyleHint)
       // descendants have been resolved), we don't want to consume it
       // for the inner frame.
       mContent->GetPrimaryFrame() == mFrame) {
-    mContent->OwnerDoc()->FlushPendingLinkUpdates();
     nsAutoPtr<RestyleTracker::RestyleData> restyleData;
     if (mRestyleTracker.GetRestyleData(mContent->AsElement(), restyleData)) {
       nsChangeHint changeToAppend =
@@ -3670,7 +3665,7 @@ AutoDisplayContentsAncestorPusher::AutoDisplayContentsAncestorPusher(
   , mPresContext(aPresContext)
 {
   if (aParent) {
-    nsFrameManager* fm = mPresContext->FrameManager();
+    nsFrameManager* fm = mPresContext->FrameConstructor();
     // Push display:contents mAncestors onto mTreeMatchContext.
     for (nsIContent* p = aParent; p && fm->GetDisplayContentsStyleFor(p);
          p = p->GetParent()) {

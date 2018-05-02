@@ -250,7 +250,7 @@ public:
 
   void AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf, size_t& aHeapSizeOut,
                               size_t& aNonHeapSizeOut,
-                              size_t& aSharedHandlesOut) const;
+                              size_t& aExtHandlesOut) const;
 
 private: // methods
 
@@ -526,8 +526,6 @@ private:
 
   RefPtr<imgFrame> mFrame;
 };
-
-void MarkSurfaceShared(gfx::SourceSurface* aSurface);
 
 } // namespace image
 } // namespace mozilla

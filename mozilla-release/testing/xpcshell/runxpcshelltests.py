@@ -371,7 +371,7 @@ class XPCShellTestThread(Thread):
             try:
                 # This could be left over from previous runs
                 self.removeDir(profileDir)
-            except:
+            except Exception:
                 pass
             os.makedirs(profileDir)
         else:
@@ -1438,6 +1438,8 @@ class XPCShellTests(object):
                 self.log.info('::: Test verification %s' % finalResult)
                 self.log.info(':::')
 
+        self.shutdownNode()
+
         return status
 
     def runTestList(self, tests_queue, sequential_tests, testClass,
@@ -1547,7 +1549,6 @@ class XPCShellTests(object):
         # restore default SIGINT behaviour
         signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-        self.shutdownNode()
         # Clean up any slacker directories that might be lying around
         # Some might fail because of windows taking too long to unlock them.
         # We don't do anything if this fails because the test slaves will have
@@ -1555,7 +1556,7 @@ class XPCShellTests(object):
         for directory in self.cleanup_dir_list:
             try:
                 shutil.rmtree(directory)
-            except:
+            except Exception:
                 self.log.info("%s could not be cleaned up." % directory)
 
         if exceptions:

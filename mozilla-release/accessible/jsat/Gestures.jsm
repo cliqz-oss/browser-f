@@ -36,21 +36,19 @@
 
 "use strict";
 
-const Cu = Components.utils;
+var EXPORTED_SYMBOLS = ["GestureSettings", "GestureTracker"]; // jshint ignore:line
 
-this.EXPORTED_SYMBOLS = ["GestureSettings", "GestureTracker"]; // jshint ignore:line
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Utils", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "Utils", // jshint ignore:line
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Logger", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "Logger", // jshint ignore:line
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "setTimeout", // jshint ignore:line
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "clearTimeout", // jshint ignore:line
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "PromiseUtils", // jshint ignore:line
   "resource://gre/modules/PromiseUtils.jsm");
 
 // Default maximum duration of swipe
@@ -134,7 +132,7 @@ Point.prototype = {
  * An externally accessible collection of settings used in gesture resolition.
  * @type {Object}
  */
-this.GestureSettings = { // jshint ignore:line
+var GestureSettings = { // jshint ignore:line
   /**
    * Maximum duration of swipe
    * @type {Number}
@@ -181,7 +179,7 @@ this.GestureSettings = { // jshint ignore:line
  * gestures.
  * @type {Object}
  */
-this.GestureTracker = { // jshint ignore:line
+var GestureTracker = { // jshint ignore:line
   /**
    * Reset GestureTracker to its initial state.
    * @return {[type]} [description]

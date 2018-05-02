@@ -32,6 +32,10 @@
 # define JS_SMALL_BRANCH
 #endif
 
+#if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+# define JS_CODELABEL_LINKMODE
+#endif
+
 using mozilla::CheckedInt;
 
 namespace js {
@@ -308,13 +312,18 @@ struct PatchedAbsoluteAddress
 // 32-bit offset.
 struct Address
 {
-    Register base;
+    RegisterOrSP base;
     int32_t offset;
 
-    Address(Register base, int32_t offset) : base(base), offset(offset)
+    Address(Register base, int32_t offset) : base(RegisterOrSP(base)), offset(offset)
     { }
 
-    Address() : base(Registers::Invalid), offset(0)
+#ifdef JS_HAS_HIDDEN_SP
+    Address(RegisterOrSP base, int32_t offset) : base(base), offset(offset)
+    { }
+#endif
+
+    Address() : base(RegisterOrSP(Registers::Invalid)), offset(0)
     { }
 };
 
@@ -340,17 +349,23 @@ HighWord(const Address& address) {
 // index with a scale, and a constant, 32-bit offset.
 struct BaseIndex
 {
-    Register base;
+    RegisterOrSP base;
     Register index;
     Scale scale;
     int32_t offset;
 
     BaseIndex(Register base, Register index, Scale scale, int32_t offset = 0)
-      : base(base), index(index), scale(scale), offset(offset)
+      : base(RegisterOrSP(base)), index(index), scale(scale), offset(offset)
     { }
 
+#ifdef JS_HAS_HIDDEN_SP
+    BaseIndex(RegisterOrSP base, Register index, Scale scale, int32_t offset = 0)
+      : base(base), index(index), scale(scale), offset(offset)
+    { }
+#endif
+
     BaseIndex()
-      : base(Registers::Invalid)
+      : base(RegisterOrSP(Registers::Invalid))
       , index(Registers::Invalid)
       , scale(TimesOne)
       , offset(0)
@@ -384,8 +399,14 @@ HighWord(const BaseIndex& address) {
 struct BaseValueIndex : BaseIndex
 {
     BaseValueIndex(Register base, Register index, int32_t offset = 0)
+      : BaseIndex(RegisterOrSP(base), index, ValueScale, offset)
+    { }
+
+#ifdef JS_HAS_HIDDEN_SP
+    BaseValueIndex(RegisterOrSP base, Register index, int32_t offset = 0)
       : BaseIndex(base, index, ValueScale, offset)
     { }
+#endif
 };
 
 // Specifies the address of an indexed Value within object elements from a
@@ -397,6 +418,14 @@ struct BaseObjectElementIndex : BaseValueIndex
     {
         NativeObject::elementsSizeMustNotOverflow();
     }
+
+#ifdef JS_HAS_HIDDEN_SP
+    BaseObjectElementIndex(RegisterOrSP base, Register index, int32_t offset = 0)
+      : BaseValueIndex(base, index, offset)
+    {
+        NativeObject::elementsSizeMustNotOverflow();
+    }
+#endif
 };
 
 // Like BaseObjectElementIndex, except for object slots.
@@ -407,6 +436,14 @@ struct BaseObjectSlotIndex : BaseValueIndex
     {
         NativeObject::slotsSizeMustNotOverflow();
     }
+
+#ifdef JS_HAS_HIDDEN_SP
+    BaseObjectSlotIndex(RegisterOrSP base, Register index)
+      : BaseValueIndex(base, index)
+    {
+        NativeObject::slotsSizeMustNotOverflow();
+    }
+#endif
 };
 
 class Relocation {
@@ -496,6 +533,8 @@ class CodeOffset
 // cannot be patched until after linking.
 // When the source label is resolved into a memory address, this address is
 // patched into the destination address.
+// Some need to distinguish between multiple ways of patching that address.
+// See JS_CODELABEL_LINKMODE.
 class CodeLabel
 {
     // The destination position, where the absolute reference should get
@@ -505,6 +544,19 @@ class CodeLabel
     // The source label (relative) in the code to where the destination should
     // get patched to.
     CodeOffset target_;
+
+#ifdef JS_CODELABEL_LINKMODE
+public:
+    enum LinkMode
+    {
+        Uninitialized = 0,
+        RawPointer,
+        MoveImmediate,
+        JumpImmediate
+    };
+private:
+    LinkMode linkMode_ = Uninitialized;
+#endif
 
   public:
     CodeLabel()
@@ -528,6 +580,14 @@ class CodeLabel
     CodeOffset target() const {
         return target_;
     }
+#ifdef JS_CODELABEL_LINKMODE
+    LinkMode linkMode() const {
+        return linkMode_;
+    }
+    void setLinkMode(LinkMode value) {
+        linkMode_ = value;
+    }
+#endif
 };
 
 typedef Vector<CodeLabel, 0, SystemAllocPolicy> CodeLabelVector;

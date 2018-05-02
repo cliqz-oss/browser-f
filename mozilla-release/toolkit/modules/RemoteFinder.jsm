@@ -4,18 +4,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-this.EXPORTED_SYMBOLS = ["RemoteFinder", "RemoteFinderListener"];
+var EXPORTED_SYMBOLS = ["RemoteFinder", "RemoteFinderListener"];
 
-const { interfaces: Ci, classes: Cc, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Geometry.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Geometry.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "GetClipboardSearchString",
-  () => Cu.import("resource://gre/modules/Finder.jsm", {}).GetClipboardSearchString
+  () => ChromeUtils.import("resource://gre/modules/Finder.jsm", {}).GetClipboardSearchString
 );
 XPCOMUtils.defineLazyGetter(this, "Rect",
-  () => Cu.import("resource://gre/modules/Geometry.jsm", {}).Rect
+  () => ChromeUtils.import("resource://gre/modules/Geometry.jsm", {}).Rect
 );
 
 function RemoteFinder(browser) {
@@ -207,7 +205,7 @@ RemoteFinder.prototype = {
 };
 
 function RemoteFinderListener(global) {
-  let {Finder} = Cu.import("resource://gre/modules/Finder.jsm", {});
+  let {Finder} = ChromeUtils.import("resource://gre/modules/Finder.jsm", {});
   this._finder = new Finder(global.docShell);
   this._finder.addResultListener(this);
   this._global = global;
@@ -316,7 +314,8 @@ RemoteFinderListener.prototype = {
         break;
 
       case "Finder:KeyPress":
-        this._finder.keyPress(data);
+        var KeyboardEvent = this._finder._getWindow().KeyboardEvent;
+        this._finder.keyPress(new KeyboardEvent("keypress", data));
         break;
 
       case "Finder:MatchesCount":

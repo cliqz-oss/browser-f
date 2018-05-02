@@ -352,7 +352,7 @@ class AutocompleteResults(UIBaseLib):
 
         :returns: The list of visible results.
         """
-        match_count = self.element.get_property('_matchCount')
+        match_count = self.element.get_property('matchCount')
 
         return self.marionette.execute_script("""
           let rv = [];
@@ -500,7 +500,7 @@ class IdentityPopupView(UIBaseLib):
 
         :return: `True` if the view is selected.
         """
-        return self.element.get_attribute('current') == 'true'
+        return self.element.get_attribute('visible') == 'true'
 
 
 class IdentityPopupMainView(IdentityPopupView):

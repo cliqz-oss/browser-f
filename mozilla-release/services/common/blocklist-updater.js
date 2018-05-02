@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["checkVersions", "addTestBlocklistClient"];
+var EXPORTED_SYMBOLS = ["checkVersions", "addTestBlocklistClient"];
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 Cu.importGlobalProperties(["fetch"]);
-XPCOMUtils.defineLazyModuleGetter(this, "UptakeTelemetry",
-                                  "resource://services-common/uptake-telemetry.js");
+ChromeUtils.defineModuleGetter(this, "UptakeTelemetry",
+                               "resource://services-common/uptake-telemetry.js");
 
 const PREF_SETTINGS_SERVER              = "services.settings.server";
 const PREF_SETTINGS_SERVER_BACKOFF      = "services.settings.server.backoff";
@@ -25,7 +25,7 @@ const TELEMETRY_HISTOGRAM_KEY = "settings-changes-monitoring";
 
 
 XPCOMUtils.defineLazyGetter(this, "gBlocklistClients", function() {
-  const BlocklistClients = Cu.import("resource://services-common/blocklist-clients.js", {});
+  const BlocklistClients = ChromeUtils.import("resource://services-common/blocklist-clients.js", {});
   return {
     [BlocklistClients.OneCRLBlocklistClient.collectionName]: BlocklistClients.OneCRLBlocklistClient,
     [BlocklistClients.AddonBlocklistClient.collectionName]: BlocklistClients.AddonBlocklistClient,
@@ -36,7 +36,7 @@ XPCOMUtils.defineLazyGetter(this, "gBlocklistClients", function() {
 });
 
 // Add a blocklist client for testing purposes. Do not use for any other purpose
-this.addTestBlocklistClient = (name, client) => { gBlocklistClients[name] = client; };
+var addTestBlocklistClient = (name, client) => { gBlocklistClients[name] = client; };
 
 
 async function pollChanges(url, lastEtag) {
@@ -91,7 +91,7 @@ async function pollChanges(url, lastEtag) {
 
 // This is called by the ping mechanism.
 // returns a promise that rejects if something goes wrong
-this.checkVersions = async function() {
+var checkVersions = async function() {
   // Check if the server backoff time is elapsed.
   if (Services.prefs.prefHasUserValue(PREF_SETTINGS_SERVER_BACKOFF)) {
     const backoffReleaseTime = Services.prefs.getCharPref(PREF_SETTINGS_SERVER_BACKOFF);

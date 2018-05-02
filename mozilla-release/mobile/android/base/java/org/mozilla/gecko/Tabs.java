@@ -31,6 +31,7 @@ import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.JavaUtil;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.webapps.WebAppManifest;
+import org.mozilla.geckoview.GeckoView;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
@@ -1095,6 +1096,7 @@ public class Tabs implements BundleEventListener {
     /**
      * Opens a new tab and loads a page according to the user's preferences (by default about:home).
      */
+    @RobocopTarget
     public Tab addPrivateTab() {
         return addTab(Tabs.LOADURL_PRIVATE);
     }

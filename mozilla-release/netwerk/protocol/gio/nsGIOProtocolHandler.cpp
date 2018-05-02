@@ -20,6 +20,7 @@
 #include "nsNetUtil.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 #include "nsIAuthPrompt.h"
 #include "nsIChannel.h"
 #include "nsIInputStream.h"
@@ -928,10 +929,15 @@ nsGIOProtocolHandler::InitSupportedProtocolsPref(nsIPrefBranch *prefs)
   if (NS_SUCCEEDED(rv)) {
     mSupportedProtocols.StripWhitespace();
     ToLowerCase(mSupportedProtocols);
+  } else {
+    mSupportedProtocols.AssignLiteral(
+#ifdef MOZ_PROXY_BYPASS_PROTECTION
+      ""           // use none
+#else
+      "smb:,sftp:" // use defaults
+#endif
+    );
   }
-  else
-    mSupportedProtocols.AssignLiteral("smb:,sftp:"); // use defaults
-
   LOG(("gio: supported protocols \"%s\"\n", mSupportedProtocols.get()));
 }
 
@@ -1026,18 +1032,12 @@ nsGIOProtocolHandler::NewURI(const nsACString &aSpec,
     }
   }
 
-  nsresult rv;
-  nsCOMPtr<nsIStandardURL> url =
-      do_CreateInstance(NS_STANDARDURL_CONTRACTID, &rv);
-  if (NS_FAILED(rv))
-    return rv;
-
-  rv = url->Init(nsIStandardURL::URLTYPE_STANDARD, -1, flatSpec,
-                 aOriginCharset, aBaseURI);
-  if (NS_SUCCEEDED(rv))
-    rv = CallQueryInterface(url, aResult);
-  return rv;
-
+  nsCOMPtr<nsIURI> base(aBaseURI);
+  return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+    .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                            nsIStandardURL::URLTYPE_STANDARD,
+                            -1, flatSpec, aOriginCharset, base, nullptr))
+    .Finalize(aResult);
 }
 
 NS_IMETHODIMP
