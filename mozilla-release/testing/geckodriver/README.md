@@ -21,7 +21,7 @@ the [Testing :: GeckoDriver] component.
 
 [WebDriver protocol]: http://w3c.github.io/webdriver/webdriver-spec.html#protocol
 [Firefox remote protocol]: https://developer.mozilla.org/en-US/docs/Mozilla/QA/Marionette
-[change log]: https://github.com/mozilla/geckodriver/blob/master/CHANGES.md
+[change log]: https://searchfox.org/mozilla-central/source/testing/geckodriver/CHANGES.md
 [Releases]: https://github.com/mozilla/geckodriver/releases
 [supported platforms]: #supported-firefoxen
 [mozilla-central]: https://hg.mozilla.org/mozilla-central/
@@ -90,6 +90,7 @@ geckodriver supports a number of [capabilities]:
   <td>Boolean initially set to false,
    indicating the session will not implicitly trust untrusted
    or self-signed TLS certificates on navigation.
+  <td>
  </tr>
 
  <tr>
@@ -104,6 +105,7 @@ geckodriver supports a number of [capabilities]:
    waiting for the <code>complete</code> ready state;
    or "<code>none</code>",
    which will return immediately after starting navigation.
+  <td>
  </tr>
 
  <tr>
@@ -199,8 +201,7 @@ geckodriver supports a number of [capabilities]:
 Firefox capabilities
 ====================
 
-geckodriver also supports capabilities with the `moz:` prefix, which can
-be used to define Firefox-specific capabilities.
+geckodriver has a few capabilities that are specific to Firefox.
 
 moz:firefoxOptions
 ------------------
@@ -537,11 +538,18 @@ the Windows registry.
 
 #### `--connect-existing`
 
-Connecting to an existing Firefox instance.  The instance must have
-Marionette enabled.
+Connect geckodriver to an existing Firefox instance.  This means
+geckodriver will abstain from the default of starting a new Firefox
+session.
 
-To enable the Marionette remote protocol you can pass the `--marionette`
-flag to Firefox.
+The existing Firefox instance must have [Marionette] enabled.
+To enable the remote protocol in Firefox, you can pass the
+`-marionette` flag.  Unless the `marionette.port` preference
+has been user-set, Marionette will listen on port 2828.  So when
+using `--connect-existing` it is likely you will also have to use
+[`--marionette-port`] to set the correct port.
+
+[`--marionette-port`]: #marionette-port
 
 
 #### <code>--host <var>HOST</var></code>
@@ -557,23 +565,40 @@ Set the Gecko and geckodriver log level.  Possible values are `fatal`,
 
 #### <code>--marionette-port <var>PORT</var></code>
 
-Port to use for connecting to the Marionette remote protocol.  By default
-it will pick a free port assigned by the system.
+Selects the port for geckodriver’s connection to the [Marionette]
+remote protocol.
+
+In the default mode where geckodriver starts and manages the Firefox
+process, it will pick a free port assigned by the system and set the
+`marionette.port` preference in the profile.
+
+When [`--connect-existing`] is used and the Firefox process is not
+under geckodriver’s control, it will simply connect to <var>PORT</var>.
+
+[`--connect-existing`]: #connect-existing
 
 
 #### <code>-p <var>PORT</var></code>/<code>--port <var>PORT</var></code>
 
 Port to use for the WebDriver server.  Defaults to 4444.
 
-A helpful trick is that it is possible to bind to 0 to get the system
-to atomically assign a free port.
+A helpful trick is that it is possible to bind to 0 to get the
+system to atomically assign a free port.
+
+
+#### <code>--jsdebugger</code>
+
+Attach [browser toolbox] debugger when Firefox starts.  This is
+useful for debugging [Marionette] internals.
+
+[browser toolbox]: https://developer.mozilla.org/en-US/docs/Tools/Browser_Toolbox
 
 
 #### <code>-v<var>[v]</var></code>
 
-Increases the logging verbosity by to debug level when passing a single
-`-v`, or to trace level if `-vv` is passed.  This is analogous to passing
-`--log debug` and `--log trace`, respectively.
+Increases the logging verbosity by to debug level when passing
+a single `-v`, or to trace level if `-vv` is passed.  This is
+analogous to passing `--log debug` and `--log trace`, respectively.
 
 
 Building
@@ -598,14 +623,14 @@ the built executable with `./mach geckodriver -- --other --flags`.
 
 [Rust]: https://www.rust-lang.org/
 [Mozilla]: https://www.mozilla.org/en-US/
-[webdriver crate]: https://github.com/mozilla/webdriver-rust
-[commands]: https://docs.rs/webdriver/0.25.0/webdriver/command/index.html
-[responses]: https://docs.rs/webdriver/0.25.0/webdriver/response/index.html
-[errors]: https://docs.rs/webdriver/0.25.0/webdriver/error/enum.ErrorStatus.html
-[Marionette protocol]: https://developer.mozilla.org/en-US/docs/Mozilla/QA/Marionette/Protocol
+[webdriver crate]: https://crates.io/crates/webdriver
+[commands]: https://docs.rs/webdriver/newest/webdriver/command/index.html
+[responses]: https://docs.rs/webdriver/newest/webdriver/response/index.html
+[errors]: https://docs.rs/webdriver/newest/webdriver/error/enum.ErrorStatus.html
+[Marionette protocol]: https://firefox-source-docs.mozilla.org/testing/marionette/marionette/Protocol.html
 [WebDriver]: https://w3c.github.io/webdriver/webdriver-spec.html
 [FirefoxDriver]: https://github.com/SeleniumHQ/selenium/wiki/FirefoxDriver
-[Marionette]: http://searchfox.org/mozilla-central/source/testing/marionette/README
+[Marionette]: https://firefox-source-docs.mozilla.org/testing/marionette/marionette/
 [Firefox CI]: https://treeherder.mozilla.org/
 [mozconfig]: https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options
 

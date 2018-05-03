@@ -432,7 +432,7 @@ def get_compiler_info(compiler, language):
 
     try:
         type = CompilerType(data['COMPILER'])
-    except:
+    except Exception:
         raise FatalCheckError(
             'Unknown compiler or compiler not supported.')
 
@@ -646,6 +646,14 @@ def toolchain_search_path(vc_compiler_path):
     if vc_compiler_path:
         result = [os.environ.get('PATH')]
         result.extend(vc_compiler_path)
+
+        # Also add in the location to which `mach bootstrap` or
+        # `mach artifact toolchain` installs clang.
+        mozbuild_state_dir = os.environ.get('MOZBUILD_STATE_PATH',
+                                            os.path.expanduser(os.path.join('~', '.mozbuild')))
+        bootstrap_clang_path = os.path.join(mozbuild_state_dir, 'clang', 'bin')
+        result.append(bootstrap_clang_path)
+
         # We're going to alter PATH for good in windows.configure, but we also
         # need to do it for the valid_compiler() check below.
         os.environ['PATH'] = os.pathsep.join(result)
@@ -779,21 +787,26 @@ def compiler(language, host_or_target, c_compiler=None, other_compiler=None,
     # doesn't match the target C compiler.
     # As a special case, since clang supports all kinds of targets in the same
     # executable, when cross compiling with clang, default to the same compiler
-    # as the target compiler, resetting flags.
+    # as the target compiler, resetting flags.  However, Android NDK clangs do
+    # not function as host compilers -- they're target compilers only -- so
+    # don't use clang target as host if the target OS is Android.
     if host_or_target == host:
         if other_c_compiler is not None:
             args = (c_compiler, other_c_compiler)
         else:
             args = ()
 
-        @depends(provided_compiler, other_compiler, cross_compiling, *args)
-        def provided_compiler(value, other_compiler, cross_compiling, *args):
+        @depends(provided_compiler, other_compiler, cross_compiling,
+                 target, *args)
+        def provided_compiler(value, other_compiler, cross_compiling,
+                              target, *args):
             if value:
                 return value
             c_compiler, other_c_compiler = args if args else (None, None)
             if not cross_compiling and c_compiler == other_c_compiler:
                 return other_compiler
-            if cross_compiling and other_compiler.type == 'clang':
+            if cross_compiling and other_compiler.type == 'clang' and \
+                    target.os != 'Android':
                 return namespace(**{
                     k: [] if k == 'flags' else v
                     for k, v in other_compiler.__dict__.iteritems()
@@ -1253,7 +1266,10 @@ def pgo_flags(compiler):
             use_cflags=['-GL', '-wd4624', '-wd4952'],
             # XXX: should be -LTCG:PGOPTIMIZE, but that fails on libxul.
             # Probably also a compiler bug, but what can you do?
-            use_ldflags=['-LTCG:PGUPDATE', cgthreads],
+            # /d2:-cgsummary prints a summary of what is happening during
+            # code generation. How long individual functions are optimized,
+            # which functions are optimized, etc.
+            use_ldflags=['-LTCG:PGUPDATE', cgthreads, '-d2:-cgsummary'],
         )
 
 

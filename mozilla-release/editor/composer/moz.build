@@ -15,19 +15,24 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'composer'
 
 UNIFIED_SOURCES += [
+    'ComposerCommandsUpdater.cpp',
     'nsComposerCommands.cpp',
-    'nsComposerCommandsUpdater.cpp',
     'nsComposerController.cpp',
     'nsComposerDocumentCommands.cpp',
     'nsComposerRegistration.cpp',
-    'nsComposeTxtSrvFilter.cpp',
     'nsEditingSession.cpp',
-    'nsEditorSpellCheck.cpp',
+]
+
+EXPORTS.mozilla += [
+    'ComposerCommandsUpdater.h',
 ]
 
 # Needed because we include HTMLEditor.h which indirectly includes nsDocument.h
 LOCAL_INCLUDES += [
     '/dom/base',
+    '/dom/html',  # For nsHTMLDocument
+    '/editor/spellchecker', # nsComposeTxtSrvFilter.h
+    '/layout/style', # For things nsHTMLDocument includes.
 ]
 
 FINAL_LIBRARY = 'xul'

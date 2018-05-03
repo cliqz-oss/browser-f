@@ -50,6 +50,18 @@ DEFAULT_FILENAME_TEMPLATE = "{appName}-{branch}-{version}-{platform}-" \
                             "{locale}-{from_buildid}-{to_buildid}.partial.mar"
 
 
+def write_dogrc(api_key):
+    """Datadog .dogrc file for command line interface."""
+    dogrc_path = os.path.join(os.path.expanduser('~'), '.dogrc')
+    config = configparser.ConfigParser()
+    config['Connection'] = {
+        'apikey': api_key,
+        'appkey': '',
+    }
+    with open(dogrc_path, 'w') as f:
+        config.write(f)
+
+
 def verify_signature(mar, certs):
     log.info("Checking %s signature", mar)
     with open(mar, 'rb') as mar_fh:
@@ -85,7 +97,8 @@ async def retry_download(*args, **kwargs):  # noqa: E999
     await retry_async(
         download,
         retry_exceptions=(
-            aiohttp.ClientError
+            aiohttp.ClientError,
+            asyncio.TimeoutError
         ),
         args=args,
         kwargs=kwargs
@@ -96,9 +109,8 @@ async def download(url, dest, mode=None):  # noqa: E999
     log.info("Downloading %s to %s", url, dest)
 
     bytes_downloaded = 0
-
     async with aiohttp.ClientSession(raise_for_status=True) as session:
-        async with session.get(url) as resp:
+        async with session.get(url, timeout=60) as resp:
             with open(dest, 'wb') as fd:
                 while True:
                     chunk = await resp.content.read(4096)
@@ -112,7 +124,6 @@ async def download(url, dest, mode=None):  # noqa: E999
                 log.debug('Content-Length: %s bytes', resp.headers['content-length'])
                 if bytes_downloaded != int(resp.headers['content-length']):
                     raise IOError('Unexpected number of bytes downloaded')
-
             if mode:
                 log.debug("chmod %o %s", mode, dest)
                 os.chmod(dest, mode)
@@ -178,12 +189,14 @@ def get_option(directory, filename, section, option):
     return rv
 
 
-async def generate_partial(work_env, from_dir, to_dir, dest_mar, channel_ids,
-                           version, use_old_format):
+async def generate_partial(work_env, from_dir, to_dir, dest_mar, mar_data,
+                           use_old_format):
     log.info("Generating partial %s", dest_mar)
     env = work_env.env
-    env["MOZ_PRODUCT_VERSION"] = version
-    env["MOZ_CHANNEL_ID"] = channel_ids
+    env["MOZ_PRODUCT_VERSION"] = mar_data['version']
+    env["MOZ_CHANNEL_ID"] = mar_data["ACCEPTED_MAR_CHANNEL_IDS"]
+    env['BRANCH'] = mar_data['branch']
+    env['PLATFORM'] = mar_data['platform']
     if use_old_format:
         env['MAR_OLD_FORMAT'] = '1'
     elif 'MAR_OLD_FORMAT' in env:
@@ -274,7 +287,10 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
         dest = os.path.join(work_env.workdir, "{}.mar".format(mar_type))
         unpack_dir = os.path.join(work_env.workdir, mar_type)
 
-        with ddstats.timer('mar.download.time'):
+        metric_tags = [
+            "platform:{}".format(partial_def['platform']),
+        ]
+        with ddstats.timer('mar.download.time', tags=metric_tags):
             await retry_download(f, dest)
 
         if not os.getenv("MOZ_DISABLE_MAR_CERT_VERIFICATION"):
@@ -363,9 +379,7 @@ async def manage_partial(partial_def, work_env, filename_template, artifacts_dir
     ]
     with ddstats.timer('generate_partial.time', tags=metric_tags):
         await generate_partial(work_env, from_path, to_path, dest_mar,
-                               mar_data["ACCEPTED_MAR_CHANNEL_IDS"],
-                               mar_data["version"],
-                               use_old_format)
+                               mar_data, use_old_format)
 
     mar_data["size"] = os.path.getsize(dest_mar)
 
@@ -450,6 +464,8 @@ def main():
         log.info("Starting metric collection")
         initialize(**dd_options)
         ddstats.start(flush_interval=1)
+        # For use in shell scripts.
+        write_dogrc(dd_api_key)
     else:
         log.info("No metric collection")
 
@@ -477,6 +493,7 @@ def main():
     # Warning: Assumption that one partials task will always be for one branch.
     metric_tags = [
         "branch:{}".format(manifest[0]['branch']),
+        "platform:{}".format(manifest[0]['platform']),
     ]
 
     ddstats.timing('task_duration', time.time() - start,

@@ -17,4 +17,5 @@ add_task(async function () {
 
   const node = await waitFor(() => findMessage(hud, "octopus"));
   ok(node, "text is displayed in web console");
+  ok(node.classList.contains("error"), "the log represents an error");
 });

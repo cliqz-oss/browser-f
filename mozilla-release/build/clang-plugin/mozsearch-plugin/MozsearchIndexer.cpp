@@ -36,7 +36,7 @@
 
 using namespace clang;
 
-const std::string GENERATED("__GENERATED__/");
+const std::string GENERATED("__GENERATED__" PATHSEP_STRING);
 
 // Absolute path to directory containing source code.
 std::string Srcdir;
@@ -69,6 +69,20 @@ static bool isValidIdentifier(std::string Input) {
   return true;
 }
 
+struct RAIITracer {
+  RAIITracer(const char *log) : mLog(log) {
+    printf("<%s>\n", mLog);
+  }
+
+  ~RAIITracer() {
+    printf("</%s>\n", mLog);
+  }
+
+  const char* mLog;
+};
+
+#define TRACEFUNC RAIITracer tracer(__FUNCTION__);
+
 class IndexConsumer;
 
 // For each C++ file seen by the analysis (.cpp or .h), we track a
@@ -86,7 +100,11 @@ struct FileInfo {
       return;
     }
 
-    Interesting = Rname.compare(0, Srcdir.length(), Srcdir) == 0;
+    // Empty filenames can get turned into Srcdir when they are resolved as
+    // absolute paths, so we should exclude files that are exactly equal to
+    // Srcdir or anything outside Srcdir.
+    Interesting = (Rname.length() > Srcdir.length()) &&
+                  (Rname.compare(0, Srcdir.length(), Srcdir) == 0);
     if (Interesting) {
       // Remove the trailing `/' as well.
       Realname.erase(0, Srcdir.length() + 1);
@@ -162,9 +180,16 @@ private:
       // We haven't seen this file before. We need to make the FileInfo
       // structure information ourselves
       std::string Filename = SM.getFilename(Loc);
-      std::string Absolute = getAbsolutePath(Filename);
-      if (Absolute.empty()) {
-        Absolute = Filename;
+      std::string Absolute;
+      // If Loc is a macro id rather than a file id, it Filename might be
+      // empty. Also for some types of file locations that are clang-internal
+      // like "<scratch>" it can return an empty Filename. In these cases we
+      // want to leave Absolute as empty.
+      if (!Filename.empty()) {
+        Absolute = getAbsolutePath(Filename);
+        if (Absolute.empty()) {
+          Absolute = Filename;
+        }
       }
       std::unique_ptr<FileInfo> Info = llvm::make_unique<FileInfo>(Absolute);
       It = FileMap.insert(std::make_pair(Id, std::move(Info))).first;
@@ -310,6 +335,10 @@ private:
 
   std::string getMangledName(clang::MangleContext *Ctx,
                              const clang::NamedDecl *Decl) {
+    if (isa<FunctionDecl>(Decl) && cast<FunctionDecl>(Decl)->isExternC()) {
+      return cast<FunctionDecl>(Decl)->getNameAsString();
+    }
+
     if (isa<FunctionDecl>(Decl) || isa<VarDecl>(Decl)) {
       const DeclContext *DC = Decl->getDeclContext();
       if (isa<TranslationUnitDecl>(DC) || isa<NamespaceDecl>(DC) ||
@@ -440,6 +469,10 @@ public:
       // in different ways are analyzed completely.
       char Buffer[65536];
       FILE *Fp = Lock.openFile("r");
+      if (!Fp) {
+        fprintf(stderr, "Unable to open input file %s\n", Filename.c_str());
+        exit(1);
+      }
       while (fgets(Buffer, sizeof(Buffer), Fp)) {
         Lines.push_back(std::string(Buffer));
       }
@@ -456,6 +489,10 @@ public:
       // Overwrite the output file with the merged data. Since we have the lock,
       // this will happen atomically.
       Fp = Lock.openFile("w");
+      if (!Fp) {
+        fprintf(stderr, "Unable to open output file %s\n", Filename.c_str());
+        exit(1);
+      }
       size_t Length = 0;
       for (std::string &Line : Nodupes) {
         Length += Line.length();
@@ -809,7 +846,8 @@ public:
   }
 
   enum {
-    NoCrossref = 1,
+    NoCrossref = 1 << 0,
+    OperatorToken = 1 << 1,
   };
 
   // This is the only function that emits analysis JSON data. It should be
@@ -832,11 +870,13 @@ public:
     std::string RangeStr = locationToString(Loc, EndOffset - StartOffset);
     std::string PeekRangeStr;
 
-    // Get the token's characters so we can make sure it's a valid token.
-    const char *StartChars = SM.getCharacterData(Loc);
-    std::string Text(StartChars, EndOffset - StartOffset);
-    if (!isValidIdentifier(Text)) {
-      return;
+    if (!(Flags & OperatorToken)) {
+      // Get the token's characters so we can make sure it's a valid token.
+      const char *StartChars = SM.getCharacterData(Loc);
+      std::string Text(StartChars, EndOffset - StartOffset);
+      if (!isValidIdentifier(Text)) {
+        return;
+      }
     }
 
     FileInfo *F = getFileInfo(Loc);
@@ -1180,6 +1220,7 @@ public:
     }
 
     std::string Mangled = getMangledName(CurMangleContext, NamedCallee);
+    int Flags = 0;
 
     Expr *CalleeExpr = E->getCallee()->IgnoreParenImpCasts();
 
@@ -1187,6 +1228,7 @@ public:
       // Just take the first token.
       CXXOperatorCallExpr *Op = dyn_cast<CXXOperatorCallExpr>(E);
       Loc = Op->getOperatorLoc();
+      Flags |= OperatorToken;
     } else if (MemberExpr::classof(CalleeExpr)) {
       MemberExpr *Member = dyn_cast<MemberExpr>(CalleeExpr);
       Loc = Member->getMemberLoc();
@@ -1204,7 +1246,7 @@ public:
     }
 
     visitIdentifier("use", "function", getQualifiedName(NamedCallee), Loc, Mangled,
-                    getContext(Loc));
+                    getContext(Loc), Flags);
 
     return true;
   }
@@ -1475,9 +1517,9 @@ protected:
       return false;
     }
 
-    ensurePath(Args[1] + "/");
+    ensurePath(Args[1] + PATHSEP_STRING);
     Outdir = getAbsolutePath(Args[1]);
-    Outdir += "/";
+    Outdir += PATHSEP_STRING;
 
     Objdir = getAbsolutePath(Args[2]);
     if (Objdir.empty()) {
@@ -1487,7 +1529,7 @@ protected:
       D.Report(DiagID) << Args[2];
       return false;
     }
-    Objdir += "/";
+    Objdir += PATHSEP_STRING;
 
     printf("MOZSEARCH: %s %s %s\n", Srcdir.c_str(), Outdir.c_str(),
            Objdir.c_str());

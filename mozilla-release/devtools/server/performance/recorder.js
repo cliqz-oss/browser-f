@@ -4,10 +4,8 @@
 "use strict";
 
 const { Cu } = require("chrome");
-const { Task } = require("devtools/shared/task");
 
 loader.lazyRequireGetter(this, "Services");
-loader.lazyRequireGetter(this, "promise");
 loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 loader.lazyRequireGetter(this, "Memory",
@@ -164,7 +162,7 @@ PerformanceRecorder.prototype = {
    *        The time (in milliseconds) when the call was made, relative to when
    *        the nsIProfiler module was started.
    */
-  _onConsoleProfileStart: Task.async(function* ({ profileLabel, currentTime }) {
+  async _onConsoleProfileStart({ profileLabel, currentTime }) {
     let recordings = this._recordings;
 
     // Abort if a profile with this label already exists.
@@ -176,11 +174,11 @@ PerformanceRecorder.prototype = {
     // expecting a recording very soon.
     this.emit("console-profile-start");
 
-    yield this.startRecording(Object.assign({}, getPerformanceRecordingPrefs(), {
+    await this.startRecording(Object.assign({}, getPerformanceRecordingPrefs(), {
       console: true,
       label: profileLabel
     }));
-  }),
+  },
 
   /**
    * Invoked whenever `console.profileEnd` is called.
@@ -191,7 +189,7 @@ PerformanceRecorder.prototype = {
    *        The time (in milliseconds) when the call was made, relative to when
    *        the nsIProfiler module was started.
    */
-  _onConsoleProfileEnd: Task.async(function* (data) {
+  async _onConsoleProfileEnd(data) {
     // If no data, abort; can occur if profiler isn't running and we get a surprise
     // call to console.profileEnd()
     if (!data) {
@@ -222,8 +220,8 @@ PerformanceRecorder.prototype = {
       return;
     }
 
-    yield this.stopRecording(model);
-  }),
+    await this.stopRecording(model);
+  },
 
  /**
   * TODO handle bug 1144438
@@ -311,15 +309,15 @@ PerformanceRecorder.prototype = {
    * @return object
    *         A promise that is resolved once recording has started.
    */
-  startRecording: Task.async(function* (options) {
+  async startRecording(options) {
     let profilerStart, timelineStart, memoryStart;
 
-    profilerStart = Task.spawn(function* () {
-      let data = yield this._profiler.isActive();
+    profilerStart = (async function () {
+      let data = await this._profiler.isActive();
       if (data.isActive) {
         return data;
       }
-      let startData = yield this._profiler.start(
+      let startData = await this._profiler.start(
         mapRecordingOptions("profiler", options)
       );
 
@@ -330,7 +328,7 @@ PerformanceRecorder.prototype = {
         startData.currentTime = 0;
       }
       return startData;
-    }.bind(this));
+    }.bind(this))();
 
     // Timeline will almost always be on if using the DevTools, but using component
     // independently could result in no timeline.
@@ -348,7 +346,7 @@ PerformanceRecorder.prototype = {
       memoryStart = this._memory.startRecordingAllocations(recordingOptions);
     }
 
-    let [profilerStartData, timelineStartData, memoryStartData] = yield promise.all([
+    let [profilerStartData, timelineStartData, memoryStartData] = await Promise.all([
       profilerStart, timelineStart, memoryStart
     ]);
 
@@ -366,14 +364,14 @@ PerformanceRecorder.prototype = {
     data.totalSize = profilerStartData.totalSize;
 
     data.systemClient = this._systemClient;
-    data.systemHost = yield getSystemInfo();
+    data.systemHost = await getSystemInfo();
 
     let model = new PerformanceRecordingActor(this.conn, options, data);
     this._recordings.push(model);
 
     this.emit("recording-started", model);
     return model;
-  }),
+  },
 
   /**
    * Manually ends the recording session for the corresponding PerformanceRecording.
@@ -384,11 +382,11 @@ PerformanceRecorder.prototype = {
    * @return PerformanceRecording
    *         Returns the same model, populated with the profiling data.
    */
-  stopRecording: Task.async(function* (model) {
+  async stopRecording(model) {
     // If model isn't in the Recorder's internal store,
     // then do nothing, like if this was a console.profileEnd
     // from a different target.
-    if (this._recordings.indexOf(model) === -1) {
+    if (!this._recordings.includes(model)) {
       return model;
     }
 
@@ -432,7 +430,7 @@ PerformanceRecorder.prototype = {
 
     this.emit("recording-stopped", model, recordingData);
     return model;
-  }),
+  },
 
   /**
    * Checks all currently stored recording handles and returns a boolean

@@ -6,6 +6,8 @@
 
 #include "mozilla/dom/SVGTextContentElement.h"
 
+#include "mozilla/dom/SVGLengthBinding.h"
+#include "mozilla/dom/SVGTextContentElementBinding.h"
 #include "mozilla/dom/SVGIRect.h"
 #include "nsBidiUtils.h"
 #include "nsISVGPoint.h"
@@ -17,20 +19,22 @@
 namespace mozilla {
 namespace dom {
 
+using namespace SVGTextContentElementBinding;
+
 nsSVGEnumMapping SVGTextContentElement::sLengthAdjustMap[] = {
-  { &nsGkAtoms::spacing, SVG_LENGTHADJUST_SPACING },
-  { &nsGkAtoms::spacingAndGlyphs, SVG_LENGTHADJUST_SPACINGANDGLYPHS },
+  { &nsGkAtoms::spacing, LENGTHADJUST_SPACING },
+  { &nsGkAtoms::spacingAndGlyphs, LENGTHADJUST_SPACINGANDGLYPHS },
   { nullptr, 0 }
 };
 
 nsSVGElement::EnumInfo SVGTextContentElement::sEnumInfo[1] =
 {
-  { &nsGkAtoms::lengthAdjust, sLengthAdjustMap, SVG_LENGTHADJUST_SPACING }
+  { &nsGkAtoms::lengthAdjust, sLengthAdjustMap, LENGTHADJUST_SPACING }
 };
 
 nsSVGElement::LengthInfo SVGTextContentElement::sLengthInfo[1] =
 {
-  { &nsGkAtoms::textLength, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::XY }
+  { &nsGkAtoms::textLength, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::XY }
 };
 
 SVGTextFrame*

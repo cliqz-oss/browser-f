@@ -5,11 +5,11 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 
 // shared-head.js handles imports, constants, and utility functions
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 const {TableWidget} = require("devtools/client/shared/widgets/TableWidget");
@@ -709,7 +709,7 @@ function* editCell(id, column, newValue, validate = true) {
 
   editableFieldsEngine.edit(row[column]);
 
-  yield typeWithTerminator(newValue, "VK_RETURN", validate);
+  yield typeWithTerminator(newValue, "KEY_Enter", validate);
 }
 
 /**
@@ -808,7 +808,7 @@ function showAllColumns(state) {
  * @param  {String} str
  *         The string to type.
  * @param  {String} terminator
- *         The terminating key e.g. VK_RETURN or VK_TAB
+ *         The terminating key e.g. KEY_Enter or KEY_Tab
  * @param  {Boolean} validate
  *         Validate result? Default true.
  */
@@ -827,7 +827,7 @@ function* typeWithTerminator(str, terminator, validate = true) {
   EventUtils.sendString(str);
 
   info("Pressing " + terminator);
-  EventUtils.synthesizeKey(terminator, {});
+  EventUtils.synthesizeKey(terminator);
 
   if (validate) {
     info("Validating results... waiting for ROW_EDIT event.");
@@ -937,19 +937,15 @@ function getCookieId(name, domain, path) {
 }
 
 function setPermission(url, permission) {
-  const nsIPermissionManager = Components.interfaces.nsIPermissionManager;
+  const nsIPermissionManager = Ci.nsIPermissionManager;
 
-  let uri = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService)
-                      .newURI(url);
-  let ssm = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                      .getService(Ci.nsIScriptSecurityManager);
-  let principal = ssm.createCodebasePrincipal(uri, {});
+  let uri = Services.io.newURI(url);
+  let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
 
-  Components.classes["@mozilla.org/permissionmanager;1"]
-            .getService(nsIPermissionManager)
-            .addFromPrincipal(principal, permission,
-                              nsIPermissionManager.ALLOW_ACTION);
+  Cc["@mozilla.org/permissionmanager;1"]
+    .getService(nsIPermissionManager)
+    .addFromPrincipal(principal, permission,
+                      nsIPermissionManager.ALLOW_ACTION);
 }
 
 function toggleSidebar() {

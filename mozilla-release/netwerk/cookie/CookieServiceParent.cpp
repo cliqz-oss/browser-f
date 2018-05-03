@@ -29,7 +29,8 @@ namespace {
 // Ignore failures from this function, as they only affect whether we do or
 // don't show a dialog box in private browsing mode if the user sets a pref.
 void
-CreateDummyChannel(nsIURI* aHostURI, OriginAttributes& aAttrs, nsIChannel** aChannel)
+CreateDummyChannel(nsIURI* aHostURI, nsIURI* aChannelURI,
+                   OriginAttributes& aAttrs, nsIChannel** aChannel)
 {
   nsCOMPtr<nsIPrincipal> principal =
     BasePrincipal::CreateCodebasePrincipal(aHostURI, aAttrs);
@@ -37,16 +38,10 @@ CreateDummyChannel(nsIURI* aHostURI, OriginAttributes& aAttrs, nsIChannel** aCha
     return;
   }
 
-  nsCOMPtr<nsIURI> dummyURI;
-  nsresult rv = NS_NewURI(getter_AddRefs(dummyURI), "about:blank");
-  if (NS_FAILED(rv)) {
-      return;
-  }
-
   // The following channel is never openend, so it does not matter what
   // securityFlags we pass; let's follow the principle of least privilege.
   nsCOMPtr<nsIChannel> dummyChannel;
-  NS_NewChannel(getter_AddRefs(dummyChannel), dummyURI, principal,
+  NS_NewChannel(getter_AddRefs(dummyChannel), aChannelURI, principal,
                 nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
                 nsIContentPolicy::TYPE_INVALID);
   nsCOMPtr<nsIPrivateBrowsingChannel> pbChannel = do_QueryInterface(dummyChannel);
@@ -72,6 +67,7 @@ CookieServiceParent::CookieServiceParent()
   // Get the nsCookieService instance directly, so we can call internal methods.
   mCookieService = nsCookieService::GetSingleton();
   NS_ASSERTION(mCookieService, "couldn't get nsICookieService");
+  mProcessingCookie = false;
 }
 
 CookieServiceParent::~CookieServiceParent()
@@ -155,6 +151,8 @@ CookieServiceParent::TrackCookieLoad(nsIChannel *aChannel)
   if (loadInfo) {
     attrs = loadInfo->GetOriginAttributes();
   }
+  bool isSafeTopLevelNav = NS_IsSafeTopLevelNav(aChannel);
+  bool aIsSameSiteForeign = NS_IsSameSiteForeign(aChannel, uri);
 
   // Send matching cookies to Child.
   nsCOMPtr<mozIThirdPartyUtil> thirdPartyUtil;
@@ -162,8 +160,8 @@ CookieServiceParent::TrackCookieLoad(nsIChannel *aChannel)
   bool isForeign = true;
   thirdPartyUtil->IsThirdPartyChannel(aChannel, uri, &isForeign);
   nsTArray<nsCookie*> foundCookieList;
-  mCookieService->GetCookiesForURI(uri, isForeign, false,
-                                   attrs, foundCookieList);
+  mCookieService->GetCookiesForURI(uri, isForeign, isSafeTopLevelNav, aIsSameSiteForeign,
+                                   false, attrs, foundCookieList);
   nsTArray<CookieStruct> matchingCookiesList;
   SerialializeCookieList(foundCookieList, matchingCookiesList, uri);
   Unused << SendTrackCookiesLoad(matchingCookiesList, attrs);
@@ -193,14 +191,16 @@ CookieServiceParent::SerialializeCookieList(const nsTArray<nsCookie*> &aFoundCoo
 mozilla::ipc::IPCResult
 CookieServiceParent::RecvPrepareCookieList(const URIParams        &aHost,
                                            const bool             &aIsForeign,
+                                           const bool             &aIsSafeTopLevelNav,
+                                           const bool             &aIsSameSiteForeign,
                                            const OriginAttributes &aAttrs)
 {
   nsCOMPtr<nsIURI> hostURI = DeserializeURI(aHost);
 
   // Send matching cookies to Child.
   nsTArray<nsCookie*> foundCookieList;
-  mCookieService->GetCookiesForURI(hostURI, aIsForeign, false,
-                                   aAttrs, foundCookieList);
+  mCookieService->GetCookiesForURI(hostURI, aIsForeign, aIsSafeTopLevelNav, aIsSameSiteForeign,
+                                   false, aAttrs, foundCookieList);
   nsTArray<CookieStruct> matchingCookiesList;
   SerialializeCookieList(foundCookieList, matchingCookiesList, hostURI);
   Unused << SendTrackCookiesLoad(matchingCookiesList, aAttrs);
@@ -217,6 +217,8 @@ CookieServiceParent::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult
 CookieServiceParent::RecvGetCookieString(const URIParams& aHost,
                                          const bool& aIsForeign,
+                                         const bool& aIsSafeTopLevelNav,
+                                         const bool& aIsSameSiteForeign,
                                          const OriginAttributes& aAttrs,
                                          nsCString* aResult)
 {
@@ -228,13 +230,14 @@ CookieServiceParent::RecvGetCookieString(const URIParams& aHost,
   nsCOMPtr<nsIURI> hostURI = DeserializeURI(aHost);
   if (!hostURI)
     return IPC_FAIL_NO_REASON(this);
-
-  mCookieService->GetCookieStringInternal(hostURI, aIsForeign, false, aAttrs, *aResult);
+  mCookieService->GetCookieStringInternal(hostURI, aIsForeign, aIsSafeTopLevelNav, aIsSameSiteForeign,
+                                          false, aAttrs, *aResult);
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 CookieServiceParent::RecvSetCookieString(const URIParams& aHost,
+                                         const URIParams& aChannelURI,
                                          const bool& aIsForeign,
                                          const nsCString& aCookieString,
                                          const nsCString& aServerTime,
@@ -250,6 +253,10 @@ CookieServiceParent::RecvSetCookieString(const URIParams& aHost,
   if (!hostURI)
     return IPC_FAIL_NO_REASON(this);
 
+  nsCOMPtr<nsIURI> channelURI = DeserializeURI(aChannelURI);
+  if (!channelURI)
+    return IPC_FAIL_NO_REASON(this);
+
   // This is a gross hack. We've already computed everything we need to know
   // for whether to set this cookie or not, but we need to communicate all of
   // this information through to nsICookiePermission, which indirectly
@@ -258,14 +265,20 @@ CookieServiceParent::RecvSetCookieString(const URIParams& aHost,
   // with aIsForeign before we have to worry about nsCookiePermission trying
   // to use the channel to inspect it.
   nsCOMPtr<nsIChannel> dummyChannel;
-  CreateDummyChannel(hostURI, const_cast<OriginAttributes&>(aAttrs),
+  CreateDummyChannel(hostURI, channelURI,
+                     const_cast<OriginAttributes&>(aAttrs),
                      getter_AddRefs(dummyChannel));
 
   // NB: dummyChannel could be null if something failed in CreateDummyChannel.
   nsDependentCString cookieString(aCookieString, 0);
+
+  // We set this to true while processing this cookie update, to make sure
+  // we don't send it back to the same content process.
+  mProcessingCookie = true;
   mCookieService->SetCookieStringInternal(hostURI, aIsForeign, cookieString,
-                                          aServerTime, aFromHttp, true, aAttrs,
+                                          aServerTime, aFromHttp, aAttrs,
                                           dummyChannel);
+  mProcessingCookie = false;
   return IPC_OK();
 }
 

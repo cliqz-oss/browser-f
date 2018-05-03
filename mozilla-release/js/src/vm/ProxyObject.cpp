@@ -6,15 +6,13 @@
 
 #include "vm/ProxyObject.h"
 
-#include "jscompartment.h"
-
 #include "gc/Allocator.h"
 #include "gc/GCTrace.h"
 #include "proxy/DeadObjectProxy.h"
-
-#include "jsobjinlines.h"
+#include "vm/JSCompartment.h"
 
 #include "gc/ObjectKind-inl.h"
+#include "vm/JSObject-inl.h"
 #include "vm/TypeInference-inl.h"
 
 using namespace js;
@@ -182,12 +180,12 @@ ProxyObject::create(JSContext* cx, const Class* clasp, Handle<TaggedProto> proto
     gc::InitialHeap heap = GetInitialHeap(newKind, clasp);
     debugCheckNewObject(group, shape, allocKind, heap);
 
-    JSObject* obj = js::Allocate<JSObject>(cx, allocKind, /* numDynamicSlots = */ 0, heap, clasp);
+    JSObject* obj = js::Allocate<JSObject>(cx, allocKind, /* nDynamicSlots = */ 0, heap, clasp);
     if (!obj)
         return cx->alreadyReportedOOM();
 
     ProxyObject* pobj = static_cast<ProxyObject*>(obj);
-    pobj->group_.init(group);
+    pobj->initGroup(group);
     pobj->initShape(shape);
 
     MOZ_ASSERT(clasp->shouldDelayMetadataBuilder());

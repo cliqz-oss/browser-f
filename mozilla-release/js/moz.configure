@@ -35,6 +35,7 @@ def js_disable_shell(value):
 
 set_config('JS_DISABLE_SHELL', js_disable_shell)
 
+set_define('JS_64BIT', depends(target)(lambda t: t.bitness == 64 or None))
 
 set_define('JS_PUNBOX64', depends(target)(lambda t: t.bitness == 64 or None))
 set_define('JS_NUNBOX32', depends(target)(lambda t: t.bitness == 32 or None))
@@ -184,7 +185,7 @@ def jit_disasm_arm(ion_enabled, simulator, target, debug):
     if not ion_enabled:
         return
 
-    if simulator:
+    if simulator and debug:
         if getattr(simulator, 'arm', None):
             return True
 
@@ -193,6 +194,21 @@ def jit_disasm_arm(ion_enabled, simulator, target, debug):
 
 set_config('JS_DISASM_ARM', jit_disasm_arm)
 set_define('JS_DISASM_ARM', jit_disasm_arm)
+
+@depends('--enable-ion', simulator, target, moz_debug)
+def jit_disasm_arm64(ion_enabled, simulator, target, debug):
+    if not ion_enabled:
+        return
+
+    if simulator and debug:
+        if getattr(simulator, 'arm64', None):
+            return True
+
+    if target.cpu == 'aarch64' and debug:
+        return True
+
+set_config('JS_DISASM_ARM64', jit_disasm_arm64)
+set_define('JS_DISASM_ARM64', jit_disasm_arm64)
 
 # Profiling
 # =======================================================
@@ -303,6 +319,15 @@ set_config('ENABLE_TRACE_LOGGING',
            depends_if('--enable-trace-logging')(lambda x: True))
 set_define('JS_TRACE_LOGGING',
            depends_if('--enable-trace-logging')(lambda x: True))
+
+
+# Enable breakpoint for artificial OOMs
+# =======================================================
+js_option('--enable-oom-breakpoint',
+          help='Enable a breakpoint function for artificial OOMs')
+
+set_define('JS_OOM_BREAKPOINT',
+           depends_if('--enable-oom-breakpoint')(lambda _: True))
 
 
 js_option('--enable-perf', env='JS_ION_PERF',

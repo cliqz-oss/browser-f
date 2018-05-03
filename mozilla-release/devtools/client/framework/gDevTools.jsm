@@ -15,9 +15,7 @@
 
 this.EXPORTED_SYMBOLS = [ "gDevTools", "gDevToolsBrowser" ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 /**
  * Do not directly map to the commonjs modules so that callsites of
@@ -27,7 +25,7 @@ const { loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
  */
 Object.defineProperty(this, "require", {
   get() {
-    let { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    let { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     return require;
   }
 });

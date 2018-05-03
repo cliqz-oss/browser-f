@@ -13,14 +13,9 @@
 
 var EXPORTED_SYMBOLS = ["SpecialPowersObserver", "SpecialPowersObserverFactory"];
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.importGlobalProperties(["File"]);
-
-if (typeof(Cc) == "undefined") {
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
-}
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+Cu.importGlobalProperties(["File"]);
 
 const CHILD_SCRIPT = "chrome://specialpowers/content/specialpowers.js";
 const CHILD_SCRIPT_API = "chrome://specialpowers/content/specialpowersAPI.js";
@@ -28,16 +23,14 @@ const CHILD_LOGGER_SCRIPT = "chrome://specialpowers/content/MozillaLogger.js";
 
 
 // Glue to add in the observer API to this object.  This allows us to share code with chrome tests
-var loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
-                       .getService(Components.interfaces.mozIJSSubScriptLoader);
-loader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserverAPI.js");
+Services.scriptloader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserverAPI.js");
 
 /* XPCOM gunk */
-this.SpecialPowersObserver = function SpecialPowersObserver() {
+function SpecialPowersObserver() {
   this._isFrameScriptLoaded = false;
   this._messageManager = Cc["@mozilla.org/globalmessagemanager;1"].
                          getService(Ci.nsIMessageBroadcaster);
-};
+}
 
 
 SpecialPowersObserver.prototype = new SpecialPowersObserverAPI();
@@ -45,7 +38,7 @@ SpecialPowersObserver.prototype = new SpecialPowersObserverAPI();
 SpecialPowersObserver.prototype.classDescription = "Special powers Observer for use in testing.";
 SpecialPowersObserver.prototype.classID = Components.ID("{59a52458-13e0-4d93-9d85-a637344f29a1}");
 SpecialPowersObserver.prototype.contractID = "@mozilla.org/special-powers-observer;1";
-SpecialPowersObserver.prototype.QueryInterface = XPCOMUtils.generateQI([Components.interfaces.nsIObserver]);
+SpecialPowersObserver.prototype.QueryInterface = XPCOMUtils.generateQI([Ci.nsIObserver]);
 
 SpecialPowersObserver.prototype.observe = function(aSubject, aTopic, aData) {
   switch (aTopic) {
@@ -113,13 +106,9 @@ SpecialPowersObserver.prototype.init = function() {
   obs.addObserver(this, "chrome-document-global-created");
 
   // Register special testing modules.
-  var testsURI = Cc["@mozilla.org/file/directory_service;1"].
-                   getService(Ci.nsIProperties).
-                   get("ProfD", Ci.nsIFile);
+  var testsURI = Services.dirsvc.get("ProfD", Ci.nsIFile);
   testsURI.append("tests.manifest");
-  var ioSvc = Cc["@mozilla.org/network/io-service;1"].
-                getService(Ci.nsIIOService);
-  var manifestFile = ioSvc.newFileURI(testsURI).
+  var manifestFile = Services.io.newFileURI(testsURI).
                        QueryInterface(Ci.nsIFileURL).file;
 
   Components.manager.QueryInterface(Ci.nsIComponentRegistrar).
@@ -175,11 +164,8 @@ SpecialPowersObserver.prototype._addProcessCrashObservers = function() {
     return;
   }
 
-  var obs = Components.classes["@mozilla.org/observer-service;1"]
-                      .getService(Components.interfaces.nsIObserverService);
-
-  obs.addObserver(this, "plugin-crashed");
-  obs.addObserver(this, "ipc:content-shutdown");
+  Services.obs.addObserver(this, "plugin-crashed");
+  Services.obs.addObserver(this, "ipc:content-shutdown");
   this._processCrashObserversRegistered = true;
 };
 
@@ -188,11 +174,8 @@ SpecialPowersObserver.prototype._removeProcessCrashObservers = function() {
     return;
   }
 
-  var obs = Components.classes["@mozilla.org/observer-service;1"]
-                      .getService(Components.interfaces.nsIObserverService);
-
-  obs.removeObserver(this, "plugin-crashed");
-  obs.removeObserver(this, "ipc:content-shutdown");
+  Services.obs.removeObserver(this, "plugin-crashed");
+  Services.obs.removeObserver(this, "ipc:content-shutdown");
   this._processCrashObserversRegistered = false;
 };
 
@@ -200,7 +183,7 @@ SpecialPowersObserver.prototype._registerObservers = {
   _self: null,
   _topics: [],
   _add(topic) {
-    if (this._topics.indexOf(topic) < 0) {
+    if (!this._topics.includes(topic)) {
       this._topics.push(topic);
       Services.obs.addObserver(this, topic);
     }
@@ -242,8 +225,7 @@ SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
       }
       break;
     case "SpecialPowers.Quit":
-      let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
-      appStartup.quit(Ci.nsIAppStartup.eForceQuit);
+      Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
       break;
     case "SpecialPowers.Focus":
       aMessage.target.focus();
@@ -309,10 +291,9 @@ SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
   return undefined;
 };
 
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([SpecialPowersObserver]);
-this.SpecialPowersObserverFactory = Object.freeze({
+var SpecialPowersObserverFactory = Object.freeze({
   createInstance(outer, id) {
-    if (outer) { throw Components.results.NS_ERROR_NO_AGGREGATION; }
+    if (outer) { throw Cr.NS_ERROR_NO_AGGREGATION; }
     return new SpecialPowersObserver();
   },
   loadFactory(lock) {},

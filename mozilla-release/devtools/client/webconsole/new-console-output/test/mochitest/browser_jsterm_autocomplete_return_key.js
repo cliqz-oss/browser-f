@@ -34,7 +34,6 @@ add_task(async function () {
   const {
     autocompletePopup: popup,
     completeNode,
-    inputNode,
   } = jsterm;
 
   let onPopUpOpen = popup.once("popup-opened");
@@ -42,8 +41,7 @@ add_task(async function () {
   info("wait for completion suggestions: window.foobar.");
 
   jsterm.setInputValue("window.fooba");
-  EventUtils.synthesizeKey("r", {});
-  EventUtils.synthesizeKey(".", {});
+  EventUtils.sendString("r.");
 
   await onPopUpOpen;
 
@@ -59,7 +57,7 @@ add_task(async function () {
   is(popup.selectedIndex, expectedPopupItems.length - 1,
     "First index from bottom is selected");
 
-  EventUtils.synthesizeKey("VK_DOWN", {});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
 
   is(popup.selectedIndex, 0, "index 0 is selected");
   is(popup.selectedItem.label, "item3", "item3 is selected");
@@ -68,13 +66,13 @@ add_task(async function () {
 
   info("press Return to accept suggestion. wait for popup to hide");
   const onPopupClose = popup.once("popup-closed");
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
 
   await onPopupClose;
 
-  ok(!popup.isOpen, "popup is not open after VK_RETURN");
+  ok(!popup.isOpen, "popup is not open after KEY_Enter");
   is(jsterm.getInputValue(), "window.foobar.item3",
-    "completion was successful after VK_RETURN");
+    "completion was successful after KEY_Enter");
   ok(!completeNode.value, "completeNode is empty");
 
   Services.prefs.clearUserPref(PREF_AUTO_MULTILINE);

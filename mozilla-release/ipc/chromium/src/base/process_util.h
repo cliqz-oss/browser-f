@@ -112,6 +112,8 @@ struct LaunchOptions {
   // Environment variables to be applied in addition to the current
   // process's environment, replacing them where necessary.
   EnvironmentMap env_map;
+
+  std::vector<HANDLE> handles_to_inherit;
 #endif
 #if defined(OS_POSIX)
   environment_map env_map;
@@ -119,6 +121,16 @@ struct LaunchOptions {
   // A mapping of (src fd -> dest fd) to propagate into the child
   // process.  All other fds will be closed, except std{in,out,err}.
   file_handle_mapping_vector fds_to_remap;
+#endif
+
+#if defined(OS_LINUX) || defined(OS_SOLARIS)
+  struct ForkDelegate {
+    virtual ~ForkDelegate() { }
+    virtual pid_t Fork() = 0;
+  };
+
+  // If non-null, the fork delegate will be called instead of fork().
+  mozilla::UniquePtr<ForkDelegate> fork_delegate = nullptr;
 #endif
 };
 

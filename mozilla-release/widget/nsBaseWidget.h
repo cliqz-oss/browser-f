@@ -7,6 +7,7 @@
 
 #include "InputData.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WidgetUtils.h"
@@ -191,6 +192,7 @@ public:
                                            uint16_t aDuration,
                                            nsISupports* aData,
                                            nsIRunnable* aCallback) override;
+  virtual void CleanupFullscreenTransition() override {};
   virtual already_AddRefed<nsIScreen> GetWidgetScreen() override;
   virtual nsresult        MakeFullScreen(bool aFullScreen,
                                          nsIScreen* aScreen = nullptr) override;
@@ -270,8 +272,8 @@ public:
                           { return NS_ERROR_NOT_IMPLEMENTED; }
   virtual nsresult        ActivateNativeMenuItemAt(const nsAString& indexString) override { return NS_ERROR_NOT_IMPLEMENTED; }
   virtual nsresult        ForceUpdateNativeMenuAt(const nsAString& indexString) override { return NS_ERROR_NOT_IMPLEMENTED; }
-  virtual nsresult        NotifyIME(const IMENotification& aIMENotification)
-                            override final;
+  nsresult                NotifyIME(const IMENotification& aIMENotification)
+                            final;
   virtual MOZ_MUST_USE nsresult
                           StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
                                          int32_t aPanelX, int32_t aPanelY,
@@ -298,7 +300,7 @@ public:
   virtual void               SetAttachedWidgetListener(nsIWidgetListener* aListener) override;
   virtual nsIWidgetListener* GetPreviouslyAttachedWidgetListener() override;
   virtual void               SetPreviouslyAttachedWidgetListener(nsIWidgetListener* aListener) override;
-  virtual TextEventDispatcher* GetTextEventDispatcher() override final;
+  TextEventDispatcher* GetTextEventDispatcher() final;
   virtual TextEventDispatcherListener*
     GetNativeTextEventDispatcherListener() override;
   virtual void ZoomToRect(const uint32_t& aPresShellId,
@@ -679,7 +681,10 @@ protected:
   RefPtr<LayerManager> mLayerManager;
   RefPtr<CompositorSession> mCompositorSession;
   RefPtr<CompositorBridgeChild> mCompositorBridgeChild;
+
+  mozilla::UniquePtr<mozilla::Mutex> mCompositorVsyncDispatcherLock;
   RefPtr<mozilla::CompositorVsyncDispatcher> mCompositorVsyncDispatcher;
+
   RefPtr<IAPZCTreeManager> mAPZC;
   RefPtr<GeckoContentController> mRootContentController;
   RefPtr<APZEventState> mAPZEventState;

@@ -62,7 +62,7 @@ class nsIPrincipal;
 namespace mozilla {
 
 namespace dom {
-class Performance;
+class PerformanceStorage;
 }
 
 class LogCollector;
@@ -236,6 +236,8 @@ public:
   NS_IMETHOD SetAllowAltSvc(bool aAllowAltSvc) override;
   NS_IMETHOD GetBeConservative(bool *aBeConservative) override;
   NS_IMETHOD SetBeConservative(bool aBeConservative) override;
+  NS_IMETHOD GetTrr(bool *aTRR) override;
+  NS_IMETHOD SetTrr(bool aTRR) override;
   NS_IMETHOD GetTlsFlags(uint32_t *aTlsFlags) override;
   NS_IMETHOD SetTlsFlags(uint32_t aTlsFlags) override;
   NS_IMETHOD GetApiRedirectToURI(nsIURI * *aApiRedirectToURI) override;
@@ -261,6 +263,7 @@ public:
   NS_IMETHOD SetTopWindowURIIfUnknown(nsIURI *aTopWindowURI) override;
   NS_IMETHOD GetProxyURI(nsIURI **proxyURI) override;
   virtual void SetCorsPreflightParameters(const nsTArray<nsCString>& unsafeHeaders) override;
+  virtual void SetAltDataForChild(bool aIsForChild) override;
   NS_IMETHOD GetConnectionInfoHashKey(nsACString& aConnectionInfoHashKey) override;
   NS_IMETHOD GetIntegrityMetadata(nsAString& aIntegrityMetadata) override;
   NS_IMETHOD SetIntegrityMetadata(const nsAString& aIntegrityMetadata) override;
@@ -356,7 +359,7 @@ public: /* Necko internal use only... */
 
     static bool IsReferrerSchemeAllowed(nsIURI *aReferrer);
 
-    static void PropagateReferenceIfNeeded(nsIURI *aURI, nsIURI *aRedirectURI);
+    static void PropagateReferenceIfNeeded(nsIURI *aURI, nsCOMPtr<nsIURI>& aRedirectURI);
 
     // Return whether upon a redirect code of httpStatus for method, the
     // request method should be rewritten to GET.
@@ -425,7 +428,7 @@ protected:
   // was fired.
   void NotifySetCookie(char const *aCookie);
 
-  mozilla::dom::Performance* GetPerformance();
+  mozilla::dom::PerformanceStorage* GetPerformanceStorage();
   nsIURI* GetReferringPage();
   nsPIDOMWindowInner* GetInnerDOMWindow();
 
@@ -574,6 +577,7 @@ protected:
   uint32_t                          mAllowSpdy                  : 1;
   uint32_t                          mAllowAltSvc                : 1;
   uint32_t                          mBeConservative             : 1;
+  uint32_t                          mTRR                        : 1;
   uint32_t                          mResponseTimeoutEnabled     : 1;
   // A flag that should be false only if a cross-domain redirect occurred
   uint32_t                          mAllRedirectsSameOrigin     : 1;
@@ -652,7 +656,6 @@ protected:
   bool mCorsIncludeCredentials;
   uint32_t mCorsMode;
   uint32_t mRedirectMode;
-  uint32_t mFetchCacheMode;
 
   // These parameters are used to ensure that we do not call OnStartRequest and
   // OnStopRequest more than once.
@@ -702,6 +705,9 @@ protected:
   // Holds the name of the alternative data type the channel returned.
   nsCString mAvailableCachedAltDataType;
   int64_t   mAltDataLength;
+  // This flag will be true if the consumer is requesting alt-data AND the
+  // consumer is in the child process.
+  bool mAltDataForChild;
 
   bool mForceMainDocumentChannel;
   Atomic<bool, ReleaseAcquire> mIsTrackingResource;

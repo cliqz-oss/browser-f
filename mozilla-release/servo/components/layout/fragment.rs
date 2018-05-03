@@ -10,7 +10,8 @@ use ServoArc;
 use app_units::Au;
 use canvas_traits::canvas::CanvasMsg;
 use context::{LayoutContext, with_thread_local_font_context};
-use euclid::{Transform3D, Point2D, Vector2D, Rect, Size2D};
+use display_list::ToLayout;
+use euclid::{Point2D, Vector2D, Rect, Size2D};
 use floats::ClearType;
 use flow::{GetBaseFlow, ImmutableFlowUtils};
 use flow_ref::FlowRef;
@@ -44,7 +45,6 @@ use style::computed_values::border_collapse::T as BorderCollapse;
 use style::computed_values::box_sizing::T as BoxSizing;
 use style::computed_values::clear::T as Clear;
 use style::computed_values::color::T as Color;
-use style::computed_values::content::ContentItem;
 use style::computed_values::display::T as Display;
 use style::computed_values::mix_blend_mode::T as MixBlendMode;
 use style::computed_values::overflow_wrap::T as OverflowWrap;
@@ -59,13 +59,13 @@ use style::properties::ComputedValues;
 use style::selector_parser::RestyleDamage;
 use style::servo::restyle_damage::ServoRestyleDamage;
 use style::str::char_is_whitespace;
-use style::values::{self, Either, Auto};
 use style::values::computed::{Length, LengthOrPercentage, LengthOrPercentageOrAuto};
-use style::values::generics::box_::VerticalAlign;
+use style::values::computed::counters::ContentItem;
+use style::values::generics::box_::{Perspective, VerticalAlign};
 use style::values::generics::transform;
 use text;
 use text::TextRunScanner;
-use webrender_api;
+use webrender_api::{self, LayoutTransform};
 use wrapper::ThreadSafeLayoutNodeHelpers;
 
 // From gfxFontConstants.h in Firefox.
@@ -479,6 +479,11 @@ bitflags! {
 
         /// Is this fragment selected?
         const SELECTED = 0x02;
+
+        /// Suppress line breaking between this and the previous fragment
+        ///
+        /// This handles cases like Foo<span>bar</span>
+        const SUPPRESS_LINE_BREAK_BEFORE = 0x04;
     }
 }
 
@@ -565,9 +570,9 @@ pub struct UnscannedTextFragmentInfo {
 impl UnscannedTextFragmentInfo {
     /// Creates a new instance of `UnscannedTextFragmentInfo` from the given text.
     #[inline]
-    pub fn new(text: String, selection: Option<Range<ByteIndex>>) -> UnscannedTextFragmentInfo {
+    pub fn new(text: Box<str>, selection: Option<Range<ByteIndex>>) -> UnscannedTextFragmentInfo {
         UnscannedTextFragmentInfo {
-            text: text.into_boxed_str(),
+            text: text,
             selection: selection,
         }
     }
@@ -712,13 +717,15 @@ impl Fragment {
     }
 
     /// Transforms this fragment using the given `SplitInfo`, preserving all the other data.
-    pub fn transform_with_split_info(&self, split: &SplitInfo, text_run: Arc<TextRun>)
-                                     -> Fragment {
+    ///
+    /// If this is the first half of a split, `first` is true
+    pub fn transform_with_split_info(&self, split: &SplitInfo, text_run: Arc<TextRun>,
+                                     first: bool) -> Fragment {
         let size = LogicalSize::new(self.style.writing_mode,
                                     split.inline_size,
                                     self.border_box.size.block);
         // Preserve the insertion point if it is in this fragment's range or it is at line end.
-        let (flags, insertion_point) = match self.specific {
+        let (mut flags, insertion_point) = match self.specific {
             SpecificFragmentInfo::ScannedText(ref info) => {
                 match info.insertion_point {
                     Some(index) if split.range.contains(index) => (info.flags, info.insertion_point),
@@ -729,6 +736,11 @@ impl Fragment {
             },
             _ => (ScannedTextFlags::empty(), None)
         };
+
+        if !first {
+            flags.set(ScannedTextFlags::SUPPRESS_LINE_BREAK_BEFORE, false);
+        }
+
         let info = Box::new(ScannedTextFragmentInfo::new(
             text_run,
             split.range,
@@ -748,14 +760,14 @@ impl Fragment {
         let mut ellipsis_fragment = self.transform(
             self.border_box.size,
             SpecificFragmentInfo::UnscannedText(
-                Box::new(UnscannedTextFragmentInfo::new(text_overflow_string, None))
+                Box::new(UnscannedTextFragmentInfo::new(text_overflow_string.into_boxed_str(), None))
             )
         );
         unscanned_ellipsis_fragments.push_back(ellipsis_fragment);
         let ellipsis_fragments = with_thread_local_font_context(layout_context, |font_context| {
             TextRunScanner::new().scan_for_runs(font_context, unscanned_ellipsis_fragments)
         });
-        debug_assert!(ellipsis_fragments.len() == 1);
+        debug_assert_eq!(ellipsis_fragments.len(), 1);
         ellipsis_fragment = ellipsis_fragments.fragments.into_iter().next().unwrap();
         ellipsis_fragment.flags |= FragmentFlags::IS_ELLIPSIS;
         ellipsis_fragment
@@ -1396,6 +1408,16 @@ impl Fragment {
         }
     }
 
+    /// If this is a Column fragment, get the col span
+    ///
+    /// Panics for non-column fragments
+    pub fn column_span(&self) -> u32 {
+        match self.specific {
+            SpecificFragmentInfo::TableColumn(col_fragment) => max(col_fragment.span, 1),
+            _ => panic!("non-table-column fragment inside table column?!"),
+        }
+    }
+
     /// Returns true if this element can be split. This is true for text fragments, unless
     /// `white-space: pre` or `white-space: nowrap` is set.
     pub fn can_split(&self) -> bool {
@@ -1417,6 +1439,14 @@ impl Fragment {
     pub fn is_scanned_text_fragment(&self) -> bool {
         match self.specific {
             SpecificFragmentInfo::ScannedText(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn suppress_line_break_before(&self) -> bool {
+        match self.specific {
+            SpecificFragmentInfo::ScannedText(ref st) =>
+                st.flags.contains(ScannedTextFlags::SUPPRESS_LINE_BREAK_BEFORE),
             _ => false,
         }
     }
@@ -1619,6 +1649,16 @@ impl Fragment {
                     flags)
             }
         }
+    }
+
+    /// Does this fragment start on a glyph run boundary?
+    pub fn is_on_glyph_run_boundary(&self) -> bool {
+        let text_fragment_info = match self.specific {
+            SpecificFragmentInfo::ScannedText(ref text_fragment_info)
+                => text_fragment_info,
+            _   => return true,
+        };
+        text_fragment_info.run.on_glyph_run_boundary(text_fragment_info.range.begin())
     }
 
     /// Truncates this fragment to the given `max_inline_size`, using a character-based breaking
@@ -2436,7 +2476,7 @@ impl Fragment {
     pub fn has_filter_transform_or_perspective(&self) -> bool {
            !self.style().get_box().transform.0.is_empty() ||
            !self.style().get_effects().filter.0.is_empty() ||
-           self.style().get_box().perspective != Either::Second(values::None_)
+           self.style().get_box().perspective != Perspective::None
     }
 
     /// Returns true if this fragment establishes a new stacking context and false otherwise.
@@ -2482,7 +2522,7 @@ impl Fragment {
         // For absolutely and relatively positioned fragments we only establish a stacking
         // context if there is a z-index set.
         // See https://www.w3.org/TR/CSS2/visuren.html#z-index
-        self.style().get_position().z_index != Either::Second(Auto)
+        !self.style().get_position().z_index.is_auto()
     }
 
     // Get the effective z-index of this fragment. Z-indices only apply to positioned element
@@ -2827,9 +2867,10 @@ impl Fragment {
     }
 
     /// Returns the 4D matrix representing this fragment's transform.
-    pub fn transform_matrix(&self, stacking_relative_border_box: &Rect<Au>) -> Option<Transform3D<f32>> {
+    pub fn transform_matrix(&self, stacking_relative_border_box: &Rect<Au>) -> Option<LayoutTransform> {
         let list = &self.style.get_box().transform;
-        let transform = list.to_transform_3d_matrix(Some(stacking_relative_border_box)).ok()?.0;
+        let transform = LayoutTransform::from_untyped(
+            &list.to_transform_3d_matrix(Some(stacking_relative_border_box)).ok()?.0);
 
         let transform_origin = &self.style.get_box().transform_origin;
         let transform_origin_x =
@@ -2842,42 +2883,46 @@ impl Fragment {
                 .to_f32_px();
         let transform_origin_z = transform_origin.depth.px();
 
-        let pre_transform = Transform3D::create_translation(transform_origin_x,
-                                                            transform_origin_y,
-                                                            transform_origin_z);
-        let post_transform = Transform3D::create_translation(-transform_origin_x,
-                                                             -transform_origin_y,
-                                                             -transform_origin_z);
+        let pre_transform = LayoutTransform::create_translation(
+            transform_origin_x,
+            transform_origin_y,
+            transform_origin_z);
+        let post_transform = LayoutTransform::create_translation(
+            -transform_origin_x,
+            -transform_origin_y,
+            -transform_origin_z);
 
         Some(pre_transform.pre_mul(&transform).pre_mul(&post_transform))
     }
 
     /// Returns the 4D matrix representing this fragment's perspective.
-    pub fn perspective_matrix(&self, stacking_relative_border_box: &Rect<Au>) -> Option<Transform3D<f32>> {
+    pub fn perspective_matrix(&self, stacking_relative_border_box: &Rect<Au>) -> Option<LayoutTransform> {
         match self.style().get_box().perspective {
-            Either::First(length) => {
+            Perspective::Length(length) => {
                 let perspective_origin = self.style().get_box().perspective_origin;
                 let perspective_origin =
                     Point2D::new(
                         perspective_origin.horizontal
-                            .to_used_value(stacking_relative_border_box.size.width)
-                            .to_f32_px(),
+                            .to_used_value(stacking_relative_border_box.size.width),
                         perspective_origin.vertical
                             .to_used_value(stacking_relative_border_box.size.height)
-                            .to_f32_px());
+                    ).to_layout();
 
-                let pre_transform = Transform3D::create_translation(perspective_origin.x,
-                                                                    perspective_origin.y,
-                                                                    0.0);
-                let post_transform = Transform3D::create_translation(-perspective_origin.x,
-                                                                     -perspective_origin.y,
-                                                                     0.0);
+                let pre_transform = LayoutTransform::create_translation(
+                    perspective_origin.x,
+                    perspective_origin.y,
+                    0.0);
+                let post_transform = LayoutTransform::create_translation(
+                    -perspective_origin.x,
+                    -perspective_origin.y,
+                    0.0);
 
-                let perspective_matrix = transform::create_perspective_matrix(length.px());
+                let perspective_matrix = LayoutTransform::from_untyped(
+                    &transform::create_perspective_matrix(length.px()));
 
                 Some(pre_transform.pre_mul(&perspective_matrix).pre_mul(&post_transform))
             }
-            Either::Second(values::None_) => {
+            Perspective::None => {
                 None
             }
         }

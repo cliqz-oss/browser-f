@@ -76,13 +76,18 @@ nsChromeProtocolHandler::NewURI(const nsACString &aSpec,
 
     // Chrome: URLs (currently) have no additional structure beyond that provided
     // by standard URLs, so there is no "outer" given to CreateInstance
-
-    RefPtr<mozilla::net::nsStandardURL> surl = new mozilla::net::nsStandardURL();
-
-    nsresult rv = surl->Init(nsIStandardURL::URLTYPE_STANDARD, -1, aSpec,
-                             aCharset, aBaseURI);
-    if (NS_FAILED(rv))
+    nsresult rv;
+    nsCOMPtr<nsIURI> surl;
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    rv = NS_MutateURI(new mozilla::net::nsStandardURL::Mutator())
+           .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                   nsIStandardURL::URLTYPE_STANDARD,
+                                   -1, nsCString(aSpec), aCharset,
+                                   base, nullptr))
+           .Finalize(surl);
+    if (NS_FAILED(rv)) {
         return rv;
+    }
 
     // Canonify the "chrome:" URL; e.g., so that we collapse
     // "chrome://navigator/content/" and "chrome://navigator/content"
@@ -92,7 +97,7 @@ nsChromeProtocolHandler::NewURI(const nsACString &aSpec,
     if (NS_FAILED(rv))
         return rv;
 
-    surl->SetMutable(false);
+    NS_TryToSetImmutable(surl);
 
     surl.forget(result);
     return NS_OK;
@@ -113,17 +118,13 @@ nsChromeProtocolHandler::NewChannel2(nsIURI* aURI,
 #ifdef DEBUG
     // Check that the uri we got is already canonified
     nsresult debug_rv;
-    nsCOMPtr<nsIURI> debugClone;
-    debug_rv = aURI->Clone(getter_AddRefs(debugClone));
+    nsCOMPtr<nsIURI> debugURL = aURI;
+    debug_rv = nsChromeRegistry::Canonify(debugURL);
     if (NS_SUCCEEDED(debug_rv)) {
-        nsCOMPtr<nsIURL> debugURL (do_QueryInterface(debugClone));
-        debug_rv = nsChromeRegistry::Canonify(debugURL);
+        bool same;
+        debug_rv = aURI->Equals(debugURL, &same);
         if (NS_SUCCEEDED(debug_rv)) {
-            bool same;
-            debug_rv = aURI->Equals(debugURL, &same);
-            if (NS_SUCCEEDED(debug_rv)) {
-                NS_ASSERTION(same, "Non-canonified chrome uri passed to nsChromeProtocolHandler::NewChannel!");
-            }
+            NS_ASSERTION(same, "Non-canonified chrome uri passed to nsChromeProtocolHandler::NewChannel!");
         }
     }
 #endif
@@ -168,9 +169,8 @@ nsChromeProtocolHandler::NewChannel2(nsIURI* aURI,
         bool exists = false;
         file->Exists(&exists);
         if (!exists) {
-            nsAutoCString path;
-            file->GetNativePath(path);
-            printf("Chrome file doesn't exist: %s\n", path.get());
+            printf("Chrome file doesn't exist: %s\n",
+                   file->HumanReadablePath().get());
         }
     }
 #endif

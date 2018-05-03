@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsISupports.idl"
+#include "domstubs.idl"
 
 /**
  * nsIDOMWindowUtils is intended for infrequently-used methods related
@@ -27,7 +28,6 @@ struct nsRect;
 [ref] native nsConstRect(const nsRect);
 native nscolor(nscolor);
 [ptr] native gfxContext(gfxContext);
-typedef unsigned long long nsViewID;
 
 interface nsIArray;
 interface nsICycleCollectorListener;
@@ -463,46 +463,6 @@ interface nsIDOMWindowUtils : nsISupports {
                       in unsigned long aOptions);
 
   /**
-   * Synthesize a key event to the window. The event types supported are:
-   *   keydown, keyup, keypress
-   *
-   * Key events generally end up being sent to the focused node.
-   *
-   * Cannot be accessed from unprivileged context (not content-accessible)
-   * Will throw a DOM security error if called without chrome privileges.
-   *
-   * @param aType event type
-   * @param aKeyCode key code
-   * @param aCharCode character code
-   * @param aModifiers modifiers pressed, using constants defined as MODIFIER_*
-   * @param aAdditionalFlags special flags for the key event, see KEY_FLAG_*.
-   *
-   * @return false if the event had preventDefault() called on it,
-   *               true otherwise.  In other words, true if and only if the
-   *               default action was taken.
-   */
-
-  // If this is set, preventDefault() the event before dispatch.
-  const unsigned long KEY_FLAG_PREVENT_DEFAULT   = 0x0001;
-
-  // If this is set, the mIsSynthesizedForTests flag is set to false
-  // on the key event. Otherwise it is true.
-  const unsigned long KEY_FLAG_NOT_SYNTHESIZED_FOR_TESTS = 0x0002;
-
-  // if one of these flags is set, the KeyboardEvent.location will be the value.
-  // Otherwise, it will be computed from aKeyCode.
-  const unsigned long KEY_FLAG_LOCATION_STANDARD = 0x0010;
-  const unsigned long KEY_FLAG_LOCATION_LEFT     = 0x0020;
-  const unsigned long KEY_FLAG_LOCATION_RIGHT    = 0x0040;
-  const unsigned long KEY_FLAG_LOCATION_NUMPAD   = 0x0080;
-
-  boolean sendKeyEvent(in AString aType,
-                       in long aKeyCode,
-                       in long aCharCode,
-                       in long aModifiers,
-                       [optional] in unsigned long aAdditionalFlags);
-
-  /**
    * See nsIWidget::SynthesizeNativeKeyEvent
    *
    * Cannot be accessed from unprivileged context (not content-accessible)
@@ -719,22 +679,6 @@ interface nsIDOMWindowUtils : nsISupports {
   AString GetSelectionAsPlaintext();
 
   /**
-   * Focus the element aElement. The element should be in the same document
-   * that the window is displaying. Pass null to blur the element, if any,
-   * that currently has focus, and focus the document.
-   *
-   * Cannot be accessed from unprivileged context (not content-accessible)
-   * Will throw a DOM security error if called without chrome privileges.
-   *
-   * @param aElement the element to focus
-   *
-   * Do not use this method. Just use element.focus if available or
-   * nsIFocusManager::SetFocus instead.
-   *
-   */
-  void focus(in nsIDOMElement aElement);
-
-  /**
    * Force a garbage collection followed by a cycle collection.
    *
    * Will throw a DOM security error if called without chrome privileges in
@@ -778,7 +722,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * @param aType event type
    * @param aX x offset in CSS pixels
    * @param aY y offset in CSS pixels
-   * @param aDirection direction, using constants defined in nsIDOMSimpleGestureEvent
+   * @param aDirection direction, using constants defined in SimpleGestureEvent.webidl
    * @param aDelta  amount of magnification or rotation for magnify and rotation events
    * @param aModifiers modifiers pressed, using constants defined in nsIDOMNSEvent
    * @param aClickCount For tap gestures, the number of taps.
@@ -1512,7 +1456,7 @@ interface nsIDOMWindowUtils : nsISupports {
   /**
    * Get the type of the currently focused html input, if any.
    */
-  readonly attribute string focusedInputType;
+  readonly attribute AString focusedInputType;
 
   /**
    * Find the view ID for a given element. This is the reverse of
@@ -1735,7 +1679,7 @@ interface nsIDOMWindowUtils : nsISupports {
   /**
    * In certain cases the event handling of nodes, form controls in practice,
    * may be disabled. Such cases are for example the existence of disabled
-   * attribute or -moz-user-input: none/disabled.
+   * attribute or -moz-user-input: none.
    */
   boolean isNodeDisabledForEvents(in nsIDOMNode aNode);
 
@@ -1981,18 +1925,10 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute boolean isStyledByServo;
 
   /**
-   * Add a domain to the existing stylo blocklist.
-   *
-   * This calls nsLayoutUtils::AddToStyloBlocklist().
+   * Capture the contents of the current WebRender frame and
+   * save them to a folder relative to the current working directory.
    */
-  void addToStyloBlocklist(in ACString aBlockedDomain);
-
-  /**
-   * Remove a domain from the existing stylo blocklist.
-   *
-   * This calls nsLayoutUtils::RemoveFromStyloBlocklist().
-   */
-  void removeFromStyloBlocklist(in ACString aBlockedDomain);
+  void wrCapture();
 
   // These consts are only for testing purposes.
   const long DEFAULT_MOUSE_POINTER_ID = 0;

@@ -42,8 +42,6 @@
 #undef PostMessage
 #endif
 
-using namespace mozilla::dom::workers;
-
 namespace mozilla {
 namespace dom {
 
@@ -204,20 +202,20 @@ NS_IMPL_RELEASE_INHERITED(MessagePort, DOMEventTargetHelper)
 
 namespace {
 
-class MessagePortWorkerHolder final : public workers::WorkerHolder
+class MessagePortWorkerHolder final : public WorkerHolder
 {
   MessagePort* mPort;
 
 public:
   explicit MessagePortWorkerHolder(MessagePort* aPort)
-    : workers::WorkerHolder("MessagePortWorkerHolder")
+    : WorkerHolder("MessagePortWorkerHolder")
     , mPort(aPort)
   {
     MOZ_ASSERT(aPort);
     MOZ_COUNT_CTOR(MessagePortWorkerHolder);
   }
 
-  virtual bool Notify(workers::Status aStatus) override
+  virtual bool Notify(WorkerStatus aStatus) override
   {
     if (aStatus > Running) {
       // We cannot process messages anymore because we cannot dispatch new

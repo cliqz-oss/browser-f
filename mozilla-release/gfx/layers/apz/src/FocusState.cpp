@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/layers/FocusState.h"
+#include "FocusState.h"
 
 // #define FS_LOG(...) printf_stderr("FS: " __VA_ARGS__)
 #define FS_LOG(...)
@@ -138,19 +138,6 @@ FocusState::Update(uint64_t aRootLayerTreeId,
       return;
     }
   }
-}
-
-std::unordered_set<uint64_t>
-FocusState::GetFocusTargetLayerIds() const
-{
-  std::unordered_set<uint64_t> layersIds;
-  layersIds.reserve(mFocusTree.size());
-
-  for (const auto& focusNode : mFocusTree) {
-    layersIds.insert(focusNode.first);
-  }
-
-  return layersIds;
 }
 
 void

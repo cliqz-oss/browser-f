@@ -14,7 +14,6 @@ from mozbuild.frontend.context import (
     Path,
 )
 from mozbuild.frontend.data import (
-    AndroidResDirs,
     ChromeManifestEntry,
     ComputedFlags,
     ConfigFileSubstitution,
@@ -28,13 +27,12 @@ from mozbuild.frontend.data import (
     HostRustLibrary,
     HostRustProgram,
     HostSources,
-    IPDLFile,
+    IPDLCollection,
     JARManifest,
     LinkageMultipleRustLibrariesError,
     LocalInclude,
     LocalizedFiles,
     LocalizedPreprocessedFiles,
-    PreprocessedIPDLFile,
     Program,
     RustLibrary,
     RustProgram,
@@ -82,6 +80,7 @@ class TestEmitterBasic(unittest.TestCase):
             STL_FLAGS=['-I/path/to/topobjdir/dist/stl_wrappers'],
             VISIBILITY_FLAGS=['-include',
                               '$(topsrcdir)/config/gcc_hidden.h'],
+            OBJ_SUFFIX='obj',
         )
         if extra_substs:
             substs.update(extra_substs)
@@ -643,16 +642,26 @@ class TestEmitterBasic(unittest.TestCase):
         reader = self.reader('program')
         objs = self.read_topsrcdir(reader)
 
-        self.assertEqual(len(objs), 5)
-        self.assertIsInstance(objs[0], ComputedFlags)
+        self.assertEqual(len(objs), 6)
+        self.assertIsInstance(objs[0], Sources)
         self.assertIsInstance(objs[1], ComputedFlags)
-        self.assertIsInstance(objs[2], Program)
-        self.assertIsInstance(objs[3], SimpleProgram)
+        self.assertIsInstance(objs[2], ComputedFlags)
+        self.assertIsInstance(objs[3], Program)
         self.assertIsInstance(objs[4], SimpleProgram)
+        self.assertIsInstance(objs[5], SimpleProgram)
 
-        self.assertEqual(objs[2].program, 'test_program.prog')
-        self.assertEqual(objs[3].program, 'test_program1.prog')
-        self.assertEqual(objs[4].program, 'test_program2.prog')
+        self.assertEqual(objs[3].program, 'test_program.prog')
+        self.assertEqual(objs[4].program, 'test_program1.prog')
+        self.assertEqual(objs[5].program, 'test_program2.prog')
+
+        self.assertEqual(objs[4].objs,
+                         [mozpath.join(reader.config.topobjdir,
+                                       'test_program1.%s' %
+                                       reader.config.substs['OBJ_SUFFIX'])])
+        self.assertEqual(objs[5].objs,
+                         [mozpath.join(reader.config.topobjdir,
+                                       'test_program2.%s' %
+                                       reader.config.substs['OBJ_SUFFIX'])])
 
     def test_test_manifest_missing_manifest(self):
         """A missing manifest file should result in an error."""
@@ -923,32 +932,50 @@ class TestEmitterBasic(unittest.TestCase):
             self.read_topsrcdir(reader)
 
     def test_ipdl_sources(self):
-        reader = self.reader('ipdl_sources')
+        reader = self.reader('ipdl_sources',
+                             extra_substs={'IPDL_ROOT': mozpath.abspath('/path/to/topobjdir')})
         objs = self.read_topsrcdir(reader)
+        ipdl_collection = objs[0]
+        self.assertIsInstance(ipdl_collection, IPDLCollection)
 
-        ipdls = []
-        nonstatic_ipdls = []
-        for o in objs:
-            if isinstance(o, IPDLFile):
-                ipdls.append('%s/%s' % (o.relsrcdir, o.basename))
-            elif isinstance(o, PreprocessedIPDLFile):
-                nonstatic_ipdls.append('%s/%s' % (o.relsrcdir, o.basename))
-
-        expected = [
+        ipdls = set(mozpath.relpath(p, ipdl_collection.topsrcdir)
+                    for p in ipdl_collection.all_regular_sources())
+        expected = set([
             'bar/bar.ipdl',
             'bar/bar2.ipdlh',
             'foo/foo.ipdl',
             'foo/foo2.ipdlh',
-        ]
+        ])
 
         self.assertEqual(ipdls, expected)
 
-        expected = [
+        pp_ipdls = set(mozpath.relpath(p, ipdl_collection.topsrcdir)
+                       for p in ipdl_collection.all_preprocessed_sources())
+        expected = set([
             'bar/bar1.ipdl',
             'foo/foo1.ipdl',
-        ]
+        ])
+        self.assertEqual(pp_ipdls, expected)
 
-        self.assertEqual(nonstatic_ipdls, expected)
+        generated_sources = set(ipdl_collection.all_generated_sources())
+        expected = set([
+            'bar.cpp',
+            'barChild.cpp',
+            'barParent.cpp',
+            'bar1.cpp',
+            'bar1Child.cpp',
+            'bar1Parent.cpp',
+            'bar2.cpp',
+            'foo.cpp',
+            'fooChild.cpp',
+            'fooParent.cpp',
+            'foo1.cpp',
+            'foo1Child.cpp',
+            'foo1Parent.cpp',
+            'foo2.cpp'
+        ])
+        self.assertEqual(generated_sources, expected)
+
 
     def test_local_includes(self):
         """Test that LOCAL_INCLUDES is emitted correctly."""
@@ -1115,6 +1142,12 @@ class TestEmitterBasic(unittest.TestCase):
                 sources.files,
                 [mozpath.join(reader.config.topsrcdir, f) for f in files])
 
+            for f in files:
+                self.assertIn(mozpath.join(reader.config.topobjdir,
+                                           '%s.%s' % (mozpath.splitext(f)[0],
+                                                      reader.config.substs['OBJ_SUFFIX'])),
+                              linkable.objs)
+
     def test_sources_just_c(self):
         """Test that a linkable with no C++ sources doesn't have cxx_link set."""
         reader = self.reader('sources-just-c')
@@ -1178,6 +1211,12 @@ class TestEmitterBasic(unittest.TestCase):
                 sources.files,
                 [mozpath.join(reader.config.topobjdir, f) for f in files])
 
+            for f in files:
+                self.assertIn(mozpath.join(reader.config.topobjdir,
+                                           '%s.%s' % (mozpath.splitext(f)[0],
+                                                      reader.config.substs['OBJ_SUFFIX'])),
+                              linkable.objs)
+
     def test_host_sources(self):
         """Test that HOST_SOURCES works properly."""
         reader = self.reader('host-sources')
@@ -1213,13 +1252,21 @@ class TestEmitterBasic(unittest.TestCase):
                 sources.files,
                 [mozpath.join(reader.config.topsrcdir, f) for f in files])
 
+            for f in files:
+                self.assertIn(mozpath.join(reader.config.topobjdir,
+                                           'host_%s.%s' % (mozpath.splitext(f)[0],
+                                                           reader.config.substs['OBJ_SUFFIX'])),
+                              linkable.objs)
+
+
     def test_unified_sources(self):
         """Test that UNIFIED_SOURCES works properly."""
         reader = self.reader('unified-sources')
         objs = self.read_topsrcdir(reader)
 
-        # The last object is a Linkable, the second to last ComputedFlags,
+        # The last object is a ComputedFlags, the second to last a Linkable,
         # followed by ldflags, ignore them.
+        linkable = objs[-2]
         objs = objs[:-3]
         self.assertEqual(len(objs), 3)
         for o in objs:
@@ -1239,6 +1286,13 @@ class TestEmitterBasic(unittest.TestCase):
                 sources.files,
                 [mozpath.join(reader.config.topsrcdir, f) for f in files])
             self.assertTrue(sources.have_unified_mapping)
+
+            for f in dict(sources.unified_source_mapping).keys():
+                self.assertIn(mozpath.join(reader.config.topobjdir,
+                                           '%s.%s' % (mozpath.splitext(f)[0],
+                                                      reader.config.substs['OBJ_SUFFIX'])),
+                              linkable.objs)
+
 
     def test_unified_sources_non_unified(self):
         """Test that UNIFIED_SOURCES with FILES_PER_UNIFIED_FILE=1 works properly."""
@@ -1317,10 +1371,10 @@ class TestEmitterBasic(unittest.TestCase):
 
     def test_localized_files_no_en_us(self):
         """Test that LOCALIZED_FILES errors if a path does not start with
-        `en-US/`."""
+        `en-US/` or contain `/locales/en-US/`."""
         reader = self.reader('localized-files-no-en-us')
         with self.assertRaisesRegexp(SandboxValidationError,
-             'LOCALIZED_FILES paths must start with `en-US/`:'):
+             'LOCALIZED_FILES paths must start with `en-US/` or contain `/locales/en-US/`: foo.js'):
             objs = self.read_topsrcdir(reader)
 
     def test_localized_pp_files(self):
@@ -1360,25 +1414,11 @@ class TestEmitterBasic(unittest.TestCase):
              'Cargo.toml for.* has no \\[lib\\] section'):
             self.read_topsrcdir(reader)
 
-    def test_rust_library_no_profile_section(self):
-        '''Test that a RustLibrary Cargo.toml with no [profile] section fails.'''
-        reader = self.reader('rust-library-no-profile-section')
-        with self.assertRaisesRegexp(SandboxValidationError,
-             'Cargo.toml for.* has no \\[profile\\.dev\\] section'):
-            self.read_topsrcdir(reader)
-
     def test_rust_library_invalid_crate_type(self):
         '''Test that a RustLibrary Cargo.toml has a permitted crate-type.'''
         reader = self.reader('rust-library-invalid-crate-type')
         with self.assertRaisesRegexp(SandboxValidationError,
              'crate-type.* is not permitted'):
-            self.read_topsrcdir(reader)
-
-    def test_rust_library_non_abort_panic(self):
-        '''Test that a RustLibrary Cargo.toml has `panic = "abort" set'''
-        reader = self.reader('rust-library-non-abort-panic')
-        with self.assertRaisesRegexp(SandboxValidationError,
-             'does not specify `panic = "abort"`'):
             self.read_topsrcdir(reader)
 
     def test_rust_library_dash_folding(self):
@@ -1492,22 +1532,6 @@ class TestEmitterBasic(unittest.TestCase):
         ldflags, lib = objs
         self.assertIsInstance(ldflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
-
-    def test_android_res_dirs(self):
-        """Test that ANDROID_RES_DIRS works properly."""
-        reader = self.reader('android-res-dirs')
-        objs = self.read_topsrcdir(reader)
-
-        self.assertEqual(len(objs), 1)
-        self.assertIsInstance(objs[0], AndroidResDirs)
-
-        # Android resource directories are ordered.
-        expected = [
-            mozpath.join(reader.config.topsrcdir, 'dir1'),
-            mozpath.join(reader.config.topobjdir, 'dir2'),
-            '/dir3',
-        ]
-        self.assertEquals([p.full_path for p in objs[0].paths], expected)
 
     def test_install_shared_lib(self):
         """Test that we can install a shared library with TEST_HARNESS_FILES"""

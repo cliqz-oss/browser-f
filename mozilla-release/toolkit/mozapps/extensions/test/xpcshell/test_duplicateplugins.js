@@ -2,9 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Components.utils.import("resource://testing-common/MockRegistrar.jsm");
-
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 // This verifies that duplicate plugins are coalesced and maintain their ID
 // across restarts.
@@ -89,11 +87,11 @@ var PluginHost = {
   },
 
   QueryInterface(iid) {
-    if (iid.equals(Components.interfaces.nsIPluginHost)
-     || iid.equals(Components.interfaces.nsISupports))
+    if (iid.equals(Ci.nsIPluginHost)
+     || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 

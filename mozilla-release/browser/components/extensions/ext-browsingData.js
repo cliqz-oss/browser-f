@@ -3,16 +3,16 @@
 "use strict";
 
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sanitizer",
-                                  "resource:///modules/Sanitizer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Preferences",
+                               "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "Sanitizer",
+                               "resource:///modules/Sanitizer.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager",
                                    "@mozilla.org/serviceworkers/manager;1",
@@ -27,14 +27,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "quotaManagerService",
 */
 const YIELD_PERIOD = 10;
 
-const PREF_DOMAIN = "privacy.cpd.";
-
-XPCOMUtils.defineLazyGetter(this, "sanitizer", () => {
-  let sanitizer = new Sanitizer();
-  sanitizer.prefDomain = PREF_DOMAIN;
-  return sanitizer;
-});
-
 const makeRange = options => {
   return (options.since == null) ?
     null :
@@ -43,12 +35,12 @@ const makeRange = options => {
 
 const clearCache = () => {
   // Clearing the cache does not support timestamps.
-  return sanitizer.items.cache.clear();
+  return Sanitizer.items.cache.clear();
 };
 
 const clearCookies = async function(options) {
   let cookieMgr = Services.cookies;
-  // This code has been borrowed from sanitize.js.
+  // This code has been borrowed from Sanitizer.jsm.
   let yieldCounter = 0;
 
   if (options.since || options.hostnames) {
@@ -72,15 +64,15 @@ const clearCookies = async function(options) {
 };
 
 const clearDownloads = options => {
-  return sanitizer.items.downloads.clear(makeRange(options));
+  return Sanitizer.items.downloads.clear(makeRange(options));
 };
 
 const clearFormData = options => {
-  return sanitizer.items.formdata.clear(makeRange(options));
+  return Sanitizer.items.formdata.clear(makeRange(options));
 };
 
 const clearHistory = options => {
-  return sanitizer.items.history.clear(makeRange(options));
+  return Sanitizer.items.history.clear(makeRange(options));
 };
 
 const clearIndexedDB = async function(options) {
@@ -88,7 +80,7 @@ const clearIndexedDB = async function(options) {
 
   await new Promise(resolve => {
     quotaManagerService.getUsage(request => {
-      if (request.resultCode != Components.results.NS_OK) {
+      if (request.resultCode != Cr.NS_OK) {
         // We are probably shutting down. We don't want to propagate the error,
         // rejecting the promise.
         resolve();
@@ -150,7 +142,7 @@ const clearPasswords = async function(options) {
 };
 
 const clearPluginData = options => {
-  return sanitizer.items.pluginData.clear(makeRange(options));
+  return Sanitizer.items.pluginData.clear(makeRange(options));
 };
 
 const clearServiceWorkers = async function() {

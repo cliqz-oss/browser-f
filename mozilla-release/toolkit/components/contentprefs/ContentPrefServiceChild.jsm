@@ -5,16 +5,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "ContentPrefServiceChild" ];
+var EXPORTED_SYMBOLS = [ "ContentPrefServiceChild" ];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/ContentPrefUtils.jsm");
-Cu.import("resource://gre/modules/ContentPrefStore.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ContentPrefUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ContentPrefStore.jsm");
 
 // We only need one bit of information out of the context.
 function contextArg(context) {

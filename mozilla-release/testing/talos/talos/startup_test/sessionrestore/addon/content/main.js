@@ -1,6 +1,6 @@
 "use strict";
 
-var Services = Components.utils.import("resource://gre/modules/Services.jsm", {}).Services;
+var Services = ChromeUtils.import("resource://gre/modules/Services.jsm", {}).Services;
 
 // Process Message Manager topics.
 const MSG_REQUEST = "session-restore-test?duration";
@@ -31,7 +31,7 @@ addEventListener("load", function() {
       dumpLog("__startTimestamp" +
               Date.now() + // eslint-disable-line mozilla/avoid-Date-timing
               "__endTimestamp\n\n");
-      goQuitApplication();
+      TalosPowersContent.goQuitApplication();
   });
 
   // In case the add-on has broadcasted the message before we were loaded,

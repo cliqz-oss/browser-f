@@ -132,6 +132,7 @@ protected:
                                              const nsHttpResponseHead& responseHead,
                                              const bool& useResponseHead,
                                              const nsHttpHeaderArray& requestHeaders,
+                                             const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                                              const bool& isFromCache,
                                              const bool& cacheEntryAvailable,
                                              const uint64_t& cacheEntryId,
@@ -144,11 +145,14 @@ protected:
                                              const int16_t& redirectCount,
                                              const uint32_t& cacheKey,
                                              const nsCString& altDataType,
-                                             const int64_t& altDataLen) override;
+                                             const int64_t& altDataLen,
+                                             const OptionalIPCServiceWorkerDescriptor& aController,
+                                             const bool& aApplyConversion) override;
   mozilla::ipc::IPCResult RecvFailedAsyncOpen(const nsresult& status) override;
   mozilla::ipc::IPCResult RecvRedirect1Begin(const uint32_t& registrarId,
                                              const URIParams& newURI,
                                              const uint32_t& redirectFlags,
+                                             const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                                              const nsHttpResponseHead& responseHead,
                                              const nsCString& securityInfoSerialization,
                                              const uint64_t& channelId,
@@ -399,6 +403,7 @@ private:
                       const nsHttpResponseHead& responseHead,
                       const bool& useResponseHead,
                       const nsHttpHeaderArray& requestHeaders,
+                      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                       const bool& isFromCache,
                       const bool& cacheEntryAvailable,
                       const uint64_t& cacheEntryId,
@@ -410,7 +415,9 @@ private:
                       const NetAddr& peerAddr,
                       const uint32_t& cacheKey,
                       const nsCString& altDataType,
-                      const int64_t& altDataLen);
+                      const int64_t& altDataLen,
+                      const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController,
+                      const bool& aApplyConversion);
   void MaybeDivertOnData(const nsCString& data,
                          const uint64_t& offset,
                          const uint32_t& count);
@@ -430,6 +437,7 @@ private:
   void Redirect1Begin(const uint32_t& registrarId,
                       const URIParams& newUri,
                       const uint32_t& redirectFlags,
+                      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                       const nsHttpResponseHead& responseHead,
                       const nsACString& securityInfoSerialization,
                       const uint64_t& channelId);

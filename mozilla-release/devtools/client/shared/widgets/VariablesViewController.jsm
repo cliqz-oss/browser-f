@@ -5,9 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { utils: Cu } = Components;
-
-var {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
 var {VariablesView} = require("resource://devtools/client/shared/widgets/VariablesView.jsm");
 var Services = require("Services");
@@ -26,9 +24,6 @@ Object.defineProperty(this, "WebConsoleUtils", {
 XPCOMUtils.defineLazyGetter(this, "VARIABLES_SORTING_ENABLED", () =>
   Services.prefs.getBoolPref("devtools.debugger.ui.variables-sorting-enabled")
 );
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
 
 const MAX_LONG_STRING_LENGTH = 200000;
 const MAX_PROPERTY_ITEMS = 2000;

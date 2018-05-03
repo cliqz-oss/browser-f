@@ -130,20 +130,20 @@ enum class IsRemoveNotification
 
 void
 nsNodeUtils::CharacterDataWillChange(nsIContent* aContent,
-                                     CharacterDataChangeInfo* aInfo)
+                                     const CharacterDataChangeInfo& aInfo)
 {
   nsIDocument* doc = aContent->OwnerDoc();
   IMPL_MUTATION_NOTIFICATION(CharacterDataWillChange, aContent,
-                             (doc, aContent, aInfo), IsRemoveNotification::No);
+                             (aContent, aInfo), IsRemoveNotification::No);
 }
 
 void
 nsNodeUtils::CharacterDataChanged(nsIContent* aContent,
-                                  CharacterDataChangeInfo* aInfo)
+                                  const CharacterDataChangeInfo& aInfo)
 {
   nsIDocument* doc = aContent->OwnerDoc();
   IMPL_MUTATION_NOTIFICATION(CharacterDataChanged, aContent,
-                             (doc, aContent, aInfo), IsRemoveNotification::No);
+                             (aContent, aInfo), IsRemoveNotification::No);
 }
 
 void
@@ -155,7 +155,7 @@ nsNodeUtils::AttributeWillChange(Element* aElement,
 {
   nsIDocument* doc = aElement->OwnerDoc();
   IMPL_MUTATION_NOTIFICATION(AttributeWillChange, aElement,
-                             (doc, aElement, aNameSpaceID, aAttribute,
+                             (aElement, aNameSpaceID, aAttribute,
                               aModType, aNewValue), IsRemoveNotification::No);
 }
 
@@ -168,7 +168,7 @@ nsNodeUtils::AttributeChanged(Element* aElement,
 {
   nsIDocument* doc = aElement->OwnerDoc();
   IMPL_MUTATION_NOTIFICATION(AttributeChanged, aElement,
-                             (doc, aElement, aNameSpaceID, aAttribute,
+                             (aElement, aNameSpaceID, aAttribute,
                               aModType, aOldValue), IsRemoveNotification::No);
 }
 
@@ -179,7 +179,7 @@ nsNodeUtils::AttributeSetToCurrentValue(Element* aElement,
 {
   nsIDocument* doc = aElement->OwnerDoc();
   IMPL_MUTATION_NOTIFICATION(AttributeSetToCurrentValue, aElement,
-                             (doc, aElement, aNameSpaceID, aAttribute),
+                             (aElement, aNameSpaceID, aAttribute),
                              IsRemoveNotification::No);
 }
 
@@ -190,7 +190,7 @@ nsNodeUtils::ContentAppended(nsIContent* aContainer,
   nsIDocument* doc = aContainer->OwnerDoc();
 
   IMPL_MUTATION_NOTIFICATION(ContentAppended, aContainer,
-                             (doc, aContainer, aFirstNewContent),
+                             (aFirstNewContent),
                              IsRemoveNotification::No);
 }
 
@@ -202,7 +202,7 @@ nsNodeUtils::NativeAnonymousChildListChange(nsIContent* aContent,
   auto isRemove = aIsRemove
     ? IsRemoveNotification::Yes : IsRemoveNotification::No;
   IMPL_MUTATION_NOTIFICATION(NativeAnonymousChildListChange, aContent,
-                            (doc, aContent, aIsRemove),
+                            (aContent, aIsRemove),
                             isRemove);
 }
 
@@ -213,19 +213,8 @@ nsNodeUtils::ContentInserted(nsINode* aContainer,
   NS_PRECONDITION(aContainer->IsContent() ||
                   aContainer->IsNodeOfType(nsINode::eDOCUMENT),
                   "container must be an nsIContent or an nsIDocument");
-  nsIContent* container;
   nsIDocument* doc = aContainer->OwnerDoc();
-  nsIDocument* document;
-  if (aContainer->IsContent()) {
-    container = aContainer->AsContent();
-    document = doc;
-  } else {
-    container = nullptr;
-    document = static_cast<nsIDocument*>(aContainer);
-  }
-
-  IMPL_MUTATION_NOTIFICATION(ContentInserted, aContainer,
-                             (document, container, aChild),
+  IMPL_MUTATION_NOTIFICATION(ContentInserted, aContainer, (aChild),
                              IsRemoveNotification::No);
 }
 
@@ -237,19 +226,11 @@ nsNodeUtils::ContentRemoved(nsINode* aContainer,
   NS_PRECONDITION(aContainer->IsContent() ||
                   aContainer->IsNodeOfType(nsINode::eDOCUMENT),
                   "container must be an nsIContent or an nsIDocument");
-  nsIContent* container;
   nsIDocument* doc = aContainer->OwnerDoc();
-  nsIDocument* document;
-  if (aContainer->IsContent()) {
-    container = static_cast<nsIContent*>(aContainer);
-    document = doc;
-  } else {
-    container = nullptr;
-    document = static_cast<nsIDocument*>(aContainer);
-  }
-
+  MOZ_ASSERT(aChild->GetParentNode() == aContainer,
+             "We expect the parent link to be still around at this point");
   IMPL_MUTATION_NOTIFICATION(ContentRemoved, aContainer,
-                             (document, container, aChild, aPreviousSibling),
+                             (aChild, aPreviousSibling),
                              IsRemoveNotification::Yes);
 }
 
@@ -358,7 +339,7 @@ nsNodeUtils::LastRelease(nsINode* aNode)
   }
   aNode->UnsetFlags(NODE_HAS_PROPERTIES);
 
-  if (aNode->NodeType() != nsIDOMNode::DOCUMENT_NODE &&
+  if (aNode->NodeType() != nsINode::DOCUMENT_NODE &&
       aNode->HasFlag(NODE_HAS_LISTENERMANAGER)) {
 #ifdef DEBUG
     if (nsContentUtils::IsInitialized()) {
@@ -512,9 +493,11 @@ nsNodeUtils::CloneAndAdopt(nsINode *aNode, bool aClone, bool aDeep,
         // cloned.
         RefPtr<nsAtom> typeAtom = extension.IsEmpty() ? tagAtom : NS_Atomize(extension);
         cloneElem->SetCustomElementData(new CustomElementData(typeAtom));
+
+        MOZ_ASSERT(nodeInfo->NameAtom()->Equals(nodeInfo->LocalName()));
         CustomElementDefinition* definition =
           nsContentUtils::LookupCustomElementDefinition(nodeInfo->GetDocument(),
-                                                        nodeInfo->LocalName(),
+                                                        nodeInfo->NameAtom(),
                                                         nodeInfo->NamespaceID(),
                                                         typeAtom);
         if (definition) {
@@ -603,9 +586,8 @@ nsNodeUtils::CloneAndAdopt(nsINode *aNode, bool aClone, bool aDeep,
     }
 
     if (wasRegistered && oldDoc != newDoc) {
-      nsCOMPtr<nsIDOMHTMLMediaElement> domMediaElem(do_QueryInterface(aNode));
-      if (domMediaElem) {
-        HTMLMediaElement* mediaElem = static_cast<HTMLMediaElement*>(aNode);
+      nsIContent* content = aNode->AsContent();
+      if (auto mediaElem = HTMLMediaElement::FromContentOrNull(content)) {
         mediaElem->NotifyOwnerDocumentActivityChanged();
       }
       nsCOMPtr<nsIObjectLoadingContent> objectLoadingContent(do_QueryInterface(aNode));
@@ -675,14 +657,42 @@ nsNodeUtils::CloneAndAdopt(nsINode *aNode, bool aClone, bool aDeep,
     }
   }
 
-  if (aDeep && !aClone && aNode->IsElement()) {
-    if (ShadowRoot* shadowRoot = aNode->AsElement()->GetShadowRoot()) {
-      nsCOMPtr<nsINode> child =
-        CloneAndAdopt(shadowRoot, aClone, aDeep, nodeInfoManager,
-                      aReparentScope, aNodesWithProperties, clone,
-                      aError);
-      if (NS_WARN_IF(aError.Failed())) {
-        return nullptr;
+  if (aDeep && aNode->IsElement()) {
+    if (aClone) {
+      if (clone->OwnerDoc()->IsStaticDocument()) {
+        ShadowRoot* originalShadowRoot = aNode->AsElement()->GetShadowRoot();
+        if (originalShadowRoot) {
+          ShadowRootInit init;
+          init.mMode = originalShadowRoot->Mode();
+          RefPtr<ShadowRoot> newShadowRoot =
+            clone->AsElement()->AttachShadow(init, aError);
+          if (NS_WARN_IF(aError.Failed())) {
+            return nullptr;
+          }
+
+          newShadowRoot->CloneInternalDataFrom(originalShadowRoot);
+          for (nsIContent* origChild = originalShadowRoot->GetFirstChild();
+               origChild;
+               origChild = origChild->GetNextSibling()) {
+            nsCOMPtr<nsINode> child =
+              CloneAndAdopt(origChild, aClone, aDeep, nodeInfoManager,
+                            aReparentScope, aNodesWithProperties, newShadowRoot,
+                            aError);
+            if (NS_WARN_IF(aError.Failed())) {
+              return nullptr;
+            }
+          }
+        }
+      }
+    } else {
+      if (ShadowRoot* shadowRoot = aNode->AsElement()->GetShadowRoot()) {
+        nsCOMPtr<nsINode> child =
+          CloneAndAdopt(shadowRoot, aClone, aDeep, nodeInfoManager,
+                        aReparentScope, aNodesWithProperties, clone,
+                        aError);
+        if (NS_WARN_IF(aError.Failed())) {
+          return nullptr;
+        }
       }
     }
   }

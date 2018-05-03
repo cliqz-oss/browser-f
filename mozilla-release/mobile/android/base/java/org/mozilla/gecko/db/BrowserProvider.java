@@ -1246,7 +1246,8 @@ public class BrowserProvider extends SharedBrowserDatabaseProvider {
                 "LEFT JOIN " + PageMetadata.TABLE_NAME + " ON " +
                     DBUtils.qualifyColumn(History.TABLE_NAME, History.GUID) + " = " +
                     DBUtils.qualifyColumn(PageMetadata.TABLE_NAME, PageMetadata.HISTORY_GUID) + " " +
-                "WHERE " + DBUtils.qualifyColumn(History.TABLE_NAME, History.URL) + " NOT IN (SELECT " + ActivityStreamBlocklist.URL + " FROM " + ActivityStreamBlocklist.TABLE_NAME + " )" +
+                "WHERE " + DBUtils.qualifyColumn(History.TABLE_NAME, History.URL) + " NOT IN (SELECT " + ActivityStreamBlocklist.URL + " FROM " + ActivityStreamBlocklist.TABLE_NAME + " ) " +
+                "AND " + DBUtils.qualifyColumn(History.TABLE_NAME, History.IS_DELETED) + " IS NOT 1 " +
                 "ORDER BY " + Highlights.DATE + " DESC " +
                 "LIMIT " + limit;
 
@@ -2963,7 +2964,7 @@ public class BrowserProvider extends SharedBrowserDatabaseProvider {
                     // or, less likely, due to record reconciliation bugs at the RepositorySession
                     // level.
                     } catch (SQLiteConstraintException e) {
-                        Log.w(LOGTAG, "Unexpected constraint exception while inserting a visit", e);
+                        // Don't log this, it'll just cause memory churn.
                     }
                 }
                 if (inserted != valueSet.length) {

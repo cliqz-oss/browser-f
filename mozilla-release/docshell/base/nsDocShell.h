@@ -16,12 +16,12 @@
 #include "mozilla/WeakPtr.h"
 
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
+#include "mozilla/gfx/Matrix.h"
 
 #include "nsIAuthPromptProvider.h"
 #include "nsIBaseWindow.h"
 #include "nsIClipboardCommands.h"
 #include "nsIDeprecationWarner.h"
-#include "nsIDocCharset.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellLoadInfo.h"
 #include "nsIDocShellTreeItem.h"
@@ -125,7 +125,6 @@ class nsDocShell final
   , public nsIBaseWindow
   , public nsIScrollable
   , public nsITextScroll
-  , public nsIDocCharset
   , public nsIRefreshURI
   , public nsIWebProgressListener
   , public nsIWebPageDescriptor
@@ -177,7 +176,6 @@ public:
   NS_DECL_NSIBASEWINDOW
   NS_DECL_NSISCROLLABLE
   NS_DECL_NSITEXTSCROLL
-  NS_DECL_NSIDOCCHARSET
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIREFRESHURI
@@ -362,6 +360,10 @@ public:
 
   // Update any pointers (mOSHE or mLSHE) to aOldEntry to point to aNewEntry
   void SwapHistoryEntries(nsISHEntry* aOldEntry, nsISHEntry* aNewEntry);
+
+  mozilla::gfx::Matrix5x4* GetColorMatrix() {
+    return mColorMatrix.get();
+  }
 
   static bool SandboxFlagsImplyCookies(const uint32_t &aSandboxFlags);
 
@@ -910,6 +912,7 @@ private: // data members
   nsTObserverArray<nsWeakPtr> mScrollObservers;
   mozilla::OriginAttributes mOriginAttributes;
   mozilla::UniquePtr<mozilla::dom::ClientSource> mInitialClientSource;
+  nsCOMPtr<nsINetworkInterceptController> mInterceptController;
   RefPtr<nsDOMNavigationTiming> mTiming;
   RefPtr<nsDSURIContentListener> mContentListener;
   RefPtr<nsGlobalWindowOuter> mScriptGlobal;
@@ -990,6 +993,8 @@ private: // data members
   // the LOAD_NORMAL_ALLOW_MIXED_CONTENT flag is set.
   // Checked in nsMixedContentBlocker, to see if the channels match.
   nsCOMPtr<nsIChannel> mMixedContentChannel;
+
+  mozilla::UniquePtr<mozilla::gfx::Matrix5x4> mColorMatrix;
 
   const mozilla::Encoding* mForcedCharset;
   const mozilla::Encoding* mParentCharset;

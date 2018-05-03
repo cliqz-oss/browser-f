@@ -1,8 +1,8 @@
 /* verify that certain invalid URIs are not parsed by the resource
    protocol handler */
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const specs = [
   "resource://res-test//",
@@ -80,7 +80,7 @@ function check_resolution_error(spec)
     get_channel(spec);
     ok(false, "Expected an error");
   } catch (e) {
-    equal(e.result, Components.results.NS_ERROR_MALFORMED_URI,
+    equal(e.result, Cr.NS_ERROR_MALFORMED_URI,
           "Expected a malformed URI error");
   }
 }

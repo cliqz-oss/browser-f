@@ -289,9 +289,15 @@ class OSXBootstrapper(BaseBootstrapper):
         print('Once the install has finished, please relaunch this script.')
         sys.exit(1)
 
-    def _ensure_homebrew_packages(self, packages, extra_brew_args=[]):
-        self.brew = self.which('brew')
+    def _ensure_homebrew_found(self):
+        if not hasattr(self, 'brew'):
+            self.brew = self.which('brew')
+        # Earlier code that checks for valid package managers ensures
+        # which('brew') is found.
         assert self.brew is not None
+
+    def _ensure_homebrew_packages(self, packages, extra_brew_args=[]):
+        self._ensure_homebrew_found()
         cmd = [self.brew] + extra_brew_args
 
         installed = self.check_output(cmd + ['list']).split()
@@ -311,31 +317,37 @@ class OSXBootstrapper(BaseBootstrapper):
         return printed
 
     def _ensure_homebrew_casks(self, casks):
+        self._ensure_homebrew_found()
+
+        # Ensure that we can access old versions of packages.  This is
+        # idempotent, so no need to avoid repeat invocation.
+        self.check_output([self.brew, 'tap', 'caskroom/versions'])
+
         # Change |brew install cask| into |brew cask install cask|.
         return self._ensure_homebrew_packages(casks, extra_brew_args=['cask'])
 
     def ensure_homebrew_system_packages(self):
+        # We need to install Python because Mercurial requires the
+        # Python development headers which are missing from OS X (at
+        # least on 10.8) and because the build system wants a version
+        # newer than what Apple ships.
         packages = [
-            # We need to install Python because Mercurial requires the Python
-            # development headers which are missing from OS X (at least on
-            # 10.8) and because the build system wants a version newer than
-            # what Apple ships.
+            'autoconf@2.13',
+            'git',
+            'gnu-tar',
+            'llvm',
+            'mercurial',
+            'node',
             'python',
             'python3',
-            'mercurial',
-            'git',
-            'autoconf@2.13',
-            'gnu-tar',
-            'watchman',
             'terminal-notifier',
-            'node',
+            'watchman',
         ]
         self._ensure_homebrew_packages(packages)
 
     def ensure_homebrew_browser_packages(self, artifact_mode=False):
         # TODO: Figure out what not to install for artifact mode
         packages = [
-            'llvm',
             'yasm',
         ]
         self._ensure_homebrew_packages(packages)
@@ -369,7 +381,9 @@ class OSXBootstrapper(BaseBootstrapper):
 
     def suggest_homebrew_mobile_android_mozconfig(self, artifact_mode=False):
         from mozboot import android
-        android.suggest_mozconfig('macosx', artifact_mode=artifact_mode)
+        # Path to java and javac from the caskroom/versions/java8 cask.
+        android.suggest_mozconfig('macosx', artifact_mode=artifact_mode,
+                                  java_bin_path='/Library/Java/Home/bin')
 
     def _ensure_macports_packages(self, packages):
         self.port = self.which('port')

@@ -57,7 +57,7 @@ struct nsRect;
 class nsFocusManager;
 class nsGlobalWindowInner;
 class nsGlobalWindowOuter;
-class nsICSSDeclaration;
+class nsDOMCSSAttributeDeclaration;
 class nsISMILAttr;
 class nsDocument;
 class nsDOMStringMap;
@@ -204,7 +204,7 @@ public:
     FragmentOrElement(aNodeInfo),
     mState(NS_EVENT_STATE_MOZ_READONLY)
   {
-    MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::ELEMENT_NODE,
+    MOZ_ASSERT(mNodeInfo->NodeType() == ELEMENT_NODE,
                "Bad NodeType in aNodeInfo");
     SetIsElement();
   }
@@ -414,7 +414,7 @@ public:
    * Note: This method is analogous to the 'GetStyle' method in
    * nsGenericHTMLElement and nsStyledElement.
    */
-  nsICSSDeclaration* GetSMILOverrideStyle();
+  nsDOMCSSAttributeDeclaration* GetSMILOverrideStyle();
 
   /**
    * Returns if the element is labelable as per HTML specification.
@@ -454,10 +454,12 @@ public:
   virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const;
 
+#ifdef MOZ_OLD_STYLE
   NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker)
   {
     return NS_OK;
   }
+#endif
 
   inline Directionality GetDirectionality() const {
     if (HasFlag(NODE_HAS_DIRECTION_RTL)) {
@@ -635,8 +637,8 @@ protected:
     mState &= ~aStates;
   }
 
-  already_AddRefed<ShadowRoot> AttachShadowInternal(bool aClosed,
-                                                    ErrorResult& aError);
+  already_AddRefed<ShadowRoot> AttachShadowInternal(
+    ShadowRootMode, ErrorResult& aError);
 
 private:
   // Need to allow the ESM, nsGlobalWindow, and the focus manager to
@@ -735,8 +737,8 @@ public:
    * @param aOldValue [out] Set to the old value of the attribute, but only if
    *   there are event listeners. If set, the type of aOldValue will be either
    *   nsAttrValue::eString or nsAttrValue::eAtom.
-   * @param aModType [out] Set to nsIDOMMutationEvent::MODIFICATION or to
-   *   nsIDOMMutationEvent::ADDITION, but only if this helper returns true
+   * @param aModType [out] Set to MutationEventBinding::MODIFICATION or to
+   *   MutationEventBinding::ADDITION, but only if this helper returns true
    * @param aHasListeners [out] Set to true if there are mutation event
    *   listeners listening for NS_EVENT_BITS_MUTATION_ATTRMODIFIED
    * @param aOldValueSet [out] Indicates whether an old attribute value has been
@@ -762,8 +764,8 @@ public:
    * @param aOldValue [out] Set to the old value of the attribute, but only if
    *   there are event listeners. If set, the type of aOldValue will be either
    *   nsAttrValue::eString or nsAttrValue::eAtom.
-   * @param aModType [out] Set to nsIDOMMutationEvent::MODIFICATION or to
-   *   nsIDOMMutationEvent::ADDITION, but only if this helper returns true
+   * @param aModType [out] Set to MutationEventBinding::MODIFICATION or to
+   *   MutationEventBinding::ADDITION, but only if this helper returns true
    * @param aHasListeners [out] Set to true if there are mutation event
    *   listeners listening for NS_EVENT_BITS_MUTATION_ATTRMODIFIED
    * @param aOldValueSet [out] Indicates whether an old attribute value has been
@@ -1116,7 +1118,7 @@ public:
 
   void GetAttributeNames(nsTArray<nsString>& aResult);
 
-  void GetAttribute(const nsAString& aName, nsString& aReturn)
+  void GetAttribute(const nsAString& aName, nsAString& aReturn)
   {
     DOMString str;
     GetAttribute(aName, str);
@@ -1565,7 +1567,7 @@ public:
    */
   static CORSMode AttrValueToCORSMode(const nsAttrValue* aValue);
 
-  virtual JSObject* WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) final override;
+  JSObject* WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) final;
 
   nsINode* GetScopeChainParent() const override;
 
@@ -1575,7 +1577,6 @@ public:
   mozilla::TextEditor* GetTextEditorInternal();
 
   /**
-   * Helper method for NS_IMPL_BOOL_ATTR macro.
    * Gets value of boolean attribute. Only works for attributes in null
    * namespace.
    *
@@ -1588,7 +1589,6 @@ public:
   }
 
   /**
-   * Helper method for NS_IMPL_BOOL_ATTR macro.
    * Sets value of boolean attribute by removing attribute or setting it to
    * the empty string. Only works for attributes in null namespace.
    *
@@ -1598,7 +1598,6 @@ public:
   nsresult SetBoolAttr(nsAtom* aAttr, bool aValue);
 
   /**
-   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_VALUE.
    * Gets the enum value string of an attribute and using a default value if
    * the attribute is missing or the string is an invalid enum value.
    *
@@ -1611,7 +1610,6 @@ public:
                    nsAString& aResult) const;
 
   /**
-   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES.
    * Gets the enum value string of an attribute and using the default missing
    * value if the attribute is missing or the default invalid value if the
    * string is an invalid enum value.
@@ -1737,7 +1735,7 @@ protected:
    *                      non-null value does guarantee that a scripted caller
    *                      with the given principal is directly responsible for
    *                      the attribute change.
-   * @param aModType      nsIDOMMutationEvent::MODIFICATION or ADDITION.  Only
+   * @param aModType      MutationEventBinding::MODIFICATION or ADDITION.  Only
    *                      needed if aFireMutation or aNotify is true.
    * @param aFireMutation should mutation-events be fired?
    * @param aNotify       should we notify document-observers?
@@ -2156,72 +2154,4 @@ _elementName::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,   \
 #define NS_IMPL_ELEMENT_CLONE_WITH_INIT_AND_PARSER(_elementName) \
   NS_IMPL_ELEMENT_CLONE_WITH_INIT_HELPER(_elementName, (, NOT_FROM_PARSER))
 
-/**
- * A macro to implement the getter and setter for a given string
- * valued content property. The method uses the generic GetAttr and
- * SetAttr methods.  We use the 5-argument form of SetAttr, because
- * some consumers only implement that one, hiding superclass
- * 4-argument forms.
- */
-#define NS_IMPL_STRING_ATTR(_class, _method, _atom)                     \
-  NS_IMETHODIMP                                                         \
-  _class::Get##_method(nsAString& aValue)                               \
-  {                                                                     \
-    GetAttr(kNameSpaceID_None, nsGkAtoms::_atom, aValue);               \
-    return NS_OK;                                                       \
-  }                                                                     \
-  NS_IMETHODIMP                                                         \
-  _class::Set##_method(const nsAString& aValue)                         \
-  {                                                                     \
-    return SetAttr(kNameSpaceID_None, nsGkAtoms::_atom, nullptr, aValue, true); \
-  }
-
-/**
- * A macro to implement the getter and setter for a given boolean
- * valued content property. The method uses the GetBoolAttr and
- * SetBoolAttr methods.
- */
-#define NS_IMPL_BOOL_ATTR(_class, _method, _atom)                     \
-  NS_IMETHODIMP                                                       \
-  _class::Get##_method(bool* aValue)                                  \
-  {                                                                   \
-    *aValue = GetBoolAttr(nsGkAtoms::_atom);                          \
-    return NS_OK;                                                     \
-  }                                                                   \
-  NS_IMETHODIMP                                                       \
-  _class::Set##_method(bool aValue)                                   \
-  {                                                                   \
-    return SetBoolAttr(nsGkAtoms::_atom, aValue);                     \
-  }
-
-#define NS_FORWARD_NSIDOMELEMENT_TO_GENERIC                                   \
-typedef mozilla::dom::Element Element;                                        \
-NS_IMETHOD GetTagName(nsAString& aTagName) final override                     \
-{                                                                             \
-  Element::GetTagName(aTagName);                                              \
-  return NS_OK;                                                               \
-}                                                                             \
-using Element::GetAttribute;                                                  \
-NS_IMETHOD GetAttribute(const nsAString& name, nsAString& _retval) final      \
-  override                                                                    \
-{                                                                             \
-  nsString attr;                                                              \
-  GetAttribute(name, attr);                                                   \
-  _retval = attr;                                                             \
-  return NS_OK;                                                               \
-}                                                                             \
-NS_IMETHOD SetAttribute(const nsAString& name,                                \
-                        const nsAString& value) override                      \
-{                                                                             \
-  mozilla::ErrorResult rv;                                                    \
-  Element::SetAttribute(name, value, nullptr, rv);                            \
-  return rv.StealNSResult();                                                  \
-}                                                                             \
-using Element::HasAttribute;                                                  \
-NS_IMETHOD HasAttribute(const nsAString& name,                                \
-                           bool* _retval) final override                      \
-{                                                                             \
-  *_retval = HasAttribute(name);                                              \
-  return NS_OK;                                                               \
-}
 #endif // mozilla_dom_Element_h__

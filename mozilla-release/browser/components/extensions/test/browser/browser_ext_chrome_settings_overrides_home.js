@@ -3,10 +3,10 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 // Named this way so they correspond to the extensions
 const HOME_URI_2 = "http://example.com/";
@@ -268,4 +268,25 @@ add_task(async function test_local() {
      "Home url should be relative to extension.");
 
   await ext1.unload();
+});
+
+add_task(async function test_multiple() {
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      chrome_settings_overrides: {
+        homepage: "https://mozilla.org/|https://developer.mozilla.org/|https://addons.mozilla.org/",
+      },
+    },
+    useAddonManager: "temporary",
+  });
+
+  let prefPromise = promisePrefChangeObserved(HOMEPAGE_URL_PREF);
+  await extension.startup();
+  await prefPromise;
+
+  is(getHomePageURL(),
+     "https://mozilla.org/%7Chttps://developer.mozilla.org/%7Chttps://addons.mozilla.org/",
+     "The homepage encodes | so only one homepage is allowed");
+
+  await extension.unload();
 });

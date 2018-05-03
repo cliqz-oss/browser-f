@@ -13,6 +13,7 @@
  * from the source profile.
  */
 
+<<<<<<< HEAD
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -102,6 +103,43 @@ function* insertWholeBookmarkFolder(db, aId, aGuid) {
     }
   }
 }
+||||||| merged common ancestors
+const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource:///modules/MigrationUtils.jsm");
+Cu.import("resource://gre/modules/Services.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesBackups",
+                                  "resource://gre/modules/PlacesBackups.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "SessionMigration",
+                                  "resource:///modules/sessionstore/SessionMigration.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "OS",
+                                  "resource://gre/modules/osfile.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
+                                  "resource://gre/modules/FileUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
+                                  "resource://gre/modules/ProfileAge.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+                                  "resource://gre/modules/AppConstants.jsm");
+=======
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+
+ChromeUtils.defineModuleGetter(this, "PlacesBackups",
+                               "resource://gre/modules/PlacesBackups.jsm");
+ChromeUtils.defineModuleGetter(this, "SessionMigration",
+                               "resource:///modules/sessionstore/SessionMigration.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ProfileAge",
+                               "resource://gre/modules/ProfileAge.jsm");
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
+>>>>>>> origin/upstream-releases
 
 function isValidUrl(aUrl) {
   let url = NetUtil.newURI(aUrl);
@@ -169,9 +207,9 @@ CliqzProfileMigrator.prototype =
 CliqzProfileMigrator.prototype._getAllProfiles = function() {
   let allProfiles = new Map();
   let profiles =
-    Components.classes["@mozilla.org/toolkit/profile-service;1"]
-              .getService(Components.interfaces.nsIToolkitProfileService)
-              .profiles;
+    Cc["@mozilla.org/toolkit/profile-service;1"]
+      .getService(Ci.nsIToolkitProfileService)
+      .profiles;
   while (profiles.hasMoreElements()) {
     let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
     let rootDir = profile.rootDir;
@@ -188,11 +226,9 @@ function sorter(a, b) {
   return a.id.toLocaleLowerCase().localeCompare(b.id.toLocaleLowerCase());
 }
 
-Object.defineProperty(FirefoxProfileMigrator.prototype, "sourceProfiles", {
-  get() {
-    return [...this._getAllProfiles().keys()].map(x => ({id: x, name: x})).sort(sorter);
-  }
-});
+FirefoxProfileMigrator.prototype.getSourceProfiles = function() {
+  return [...this._getAllProfiles().keys()].map(x => ({id: x, name: x})).sort(sorter);
+};
 
 FirefoxProfileMigrator.prototype._getFileObject = function(dir, fileName) {
   let file = dir.clone();
@@ -206,9 +242,9 @@ FirefoxProfileMigrator.prototype._getFileObject = function(dir, fileName) {
 
 FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
   let sourceProfileDir = aProfile ? this._getAllProfiles().get(aProfile.id) :
-    Components.classes["@mozilla.org/toolkit/profile-service;1"]
-              .getService(Components.interfaces.nsIToolkitProfileService)
-              .selectedProfile.rootDir;
+    Cc["@mozilla.org/toolkit/profile-service;1"]
+      .getService(Ci.nsIToolkitProfileService)
+      .selectedProfile.rootDir;
   if (!sourceProfileDir || !sourceProfileDir.exists() ||
       !sourceProfileDir.isReadable())
     return null;
@@ -255,7 +291,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
           file.copyTo(currentProfileDir, "");
         }
         aCallback(true);
-      }
+      },
     };
   };
 
@@ -574,7 +610,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
           }, function() {
             aCallback(false);
           });
-        }
+        },
       };
     }
   }
@@ -607,7 +643,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         return;
       }
       aCallback(true);
-    }
+    },
   };
 
   // Telemetry related migrations.
@@ -631,7 +667,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         () => aCallback(true),
         () => aCallback(false)
       );
-    }
+    },
   };
   let telemetry = {
     name: "telemetry", // name is used only by tests...
@@ -645,7 +681,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
       };
 
       // If the 'datareporting' directory exists we migrate files from it.
-      let haveStateFile = false;
       let dataReportingDir = this._getFileObject(sourceProfileDir, "datareporting");
       if (dataReportingDir && dataReportingDir.isDirectory()) {
         // Copy only specific files.
@@ -655,44 +690,33 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         let enumerator = dataReportingDir.directoryEntries;
         while (enumerator.hasMoreElements()) {
           let file = enumerator.getNext().QueryInterface(Ci.nsIFile);
-          if (file.isDirectory() || toCopy.indexOf(file.leafName) == -1) {
+          if (file.isDirectory() || !toCopy.includes(file.leafName)) {
             continue;
-          }
-
-          if (file.leafName == "state.json") {
-            haveStateFile = true;
           }
           file.copyTo(dest, "");
         }
       }
 
-      if (!haveStateFile) {
-        // Fall back to migrating the state file that contains the client id from healthreport/.
-        // We first moved the client id management from the FHR implementation to the datareporting
-        // service.
-        // Consequently, we try to migrate an existing FHR state file here as a fallback.
-        let healthReportDir = this._getFileObject(sourceProfileDir, "healthreport");
-        if (healthReportDir && healthReportDir.isDirectory()) {
-          let stateFile = this._getFileObject(healthReportDir, "state.json");
-          if (stateFile) {
-            let dest = createSubDir("healthreport");
-            stateFile.copyTo(dest, "");
-          }
-        }
-      }
-
       aCallback(true);
-    }
+    },
   };
 
   return [places, cookies, passwords, formData, dictionary, bookmarksBackups,
           session, sync, times, telemetry, favicons].filter(r => r);
 };
 
+<<<<<<< HEAD
 Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
   // Cliqz
   // This is FF migrator (need to correct migration process in MigrationUtils.jsm)
   get: () => true
+||||||| merged common ancestors
+Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
+  get: () => true
+=======
+Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
+  get: () => true,
+>>>>>>> origin/upstream-releases
 });
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "tabsRestoreURL", {

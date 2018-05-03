@@ -18,7 +18,7 @@ use moz2d_renderer::Moz2dImageRenderer;
 use app_units::Au;
 use rayon;
 use euclid::SideOffsets2D;
-use log::{set_logger, shutdown_logger, LogLevelFilter, Log, LogLevel, LogMetadata, LogRecord};
+use log;
 
 #[cfg(target_os = "windows")]
 use dwrote::{FontDescriptor, FontWeight, FontStretch, FontStyle};
@@ -28,8 +28,31 @@ use core_foundation::string::CFString;
 #[cfg(target_os = "macos")]
 use core_graphics::font::CGFont;
 
-/// cbindgen:field-names=[mNamespace, mHandle]
-type WrExternalImageBufferType = ExternalImageType;
+#[repr(C)]
+pub enum WrExternalImageBufferType {
+    TextureHandle = 0,
+    TextureRectHandle = 1,
+    TextureArrayHandle = 2,
+    TextureExternalHandle = 3,
+    ExternalBuffer = 4,
+}
+
+impl WrExternalImageBufferType {
+    fn to_wr(self) -> ExternalImageType {
+        match self {
+            WrExternalImageBufferType::TextureHandle =>
+                ExternalImageType::TextureHandle(TextureTarget::Default),
+            WrExternalImageBufferType::TextureRectHandle =>
+                ExternalImageType::TextureHandle(TextureTarget::Rect),
+            WrExternalImageBufferType::TextureArrayHandle =>
+                ExternalImageType::TextureHandle(TextureTarget::Array),
+            WrExternalImageBufferType::TextureExternalHandle =>
+                ExternalImageType::TextureHandle(TextureTarget::External),
+            WrExternalImageBufferType::ExternalBuffer =>
+                ExternalImageType::Buffer,
+        }
+    }
+}
 
 /// cbindgen:field-names=[mHandle]
 /// cbindgen:derive-lt=true
@@ -53,7 +76,7 @@ type WrFontInstanceKey = FontInstanceKey;
 /// cbindgen:field-names=[mNamespace, mHandle]
 type WrYuvColorSpace = YuvColorSpace;
 /// cbindgen:field-names=[mNamespace, mHandle]
-type WrLogLevelFilter = LogLevelFilter;
+type WrLogLevelFilter = log::LevelFilter;
 
 fn make_slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     if ptr.is_null() {
@@ -77,8 +100,7 @@ pub struct DocumentHandle {
 }
 
 impl DocumentHandle {
-    pub fn new(api: RenderApi, size: DeviceUintSize) -> DocumentHandle {
-        let layer = 0; //TODO
+    pub fn new(api: RenderApi, size: DeviceUintSize, layer: i8) -> DocumentHandle {
         let doc = api.add_document(size, layer);
         DocumentHandle {
             api: api,
@@ -156,7 +178,7 @@ pub struct ByteSlice {
 impl ByteSlice {
     pub fn new(slice: &[u8]) -> ByteSlice {
         ByteSlice {
-            buffer: &slice[0],
+            buffer: slice.as_ptr(),
             len: slice.len(),
         }
     }
@@ -176,7 +198,7 @@ impl MutByteSlice {
     pub fn new(slice: &mut [u8]) -> MutByteSlice {
         let len = slice.len();
         MutByteSlice {
-            buffer: &mut slice[0],
+            buffer: slice.as_mut_ptr(),
             len: len,
         }
     }
@@ -306,34 +328,12 @@ impl ExternalImageHandler for WrExternalImageHandler {
             channel_index: u8)
             -> ExternalImage {
         let image = (self.lock_func)(self.external_image_obj, id.into(), channel_index);
-
-        match image.image_type {
-            WrExternalImageType::NativeTexture => {
-                ExternalImage {
-                    u0: image.u0,
-                    v0: image.v0,
-                    u1: image.u1,
-                    v1: image.v1,
-                    source: ExternalImageSource::NativeTexture(image.handle),
-                }
-            },
-            WrExternalImageType::RawData => {
-                ExternalImage {
-                    u0: image.u0,
-                    v0: image.v0,
-                    u1: image.u1,
-                    v1: image.v1,
-                    source: ExternalImageSource::RawData(make_slice(image.buff, image.size)),
-                }
-            },
-            WrExternalImageType::Invalid => {
-                ExternalImage {
-                    u0: image.u0,
-                    v0: image.v0,
-                    u1: image.u1,
-                    v1: image.v1,
-                    source: ExternalImageSource::Invalid,
-                }
+        ExternalImage {
+            uv: TexelRect::new(image.u0, image.v0, image.u1, image.v1),
+            source: match image.image_type {
+                WrExternalImageType::NativeTexture => ExternalImageSource::NativeTexture(image.handle),
+                WrExternalImageType::RawData => ExternalImageSource::RawData(make_slice(image.buff, image.size)),
+                WrExternalImageType::Invalid => ExternalImageSource::Invalid,
             },
         }
     }
@@ -370,6 +370,7 @@ pub enum WrFilterOpType {
   Saturate = 7,
   Sepia = 8,
   DropShadow = 9,
+  ColorMatrix = 10,
 }
 
 #[repr(C)]
@@ -379,6 +380,7 @@ pub struct WrFilterOp {
     argument: c_float, // holds radius for DropShadow; value for other filters
     offset: LayoutVector2D, // only used for DropShadow
     color: ColorF, // only used for DropShadow
+    matrix: [f32;20], // only used in ColorMatrix
 }
 
 /// cbindgen:derive-eq=false
@@ -454,6 +456,7 @@ struct CppNotifier {
 unsafe impl Send for CppNotifier {}
 
 extern "C" {
+    fn wr_notifier_wake_up(window_id: WrWindowId);
     fn wr_notifier_new_frame_ready(window_id: WrWindowId);
     fn wr_notifier_new_scroll_frame_ready(window_id: WrWindowId,
                                           composite_needed: bool);
@@ -470,7 +473,7 @@ impl RenderNotifier for CppNotifier {
 
     fn wake_up(&self) {
         unsafe {
-            wr_notifier_new_frame_ready(self.window_id);
+            wr_notifier_wake_up(self.window_id);
         }
     }
 
@@ -481,7 +484,7 @@ impl RenderNotifier for CppNotifier {
         unsafe {
             if scrolled {
                 wr_notifier_new_scroll_frame_ready(self.window_id, composite_needed);
-            } else {
+            } else if composite_needed {
                 wr_notifier_new_frame_ready(self.window_id);
             }
         }
@@ -589,25 +592,30 @@ pub unsafe extern "C" fn wr_renderer_delete(renderer: *mut Renderer) {
     // let renderer go out of scope and get dropped
 }
 
-pub struct WrRenderedEpochs {
-    data: Vec<(WrPipelineId, WrEpoch)>,
+pub struct WrPipelineInfo {
+    epochs: Vec<(WrPipelineId, WrEpoch)>,
+    removed_pipelines: Vec<PipelineId>,
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wr_renderer_flush_rendered_epochs(renderer: &mut Renderer) -> *mut WrRenderedEpochs {
-    let map = renderer.flush_rendered_epochs();
-    let pipeline_epochs = Box::new(WrRenderedEpochs {
-                                       data: map.into_iter().collect(),
-                                   });
+pub unsafe extern "C" fn wr_renderer_flush_pipeline_info(renderer: &mut Renderer) -> *mut WrPipelineInfo {
+    let info = renderer.flush_pipeline_info();
+    let pipeline_epochs = Box::new(
+        WrPipelineInfo {
+            epochs: info.epochs.into_iter().collect(),
+            removed_pipelines: info.removed_pipelines,
+        }
+    );
     return Box::into_raw(pipeline_epochs);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wr_rendered_epochs_next(pipeline_epochs: &mut WrRenderedEpochs,
-                                                 out_pipeline: &mut WrPipelineId,
-                                                 out_epoch: &mut WrEpoch)
-                                                 -> bool {
-    if let Some((pipeline, epoch)) = pipeline_epochs.data.pop() {
+pub unsafe extern "C" fn wr_pipeline_info_next_epoch(
+    info: &mut WrPipelineInfo,
+    out_pipeline: &mut WrPipelineId,
+    out_epoch: &mut WrEpoch
+) -> bool {
+    if let Some((pipeline, epoch)) = info.epochs.pop() {
         *out_pipeline = pipeline;
         *out_epoch = epoch;
         return true;
@@ -615,10 +623,22 @@ pub unsafe extern "C" fn wr_rendered_epochs_next(pipeline_epochs: &mut WrRendere
     return false;
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn wr_pipeline_info_next_removed_pipeline(
+    info: &mut WrPipelineInfo,
+    out_pipeline: &mut WrPipelineId,
+) -> bool {
+    if let Some(pipeline) = info.removed_pipelines.pop() {
+        *out_pipeline = pipeline;
+        return true;
+    }
+    return false;
+}
+
 /// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
 #[no_mangle]
-pub unsafe extern "C" fn wr_rendered_epochs_delete(pipeline_epochs: *mut WrRenderedEpochs) {
-    Box::from_raw(pipeline_epochs);
+pub unsafe extern "C" fn wr_pipeline_info_delete(info: *mut WrPipelineInfo) {
+    Box::from_raw(info);
 }
 
 extern "C" {
@@ -654,7 +674,7 @@ pub struct WrThreadPool(Arc<rayon::ThreadPool>);
 
 #[no_mangle]
 pub unsafe extern "C" fn wr_thread_pool_new() -> *mut WrThreadPool {
-    let worker_config = rayon::Configuration::new()
+    let worker = rayon::ThreadPoolBuilder::new()
         .thread_name(|idx|{ format!("WRWorker#{}", idx) })
         .start_handler(|idx| {
             let name = format!("WRWorker#{}", idx);
@@ -663,9 +683,10 @@ pub unsafe extern "C" fn wr_thread_pool_new() -> *mut WrThreadPool {
         })
         .exit_handler(|_idx| {
             gecko_profiler_unregister_thread();
-        });
+        })
+        .build();
 
-    let workers = Arc::new(rayon::ThreadPool::new(worker_config).unwrap());
+    let workers = Arc::new(worker.unwrap());
 
     Box::into_raw(Box::new(WrThreadPool(workers)))
 }
@@ -781,16 +802,41 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         *out_max_texture_size = renderer.get_max_texture_size();
     }
     let window_size = DeviceUintSize::new(window_width, window_height);
+    let layer = 0;
     *out_handle = Box::into_raw(Box::new(
-            DocumentHandle::new(sender.create_api(), window_size)));
+            DocumentHandle::new(sender.create_api(), window_size, layer)));
     *out_renderer = Box::into_raw(Box::new(renderer));
 
     return true;
 }
 
 #[no_mangle]
-pub extern "C" fn wr_api_clone(dh: &mut DocumentHandle,
-                                      out_handle: &mut *mut DocumentHandle) {
+pub extern "C" fn wr_api_create_document(
+    root_dh: &mut DocumentHandle,
+    out_handle: &mut *mut DocumentHandle,
+    doc_size: DeviceUintSize,
+    layer: i8,
+) {
+    assert!(unsafe { is_in_compositor_thread() });
+
+    *out_handle = Box::into_raw(Box::new(DocumentHandle::new(
+        root_dh.api.clone_sender().create_api(),
+        doc_size,
+        layer
+    )));
+}
+
+/// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
+#[no_mangle]
+pub unsafe extern "C" fn wr_api_delete_document(dh: &mut DocumentHandle) {
+    dh.api.delete_document(dh.document_id);
+}
+
+#[no_mangle]
+pub extern "C" fn wr_api_clone(
+    dh: &mut DocumentHandle,
+    out_handle: &mut *mut DocumentHandle
+) {
     assert!(unsafe { is_in_compositor_thread() });
 
     let handle = DocumentHandle {
@@ -803,11 +849,13 @@ pub extern "C" fn wr_api_clone(dh: &mut DocumentHandle,
 /// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
 #[no_mangle]
 pub unsafe extern "C" fn wr_api_delete(dh: *mut DocumentHandle) {
-    let handle = Box::from_raw(dh);
-    if handle.document_id.0 == handle.api.get_namespace_id() {
-        handle.api.delete_document(handle.document_id);
-        handle.api.shut_down();
-    }
+    let _ = Box::from_raw(dh);
+}
+
+/// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
+#[no_mangle]
+pub unsafe extern "C" fn wr_api_shut_down(dh: &mut DocumentHandle) {
+    dh.api.shut_down();
 }
 
 #[no_mangle]
@@ -887,19 +935,21 @@ pub extern "C" fn wr_transaction_update_resources(
     txn: &mut Transaction,
     resource_updates: &mut ResourceUpdates
 ) {
+    if resource_updates.updates.is_empty() {
+        return;
+    }
     txn.update_resources(mem::replace(resource_updates, ResourceUpdates::new()));
 }
 
 #[no_mangle]
 pub extern "C" fn wr_transaction_set_window_parameters(
     txn: &mut Transaction,
-    window_width: i32,
-    window_height: i32,
+    window_size: &DeviceUintSize,
+    doc_rect: &DeviceUintRect,
 ) {
-    let size = DeviceUintSize::new(window_width as u32, window_height as u32);
     txn.set_window_parameters(
-        size,
-        DeviceUintRect::new(DeviceUintPoint::new(0, 0), size),
+        *window_size,
+        *doc_rect,
         1.0,
     );
 }
@@ -960,8 +1010,8 @@ pub extern "C" fn wr_transaction_scroll_layer(
     new_scroll_origin: LayoutPoint
 ) {
     assert!(unsafe { is_in_compositor_thread() });
-    let clip_id = ClipId::new(scroll_id, pipeline_id);
-    txn.scroll_node_with_id(new_scroll_origin, clip_id, ScrollClamping::NoClamping);
+    let scroll_id = ExternalScrollId(scroll_id, pipeline_id);
+    txn.scroll_node_with_id(new_scroll_origin, scroll_id, ScrollClamping::NoClamping);
 }
 
 #[no_mangle]
@@ -1010,7 +1060,7 @@ pub extern "C" fn wr_resource_updates_add_external_image(
             ExternalImageData {
                 id: external_image_id.into(),
                 channel_index: channel_index,
-                image_type: buffer_type,
+                image_type: buffer_type.to_wr(),
             }
         ),
         None
@@ -1048,7 +1098,7 @@ pub extern "C" fn wr_resource_updates_update_external_image(
             ExternalImageData {
                 id: external_image_id.into(),
                 channel_index,
-                image_type,
+                image_type: image_type.to_wr(),
             }
         ),
         None
@@ -1126,6 +1176,34 @@ pub extern "C" fn wr_resource_updates_add_raw_font(
     index: u32
 ) {
     resources.add_raw_font(key, bytes.flush_into_vec(), index);
+}
+
+#[no_mangle]
+pub extern "C" fn wr_api_capture(
+    dh: &mut DocumentHandle,
+    path: *const c_char,
+    bits_raw: u32,
+) {
+    use std::fs::{File, create_dir_all};
+    use std::io::Write;
+
+    let cstr = unsafe { CStr::from_ptr(path) };
+    let path = PathBuf::from(&*cstr.to_string_lossy());
+
+    let _ = create_dir_all(&path);
+    match File::create(path.join("wr.txt")) {
+        Ok(mut file) => {
+            let revision = include_bytes!("../revision.txt");
+            file.write(revision).unwrap();
+        }
+        Err(e) => {
+            println!("Unable to create path '{:?}' for capture: {:?}", path, e);
+            return
+        }
+    }
+
+    let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
+    dh.api.save_capture(path, bits);
 }
 
 #[cfg(target_os = "windows")]
@@ -1348,6 +1426,7 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
             WrFilterOpType::DropShadow => FilterOp::DropShadow(c_filter.offset,
                                                                c_filter.argument,
                                                                c_filter.color),
+            WrFilterOpType::ColorMatrix => FilterOp::ColorMatrix(c_filter.matrix),
         }
     }).collect();
 
@@ -1401,17 +1480,17 @@ pub extern "C" fn wr_dp_pop_stacking_context(state: &mut WrState) {
 }
 
 fn make_scroll_info(state: &mut WrState,
-                    scroll_id: Option<&u64>,
-                    clip_id: Option<&u64>)
+                    scroll_id: Option<&usize>,
+                    clip_id: Option<&usize>)
                     -> Option<ClipAndScrollInfo> {
     if let Some(&sid) = scroll_id {
         if let Some(&cid) = clip_id {
             Some(ClipAndScrollInfo::new(
-                ClipId::new(sid, state.pipeline_id),
+                ClipId::Clip(sid , state.pipeline_id),
                 ClipId::Clip(cid, state.pipeline_id)))
         } else {
             Some(ClipAndScrollInfo::simple(
-                ClipId::new(sid, state.pipeline_id)))
+                ClipId::Clip(sid, state.pipeline_id)))
         }
     } else if let Some(&cid) = clip_id {
         Some(ClipAndScrollInfo::simple(
@@ -1423,13 +1502,13 @@ fn make_scroll_info(state: &mut WrState,
 
 #[no_mangle]
 pub extern "C" fn wr_dp_define_clip(state: &mut WrState,
-                                    ancestor_scroll_id: *const u64,
-                                    ancestor_clip_id: *const u64,
+                                    ancestor_scroll_id: *const usize,
+                                    ancestor_clip_id: *const usize,
                                     clip_rect: LayoutRect,
                                     complex: *const ComplexClipRegion,
                                     complex_count: usize,
                                     mask: *const WrImageMask)
-                                    -> u64 {
+                                    -> usize {
     debug_assert!(unsafe { is_in_main_thread() });
 
     let info = make_scroll_info(state,
@@ -1441,12 +1520,12 @@ pub extern "C" fn wr_dp_define_clip(state: &mut WrState,
     let mask : Option<ImageMask> = unsafe { mask.as_ref() }.map(|x| x.into());
 
     let clip_id = if info.is_some() {
-        state.frame_builder.dl_builder.define_clip_with_parent(None,
+        state.frame_builder.dl_builder.define_clip_with_parent(
             info.unwrap().scroll_node_id, clip_rect, complex_iter, mask)
     } else {
-        state.frame_builder.dl_builder.define_clip(None, clip_rect, complex_iter, mask)
+        state.frame_builder.dl_builder.define_clip(clip_rect, complex_iter, mask)
     };
-    // return the u64 id value from inside the ClipId::Clip(..)
+    // return the usize id value from inside the ClipId::Clip(..)
     match clip_id {
         ClipId::Clip(id, pipeline_id) => {
             assert!(pipeline_id == state.pipeline_id);
@@ -1458,7 +1537,7 @@ pub extern "C" fn wr_dp_define_clip(state: &mut WrState,
 
 #[no_mangle]
 pub extern "C" fn wr_dp_push_clip(state: &mut WrState,
-                                  clip_id: u64) {
+                                  clip_id: usize) {
     debug_assert!(unsafe { is_in_main_thread() });
     state.frame_builder.dl_builder.push_clip_id(ClipId::Clip(clip_id, state.pipeline_id));
 }
@@ -1479,10 +1558,10 @@ pub extern "C" fn wr_dp_define_sticky_frame(state: &mut WrState,
                                             vertical_bounds: StickyOffsetBounds,
                                             horizontal_bounds: StickyOffsetBounds,
                                             applied_offset: LayoutVector2D)
-                                            -> u64 {
+                                            -> usize {
     assert!(unsafe { is_in_main_thread() });
     let clip_id = state.frame_builder.dl_builder.define_sticky_frame(
-        None, content_rect, SideOffsets2D::new(
+        content_rect, SideOffsets2D::new(
             unsafe { top_margin.as_ref() }.cloned(),
             unsafe { right_margin.as_ref() }.cloned(),
             unsafe { bottom_margin.as_ref() }.cloned(),
@@ -1501,33 +1580,52 @@ pub extern "C" fn wr_dp_define_sticky_frame(state: &mut WrState,
 #[no_mangle]
 pub extern "C" fn wr_dp_define_scroll_layer(state: &mut WrState,
                                             scroll_id: u64,
-                                            ancestor_scroll_id: *const u64,
-                                            ancestor_clip_id: *const u64,
+                                            ancestor_scroll_id: *const usize,
+                                            ancestor_clip_id: *const usize,
                                             content_rect: LayoutRect,
-                                            clip_rect: LayoutRect) {
+                                            clip_rect: LayoutRect)
+                                            -> usize {
     assert!(unsafe { is_in_main_thread() });
 
     let info = make_scroll_info(state,
                                 unsafe { ancestor_scroll_id.as_ref() },
                                 unsafe { ancestor_clip_id.as_ref() });
 
-    let clip_id = ClipId::new(scroll_id, state.pipeline_id);
-    if info.is_some() {
+    let new_id = if info.is_some() {
         state.frame_builder.dl_builder.define_scroll_frame_with_parent(
-            Some(clip_id), info.unwrap().scroll_node_id, content_rect,
-            clip_rect, vec![], None, ScrollSensitivity::Script);
+            info.unwrap().scroll_node_id,
+            Some(ExternalScrollId(scroll_id, state.pipeline_id)),
+            content_rect,
+            clip_rect,
+            vec![],
+            None,
+            ScrollSensitivity::Script
+        )
     } else {
         state.frame_builder.dl_builder.define_scroll_frame(
-            Some(clip_id), content_rect, clip_rect, vec![], None,
-            ScrollSensitivity::Script);
+            Some(ExternalScrollId(scroll_id, state.pipeline_id)),
+            content_rect,
+            clip_rect,
+            vec![],
+            None,
+            ScrollSensitivity::Script
+        )
     };
+
+    match new_id {
+        ClipId::Clip(id, pipeline_id) => {
+            assert!(pipeline_id == state.pipeline_id);
+            id
+        },
+        _ => panic!("Got unexpected clip id type"),
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn wr_dp_push_scroll_layer(state: &mut WrState,
-                                          scroll_id: u64) {
+                                          scroll_id: usize) {
     debug_assert!(unsafe { is_in_main_thread() });
-    let clip_id = ClipId::new(scroll_id, state.pipeline_id);
+    let clip_id = ClipId::Clip(scroll_id, state.pipeline_id);
     state.frame_builder.dl_builder.push_clip_id(clip_id);
 }
 
@@ -1539,8 +1637,8 @@ pub extern "C" fn wr_dp_pop_scroll_layer(state: &mut WrState) {
 
 #[no_mangle]
 pub extern "C" fn wr_dp_push_clip_and_scroll_info(state: &mut WrState,
-                                                  scroll_id: u64,
-                                                  clip_id: *const u64) {
+                                                  scroll_id: usize,
+                                                  clip_id: *const usize) {
     debug_assert!(unsafe { is_in_main_thread() });
     let info = make_scroll_info(state, Some(&scroll_id), unsafe { clip_id.as_ref() });
     debug_assert!(info.is_some());
@@ -2084,11 +2182,11 @@ struct WrExternalLogHandler {
     info_msg: ExternalMessageHandler,
     debug_msg: ExternalMessageHandler,
     trace_msg: ExternalMessageHandler,
-    log_level: LogLevel,
+    log_level: log::Level,
 }
 
 impl WrExternalLogHandler {
-    fn new(log_level: LogLevel) -> WrExternalLogHandler {
+    fn new(log_level: log::Level) -> WrExternalLogHandler {
         WrExternalLogHandler {
             error_msg: gfx_critical_note,
             warn_msg: gfx_critical_note,
@@ -2100,39 +2198,41 @@ impl WrExternalLogHandler {
     }
 }
 
-impl Log for WrExternalLogHandler {
-    fn enabled(&self, metadata : &LogMetadata) -> bool {
+impl log::Log for WrExternalLogHandler {
+    fn enabled(&self, metadata : &log::Metadata) -> bool {
         metadata.level() <= self.log_level
     }
 
-    fn log(&self, record: &LogRecord) {
+    fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             // For file path and line, please check the record.location().
             let msg = CString::new(format!("WR: {}",
                                            record.args())).unwrap();
             unsafe {
                 match record.level() {
-                    LogLevel::Error => (self.error_msg)(msg.as_ptr()),
-                    LogLevel::Warn => (self.warn_msg)(msg.as_ptr()),
-                    LogLevel::Info => (self.info_msg)(msg.as_ptr()),
-                    LogLevel::Debug => (self.debug_msg)(msg.as_ptr()),
-                    LogLevel::Trace => (self.trace_msg)(msg.as_ptr()),
+                    log::Level::Error => (self.error_msg)(msg.as_ptr()),
+                    log::Level::Warn => (self.warn_msg)(msg.as_ptr()),
+                    log::Level::Info => (self.info_msg)(msg.as_ptr()),
+                    log::Level::Debug => (self.debug_msg)(msg.as_ptr()),
+                    log::Level::Trace => (self.trace_msg)(msg.as_ptr()),
                 }
             }
         }
+    }
+
+    fn flush(&self) {
     }
 }
 
 #[no_mangle]
 pub extern "C" fn wr_init_external_log_handler(log_filter: WrLogLevelFilter) {
-    let _ = set_logger(|max_log_level| {
-        max_log_level.set(log_filter);
-        Box::new(WrExternalLogHandler::new(log_filter.to_log_level()
-                                                     .unwrap_or(LogLevel::Error)))
-    });
+    log::set_max_level(log_filter);
+    let logger = Box::new(WrExternalLogHandler::new(log_filter
+                                                    .to_level()
+                                                    .unwrap_or(log::Level::Error)));
+    let _ = log::set_logger(unsafe { &*Box::into_raw(logger) });
 }
 
 #[no_mangle]
 pub extern "C" fn wr_shutdown_external_log_handler() {
-    let _ = shutdown_logger();
 }

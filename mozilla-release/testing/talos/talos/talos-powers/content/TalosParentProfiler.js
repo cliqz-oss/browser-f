@@ -17,8 +17,7 @@
 var TalosParentProfiler;
 
 (function() {
-  Components.utils.import("resource://gre/modules/Services.jsm");
-  Components.utils.import("resource://gre/modules/Console.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   // Whether or not this TalosContentProfiler object has had initFromObject
   // or initFromURLQueryParams called on it. Any functions that change the
@@ -35,9 +34,9 @@ var TalosParentProfiler;
   // Use a bit of XPCOM hackery to get at the Talos Powers service
   // implementation...
   let TalosPowers =
-    Components.classes["@mozilla.org/talos/talos-powers-service;1"]
-              .getService(Components.interfaces.nsISupports)
-              .wrappedJSObject;
+    Cc["@mozilla.org/talos/talos-powers-service;1"]
+      .getService(Ci.nsISupports)
+      .wrappedJSObject;
 
   /**
    * Parses an url query string into a JS object.

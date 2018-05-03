@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver;
 
@@ -47,7 +47,7 @@ function presentHandler(metadata, response) {
   var match = /cookie=([^&]*)/.exec(metadata.queryString);
   if (match) {
     try {
-      present = metadata.getHeader("Cookie").indexOf(match[1].replace("|","=")) != -1;
+      present = metadata.getHeader("Cookie").includes(match[1].replace("|","="));
     } catch (x) {
     }
   }

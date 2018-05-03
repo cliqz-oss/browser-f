@@ -6,8 +6,6 @@
 
 "use strict";
 
-const {utils: Cu, interfaces: Ci} = Components;
-
 const INCLUDE_DESC = 0x01;
 const INCLUDE_NAME = 0x02;
 const INCLUDE_VALUE = 0x04;
@@ -17,19 +15,19 @@ const IGNORE_EXPLICIT_NAME = 0x20;
 const OUTPUT_DESC_FIRST = 0;
 const OUTPUT_DESC_LAST = 1;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils", // jshint ignore:line
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Utils", // jshint ignore:line
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrefCache", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "PrefCache", // jshint ignore:line
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Logger", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "Logger", // jshint ignore:line
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Roles", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "Roles", // jshint ignore:line
   "resource://gre/modules/accessibility/Constants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "States", // jshint ignore:line
+ChromeUtils.defineModuleGetter(this, "States", // jshint ignore:line
   "resource://gre/modules/accessibility/Constants.jsm");
 
-this.EXPORTED_SYMBOLS = ["UtteranceGenerator", "BrailleGenerator"]; // jshint ignore:line
+var EXPORTED_SYMBOLS = ["UtteranceGenerator", "BrailleGenerator"]; // jshint ignore:line
 
 var OutputGenerator = {
 
@@ -583,7 +581,7 @@ var OutputGenerator = {
  * clicked event. Speaking only 'clicked' makes sense. Speaking 'button' does
  * not.
  */
-this.UtteranceGenerator = {  // jshint ignore:line
+var UtteranceGenerator = {  // jshint ignore:line
   __proto__: OutputGenerator, // jshint ignore:line
 
   gActionMap: {
@@ -842,7 +840,7 @@ this.UtteranceGenerator = {  // jshint ignore:line
     }
 };
 
-this.BrailleGenerator = {  // jshint ignore:line
+var BrailleGenerator = {  // jshint ignore:line
   __proto__: OutputGenerator, // jshint ignore:line
 
   genForContext: function genForContext(aContext) {

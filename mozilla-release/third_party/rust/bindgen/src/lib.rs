@@ -178,6 +178,7 @@ impl Builder {
             output_vector.push(header);
         }
 
+        output_vector.push("--rust-target".into());
         output_vector.push(self.options.rust_target.into());
 
         self.options
@@ -1077,6 +1078,12 @@ impl Builder {
         self
     }
 
+    /// Sets an explicit path to rustfmt, to be used when rustfmt is enabled.
+    pub fn with_rustfmt<P: Into<PathBuf>>(mut self, path: P) -> Self {
+        self.options.rustfmt_path = Some(path.into());
+        self
+    }
+
     /// Generate the Rust bindings using the options built up thus far.
     pub fn generate(mut self) -> Result<Bindings, ()> {
         self.options.input_header = self.input_headers.pop();
@@ -1103,6 +1110,12 @@ impl Builder {
     /// issues. The resulting file will be named something like `__bindgen.i` or
     /// `__bindgen.ii`
     pub fn dump_preprocessed_input(&self) -> io::Result<()> {
+        fn check_is_cpp(name_file: &str) -> bool {
+            name_file.ends_with(".hpp") || name_file.ends_with(".hxx")
+                || name_file.ends_with(".hh")
+                || name_file.ends_with(".h++")
+        }
+        
         let clang = clang_sys::support::Clang::find(None, &[]).ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "Cannot find clang executable")
         })?;
@@ -1112,11 +1125,13 @@ impl Builder {
         let mut wrapper_contents = String::new();
 
         // Whether we are working with C or C++ inputs.
-        let mut is_cpp = false;
+        let mut is_cpp = self.options.clang_args.windows(2).any(|w| {
+            w[0] == "-x=c++" || w[1] == "-x=c++" || w == &["-x", "c++"]
+        });
 
         // For each input header, add `#include "$header"`.
         for header in &self.input_headers {
-            is_cpp |= header.ends_with(".hpp");
+            is_cpp |= check_is_cpp(header);
 
             wrapper_contents.push_str("#include \"");
             wrapper_contents.push_str(header);
@@ -1126,17 +1141,13 @@ impl Builder {
         // For each input header content, add a prefix line of `#line 0 "$name"`
         // followed by the contents.
         for &(ref name, ref contents) in &self.input_header_contents {
-            is_cpp |= name.ends_with(".hpp");
+            is_cpp |= check_is_cpp(name);
 
             wrapper_contents.push_str("#line 0 \"");
             wrapper_contents.push_str(name);
             wrapper_contents.push_str("\"\n");
             wrapper_contents.push_str(contents);
         }
-
-        is_cpp |= self.options.clang_args.windows(2).any(|w| {
-            w[0] == "-x=c++" || w[1] == "-x=c++" || w == &["-x", "c++"]
-        });
 
         let wrapper_path = PathBuf::from(if is_cpp {
             "__bindgen.cpp"
@@ -1183,22 +1194,22 @@ impl Builder {
 
     /// Don't derive `PartialEq` for a given type. Regular
     /// expressions are supported.
-    pub fn no_partialeq(mut self, arg: String) -> Builder {
-        self.options.no_partialeq_types.insert(arg);
+    pub fn no_partialeq<T: Into<String>>(mut self, arg: T) -> Builder {
+        self.options.no_partialeq_types.insert(arg.into());
         self
     }
 
     /// Don't derive `Copy` for a given type. Regular
     /// expressions are supported.
-    pub fn no_copy(mut self, arg: String) -> Self {
-        self.options.no_copy_types.insert(arg);
+    pub fn no_copy<T: Into<String>>(mut self, arg: T) -> Self {
+        self.options.no_copy_types.insert(arg.into());
         self
     }
 
     /// Don't derive `Hash` for a given type. Regular
     /// expressions are supported.
-    pub fn no_hash(mut self, arg: String) -> Builder {
-        self.options.no_hash_types.insert(arg);
+    pub fn no_hash<T: Into<String>>(mut self, arg: T) -> Builder {
+        self.options.no_hash_types.insert(arg.into());
         self
     }
 }
@@ -1213,6 +1224,9 @@ struct BindgenOptions {
     /// The set of types that should be treated as opaque structures in the
     /// generated code.
     opaque_types: RegexSet,
+
+    /// The explicit rustfmt path.
+    rustfmt_path: Option<PathBuf>,
 
     /// The set of types that we should have bindings for in the generated
     /// code.
@@ -1439,6 +1453,7 @@ impl Default for BindgenOptions {
             rust_features: rust_target.into(),
             blacklisted_types: Default::default(),
             opaque_types: Default::default(),
+            rustfmt_path: Default::default(),
             whitelisted_types: Default::default(),
             whitelisted_functions: Default::default(),
             whitelisted_vars: Default::default(),
@@ -1607,16 +1622,20 @@ impl Bindings {
         }
 
         if let Some(h) = options.input_header.as_ref() {
-            let md = std::fs::metadata(h).ok().unwrap();
-            if !md.is_file() {
-                eprintln!("error: '{}' is a folder", h);
+            if let Ok(md) = std::fs::metadata(h) {
+                if md.is_dir() {
+                    eprintln!("error: '{}' is a folder", h);
+                    return Err(());
+                }
+                if !can_read(&md.permissions()) {
+                    eprintln!("error: insufficient permissions to read '{}'", h);
+                    return Err(());
+                }
+                options.clang_args.push(h.clone())
+            } else {
+                eprintln!("error: header '{}' does not exist.", h);
                 return Err(());
             }
-            if !can_read(&md.permissions()) {
-                eprintln!("error: insufficient permissions to read '{}'", h);
-                return Err(());
-            }
-            options.clang_args.push(h.clone())
         }
 
         for f in options.input_unsaved_files.iter() {
@@ -1703,21 +1722,21 @@ impl Bindings {
             return Ok(Cow::Borrowed(source));
         }
 
-        let rustfmt = which::which("rustfmt")
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_owned()))?;
+        let rustfmt = match self.options.rustfmt_path {
+            Some(ref p) => Cow::Borrowed(p),
+            None => {
+                let path = which::which("rustfmt")
+                    .map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, e.to_owned())
+                    })?;
 
-        // Prefer using the `rustfmt-nightly` version of `rustmft`, if
-        // possible. It requires being run via `rustup run nightly ...`.
-        let mut cmd = if let Ok(rustup) = which::which("rustup") {
-            let mut cmd = Command::new(rustup);
-            cmd.args(&["run", "nightly", "rustfmt", "--"]);
-            cmd
-        } else {
-            Command::new(rustfmt)
+                Cow::Owned(path)
+            }
         };
 
+        let mut cmd = Command::new(&*rustfmt);
+
         cmd
-            .args(&["--write-mode=display"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped());
 
@@ -1895,6 +1914,7 @@ fn commandline_flag_unit_test_function() {
     let command_line_flags = bindings.command_line_flags();
 
     let test_cases = vec![
+        "--rust-target",
         "--no-derive-default",
         "--generate",
         "function,types,vars,methods,constructors,destructors",
@@ -1914,6 +1934,7 @@ fn commandline_flag_unit_test_function() {
 
     let command_line_flags = bindings.command_line_flags();
     let test_cases = vec![
+        "--rust-target",
         "input_header",
         "--no-derive-default",
         "--generate",

@@ -23,6 +23,7 @@
 <!ENTITY aboutNetworking.sent                  "Gesendet">
 <!ENTITY aboutNetworking.received              "Empfangen">
 <!ENTITY aboutNetworking.family                "Klasse">
+<!ENTITY aboutNetworking.trr                   "TRR (Trusted Recursive Resolver)">
 <!ENTITY aboutNetworking.addresses             "Adressen">
 <!ENTITY aboutNetworking.expires               "Läuft ab (Sekunden)">
 <!ENTITY aboutNetworking.messagesSent          "Nachrichten gesendet">

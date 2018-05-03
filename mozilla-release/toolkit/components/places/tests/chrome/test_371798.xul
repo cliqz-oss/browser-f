@@ -15,11 +15,10 @@
 // Test the asynchronous live-updating of bookmarks query results
 SimpleTest.waitForExplicitFinish();
 
-var {utils: Cu, interfaces: Ci} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
 
 const TEST_URI = NetUtil.newURI("http://foo.com");
 

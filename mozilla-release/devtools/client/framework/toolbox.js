@@ -15,10 +15,11 @@ const SCREENSIZE_HISTOGRAM = "DEVTOOLS_SCREEN_RESOLUTION_ENUMERATED_PER_USER";
 const CURRENT_THEME_SCALAR = "devtools.current_theme";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
-var {Ci, Cu, Cc} = require("chrome");
+var {Ci, Cc} = require("chrome");
 var promise = require("promise");
 var defer = require("devtools/shared/defer");
 var Services = require("Services");
+var ChromeUtils = require("ChromeUtils");
 var {Task} = require("devtools/shared/task");
 var {gDevTools} = require("devtools/client/framework/devtools");
 var EventEmitter = require("devtools/shared/old-event-emitter");
@@ -32,7 +33,7 @@ var Startup = Cc["@mozilla.org/devtools/startup-clh;1"].getService(Ci.nsISupport
   .wrappedJSObject;
 
 const { BrowserLoader } =
-  Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+  ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties");
@@ -69,6 +70,10 @@ loader.lazyRequireGetter(this, "viewSource",
   "devtools/client/shared/view-source");
 loader.lazyRequireGetter(this, "StyleSheetsFront",
   "devtools/shared/fronts/stylesheets", true);
+loader.lazyRequireGetter(this, "buildHarLog",
+  "devtools/client/netmonitor/src/har/har-builder-utils", true);
+loader.lazyRequireGetter(this, "getKnownDeviceFront",
+  "devtools/shared/fronts/device", true);
 
 loader.lazyGetter(this, "domNodeConstants", () => {
   return require("devtools/shared/dom-node-constants");
@@ -112,6 +117,9 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
   this.frameMap = new Map();
   this.selectedFrameId = null;
 
+  // List of listeners for `devtools.network.onRequestFinished` WebExt API
+  this._requestFinishedListeners = new Set();
+
   this._toolRegistered = this._toolRegistered.bind(this);
   this._toolUnregistered = this._toolUnregistered.bind(this);
   this._onWillNavigate = this._onWillNavigate.bind(this);
@@ -148,6 +156,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
   this._onPickerStopped = this._onPickerStopped.bind(this);
   this._onInspectObject = this._onInspectObject.bind(this);
   this._onNewSelectedNodeFront = this._onNewSelectedNodeFront.bind(this);
+  this._updatePickerButton = this._updatePickerButton.bind(this);
   this.selectTool = this.selectTool.bind(this);
 
   this._target.on("close", this.destroy);
@@ -171,6 +180,7 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId) {
 
   this.on("host-changed", this._refreshHostTitle);
   this.on("select", this._refreshHostTitle);
+  this.on("select", this._updatePickerButton);
 
   this.on("ready", this._showDevEditionPromo);
 
@@ -497,6 +507,7 @@ Toolbox.prototype = {
       }
 
       this._componentMount.addEventListener("keypress", this._onToolbarArrowKeypress);
+      this._componentMount.setAttribute("aria-label", L10N.getStr("toolbox.label"));
 
       this.webconsolePanel = this.doc.querySelector("#toolbox-panel-webconsole");
       this.webconsolePanel.height = Services.prefs.getIntPref(SPLITCONSOLE_HEIGHT_PREF);
@@ -601,7 +612,7 @@ Toolbox.prototype = {
                   let message = L10N.getFormatStr("toolbox.sourceMapFailure",
                                                   text, urlInfo.url,
                                                   urlInfo.sourceMapURL);
-                  this.target.logErrorInPage(message, "source map");
+                  this.target.logWarningInPage(message, "source map");
                   // It's ok to swallow errors here, because a null
                   // result just means that no source map was found.
                   return null;
@@ -614,7 +625,7 @@ Toolbox.prototype = {
                 .catch(text => {
                   let message = L10N.getFormatStr("toolbox.sourceMapSourceFailure",
                                                   text, originalSource.url);
-                  this.target.logErrorInPage(message, "source map");
+                  this.target.logWarningInPage(message, "source map");
                   // Also replace the result with the error text.
                   // Note that this result has to have the same form
                   // as whatever the upstream getOriginalSourceText
@@ -717,6 +728,7 @@ Toolbox.prototype = {
    * @property {String} className - An optional additional className for the button.
    * @property {String} description - The value that will display as a tooltip and in
    *                    the options panel for enabling/disabling.
+   * @property {Boolean} disabled - An optional disabled state for the button.
    * @property {Function} onClick - The function to run when the button is activated by
    *                      click or keyboard shortcut. First argument will be the 'click'
    *                      event, and second argument is the toolbox instance.
@@ -743,6 +755,7 @@ Toolbox.prototype = {
       id,
       className,
       description,
+      disabled,
       onClick,
       isInStartContainer,
       setup,
@@ -756,6 +769,7 @@ Toolbox.prototype = {
       id,
       className,
       description,
+      disabled,
       onClick(event) {
         if (typeof onClick == "function") {
           onClick(event, toolbox);
@@ -802,7 +816,7 @@ Toolbox.prototype = {
   },
 
   _buildOptions: function () {
-    let selectOptions = (name, event) => {
+    let selectOptions = event => {
       // Flip back to the last used panel if we are already
       // on the options panel.
       if (this.currentToolId === "options" &&
@@ -842,7 +856,7 @@ Toolbox.prototype = {
    *        if this tool is active.
    */
   useKeyWithSplitConsole: function (key, handler, whichTool) {
-    this.shortcuts.on(key, (name, event) => {
+    this.shortcuts.on(key, event => {
       if (this.currentToolId === whichTool && this.isSplitConsoleFocused()) {
         handler();
         event.preventDefault();
@@ -858,7 +872,7 @@ Toolbox.prototype = {
       ["forceReload2", true]
     ].forEach(([id, force]) => {
       let key = L10N.getStr("toolbox." + id + ".key");
-      this.shortcuts.on(key, (name, event) => {
+      this.shortcuts.on(key, event => {
         this.reloadTarget(force);
 
         // Prevent Firefox shortcuts from reloading the page
@@ -869,22 +883,22 @@ Toolbox.prototype = {
 
   _addHostListeners: function () {
     this.shortcuts.on(L10N.getStr("toolbox.nextTool.key"),
-                 (name, event) => {
+                 event => {
                    this.selectNextTool();
                    event.preventDefault();
                  });
     this.shortcuts.on(L10N.getStr("toolbox.previousTool.key"),
-                 (name, event) => {
+                 event => {
                    this.selectPreviousTool();
                    event.preventDefault();
                  });
     this.shortcuts.on(L10N.getStr("toolbox.minimize.key"),
-                 (name, event) => {
+                 event => {
                    this._toggleMinimizeMode();
                    event.preventDefault();
                  });
     this.shortcuts.on(L10N.getStr("toolbox.toggleHost.key"),
-                 (name, event) => {
+                 event => {
                    this.switchToPreviousHost();
                    event.preventDefault();
                  });
@@ -1303,11 +1317,19 @@ Toolbox.prototype = {
    * focus the window. This is only desirable when the toolbox is mounted to the
    * window. When devtools is free floating, then the target window should not
    * pop in front of the viewer when the picker is clicked.
+   *
+   * Note: Toggle picker can be overwritten by panel other than the inspector to
+   * allow for custom picker behaviour.
    */
   _onPickerClick: function () {
     let focus = this.hostType === Toolbox.HostType.BOTTOM ||
                 this.hostType === Toolbox.HostType.SIDE;
-    this.highlighterUtils.togglePicker(focus);
+    let currentPanel = this.getCurrentPanel();
+    if (currentPanel.togglePicker) {
+      currentPanel.togglePicker(focus);
+    } else {
+      this.highlighterUtils.togglePicker(focus);
+    }
   },
 
   /**
@@ -1316,7 +1338,12 @@ Toolbox.prototype = {
    */
   _onPickerKeypress: function (event) {
     if (event.keyCode === KeyCodes.DOM_VK_ESCAPE) {
-      this.highlighterUtils.cancelPicker();
+      let currentPanel = this.getCurrentPanel();
+      if (currentPanel.cancelPicker) {
+        currentPanel.cancelPicker();
+      } else {
+        this.highlighterUtils.cancelPicker();
+      }
       // Stop the console from toggling.
       event.stopImmediatePropagation();
     }
@@ -1388,6 +1415,29 @@ Toolbox.prototype = {
     this.toolbarButtons.forEach(button => {
       button.isVisible = this._commandIsVisible(button);
     });
+    this.component.setToolboxButtons(this.toolbarButtons);
+  },
+
+  /**
+   * Visually update picker button.
+   * This function is called on every "select" event. Newly selected panel can
+   * update the visual state of the picker button such as disabled state,
+   * additional CSS classes (className), and tooltip (description).
+   */
+  _updatePickerButton() {
+    const button = this.pickerButton;
+    let currentPanel = this.getCurrentPanel();
+
+    if (currentPanel && currentPanel.updatePickerButton) {
+      currentPanel.updatePickerButton();
+    } else {
+      // If the current panel doesn't define a custom updatePickerButton,
+      // revert the button to its default state
+      button.description = L10N.getStr("pickButton.tooltip");
+      button.className = null;
+      button.disabled = null;
+    }
+
     this.component.setToolboxButtons(this.toolbarButtons);
   },
 
@@ -2215,7 +2265,7 @@ Toolbox.prototype = {
   /**
    * Show 'frames' menu on key down
    */
-  showFramesMenuOnKeyDown: function (name, event) {
+  showFramesMenuOnKeyDown: function (event) {
     if (event.target.id == "command-button-frames") {
       this.showFramesMenu(event);
     }
@@ -2240,8 +2290,7 @@ Toolbox.prototype = {
    */
   onHightlightFrame: async function (frameId) {
     // Only enable frame highlighting when the top level document is targeted
-    if (this._supportsFrameHighlight &&
-        this.frameMap.get(this.selectedFrameId).parentID === undefined) {
+    if (this._supportsFrameHighlight && this.rootFrameSelected) {
       let frameActor = await this.walker.getNodeActorFromWindowID(frameId);
       this.highlighterUtils.highlightNodeFront(frameActor);
     }
@@ -2312,6 +2361,34 @@ Toolbox.prototype = {
     if (!topFrameSelected && this.selectedFrameId) {
       this._framesButtonChecked = false;
     }
+  },
+
+  /**
+   * Returns a 0-based selected frame depth.
+   *
+   * For example, if the root frame is selected, the returned value is 0.  For a sub-frame
+   * of the root document, the returned value is 1, and so on.
+   */
+  get selectedFrameDepth() {
+    // If the frame switcher is disabled, we won't have a selected frame ID.
+    // In this case, we're always showing the root frame.
+    if (!this.selectedFrameId) {
+      return 0;
+    }
+    let depth = 0;
+    let frame = this.frameMap.get(this.selectedFrameId);
+    while (frame) {
+      depth++;
+      frame = this.frameMap.get(frame.parentID);
+    }
+    return depth - 1;
+  },
+
+  /**
+   * Returns whether a root frame (with no parent frame) is selected.
+   */
+  get rootFrameSelected() {
+    return this.selectedFrameDepth == 0;
   },
 
   /**
@@ -2577,19 +2654,13 @@ Toolbox.prototype = {
       // in the initialization process can throw errors.
       yield this._initInspector;
 
-      // Releasing the walker (if it has been created)
-      // This can fail, but in any case, we want to continue destroying the
-      // inspector/highlighter/selection
-      // FF42+: Inspector actor starts managing Walker actor and auto destroy it.
-      if (this._walker && !this.walker.traits.autoReleased) {
-        try {
-          yield this._walker.release();
-        } catch (e) {
-          // Do nothing;
-        }
+      let currentPanel = this.getCurrentPanel();
+      if (currentPanel.stopPicker) {
+        yield currentPanel.stopPicker();
+      } else {
+        yield this.highlighterUtils.stopPicker();
       }
 
-      yield this.highlighterUtils.stopPicker();
       yield this._inspector.destroy();
       if (this._highlighter) {
         // Note that if the toolbox is closed, this will work fine, but will fail
@@ -2648,6 +2719,7 @@ Toolbox.prototype = {
     this._target.off("navigate", this._refreshHostTitle);
     this._target.off("frame-update", this._updateFrames);
     this.off("select", this._refreshHostTitle);
+    this.off("select", this._updatePickerButton);
     this.off("host-changed", this._refreshHostTitle);
     this.off("ready", this._showDevEditionPromo);
 
@@ -2725,6 +2797,14 @@ Toolbox.prototype = {
     if (this._styleSheets) {
       this._styleSheets.destroy();
       this._styleSheets = null;
+    }
+
+    // Destroy the device front for the current client if any.
+    // A given DeviceFront instance can cached and shared between different panels, so
+    // destroying it is the responsibility of the toolbox.
+    let deviceFront = getKnownDeviceFront(this.target.client);
+    if (deviceFront) {
+      deviceFront.destroy();
     }
 
     // Detach the thread
@@ -3006,4 +3086,77 @@ Toolbox.prototype = {
   viewSource: function (sourceURL, sourceLine) {
     return viewSource.viewSource(this, sourceURL, sourceLine);
   },
+
+  // Support for WebExtensions API (`devtools.network.*`)
+
+  /**
+   * Returns data (HAR) collected by the Network panel.
+   */
+  getHARFromNetMonitor: async function () {
+    let netPanel = this.getPanel("netmonitor");
+
+    // The panel doesn't have to exist (it must be selected
+    // by the user at least once to be created).
+    // Return default empty HAR log in such case.
+    if (!netPanel) {
+      let har = await buildHarLog(Services.appinfo);
+      return har.log;
+    }
+
+    // Use Netmonitor object to get the current HAR log.
+    let har = await netPanel.panelWin.Netmonitor.getHar();
+
+    // Return the log directly to be compatible with
+    // Chrome WebExtension API.
+    return har.log;
+  },
+
+  /**
+   * Add listener for `onRequestFinished` events.
+   *
+   * @param {Object} listener
+   *        The listener to be called it's expected to be
+   *        a function that takes ({harEntry, requestId})
+   *        as first argument.
+   */
+  addRequestFinishedListener: function (listener) {
+    // Log console message informing the extension developer
+    // that the Network panel needs to be selected at least
+    // once in order to receive `onRequestFinished` events.
+    let message = "The Network panel needs to be selected at least" +
+      " once in order to receive 'onRequestFinished' events.";
+    this.target.logWarningInPage(message, "har");
+
+    // Add the listener into internal list.
+    this._requestFinishedListeners.add(listener);
+  },
+
+  removeRequestFinishedListener: function (listener) {
+    this._requestFinishedListeners.delete(listener);
+  },
+
+  getRequestFinishedListeners: function () {
+    return this._requestFinishedListeners;
+  },
+
+  /**
+   * Used to lazily fetch HTTP response content within
+   * `onRequestFinished` event listener.
+   *
+   * @param {String} requestId
+   *        Id of the request for which the response content
+   *        should be fetched.
+   */
+  fetchResponseContent: function (requestId) {
+    let netPanel = this.getPanel("netmonitor");
+
+    // The panel doesn't have to exist (it must be selected
+    // by the user at least once to be created).
+    // Return undefined content in such case.
+    if (!netPanel) {
+      return Promise.resolve({content: {}});
+    }
+
+    return netPanel.panelWin.Netmonitor.fetchResponseContent(requestId);
+  }
 };

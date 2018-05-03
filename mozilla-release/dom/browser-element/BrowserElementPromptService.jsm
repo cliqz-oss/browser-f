@@ -5,16 +5,12 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cr = Components.results;
 var Cm = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
 
-this.EXPORTED_SYMBOLS = ["BrowserElementPromptService"];
+var EXPORTED_SYMBOLS = ["BrowserElementPromptService"];
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const NS_PREFBRANCH_PREFCHANGE_TOPIC_ID = "nsPref:changed";
 const BROWSER_FRAMES_ENABLED_PREF = "dom.mozBrowserFramesEnabled";
@@ -566,7 +562,7 @@ BrowserElementPromptFactory.prototype = {
   }
 };
 
-this.BrowserElementPromptService = {
+var BrowserElementPromptService = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
                                          Ci.nsISupportsWeakReference]),
 

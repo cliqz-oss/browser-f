@@ -9,7 +9,7 @@
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
           xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="autocomplete" role="xul:combobox"
+  <binding id="autocomplete"
            extends="chrome://global/content/bindings/textbox.xml#textbox">
     <resources>
       <stylesheet src="chrome://global/content/autocomplete.css"/>
@@ -43,8 +43,8 @@
       <field name="_textRevertedHandler">null</field>
 
       <constructor><![CDATA[
-        this.mController = Components.classes["@mozilla.org/autocomplete/controller;1"].
-          getService(Components.interfaces.nsIAutoCompleteController);
+        this.mController = Cc["@mozilla.org/autocomplete/controller;1"].
+          getService(Ci.nsIAutoCompleteController);
 
         this._searchBeginHandler = this.initEventHandler("searchbegin");
         this._searchCompleteHandler = this.initEventHandler("searchcomplete");
@@ -77,7 +77,7 @@
           }
           if (!popup) {
             popup = document.createElement("panel");
-            popup.setAttribute("type", "autocomplete");
+            popup.setAttribute("type", "autocomplete-richlistbox");
             popup.setAttribute("noautofocus", "true");
 
             let popupset = document.getAnonymousElementByAttribute(this, "anonid", "popupset");
@@ -115,14 +115,6 @@
                 onset="this.setAttribute('minresultsforpopup', val); return val;"
                 onget="var m = parseInt(this.getAttribute('minresultsforpopup')); return isNaN(m) ? 1 : m;"/>
 
-      <property name="showCommentColumn"
-                onset="this.setAttribute('showcommentcolumn', val); return val;"
-                onget="return this.getAttribute('showcommentcolumn') == 'true';"/>
-
-      <property name="showImageColumn"
-                onset="this.setAttribute('showimagecolumn', val); return val;"
-                onget="return this.getAttribute('showimagecolumn') == 'true';"/>
-
       <property name="timeout"
                 onset="this.setAttribute('timeout', val); return val;">
         <getter><![CDATA[
@@ -151,7 +143,7 @@
       <property name="PrivateBrowsingUtils" readonly="true">
         <getter><![CDATA[
           let module = {};
-          Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm", module);
+          ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm", module);
           Object.defineProperty(this, "PrivateBrowsingUtils", {
             configurable: true,
             enumerable: true,
@@ -184,8 +176,8 @@
         <parameter name="aValue"/>
         <parameter name="aReason"/>
         <body><![CDATA[
-          if (aReason == Components.interfaces.nsIAutoCompleteInput
-                                   .TEXTVALUE_REASON_COMPLETEDEFAULT) {
+          if (aReason == Ci.nsIAutoCompleteInput
+                           .TEXTVALUE_REASON_COMPLETEDEFAULT) {
             this._disableTrim = true;
           }
           this.textValue = aValue;
@@ -501,9 +493,9 @@
                 if (aEvent.metaKey)
                   aEvent.preventDefault();
               }
-              if (this.mController.selection) {
+              if (this.popup.selectedIndex >= 0) {
                 this._selectionDetails = {
-                  index: this.mController.selection.currentIndex,
+                  index: this.popup.selectedIndex,
                   kind: "key"
                 };
               }
@@ -589,7 +581,7 @@
       <field name="_pasteController"><![CDATA[
         ({
           _autocomplete: this,
-          _kGlobalClipboard: Components.interfaces.nsIClipboard.kGlobalClipboard,
+          _kGlobalClipboard: Ci.nsIClipboard.kGlobalClipboard,
           supportsCommand: aCommand => aCommand == "cmd_paste",
           doCommand(aCommand) {
             this._autocomplete._valueIsPasted = true;
@@ -621,7 +613,7 @@
         this.onInput(event);
       ]]></handler>
 
-      <handler event="keypress" phase="capturing"
+      <handler event="keypress" phase="capturing" group="system"
                action="return this.onKeyPress(event);"/>
 
       <handler event="compositionstart" phase="capturing"
@@ -642,25 +634,11 @@
       <handler event="blur" phase="capturing"><![CDATA[
         if (!this._dontBlur) {
           if (this.forceComplete && this.mController.matchCount >= 1) {
-            // mousemove sets selected index. Don't blindly use that selected
-            // index in this blur handler since if the popup is open you can
-            // easily "select" another match just by moving the mouse over it.
-            let filledVal = this.value.replace(/.+ >> /, "").toLowerCase();
-            let selectedVal = null;
-            if (this.popup.selectedIndex >= 0) {
-              selectedVal = this.mController.getFinalCompleteValueAt(
-                this.popup.selectedIndex);
-            }
-            if (selectedVal && filledVal != selectedVal.toLowerCase()) {
-              for (let i = 0; i < this.mController.matchCount; i++) {
-                let matchVal = this.mController.getFinalCompleteValueAt(i);
-                if (matchVal.toLowerCase() == filledVal) {
-                  this.popup.selectedIndex = i;
-                  break;
-                }
-              }
-            }
-            this.mController.handleEnter(false);
+            // If forceComplete is requested, we need to call the enter processing
+            // on blur so the input will be forced to the closest match.
+            // Thunderbird is the only consumer of forceComplete and this is used
+            // to force an recipient's email to the exact address book entry.
+            this.mController.handleEnter(true);
           }
           if (!this.ignoreBlurWhileSearching)
             this.detachController();
@@ -669,221 +647,24 @@
     </handlers>
   </binding>
 
-  <binding id="autocomplete-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-base-popup">
+  <binding id="autocomplete-rich-result-popup" extends="chrome://global/content/bindings/popup.xml#popup">
     <resources>
       <stylesheet src="chrome://global/content/autocomplete.css"/>
-      <stylesheet src="chrome://global/skin/tree.css"/>
       <stylesheet src="chrome://global/skin/autocomplete.css"/>
     </resources>
 
     <content ignorekeys="true" level="top" consumeoutsideclicks="never">
-      <xul:tree anonid="tree" class="autocomplete-tree plain" hidecolumnpicker="true" flex="1" seltype="single">
-        <xul:treecols anonid="treecols">
-          <xul:treecol id="treecolAutoCompleteValue" class="autocomplete-treecol" flex="1" overflow="true"/>
-        </xul:treecols>
-        <xul:treechildren class="autocomplete-treebody"/>
-      </xul:tree>
+      <xul:richlistbox anonid="richlistbox" class="autocomplete-richlistbox" flex="1"/>
+      <xul:hbox>
+        <children/>
+      </xul:hbox>
     </content>
 
-    <implementation>
-      <field name="mShowCommentColumn">false</field>
-      <field name="mShowImageColumn">false</field>
-
-      <property name="showCommentColumn"
-                   onget="return this.mShowCommentColumn;">
-        <setter>
-          <![CDATA[
-          if (!val && this.mShowCommentColumn) {
-            // reset the flex on the value column and remove the comment column
-            document.getElementById("treecolAutoCompleteValue").setAttribute("flex", 1);
-            this.removeColumn("treecolAutoCompleteComment");
-          } else if (val && !this.mShowCommentColumn) {
-            // reset the flex on the value column and add the comment column
-            document.getElementById("treecolAutoCompleteValue").setAttribute("flex", 2);
-            this.addColumn({id: "treecolAutoCompleteComment", flex: 1});
-          }
-          this.mShowCommentColumn = val;
-          return val;
-        ]]>
-        </setter>
-      </property>
-
-      <property name="showImageColumn"
-                onget="return this.mShowImageColumn;">
-        <setter>
-          <![CDATA[
-          if (!val && this.mShowImageColumn) {
-            // remove the image column
-            this.removeColumn("treecolAutoCompleteImage");
-          } else if (val && !this.mShowImageColumn) {
-            // add the image column
-            this.addColumn({id: "treecolAutoCompleteImage", flex: 1});
-          }
-          this.mShowImageColumn = val;
-          return val;
-        ]]>
-        </setter>
-      </property>
-
-
-      <method name="addColumn">
-        <parameter name="aAttrs"/>
-        <body>
-          <![CDATA[
-          var col = document.createElement("treecol");
-          col.setAttribute("class", "autocomplete-treecol");
-          for (var name in aAttrs)
-            col.setAttribute(name, aAttrs[name]);
-          this.treecols.appendChild(col);
-          return col;
-        ]]>
-        </body>
-      </method>
-
-      <method name="removeColumn">
-        <parameter name="aColId"/>
-        <body>
-          <![CDATA[
-          return this.treecols.removeChild(document.getElementById(aColId));
-        ]]>
-        </body>
-      </method>
-
-      <property name="selectedIndex"
-                onget="return this.tree.currentIndex;">
-        <setter>
-          <![CDATA[
-          this.tree.view.selection.select(val);
-          if (this.tree.treeBoxObject.height > 0)
-            this.tree.treeBoxObject.ensureRowIsVisible(val < 0 ? 0 : val);
-          // Fire select event on xul:tree so that accessibility API
-          // support layer can fire appropriate accessibility events.
-          var event = document.createEvent("Events");
-          event.initEvent("select", true, true);
-          this.tree.dispatchEvent(event);
-          return val;
-        ]]></setter>
-      </property>
-
-      <method name="adjustHeight">
-        <body>
-          <![CDATA[
-          // detect the desired height of the tree
-          var bx = this.tree.treeBoxObject;
-          var view = this.tree.view;
-          if (!view)
-            return;
-          var rows = this.maxRows;
-          if (!view.rowCount || (rows && view.rowCount < rows))
-            rows = view.rowCount;
-
-          var height = rows * bx.rowHeight;
-
-          if (height == 0) {
-            this.tree.setAttribute("collapsed", "true");
-          } else {
-            if (this.tree.hasAttribute("collapsed"))
-              this.tree.removeAttribute("collapsed");
-
-            this.tree.setAttribute("height", height);
-          }
-          this.tree.setAttribute("hidescrollbar", view.rowCount <= rows);
-        ]]>
-        </body>
-      </method>
-
-      <method name="openAutocompletePopup">
-        <parameter name="aInput"/>
-        <parameter name="aElement"/>
-        <body><![CDATA[
-          // until we have "baseBinding", (see bug #373652) this allows
-          // us to override openAutocompletePopup(), but still call
-          // the method on the base class
-          this._openAutocompletePopup(aInput, aElement);
-        ]]></body>
-      </method>
-
-      <method name="_openAutocompletePopup">
-        <parameter name="aInput"/>
-        <parameter name="aElement"/>
-        <body><![CDATA[
-          if (!this.mPopupOpen) {
-            this.mInput = aInput;
-            this.view = aInput.controller.QueryInterface(Components.interfaces.nsITreeView);
-            this.invalidate();
-
-            this.showCommentColumn = this.mInput.showCommentColumn;
-            this.showImageColumn = this.mInput.showImageColumn;
-
-            var rect = aElement.getBoundingClientRect();
-            var nav = aElement.ownerGlobal.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                              .getInterface(Components.interfaces.nsIWebNavigation);
-            var docShell = nav.QueryInterface(Components.interfaces.nsIDocShell);
-            var docViewer = docShell.contentViewer;
-            var width = (rect.right - rect.left) * docViewer.fullZoom;
-            this.setAttribute("width", width > 100 ? width : 100);
-
-            // Adjust the direction of the autocomplete popup list based on the textbox direction, bug 649840
-            var popupDirection = aElement.ownerGlobal.getComputedStyle(aElement).direction;
-            this.style.direction = popupDirection;
-
-            this.openPopup(aElement, "after_start", 0, 0, false, false);
-          }
-        ]]></body>
-      </method>
-
-      <method name="invalidate">
-        <body><![CDATA[
-          this.adjustHeight();
-          this.tree.treeBoxObject.invalidate();
-        ]]></body>
-      </method>
-
-      <method name="selectBy">
-        <parameter name="aReverse"/>
-        <parameter name="aPage"/>
-        <body><![CDATA[
-          try {
-            var amount = aPage ? 5 : 1;
-            this.selectedIndex = this.getNextIndex(aReverse, amount, this.selectedIndex, this.tree.view.rowCount - 1);
-            if (this.selectedIndex == -1) {
-              this.input._focus();
-            }
-          } catch (ex) {
-            // do nothing - occasionally timer-related js errors happen here
-            // e.g. "this.selectedIndex has no properties", when you type fast and hit a
-            // navigation key before this popup has opened
-          }
-        ]]></body>
-      </method>
-
-      <!-- =================== PUBLIC MEMBERS =================== -->
-
-      <field name="tree">
-        document.getAnonymousElementByAttribute(this, "anonid", "tree");
-      </field>
-
-      <field name="treecols">
-        document.getAnonymousElementByAttribute(this, "anonid", "treecols");
-      </field>
-
-      <property name="view"
-                onget="return this.mView;">
-        <setter><![CDATA[
-          // We must do this by hand because the tree binding may not be ready yet
-          this.mView = val;
-          this.tree.boxObject.view = val;
-        ]]></setter>
-      </property>
-
-    </implementation>
-  </binding>
-
-  <binding id="autocomplete-base-popup" role="none"
-extends="chrome://global/content/bindings/popup.xml#popup">
     <implementation implements="nsIAutoCompletePopup">
       <field name="mInput">null</field>
       <field name="mPopupOpen">false</field>
+      <field name="_currentIndex">0</field>
+      <field name="_rlbAnimated">false</field>
 
       <!-- =================== nsIAutoCompletePopup =================== -->
 
@@ -958,90 +739,9 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       <method name="onPopupClick">
         <parameter name="aEvent"/>
         <body><![CDATA[
-          var controller = this.view.QueryInterface(Components.interfaces.nsIAutoCompleteController);
-          controller.handleEnter(true, aEvent);
+          this.input.controller.handleEnter(true, aEvent);
         ]]></body>
       </method>
-    </implementation>
-
-    <handlers>
-      <handler event="popupshowing"><![CDATA[
-        // If normalMaxRows wasn't already set by the input, then set it here
-        // so that we restore the correct number when the popup is hidden.
-
-        // Null-check this.mInput; see bug 1017914
-        if (this._normalMaxRows < 0 && this.mInput) {
-          this._normalMaxRows = this.mInput.maxRows;
-        }
-
-        // Set an attribute for styling the popup based on the input.
-        let inputID = "";
-        if (this.mInput && this.mInput.ownerDocument &&
-            this.mInput.ownerDocument.documentURIObject.schemeIs("chrome")) {
-          inputID = this.mInput.id;
-          // Take care of elements with no id that are inside xbl bindings
-          if (!inputID) {
-            let bindingParent = this.mInput.ownerDocument.getBindingParent(this.mInput);
-            if (bindingParent) {
-              inputID = bindingParent.id;
-            }
-          }
-        }
-        this.setAttribute("autocompleteinput", inputID);
-
-        this.mPopupOpen = true;
-      ]]></handler>
-
-      <handler event="popuphiding"><![CDATA[
-        var isListActive = true;
-        if (this.selectedIndex == -1)
-          isListActive = false;
-        var controller = this.view.QueryInterface(Components.interfaces.nsIAutoCompleteController);
-        controller.stopSearch();
-
-        this.removeAttribute("autocompleteinput");
-        this.mPopupOpen = false;
-
-        // Reset the maxRows property to the cached "normal" value (if there's
-        // any), and reset normalMaxRows so that we can detect whether it was set
-        // by the input when the popupshowing handler runs.
-
-        // Null-check this.mInput; see bug 1017914
-        if (this.mInput && this._normalMaxRows > 0) {
-          this.mInput.maxRows = this._normalMaxRows;
-        }
-        this._normalMaxRows = -1;
-        // If the list was being navigated and then closed, make sure
-        // we fire accessible focus event back to textbox
-
-        // Null-check this.mInput; see bug 1017914
-        if (isListActive && this.mInput) {
-          this.mInput.mIgnoreFocus = true;
-          this.mInput._focus();
-          this.mInput.mIgnoreFocus = false;
-        }
-      ]]></handler>
-    </handlers>
-  </binding>
-
-  <binding id="autocomplete-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-base-popup">
-    <resources>
-      <stylesheet src="chrome://global/content/autocomplete.css"/>
-      <stylesheet src="chrome://global/skin/autocomplete.css"/>
-    </resources>
-
-    <content ignorekeys="true" level="top" consumeoutsideclicks="never">
-      <xul:richlistbox anonid="richlistbox" class="autocomplete-richlistbox" flex="1"/>
-      <xul:hbox>
-        <children/>
-      </xul:hbox>
-    </content>
-
-    <implementation implements="nsIAutoCompletePopup">
-      <field name="_currentIndex">0</field>
-      <field name="_rlbAnimated">false</field>
-
-      <!-- =================== nsIAutoCompletePopup =================== -->
 
       <property name="selectedIndex"
                 onget="return this.richlistbox.selectedIndex;">
@@ -1130,7 +830,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         <body>
           <![CDATA[
           // collapsed if no matches
-          this.richlistbox.collapsed = (this._matchCount == 0);
+          this.richlistbox.collapsed = (this.matchCount == 0);
 
           // Update the richlistbox height.
           if (this._adjustHeightTimeout) {
@@ -1172,7 +872,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         </getter>
       </property>
 
-      <property name="_matchCount" readonly="true">
+      <property name="matchCount" readonly="true">
         <getter>
           <![CDATA[
           return Math.min(this.mInput.controller.matchCount, this.maxResults);
@@ -1184,7 +884,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         <body>
           <![CDATA[
             let existingItemsCount = this.richlistbox.childNodes.length;
-            for (let i = this._matchCount; i < existingItemsCount; ++i) {
+            for (let i = this.matchCount; i < existingItemsCount; ++i) {
               let item = this.richlistbox.childNodes[i];
 
               item.collapsed = true;
@@ -1201,7 +901,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
           <![CDATA[
           // Figure out how many rows to show
           let rows = this.richlistbox.childNodes;
-          let numRows = Math.min(this._matchCount, this.maxRows, rows.length);
+          let numRows = Math.min(this.matchCount, this.maxRows, rows.length);
 
           this.removeAttribute("height");
 
@@ -1277,7 +977,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         <body>
           <![CDATA[
           var controller = this.mInput.controller;
-          var matchCount = this._matchCount;
+          var matchCount = this.matchCount;
           var existingItemsCount = this.richlistbox.childNodes.length;
 
           // Process maxRows per chunk to improve performance and user experience
@@ -1335,7 +1035,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
             // due to new results, but only when: the item is the same, *OR*
             // we are about to replace the currently moused-over item, to
             // avoid surprising the user.
-            let iface = Components.interfaces.nsIAutoCompletePopup;
+            let iface = Ci.nsIAutoCompletePopup;
             if (reusable &&
                 originalText == trimmedSearchString &&
                 invalidateReason == iface.INVALIDATE_REASON_NEW_RESULT &&
@@ -1400,7 +1100,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
             var amount = aPage ? 5 : 1;
 
             // because we collapsed unused items, we can't use this.richlistbox.getRowCount(), we need to use the matchCount
-            this.selectedIndex = this.getNextIndex(aReverse, amount, this.selectedIndex, this._matchCount - 1);
+            this.selectedIndex = this.getNextIndex(aReverse, amount, this.selectedIndex, this.matchCount - 1);
             if (this.selectedIndex == -1) {
               this.input._focus();
             }
@@ -1423,6 +1123,33 @@ extends="chrome://global/content/bindings/popup.xml#popup">
 
     </implementation>
     <handlers>
+      <handler event="popupshowing"><![CDATA[
+        // If normalMaxRows wasn't already set by the input, then set it here
+        // so that we restore the correct number when the popup is hidden.
+
+        // Null-check this.mInput; see bug 1017914
+        if (this._normalMaxRows < 0 && this.mInput) {
+          this._normalMaxRows = this.mInput.maxRows;
+        }
+
+        // Set an attribute for styling the popup based on the input.
+        let inputID = "";
+        if (this.mInput && this.mInput.ownerDocument &&
+            this.mInput.ownerDocument.documentURIObject.schemeIs("chrome")) {
+          inputID = this.mInput.id;
+          // Take care of elements with no id that are inside xbl bindings
+          if (!inputID) {
+            let bindingParent = this.mInput.ownerDocument.getBindingParent(this.mInput);
+            if (bindingParent) {
+              inputID = bindingParent.id;
+            }
+          }
+        }
+        this.setAttribute("autocompleteinput", inputID);
+
+        this.mPopupOpen = true;
+      ]]></handler>
+
       <handler event="popupshown">
         <![CDATA[
           if (this._adjustHeightOnPopupShown) {
@@ -1431,6 +1158,35 @@ extends="chrome://global/content/bindings/popup.xml#popup">
           }
       ]]>
       </handler>
+
+      <handler event="popuphiding"><![CDATA[
+        var isListActive = true;
+        if (this.selectedIndex == -1)
+          isListActive = false;
+        this.input.controller.stopSearch();
+
+        this.removeAttribute("autocompleteinput");
+        this.mPopupOpen = false;
+
+        // Reset the maxRows property to the cached "normal" value (if there's
+        // any), and reset normalMaxRows so that we can detect whether it was set
+        // by the input when the popupshowing handler runs.
+
+        // Null-check this.mInput; see bug 1017914
+        if (this.mInput && this._normalMaxRows > 0) {
+          this.mInput.maxRows = this._normalMaxRows;
+        }
+        this._normalMaxRows = -1;
+        // If the list was being navigated and then closed, make sure
+        // we fire accessible focus event back to textbox
+
+        // Null-check this.mInput; see bug 1017914
+        if (isListActive && this.mInput) {
+          this.mInput.mIgnoreFocus = true;
+          this.mInput._focus();
+          this.mInput.mIgnoreFocus = false;
+        }
+      ]]></handler>
     </handlers>
   </binding>
 
@@ -1669,8 +1425,8 @@ extends="chrome://global/content/bindings/popup.xml#popup">
           <![CDATA[
           if (!this._boundaryCutoff) {
             this._boundaryCutoff =
-              Components.classes["@mozilla.org/preferences-service;1"].
-              getService(Components.interfaces.nsIPrefBranch).
+              Cc["@mozilla.org/preferences-service;1"].
+              getService(Ci.nsIPrefBranch).
               getIntPref("toolkit.autocomplete.richBoundaryCutoff");
           }
           return this._boundaryCutoff;
@@ -2000,17 +1756,11 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         </body>
       </method>
 
-      <field name="_textToSubURI">null</field>
       <method name="_unescapeUrl">
         <parameter name="url"/>
         <body>
           <![CDATA[
-          if (!this._textToSubURI) {
-            this._textToSubURI =
-              Components.classes["@mozilla.org/intl/texttosuburi;1"]
-                        .getService(Components.interfaces.nsITextToSubURI);
-          }
-          return this._textToSubURI.unEscapeURIForUI("UTF-8", url);
+          return Services.textToSubURI.unEscapeURIForUI("UTF-8", url);
           ]]>
         </body>
       </method>
@@ -2451,15 +2201,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
     </handlers>
   </binding>
 
-  <binding id="autocomplete-tree" extends="chrome://global/content/bindings/tree.xml#tree">
-    <content>
-      <children includes="treecols"/>
-      <xul:treerows class="autocomplete-treerows tree-rows" xbl:inherits="hidescrollbar" flex="1">
-        <children/>
-      </xul:treerows>
-    </content>
-  </binding>
-
   <binding id="autocomplete-richlistbox" extends="chrome://global/content/bindings/richlistbox.xml#richlistbox">
     <implementation>
       <field name="mLastMoveTime">Date.now()</field>
@@ -2509,57 +2250,4 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       </handler>
     </handlers>
   </binding>
-
-  <binding id="autocomplete-treebody">
-    <implementation>
-      <field name="mLastMoveTime">Date.now()</field>
-      <property name="noSelectOnMouseMove">
-        <getter><![CDATA[
-          return this.getAttribute("noSelectOnMouseMove") == "true";
-        ]]></getter>
-        <setter><![CDATA[
-          if (val) {
-            this.setAttribute("noSelectOnMouseMove", "true");
-          } else {
-            this.removeAttribute("noSelectOnMouseMove");
-          }
-          return !!val;
-        ]]></setter>
-      </property>
-    </implementation>
-
-    <handlers>
-      <handler event="mouseup" action="this.parentNode.parentNode.onPopupClick(event);"/>
-
-      <handler event="mousedown"><![CDATA[
-         var rc = this.parentNode.treeBoxObject.getRowAt(event.clientX, event.clientY);
-         if (rc != this.parentNode.currentIndex)
-            this.parentNode.view.selection.select(rc);
-      ]]></handler>
-
-      <handler event="mousemove"><![CDATA[
-        if (this.noSelectOnMouseMove) {
-          // Allow uses of this binding to cancel the event so that
-          // nothing is selected.
-          return;
-        }
-        if (Date.now() - this.mLastMoveTime > 30) {
-         var rc = this.parentNode.treeBoxObject.getRowAt(event.clientX, event.clientY);
-         if (rc != this.parentNode.currentIndex)
-            this.parentNode.view.selection.select(rc);
-         this.mLastMoveTime = Date.now();
-        }
-      ]]></handler>
-    </handlers>
-  </binding>
-
-  <binding id="autocomplete-treerows">
-    <content>
-      <xul:hbox flex="1" class="tree-bodybox">
-        <children/>
-      </xul:hbox>
-      <xul:scrollbar xbl:inherits="collapsed=hidescrollbar" orient="vertical" class="tree-scrollbar"/>
-    </content>
-  </binding>
-
 </bindings>

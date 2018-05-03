@@ -64,11 +64,6 @@ class RobocopTestRunner(MochitestDesktop):
             self.options.webServer, self.options.httpPort, self.options.sslPort)
         self.localLog = options.logFile
         self.localProfile = None
-        productPieces = self.options.remoteProductName.split('.')
-        if (productPieces is not None):
-            self.auto.setProduct(productPieces[0])
-        else:
-            self.auto.setProduct(self.options.remoteProductName)
         self.auto.setAppName(self.options.remoteappname)
         self.certdbNew = True
         self.remoteCopyAvailable = True
@@ -181,9 +176,7 @@ class RobocopTestRunner(MochitestDesktop):
         localAutomation = self.makeLocalAutomation()
         paths = [
             self.options.xrePath,
-            localAutomation.DIST_BIN,
-            self.auto._product,
-            os.path.join('..', self.auto._product)
+            localAutomation.DIST_BIN
         ]
         self.options.xrePath = self.findPath(paths)
         if self.options.xrePath is None:
@@ -479,7 +472,7 @@ class RobocopTestRunner(MochitestDesktop):
                 # terse.
                 if self.options.log_mach is None:
                     self.printDeviceInfo(printLogcat=True)
-        except:
+        except Exception:
             self.log.error(
                 "Automation Error: Exception caught while running tests")
             traceback.print_exc()
@@ -567,7 +560,7 @@ def run_test_harness(parser, options):
     except KeyboardInterrupt:
         robocop.log.info("runrobocop.py | Received keyboard interrupt")
         runResult = -1
-    except:
+    except Exception:
         traceback.print_exc()
         robocop.log.error(
             "runrobocop.py | Received unexpected exception while running tests")

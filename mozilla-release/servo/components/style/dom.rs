@@ -7,7 +7,7 @@
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use {Atom, Namespace, LocalName};
+use {Atom, Namespace, LocalName, WeakAtom};
 use applicable_declarations::ApplicableDeclarationBlock;
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 #[cfg(feature = "gecko")] use context::PostAnimationTasks;
@@ -17,9 +17,6 @@ use element_state::ElementState;
 use font_metrics::FontMetricsProvider;
 use media_queries::Device;
 use properties::{AnimationRules, ComputedValues, PropertyDeclarationBlock};
-#[cfg(feature = "gecko")] use properties::LonghandId;
-#[cfg(feature = "gecko")] use properties::animated_properties::AnimationValue;
-use rule_tree::CascadeLevel;
 use selector_parser::{AttrValue, PseudoClassStringArg, PseudoElement, SelectorImpl};
 use selectors::Element as SelectorsElement;
 use selectors::matching::{ElementSelectorFlags, QuirksMode, VisitedHandlingMode};
@@ -27,11 +24,10 @@ use selectors::sink::Push;
 use servo_arc::{Arc, ArcBorrow};
 use shared_lock::Locked;
 use std::fmt;
-#[cfg(feature = "gecko")] use hash::FnvHashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-use stylist::{CascadeData, Stylist};
+use stylist::CascadeData;
 use traversal_flags::TraversalFlags;
 
 /// An opaque handle to a node, which, unlike UnsafeNode, cannot be transformed
@@ -158,6 +154,9 @@ pub trait TNode : Sized + Copy + Clone + Debug + NodeInfo + PartialEq {
     /// The concrete `TDocument` type.
     type ConcreteDocument: TDocument<ConcreteNode = Self>;
 
+    /// The concrete `TShadowRoot` type.
+    type ConcreteShadowRoot: TShadowRoot<ConcreteNode = Self>;
+
     /// Get this node's parent node.
     fn parent_node(&self) -> Option<Self>;
 
@@ -239,6 +238,9 @@ pub trait TNode : Sized + Copy + Clone + Debug + NodeInfo + PartialEq {
 
     /// Get this node as a document, if it's one.
     fn as_document(&self) -> Option<Self::ConcreteDocument>;
+
+    /// Get this node as a ShadowRoot, if it's one.
+    fn as_shadow_root(&self) -> Option<Self::ConcreteShadowRoot>;
 }
 
 /// Wrapper to output the subtree rather than the single node when formatting
@@ -316,6 +318,23 @@ fn fmt_subtree<F, N: TNode>(f: &mut fmt::Formatter, stringify: &F, n: N, indent:
     }
 
     Ok(())
+}
+
+/// The ShadowRoot trait.
+pub trait TShadowRoot : Sized + Copy + Clone {
+    /// The concrete node type.
+    type ConcreteNode: TNode<ConcreteShadowRoot = Self>;
+
+    /// Get this ShadowRoot as a node.
+    fn as_node(&self) -> Self::ConcreteNode;
+
+    /// Get the shadow host that hosts this ShadowRoot.
+    fn host(&self) -> <Self::ConcreteNode as TNode>::ConcreteElement;
+
+    /// Get the style data for this ShadowRoot.
+    fn style_data<'a>(&self) -> &'a CascadeData
+    where
+        Self: 'a;
 }
 
 /// The element trait, the main abstraction the style crate acts over.
@@ -419,12 +438,6 @@ pub trait TElement
     /// Return whether this element is an element in the HTML namespace.
     fn is_html_element(&self) -> bool;
 
-    /// Returns whether this element is a <html:slot> element.
-    fn is_html_slot_element(&self) -> bool {
-        self.get_local_name() == &*local_name!("slot") &&
-        self.is_html_element()
-    }
-
     /// Return the list of slotted nodes of this node.
     fn slotted_nodes(&self) -> &[Self::ConcreteNode] {
         &[]
@@ -445,49 +458,39 @@ pub trait TElement
     }
 
     /// Get this element's SMIL override declarations.
-    fn get_smil_override(&self) -> Option<ArcBorrow<Locked<PropertyDeclarationBlock>>> {
-        None
-    }
-
-    /// Get this element's animation rule by the cascade level.
-    fn get_animation_rule_by_cascade(&self,
-                                     _cascade_level: CascadeLevel)
-                                     -> Option<Arc<Locked<PropertyDeclarationBlock>>> {
+    fn smil_override(&self) -> Option<ArcBorrow<Locked<PropertyDeclarationBlock>>> {
         None
     }
 
     /// Get the combined animation and transition rules.
-    fn get_animation_rules(&self) -> AnimationRules {
+    ///
+    /// FIXME(emilio): Is this really useful?
+    fn animation_rules(&self) -> AnimationRules {
         if !self.may_have_animations() {
             return AnimationRules(None, None)
         }
 
-        AnimationRules(
-            self.get_animation_rule(),
-            self.get_transition_rule(),
-        )
+        AnimationRules(self.animation_rule(), self.transition_rule())
     }
 
     /// Get this element's animation rule.
-    fn get_animation_rule(&self)
-                          -> Option<Arc<Locked<PropertyDeclarationBlock>>> {
+    fn animation_rule(&self) -> Option<Arc<Locked<PropertyDeclarationBlock>>> {
         None
     }
 
     /// Get this element's transition rule.
-    fn get_transition_rule(&self)
-                           -> Option<Arc<Locked<PropertyDeclarationBlock>>> {
+    fn transition_rule(&self) -> Option<Arc<Locked<PropertyDeclarationBlock>>> {
         None
     }
 
     /// Get this element's state, for non-tree-structural pseudos.
-    fn get_state(&self) -> ElementState;
+    fn state(&self) -> ElementState;
 
     /// Whether this element has an attribute with a given namespace.
     fn has_attr(&self, namespace: &Namespace, attr: &LocalName) -> bool;
 
     /// The ID for this element.
-    fn get_id(&self) -> Option<Atom>;
+    fn id(&self) -> Option<&WeakAtom>;
 
     /// Internal iterator for the classes of this element.
     fn each_class<F>(&self, callback: F) where F: FnMut(&Atom);
@@ -680,7 +683,7 @@ pub trait TElement
     /// Whether we should skip any root- or item-based display property
     /// blockification on this element.  (This function exists so that Gecko
     /// native anonymous content can opt out of this style fixup.)
-    fn skip_root_and_item_based_display_fixup(&self) -> bool;
+    fn skip_item_display_fixup(&self) -> bool;
 
     /// Sets selector flags, which indicate what kinds of selectors may have
     /// matched on this element and therefore what kind of work may need to
@@ -739,6 +742,12 @@ pub trait TElement
         None
     }
 
+    /// The shadow root this element is a host of.
+    fn shadow_root(&self) -> Option<<Self::ConcreteNode as TNode>::ConcreteShadowRoot>;
+
+    /// The shadow root which roots the subtree this element is contained in.
+    fn containing_shadow(&self) -> Option<<Self::ConcreteNode as TNode>::ConcreteShadowRoot>;
+
     /// Return the element which we can use to look up rules in the selector
     /// maps.
     ///
@@ -756,11 +765,12 @@ pub trait TElement
 
     /// Implements Gecko's `nsBindingManager::WalkRules`.
     ///
-    /// Returns whether to cut off the inheritance.
-    fn each_xbl_stylist<'a, F>(&self, _: F) -> bool
+    /// Returns whether to cut off the binding inheritance, that is, whether
+    /// document rules should _not_ apply.
+    fn each_xbl_cascade_data<'a, F>(&self, _: F) -> bool
     where
         Self: 'a,
-        F: FnMut(AtomicRef<'a, Stylist>),
+        F: FnMut(&'a CascadeData, QuirksMode),
     {
         false
     }
@@ -772,36 +782,25 @@ pub trait TElement
     fn each_applicable_non_document_style_rule_data<'a, F>(&self, mut f: F) -> bool
     where
         Self: 'a,
-        F: FnMut(AtomicRef<'a, CascadeData>, QuirksMode),
+        F: FnMut(&'a CascadeData, QuirksMode),
     {
-        let cut_off_inheritance = self.each_xbl_stylist(|stylist| {
-            let quirks_mode = stylist.quirks_mode();
-            f(
-                AtomicRef::map(stylist, |stylist| stylist.author_cascade_data()),
-                quirks_mode,
-            )
-        });
+        let mut doc_rules_apply = !self.each_xbl_cascade_data(&mut f);
+
+        if let Some(shadow) = self.containing_shadow() {
+            doc_rules_apply = false;
+            f(shadow.style_data(), self.as_node().owner_doc().quirks_mode());
+        }
 
         let mut current = self.assigned_slot();
         while let Some(slot) = current {
-            slot.each_xbl_stylist(|stylist| {
-                let quirks_mode = stylist.quirks_mode();
-                f(
-                    AtomicRef::map(stylist, |stylist| stylist.author_cascade_data()),
-                    quirks_mode,
-                )
-            });
-
+            // Slots can only have assigned nodes when in a shadow tree.
+            let data = slot.containing_shadow().unwrap().style_data();
+            f(data, self.as_node().owner_doc().quirks_mode());
             current = slot.assigned_slot();
         }
 
-        cut_off_inheritance
+        doc_rules_apply
     }
-
-    /// Gets the current existing CSS transitions, by |property, end value| pairs in a FnvHashMap.
-    #[cfg(feature = "gecko")]
-    fn get_css_transitions_info(&self)
-                                -> FnvHashMap<LonghandId, Arc<AnimationValue>>;
 
     /// Does a rough (and cheap) check for whether or not transitions might need to be updated that
     /// will quickly return false for the common case of no transitions specified or running. If
@@ -824,17 +823,6 @@ pub trait TElement
         &self,
         before_change_style: &ComputedValues,
         after_change_style: &ComputedValues
-    ) -> bool;
-
-    /// Returns true if we need to update transitions for the specified property on this element.
-    #[cfg(feature = "gecko")]
-    fn needs_transitions_update_per_property(
-        &self,
-        property: &LonghandId,
-        combined_duration: f32,
-        before_change_style: &ComputedValues,
-        after_change_style: &ComputedValues,
-        existing_transitions: &FnvHashMap<LonghandId, Arc<AnimationValue>>
     ) -> bool;
 
     /// Returns the value of the `xml:lang=""` attribute (or, if appropriate,

@@ -47,8 +47,6 @@ using mozilla::Unused;
 #include "nsContentUtils.h"
 #include "WidgetUtils.h"
 
-#include "nsIDOMSimpleGestureEvent.h"
-
 #include "nsGkAtoms.h"
 #include "nsWidgetsCID.h"
 #include "nsGfxCIID.h"
@@ -93,8 +91,6 @@ using namespace mozilla::layers;
 using namespace mozilla::java;
 using namespace mozilla::widget;
 using namespace mozilla::ipc;
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/CompositorSession.h"
@@ -276,14 +272,17 @@ public:
      */
 private:
     nsCOMPtr<nsPIDOMWindowOuter> mDOMWindow;
+    bool mIsReady{false};
 
 public:
     // Create and attach a window.
     static void Open(const jni::Class::LocalRef& aCls,
                      GeckoSession::Window::Param aWindow,
+                     jni::Object::Param aQueue,
                      jni::Object::Param aCompositor,
                      jni::Object::Param aDispatcher,
                      jni::Object::Param aSettings,
+                     jni::String::Param aId,
                      jni::String::Param aChromeURI,
                      int32_t aScreenId,
                      bool aPrivateMode);
@@ -293,6 +292,7 @@ public:
 
     // Transfer this nsWindow to new GeckoSession objects.
     void Transfer(const GeckoSession::Window::LocalRef& inst,
+                  jni::Object::Param aQueue,
                   jni::Object::Param aCompositor,
                   jni::Object::Param aDispatcher,
                   jni::Object::Param aSettings);
@@ -301,7 +301,7 @@ public:
                         jni::Object::Param aEditableParent,
                         jni::Object::Param aEditableChild);
 
-    void EnableEventDispatcher();
+    void OnReady(jni::Object::Param aQueue = nullptr);
 };
 
 /**
@@ -1139,92 +1139,6 @@ public:
 template<> const char
 nsWindow::NativePtr<nsWindow::LayerViewSupport>::sName[] = "LayerViewSupport";
 
-/* PresentationMediaPlayerManager native calls access inner nsWindow functionality so PMPMSupport is a child class of nsWindow */
-class nsWindow::PMPMSupport final
-    : public PresentationMediaPlayerManager::Natives<PMPMSupport>
-{
-    PMPMSupport() = delete;
-
-    static LayerViewSupport* GetLayerViewSupport(jni::Object::Param aSession)
-    {
-        const auto& session = LayerSession::Ref::From(aSession);
-
-        LayerSession::Compositor::LocalRef compositor = session->GetCompositor();
-        if (!compositor) {
-            return nullptr;
-        }
-
-        LayerViewSupport* const lvs = LayerViewSupport::FromNative(compositor);
-        if (!lvs) {
-            // There is a pending exception whenever FromNative returns nullptr.
-            compositor.Env()->ExceptionClear();
-        }
-        return lvs;
-    }
-
-public:
-    static ANativeWindow* sWindow;
-    static EGLSurface sSurface;
-
-    static void InvalidateAndScheduleComposite(jni::Object::Param aSession)
-    {
-        LayerViewSupport* const lvs = GetLayerViewSupport(aSession);
-        if (lvs) {
-            lvs->SyncInvalidateAndScheduleComposite();
-        }
-    }
-
-    static void AddPresentationSurface(const jni::Class::LocalRef& aCls,
-                                       jni::Object::Param aSession,
-                                       jni::Object::Param aSurface)
-    {
-        RemovePresentationSurface();
-
-        LayerViewSupport* const lvs = GetLayerViewSupport(aSession);
-        if (!lvs) {
-            return;
-        }
-
-        ANativeWindow* const window = ANativeWindow_fromSurface(
-                aCls.Env(), aSurface.Get());
-        if (!window) {
-            return;
-        }
-
-        sWindow = window;
-
-        const bool wasAlreadyPaused = lvs->CompositorPaused();
-        if (!wasAlreadyPaused) {
-            lvs->SyncPauseCompositor();
-        }
-
-        if (sSurface) {
-            // Destroy the EGL surface! The compositor is paused so it should
-            // be okay to destroy the surface here.
-            mozilla::gl::GLContextProvider::DestroyEGLSurface(sSurface);
-            sSurface = nullptr;
-        }
-
-        if (!wasAlreadyPaused) {
-            lvs->SyncResumeCompositor();
-        }
-
-        lvs->SyncInvalidateAndScheduleComposite();
-    }
-
-    static void RemovePresentationSurface()
-    {
-        if (sWindow) {
-            ANativeWindow_release(sWindow);
-            sWindow = nullptr;
-        }
-    }
-};
-
-ANativeWindow* nsWindow::PMPMSupport::sWindow;
-EGLSurface nsWindow::PMPMSupport::sSurface;
-
-
 nsWindow::GeckoViewSupport::~GeckoViewSupport()
 {
     // Disassociate our GeckoEditable instance with our native object.
@@ -1245,9 +1159,11 @@ nsWindow::GeckoViewSupport::~GeckoViewSupport()
 /* static */ void
 nsWindow::GeckoViewSupport::Open(const jni::Class::LocalRef& aCls,
                                  GeckoSession::Window::Param aWindow,
+                                 jni::Object::Param aQueue,
                                  jni::Object::Param aCompositor,
                                  jni::Object::Param aDispatcher,
                                  jni::Object::Param aSettings,
+                                 jni::String::Param aId,
                                  jni::String::Param aChromeURI,
                                  int32_t aScreenId,
                                  bool aPrivateMode)
@@ -1280,7 +1196,7 @@ nsWindow::GeckoViewSupport::Open(const jni::Class::LocalRef& aCls,
         chromeFlags += ",private";
     }
     nsCOMPtr<mozIDOMWindowProxy> domWindow;
-    ww->OpenWindow(nullptr, url.get(), nullptr, chromeFlags.get(),
+    ww->OpenWindow(nullptr, url.get(), aId->ToCString().get(), chromeFlags.get(),
                    androidView, getter_AddRefs(domWindow));
     MOZ_RELEASE_ASSERT(domWindow);
 
@@ -1301,7 +1217,7 @@ nsWindow::GeckoViewSupport::Open(const jni::Class::LocalRef& aCls,
 
     // Attach other session support objects.
     window->mGeckoViewSupport->Transfer(
-            sessionWindow, aCompositor, aDispatcher, aSettings);
+            sessionWindow, aQueue, aCompositor, aDispatcher, aSettings);
 
     if (window->mWidgetListener) {
         nsCOMPtr<nsIXULWindow> xulWindow(
@@ -1332,6 +1248,7 @@ nsWindow::GeckoViewSupport::Close()
 
 void
 nsWindow::GeckoViewSupport::Transfer(const GeckoSession::Window::LocalRef& inst,
+                                     jni::Object::Param aQueue,
                                      jni::Object::Param aCompositor,
                                      jni::Object::Param aDispatcher,
                                      jni::Object::Param aSettings)
@@ -1354,7 +1271,9 @@ nsWindow::GeckoViewSupport::Transfer(const GeckoSession::Window::LocalRef& inst,
             java::EventDispatcher::Ref::From(aDispatcher), mDOMWindow);
     window.mAndroidView->mSettings = java::GeckoBundle::Ref::From(aSettings);
 
-    inst->OnTransfer(aDispatcher);
+    if (mIsReady) {
+        OnReady(aQueue);
+    }
 
     DispatchToUiThread(
             "GeckoViewSupport::Transfer",
@@ -1390,9 +1309,6 @@ nsWindow::InitNatives()
     nsWindow::GeckoViewSupport::Base::Init();
     nsWindow::LayerViewSupport::Init();
     nsWindow::NPZCSupport::Init();
-    if (jni::IsFennec()) {
-        nsWindow::PMPMSupport::Init();
-    }
 
     GeckoEditableSupport::Init();
 }
@@ -1578,12 +1494,12 @@ nsWindow::GetRootLayerId() const
 }
 
 void
-nsWindow::EnableEventDispatcher()
+nsWindow::OnGeckoViewReady()
 {
     if (!mGeckoViewSupport) {
         return;
     }
-    mGeckoViewSupport->EnableEventDispatcher();
+    mGeckoViewSupport->OnReady();
 }
 
 void
@@ -2073,12 +1989,6 @@ nsWindow::GetNativeData(uint32_t aDataType)
                 return lvs->GetSurface().Get();
             }
             return nullptr;
-
-        case NS_PRESENTATION_WINDOW:
-            return PMPMSupport::sWindow;
-
-        case NS_PRESENTATION_SURFACE:
-            return PMPMSupport::sSurface;
     }
 
     return nullptr;
@@ -2088,9 +1998,6 @@ void
 nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal)
 {
     switch (aDataType) {
-        case NS_PRESENTATION_SURFACE:
-            PMPMSupport::sSurface = reinterpret_cast<EGLSurface>(aVal);
-            break;
     }
 }
 
@@ -2145,12 +2052,13 @@ nsWindow::GetEventTimeStamp(int64_t aEventTime)
 }
 
 void
-nsWindow::GeckoViewSupport::EnableEventDispatcher()
+nsWindow::GeckoViewSupport::OnReady(jni::Object::Param aQueue)
 {
     if (!mGeckoViewWindow) {
         return;
     }
-    mGeckoViewWindow->OnReady();
+    mGeckoViewWindow->OnReady(aQueue);
+    mIsReady = true;
 }
 
 void

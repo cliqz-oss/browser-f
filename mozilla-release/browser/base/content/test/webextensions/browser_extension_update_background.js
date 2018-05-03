@@ -1,4 +1,4 @@
-const {AddonManagerPrivate} = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+const {AddonManagerPrivate} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
 
 const ID = "update2@tests.mozilla.org";
 const ID_ICON = "update_icon2@tests.mozilla.org";
@@ -88,6 +88,9 @@ async function backgroundUpdateTest(url, id, checkIconFn) {
   let tabPromise = BrowserTestUtils.waitForNewTab(gBrowser, "about:addons");
   let popupPromise = promisePopupNotificationShown("addon-webext-permissions");
   addons.children[0].click();
+
+  // The click should hide the main menu. This is currently synchronous.
+  ok(PanelUI.panel.state != "open", "Main menu is closed or closing.");
 
   // about:addons should load and go to the list of extensions
   let tab = await tabPromise;

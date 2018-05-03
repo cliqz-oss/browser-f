@@ -63,38 +63,6 @@ const SEARCH_ENGINE_DETAILS = [{
 // },
 ];
 
-function promiseStateChangeURI() {
-  return new Promise(resolve => {
-    let listener = {
-      onStateChange: function onStateChange(webProgress, req, flags, status) {
-        info("onStateChange");
-        // Only care about top-level document starts
-        let docStart = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT |
-                       Ci.nsIWebProgressListener.STATE_START;
-        if (!(flags & docStart) || !webProgress.isTopLevel)
-          return;
-
-        let spec = req.originalURI.spec;
-        if (spec == "about:blank")
-          return;
-
-        gBrowser.removeProgressListener(listener);
-
-        info("received document start");
-
-        Assert.ok(req instanceof Ci.nsIChannel, "req is a channel");
-
-        req.cancel(Components.results.NS_ERROR_FAILURE);
-
-        executeSoon(() => {
-          resolve(spec);
-        });
-      }
-    };
-
-    gBrowser.addProgressListener(listener);
-  });
-}
 
 function promiseContentSearchReady(browser) {
   return ContentTask.spawn(browser, {}, async function(args) {
@@ -151,7 +119,7 @@ async function testSearchEngine(engineDetails) {
       run() {
         gURLBar.value = "? foo";
         gURLBar.focus();
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
@@ -160,7 +128,7 @@ async function testSearchEngine(engineDetails) {
       run() {
         gURLBar.value = `${engineDetails.alias} foo`;
         gURLBar.focus();
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
@@ -173,7 +141,7 @@ async function testSearchEngine(engineDetails) {
         registerCleanupFunction(function() {
           sb.value = "";
         });
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
@@ -192,7 +160,7 @@ async function testSearchEngine(engineDetails) {
           input.focus();
           input.value = "foo";
         });
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     }
   ];

@@ -6,8 +6,6 @@
 
 #include "jit/Snapshots.h"
 
-#include "jsscript.h"
-
 #include "jit/CompileInfo.h"
 #include "jit/JitSpewer.h"
 #ifdef TRACK_SNAPSHOTS
@@ -15,7 +13,7 @@
 #endif
 #include "jit/MIR.h"
 #include "jit/Recover.h"
-
+#include "vm/JSScript.h"
 #include "vm/Printer.h"
 
 using namespace js;
@@ -266,7 +264,7 @@ RValueAllocation::layoutFromMode(Mode mode)
       }
     }
 
-    MOZ_CRASH("Wrong mode type?");
+    MOZ_CRASH_UNSAFE_PRINTF("Unexpected mode: 0x%x", mode);
 }
 
 // Pad serialized RValueAllocations by a multiple of X bytes in the allocation

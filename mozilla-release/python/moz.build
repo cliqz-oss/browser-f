@@ -29,6 +29,12 @@ with Files('mozversioncontrol/**'):
 with Files('l10n/**'):
     BUG_COMPONENT = ('Core', 'Localization')
 
+with Files('mozrelease/**'):
+    BUG_COMPONENT = ('Release Engineering', 'Release Automation')
+
+with Files('mach_commands.py'):
+    BUG_COMPONENT = ('Testing', 'Python Test')
+
 SPHINX_PYTHON_PACKAGE_DIRS += [
     'mach',
     'mozbuild/mozbuild',
@@ -49,6 +55,7 @@ PYTHON_UNITTEST_MANIFESTS += [
     'mach/mach/test/python.ini',
     'mozbuild/dumbmake/test/python.ini',
     'mozlint/test/python.ini',
+    'mozrelease/test/python.ini',
     'mozterm/test/python.ini',
     'mozversioncontrol/test/python.ini',
 ]

@@ -6,6 +6,8 @@
 
 #include "mozilla/MathAlgorithms.h"
 
+#include <stdint.h>
+
 using mozilla::Clamp;
 using mozilla::IsPowerOfTwo;
 

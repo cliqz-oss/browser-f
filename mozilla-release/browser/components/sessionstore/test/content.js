@@ -6,10 +6,7 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function executeSoon(callback) {
   Services.tm.dispatchToMainThread(callback);
@@ -84,7 +81,7 @@ addMessageListener("ss-test:enableStyleSheetsForSet", function(msg) {
   let sheets = content.document.styleSheets;
   let change = false;
   for (let i = 0; i < sheets.length; i++) {
-    if (sheets[i].disabled != (msg.data.indexOf(sheets[i].title) == -1)) {
+    if (sheets[i].disabled != (!msg.data.includes(sheets[i].title))) {
       change = true;
       break;
     }

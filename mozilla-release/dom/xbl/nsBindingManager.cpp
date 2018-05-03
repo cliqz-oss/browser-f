@@ -32,9 +32,14 @@
 #include "nsXBLPrototypeBinding.h"
 #include "nsXBLDocumentInfo.h"
 #include "mozilla/dom/XBLChildrenElement.h"
+#ifdef MOZ_XUL
+#include "nsXULPrototypeCache.h"
+#endif
 
+#ifdef MOZ_OLD_STYLE
 #include "nsIStyleRuleProcessor.h"
 #include "nsRuleProcessorData.h"
+#endif
 #include "nsIWeakReference.h"
 
 #include "nsWrapperCacheInlines.h"
@@ -45,7 +50,7 @@
 
 #include "nsIScriptContext.h"
 #include "xpcpublic.h"
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 
 #include "nsThreadUtils.h"
 #include "mozilla/dom/NodeListBinding.h"
@@ -673,6 +678,7 @@ nsBindingManager::GetBindingImplementation(nsIContent* aContent, REFNSIID aIID,
   return NS_NOINTERFACE;
 }
 
+#ifdef MOZ_OLD_STYLE
 nsresult
 nsBindingManager::WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc,
                             ElementDependentRuleProcessorData* aData,
@@ -713,28 +719,30 @@ nsBindingManager::WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc,
 
   return NS_OK;
 }
+#endif
 
 bool
-nsBindingManager::EnumerateBoundContentBindings(
-  const BoundContentBindingCallback& aCallback) const
+nsBindingManager::EnumerateBoundContentProtoBindings(
+  const BoundContentProtoBindingCallback& aCallback) const
 {
   if (!mBoundContentSet) {
     return true;
   }
 
-  nsTHashtable<nsPtrHashKey<nsXBLBinding>> bindings;
+  nsTHashtable<nsPtrHashKey<nsXBLPrototypeBinding>> bindings;
   for (auto iter = mBoundContentSet->Iter(); !iter.Done(); iter.Next()) {
     nsIContent* boundContent = iter.Get()->GetKey();
     for (nsXBLBinding* binding = boundContent->GetXBLBinding();
          binding;
          binding = binding->GetBaseBinding()) {
+      nsXBLPrototypeBinding* proto = binding->PrototypeBinding();
       // If we have already invoked the callback with a binding, we
       // should have also invoked it for all its base bindings, so we
       // don't need to continue this loop anymore.
-      if (!bindings.EnsureInserted(binding)) {
+      if (!bindings.EnsureInserted(proto)) {
         break;
       }
-      if (!aCallback(binding)) {
+      if (!aCallback(proto)) {
         return false;
       }
     }
@@ -743,85 +751,49 @@ nsBindingManager::EnumerateBoundContentBindings(
   return true;
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 nsBindingManager::WalkAllRules(nsIStyleRuleProcessor::EnumFunc aFunc,
                                ElementDependentRuleProcessorData* aData)
 {
-  EnumerateBoundContentBindings([=](nsXBLBinding* aBinding) {
-    nsIStyleRuleProcessor* ruleProcessor =
-      aBinding->PrototypeBinding()->GetRuleProcessor();
+  EnumerateBoundContentProtoBindings([=](nsXBLPrototypeBinding* aProto) {
+    nsIStyleRuleProcessor* ruleProcessor = aProto->GetRuleProcessor();
     if (ruleProcessor) {
       (*(aFunc))(ruleProcessor, aData);
     }
     return true;
   });
 }
+#endif
 
 bool
-nsBindingManager::MediumFeaturesChanged(nsPresContext* aPresContext)
+nsBindingManager::MediumFeaturesChanged(nsPresContext* aPresContext,
+                                        mozilla::MediaFeatureChangeReason aReason)
 {
+  MOZ_ASSERT(!mDocument->IsStyledByServo());
+#ifdef MOZ_OLD_STYLE
   bool rulesChanged = false;
   RefPtr<nsPresContext> presContext = aPresContext;
-  bool isStyledByServo = mDocument->IsStyledByServo();
-
-  EnumerateBoundContentBindings([=, &rulesChanged](nsXBLBinding* aBinding) {
-    if (isStyledByServo) {
-      ServoStyleSet* styleSet = aBinding->PrototypeBinding()->GetServoStyleSet();
-      if (styleSet) {
-        bool styleSetChanged = false;
-
-        if (styleSet->IsPresContextChanged(presContext)) {
-          styleSetChanged = styleSet->SetPresContext(presContext);
-        } else {
-          // PresContext is not changed. This means aPresContext is still
-          // alive since the last time it initialized this XBL styleset.
-          // It's safe to check whether medium features changed.
-          bool viewportUnitsUsed = false;
-          styleSetChanged =
-            styleSet->MediumFeaturesChangedRules(&viewportUnitsUsed);
-          MOZ_ASSERT(!viewportUnitsUsed,
-                     "Non-master stylesets shouldn't get flagged as using "
-                     "viewport units!");
-        }
-        rulesChanged = rulesChanged || styleSetChanged;
-      }
-    } else {
-      nsIStyleRuleProcessor* ruleProcessor =
-        aBinding->PrototypeBinding()->GetRuleProcessor();
-      if (ruleProcessor) {
-        bool thisChanged = ruleProcessor->MediumFeaturesChanged(presContext);
-        rulesChanged = rulesChanged || thisChanged;
-      }
+  EnumerateBoundContentProtoBindings([=, &rulesChanged](nsXBLPrototypeBinding* aProto) {
+    nsIStyleRuleProcessor* ruleProcessor = aProto->GetRuleProcessor();
+    if (ruleProcessor) {
+      bool thisChanged = ruleProcessor->MediumFeaturesChanged(presContext);
+      rulesChanged = rulesChanged || thisChanged;
     }
     return true;
   });
-
   return rulesChanged;
-}
-
-void
-nsBindingManager::UpdateBoundContentBindingsForServo(nsPresContext* aPresContext)
-{
-  MOZ_ASSERT(mDocument->IsStyledByServo(),
-             "This should be called only by servo-backend!");
-
-  RefPtr<nsPresContext> presContext = aPresContext;
-
-  EnumerateBoundContentBindings([=](nsXBLBinding* aBinding) {
-    nsXBLPrototypeBinding* protoBinding = aBinding->PrototypeBinding();
-    ServoStyleSet* styleSet = protoBinding->GetServoStyleSet();
-    if (styleSet && styleSet->StyleSheetsHaveChanged()) {
-      protoBinding->ComputeServoStyleSet(presContext);
-    }
-    return true;
-  });
+#else
+  MOZ_CRASH("old style system disabled");
+  return false;
+#endif
 }
 
 void
 nsBindingManager::AppendAllSheets(nsTArray<StyleSheet*>& aArray)
 {
-  EnumerateBoundContentBindings([&aArray](nsXBLBinding* aBinding) {
-    aBinding->PrototypeBinding()->AppendStyleSheetsTo(aArray);
+  EnumerateBoundContentProtoBindings([&aArray](nsXBLPrototypeBinding* aProto) {
+    aProto->AppendStyleSheetsTo(aArray);
     return true;
   });
 }
@@ -855,13 +827,12 @@ InsertAppendedContent(XBLChildrenElement* aPoint,
 }
 
 void
-nsBindingManager::ContentAppended(nsIDocument* aDocument,
-                                  nsIContent* aContainer,
-                                  nsIContent* aFirstNewContent)
+nsBindingManager::ContentAppended(nsIContent* aFirstNewContent)
 {
   // Try to find insertion points for all the new kids.
   XBLChildrenElement* point = nullptr;
-  nsIContent* parent = aContainer;
+  nsIContent* container = aFirstNewContent->GetParent();
+  nsIContent* parent = container;
 
   // Handle appending of default content.
   if (parent && parent->IsActiveChildrenElement()) {
@@ -890,7 +861,7 @@ nsBindingManager::ContentAppended(nsIDocument* aDocument,
       // points.
       for (nsIContent* currentChild = aFirstNewContent; currentChild;
            currentChild = currentChild->GetNextSibling()) {
-        HandleChildInsertion(aContainer, currentChild, true);
+        HandleChildInsertion(container, currentChild, true);
       }
 
       return;
@@ -923,23 +894,19 @@ nsBindingManager::ContentAppended(nsIDocument* aDocument,
 }
 
 void
-nsBindingManager::ContentInserted(nsIDocument* aDocument,
-                                  nsIContent* aContainer,
-                                  nsIContent* aChild)
+nsBindingManager::ContentInserted(nsIContent* aChild)
 {
-  HandleChildInsertion(aContainer, aChild, false);
+  HandleChildInsertion(aChild->GetParent(), aChild, false);
 }
 
 void
-nsBindingManager::ContentRemoved(nsIDocument* aDocument,
-                                 nsIContent* aContainer,
-                                 nsIContent* aChild,
+nsBindingManager::ContentRemoved(nsIContent* aChild,
                                  nsIContent* aPreviousSibling)
 {
   aChild->SetXBLInsertionPoint(nullptr);
 
   XBLChildrenElement* point = nullptr;
-  nsIContent* parent = aContainer;
+  nsIContent* parent = aChild->GetParent();
 
   // Handle appending of default content.
   if (parent && parent->IsActiveChildrenElement()) {
@@ -1145,19 +1112,39 @@ nsBindingManager::FindNestedSingleInsertionPoint(nsIContent* aContainer,
   return parent;
 }
 
-bool
-nsBindingManager::AnyBindingHasDocumentStateDependency(EventStates aStateMask)
+size_t
+nsBindingManager::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 {
-  MOZ_ASSERT(mDocument->IsStyledByServo());
+  size_t n = aMallocSizeOf(this);
 
-  bool result = false;
-  EnumerateBoundContentBindings([&](nsXBLBinding* aBinding) {
-    ServoStyleSet* styleSet = aBinding->PrototypeBinding()->GetServoStyleSet();
-    if (styleSet && styleSet->HasDocumentStateDependency(aStateMask)) {
-      result = true;
-      return false;
+#define SHALLOW_SIZE_INCLUDING(field_) \
+  n += field_ ? field_->ShallowSizeOfIncludingThis(aMallocSizeOf) : 0;
+  SHALLOW_SIZE_INCLUDING(mBoundContentSet);
+  SHALLOW_SIZE_INCLUDING(mWrapperTable);
+  SHALLOW_SIZE_INCLUDING(mLoadingDocTable);
+#undef SHALLOW_SIZE_INCLUDING
+  n += mAttachedStack.ShallowSizeOfExcludingThis(aMallocSizeOf);
+
+  if (mDocumentTable) {
+    n += mDocumentTable->ShallowSizeOfIncludingThis(aMallocSizeOf);
+#ifdef MOZ_XUL
+    nsXULPrototypeCache* cache = nsXULPrototypeCache::GetInstance();
+    StyleBackendType backendType = mDocument->GetStyleBackendType();
+#endif
+    for (auto iter = mDocumentTable->Iter(); !iter.Done(); iter.Next()) {
+      nsXBLDocumentInfo* docInfo = iter.UserData();
+#ifdef MOZ_XUL
+      nsXBLDocumentInfo* cachedInfo =
+        cache->GetXBLDocumentInfo(iter.Key(), backendType);
+      if (cachedInfo == docInfo) {
+        // If this binding has been cached, skip it since it can be
+        // reused by other documents.
+        continue;
+      }
+#endif
+      n += docInfo->SizeOfIncludingThis(aMallocSizeOf);
     }
-    return true;
-  });
-  return result;
+  }
+
+  return n;
 }

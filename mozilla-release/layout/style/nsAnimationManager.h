@@ -14,6 +14,7 @@
 #include "mozilla/Keyframe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TimeStamp.h"
+#include "nsISupportsImpl.h"
 
 class nsIGlobalObject;
 class nsStyleContext;
@@ -33,43 +34,6 @@ class GeckoStyleContext;
 class ServoStyleContext;
 enum class CSSPseudoElementType : uint8_t;
 struct NonOwningAnimationTarget;
-
-struct AnimationEventInfo {
-  RefPtr<dom::Element> mElement;
-  RefPtr<dom::Animation> mAnimation;
-  InternalAnimationEvent mEvent;
-  TimeStamp mTimeStamp;
-
-  AnimationEventInfo(const NonOwningAnimationTarget& aTarget,
-                     EventMessage aMessage,
-                     nsAtom* aAnimationName,
-                     double aElapsedTime,
-                     const TimeStamp& aTimeStamp,
-                     dom::Animation* aAnimation)
-    : mElement(aTarget.mElement)
-    , mAnimation(aAnimation)
-    , mEvent(true, aMessage)
-    , mTimeStamp(aTimeStamp)
-  {
-    // XXX Looks like nobody initialize WidgetEvent::time
-    aAnimationName->ToString(mEvent.mAnimationName);
-    mEvent.mElapsedTime = aElapsedTime;
-    mEvent.mPseudoElement =
-      AnimationCollection<dom::CSSAnimation>::PseudoTypeAsString(
-        aTarget.mPseudoType);
-  }
-
-  // InternalAnimationEvent doesn't support copy-construction, so we need
-  // to ourselves in order to work with nsTArray
-  AnimationEventInfo(const AnimationEventInfo& aOther)
-    : mElement(aOther.mElement)
-    , mAnimation(aOther.mAnimation)
-    , mEvent(true, aOther.mEvent.mMessage)
-    , mTimeStamp(aOther.mTimeStamp)
-  {
-    mEvent.AssignAnimationEventData(aOther.mEvent, false);
-  }
-};
 
 namespace dom {
 
@@ -311,24 +275,22 @@ struct AnimationTypeTraits<dom::CSSAnimation>
 } /* namespace mozilla */
 
 class nsAnimationManager final
-  : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation,
-                                           mozilla::AnimationEventInfo>
+  : public mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>
 {
 public:
   explicit nsAnimationManager(nsPresContext *aPresContext)
-    : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation,
-                                      mozilla::AnimationEventInfo>(aPresContext)
+    : mozilla::CommonAnimationManager<mozilla::dom::CSSAnimation>(aPresContext)
   {
   }
 
-  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(nsAnimationManager)
-  NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(nsAnimationManager)
+  NS_INLINE_DECL_REFCOUNTING(nsAnimationManager)
 
   typedef mozilla::AnimationCollection<mozilla::dom::CSSAnimation>
     CSSAnimationCollection;
   typedef nsTArray<RefPtr<mozilla::dom::CSSAnimation>>
     OwningCSSAnimationPtrArray;
 
+#ifdef MOZ_OLD_STYLE
   /**
    * Update the set of animations on |aElement| based on |aStyleContext|.
    * If necessary, this will notify the corresponding EffectCompositor so
@@ -339,6 +301,7 @@ public:
    */
   void UpdateAnimations(mozilla::GeckoStyleContext* aStyleContext,
                         mozilla::dom::Element* aElement);
+#endif
 
   /**
    * This function does the same thing as the above UpdateAnimations()
@@ -348,19 +311,6 @@ public:
     mozilla::dom::Element* aElement,
     mozilla::CSSPseudoElementType aPseudoType,
     const mozilla::ServoStyleContext* aComputedValues);
-
-  /**
-   * Dispatch any pending events.  We accumulate animationend and
-   * animationiteration events only during refresh driver notifications
-   * (and dispatch them at the end of such notifications), but we
-   * accumulate animationstart events at other points when style
-   * contexts are created.
-   */
-  void DispatchEvents()
-  {
-    RefPtr<nsAnimationManager> kungFuDeathGrip(this);
-    mEventDispatcher.DispatchEvents(mPresContext);
-  }
 
   // Utility function to walk through |aIter| to find the Keyframe with
   // matching offset and timing function but stopping as soon as the offset
@@ -395,10 +345,23 @@ public:
     return false;
   }
 
+  bool AnimationMayBeReferenced(nsAtom* aName) const
+  {
+    return mMaybeReferencedAnimations.Contains(aName);
+  }
+
 protected:
   ~nsAnimationManager() override = default;
 
 private:
+  // This includes all animation names referenced regardless of whether a
+  // corresponding `@keyframes` rule is available.
+  //
+  // It may contain names which are no longer referenced, but it should always
+  // contain names which are currently referenced, so that it is usable for
+  // style invalidation.
+  nsTHashtable<nsRefPtrHashKey<nsAtom>> mMaybeReferencedAnimations;
+
   template<class BuilderType>
   void DoUpdateAnimations(
     const mozilla::NonOwningAnimationTarget& aTarget,

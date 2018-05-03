@@ -1206,53 +1206,6 @@ SUBCONTEXTS = {cls.__name__: cls for cls in SUBCONTEXTS}
 #   (storage_type, input_types, docs)
 
 VARIABLES = {
-    # Variables controlling reading of other frontend files.
-    'ANDROID_GENERATED_RESFILES': (StrictOrderingOnAppendList, list,
-        """Android resource files generated as part of the build.
-
-        This variable contains a list of files that are expected to be
-        generated (often by preprocessing) into a 'res' directory as
-        part of the build process, and subsequently merged into an APK
-        file.
-        """),
-
-    'ANDROID_APK_NAME': (unicode, unicode,
-        """The name of an Android APK file to generate.
-        """),
-
-    'ANDROID_APK_PACKAGE': (unicode, unicode,
-        """The name of the Android package to generate R.java for, like org.mozilla.gecko.
-        """),
-
-    'ANDROID_EXTRA_PACKAGES': (StrictOrderingOnAppendList, list,
-        """The name of extra Android packages to generate R.java for, like ['org.mozilla.other'].
-        """),
-
-    'ANDROID_EXTRA_RES_DIRS': (ContextDerivedTypedListWithItems(Path, List), list,
-        """Android extra package resource directories.
-
-        This variable contains a list of directories containing static files
-        to package into a 'res' directory and merge into an APK file.  These
-        directories are packaged into the APK but are assumed to be static
-        unchecked dependencies that should not be otherwise re-distributed.
-        """),
-
-    'ANDROID_RES_DIRS': (ContextDerivedTypedListWithItems(Path, List), list,
-        """Android resource directories.
-
-        This variable contains a list of directories containing static
-        files to package into a 'res' directory and merge into an APK
-        file.
-        """),
-
-    'ANDROID_ASSETS_DIRS': (ContextDerivedTypedListWithItems(Path, List), list,
-        """Android assets directories.
-
-        This variable contains a list of directories containing static
-        files to package into an 'assets' directory and merge into an
-        APK file.
-        """),
-
     'SOURCES': (ContextDerivedTypedListWithItems(Path, StrictOrderingOnAppendListWithFlagsFactory({'no_pgo': bool, 'flags': List})), list,
         """Source code files.
 
@@ -1508,10 +1461,17 @@ VARIABLES = {
            which provides the locale in use, i.e. ``en-US``.
         2. The ``inputs`` list may contain paths to files that will be taken from the locale
            source directory (see ``LOCALIZED_FILES`` for a discussion of the specifics). Paths
-           in ``inputs`` starting with ``en-US/`` are considered localized files.
+           in ``inputs`` starting with ``en-US/`` or containing ``/locales/en-US/`` are considered
+           localized files.
 
         To place the generated output file in a specific location, list its objdir path in
         ``LOCALIZED_FILES``.
+
+        In addition, ``LOCALIZED_GENERATED_FILES`` can use the special substitutions ``{AB_CD}``
+        and ``{AB_rCD}`` in their output paths.  ``{AB_CD}`` expands to the current locale during
+        multi-locale builds and single-locale repacks and ``{AB_rCD}`` expands to an
+        Android-specific encoding of the current locale.  Both expand to the empty string when the
+        current locale is ``en-US``.
         """),
 
     'OBJDIR_FILES': (ContextDerivedTypedHierarchicalStringList(Path), list,

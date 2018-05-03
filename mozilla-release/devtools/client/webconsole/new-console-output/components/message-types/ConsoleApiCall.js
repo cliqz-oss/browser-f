@@ -51,6 +51,7 @@ function ConsoleApiCall(props) {
     timeStamp,
     parameters,
     messageText,
+    prefix,
     userProvidedStyles,
   } = message;
 
@@ -74,6 +75,11 @@ function ConsoleApiCall(props) {
     messageBody = dom.span({className: "cm-variable"}, "console.table()");
   } else if (parameters) {
     messageBody = formatReps(messageBodyConfig);
+    if (prefix) {
+      messageBody.unshift(dom.span({
+        className: "console-message-prefix"
+      }, `${prefix}: `));
+    }
   } else {
     messageBody = messageText;
   }
@@ -152,11 +158,14 @@ function formatReps(options = {}) {
       .reduce((arr, v, i) => {
         // We need to interleave a space if we are not on the last element AND
         // if we are not between 2 messages with user provided style.
-        const needSpace = i + 1 < parameters.length &&
-          (!userProvidedStyles || !userProvidedStyles[i] || !userProvidedStyles[i + 1]);
+        const needSpace = i + 1 < parameters.length && (
+          !userProvidedStyles
+          || userProvidedStyles[i] === undefined
+          || userProvidedStyles[i + 1] === undefined
+        );
 
         return needSpace
-          ? arr.concat(v, dom.span({}, " "))
+          ? arr.concat(v, " ")
           : arr.concat(v);
       }, [])
   );

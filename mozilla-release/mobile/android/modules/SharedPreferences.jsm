@@ -5,13 +5,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SharedPreferences"];
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["SharedPreferences"];
 
 // For adding observers.
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 var Scope = Object.freeze({
   APP:          "app",

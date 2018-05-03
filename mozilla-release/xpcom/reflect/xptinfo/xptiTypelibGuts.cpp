@@ -6,6 +6,7 @@
 /* Implementation of xptiTypelibGuts. */
 
 #include "xptiprivate.h"
+#include "xpt_arena.h"
 #include "mozilla/XPTInterfaceInfoManager.h"
 
 using namespace mozilla;
@@ -19,11 +20,11 @@ CheckNoVTable<xptiTypelibGuts> gChecker;
 
 // static
 xptiTypelibGuts*
-xptiTypelibGuts::Create(XPTHeader* aHeader)
+xptiTypelibGuts::Create(const XPTHeader* aHeader)
 {
     NS_ASSERTION(aHeader, "bad param");
     size_t n = sizeof(xptiTypelibGuts) +
-               sizeof(xptiInterfaceEntry*) * (aHeader->num_interfaces - 1);
+               sizeof(xptiInterfaceEntry*) * (aHeader->mNumInterfaces - 1);
     void* place = XPT_CALLOC8(gXPTIStructArena, n);
     if (!place)
         return nullptr;
@@ -43,17 +44,17 @@ xptiTypelibGuts::GetEntryAt(uint16_t i)
     if (r)
         return r;
 
-    XPTInterfaceDirectoryEntry* iface = mHeader->interface_directory + i;
+    const XPTInterfaceDirectoryEntry* iface = mHeader->mInterfaceDirectory + i;
 
     XPTInterfaceInfoManager::xptiWorkingSet& set =
         XPTInterfaceInfoManager::GetSingleton()->mWorkingSet;
 
     {
         ReentrantMonitorAutoEnter monitor(set.mTableReentrantMonitor);
-        if (iface->iid.Equals(zeroIID))
-            r = set.mNameTable.Get(iface->name);
+        if (iface->mIID.Equals(zeroIID))
+            r = set.mNameTable.Get(iface->mName);
         else
-            r = set.mIIDTable.Get(iface->iid);
+            r = set.mIIDTable.Get(iface->mIID);
     }
 
     if (r)
@@ -68,7 +69,7 @@ xptiTypelibGuts::GetEntryNameAt(uint16_t i)
     NS_ASSERTION(mHeader, "bad state");
     NS_ASSERTION(i < GetEntryCount(), "bad index");
 
-    XPTInterfaceDirectoryEntry* iface = mHeader->interface_directory + i;
+    const XPTInterfaceDirectoryEntry* iface = mHeader->mInterfaceDirectory + i;
 
-    return iface->name;
+    return iface->mName;
 }

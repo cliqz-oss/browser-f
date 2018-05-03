@@ -5,11 +5,7 @@
 
 /* import-globals-from ../../../toolkit/content/preferencesBindings.js */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-var {Sanitizer} = Cu.import("resource:///modules/Sanitizer.jsm", {});
+var {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
 
 Preferences.addAll([
   { id: "privacy.cpd.history", type: "bool" },
@@ -43,9 +39,6 @@ var gSanitizePromptDialog = {
   init() {
     // This is used by selectByTimespan() to determine if the window has loaded.
     this._inited = true;
-
-    var s = new Sanitizer();
-    s.prefDomain = "privacy.cpd.";
 
     document.documentElement.getButton("accept").label =
       this.bundleBrowser.getString("sanitizeButtonOK");
@@ -91,11 +84,6 @@ var gSanitizePromptDialog = {
   sanitize() {
     // Update pref values before handing off to the sanitizer (bug 453440)
     this.updatePrefs();
-    var s = new Sanitizer();
-    s.prefDomain = "privacy.cpd.";
-
-    s.range = Sanitizer.getClearRange(this.selectedTimespan);
-    s.ignoreTimespan = !s.range;
 
     // As the sanitize is async, we disable the buttons, update the label on
     // the 'accept' button to indicate things are happening and return false -
@@ -109,12 +97,18 @@ var gSanitizePromptDialog = {
     docElt.getButton("cancel").disabled = true;
 
     try {
-      s.sanitize().catch(Components.utils.reportError)
-                  .then(() => window.close())
-                  .catch(Components.utils.reportError);
+      let range = Sanitizer.getClearRange(this.selectedTimespan);
+      let options = {
+        ignoreTimespan: !range,
+        range,
+      };
+      Sanitizer.sanitize(null, options)
+        .catch(Cu.reportError)
+        .then(() => window.close())
+        .catch(Cu.reportError);
       return false;
     } catch (er) {
-      Components.utils.reportError("Exception during sanitize: " + er);
+      Cu.reportError("Exception during sanitize: " + er);
       return true; // We *do* want to close immediately on error.
     }
   },
@@ -181,7 +175,7 @@ var gSanitizePromptDialog = {
    * from their corresponding preference elements.
    */
   updatePrefs() {
-    Sanitizer.prefs.setIntPref("timeSpan", this.selectedTimespan);
+    Services.prefs.setIntPref(Sanitizer.PREF_TIMESPAN, this.selectedTimespan);
 
     // Keep the pref for the download history in sync with the history pref.
     Preferences.get("privacy.cpd.downloads").value =

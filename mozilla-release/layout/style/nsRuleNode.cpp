@@ -2883,7 +2883,6 @@ nsRuleNode::SetDefaultOnRoot(const nsStyleStructID aSID, GeckoStyleContext* aCon
       MOZ_ASSERT(false, "unexpected SID");
       return nullptr;
   }
-  return nullptr;
 }
 
 /**
@@ -3751,6 +3750,14 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, GeckoStyleContext* aContext,
            aParentFont->mFont.synthesis,
            defaultVariableFont->synthesis,
            Unused, /* none */ 0, Unused, Unused);
+
+  // font-optical-sizing: none, enum, inherit, initial, -moz-system-font
+  SetValue(*aRuleData->ValueForFontOpticalSizing(),
+           aFont->mFont.opticalSizing, aConditions,
+           SETVAL_ENUMERATED | SETVAL_UNSET_INHERIT,
+           aParentFont->mFont.opticalSizing,
+           defaultVariableFont->opticalSizing,
+           Unused, Unused, Unused, systemFont.opticalSizing);
 
   // font-variant-alternates: normal, enum (bit field) + functions, inherit,
   //                          initial, -moz-system-font
@@ -6453,6 +6460,10 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
     case eCSSUnit_Element: {
       auto shapeImage = MakeUnique<nsStyleImage>();
       SetStyleImage(aContext, *shapeOutsideValue, *shapeImage, conditions);
+      if (shapeImage->GetType() == eStyleImageType_Image) {
+        shapeImage->GetImageRequest()->GetImageValue()->SetCORSMode(
+          CORSMode::CORS_ANONYMOUS);
+      }
       display->mShapeOutside = StyleShapeSource();
       display->mShapeOutside.SetShapeImage(Move(shapeImage));
       break;
@@ -7421,64 +7432,6 @@ nsRuleNode::ComputeBorderData(void* aStartStruct,
         conditions.SetUncacheable();
         border->SetBorderStyle(side, parentBorder->GetBorderStyle(side));
       }
-    }
-  }
-
-  // -moz-border-*-colors: color, string, enum, none, inherit/initial
-  nscolor borderColor;
-  nscolor unused = NS_RGB(0,0,0);
-
-  static const nsCSSPropertyID borderColorsProps[] = {
-    eCSSProperty__moz_border_top_colors,
-    eCSSProperty__moz_border_right_colors,
-    eCSSProperty__moz_border_bottom_colors,
-    eCSSProperty__moz_border_left_colors
-  };
-
-  NS_FOR_CSS_SIDES(side) {
-    const nsCSSValue& value = *aRuleData->ValueFor(borderColorsProps[side]);
-    switch (value.GetUnit()) {
-    case eCSSUnit_Null:
-      break;
-
-    case eCSSUnit_Initial:
-    case eCSSUnit_Unset:
-    case eCSSUnit_None:
-      border->ClearBorderColors(side);
-      break;
-
-    case eCSSUnit_Inherit: {
-      conditions.SetUncacheable();
-      border->ClearBorderColors(side);
-      if (parentBorder->mBorderColors) {
-        border->EnsureBorderColors();
-        border->mBorderColors->mColors[side] =
-          parentBorder->mBorderColors->mColors[side];
-      }
-      break;
-    }
-
-    case eCSSUnit_List:
-    case eCSSUnit_ListDep: {
-      // Some composite border color information has been specified for this
-      // border side.
-      border->EnsureBorderColors();
-      border->ClearBorderColors(side);
-      const nsCSSValueList* list = value.GetListValue();
-      while (list) {
-        if (SetColor(list->mValue, unused, mPresContext,
-                     aContext, borderColor, conditions))
-          border->mBorderColors->mColors[side].AppendElement(borderColor);
-        else {
-          NS_NOTREACHED("unexpected item in -moz-border-*-colors list");
-        }
-        list = list->mNext;
-      }
-      break;
-    }
-
-    default:
-      MOZ_ASSERT(false, "unrecognized border color unit");
     }
   }
 

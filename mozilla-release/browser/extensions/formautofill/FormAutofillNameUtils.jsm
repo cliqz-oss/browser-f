@@ -4,16 +4,14 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 // Cu.import loads jsm files based on ISO-Latin-1 for now (see bug 530257).
 // However, the references about name parts include multi-byte characters.
 // Thus, we use |loadSubScript| to load the references instead.
 const NAME_REFERENCES = "chrome://formautofill/content/nameReferences.js";
 
-this.EXPORTED_SYMBOLS = ["FormAutofillNameUtils"];
+var EXPORTED_SYMBOLS = ["FormAutofillNameUtils"];
 
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
 // FormAutofillNameUtils is initially translated from
 // https://cs.chromium.org/chromium/src/components/autofill/core/browser/autofill_data_util.cc?rcl=b861deff77abecff11ae6a9f6946e9cc844b9817

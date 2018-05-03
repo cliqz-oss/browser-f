@@ -6,8 +6,9 @@
 
 .popup-notification-icon,
 .identity-popup-permission-icon {
-  -moz-context-properties: fill;
-  fill: GrayText;
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: 0.6;
 }
 
 #notification-popup-box {
@@ -113,6 +114,13 @@
   list-style-image: url(chrome://browser/skin/notification-icons/screen-blocked.svg);
 }
 
+.midi-icon,
+.midi-sysex-icon,
+.popup-notification-icon[popupid="midi"],
+.popup-notification-icon[popupid="midi-sysex"] {
+  list-style-image: url(chrome://browser/skin/notification-icons/midi.svg);
+}
+
 #canvas-notification-icon,
 .popup-notification-icon[popupid="canvas-permissions-prompt"],
 .canvas-icon {
@@ -121,6 +129,11 @@
 
 .canvas-icon.blocked-permission-icon {
   list-style-image: url(chrome://browser/skin/notification-icons/canvas-blocked.svg);
+}
+
+#webauthn-notification-icon,
+.popup-notification-icon[popupid^="webauthn-prompt-"] {
+  list-style-image: url(chrome://browser/skin/notification-icons/webauthn.svg);
 }
 
 #webRTC-preview:not([hidden]) {
@@ -232,9 +245,8 @@ html|*#webRTC-previewVideo {
   transition: fill 1.5s;
 }
 
-.plugin-blocked-icon {
+.plugin-icon.blocked-permission-icon {
   list-style-image: url(chrome://mozapps/skin/plugins/plugin-blocked.svg);
-  transition: fill 1.5s;
 }
 
 #plugin-icon-badge {

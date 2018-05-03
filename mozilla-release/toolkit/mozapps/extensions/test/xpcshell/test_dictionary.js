@@ -3,7 +3,7 @@
  */
 
 // This verifies that bootstrappable add-ons can be used without restarts.
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Enable loading extensions from the user scopes
 Services.prefs.setIntPref("extensions.enabledScopes",
@@ -21,7 +21,7 @@ userExtDir.append("extensions2");
 userExtDir.append(gAppInfo.ID);
 registerDirectory("XREUSysExt", userExtDir.parent);
 
-Components.utils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 // Create and configure the HTTP server.
 var testserver = new HttpServer();
 testserver.start(-1);
@@ -41,19 +41,19 @@ var HunspellEngine = {
   listener: null,
 
   QueryInterface: function hunspell_qi(iid) {
-    if (iid.equals(Components.interfaces.nsISupports) ||
-        iid.equals(Components.interfaces.nsIFactory) ||
-        iid.equals(Components.interfaces.mozISpellCheckingEngine))
+    if (iid.equals(Ci.nsISupports) ||
+        iid.equals(Ci.nsIFactory) ||
+        iid.equals(Ci.mozISpellCheckingEngine))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   createInstance: function hunspell_ci(outer, iid) {
     if (outer)
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     return this.QueryInterface(iid);
   },
   lockFactory: function hunspell_lockf(lock) {
-    throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
   addDirectory: function hunspell_addDirectory(dir) {
@@ -69,9 +69,9 @@ var HunspellEngine = {
   },
 
   getInterface: function hunspell_gi(iid) {
-    if (iid.equals(Components.interfaces.mozISpellCheckingEngine))
+    if (iid.equals(Ci.mozISpellCheckingEngine))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   contractID: "@mozilla.org/spellchecker/engine;1",
@@ -81,8 +81,8 @@ var HunspellEngine = {
     this.origClassID = Components.manager.nsIComponentRegistrar
       .contractIDToCID(this.contractID);
     this.origFactory = Components.manager
-      .getClassObject(Components.classes[this.contractID],
-                      Components.interfaces.nsIFactory);
+      .getClassObject(Cc[this.contractID],
+                      Ci.nsIFactory);
 
     Components.manager.nsIComponentRegistrar
       .unregisterFactory(this.origClassID, this.origFactory);

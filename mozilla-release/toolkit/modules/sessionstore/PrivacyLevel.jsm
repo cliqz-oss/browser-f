@@ -4,11 +4,9 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PrivacyLevel"];
+var EXPORTED_SYMBOLS = ["PrivacyLevel"];
 
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PREF = "browser.sessionstore.privacy_level";
 
@@ -17,7 +15,7 @@ const PREF = "browser.sessionstore.privacy_level";
 // data, and cookies.
 //
 // Collect data from all sites (http and https).
-const PRIVACY_NONE = 0;
+// const PRIVACY_NONE = 0;
 // Collect data from unencrypted sites (http), only.
 const PRIVACY_ENCRYPTED = 1;
 // Collect no data.

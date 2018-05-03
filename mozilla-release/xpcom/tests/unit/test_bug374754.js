@@ -1,4 +1,4 @@
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var addedTopic = "xpcom-category-entry-added";
 var removedTopic = "xpcom-category-entry-removed";
@@ -15,7 +15,7 @@ var observer = {
     if (iid.equals(Ci.nsISupports) || iid.equals(Ci.nsIObserver))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   observe(subject, topic, data) {

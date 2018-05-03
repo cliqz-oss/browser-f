@@ -343,7 +343,7 @@ Http2Stream::WriteSegments(nsAHttpSegmentWriter *writer,
 }
 
 nsresult
-Http2Stream::MakeOriginURL(const nsACString &origin, RefPtr<nsStandardURL> &url)
+Http2Stream::MakeOriginURL(const nsACString &origin, nsCOMPtr<nsIURI> &url)
 {
   nsAutoCString scheme;
   nsresult rv = net_ExtractURLScheme(origin, scheme);
@@ -353,15 +353,15 @@ Http2Stream::MakeOriginURL(const nsACString &origin, RefPtr<nsStandardURL> &url)
 
 nsresult
 Http2Stream::MakeOriginURL(const nsACString &scheme, const nsACString &origin,
-                           RefPtr<nsStandardURL> &url)
+                           nsCOMPtr<nsIURI> &url)
 {
-  url = new nsStandardURL();
-  nsresult rv = url->Init(nsIStandardURL::URLTYPE_AUTHORITY,
-                          scheme.EqualsLiteral("http") ?
-                              NS_HTTP_DEFAULT_PORT :
-                              NS_HTTPS_DEFAULT_PORT,
-                          origin, nullptr, nullptr);
-  return rv;
+  return NS_MutateURI(new nsStandardURL::Mutator())
+    .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                            nsIStandardURL::URLTYPE_AUTHORITY,
+                            scheme.EqualsLiteral("http") ? NS_HTTP_DEFAULT_PORT
+                                                         : NS_HTTPS_DEFAULT_PORT,
+                            nsCString(origin), nullptr, nullptr, nullptr))
+    .Finalize(url);
 }
 
 void
@@ -377,7 +377,7 @@ Http2Stream::CreatePushHashKey(const nsCString &scheme,
   fullOrigin.AppendLiteral("://");
   fullOrigin.Append(hostHeader);
 
-  RefPtr<nsStandardURL> origin;
+  nsCOMPtr<nsIURI> origin;
   nsresult rv = Http2Stream::MakeOriginURL(scheme, fullOrigin, origin);
 
   if (NS_SUCCEEDED(rv)) {
@@ -1023,6 +1023,8 @@ Http2Stream::ConvertResponseHeaders(Http2Decompressor *decompressor,
                                     int32_t &httpResponseCode)
 {
   aHeadersOut.Truncate();
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
   aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
 
   nsresult rv =
@@ -1106,6 +1108,8 @@ Http2Stream::ConvertPushHeaders(Http2Decompressor *decompressor,
                                 nsACString &aHeadersOut)
 {
   aHeadersOut.Truncate();
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
   aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
   nsresult rv =
     decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aHeadersIn.BeginReading()),
@@ -1139,6 +1143,35 @@ Http2Stream::ConvertPushHeaders(Http2Decompressor *decompressor,
   LOG (("id 0x%X decoded push headers %s %s %s are:\n%s", mStreamID,
         mHeaderScheme.get(), mHeaderHost.get(), mHeaderPath.get(),
         aHeadersOut.BeginReading()));
+  return NS_OK;
+}
+
+nsresult
+Http2Stream::ConvertResponseTrailers(Http2Decompressor *decompressor,
+                                     nsACString &aTrailersIn)
+{
+  LOG3(("Http2Stream::ConvertResponseTrailers %p", this));
+  nsAutoCString flatTrailers;
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
+  flatTrailers.SetCapacity(aTrailersIn.Length() + 512);
+
+  nsresult rv =
+    decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aTrailersIn.BeginReading()),
+                                    aTrailersIn.Length(),
+                                    flatTrailers, false);
+  if (NS_FAILED(rv)) {
+    LOG3(("Http2Stream::ConvertResponseTrailers %p decode Error", this));
+    return rv;
+  }
+
+  nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
+  if (trans) {
+    trans->SetHttpTrailers(flatTrailers);
+  } else {
+    LOG3(("Http2Stream::ConvertResponseTrailers %p no trans", this));
+  }
+
   return NS_OK;
 }
 

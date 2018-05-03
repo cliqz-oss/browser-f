@@ -4,16 +4,12 @@
 
 /* eslint mozilla/use-services:off */
 
-this.EXPORTED_SYMBOLS = ["Services"];
+var EXPORTED_SYMBOLS = ["Services"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-this.Services = {};
+var Services = {};
 
 /**
  * WARNING: If you add a getter that isn't in the initTable, please update the
@@ -49,7 +45,7 @@ XPCOMUtils.defineLazyGetter(Services, "dirsvc", function() {
 if (AppConstants.MOZ_CRASHREPORTER) {
   XPCOMUtils.defineLazyGetter(Services, "crashmanager", () => {
     let ns = {};
-    Components.utils.import("resource://gre/modules/CrashManager.jsm", ns);
+    ChromeUtils.import("resource://gre/modules/CrashManager.jsm", ns);
 
     return ns.CrashManager.Singleton;
   });
@@ -80,7 +76,6 @@ var initTable = {
   cpmm: ["@mozilla.org/childprocessmessagemanager;1", "nsIMessageSender"],
   console: ["@mozilla.org/consoleservice;1", "nsIConsoleService"],
   cookies: ["@mozilla.org/cookiemanager;1", "nsICookieManager"],
-  downloads: ["@mozilla.org/download-manager;1", "nsIDownloadManager"],
   droppedLinkHandler: ["@mozilla.org/content/dropped-link-handler;1", "nsIDroppedLinkHandler"],
   els: ["@mozilla.org/eventlistenerservice;1", "nsIEventListenerService"],
   eTLD: ["@mozilla.org/network/effective-tld-service;1", "nsIEffectiveTLDService"],
@@ -96,6 +91,7 @@ var initTable = {
   domStorageManager: ["@mozilla.org/dom/localStorage-manager;1", "nsIDOMStorageManager"],
   strings: ["@mozilla.org/intl/stringbundle;1", "nsIStringBundleService"],
   telemetry: ["@mozilla.org/base/telemetry;1", "nsITelemetry"],
+  textToSubURI: ["@mozilla.org/intl/texttosuburi;1", "nsITextToSubURI"],
   tm: ["@mozilla.org/thread-manager;1", "nsIThreadManager"],
   urlFormatter: ["@mozilla.org/toolkit/URLFormatterService;1", "nsIURLFormatter"],
   vc: ["@mozilla.org/xpcom/version-comparator;1", "nsIVersionComparator"],
@@ -121,6 +117,9 @@ if (AppConstants.MOZ_GECKO_PROFILER) {
 }
 if (AppConstants.MOZ_TOOLKIT_SEARCH) {
   initTable.search = ["@mozilla.org/browser/search-service;1", "nsIBrowserSearchService"];
+}
+if ("@mozilla.org/browser/enterprisepolicies;1" in Cc) {
+  initTable.policies = ["@mozilla.org/browser/enterprisepolicies;1", "nsIEnterprisePolicies"];
 }
 
 XPCOMUtils.defineLazyServiceGetters(Services, initTable);

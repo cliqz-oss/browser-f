@@ -597,6 +597,7 @@ public:
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::Matrix Matrix;
   typedef mozilla::gfx::Matrix4x4 Matrix4x4;
+  typedef mozilla::gfx::Matrix4x4Flagged Matrix4x4Flagged;
   typedef mozilla::Sides Sides;
   typedef mozilla::LogicalSides LogicalSides;
   typedef mozilla::SmallPointerArray<mozilla::DisplayItemData> DisplayItemDataArray;
@@ -628,6 +629,7 @@ public:
     , mIsPrimaryFrame(false)
     , mMayHaveTransformAnimation(false)
     , mMayHaveOpacityAnimation(false)
+    , mAllDescendantsAreInvisible(false)
   {
     mozilla::PodZero(&mOverflow);
   }
@@ -1250,8 +1252,6 @@ public:
   // or height), imposed by its flex container.
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(FlexItemMainSizeOverride, nscoord)
 
-  NS_DECLARE_FRAME_PROPERTY_RELEASABLE(CachedBackgroundImageDT, DrawTarget)
-
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(InvalidationRect, nsRect)
 
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(RefusedAsyncAnimationProperty, bool)
@@ -1265,6 +1265,7 @@ public:
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BBaselinePadProperty, nscoord)
 
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(ModifiedFrameList, nsTArray<nsIFrame*>)
+  NS_DECLARE_FRAME_PROPERTY_DELETABLE(OverriddenDirtyRectFrameList, nsTArray<nsIFrame*>)
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(DisplayItems, DisplayItemArray)
 
   NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(BidiDataProperty, mozilla::FrameBidiData)
@@ -2058,7 +2059,7 @@ public:
    * This call is invoked on the primary frame for a character data content
    * node, when it is changed in the content tree.
    */
-  virtual nsresult  CharacterDataChanged(CharacterDataChangeInfo* aInfo) = 0;
+  virtual nsresult  CharacterDataChanged(const CharacterDataChangeInfo&) = 0;
 
   /**
    * This call is invoked when the value of a content objects's attribute
@@ -2069,7 +2070,7 @@ public:
    * @param aNameSpaceID the namespace of the attribute
    * @param aAttribute the atom name of the attribute
    * @param aModType Whether or not the attribute was added, changed, or removed.
-   *   The constants are defined in nsIDOMMutationEvent.h.
+   *   The constants are defined in MutationEvent.webidl.
    */
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
                                      nsAtom*        aAttribute,
@@ -2786,6 +2787,11 @@ public:
   nsIWidget* GetNearestWidget(nsPoint& aOffset) const;
 
   /**
+   * Whether the content for this frame is disabled, used for event handling.
+   */
+  bool IsContentDisabled() const;
+
+  /**
    * Get the "type" of the frame.
    *
    * @see mozilla::LayoutFrameType
@@ -2824,9 +2830,9 @@ public:
     IN_CSS_UNITS = 1 << 0,
     STOP_AT_STACKING_CONTEXT_AND_DISPLAY_PORT = 1 << 1
   };
-  Matrix4x4 GetTransformMatrix(const nsIFrame* aStopAtAncestor,
-                               nsIFrame **aOutAncestor,
-                               uint32_t aFlags = 0);
+  Matrix4x4Flagged GetTransformMatrix(const nsIFrame* aStopAtAncestor,
+                                      nsIFrame **aOutAncestor,
+                                      uint32_t aFlags = 0);
 
   /**
    * Bit-flags to pass to IsFrameOfType()
@@ -4088,6 +4094,13 @@ public:
     mMayHaveOpacityAnimation = true;
   }
 
+  // Returns true if this frame is visible or may have visible descendants.
+  bool IsVisibleOrMayHaveVisibleDescendants() const {
+    return !mAllDescendantsAreInvisible || StyleVisibility()->IsVisible();
+  }
+  // Update mAllDescendantsAreInvisible flag for this frame and ancestors.
+  void UpdateVisibleDescendantsState();
+
   /**
    * If this returns true, the frame it's called on should get the
    * NS_FRAME_HAS_DIRTY_CHILDREN bit set on it by the caller; either directly
@@ -4347,9 +4360,19 @@ private:
   bool mMayHaveTransformAnimation : 1;
   bool mMayHaveOpacityAnimation : 1;
 
+  /**
+   * True if we are certain that all descendants are not visible.
+   *
+   * This flag is conservative in that it might sometimes be false even if, in
+   * fact, all descendants are invisible.
+   * For example; an element is visibility:visible and has a visibility:hidden
+   * child. This flag is stil false in such case.
+   */
+  bool mAllDescendantsAreInvisible : 1;
+
 protected:
 
-  // There is a 1-bit gap left here.
+  // There is no gap left here.
 
   // Helpers
   /**

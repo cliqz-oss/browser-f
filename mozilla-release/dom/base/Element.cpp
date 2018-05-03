@@ -19,8 +19,9 @@
 #include "mozilla/dom/Flex.h"
 #include "mozilla/dom/Grid.h"
 #include "mozilla/gfx/Matrix.h"
-#include "nsDOMAttributeMap.h"
 #include "nsAtom.h"
+#include "nsCSSFrameConstructor.h"
+#include "nsDOMAttributeMap.h"
 #include "nsIContentInlines.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "nsIDocumentInlines.h"
@@ -30,7 +31,6 @@
 #include "nsIContentIterator.h"
 #include "nsFlexContainerFrame.h"
 #include "nsFocusManager.h"
-#include "nsFrameManager.h"
 #include "nsILinkHandler.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIURL.h"
@@ -53,11 +53,11 @@
 #include "nsError.h"
 #include "nsDOMString.h"
 #include "nsIScriptSecurityManager.h"
-#include "nsIDOMMutationEvent.h"
 #include "mozilla/dom/AnimatableBinding.h"
 #include "mozilla/dom/HTMLDivElement.h"
 #include "mozilla/dom/HTMLSpanElement.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/AnimationComparator.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/ContentEvents.h"
@@ -69,6 +69,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/ServoRestyleManager.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
@@ -112,14 +113,12 @@
 #include "nsView.h"
 #include "nsViewManager.h"
 #include "nsIScrollableFrame.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/css/StyleRule.h" /* For nsCSSSelectorList */
 #include "nsCSSRuleProcessor.h"
 #include "nsRuleProcessorData.h"
+#endif
 #include "nsTextNode.h"
-
-#ifdef MOZ_XUL
-#include "nsIXULDocument.h"
-#endif /* MOZ_XUL */
 
 #include "nsCycleCollectionParticipant.h"
 #include "nsCCUncollectableMarker.h"
@@ -215,6 +214,12 @@ Element::GetSVGAnimatedClass() const
 NS_IMETHODIMP
 Element::QueryInterface(REFNSIID aIID, void** aInstancePtr)
 {
+  if (aIID.Equals(NS_GET_IID(Element))) {
+    NS_ADDREF_THIS();
+    *aInstancePtr = this;
+    return NS_OK;
+  }
+
   NS_ASSERTION(aInstancePtr,
                "QueryInterface requires a non-NULL destination!");
   nsresult rv = FragmentOrElement::QueryInterface(aIID, aInstancePtr);
@@ -538,15 +543,14 @@ Element::GetBindingURL(nsIDocument *aDocument, css::URLValue **aResult)
   bool isXULorPluginElement = (IsXULElement() ||
                                IsHTMLElement(nsGkAtoms::object) ||
                                IsHTMLElement(nsGkAtoms::embed));
-  nsIPresShell* shell = aDocument->GetShell();
-  if (!shell || GetPrimaryFrame() || !isXULorPluginElement) {
+  if (!aDocument->GetShell() || GetPrimaryFrame() || !isXULorPluginElement) {
     *aResult = nullptr;
     return true;
   }
 
   // Get the computed -moz-binding directly from the style context
   RefPtr<nsStyleContext> sc =
-    nsComputedDOMStyle::GetStyleContextNoFlush(this, nullptr, shell);
+    nsComputedDOMStyle::GetStyleContextNoFlush(this, nullptr);
   NS_ENSURE_TRUE(sc, false);
 
   NS_IF_ADDREF(*aResult = sc->StyleDisplay()->mBinding);
@@ -561,14 +565,8 @@ Element::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
     return nullptr;
   }
 
-  nsIDocument* doc;
-  if (HasFlag(NODE_FORCE_XBL_BINDINGS)) {
-    doc = OwnerDoc();
-  }
-  else {
-    doc = GetComposedDoc();
-  }
-
+  nsIDocument* doc =
+    HasFlag(NODE_FORCE_XBL_BINDINGS) ? OwnerDoc() : GetComposedDoc();
   if (!doc) {
     // There's no baseclass that cares about this call so we just
     // return here.
@@ -1226,17 +1224,17 @@ Element::AttachShadow(const ShadowRootInit& aInit, ErrorResult& aError)
     return nullptr;
   }
 
-  return AttachShadowInternal(aInit.mMode == ShadowRootMode::Closed, aError);
+  return AttachShadowInternal(aInit.mMode, aError);
 }
 
 already_AddRefed<ShadowRoot>
 Element::CreateShadowRoot(ErrorResult& aError)
 {
-  return AttachShadowInternal(false, aError);
+  return AttachShadowInternal(ShadowRootMode::Open, aError);
 }
 
 already_AddRefed<ShadowRoot>
-Element::AttachShadowInternal(bool aClosed, ErrorResult& aError)
+Element::AttachShadowInternal(ShadowRootMode aMode, ErrorResult& aError)
 {
   /**
    * 3. If context object is a shadow host, then throw
@@ -1249,34 +1247,18 @@ Element::AttachShadowInternal(bool aClosed, ErrorResult& aError)
 
   nsAutoScriptBlocker scriptBlocker;
 
-  RefPtr<mozilla::dom::NodeInfo> nodeInfo;
-  nodeInfo = mNodeInfo->NodeInfoManager()->GetNodeInfo(
-    nsGkAtoms::documentFragmentNodeName, nullptr, kNameSpaceID_None,
-    nsIDOMNode::DOCUMENT_FRAGMENT_NODE);
-
-  RefPtr<nsXBLDocumentInfo> docInfo = new nsXBLDocumentInfo(OwnerDoc());
-
-  nsXBLPrototypeBinding* protoBinding = new nsXBLPrototypeBinding();
-  aError = protoBinding->Init(NS_LITERAL_CSTRING("shadowroot"),
-                              docInfo, nullptr, true);
-  if (aError.Failed()) {
-    delete protoBinding;
-    return nullptr;
-  }
+  RefPtr<mozilla::dom::NodeInfo> nodeInfo =
+    mNodeInfo->NodeInfoManager()->GetNodeInfo(
+      nsGkAtoms::documentFragmentNodeName, nullptr, kNameSpaceID_None,
+      DOCUMENT_FRAGMENT_NODE);
 
   if (nsIDocument* doc = GetComposedDoc()) {
     if (nsIPresShell* shell = doc->GetShell()) {
       shell->DestroyFramesForAndRestyle(this);
-      MOZ_ASSERT(!shell->FrameManager()->GetDisplayContentsStyleFor(this));
+      MOZ_ASSERT(!shell->FrameConstructor()->GetDisplayContentsStyleFor(this));
     }
   }
   MOZ_ASSERT(!GetPrimaryFrame());
-
-  // Unlike for XBL, false is the default for inheriting style.
-  protoBinding->SetInheritsStyle(false);
-
-  // Calling SetPrototypeBinding takes ownership of protoBinding.
-  docInfo->SetPrototypeBinding(NS_LITERAL_CSTRING("shadowroot"), protoBinding);
 
   /**
    * 4. Let shadow be a new shadow root whose node document is
@@ -1284,7 +1266,7 @@ Element::AttachShadowInternal(bool aClosed, ErrorResult& aError)
    *    and mode is init’s mode.
    */
   RefPtr<ShadowRoot> shadowRoot =
-    new ShadowRoot(this, aClosed, nodeInfo.forget(), protoBinding);
+    new ShadowRoot(this, aMode, nodeInfo.forget());
 
   shadowRoot->SetIsComposedDocParticipant(IsInComposedDoc());
 
@@ -1292,13 +1274,6 @@ Element::AttachShadowInternal(bool aClosed, ErrorResult& aError)
    * 5. Set context object’s shadow root to shadow.
    */
   SetShadowRoot(shadowRoot);
-
-  // xblBinding takes ownership of docInfo.
-  RefPtr<nsXBLBinding> xblBinding = new nsXBLBinding(shadowRoot, protoBinding);
-  shadowRoot->SetAssociatedBinding(xblBinding);
-  xblBinding->SetBoundElement(this);
-
-  SetXBLBinding(xblBinding);
 
   /**
    * 6. Return shadow.
@@ -1433,7 +1408,7 @@ Element::SetAttributeNS(const nsAString& aNamespaceURI,
   aError =
     nsContentUtils::GetNodeInfoFromQName(aNamespaceURI, aQualifiedName,
                                          mNodeInfo->NodeInfoManager(),
-                                         nsIDOMNode::ATTRIBUTE_NODE,
+                                         ATTRIBUTE_NODE,
                                          getter_AddRefs(ni));
   if (aError.Failed()) {
     return;
@@ -1537,7 +1512,7 @@ Element::GetElementsWithGrid(nsTArray<RefPtr<Element>>& aElements)
   auto IsDisplayGrid = [](Element* aElement) -> bool
   {
     RefPtr<nsStyleContext> styleContext =
-      nsComputedDOMStyle::GetStyleContext(aElement, nullptr, nullptr);
+      nsComputedDOMStyle::GetStyleContext(aElement, nullptr);
     if (styleContext) {
       const nsStyleDisplay* display = styleContext->StyleDisplay();
       return (display->mDisplay == StyleDisplay::Grid ||
@@ -1791,10 +1766,12 @@ Element::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
     if (!hadParent) {
       uint32_t editableDescendantChange = EditableInclusiveDescendantCount(this);
       if (editableDescendantChange != 0) {
-      // If we are binding a subtree root to the document, we need to update
-      // the editable descendant count of all the ancestors.
+        // If we are binding a subtree root to the document, we need to update
+        // the editable descendant count of all the ancestors.
+        // But we don't cross Shadow DOM boundary.
+        // (The expected behavior with Shadow DOM is unclear)
         nsIContent* parent = GetParent();
-        while (parent) {
+        while (parent && parent->IsElement()) {
           parent->ChangeEditableDescendantCount(editableDescendantChange);
           parent = parent->GetParent();
         }
@@ -1850,6 +1827,19 @@ Element::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
         parent = parent->GetParent();
       }
       MOZ_ASSERT(parent);
+    }
+
+    if (MayHaveAnimations() &&
+        (pseudoType == CSSPseudoElementType::NotPseudo ||
+         pseudoType == CSSPseudoElementType::before ||
+         pseudoType == CSSPseudoElementType::after) &&
+        EffectSet::GetEffectSet(this, pseudoType)) {
+      if (nsPresContext* presContext = aDocument->GetPresContext()) {
+        presContext->EffectCompositor()->
+          RequestRestyle(this, pseudoType,
+                         EffectCompositor::RestyleType::Standard,
+                         EffectCompositor::CascadeLevel::Animations);
+      }
     }
   }
 
@@ -1921,6 +1911,17 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
     // Fully exit full-screen.
     nsIDocument::ExitFullscreenInDocTree(OwnerDoc());
   }
+
+  if (HasServoData()) {
+    MOZ_ASSERT(document);
+    MOZ_ASSERT(IsInAnonymousSubtree());
+    MOZ_ASSERT(document && document->IsStyledByServo());
+  }
+
+  if (document && document->IsStyledByServo()) {
+    ClearServoData(document);
+  }
+
   if (aNullParent) {
     if (GetParent() && GetParent()->IsInUncomposedDoc()) {
       // Update the editable descendant count in the ancestors before we
@@ -1953,15 +1954,12 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
   // we're not leaving behind a pointer to ourselves as the PresContext's
   // cached provider of the viewport's scrollbar styles.
   if (document) {
-    nsIPresShell* presShell = document->GetShell();
-    if (presShell) {
-      nsPresContext* presContext = presShell->GetPresContext();
-      if (presContext) {
-        MOZ_ASSERT(this !=
-                   presContext->GetViewportScrollbarStylesOverrideElement(),
-                   "Leaving behind a raw pointer to this element (as having "
-                   "propagated scrollbar styles) - that's dangerous...");
-      }
+    nsPresContext* presContext = document->GetPresContext();
+    if (presContext) {
+      MOZ_ASSERT(this !=
+                 presContext->GetViewportScrollbarStylesOverrideElement(),
+                 "Leaving behind a raw pointer to this element (as having "
+                 "propagated scrollbar styles) - that's dangerous...");
     }
   }
 #endif
@@ -1981,19 +1979,14 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
     DeleteProperty(nsGkAtoms::animationsOfBeforeProperty);
     DeleteProperty(nsGkAtoms::animationsOfAfterProperty);
     DeleteProperty(nsGkAtoms::animationsProperty);
-  }
-
-  // Computed style data isn't useful for detached nodes, and we'll need to
-  // recompute it anyway if we ever insert the nodes back into a document.
-  if (IsStyledByServo()) {
     if (document) {
-      ClearServoData(document);
-    } else {
-      MOZ_ASSERT(!HasServoData());
-      MOZ_ASSERT(!HasAnyOfFlags(kAllServoDescendantBits | NODE_NEEDS_FRAME));
+      if (nsPresContext* presContext = document->GetPresContext()) {
+        // We have to clear all pending restyle requests for the animations on
+        // this element to avoid unnecessary restyles when we re-attached this
+        // element.
+        presContext->EffectCompositor()->ClearRestyleRequestsFor(this);
+      }
     }
-  } else {
-    MOZ_ASSERT(!HasServoData());
   }
 
   // Editable descendant count only counts descendants that
@@ -2099,27 +2092,11 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
     shadowRoot->SetIsComposedDocParticipant(false);
   }
 
-  // Unbinding of children is the only point in time where we don't enforce the
-  // "child has style data implies parent has it too" invariant.
-  //
-  // As such, the restyle root tracking may incorrectly end up setting dirty
-  // bits on the parent chain when moving from a not yet unbound root with
-  // already unbound parents to a root higher up in the tree, so we clear those
-  // (again, since they're also cleared in ClearServoData) here.
-  //
-  // This can happen when the element changes the state of some ancestor up in
-  // the tree, for example.
-  //
-  // Note that clearing the data itself here would have its own set of problems,
-  // since the invariant we'd be breaking in that case is "HasServoData()
-  // implies InComposedDoc()", which we rely on in various places.
-  UnsetFlags(kAllServoDescendantBits);
-  if (document && document->GetServoRestyleRoot() == this) {
-    document->ClearServoRestyleRoot();
-  }
+  MOZ_ASSERT_IF(IsStyledByServo(), !HasAnyOfFlags(kAllServoDescendantBits));
+  MOZ_ASSERT(!document || document->GetServoRestyleRoot() != this);
 }
 
-nsICSSDeclaration*
+nsDOMCSSAttributeDeclaration*
 Element::GetSMILOverrideStyle()
 {
   Element::nsExtendedDOMSlots* slots = ExtendedDOMSlots();
@@ -2245,8 +2222,7 @@ Element::GetExistingAttrNameFromQName(const nsAString& aStr) const
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   if (name->IsAtom()) {
     nodeInfo = mNodeInfo->NodeInfoManager()->
-      GetNodeInfo(name->Atom(), nullptr, kNameSpaceID_None,
-                  nsIDOMNode::ATTRIBUTE_NODE);
+      GetNodeInfo(name->Atom(), nullptr, kNameSpaceID_None, ATTRIBUTE_NODE);
   }
   else {
     nodeInfo = name->NodeInfo();
@@ -2493,8 +2469,8 @@ Element::MaybeCheckSameAttrVal(int32_t aNamespaceID,
     }
   }
   *aModType = modification ?
-    static_cast<uint8_t>(nsIDOMMutationEvent::MODIFICATION) :
-    static_cast<uint8_t>(nsIDOMMutationEvent::ADDITION);
+    static_cast<uint8_t>(MutationEventBinding::MODIFICATION) :
+    static_cast<uint8_t>(MutationEventBinding::ADDITION);
   return false;
 }
 
@@ -2542,7 +2518,7 @@ Element::SetSingleClassFromParser(nsAtom* aSingleClassName)
                           nullptr, // old value
                           value,
                           nullptr,
-                          static_cast<uint8_t>(nsIDOMMutationEvent::ADDITION),
+                          static_cast<uint8_t>(MutationEventBinding::ADDITION),
                           false, // hasListeners
                           false, // notify
                           kCallAfterSetAttr,
@@ -2709,7 +2685,7 @@ Element::SetAttrAndNotify(int32_t aNamespaceID,
     RefPtr<mozilla::dom::NodeInfo> ni;
     ni = mNodeInfo->NodeInfoManager()->GetNodeInfo(aName, aPrefix,
                                                    aNamespaceID,
-                                                   nsIDOMNode::ATTRIBUTE_NODE);
+                                                   ATTRIBUTE_NODE);
 
     rv = mAttrsAndChildren.SetAndSwapAttr(ni, aParsedValue, &oldValueSet);
   }
@@ -2758,7 +2734,7 @@ Element::SetAttrAndNotify(int32_t aNamespaceID,
 
       LifecycleCallbackArgs args = {
         nsDependentAtomString(aName),
-        aModType == nsIDOMMutationEvent::ADDITION ?
+        aModType == MutationEventBinding::ADDITION ?
           VoidString() : nsDependentAtomString(oldValueAtom),
         nsDependentAtomString(newValueAtom),
         (ns.IsEmpty() ? VoidString() : ns)
@@ -2993,7 +2969,7 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
 
   if (aNotify) {
     nsNodeUtils::AttributeWillChange(this, aNameSpaceID, aName,
-                                     nsIDOMMutationEvent::REMOVAL,
+                                     MutationEventBinding::REMOVAL,
                                      nullptr);
   }
 
@@ -3076,7 +3052,7 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
     // We can always pass oldValue here since there is no new value which could
     // have corrupted it.
     nsNodeUtils::AttributeChanged(this, aNameSpaceID, aName,
-                                  nsIDOMMutationEvent::REMOVAL, &oldValue);
+                                  MutationEventBinding::REMOVAL, &oldValue);
   }
 
   if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::dir) {
@@ -3093,7 +3069,7 @@ Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName,
     oldValue.ToString(value);
     if (!value.IsEmpty())
       mutation.mPrevAttrValue = NS_Atomize(value);
-    mutation.mAttrChange = nsIDOMMutationEvent::REMOVAL;
+    mutation.mAttrChange = MutationEventBinding::REMOVAL;
 
     mozAutoSubtreeModified subtree(OwnerDoc(), this);
     (new AsyncEventDispatcher(this, mutation))->RunDOMEventWhenSafe();
@@ -3543,6 +3519,7 @@ Element::Closest(const nsAString& aSelector, ErrorResult& aResult)
       return const_cast<Element*>(Servo_SelectorList_Closest(this, aList));
     },
     [&](nsCSSSelectorList* aList) -> Element* {
+#ifdef MOZ_OLD_STYLE
       if (!aList) {
         // Either we failed (and aError already has the exception), or this
         // is a pseudo-element-only selector that matches nothing.
@@ -3563,6 +3540,9 @@ Element::Closest(const nsAString& aSelector, ErrorResult& aResult)
         }
       }
       return nullptr;
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     }
   );
 }
@@ -3580,6 +3560,7 @@ Element::Matches(const nsAString& aSelector, ErrorResult& aError)
       return Servo_SelectorList_Matches(this, aList);
     },
     [&](nsCSSSelectorList* aList) {
+#ifdef MOZ_OLD_STYLE
       if (!aList) {
         // Either we failed (and aError already has the exception), or this
         // is a pseudo-element-only selector that matches nothing.
@@ -3593,6 +3574,9 @@ Element::Matches(const nsAString& aSelector, ErrorResult& aError)
       matchingContext.AddScopeElement(this);
       return nsCSSRuleProcessor::SelectorListMatches(this, matchingContext,
                                                      aList);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     }
   );
 }
@@ -3721,7 +3705,7 @@ Element::GetTransformToAncestor(Element& aAncestor)
     // then the call to GetTransformToAncestor will return the transform
     // all the way up through the parent chain.
     transform = nsLayoutUtils::GetTransformToAncestor(primaryFrame,
-      ancestorFrame, nsIFrame::IN_CSS_UNITS);
+      ancestorFrame, nsIFrame::IN_CSS_UNITS).GetMatrix();
   }
 
   DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
@@ -3738,7 +3722,7 @@ Element::GetTransformToParent()
   if (primaryFrame) {
     nsIFrame* parentFrame = primaryFrame->GetParent();
     transform = nsLayoutUtils::GetTransformToAncestor(primaryFrame,
-      parentFrame, nsIFrame::IN_CSS_UNITS);
+      parentFrame, nsIFrame::IN_CSS_UNITS).GetMatrix();
   }
 
   DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
@@ -3753,7 +3737,7 @@ Element::GetTransformToViewport()
   Matrix4x4 transform;
   if (primaryFrame) {
     transform = nsLayoutUtils::GetTransformToAncestor(primaryFrame,
-      nsLayoutUtils::GetDisplayRootFrame(primaryFrame), nsIFrame::IN_CSS_UNITS);
+      nsLayoutUtils::GetDisplayRootFrame(primaryFrame), nsIFrame::IN_CSS_UNITS).GetMatrix();
   }
 
   DOMMatrixReadOnly* matrix = new DOMMatrix(this, transform, IsStyledByServo());
@@ -3799,22 +3783,23 @@ Element::Animate(const Nullable<ElementOrCSSPseudoElement>& aTarget,
   GlobalObject global(aContext, ownerGlobal->GetGlobalJSObject());
   MOZ_ASSERT(!global.Failed());
 
-  // Wrap the aKeyframes object for the cross-compartment case.
-  JS::Rooted<JSObject*> keyframes(aContext);
-  keyframes = aKeyframes;
+  // KeyframeEffect constructor doesn't follow the standard Xray calling
+  // convention and needs to be called in caller's compartment.
+  // This should match to RunConstructorInCallerCompartment attribute in
+  // KeyframeEffect.webidl.
+  RefPtr<KeyframeEffect> effect =
+    KeyframeEffect::Constructor(global, aTarget, aKeyframes, aOptions,
+                                aError);
+  if (aError.Failed()) {
+    return nullptr;
+  }
+
+  // Animation constructor follows the standard Xray calling convention and
+  // needs to be called in the target element's compartment.
   Maybe<JSAutoCompartment> ac;
   if (js::GetContextCompartment(aContext) !=
       js::GetObjectCompartment(ownerGlobal->GetGlobalJSObject())) {
     ac.emplace(aContext, ownerGlobal->GetGlobalJSObject());
-    if (!JS_WrapObject(aContext, &keyframes)) {
-      return nullptr;
-    }
-  }
-
-  RefPtr<KeyframeEffect> effect =
-    KeyframeEffect::Constructor(global, aTarget, keyframes, aOptions, aError);
-  if (aError.Failed()) {
-    return nullptr;
   }
 
   AnimationTimeline* timeline = referenceElement->OwnerDoc()->Timeline();
@@ -3843,7 +3828,12 @@ Element::GetAnimations(const AnimationFilter& filter,
 {
   nsIDocument* doc = GetComposedDoc();
   if (doc) {
-    doc->FlushPendingNotifications(FlushType::Style);
+    // We don't need to explicitly flush throttled animations here, since
+    // updating the animation style of elements will never affect the set of
+    // running animations and it's only the set of running animations that is
+    // important here.
+    doc->FlushPendingNotifications(
+      ChangesToFlush(FlushType::Style, false /* flush animations */));
   }
 
   Element* elem = this;
@@ -3947,7 +3937,7 @@ Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError)
     return;
   }
 
-  if (parent->NodeType() == nsIDOMNode::DOCUMENT_NODE) {
+  if (parent->NodeType() == DOCUMENT_NODE) {
     aError.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
     return;
   }
@@ -3959,7 +3949,7 @@ Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError)
       localName = parent->NodeInfo()->NameAtom();
       namespaceID = parent->NodeInfo()->NamespaceID();
     } else {
-      NS_ASSERTION(parent->NodeType() == nsIDOMNode::DOCUMENT_FRAGMENT_NODE,
+      NS_ASSERTION(parent->NodeType() == DOCUMENT_FRAGMENT_NODE,
         "How come the parent isn't a document, a fragment or an element?");
       localName = nsGkAtoms::body;
       namespaceID = kNameSpaceID_XHTML;
@@ -3981,13 +3971,13 @@ Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError)
   if (parent->IsElement()) {
     context = parent;
   } else {
-    NS_ASSERTION(parent->NodeType() == nsIDOMNode::DOCUMENT_FRAGMENT_NODE,
+    NS_ASSERTION(parent->NodeType() == DOCUMENT_FRAGMENT_NODE,
       "How come the parent isn't a document, a fragment or an element?");
     RefPtr<mozilla::dom::NodeInfo> info =
       OwnerDoc()->NodeInfoManager()->GetNodeInfo(nsGkAtoms::body,
                                                  nullptr,
                                                  kNameSpaceID_XHTML,
-                                                 nsIDOMNode::ELEMENT_NODE);
+                                                 ELEMENT_NODE);
     context = NS_NewHTMLBodyElement(info.forget(), FROM_PARSER_FRAGMENT);
   }
 
@@ -4388,7 +4378,11 @@ Element::ClearServoData(nsIDocument* aDoc) {
   MOZ_ASSERT(IsStyledByServo());
   MOZ_ASSERT(aDoc);
 #ifdef MOZ_STYLO
-  Servo_Element_ClearData(this);
+  if (HasServoData()) {
+    Servo_Element_ClearData(this);
+  } else {
+    UnsetFlags(kAllServoDescendantBits | NODE_NEEDS_FRAME);
+  }
   // Since this element is losing its servo data, nothing under it may have
   // servo data either, so we can forget restyles rooted at this element. This
   // is necessary for correctness, since we invoke ClearServoData in various
@@ -4499,7 +4493,6 @@ BitsArePropagated(const Element* aElement, uint32_t aBits, nsINode* aRestyleRoot
     nsINode* parentNode = curr->GetParentNode();
     curr = curr->GetFlattenedTreeParentElementForStyle();
     MOZ_ASSERT_IF(!curr,
-                  !parentNode || // can only happen mid-unbind.
                   parentNode == aElement->OwnerDoc() ||
                   parentNode == parentNode->OwnerDoc()->GetRootElement());
   }
@@ -4513,24 +4506,6 @@ AssertNoBitsPropagatedFrom(nsINode* aRoot)
 #ifdef DEBUG
   if (!aRoot || !aRoot->IsElement()) {
     return;
-  }
-
-  // If we are in the middle of unbinding a subtree, then the bits on elements
-  // in that subtree (and which we haven't yet unbound) could be dirty.
-  // Just skip asserting the absence of bits on those element that are in
-  // the unbinding subtree.  (The incorrect bits will only cause us to
-  // incorrectly choose a new restyle root if the newly dirty element is
-  // also within the unbinding subtree, so it is OK to leave them there.)
-  for (nsINode* n = aRoot; n; n = n->GetFlattenedTreeParentElementForStyle()) {
-    if (!n->IsInComposedDoc()) {
-      // Find the top-most element that is marked as no longer in the document,
-      // so we can start checking bits from its parent.
-      do {
-        aRoot = n;
-        n = n->GetFlattenedTreeParentElementForStyle();
-      } while (n && !n->IsInComposedDoc());
-      break;
-    }
   }
 
   auto* element = aRoot->GetFlattenedTreeParentElementForStyle();
@@ -4668,7 +4643,7 @@ NoteDirtyElement(Element* aElement, uint32_t aBits)
     !parent->IsElement() ||
     !PropagateBits(parent->AsElement(), aBits, existingRoot);
 
-  uint32_t existingBits = existingRoot ? doc->GetServoRestyleRootDirtyBits() : 0;
+  uint32_t existingBits = doc->GetServoRestyleRootDirtyBits();
   if (!reachedDocRoot || existingRoot == doc) {
       // We're a descendant of the existing root. All that's left to do is to
       // make sure the bit we propagated is also registered on the root.

@@ -15,10 +15,7 @@ Bug 895360 - [app manager] Device meta data actor
 "use strict";
 
 window.onload = function () {
-  const Cu = Components.utils;
-  const Ci = Components.interfaces;
-
-  const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const {DebuggerClient} = require("devtools/shared/client/debugger-client");
   const {DebuggerServer} = require("devtools/server/main");
   const Services = require("Services");
@@ -32,7 +29,7 @@ window.onload = function () {
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
   client.connect().then(function onConnect() {
-    client.listTabs(function onListTabs(response) {
+    client.listTabs().then(function onListTabs(response) {
       let d = getDeviceFront(client, response);
 
       let desc;
@@ -67,7 +64,7 @@ window.onload = function () {
 
         let currProfD = Services.dirsvc.get("ProfD", Ci.nsIFile);
         let profileDir = currProfD.path;
-        ok(profileDir.indexOf(desc.profile.length > 0 && desc.profile) != -1,
+        ok(profileDir.includes(desc.profile.length > 0 && desc.profile),
            "valid profile name");
 
         client.close().then(() => {

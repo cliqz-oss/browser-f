@@ -14,6 +14,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/dom/Performance.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
@@ -33,7 +34,6 @@
 #include "nsLayoutUtils.h"
 #include "nsPIWindowRoot.h"
 #include "nsRFPService.h"
-#include "WorkerPrivate.h"
 
 namespace mozilla {
 namespace dom {
@@ -154,6 +154,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Event)
     tmp->mEvent->mCurrentTarget = nullptr;
     tmp->mEvent->mOriginalTarget = nullptr;
     tmp->mEvent->mRelatedTarget = nullptr;
+    tmp->mEvent->mOriginalRelatedTarget = nullptr;
     switch (tmp->mEvent->mClass) {
       case eDragEventClass: {
         WidgetDragEvent* dragEvent = tmp->mEvent->AsDragEvent();
@@ -182,6 +183,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Event)
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEvent->mCurrentTarget)
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEvent->mOriginalTarget)
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEvent->mRelatedTarget)
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEvent->mOriginalRelatedTarget);
     switch (tmp->mEvent->mClass) {
       case eDragEventClass: {
         WidgetDragEvent* dragEvent = tmp->mEvent->AsDragEvent();
@@ -242,6 +244,17 @@ Event::GetTarget(nsIDOMEventTarget** aTarget)
 {
   NS_IF_ADDREF(*aTarget = GetTarget());
   return NS_OK;
+}
+
+bool
+Event::IsSrcElementEnabled(JSContext* /* unused */, JSObject* /* unused */)
+{
+  // Not a pref, because that's a pain on workers.
+#ifdef NIGHTLY_BUILD
+  return true;
+#else
+  return false;
+#endif
 }
 
 EventTarget*
@@ -334,7 +347,7 @@ bool
 Event::Init(mozilla::dom::EventTarget* aGlobal)
 {
   if (!mIsMainThreadEvent) {
-    return workers::IsCurrentThreadRunningChromeWorker();
+    return IsCurrentThreadRunningChromeWorker();
   }
   bool trusted = false;
   nsCOMPtr<nsPIDOMWindowInner> w = do_QueryInterface(aGlobal);
@@ -342,9 +355,9 @@ Event::Init(mozilla::dom::EventTarget* aGlobal)
     nsCOMPtr<nsIDocument> d = w->GetExtantDoc();
     if (d) {
       trusted = nsContentUtils::IsChromeDoc(d);
-      nsIPresShell* s = d->GetShell();
-      if (s) {
-        InitPresContextData(s->GetPresContext());
+      nsPresContext* presContext = d->GetPresContext();
+      if (presContext) {
+        InitPresContextData(presContext);
       }
     }
   }
@@ -543,19 +556,11 @@ Event::EnsureWebAccessibleRelatedTarget(EventTarget* aRelatedTarget)
   nsCOMPtr<EventTarget> relatedTarget = aRelatedTarget;
   if (relatedTarget) {
     nsCOMPtr<nsIContent> content = do_QueryInterface(relatedTarget);
-    nsCOMPtr<nsIContent> currentTarget =
-      do_QueryInterface(mEvent->mCurrentTarget);
 
     if (content && content->ChromeOnlyAccess() &&
         !nsContentUtils::CanAccessNativeAnon()) {
       content = content->FindFirstNonChromeOnlyAccessContent();
       relatedTarget = do_QueryInterface(content);
-    }
-
-    nsIContent* shadowRelatedTarget =
-      GetShadowRelatedTarget(currentTarget, content);
-    if (shadowRelatedTarget) {
-      relatedTarget = shadowRelatedTarget;
     }
 
     if (relatedTarget) {
@@ -1090,10 +1095,15 @@ Event::DefaultPrevented(CallerType aCallerType) const
 }
 
 double
-Event::TimeStampImpl() const
+Event::TimeStamp()
 {
   if (!sReturnHighResTimeStamp) {
-    return static_cast<double>(mEvent->mTime);
+    // In the situation where you have set a very old, not-very-supported
+    // non-default preference, we will always reduce the precision,
+    // regardless of system principal or not.
+    // The timestamp is absolute, so we supply a zero context mix-in.
+    double ret = static_cast<double>(mEvent->mTime);
+    return nsRFPService::ReduceTimePrecisionAsMSecs(ret, 0);
   }
 
   if (mEvent->mTimeStamp.IsNull()) {
@@ -1115,20 +1125,24 @@ Event::TimeStampImpl() const
       return 0.0;
     }
 
-    return perf->GetDOMTiming()->TimeStampToDOMHighRes(mEvent->mTimeStamp);
+    double ret = perf->GetDOMTiming()->TimeStampToDOMHighRes(mEvent->mTimeStamp);
+    MOZ_ASSERT(mOwner->PrincipalOrNull());
+    if (nsContentUtils::IsSystemPrincipal(mOwner->PrincipalOrNull()))
+      return ret;
+
+    return nsRFPService::ReduceTimePrecisionAsMSecs(ret,
+      perf->GetRandomTimelineSeed());
   }
 
-  workers::WorkerPrivate* workerPrivate =
-    workers::GetCurrentThreadWorkerPrivate();
+  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
   MOZ_ASSERT(workerPrivate);
 
-  return workerPrivate->TimeStampToDOMHighRes(mEvent->mTimeStamp);
-}
+  double ret = workerPrivate->TimeStampToDOMHighRes(mEvent->mTimeStamp);
+  if (workerPrivate->UsesSystemPrincipal())
+    return ret;
 
-double
-Event::TimeStamp() const
-{
-  return nsRFPService::ReduceTimePrecisionAsMSecs(TimeStampImpl());
+  return nsRFPService::ReduceTimePrecisionAsMSecs(ret,
+    workerPrivate->GetRandomTimelineSeed());
 }
 
 NS_IMETHODIMP
@@ -1217,44 +1231,6 @@ Event::SetOwner(EventTarget* aOwner)
   nsCOMPtr<nsPIWindowRoot> root = do_QueryInterface(aOwner);
   MOZ_ASSERT(root, "Unexpected EventTarget!");
 #endif
-}
-
-// static
-nsIContent*
-Event::GetShadowRelatedTarget(nsIContent* aCurrentTarget,
-                              nsIContent* aRelatedTarget)
-{
-  if (!aCurrentTarget || !aRelatedTarget) {
-    return nullptr;
-  }
-
-  // Walk up the ancestor node trees of the related target until
-  // we encounter the node tree of the current target in order
-  // to find the adjusted related target. Walking up the tree may
-  // not find a common ancestor node tree if the related target is in
-  // an ancestor tree, but in that case it does not need to be adjusted.
-  ShadowRoot* currentTargetShadow = aCurrentTarget->GetContainingShadow();
-  if (!currentTargetShadow) {
-    return nullptr;
-  }
-
-  nsIContent* relatedTarget = aCurrentTarget;
-  while (relatedTarget) {
-    ShadowRoot* ancestorShadow = relatedTarget->GetContainingShadow();
-    if (currentTargetShadow == ancestorShadow) {
-      return relatedTarget;
-    }
-
-    // Didn't find the ancestor tree, thus related target does not have to
-    // adjusted.
-    if (!ancestorShadow) {
-      return nullptr;
-    }
-
-    relatedTarget = ancestorShadow->GetHost();
-  }
-
-  return nullptr;
 }
 
 void

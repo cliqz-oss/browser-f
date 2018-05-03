@@ -83,7 +83,7 @@ nsCSSPseudoElements::GetPseudoType(nsAtom *aAtom, EnabledState aEnabledState)
   for (CSSPseudoElementTypeBase i = 0;
        i < ArrayLength(sCSSPseudoElementAtomSetup);
        ++i) {
-    if (*sCSSPseudoElementAtomSetup[i].mAtom == aAtom) {
+    if (*sCSSPseudoElementAtomSetup[i].mAtomp == aAtom) {
       auto type = static_cast<Type>(i);
       // ::moz-placeholder is an alias for ::placeholder
       if (type == CSSPseudoElementType::mozPlaceholder) {
@@ -115,7 +115,7 @@ nsCSSPseudoElements::GetPseudoAtom(Type aType)
 {
   NS_ASSERTION(aType < Type::Count, "Unexpected type");
   return *sCSSPseudoElementAtomSetup[
-    static_cast<CSSPseudoElementTypeBase>(aType)].mAtom;
+    static_cast<CSSPseudoElementTypeBase>(aType)].mAtomp;
 }
 
 /* static */ already_AddRefed<nsAtom>
@@ -157,3 +157,19 @@ nsCSSPseudoElements::PseudoElementSupportsUserActionState(const Type aType)
   return PseudoElementHasFlags(aType,
                                CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE);
 }
+
+/* static */ nsString
+nsCSSPseudoElements::PseudoTypeAsString(Type aPseudoType)
+{
+  switch (aPseudoType) {
+    case CSSPseudoElementType::before:
+      return NS_LITERAL_STRING("::before");
+    case CSSPseudoElementType::after:
+      return NS_LITERAL_STRING("::after");
+    default:
+      MOZ_ASSERT(aPseudoType == CSSPseudoElementType::NotPseudo,
+                 "Unexpected pseudo type");
+      return EmptyString();
+  }
+}
+

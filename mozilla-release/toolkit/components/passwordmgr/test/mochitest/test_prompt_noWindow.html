@@ -24,8 +24,7 @@ isTabModal = false;
 let chromeScript = runInParent(SimpleTest.getTestFileURL("pwmgr_common.js"));
 
 runInParent(() => {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   let login = Cc["@mozilla.org/login-manager/loginInfo;1"].
               createInstance(Ci.nsILoginInfo);
@@ -59,8 +58,7 @@ add_task(async function test_sandbox_xhr() {
   let sandboxConstructor = SpecialPowers.Cu.Sandbox;
   let sandbox = new sandboxConstructor(this, {wantXrays: true});
   function sandboxedRequest(sandboxedUrl) {
-    let req = SpecialPowers.Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                           .createInstance(SpecialPowers.Ci.nsIXMLHttpRequest);
+    let req = new XMLHttpRequest();
     req.open("GET", sandboxedUrl, true);
     req.send(null);
   }

@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const messageGenerateRandomBytes = "ppapi.js:generateRandomBytes";
 const handlerURI = "chrome://ppapipdf.js/content/viewer.html";
@@ -13,7 +11,7 @@ const prefPdfiumEnable = "pdfium.enabled";
 function sandboxScript(sandbox)
 {
   dump("sandboxScript " + sandbox.pluginElement + "\n");
-  Components.classes["@mozilla.org/moz/jssubscript-loader;1"].getService(Components.interfaces.mozIJSSubScriptLoader).loadSubScript("resource://ppapipdf.js/ppapi-content-sandbox.js", sandbox);
+  Cc["@mozilla.org/moz/jssubscript-loader;1"].getService(Ci.mozIJSSubScriptLoader).loadSubScript("resource://ppapipdf.js/ppapi-content-sandbox.js", sandbox);
 }
 
 function prefObserver(aSubject, aTopic, aData) {

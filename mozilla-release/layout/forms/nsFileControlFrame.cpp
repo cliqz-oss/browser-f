@@ -15,6 +15,7 @@
 #include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/HTMLButtonElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/Preferences.h"
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
@@ -25,7 +26,6 @@
 #include "mozilla/dom/FileList.h"
 #include "nsIDOMDragEvent.h"
 #include "nsIDOMFileList.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsTextNode.h"
 
 using namespace mozilla;
@@ -111,15 +111,13 @@ MakeAnonButton(nsIDocument* aDoc, const char* labelKey,
     HTMLButtonElement::FromContentOrNull(button);
 
   if (!aAccessKey.IsEmpty()) {
-    IgnoredErrorResult ignored;
-    buttonElement->SetAccessKey(aAccessKey, ignored);
+    buttonElement->SetAccessKey(aAccessKey, IgnoreErrors());
   }
 
   // Both elements are given the same tab index so that the user can tab
   // to the file control at the correct index, and then between the two
   // buttons.
-  IgnoredErrorResult ignored;
-  buttonElement->SetTabIndex(aInputElement->TabIndex(), ignored);
+  buttonElement->SetTabIndex(aInputElement->TabIndex(), IgnoreErrors());
 
   return button.forget();
 }
@@ -146,7 +144,7 @@ nsFileControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   RefPtr<NodeInfo> nodeInfo;
   nodeInfo = doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::label, nullptr,
                                                  kNameSpaceID_XUL,
-                                                 nsIDOMNode::ELEMENT_NODE);
+                                                 nsINode::ELEMENT_NODE);
   NS_TrustedNewXULElement(getter_AddRefs(mTextContent), nodeInfo.forget());
   // NOTE: SetIsNativeAnonymousRoot() has to be called before setting any
   // attribute.
@@ -450,7 +448,7 @@ nsFileControlFrame::AttributeChanged(int32_t  aNameSpaceID,
                                      int32_t  aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None && aAttribute == nsGkAtoms::tabindex) {
-    if (aModType == nsIDOMMutationEvent::REMOVAL) {
+    if (aModType == MutationEventBinding::REMOVAL) {
       mBrowseFilesOrDirs->UnsetAttr(aNameSpaceID, aAttribute, true);
     } else {
       nsAutoString value;

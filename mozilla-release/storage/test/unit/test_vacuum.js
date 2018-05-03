@@ -4,8 +4,8 @@
 
 // This file tests the Vacuum Manager.
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /**
  * Loads a test component that will register as a vacuum-participant.
@@ -27,7 +27,7 @@ function load_test_vacuum_component() {
   while (entries.hasMoreElements()) {
     let entry = entries.getNext().QueryInterface(Ci.nsISupportsCString).data;
     print("Check if the found category entry (" + entry + ") is expected.");
-    if (EXPECTED_ENTRIES.indexOf(entry) != -1) {
+    if (EXPECTED_ENTRIES.includes(entry)) {
       print("Check that only one test entry exists.");
       Assert.ok(!found);
       found = true;

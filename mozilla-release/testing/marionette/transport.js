@@ -6,14 +6,14 @@
 
 /* global Pipe, ScriptableInputStream, uneval */
 
-const {Constructor: CC, classes: Cc, utils: Cu, results: Cr} = Components;
+const CC = Components.Constructor;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/EventEmitter.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
 const {StreamUtils} =
-    Cu.import("chrome://marionette/content/stream-utils.js", {});
+    ChromeUtils.import("chrome://marionette/content/stream-utils.js", {});
 const {Packet, JSONPacket, BulkPacket} =
-    Cu.import("chrome://marionette/content/packets.js", {});
+    ChromeUtils.import("chrome://marionette/content/packets.js", {});
 
 const defer = function() {
   let deferred = {
@@ -821,6 +821,8 @@ if (!this.isWorker) {
     /**
      * A transport that uses a WorkerDebugger to send packets from the main
      * thread to a worker thread.
+     *
+     * @class WorkerDebuggerTransport
      */
     function WorkerDebuggerTransport(dbg, id) {
       this._dbg = dbg;
@@ -873,6 +875,8 @@ if (!this.isWorker) {
     /**
      * A transport that uses a WorkerDebuggerGlobalScope to send packets
      * from a worker thread to the main thread.
+     *
+     * @class WorkerDebuggerTransportThread
      */
     function WorkerDebuggerTransport(scope, id) {
       this._scope = scope;

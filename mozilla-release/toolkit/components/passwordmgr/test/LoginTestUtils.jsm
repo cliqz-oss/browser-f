@@ -7,23 +7,21 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "LoginTestUtils",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-Cu.import("resource://testing-common/Assert.jsm");
-Cu.import("resource://testing-common/TestUtils.jsm");
+ChromeUtils.import("resource://testing-common/Assert.jsm");
+ChromeUtils.import("resource://testing-common/TestUtils.jsm");
 
 const LoginInfo =
       Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
                              "nsILoginInfo", "init");
 
-this.LoginTestUtils = {
+var LoginTestUtils = {
   /**
    * Forces the storage module to save all data, and the Login Manager service
    * to replace the storage module with a newly initialized instance.
@@ -232,7 +230,7 @@ this.LoginTestUtils.testData = {
 
 this.LoginTestUtils.recipes = {
   getRecipeParent() {
-    let { LoginManagerParent } = Cu.import("resource://gre/modules/LoginManagerParent.jsm", {});
+    let { LoginManagerParent } = ChromeUtils.import("resource://gre/modules/LoginManagerParent.jsm", {});
     if (!LoginManagerParent.recipeParentPromise) {
       return null;
     }

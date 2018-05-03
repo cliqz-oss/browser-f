@@ -23,10 +23,6 @@ import mozinfo
 import pytoml
 
 from .data import (
-    AndroidAssetsDirs,
-    AndroidExtraPackages,
-    AndroidExtraResDirs,
-    AndroidResDirs,
     BaseRustProgram,
     BaseSources,
     ChromeManifestEntry,
@@ -38,12 +34,9 @@ from .data import (
     Exports,
     FinalTargetFiles,
     FinalTargetPreprocessedFiles,
-    GeneratedEventWebIDLFile,
     GeneratedFile,
     GeneratedSources,
-    GeneratedWebIDLFile,
     GnProjectData,
-    ExampleWebIDLInterface,
     ExternalStaticLibrary,
     ExternalSharedLibrary,
     HostDefines,
@@ -53,7 +46,7 @@ from .data import (
     HostSimpleProgram,
     HostSources,
     InstallationTarget,
-    IPDLFile,
+    IPDLCollection,
     JARManifest,
     Library,
     Linkable,
@@ -63,9 +56,7 @@ from .data import (
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
-    PreprocessedIPDLFile,
-    PreprocessedTestWebIDLFile,
-    PreprocessedWebIDLFile,
+    WebIDLCollection,
     Program,
     RustLibrary,
     HostRustLibrary,
@@ -76,11 +67,9 @@ from .data import (
     Sources,
     StaticLibrary,
     TestHarnessFiles,
-    TestWebIDLFile,
     TestManifest,
     UnifiedSources,
     VariablePassthru,
-    WebIDLFile,
     XPIDLFile,
 )
 from mozpack.chrome.manifest import (
@@ -144,6 +133,7 @@ class TreeMetadataEmitter(LoggingMixin):
         self._static_linking_shared = set()
         self._crate_verified_local = set()
         self._crate_directories = dict()
+        self._idls = defaultdict(set)
 
         # Keep track of external paths (third party build systems), starting
         # from what we run a subconfigure in. We'll eliminate some directories
@@ -208,7 +198,42 @@ class TreeMetadataEmitter(LoggingMixin):
             for o in emit_objs(objs): yield o
 
     def _emit_libs_derived(self, contexts):
-        # First do FINAL_LIBRARY linkage.
+
+        # First aggregate idl sources.
+        webidl_attrs = [
+            ('GENERATED_EVENTS_WEBIDL_FILES', lambda c: c.generated_events_sources),
+            ('GENERATED_WEBIDL_FILES', lambda c: c.generated_sources),
+            ('PREPROCESSED_TEST_WEBIDL_FILES', lambda c: c.preprocessed_test_sources),
+            ('PREPROCESSED_WEBIDL_FILES', lambda c: c.preprocessed_sources),
+            ('TEST_WEBIDL_FILES', lambda c: c.test_sources),
+            ('WEBIDL_FILES', lambda c: c.sources),
+            ('WEBIDL_EXAMPLE_INTERFACES', lambda c: c.example_interfaces),
+        ]
+        ipdl_attrs = [
+            ('IPDL_SOURCES', lambda c: c.sources),
+            ('PREPROCESSED_IPDL_SOURCES', lambda c: c.preprocessed_sources),
+        ]
+
+        idl_sources = {}
+        for root, cls, attrs in ((self.config.substs.get('WEBIDL_ROOT'),
+                                  WebIDLCollection, webidl_attrs),
+                                 (self.config.substs.get('IPDL_ROOT'),
+                                  IPDLCollection, ipdl_attrs)):
+            if root:
+                collection = cls(contexts[root])
+                for var, src_getter in attrs:
+                    src_getter(collection).update(self._idls[var])
+
+                idl_sources[root] = collection.all_source_files()
+                if isinstance(collection, WebIDLCollection):
+                    # Test webidl sources are added here as a somewhat special
+                    # case.
+                    idl_sources[mozpath.join(root, 'test')] = [s for s in collection.all_test_cpp_basenames()]
+
+                yield collection
+
+
+        # Next do FINAL_LIBRARY linkage.
         for lib in (l for libs in self._libs.values() for l in libs):
             if not isinstance(lib, (StaticLibrary, RustLibrary)) or not lib.link_into:
                 continue
@@ -234,9 +259,9 @@ class TreeMetadataEmitter(LoggingMixin):
                     '\n    '.join(l.objdir for l in candidates)),
                     contexts[lib.objdir])
 
-        # Next, USE_LIBS linkage.
+        # ...and USE_LIBS linkage.
         for context, obj, variable in self._linkage:
-            self._link_libraries(context, obj, variable)
+            self._link_libraries(context, obj, variable, idl_sources)
 
         def recurse_refs(lib):
             for o in lib.refs:
@@ -294,6 +319,7 @@ class TreeMetadataEmitter(LoggingMixin):
         for obj in self._binaries.values():
             yield obj
 
+
     LIBRARY_NAME_VAR = {
         'host': 'HOST_LIBRARY_NAME',
         'target': 'LIBRARY_NAME',
@@ -309,9 +335,14 @@ class TreeMetadataEmitter(LoggingMixin):
         'target': 'stdc++compat',
     }
 
-    def _link_libraries(self, context, obj, variable):
+    def _link_libraries(self, context, obj, variable, extra_sources):
         """Add linkage declarations to a given object."""
         assert isinstance(obj, Linkable)
+
+        if context.objdir in extra_sources:
+            # All "extra sources" are .cpp for the moment, and happen to come
+            # first in order.
+            obj.sources['.cpp'] = extra_sources[context.objdir] + obj.sources['.cpp']
 
         for path in context.get(variable, []):
             self._link_library(context, obj, variable, path)
@@ -495,52 +526,6 @@ class TreeMetadataEmitter(LoggingMixin):
             raise SandboxValidationError(
                 'crate-type %s is not permitted for %s' % (crate_type, libname),
                 context)
-
-        # Check that the [profile.{dev,release}.panic] field is "abort"
-        profile_section = config.get('profile', None)
-        if not profile_section:
-            raise SandboxValidationError(
-                'Cargo.toml for %s has no [profile] section' % libname,
-                context)
-
-        for profile_name in ['dev', 'release']:
-            profile = profile_section.get(profile_name, None)
-            if not profile:
-                raise SandboxValidationError(
-                    'Cargo.toml for %s has no [profile.%s] section' % (libname, profile_name),
-                    context)
-
-            panic = profile.get('panic', None)
-            if panic != 'abort':
-                raise SandboxValidationError(
-                    ('Cargo.toml for %s does not specify `panic = "abort"`'
-                     ' in [profile.%s] section') % (libname, profile_name),
-                    context)
-
-            # gkrust and gkrust-gtest must have the exact same profile settings
-            # for our almost-workspaces configuration to work properly.
-            if libname in ('gkrust', 'gkrust-gtest'):
-                if profile_name == 'dev':
-                    expected_profile = {
-                        'opt-level': 1,
-                        'rpath': False,
-                        'lto': False,
-                        'debug-assertions': True,
-                        'codegen-units': 4,
-                        'panic': 'abort',
-                    }
-                else:
-                    expected_profile = {
-                        'opt-level': 2,
-                        'rpath': False,
-                        'debug-assertions': False,
-                        'panic': 'abort',
-                    }
-
-                if profile != expected_profile:
-                    raise SandboxValidationError(
-                        'Cargo profile.%s for %s is incorrect' % (profile_name, libname),
-                        context)
 
         cargo_target_dir = context.get('RUST_LIBRARY_TARGET_DIR', '.')
 
@@ -926,6 +911,9 @@ class TreeMetadataEmitter(LoggingMixin):
         # a directory with mixed C and C++ source, but it's not that important.
         cxx_sources = defaultdict(bool)
 
+        # Source files to track for linkables associated with this context.
+        ctxt_sources = defaultdict(lambda: defaultdict(list))
+
         for variable, (klass, gen_klass, suffixes) in varmap.items():
             allowed_suffixes = set().union(*[suffix_map[s] for s in suffixes])
 
@@ -951,7 +939,20 @@ class TreeMetadataEmitter(LoggingMixin):
                     if variable.startswith('UNIFIED_'):
                         arglist.append(context.get('FILES_PER_UNIFIED_FILE', 16))
                     obj = cls(*arglist)
+                    srcs = obj.files
+                    if isinstance(obj, UnifiedSources) and obj.have_unified_mapping:
+                        srcs = dict(obj.unified_source_mapping).keys()
+                    ctxt_sources[variable][canonical_suffix] += sorted(srcs)
                     yield obj
+
+        if ctxt_sources:
+            for linkable in linkables:
+                for target_var in ('SOURCES', 'UNIFIED_SOURCES'):
+                    for suffix, srcs in ctxt_sources[target_var].items():
+                        linkable.sources[suffix] += srcs
+            for host_linkable in host_linkables:
+                for suffix, srcs in ctxt_sources['HOST_SOURCES'].items():
+                    host_linkable.sources[suffix] += srcs
 
         for f, flags in all_flags.iteritems():
             if flags.flags:
@@ -1002,9 +1003,6 @@ class TreeMetadataEmitter(LoggingMixin):
         # desired abstraction of the build definition away from makefiles.
         passthru = VariablePassthru(context)
         varlist = [
-            'ANDROID_APK_NAME',
-            'ANDROID_APK_PACKAGE',
-            'ANDROID_GENERATED_RESFILES',
             'EXTRA_DSO_LDOPTS',
             'RCFILE',
             'RESFILE',
@@ -1104,20 +1102,22 @@ class TreeMetadataEmitter(LoggingMixin):
                 for flags in backend_flags:
                     flags.resolve_flags(defines_var, defines_from_obj)
 
-        simple_lists = [
-            ('GENERATED_EVENTS_WEBIDL_FILES', GeneratedEventWebIDLFile),
-            ('GENERATED_WEBIDL_FILES', GeneratedWebIDLFile),
-            ('IPDL_SOURCES', IPDLFile),
-            ('PREPROCESSED_IPDL_SOURCES', PreprocessedIPDLFile),
-            ('PREPROCESSED_TEST_WEBIDL_FILES', PreprocessedTestWebIDLFile),
-            ('PREPROCESSED_WEBIDL_FILES', PreprocessedWebIDLFile),
-            ('TEST_WEBIDL_FILES', TestWebIDLFile),
-            ('WEBIDL_FILES', WebIDLFile),
-            ('WEBIDL_EXAMPLE_INTERFACES', ExampleWebIDLInterface),
-        ]
-        for context_var, klass in simple_lists:
+        idl_vars = (
+            'GENERATED_EVENTS_WEBIDL_FILES',
+            'GENERATED_WEBIDL_FILES',
+            'PREPROCESSED_TEST_WEBIDL_FILES',
+            'PREPROCESSED_WEBIDL_FILES',
+            'TEST_WEBIDL_FILES',
+            'WEBIDL_FILES',
+            'IPDL_SOURCES',
+            'PREPROCESSED_IPDL_SOURCES',
+        )
+        for context_var in idl_vars:
             for name in context.get(context_var, []):
-                yield klass(context, name)
+                self._idls[context_var].add(mozpath.join(context.srcdir, name))
+        # WEBIDL_EXAMPLE_INTERFACES do not correspond to files.
+        for name in context.get('WEBIDL_EXAMPLE_INTERFACES', []):
+            self._idls['WEBIDL_EXAMPLE_INTERFACES'].add(name)
 
         local_includes = []
         for local_include in context.get('LOCAL_INCLUDES', []):
@@ -1185,10 +1185,17 @@ class TreeMetadataEmitter(LoggingMixin):
                                  '%s: %s')
                                 % (var, f,), context)
                     if var.startswith('LOCALIZED_'):
-                        if isinstance(f, SourcePath) and not f.startswith('en-US/'):
-                            raise SandboxValidationError(
-                                    '%s paths must start with `en-US/`: %s'
-                                    % (var, f,), context)
+                        if isinstance(f, SourcePath):
+                            if f.startswith('en-US/'):
+                                pass
+                            elif '/locales/en-US/' in f:
+                                pass
+                            else:
+                                raise SandboxValidationError(
+                                        '%s paths must start with `en-US/` or '
+                                        'contain `/locales/en-US/`: %s'
+                                        % (var, f,), context)
+
                     if not isinstance(f, ObjDirPath):
                         path = f.full_path
                         if '*' not in path and not os.path.exists(path):
@@ -1286,24 +1293,6 @@ class TreeMetadataEmitter(LoggingMixin):
                                             context.config.substs.get('YASM_ASFLAGS', []))
 
 
-        for (symbol, cls) in [
-                ('ANDROID_RES_DIRS', AndroidResDirs),
-                ('ANDROID_EXTRA_RES_DIRS', AndroidExtraResDirs),
-                ('ANDROID_ASSETS_DIRS', AndroidAssetsDirs)]:
-            paths = context.get(symbol)
-            if not paths:
-                continue
-            for p in paths:
-                if isinstance(p, SourcePath) and not os.path.isdir(p.full_path):
-                    raise SandboxValidationError('Directory listed in '
-                        '%s is not a directory: \'%s\'' %
-                            (symbol, p.full_path), context)
-            yield cls(context, paths)
-
-        android_extra_packages = context.get('ANDROID_EXTRA_PACKAGES')
-        if android_extra_packages:
-            yield AndroidExtraPackages(context, android_extra_packages)
-
         if passthru.variables:
             yield passthru
 
@@ -1387,18 +1376,19 @@ class TreeMetadataEmitter(LoggingMixin):
                         raise SandboxValidationError(
                             'Script for generating %s does not end in .py: %s'
                             % (f, script), context)
-
-                    for i in flags.inputs:
-                        p = Path(context, i)
-                        if (isinstance(p, SourcePath) and
-                                not os.path.exists(p.full_path)):
-                            raise SandboxValidationError(
-                                'Input for generating %s does not exist: %s'
-                                % (f, p.full_path), context)
-                        inputs.append(p)
                 else:
                     script = None
                     method = None
+
+                for i in flags.inputs:
+                    p = Path(context, i)
+                    if (isinstance(p, SourcePath) and
+                            not os.path.exists(p.full_path)):
+                        raise SandboxValidationError(
+                            'Input for generating %s does not exist: %s'
+                            % (f, p.full_path), context)
+                    inputs.append(p)
+
                 yield GeneratedFile(context, script, method, outputs, inputs,
                                     flags.flags, localized=localized)
 

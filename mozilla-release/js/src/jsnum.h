@@ -14,7 +14,7 @@
 
 #include "js/Conversions.h"
 
-#include "vm/String.h"
+#include "vm/StringType.h"
 
 
 // This macro is should be `one' if current compiler supports builtin functions
@@ -47,20 +47,6 @@ FinishRuntimeNumberState(JSRuntime* rt);
 /* Initialize the Number class, returning its prototype object. */
 extern JSObject*
 InitNumberClass(JSContext* cx, HandleObject obj);
-
-} /* namespace js */
-
-/*
- * String constants for global function names, used in jsapi.c and jsnum.c.
- */
-extern const char js_isNaN_str[];
-extern const char js_isFinite_str[];
-extern const char js_parseFloat_str[];
-extern const char js_parseInt_str[];
-
-class JSAtom;
-
-namespace js {
 
 /*
  * When base == 10, this function implements ToString() as specified by

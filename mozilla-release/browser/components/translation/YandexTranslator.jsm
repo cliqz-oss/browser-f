@@ -4,15 +4,15 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = [ "YandexTranslator" ];
 
-this.EXPORTED_SYMBOLS = [ "YandexTranslator" ];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/Http.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/Http.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 // The maximum amount of net data allowed per request on Bing's API.
 const MAX_REQUEST_DATA = 5000; // Documentation says 10000 but anywhere
@@ -28,15 +28,13 @@ const MAX_REQUEST_CHUNKS = 1000; // Documentation says 2000.
 // is MAX_REQUESTS * MAX_REQUEST_DATA.
 const MAX_REQUESTS = 15;
 
-const YANDEX_RETURN_CODE_OK = 200;
-
 const YANDEX_ERR_KEY_INVALID               = 401; // Invalid API key
 const YANDEX_ERR_KEY_BLOCKED               = 402; // This API key has been blocked
 const YANDEX_ERR_DAILY_REQ_LIMIT_EXCEEDED  = 403; // Daily limit for requests reached
 const YANDEX_ERR_DAILY_CHAR_LIMIT_EXCEEDED = 404; // Daily limit of chars reached
-const YANDEX_ERR_TEXT_TOO_LONG             = 413; // The text size exceeds the maximum
-const YANDEX_ERR_UNPROCESSABLE_TEXT        = 422; // The text could not be translated
-const YANDEX_ERR_LANG_NOT_SUPPORTED        = 501; // The specified translation direction is not supported
+// const YANDEX_ERR_TEXT_TOO_LONG             = 413; // The text size exceeds the maximum
+// const YANDEX_ERR_UNPROCESSABLE_TEXT        = 422; // The text could not be translated
+// const YANDEX_ERR_LANG_NOT_SUPPORTED        = 501; // The specified translation direction is not supported
 
 // Errors that should activate the service unavailable handling
 const YANDEX_PERMANENT_ERRORS = [
@@ -57,7 +55,7 @@ const YANDEX_PERMANENT_ERRORS = [
  * @returns {Promise}          A promise that will resolve when the translation
  *                             task is finished.
  */
-this.YandexTranslator = function(translationDocument, sourceLanguage, targetLanguage) {
+var YandexTranslator = function(translationDocument, sourceLanguage, targetLanguage) {
   this.translationDocument = translationDocument;
   this.sourceLanguage = sourceLanguage;
   this.targetLanguage = targetLanguage;
@@ -87,7 +85,7 @@ this.YandexTranslator.prototype = {
         // let's take the opportunity of the chunkification process to
         // allow for the event loop to attend other pending events
         // before we continue.
-        await CommonUtils.laterTickResolvingPromise();
+        await Async.promiseYield();
 
         // Determine the data for the next request.
         let request = this._generateNextTranslationRequest(currentIndex);
@@ -140,14 +138,14 @@ this.YandexTranslator.prototype = {
    * @param   aError   [optional] The XHR object of the request that failed.
    */
   _chunkFailed(aError) {
-    if (aError instanceof Ci.nsIXMLHttpRequest) {
+    if (aError instanceof XMLHttpRequest) {
       let body = aError.responseText;
       let json = { code: 0 };
       try {
         json = JSON.parse(body);
       } catch (e) {}
 
-      if (json.code && YANDEX_PERMANENT_ERRORS.indexOf(json.code) != -1)
+      if (json.code && YANDEX_PERMANENT_ERRORS.includes(json.code))
         this._serviceUnavailable = true;
     }
 

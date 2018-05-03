@@ -2,10 +2,8 @@
 // process for handling push notifications with scope "chrome://test-scope"
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 let pushService = Cc["@mozilla.org/push/Service;1"].getService(Ci.nsIPushService);
 

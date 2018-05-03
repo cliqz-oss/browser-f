@@ -38,15 +38,23 @@
 // pseudo-classes on ::before and ::after generated content yet.  See
 // http://dev.w3.org/csswg/selectors4/#pseudo-elements.
 #define CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE  (1<<3)
-// Is content prevented from parsing selectors containing this pseudo-element?
-#define CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY               (1<<4)
+// Should this pseudo-element be enabled only for UA sheets?
+#define CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS (1<<4)
+// Should this pseudo-element be enabled only for UA sheets and chrome
+// stylesheets?
+#define CSS_PSEUDO_ELEMENT_ENABLED_IN_CHROME (1<<5)
+
+#define CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME \
+  (CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS |               \
+   CSS_PSEUDO_ELEMENT_ENABLED_IN_CHROME)
+
 // Can we use the ChromeOnly document.createElement(..., { pseudo: "::foo" })
 // API for creating pseudo-implementing native anonymous content in JS with this
 // pseudo-element?
-#define CSS_PSEUDO_ELEMENT_IS_JS_CREATED_NAC           (1<<5)
+#define CSS_PSEUDO_ELEMENT_IS_JS_CREATED_NAC           (1<<6)
 // Does this pseudo-element act like an item for containers (such as flex and
 // grid containers) and thus needs parent display-based style fixup?
-#define CSS_PSEUDO_ELEMENT_IS_FLEX_OR_GRID_ITEM        (1<<6)
+#define CSS_PSEUDO_ELEMENT_IS_FLEX_OR_GRID_ITEM        (1<<7)
 
 namespace mozilla {
 
@@ -137,9 +145,25 @@ public:
 
   static bool IsEnabled(Type aType, EnabledState aEnabledState)
   {
-    return !PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY) ||
-           (aEnabledState & EnabledState::eInUASheets);
+    if (!PseudoElementHasAnyFlag(
+      aType, CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)) {
+      return true;
+    }
+
+    if ((aEnabledState & EnabledState::eInUASheets) &&
+        PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)) {
+      return true;
+    }
+
+    if ((aEnabledState & EnabledState::eInChrome) &&
+        PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_ENABLED_IN_CHROME)) {
+      return true;
+    }
+
+    return false;
   }
+
+  static nsString PseudoTypeAsString(Type aPseudoType);
 
 private:
   // Does the given pseudo-element have all of the flags given?
@@ -157,6 +181,12 @@ private:
   {
     MOZ_ASSERT(aType < Type::Count);
     return (kPseudoElementFlags[size_t(aType)] & aFlags) == aFlags;
+  }
+
+  static bool PseudoElementHasAnyFlag(const Type aType, uint32_t aFlags)
+  {
+    MOZ_ASSERT(aType < Type::Count);
+    return (kPseudoElementFlags[size_t(aType)] & aFlags) != 0;
   }
 
   static const uint32_t kPseudoElementFlags[size_t(Type::Count)];

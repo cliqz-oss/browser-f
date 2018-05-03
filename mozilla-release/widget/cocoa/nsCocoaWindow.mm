@@ -2145,7 +2145,17 @@ nsCocoaWindow::ClientToWindowSize(const LayoutDeviceIntSize& aClientSize)
   LayoutDeviceIntRect r(0, 0, aClientSize.width, aClientSize.height);
   NSRect rect = nsCocoaUtils::DevPixelsToCocoaPoints(r, backingScale);
 
-  NSRect inflatedRect = [mWindow frameRectForContentRect:rect];
+  // Our caller expects the inflated rect for windows *with separate titlebars*,
+  // i.e. for windows where [mWindow drawsContentsIntoWindowFrame] is NO.
+  //
+  // So we call frameRectForContentRect on NSWindow here, instead of mWindow, so
+  // that we don't run into our override if this window is a window that draws
+  // its content into the titlebar.
+  //
+  // This is the same thing the windows widget does, but we probably should fix
+  // that, see bug 1445738.
+  unsigned int features = [mWindow styleMask];
+  NSRect inflatedRect = [NSWindow frameRectForContentRect:rect styleMask:features];
   r = nsCocoaUtils::CocoaRectToGeckoRectDevPix(inflatedRect, backingScale);
   return r.Size();
 
@@ -2230,13 +2240,7 @@ nsCocoaWindow::SetWindowShadowStyle(int32_t aStyle)
 
   // Shadowless windows are only supported on popups.
   if (mWindowType == eWindowType_popup) {
-    MOZ_ASSERT(mPopupContentView);
-
-    // Drop shadows are not sized correctly for composited popups when they are
-    // animated, so disable them entirely if the popup is composited.
-    bool disableShadow = (aStyle == NS_STYLE_WINDOW_SHADOW_NONE ||
-                          mPopupContentView->ShouldUseOffMainThreadCompositing());
-    [mWindow setHasShadow:!disableShadow];
+    [mWindow setHasShadow:aStyle != NS_STYLE_WINDOW_SHADOW_NONE];
   }
 
   [mWindow setUseMenuStyle:(aStyle == NS_STYLE_WINDOW_SHADOW_MENU)];
@@ -2280,6 +2284,12 @@ nsCocoaWindow::SetWindowTransform(const gfx::Matrix& aTransform)
 
   if (!mWindow) {
     return;
+  }
+
+  // Calling CGSSetWindowTransform when the window is not visible results in
+  // misplacing the window into doubled x,y coordinates (see bug 1448132).
+  if (![mWindow isVisible] || NSIsEmptyRect([mWindow frame])) {
+      return;
   }
 
   if (gfxPrefs::WindowTransformsDisabled()) {
@@ -3198,7 +3208,9 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 - (void)importState:(NSDictionary*)aState
 {
-  [self setTitle:[aState objectForKey:kStateTitleKey]];
+  if (NSString* title = [aState objectForKey:kStateTitleKey]) {
+    [self setTitle:title];
+  }
   [self setDrawsContentsIntoWindowFrame:[[aState objectForKey:kStateDrawsContentsIntoWindowFrameKey] boolValue]];
   [self setTitlebarColor:[aState objectForKey:kStateActiveTitlebarColorKey] forActiveWindow:YES];
   [self setTitlebarColor:[aState objectForKey:kStateInactiveTitlebarColorKey] forActiveWindow:NO];
@@ -3209,7 +3221,9 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 - (NSMutableDictionary*)exportState
 {
   NSMutableDictionary* state = [NSMutableDictionary dictionaryWithCapacity:10];
-  [state setObject:[self title] forKey:kStateTitleKey];
+  if (NSString* title = [self title]) {
+    [state setObject:title forKey:kStateTitleKey];
+  }
   [state setObject:[NSNumber numberWithBool:[self drawsContentsIntoWindowFrame]]
             forKey:kStateDrawsContentsIntoWindowFrameKey];
   NSColor* activeTitlebarColor = [self titlebarColorForActiveWindow:YES];
@@ -3951,6 +3965,15 @@ TitlebarDrawCallback(void* aInfo, CGContextRef aContext)
           backing:bufferingType defer:deferCreation];
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+// Override the private API _backdropBleedAmount. This determines how much the
+// desktop wallpaper contributes to the vibrancy backdrop.
+// Return 0 in order to match what the system does for sheet windows and
+// _NSPopoverWindows.
+- (CGFloat)_backdropBleedAmount
+{
+  return 0.0;
 }
 
 - (BOOL)isContextMenu

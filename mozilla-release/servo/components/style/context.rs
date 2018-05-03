@@ -203,7 +203,7 @@ impl<'a> SharedStyleContext<'a> {
 /// within the `CurrentElementInfo`. At the end of the cascade, they are folded
 /// down into the main `ComputedValues` to reduce memory usage per element while
 /// still remaining accessible.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CascadeInputs {
     /// The rule node representing the ordered list of rules matched for this
     /// node.
@@ -223,15 +223,6 @@ impl CascadeInputs {
             rules: style.rules.clone(),
             visited_rules: style.visited_style().and_then(|v| v.rules.clone()),
         }
-    }
-}
-
-// We manually implement Debug for CascadeInputs so that we can avoid the
-// verbose stringification of ComputedValues for normal logging.
-impl fmt::Debug for CascadeInputs {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CascadeInputs {{ rules: {:?}, visited_rules: {:?}, .. }}",
-               self.rules, self.visited_rules)
     }
 }
 
@@ -291,6 +282,7 @@ pub struct ElementCascadeInputs {
 
 impl ElementCascadeInputs {
     /// Construct inputs from previous cascade results, if any.
+    #[inline]
     pub fn new_from_element_data(data: &ElementData) -> Self {
         debug_assert!(data.has_styles());
         ElementCascadeInputs {
@@ -392,8 +384,9 @@ impl fmt::Display for TraversalStatistics {
 impl TraversalStatistics {
     /// Computes the traversal time given the start time in seconds.
     pub fn finish<E, D>(&mut self, traversal: &D, parallel: bool, start: f64)
-        where E: TElement,
-              D: DomTraversal<E>,
+    where
+        E: TElement,
+        D: DomTraversal<E>,
     {
         let threshold = traversal.shared_context().options.style_statistics_threshold;
         let stylist = traversal.shared_context().stylist;
@@ -428,6 +421,11 @@ bitflags! {
         const EFFECT_PROPERTIES = structs::UpdateAnimationsTasks_EffectProperties;
         /// Update animation cacade results for animations running on the compositor.
         const CASCADE_RESULTS = structs::UpdateAnimationsTasks_CascadeResults;
+        /// Display property was changed from none.
+        /// Script animations keep alive on display:none elements, so we need to trigger
+        /// the second animation restyles for the script animations in the case where
+        /// the display property was changed from 'none' to others.
+        const DISPLAY_CHANGED_FROM_NONE = structs::UpdateAnimationsTasks_DisplayChangedFromNone;
     }
 }
 
@@ -451,23 +449,27 @@ pub enum SequentialTask<E: TElement> {
     /// Entry to avoid an unused type parameter error on servo.
     Unused(SendElement<E>),
 
-    /// Performs one of a number of possible tasks related to updating animations based on the
-    /// |tasks| field. These include updating CSS animations/transitions that changed as part
-    /// of the non-animation style traversal, and updating the computed effect properties.
+    /// Performs one of a number of possible tasks related to updating
+    /// animations based on the |tasks| field. These include updating CSS
+    /// animations/transitions that changed as part of the non-animation style
+    /// traversal, and updating the computed effect properties.
     #[cfg(feature = "gecko")]
     UpdateAnimations {
         /// The target element or pseudo-element.
         el: SendElement<E>,
-        /// The before-change style for transitions. We use before-change style as the initial
-        /// value of its Keyframe. Required if |tasks| includes CSSTransitions.
+        /// The before-change style for transitions. We use before-change style
+        /// as the initial value of its Keyframe. Required if |tasks| includes
+        /// CSSTransitions.
         before_change_style: Option<Arc<ComputedValues>>,
         /// The tasks which are performed in this SequentialTask.
         tasks: UpdateAnimationsTasks
     },
 
-    /// Performs one of a number of possible tasks as a result of animation-only restyle.
-    /// Currently we do only process for resolving descendant elements that were display:none
-    /// subtree for SMIL animation.
+    /// Performs one of a number of possible tasks as a result of animation-only
+    /// restyle.
+    ///
+    /// Currently we do only process for resolving descendant elements that were
+    /// display:none subtree for SMIL animation.
     #[cfg(feature = "gecko")]
     PostAnimation {
         /// The target element.
@@ -481,7 +483,7 @@ impl<E: TElement> SequentialTask<E> {
     /// Executes this task.
     pub fn execute(self) {
         use self::SequentialTask::*;
-        debug_assert!(thread_state::get() == ThreadState::LAYOUT);
+        debug_assert_eq!(thread_state::get(), ThreadState::LAYOUT);
         match self {
             Unused(_) => unreachable!(),
             #[cfg(feature = "gecko")]
@@ -495,17 +497,19 @@ impl<E: TElement> SequentialTask<E> {
         }
     }
 
-    /// Creates a task to update various animation-related state on
-    /// a given (pseudo-)element.
+    /// Creates a task to update various animation-related state on a given
+    /// (pseudo-)element.
     #[cfg(feature = "gecko")]
-    pub fn update_animations(el: E,
-                             before_change_style: Option<Arc<ComputedValues>>,
-                             tasks: UpdateAnimationsTasks) -> Self {
+    pub fn update_animations(
+        el: E,
+        before_change_style: Option<Arc<ComputedValues>>,
+        tasks: UpdateAnimationsTasks,
+    ) -> Self {
         use self::SequentialTask::*;
         UpdateAnimations {
             el: unsafe { SendElement::new(el) },
-            before_change_style: before_change_style,
-            tasks: tasks,
+            before_change_style,
+            tasks,
         }
     }
 
@@ -516,7 +520,7 @@ impl<E: TElement> SequentialTask<E> {
         use self::SequentialTask::*;
         PostAnimation {
             el: unsafe { SendElement::new(el) },
-            tasks: tasks,
+            tasks,
         }
     }
 }
@@ -569,7 +573,7 @@ impl<E: TElement> SelectorFlagsMap<E> {
 
     /// Applies the flags. Must be called on the main thread.
     fn apply_flags(&mut self) {
-        debug_assert!(thread_state::get() == ThreadState::LAYOUT);
+        debug_assert_eq!(thread_state::get(), ThreadState::LAYOUT);
         self.cache.evict_all();
         for (el, flags) in self.map.drain() {
             unsafe { el.set_selector_flags(flags); }
@@ -607,7 +611,7 @@ where
     E: TElement,
 {
     fn drop(&mut self) {
-        debug_assert!(thread_state::get() == ThreadState::LAYOUT);
+        debug_assert_eq!(thread_state::get(), ThreadState::LAYOUT);
         for task in self.0.drain(..) {
             task.execute()
         }
@@ -760,7 +764,7 @@ impl<E: TElement> ThreadLocalStyleContext<E> {
 
 impl<E: TElement> Drop for ThreadLocalStyleContext<E> {
     fn drop(&mut self) {
-        debug_assert!(thread_state::get() == ThreadState::LAYOUT);
+        debug_assert_eq!(thread_state::get(), ThreadState::LAYOUT);
 
         // Apply any slow selector flags that need to be set on parents.
         self.selector_flags.apply_flags();

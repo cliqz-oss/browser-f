@@ -28,8 +28,6 @@
 #define LOG(args) MOZ_LOG(mLog, mozilla::LogLevel::Debug, args)
 
 // helper methods: forward declarations...
-static nsresult GetExtensionFrom4xRegistryInfo(const nsACString& aMimeType, 
-                                               nsString& aFileExtension);
 static nsresult GetExtensionFromWindowsMimeDatabase(const nsACString& aMimeType,
                                                     nsString& aFileExtension);
 
@@ -76,79 +74,22 @@ static nsresult GetExtensionFromWindowsMimeDatabase(const nsACString& aMimeType,
   return NS_OK;
 }
 
-// We have a serious problem!! I have this content type and the windows registry only gives me
-// helper apps based on extension. Right now, we really don't have a good place to go for 
-// trying to figure out the extension for a particular mime type....One short term hack is to look
-// this information in 4.x (it's stored in the windows regsitry). 
-static nsresult GetExtensionFrom4xRegistryInfo(const nsACString& aMimeType,
-                                               nsString& aFileExtension)
-{
-  nsCOMPtr<nsIWindowsRegKey> regKey = 
-    do_CreateInstance("@mozilla.org/windows-registry-key;1");
-  if (!regKey) 
-    return NS_ERROR_NOT_AVAILABLE;
-
-  nsresult rv = regKey->
-    Open(nsIWindowsRegKey::ROOT_KEY_CURRENT_USER,
-         NS_LITERAL_STRING("Software\\Netscape\\Netscape Navigator\\Suffixes"),
-         nsIWindowsRegKey::ACCESS_QUERY_VALUE);
-  if (NS_FAILED(rv))
-    return NS_ERROR_NOT_AVAILABLE;
-   
-  rv = regKey->ReadStringValue(NS_ConvertASCIItoUTF16(aMimeType),
-                               aFileExtension);
-  if (NS_FAILED(rv))
-    return NS_OK;
-
-  aFileExtension.Insert(char16_t('.'), 0);
-      
-  // this may be a comma separated list of extensions...just take the 
-  // first one for now...
-
-  int32_t pos = aFileExtension.FindChar(char16_t(','));
-  if (pos > 0) {
-    // we have a comma separated list of types...
-    // truncate everything after the first comma (including the comma)
-    aFileExtension.Truncate(pos); 
-  }
-   
-  return NS_OK;
-}
-
 nsresult nsOSHelperAppService::OSProtocolHandlerExists(const char * aProtocolScheme, bool * aHandlerExists)
 {
   // look up the protocol scheme in the windows registry....if we find a match then we have a handler for it...
   *aHandlerExists = false;
   if (aProtocolScheme && *aProtocolScheme)
   {
-    // Vista: use new application association interface
-    if (mAppAssoc) {
-      wchar_t * pResult = nullptr;
-      NS_ConvertASCIItoUTF16 scheme(aProtocolScheme);
-      // We are responsible for freeing returned strings.
-      HRESULT hr = mAppAssoc->QueryCurrentDefault(scheme.get(),
-                                                  AT_URLPROTOCOL, AL_EFFECTIVE,
-                                                  &pResult);
-      if (SUCCEEDED(hr)) {
-        CoTaskMemFree(pResult);
-        *aHandlerExists = true;
-      }
-      return NS_OK;
-    }
-
-    HKEY hKey;
-    LONG err = ::RegOpenKeyExW(HKEY_CLASSES_ROOT,
-                               NS_ConvertASCIItoUTF16(aProtocolScheme).get(),
-                               0,
-                               KEY_QUERY_VALUE,
-                               &hKey);
-    if (err == ERROR_SUCCESS)
-    {
-      err = ::RegQueryValueExW(hKey, L"URL Protocol",
-                               nullptr, nullptr, nullptr, nullptr);
-      *aHandlerExists = (err == ERROR_SUCCESS);
-      // close the key
-      ::RegCloseKey(hKey);
+    NS_ENSURE_TRUE(mAppAssoc, NS_ERROR_NOT_AVAILABLE);
+    wchar_t * pResult = nullptr;
+    NS_ConvertASCIItoUTF16 scheme(aProtocolScheme);
+    // We are responsible for freeing returned strings.
+    HRESULT hr = mAppAssoc->QueryCurrentDefault(scheme.get(),
+      AT_URLPROTOCOL, AL_EFFECTIVE,
+      &pResult);
+    if (SUCCEEDED(hr)) {
+      CoTaskMemFree(pResult);
+      *aHandlerExists = true;
     }
   }
 
@@ -179,40 +120,20 @@ NS_IMETHODIMP nsOSHelperAppService::GetApplicationDescription(const nsACString& 
     }
   }
 
-  if (mAppAssoc) {
-    // Vista: use new application association interface
-    wchar_t * pResult = nullptr;
-    // We are responsible for freeing returned strings.
-    HRESULT hr = mAppAssoc->QueryCurrentDefault(buf.get(),
-                                                AT_URLPROTOCOL, AL_EFFECTIVE,
-                                                &pResult);
-    if (SUCCEEDED(hr)) {
-      nsCOMPtr<nsIFile> app;
-      nsAutoString appInfo(pResult);
-      CoTaskMemFree(pResult);
-      if (NS_SUCCEEDED(GetDefaultAppInfo(appInfo, _retval, getter_AddRefs(app))))
-        return NS_OK;
-    }
-    return NS_ERROR_NOT_AVAILABLE;
+  NS_ENSURE_TRUE(mAppAssoc, NS_ERROR_NOT_AVAILABLE);
+  wchar_t * pResult = nullptr;
+  // We are responsible for freeing returned strings.
+  HRESULT hr = mAppAssoc->QueryCurrentDefault(buf.get(),
+                                              AT_URLPROTOCOL, AL_EFFECTIVE,
+                                              &pResult);
+  if (SUCCEEDED(hr)) {
+    nsCOMPtr<nsIFile> app;
+    nsAutoString appInfo(pResult);
+    CoTaskMemFree(pResult);
+    if (NS_SUCCEEDED(GetDefaultAppInfo(appInfo, _retval, getter_AddRefs(app))))
+      return NS_OK;
   }
-
-  nsCOMPtr<nsIFile> app;
-  GetDefaultAppInfo(buf, _retval, getter_AddRefs(app));
-
-  if (!_retval.Equals(buf))
-    return NS_OK;
-
-  // Fall back to full path
-  buf.AppendLiteral("\\shell\\open\\command");
-  nsresult rv = regKey->Open(nsIWindowsRegKey::ROOT_KEY_CLASSES_ROOT,
-                             buf,
-                             nsIWindowsRegKey::ACCESS_QUERY_VALUE);
-  if (NS_FAILED(rv))
-    return NS_ERROR_NOT_AVAILABLE;   
-   
-  rv = regKey->ReadStringValue(EmptyString(), _retval); 
-
-  return NS_SUCCEEDED(rv) ? NS_OK : NS_ERROR_NOT_AVAILABLE;
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 // GetMIMEInfoFromRegistry: This function obtains the values of some of the nsIMIMEInfo
@@ -420,36 +341,19 @@ already_AddRefed<nsMIMEInfoWin> nsOSHelperAppService::GetByExtension(const nsStr
   bool found;
 
   // Retrieve the default application for this extension
-  if (mAppAssoc) {
-    // Vista: use the new application association COM interfaces
-    // for resolving helpers.
-    nsString assocType(fileExtToUse);
-    wchar_t * pResult = nullptr;
-    HRESULT hr = mAppAssoc->QueryCurrentDefault(assocType.get(),
-                                                AT_FILEEXTENSION, AL_EFFECTIVE,
-                                                &pResult);
-    if (SUCCEEDED(hr)) {
-      found = true;
-      appInfo.Assign(pResult);
-      CoTaskMemFree(pResult);
-    } 
-    else {
-      found = false;
-    }
+  NS_ENSURE_TRUE(mAppAssoc, nullptr);
+  nsString assocType(fileExtToUse);
+  wchar_t * pResult = nullptr;
+  HRESULT hr = mAppAssoc->QueryCurrentDefault(assocType.get(),
+                                              AT_FILEEXTENSION, AL_EFFECTIVE,
+                                              &pResult);
+  if (SUCCEEDED(hr)) {
+    found = true;
+    appInfo.Assign(pResult);
+    CoTaskMemFree(pResult);
   } 
-  else
-  {
-    nsCOMPtr<nsIWindowsRegKey> regKey =
-      do_CreateInstance("@mozilla.org/windows-registry-key;1");
-    if (!regKey)
-      return nullptr;
-    nsresult rv = regKey->Open(nsIWindowsRegKey::ROOT_KEY_CLASSES_ROOT,
-                               fileExtToUse,
-                               nsIWindowsRegKey::ACCESS_QUERY_VALUE);
-    if (NS_SUCCEEDED(rv)) {
-      found = NS_SUCCEEDED(regKey->ReadStringValue(EmptyString(),
-                                                   appInfo));
-    }
+  else {
+    found = false;
   }
 
   // Bug 358297 - ignore the default handler, force the user to choose app
@@ -496,14 +400,9 @@ already_AddRefed<nsIMIMEInfo> nsOSHelperAppService::GetMIMEInfoFromOS(const nsAC
    */
   if (!aMIMEType.IsEmpty() &&
       !aMIMEType.LowerCaseEqualsLiteral(APPLICATION_OCTET_STREAM)) {
-    // (1) try to use the windows mime database to see if there is a mapping to a file extension
-    // (2) try to see if we have some left over 4.x registry info we can peek at...
+    // try to use the windows mime database to see if there is a mapping to a file extension
     GetExtensionFromWindowsMimeDatabase(aMIMEType, fileExtension);
     LOG(("Windows mime database: extension '%s'\n", fileExtension.get()));
-    if (fileExtension.IsEmpty()) {
-      GetExtensionFrom4xRegistryInfo(aMIMEType, fileExtension);
-      LOG(("4.x Registry: extension '%s'\n", fileExtension.get()));
-    }
   }
   // If we found an extension for the type, do the lookup
   RefPtr<nsMIMEInfoWin> mi;

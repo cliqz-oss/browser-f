@@ -169,6 +169,19 @@ nsBaseDragService::GetSourceNode(nsIDOMNode** aSourceNode)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsBaseDragService::GetTriggeringPrincipalURISpec(nsACString& aPrincipalURISpec)
+{
+  aPrincipalURISpec = mTriggeringPrincipalURISpec;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsBaseDragService::SetTriggeringPrincipalURISpec(const nsACString& aPrincipalURISpec)
+{
+  mTriggeringPrincipalURISpec = aPrincipalURISpec;
+  return NS_OK;
+}
 
 //-------------------------------------------------------------------------
 
@@ -205,6 +218,7 @@ nsBaseDragService::SetDataTransfer(nsIDOMDataTransfer* aDataTransfer)
 //-------------------------------------------------------------------------
 NS_IMETHODIMP
 nsBaseDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
+                                     const nsACString& aPrincipalURISpec,
                                      nsIArray* aTransferableArray,
                                      nsIScriptableRegion* aDragRgn,
                                      uint32_t aActionType,
@@ -217,7 +231,9 @@ nsBaseDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
   NS_ENSURE_TRUE(mSuppressLevel == 0, NS_ERROR_FAILURE);
 
   // stash the document of the dom node
-  aDOMNode->GetOwnerDocument(getter_AddRefs(mSourceDocument));
+  nsCOMPtr<nsINode> node = do_QueryInterface(aDOMNode);
+  mSourceDocument = do_QueryInterface(node->OwnerDoc());
+  mTriggeringPrincipalURISpec.Assign(aPrincipalURISpec);
   mSourceNode = aDOMNode;
   mContentPolicyType = aContentPolicyType;
   mEndDragPoint = LayoutDeviceIntPoint(0, 0);
@@ -233,6 +249,7 @@ nsBaseDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
 
   if (NS_FAILED(rv)) {
     mSourceNode = nullptr;
+    mTriggeringPrincipalURISpec.Truncate(0);
     mSourceDocument = nullptr;
   }
 
@@ -241,6 +258,7 @@ nsBaseDragService::InvokeDragSession(nsIDOMNode *aDOMNode,
 
 NS_IMETHODIMP
 nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
+                                              const nsACString& aPrincipalURISpec,
                                               nsIArray* aTransferableArray,
                                               nsIScriptableRegion* aRegion,
                                               uint32_t aActionType,
@@ -264,7 +282,8 @@ nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
   aDragEvent->GetScreenY(&mScreenPosition.y);
   aDragEvent->GetMozInputSource(&mInputSource);
 
-  nsresult rv = InvokeDragSession(aDOMNode, aTransferableArray,
+  nsresult rv = InvokeDragSession(aDOMNode, aPrincipalURISpec,
+                                  aTransferableArray,
                                   aRegion, aActionType,
                                   nsIContentPolicy::TYPE_INTERNAL_IMAGE);
 
@@ -279,6 +298,7 @@ nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
 
 NS_IMETHODIMP
 nsBaseDragService::InvokeDragSessionWithSelection(nsISelection* aSelection,
+                                                  const nsACString& aPrincipalURISpec,
                                                   nsIArray* aTransferableArray,
                                                   uint32_t aActionType,
                                                   nsIDOMDragEvent* aDragEvent,
@@ -305,7 +325,8 @@ nsBaseDragService::InvokeDragSessionWithSelection(nsISelection* aSelection,
   nsCOMPtr<nsIDOMNode> node;
   aSelection->GetFocusNode(getter_AddRefs(node));
 
-  nsresult rv = InvokeDragSession(node, aTransferableArray,
+  nsresult rv = InvokeDragSession(node, aPrincipalURISpec,
+                                  aTransferableArray,
                                   nullptr, aActionType,
                                   nsIContentPolicy::TYPE_OTHER);
 
@@ -421,6 +442,7 @@ nsBaseDragService::EndDragSession(bool aDoneDrag, uint32_t aKeyModifiers)
   // release the source we've been holding on to.
   mSourceDocument = nullptr;
   mSourceNode = nullptr;
+  mTriggeringPrincipalURISpec.Truncate(0);
   mSelection = nullptr;
   mDataTransfer = nullptr;
   mHasImage = false;
@@ -662,32 +684,21 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
     }
 
     if (renderFlags) {
-      nsCOMPtr<nsIDOMNode> child;
-      nsCOMPtr<nsIDOMNodeList> childList;
-      uint32_t length;
-      uint32_t count = 0;
-      nsAutoString childNodeName;
-
+      nsCOMPtr<nsINode> dragINode = do_QueryInterface(dragNode);
       // check if the dragged node itself is an img element
-      if (NS_SUCCEEDED(dragNode->GetNodeName(childNodeName)) &&
-          childNodeName.LowerCaseEqualsLiteral("img")) {
+      if (dragINode->NodeName().LowerCaseEqualsLiteral("img")) {
         renderFlags = renderFlags | nsIPresShell::RENDER_IS_IMAGE;
-      } else if (
-          NS_SUCCEEDED(dragNode->GetChildNodes(getter_AddRefs(childList))) &&
-          NS_SUCCEEDED(childList->GetLength(&length))) {
+      } else {
+        nsINodeList* childList = dragINode->ChildNodes();
+        uint32_t length = childList->Length();
         // check every childnode for being an img element
-        while (count < length) {
-          if (NS_FAILED(childList->Item(count, getter_AddRefs(child))) ||
-              NS_FAILED(child->GetNodeName(childNodeName))) {
-            break;
-          }
-          // here the node is checked for being an img element
-          if (childNodeName.LowerCaseEqualsLiteral("img")) {
+        // XXXbz why don't we need to check descendants recursively?
+        for (uint32_t count = 0; count < length; ++count) {
+          if (childList->Item(count)->NodeName().LowerCaseEqualsLiteral("img")) {
             // if the dragnode contains an image, set RENDER_IS_IMAGE flag
             renderFlags = renderFlags | nsIPresShell::RENDER_IS_IMAGE;
             break;
           }
-          count++;
         }
       }
     }

@@ -14,9 +14,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1342989
   <![CDATA[
   SimpleTest.waitForExplicitFinish();
 
-  var Ci = Components.interfaces;
-  var Cc = Components.classes;
-
   const WEB_PROGRESS_LISTENER_FLAGS =
       Object.keys(Ci.nsIWebProgressListener).filter(
     propName => propName.startsWith("STATE_")
@@ -65,10 +62,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1342989
     },
 
     QueryInterface: function(iid) {
-      if (iid.equals(Components.interfaces.nsIWebProgressListener) ||
-          iid.equals(Components.interfaces.nsISupportsWeakReference))
+      if (iid.equals(Ci.nsIWebProgressListener) ||
+          iid.equals(Ci.nsISupportsWeakReference))
         return this;
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   }
 

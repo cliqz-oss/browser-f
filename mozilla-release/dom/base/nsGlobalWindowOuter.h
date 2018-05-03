@@ -31,7 +31,6 @@
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsITimer.h"
-#include "nsIDOMModalContentWindow.h"
 #include "mozilla/EventListenerManager.h"
 #include "nsIPrincipal.h"
 #include "nsSize.h"
@@ -162,17 +161,18 @@ extern const js::Class OuterWindowProxyClass;
 // inner windows belonging to the same outer window, but that's an unimportant
 // side effect of inheriting PRCList).
 
-class nsGlobalWindowOuter : public mozilla::dom::EventTarget,
-                            public nsPIDOMWindowOuter,
-                            private nsIDOMWindow,
-                            // NOTE: This interface is private, as it's only
-                            // implemented on chrome windows.
-                            private nsIDOMChromeWindow,
-                            public nsIScriptGlobalObject,
-                            public nsIScriptObjectPrincipal,
-                            public nsSupportsWeakReference,
-                            public nsIInterfaceRequestor,
-                            public PRCListStr
+class nsGlobalWindowOuter final
+  : public mozilla::dom::EventTarget
+  , public nsPIDOMWindowOuter
+  , private nsIDOMWindow
+    // NOTE: This interface is private, as it's only
+    // implemented on chrome windows.
+  , private nsIDOMChromeWindow
+  , public nsIScriptGlobalObject
+  , public nsIScriptObjectPrincipal
+  , public nsSupportsWeakReference
+  , public nsIInterfaceRequestor
+  , public PRCListStr
 {
 public:
   typedef nsDataHashtable<nsUint64HashKey, nsGlobalWindowOuter*> OuterWindowByIdTable;
@@ -349,10 +349,10 @@ public:
   friend class FullscreenTransitionTask;
 
   // Outer windows only.
-  virtual nsresult SetFullscreenInternal(
-    FullscreenReason aReason, bool aIsFullscreen) override final;
-  virtual void FullscreenWillChange(bool aIsFullscreen) override final;
-  virtual void FinishFullscreenChange(bool aIsFullscreen) override final;
+  nsresult SetFullscreenInternal(
+    FullscreenReason aReason, bool aIsFullscreen) final;
+  void FullscreenWillChange(bool aIsFullscreen) final;
+  void FinishFullscreenChange(bool aIsFullscreen) final;
   bool SetWidgetFullscreen(FullscreenReason aReason, bool aIsFullscreen,
                            nsIWidget* aWidget, nsIScreen* aScreen);
   bool FullScreen() const;
@@ -608,7 +608,7 @@ public:
                 nsIDocShellLoadInfo* aLoadInfo,
                 bool aForceNoOpener,
                 nsPIDOMWindowOuter **_retval) override;
-  nsIDOMNavigator* GetNavigator() override;
+  mozilla::dom::Navigator* GetNavigator() override;
 
 #if defined(MOZ_WIDGET_ANDROID)
   int16_t Orientation(mozilla::dom::CallerType aCallerType) const;
@@ -686,7 +686,7 @@ public:
                       const nsAString& aOptions,
                       nsISupports* aExtraArgument,
                       nsPIDOMWindowOuter** _retval) override;
-  nsresult UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason) override;
+  void UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason) override;
 
   already_AddRefed<nsPIDOMWindowOuter>
   GetContentInternal(mozilla::ErrorResult& aError,
@@ -697,9 +697,9 @@ public:
                        mozilla::ErrorResult& aError);
   already_AddRefed<nsPIDOMWindowOuter> GetContent()
   {
-    mozilla::IgnoredErrorResult ignored;
     nsCOMPtr<nsPIDOMWindowOuter> win =
-      GetContentInternal(ignored, mozilla::dom::CallerType::System);
+      GetContentInternal(mozilla::IgnoreErrors(),
+                         mozilla::dom::CallerType::System);
     return win.forget();
   }
 

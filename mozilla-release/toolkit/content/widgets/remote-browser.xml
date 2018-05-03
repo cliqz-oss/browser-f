@@ -25,15 +25,15 @@
               return null;
 
             let jsm = "resource://gre/modules/RemoteSecurityUI.jsm";
-            let RemoteSecurityUI = Components.utils.import(jsm, {}).RemoteSecurityUI;
+            let RemoteSecurityUI = ChromeUtils.import(jsm, {}).RemoteSecurityUI;
             this._securityUI = new RemoteSecurityUI();
           }
 
           // We want to double-wrap the JS implemented interface, so that QI and instanceof works.
-          var ptr = Components.classes["@mozilla.org/supports-interface-pointer;1"]
-                              .createInstance(Components.interfaces.nsISupportsInterfacePointer);
+          var ptr = Cc["@mozilla.org/supports-interface-pointer;1"]
+                      .createInstance(Ci.nsISupportsInterfacePointer);
           ptr.data = this._securityUI;
-          return ptr.data.QueryInterface(Components.interfaces.nsISecureBrowserUI);
+          return ptr.data.QueryInterface(Ci.nsISecureBrowserUI);
         ]]></getter>
       </property>
 
@@ -49,24 +49,9 @@
 
       <field name="_remoteWebProgress">null</field>
 
-      <property name="webProgress" readonly="true">
-      	<getter>
-      	  <![CDATA[
-            if (!this._remoteWebProgress) {
-              // Don't attempt to create the remote web progress if the
-              // messageManager has already gone away
-              if (!this.messageManager)
-                return null;
-
-              let jsm = "resource://gre/modules/RemoteWebProgress.jsm";
-              let { RemoteWebProgressManager } = Components.utils.import(jsm, {});
-              this._remoteWebProgressManager = new RemoteWebProgressManager(this);
-              this._remoteWebProgress = this._remoteWebProgressManager.topLevelWebProgress;
-            }
-            return this._remoteWebProgress;
-      	  ]]>
-      	</getter>
-      </property>
+      <property name="webProgress"
+                onget="return this._remoteWebProgress;"
+                readonly="true"/>
 
       <field name="_remoteFinder">null</field>
 
@@ -79,7 +64,7 @@
               return null;
 
             let jsm = "resource://gre/modules/RemoteFinder.jsm";
-            let { RemoteFinder } = Components.utils.import(jsm, {});
+            let { RemoteFinder } = ChromeUtils.import(jsm, {});
             this._remoteFinder = new RemoteFinder(this);
           }
           return this._remoteFinder;
@@ -334,7 +319,7 @@
           let permitUnload;
           let id = this._permitUnloadId++;
           let mm = this.messageManager;
-          let Services = Components.utils.import("resource://gre/modules/Services.jsm", {}).Services;
+          let Services = ChromeUtils.import("resource://gre/modules/Services.jsm", {}).Services;
 
           let msgListener = msg => {
             if (msg.data.id != id) {
@@ -374,7 +359,7 @@
             Services.tm.dispatchToMainThread(function() {});
           }
 
-          let timer = Components.classes["@mozilla.org/timer;1"].createInstance(Components.interfaces.nsITimer);
+          let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
           timer.initWithCallback(timeout, kTimeout, timer.TYPE_ONE_SHOT);
 
           while (!finished && !timedOut) {
@@ -393,13 +378,13 @@
            * the <browser> element may not be initialized yet.
            */
 
-          this._remoteWebNavigation = Components.classes["@mozilla.org/remote-web-navigation;1"]
-                                                .createInstance(Components.interfaces.nsIWebNavigation);
+          this._remoteWebNavigation = Cc["@mozilla.org/remote-web-navigation;1"]
+                                        .createInstance(Ci.nsIWebNavigation);
           this._remoteWebNavigationImpl = this._remoteWebNavigation.wrappedJSObject;
           this._remoteWebNavigationImpl.swapBrowser(this);
 
           // Initialize contentPrincipal to the about:blank principal for this loadcontext
-          let {Services} = Components.utils.import("resource://gre/modules/Services.jsm", {});
+          let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
           let aboutBlank = Services.io.newURI("about:blank");
           let ssm = Services.scriptSecurityManager;
           this._contentPrincipal = ssm.getLoadContextCodebasePrincipal(aboutBlank, this.loadContext);
@@ -413,6 +398,14 @@
           this.messageManager.addMessageListener("DOMFullscreen:RequestExit", this);
           this.messageManager.addMessageListener("DOMFullscreen:RequestRollback", this);
           this.messageManager.addMessageListener("MozApplicationManifest", this);
+
+          // browser-child messages, such as Content:LocationChange, are handled in
+          // RemoteWebProgress, ensure it is loaded and ready.
+          let jsm = "resource://gre/modules/RemoteWebProgress.jsm";
+          let { RemoteWebProgressManager } = ChromeUtils.import(jsm, {});
+          this._remoteWebProgressManager = new RemoteWebProgressManager(this);
+          this._remoteWebProgress = this._remoteWebProgressManager.topLevelWebProgress;
+
           this.messageManager.loadFrameScript("chrome://global/content/browser-child.js", true);
 
           if (this.hasAttribute("selectmenulist")) {
@@ -463,7 +456,7 @@
           }
 
           if (!this.hasAttribute("disablehistory")) {
-            let Services = Components.utils.import("resource://gre/modules/Services.jsm", {}).Services;
+            let Services = ChromeUtils.import("resource://gre/modules/Services.jsm", {}).Services;
             try {
               Services.obs.removeObserver(this, "browser:purge-session-history");
             } catch (ex) {
@@ -494,7 +487,7 @@
             case "Forms:ShowDropDown": {
               if (!this._selectParentHelper) {
                 this._selectParentHelper =
-                  Cu.import("resource://gre/modules/SelectParentHelper.jsm", {}).SelectParentHelper;
+                  ChromeUtils.import("resource://gre/modules/SelectParentHelper.jsm", {}).SelectParentHelper;
               }
 
               let menulist = document.getElementById(this.getAttribute("selectmenulist"));
@@ -534,15 +527,15 @@
             }
 
             case "DOMFullscreen:RequestExit": {
-              let windowUtils = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                                      .getInterface(Components.interfaces.nsIDOMWindowUtils);
+              let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                                      .getInterface(Ci.nsIDOMWindowUtils);
               windowUtils.exitFullscreen();
               break;
             }
 
             case "DOMFullscreen:RequestRollback": {
-              let windowUtils = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                                      .getInterface(Components.interfaces.nsIDOMWindowUtils);
+              let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                                      .getInterface(Ci.nsIDOMWindowUtils);
               windowUtils.remoteFrameFullscreenReverted();
               break;
             }
@@ -581,7 +574,7 @@
               this.messageManager.sendAsyncMessage("Browser:PurgeSessionHistory");
             } catch (ex) {
               // This can throw if the browser has started to go away.
-              if (ex.result != Components.results.NS_ERROR_NOT_INITIALIZED) {
+              if (ex.result != Cr.NS_ERROR_NOT_INITIALIZED) {
                 throw ex;
               }
             }

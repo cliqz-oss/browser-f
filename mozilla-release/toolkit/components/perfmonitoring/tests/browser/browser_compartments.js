@@ -11,9 +11,9 @@
  * and that jank from several iframes are actually charged
  * to the top window.
  */
-Cu.import("resource://gre/modules/PerformanceStats.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://testing-common/ContentTask.jsm", this);
+ChromeUtils.import("resource://gre/modules/PerformanceStats.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTask.jsm", this);
 
 
 const URL = "http://example.com/browser/toolkit/components/perfmonitoring/tests/browser/browser_compartments.html?test=" + Math.random();
@@ -27,9 +27,8 @@ function frameScript() {
   try {
     "use strict";
 
-    const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
-    Cu.import("resource://gre/modules/PerformanceStats.jsm");
-    Cu.import("resource://gre/modules/Services.jsm");
+    ChromeUtils.import("resource://gre/modules/PerformanceStats.jsm");
+    ChromeUtils.import("resource://gre/modules/Services.jsm");
 
     // Make sure that the stopwatch is now active.
     let monitor = PerformanceStats.getMonitor(["jank", "cpow", "ticks", "compartments"]);
@@ -205,7 +204,7 @@ add_task(async function test() {
   info("Extracting initial state");
   let stats0 = await monitor.promiseSnapshot();
   Assert.notEqual(stats0.componentsData.length, 0, "There is more than one component");
-  Assert.ok(!stats0.componentsData.find(stat => stat.name.indexOf(URL) != -1),
+  Assert.ok(!stats0.componentsData.find(stat => stat.name.includes(URL)),
     "The url doesn't appear yet");
 
   let newTab = BrowserTestUtils.addTab(gBrowser);

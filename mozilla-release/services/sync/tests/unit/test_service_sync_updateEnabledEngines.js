@@ -1,12 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function QuietStore() {
   Store.call("Quiet");
@@ -76,7 +76,7 @@ async function setUp(server) {
 const PAYLOAD = 42;
 
 add_task(async function setup() {
-  Service.engineManager.clear();
+  await Service.engineManager.clear();
   validate_all_future_pings();
 
   await Service.engineManager.register(SteamEngine);
@@ -220,11 +220,8 @@ add_task(async function test_disabledLocally_wipe503() {
   Service._ignorePrefObserver = false;
   engine.enabled = false;
 
-  let promiseObserved = promiseOneObserver("weave:ui:sync:error");
-
   _("Sync.");
-  Service.errorHandler.syncAndReportErrors();
-  await promiseObserved;
+  await Service.sync();
   Assert.equal(Service.status.sync, SERVER_MAINTENANCE);
 
   await Service.startOver();

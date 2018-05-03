@@ -14,7 +14,6 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/APZCTreeManagerChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerChild.h"
@@ -997,12 +996,6 @@ GPUProcessManager::CreateContentVideoDecoderManager(base::ProcessId aOtherProces
   mGPUChild->SendNewContentVideoDecoderManager(Move(parentPipe));
 
   *aOutEndpoint = Move(childPipe);
-}
-
-already_AddRefed<IAPZCTreeManager>
-GPUProcessManager::GetAPZCTreeManagerForLayers(uint64_t aLayersId)
-{
-  return CompositorBridgeParent::GetAPZCTreeManager(aLayersId);
 }
 
 void

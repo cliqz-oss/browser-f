@@ -9,11 +9,10 @@
 
 #include "mozilla/Attributes.h"
 
-#include "jsobj.h"
-
 #include "gc/Barrier.h"
 #include "js/Class.h"
 #include "vm/ArrayBufferObject.h"
+#include "vm/JSObject.h"
 #include "vm/SharedArrayObject.h"
 #include "vm/TypedArrayObject.h"
 
@@ -57,7 +56,7 @@ class DataViewObject : public NativeObject
 
     static DataViewObject*
     create(JSContext* cx, uint32_t byteOffset, uint32_t byteLength,
-           Handle<ArrayBufferObjectMaybeShared*> arrayBuffer, JSObject* proto);
+           Handle<ArrayBufferObjectMaybeShared*> arrayBuffer, HandleObject proto);
 
   public:
     static const Class class_;

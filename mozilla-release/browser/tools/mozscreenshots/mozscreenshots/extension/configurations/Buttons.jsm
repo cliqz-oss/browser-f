@@ -4,14 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Buttons"];
+var EXPORTED_SYMBOLS = ["Buttons"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource:///modules/CustomizableUI.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource:///modules/CustomizableUI.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-this.Buttons = {
+var Buttons = {
 
   init(libDir) {
     createWidget();

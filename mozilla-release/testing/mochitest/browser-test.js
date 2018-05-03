@@ -4,13 +4,15 @@ var gTimeoutSeconds = 45;
 var gConfig;
 var gSaveInstrumentationData = null;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
+ChromeUtils.defineModuleGetter(this, "ContentSearch",
   "resource:///modules/ContentSearch.jsm");
+
+Cu.importGlobalProperties(["NodeFilter"]);
 
 const SIMPLETEST_OVERRIDES =
   ["ok", "is", "isnot", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
@@ -89,8 +91,8 @@ function testInit() {
 
       // Window is the [ChromeWindow] for messageManager, so we need content.window
       // Currently chrome tests are run in a content window instead of a ChromeWindow
-      var webNav = content.window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                         .getInterface(Components.interfaces.nsIWebNavigation);
+      var webNav = content.window.QueryInterface(Ci.nsIInterfaceRequestor)
+                         .getInterface(Ci.nsIWebNavigation);
       webNav.loadURI(url, null, null, null, null);
     };
 
@@ -113,7 +115,7 @@ function testInit() {
     globalMM.loadFrameScript("chrome://mochikit/content/shutdown-leaks-collector.js", true);
   } else {
     // In non-e10s, only run the ShutdownLeaksCollector in the parent process.
-    Components.utils.import("chrome://mochikit/content/ShutdownLeaksCollector.jsm");
+    ChromeUtils.import("chrome://mochikit/content/ShutdownLeaksCollector.jsm");
   }
 
   let gmm = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
@@ -286,7 +288,7 @@ function takeInstrumentation() {
     walker.showAnonymousContent = true;
     walker.showSubDocuments = false;
     walker.showDocumentsAsNodes = false;
-    walker.init(element, Ci.nsIDOMNodeFilter.SHOW_ELEMENT);
+    walker.init(element, NodeFilter.SHOW_ELEMENT);
 
     yield element;
     while (walker.nextNode()) {
@@ -399,13 +401,13 @@ function Tester(aTests, structuredLogger, aCallback) {
 
   this.MemoryStats = simpleTestScope.MemoryStats;
   this.Task = Task;
-  this.ContentTask = Components.utils.import("resource://testing-common/ContentTask.jsm", null).ContentTask;
-  this.BrowserTestUtils = Components.utils.import("resource://testing-common/BrowserTestUtils.jsm", null).BrowserTestUtils;
-  this.TestUtils = Components.utils.import("resource://testing-common/TestUtils.jsm", null).TestUtils;
+  this.ContentTask = ChromeUtils.import("resource://testing-common/ContentTask.jsm", null).ContentTask;
+  this.BrowserTestUtils = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm", null).BrowserTestUtils;
+  this.TestUtils = ChromeUtils.import("resource://testing-common/TestUtils.jsm", null).TestUtils;
   this.Task.Debugging.maintainStack = true;
-  this.Promise = Components.utils.import("resource://gre/modules/Promise.jsm", null).Promise;
-  this.PromiseTestUtils = Components.utils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
-  this.Assert = Components.utils.import("resource://testing-common/Assert.jsm", null).Assert;
+  this.Promise = ChromeUtils.import("resource://gre/modules/Promise.jsm", null).Promise;
+  this.PromiseTestUtils = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
+  this.Assert = ChromeUtils.import("resource://testing-common/Assert.jsm", null).Assert;
 
   this.PromiseTestUtils.init();
 
@@ -416,7 +418,7 @@ function Tester(aTests, structuredLogger, aCallback) {
 
   this._coverageCollector = null;
 
-  const XPCOMUtilsMod = Components.utils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+  const XPCOMUtilsMod = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 
   // Avoid failing tests when XPCOMUtils.defineLazyScriptGetter is used.
   XPCOMUtilsMod.Services = Object.create(Services, {
@@ -480,8 +482,8 @@ Tester.prototype = {
 
     if (gConfig.jscovDirPrefix) {
       let coveragePath = gConfig.jscovDirPrefix;
-      let {CoverageCollector} = Cu.import("resource://testing-common/CoverageUtils.jsm",
-                                          {});
+      let {CoverageCollector} = ChromeUtils.import("resource://testing-common/CoverageUtils.jsm",
+                                                   {});
       this._coverageCollector = new CoverageCollector(coveragePath);
     }
 
@@ -711,9 +713,9 @@ Tester.prototype = {
           // window.frames.  Skip those.
           return;
         }
-        if (this._globalProperties.indexOf(prop) == -1) {
+        if (!this._globalProperties.includes(prop)) {
           this._globalProperties.push(prop);
-          if (this._globalPropertyWhitelist.indexOf(prop) == -1) {
+          if (!this._globalPropertyWhitelist.includes(prop)) {
             this.currentTest.addResult(new testResult({
               name: "test left unexpected property on window: " + prop,
               allowFailure: this.currentTest.allowFailure,
@@ -883,7 +885,7 @@ Tester.prototype = {
 
           // Destroy BackgroundPageThumbs resources.
           let {BackgroundPageThumbs} =
-            Cu.import("resource://gre/modules/BackgroundPageThumbs.jsm", {});
+            ChromeUtils.import("resource://gre/modules/BackgroundPageThumbs.jsm", {});
           BackgroundPageThumbs._destroy();
 
           // Destroy preloaded browsers.
@@ -914,7 +916,7 @@ Tester.prototype = {
 
 
         let {AsyncShutdown} =
-          Cu.import("resource://gre/modules/AsyncShutdown.jsm", {});
+          ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", {});
 
         let barrier = new AsyncShutdown.Barrier(
           "ShutdownLeaks: Wait for cleanup to be finished before checking for leaks");
@@ -1167,7 +1169,7 @@ Tester.prototype = {
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -1226,7 +1228,7 @@ function testResult({ name, pass, todo, ex, stack, allowFailure }) {
   if (stack) {
     this.msg += "\nStack trace:\n";
     let normalized;
-    if (stack instanceof Components.interfaces.nsIStackFrame) {
+    if (stack instanceof Ci.nsIStackFrame) {
       let frames = [];
       for (let frame = stack; frame; frame = frame.caller) {
         frames.push(frame.filename + ":" + frame.name + ":" + frame.lineNumber);

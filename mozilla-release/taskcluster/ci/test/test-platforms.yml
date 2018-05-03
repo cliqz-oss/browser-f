@@ -51,9 +51,9 @@ linux64/opt:
         - reftest-stylo
         - desktop-screenshot-capture
         - talos
-        - linux-talos-stylo-disabled
         - awsy
         - mochitest-headless
+        - linux-talos-flex
 linux64-nightly/opt:
     build-platform: linux64-nightly/opt
     test-sets:
@@ -62,6 +62,7 @@ linux64-nightly/opt:
         - opt-only-tests
         - desktop-screenshot-capture
         - awsy
+        - linux-talos-profiling
 linux64-devedition/opt:
     build-platform: linux64-devedition-nightly/opt
     test-sets:
@@ -77,7 +78,6 @@ linux64-pgo/opt:
         - common-tests
         - web-platform-tests
         - talos
-        - linux-talos-stylo-disabled
 
 linux64-asan/opt:
     build-platform: linux64-asan/opt
@@ -92,7 +92,6 @@ linux32-stylo-disabled/debug:
 linux32-stylo-disabled/opt:
     build-platform: linux/opt
     test-sets:
-        - awsy-stylo-disabled
         - stylo-disabled-tests
 linux64-stylo-disabled/debug:
     build-platform: linux64/debug
@@ -102,7 +101,6 @@ linux64-stylo-disabled/debug:
 linux64-stylo-disabled/opt:
     build-platform: linux64/opt
     test-sets:
-        - awsy-stylo-disabled
         - stylo-disabled-tests
         - devtools-tests
 
@@ -120,6 +118,7 @@ linux64-qr/opt:
     test-sets:
         - linux-qr-tests
         - linux-qr-talos
+        - awsy
 linux64-qr/debug:
     build-platform: linux64/debug
     test-sets:
@@ -244,6 +243,7 @@ windows10-64-qr/opt:
     build-platform: win64/opt
     test-sets:
         - windows-qr-tests
+        - windows-qr-talos
 
 
 ##
@@ -295,10 +295,3 @@ android-4.2-x86/opt:
     build-platform: android-x86/opt
     test-sets:
         - android-x86-tests
-
-# android-4.3-arm7-api-16-gradle/opt actually uses the non-gradle build
-# which is tier 2, and requires only a smoketest, like robocop
-android-4.3-arm7-api-16-gradle/opt:
-    build-platform: android-api-16-gradle/opt
-    test-sets:
-        - android-opt-tests

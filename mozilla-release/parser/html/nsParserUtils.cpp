@@ -86,8 +86,7 @@ nsParserUtils::Sanitize(const nsAString& aFromStr,
                                   principal,
                                   true,
                                   nullptr,
-                                  DocumentFlavorHTML,
-                                  mozilla::StyleBackendType::None);
+                                  DocumentFlavorHTML);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIDocument> document = do_QueryInterface(domDocument);
@@ -138,12 +137,9 @@ nsParserUtils::ParseFragment(const nsAString& aFragment,
   *aReturn = nullptr;
 
   nsCOMPtr<nsIDocument> document;
-  nsCOMPtr<nsIDOMDocument> domDocument;
-  nsCOMPtr<nsIDOMNode> contextNode;
+  nsCOMPtr<nsINode> contextNode;
   contextNode = do_QueryInterface(aContextElement);
-  contextNode->GetOwnerDocument(getter_AddRefs(domDocument));
-  document = do_QueryInterface(domDocument);
-  NS_ENSURE_TRUE(document, NS_ERROR_NOT_AVAILABLE);
+  document = contextNode->OwnerDoc();
 
   nsAutoScriptBlockerSuppressNodeRemoved autoBlocker;
 

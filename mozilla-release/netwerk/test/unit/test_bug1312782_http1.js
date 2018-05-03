@@ -20,11 +20,9 @@
 //    plus 4. Also, the request ids of the rest requests should be less than non-focused
 //    window id + 2.
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
 var server = new HttpServer();
 server.start(-1);
 var baseURL = "http://localhost:" + server.identity.primaryPort + "/";
@@ -172,7 +170,7 @@ function run_test() {
   // Make sure "network.http.active_tab_priority" is true, so we can expect to
   // receive http requests with focused window id before others.
   var prefs = Cc["@mozilla.org/preferences-service;1"]
-                .getService(Components.interfaces.nsIPrefBranch);
+                .getService(Ci.nsIPrefBranch);
   prefs.setBoolPref("network.http.active_tab_priority", true);
 
   setup_http_server();

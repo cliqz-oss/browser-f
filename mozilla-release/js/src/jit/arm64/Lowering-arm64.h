@@ -101,8 +101,6 @@ class LIRGeneratorARM64 : public LIRGeneratorShared
     void visitUnbox(MUnbox* unbox) override;
     void visitReturn(MReturn* ret) override;
     void lowerPhi(MPhi* phi);
-    void visitGuardShape(MGuardShape* ins) override;
-    void visitGuardObjectGroup(MGuardObjectGroup* ins) override;
     void visitWasmUnsignedToDouble(MWasmUnsignedToDouble* ins) override;
     void visitWasmUnsignedToFloat32(MWasmUnsignedToFloat32* ins) override;
     void visitAsmJSLoadHeap(MAsmJSLoadHeap* ins) override;
@@ -110,7 +108,6 @@ class LIRGeneratorARM64 : public LIRGeneratorShared
     void visitWasmCompareExchangeHeap(MWasmCompareExchangeHeap* ins) override;
     void visitWasmAtomicExchangeHeap(MWasmAtomicExchangeHeap* ins) override;
     void visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins) override;
-    void visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic* ins) override;
     void visitCompareExchangeTypedArrayElement(MCompareExchangeTypedArrayElement* ins) override;
     void visitAtomicExchangeTypedArrayElement(MAtomicExchangeTypedArrayElement* ins) override;
     void visitAtomicTypedArrayElementBinop(MAtomicTypedArrayElementBinop* ins) override;

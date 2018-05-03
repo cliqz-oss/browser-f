@@ -122,10 +122,34 @@ private:
 class SubstitutingURL : public nsStandardURL
 {
 public:
-  SubstitutingURL() : nsStandardURL(true) {}
+  explicit SubstitutingURL() : nsStandardURL(true) {}
+  explicit SubstitutingURL(bool aSupportsFileURL) : nsStandardURL(true) { MOZ_ASSERT(aSupportsFileURL); }
   virtual nsStandardURL* StartClone() override;
   virtual MOZ_MUST_USE nsresult EnsureFile() override;
   NS_IMETHOD GetClassIDNoAlloc(nsCID *aCID) override;
+
+  class Mutator
+    : public TemplatedMutator<SubstitutingURL>
+  {
+    NS_DECL_ISUPPORTS
+  public:
+    explicit Mutator() = default;
+  private:
+    virtual ~Mutator() = default;
+  };
+
+  NS_IMETHOD Mutate(nsIURIMutator** aMutator) override
+  {
+    RefPtr<SubstitutingURL::Mutator> mutator = new SubstitutingURL::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    mutator.forget(aMutator);
+    return NS_OK;
+  }
+
+  friend BaseURIMutator<SubstitutingURL>;
 };
 
 } // namespace net

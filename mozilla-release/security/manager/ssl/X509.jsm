@@ -4,10 +4,9 @@
 
 "use strict";
 
-const Cu = Components.utils;
 // Until DER.jsm is actually used in production code, this is where we have to
 // import it from.
-var { DER } = Cu.import("resource://testing-common/psm/DER.jsm", {});
+var { DER } = ChromeUtils.import("resource://testing-common/psm/DER.jsm", {});
 
 const ERROR_UNSUPPORTED_ASN1 = "unsupported asn.1";
 const ERROR_TIME_NOT_VALID = "Time not valid";
@@ -630,5 +629,5 @@ class SubjectPublicKeyInfo extends DecodedDER {
   }
 }
 
-this.X509 = { Certificate };
-this.EXPORTED_SYMBOLS = ["X509"];
+var X509 = { Certificate };
+var EXPORTED_SYMBOLS = ["X509"];

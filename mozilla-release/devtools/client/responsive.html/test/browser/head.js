@@ -4,16 +4,16 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* import-globals-from ../../../framework/test/shared-head.js */
-/* import-globals-from ../../../framework/test/shared-redux-head.js */
+/* import-globals-from ../../../shared/test/shared-head.js */
+/* import-globals-from ../../../shared/test/shared-redux-head.js */
 /* import-globals-from ../../../commandline/test/helpers.js */
 /* import-globals-from ../../../inspector/test/shared-head.js */
 
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-redux-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-redux-head.js",
   this);
 
 // Import the GCLI test helper
@@ -34,6 +34,7 @@ Services.scriptloader.loadSubScript(
 const E10S_MULTI_ENABLED = Services.prefs.getIntPref("dom.ipc.processCount") > 1;
 const TEST_URI_ROOT = "http://example.com/browser/devtools/client/responsive.html/test/browser/";
 const OPEN_DEVICE_MODAL_VALUE = "OPEN_DEVICE_MODAL";
+const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
 
 const { _loadPreferredDevices } = require("devtools/client/responsive.html/actions/devices");
 const asyncStorage = require("devtools/shared/async-storage");
@@ -48,14 +49,18 @@ SimpleTest.waitForExplicitFinish();
 requestLongerTimeout(2);
 
 flags.testing = true;
-Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
-Services.prefs.setCharPref("devtools.devices.url",
-  TEST_URI_ROOT + "devices.json");
+Services.prefs.setCharPref("devtools.devices.url", TEST_URI_ROOT + "devices.json");
+// The appearance of this notification causes intermittent behavior in some tests that
+// send mouse events, since it causes the content to shift when it appears.
+Services.prefs.setBoolPref("devtools.responsive.reloadNotification.enabled", false);
 
 registerCleanupFunction(async () => {
   flags.testing = false;
   Services.prefs.clearUserPref("devtools.devices.url");
+  Services.prefs.clearUserPref("devtools.responsive.reloadNotification.enabled");
   Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
+  Services.prefs.clearUserPref("devtools.responsive.reloadConditions.touchSimulation");
+  Services.prefs.clearUserPref("devtools.responsive.reloadConditions.userAgent");
   await asyncStorage.removeItem("devtools.devices.url_cache");
   await removeLocalDevices();
 });
@@ -132,6 +137,7 @@ function waitForViewportResizeTo(ui, width, height) {
     // If the viewport has already the expected size, we resolve the promise immediately.
     let size = await getContentSize(ui);
     if (isSizeMatching(size)) {
+      info(`Content already resized to ${width} x ${height}`);
       resolve();
       return;
     }
@@ -191,8 +197,7 @@ function getElRect(selector, win) {
  * the rect of the dragged element as it was before drag.
  */
 function dragElementBy(selector, x, y, win) {
-  let ReactDOM = win.require("devtools/client/shared/vendor/react-dom");
-  let { Simulate } = ReactDOM.TestUtils;
+  let { Simulate } = win.require("devtools/client/shared/vendor/react-dom-test-utils");
   let rect = getElRect(selector, win);
   let startPoint = {
     clientX: Math.floor(rect.left + rect.width / 2),
@@ -228,8 +233,7 @@ async function testViewportResize(ui, selector, moveBy,
 
 function openDeviceModal({ toolWindow }) {
   let { document } = toolWindow;
-  let ReactDOM = toolWindow.require("devtools/client/shared/vendor/react-dom");
-  let { Simulate } = ReactDOM.TestUtils;
+  let { Simulate } = toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
   let select = document.querySelector(".viewport-device-selector");
   let modal = document.querySelector("#device-modal-wrapper");
 
@@ -246,8 +250,8 @@ function openDeviceModal({ toolWindow }) {
 
 function changeSelectValue({ toolWindow }, selector, value) {
   let { document } = toolWindow;
-  let ReactDOM = toolWindow.require("devtools/client/shared/vendor/react-dom");
-  let { Simulate } = ReactDOM.TestUtils;
+  let { Simulate } =
+    toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
 
   info(`Selecting ${value} in ${selector}.`);
 
@@ -277,9 +281,8 @@ const selectNetworkThrottling = (ui, value) => Promise.all([
 function getSessionHistory(browser) {
   return ContentTask.spawn(browser, {}, async function () {
     /* eslint-disable no-undef */
-    let { utils: Cu } = Components;
     const { SessionHistory } =
-      Cu.import("resource://gre/modules/sessionstore/SessionHistory.jsm", {});
+      ChromeUtils.import("resource://gre/modules/sessionstore/SessionHistory.jsm", {});
     return SessionHistory.collect(docShell);
     /* eslint-enable no-undef */
   });
@@ -388,8 +391,8 @@ async function testUserAgentFromBrowser(browser, expected) {
  * function adds `device` via the form, saves it, and waits for it to appear in the store.
  */
 function addDeviceInModal(ui, device) {
-  let ReactDOM = ui.toolWindow.require("devtools/client/shared/vendor/react-dom");
-  let { Simulate } = ReactDOM.TestUtils;
+  let { Simulate } =
+    ui.toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
   let { store, document } = ui.toolWindow;
 
   let nameInput = document.querySelector("#device-adder-name input");
@@ -420,4 +423,14 @@ function addDeviceInModal(ui, device) {
   );
   Simulate.click(adderSave);
   return saved;
+}
+
+function reloadOnUAChange(enabled) {
+  let pref = RELOAD_CONDITION_PREF_PREFIX + "userAgent";
+  Services.prefs.setBoolPref(pref, enabled);
+}
+
+function reloadOnTouchChange(enabled) {
+  let pref = RELOAD_CONDITION_PREF_PREFIX + "touchSimulation";
+  Services.prefs.setBoolPref(pref, enabled);
 }

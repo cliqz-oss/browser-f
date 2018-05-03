@@ -23,6 +23,7 @@ enum MacSandboxPluginType {
   MacSandboxPluginType_GMPlugin_OpenH264,     // Gecko Media Plugin, OpenH264
   MacSandboxPluginType_GMPlugin_EME,          // Gecko Media Plugin, EME
   MacSandboxPluginType_GMPlugin_EME_Widevine, // Gecko Media Plugin, Widevine
+  MacSandboxPluginType_Flash,                 // Flash
   MacSandboxPluginType_Invalid
 };
 
@@ -47,11 +48,11 @@ typedef struct _MacSandboxInfo {
   int32_t level;
   bool hasFilePrivileges;
   bool hasSandboxedProfile;
+  bool hasAudio;
   MacSandboxPluginInfo pluginInfo;
   std::string appPath;
   std::string appBinaryPath;
   std::string appDir;
-  std::string appTempDir;
   std::string profileDir;
   std::string debugWriteDir;
 

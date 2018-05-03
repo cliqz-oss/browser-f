@@ -231,12 +231,13 @@
             if (aTarget.hasAttribute("on" + aEventName)) {
               var fn = new Function("event", aTarget.getAttribute("on" + aEventName));
               var rv = fn.call(aTarget, event);
+              // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
               if (rv == false)
                 cancel = true;
             }
             return !cancel;
           } catch (e) {
-            Components.utils.reportError(e);
+            Cu.reportError(e);
           }
           return false;
         ]]>
@@ -422,7 +423,7 @@
     </handlers>
   </binding>
 
-  <binding id="colorpicker-button" display="xul:menu" role="xul:colorpicker"
+  <binding id="colorpicker-button" display="xul:menu"
            extends="chrome://global/content/bindings/general.xml#basecontrol">
     <resources>
       <stylesheet src="chrome://global/skin/colorpicker.css"/>
@@ -486,6 +487,7 @@
             if (aTarget.hasAttribute("on" + aEventName)) {
               var fn = new Function("event", aTarget.getAttribute("on" + aEventName));
               var rv = fn.call(aTarget, event);
+              // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
               if (rv == false)
                 cancel = true;
             }
@@ -553,9 +555,6 @@
           this.hidePopup();
       ]]></handler>
     </handlers>
-  </binding>
-
-  <binding id="colorpickertile" role="xul:colorpickertile">
   </binding>
 
 </bindings>

@@ -7,15 +7,6 @@
  * Tests if requests render correct information in the menu UI.
  */
 
-// The following intermittent rejections should not be left uncaught. This test
-// has been whitelisted until the issue is fixed.
-//
-// NOTE: Whitelisting a class of rejections should be limited. Normally you
-//       should use "expectUncaughtRejection" to flag individual failures.
-Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
-PromiseTestUtils.whitelistRejectionsGlobally(/cookies is undefined/);
-PromiseTestUtils.whitelistRejectionsGlobally(/requestItem is undefined/);
-
 function test() {
   // Disable tcp fast open, because it is setting a response header indicator
   // (bug 1352274). TCP Fast Open is not present on all platforms therefore the
@@ -277,7 +268,7 @@ function test() {
         {
           type: "plain",
           fullMimeType: "text/plain; charset=utf-8",
-          transferred: L10N.getFormatStrWithNumbers("networkMenu.sizeB", 342),
+          transferred: L10N.getFormatStrWithNumbers("networkMenu.sizeB", 347),
           size: L10N.getFormatStrWithNumbers("networkMenu.sizeB", 12),
         }
       );

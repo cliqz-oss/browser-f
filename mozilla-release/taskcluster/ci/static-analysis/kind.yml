@@ -37,7 +37,6 @@ jobs:
             config:
                 - builds/releng_base_firefox.py
                 - builds/releng_sub_linux_configs/64_stat_and_debug.py
-                - balrog/production.py
             script: "mozharness/scripts/fx_desktop_build.py"
             tooltool-downloads: public
             keep-artifacts: false
@@ -61,7 +60,6 @@ jobs:
             config:
                 - builds/releng_base_firefox.py
                 - builds/releng_sub_linux_configs/64_stat_and_opt.py
-                - balrog/production.py
             script: "mozharness/scripts/fx_desktop_build.py"
             tooltool-downloads: public
             keep-artifacts: false
@@ -94,7 +92,7 @@ jobs:
                 - builds/taskcluster_base_win32.py
                 - builds/taskcluster_sub_win32/clang_debug.py
         toolchains:
-            - win32-clang-cl
+            - win32-clang-cl-st-an
             - win32-rust
             - win64-sccache
 
@@ -122,7 +120,7 @@ jobs:
                 - builds/taskcluster_base_win32.py
                 - builds/taskcluster_sub_win32/clang.py
         toolchains:
-            - win32-clang-cl
+            - win32-clang-cl-st-an
             - win32-rust
             - win64-sccache
 
@@ -150,7 +148,7 @@ jobs:
                 - builds/taskcluster_base_win64.py
                 - builds/taskcluster_sub_win64/clang_debug.py
         toolchains:
-            - win64-clang-cl
+            - win64-clang-cl-st-an
             - win64-rust
             - win64-sccache
 
@@ -178,6 +176,6 @@ jobs:
                 - builds/taskcluster_base_win64.py
                 - builds/taskcluster_sub_win64/clang.py
         toolchains:
-            - win64-clang-cl
+            - win64-clang-cl-st-an
             - win64-rust
             - win64-sccache

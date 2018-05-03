@@ -4,7 +4,9 @@
 
 //! Computed values.
 
-use {Atom, Namespace};
+use Atom;
+#[cfg(feature = "servo")]
+use Prefix;
 use context::QuirksMode;
 use euclid::Size2D;
 use font_metrics::{FontMetricsProvider, get_metrics_provider_for_product};
@@ -13,16 +15,14 @@ use media_queries::Device;
 use properties;
 use properties::{ComputedValues, LonghandId, StyleBuilder};
 use rule_cache::RuleCacheConditions;
-#[cfg(feature = "servo")]
-use servo_url::ServoUrl;
 use std::cell::RefCell;
+use std::cmp;
 use std::f32;
 use std::fmt::{self, Write};
-#[cfg(feature = "servo")]
-use std::sync::Arc;
 use style_traits::{CssWriter, ToCss};
 use style_traits::cursor::CursorKind;
 use super::{CSSFloat, CSSInteger};
+use super::animated::ToAnimatedValue;
 use super::generics::{GreaterThanOrEqualToOne, NonNegative};
 use super::generics::grid::{GridLine as GenericGridLine, TrackBreadth as GenericTrackBreadth};
 use super::generics::grid::{TrackSize as GenericTrackSize, TrackList as GenericTrackList};
@@ -32,18 +32,23 @@ use super::specified;
 pub use app_units::Au;
 pub use properties::animated_properties::TransitionProperty;
 #[cfg(feature = "gecko")]
-pub use self::align::{AlignItems, AlignJustifyContent, AlignJustifySelf, JustifyItems};
+pub use self::align::{AlignItems, AlignContent, JustifyContent, SelfAlignment, JustifyItems};
+#[cfg(feature = "gecko")]
+pub use self::align::{AlignSelf, JustifySelf};
 pub use self::angle::Angle;
 pub use self::background::{BackgroundSize, BackgroundRepeat};
-pub use self::border::{BorderImageSlice, BorderImageWidth, BorderImageSideWidth};
+pub use self::border::{BorderImageRepeat, BorderImageSlice, BorderImageWidth, BorderImageSideWidth};
 pub use self::border::{BorderRadius, BorderCornerRadius, BorderSpacing};
 pub use self::font::{FontSize, FontSizeAdjust, FontSynthesis, FontWeight, FontVariantAlternates};
-pub use self::font::{FontFamily, FontLanguageOverride, FontVariantSettings, FontVariantEastAsian};
+pub use self::font::{FontFamily, FontLanguageOverride, FontVariationSettings, FontVariantEastAsian};
 pub use self::font::{FontVariantLigatures, FontVariantNumeric, FontFeatureSettings};
 pub use self::font::{MozScriptLevel, MozScriptMinSize, MozScriptSizeMultiplier, XTextZoom, XLang};
-pub use self::box_::{AnimationIterationCount, AnimationName, Display, OverscrollBehavior, Contain};
-pub use self::box_::{OverflowClipBox, ScrollSnapType, TouchAction, VerticalAlign, WillChange};
+pub use self::box_::{AnimationIterationCount, AnimationName, Contain, Display};
+pub use self::box_::{OverflowClipBox, OverscrollBehavior, Perspective};
+pub use self::box_::{ScrollSnapType, TouchAction, VerticalAlign, WillChange};
 pub use self::color::{Color, ColorPropertyValue, RGBAColor};
+pub use self::column::ColumnCount;
+pub use self::counters::{Content, ContentItem, CounterIncrement, CounterReset};
 pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
 pub use self::image::{Gradient, GradientItem, Image, ImageLayer, LineDirection, MozImageRect};
@@ -53,26 +58,29 @@ pub use self::gecko::ScrollSnapPoint;
 pub use self::rect::LengthOrNumberRect;
 pub use super::{Auto, Either, None_};
 pub use super::specified::{BorderStyle, TextDecorationLine};
-pub use self::length::{CalcLengthOrPercentage, Length, LengthOrNone, LengthOrNumber, LengthOrPercentage};
+pub use self::length::{CalcLengthOrPercentage, Length, LengthOrNumber, LengthOrPercentage};
 pub use self::length::{LengthOrPercentageOrAuto, LengthOrPercentageOrNone, MaxLength, MozLength};
-pub use self::length::{CSSPixelLength, NonNegativeLength, NonNegativeLengthOrPercentage};
+pub use self::length::{CSSPixelLength, ExtremumLength, NonNegativeLength, NonNegativeLengthOrPercentage};
 pub use self::list::{ListStyleImage, Quotes};
 #[cfg(feature = "gecko")]
 pub use self::list::ListStyleType;
 pub use self::outline::OutlineStyle;
 pub use self::percentage::Percentage;
-pub use self::position::{Position, GridAutoFlow, GridTemplateAreas};
-pub use self::pointing::Cursor;
+pub use self::pointing::{CaretColor, Cursor};
 #[cfg(feature = "gecko")]
 pub use self::pointing::CursorImage;
+pub use self::position::{GridAutoFlow, GridTemplateAreas, Position, ZIndex};
 pub use self::svg::{SVGLength, SVGOpacity, SVGPaint, SVGPaintKind};
 pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth};
 pub use self::svg::MozContextProperties;
 pub use self::table::XSpan;
-pub use self::text::{InitialLetter, LetterSpacing, LineHeight, TextAlign, TextOverflow, WordSpacing};
+pub use self::text::{InitialLetter, LetterSpacing, LineHeight, MozTabSize};
+pub use self::text::{TextAlign, TextEmphasisStyle, TextOverflow, WordSpacing};
 pub use self::time::Time;
-pub use self::transform::{TimingFunction, Transform, TransformOperation, TransformOrigin};
+pub use self::transform::{Rotate, Scale, TimingFunction, Transform, TransformOperation};
+pub use self::transform::{TransformOrigin, TransformStyle, Translate};
 pub use self::ui::MozForceBrokenImageIcon;
+pub use self::url::{ComputedUrl, ComputedImageUrl};
 
 #[cfg(feature = "gecko")]
 pub mod align;
@@ -83,6 +91,8 @@ pub mod border;
 #[path = "box.rs"]
 pub mod box_;
 pub mod color;
+pub mod column;
+pub mod counters;
 pub mod effects;
 pub mod flex;
 pub mod font;
@@ -103,6 +113,14 @@ pub mod text;
 pub mod time;
 pub mod transform;
 pub mod ui;
+
+/// Common handling for the computed value CSS url() values.
+pub mod url {
+#[cfg(feature = "servo")]
+pub use ::servo::url::{ComputedUrl, ComputedImageUrl};
+#[cfg(feature = "gecko")]
+pub use ::gecko::url::{ComputedUrl, ComputedImageUrl};
+}
 
 /// A `Context` is all the data a specified value could ever need to compute
 /// itself and be transformed to a computed value.
@@ -169,12 +187,11 @@ impl<'a> Context<'a> {
         F: FnOnce(&Context) -> R
     {
         let mut conditions = RuleCacheConditions::default();
-        let default_values = device.default_computed_values();
         let provider = get_metrics_provider_for_product();
 
         let context = Context {
             is_root_element: false,
-            builder: StyleBuilder::for_derived_style(device, default_values, None, None),
+            builder: StyleBuilder::for_inheritance(device, None, None),
             font_metrics_provider: &provider,
             cached_system_font: None,
             in_media_query: true,
@@ -276,8 +293,10 @@ impl<'a, 'cx, 'cx_a: 'cx, S: ToComputedValue + 'a> Iterator for ComputedVecIter<
 ///
 /// This trait is derivable with `#[derive(ToComputedValue)]`. The derived
 /// implementation just calls `ToComputedValue::to_computed_value` on each field
-/// of the passed value, or `Clone::clone` if the field is annotated with
-/// `#[compute(clone)]`.
+/// of the passed value. The deriving code assumes that if the type isn't
+/// generic, then the trait can be implemented as simple `Clone::clone` calls,
+/// this means that a manual implementation with `ComputedValue = Self` is bogus
+/// if it returns anything else than a clone.
 pub trait ToComputedValue {
     /// The computed value type we're going to be converted to.
     type ComputedValue;
@@ -408,9 +427,9 @@ trivial_to_computed_value!(u8);
 trivial_to_computed_value!(u16);
 trivial_to_computed_value!(u32);
 trivial_to_computed_value!(Atom);
-trivial_to_computed_value!(BorderStyle);
 trivial_to_computed_value!(CursorKind);
-trivial_to_computed_value!(Namespace);
+#[cfg(feature = "servo")]
+trivial_to_computed_value!(Prefix);
 trivial_to_computed_value!(String);
 trivial_to_computed_value!(Box<str>);
 
@@ -419,6 +438,20 @@ pub type Number = CSSFloat;
 
 /// A wrapper of Number, but the value >= 0.
 pub type NonNegativeNumber = NonNegative<CSSFloat>;
+
+impl ToAnimatedValue for NonNegativeNumber {
+    type AnimatedValue = CSSFloat;
+
+    #[inline]
+    fn to_animated_value(self) -> Self::AnimatedValue {
+        self.0
+    }
+
+    #[inline]
+    fn from_animated_value(animated: Self::AnimatedValue) -> Self {
+        animated.max(0.).into()
+    }
+}
 
 impl From<CSSFloat> for NonNegativeNumber {
     #[inline]
@@ -436,6 +469,20 @@ impl From<NonNegativeNumber> for CSSFloat {
 
 /// A wrapper of Number, but the value >= 1.
 pub type GreaterThanOrEqualToOneNumber = GreaterThanOrEqualToOne<CSSFloat>;
+
+impl ToAnimatedValue for GreaterThanOrEqualToOneNumber {
+    type AnimatedValue = CSSFloat;
+
+    #[inline]
+    fn to_animated_value(self) -> Self::AnimatedValue {
+        self.0
+    }
+
+    #[inline]
+    fn from_animated_value(animated: Self::AnimatedValue) -> Self {
+        animated.max(1.).into()
+    }
+}
 
 impl From<CSSFloat> for GreaterThanOrEqualToOneNumber {
     #[inline]
@@ -487,22 +534,22 @@ pub type Opacity = CSSFloat;
 /// A `<integer>` value.
 pub type Integer = CSSInteger;
 
-/// <integer> | auto
-pub type IntegerOrAuto = Either<CSSInteger, Auto>;
-
-impl IntegerOrAuto {
-    /// Returns the integer value if it is an integer, otherwise return
-    /// the given value.
-    pub fn integer_or(&self, auto_value: CSSInteger) -> CSSInteger {
-        match *self {
-            Either::First(n) => n,
-            Either::Second(Auto) => auto_value,
-        }
-    }
-}
-
 /// A wrapper of Integer, but only accept a value >= 1.
 pub type PositiveInteger = GreaterThanOrEqualToOne<CSSInteger>;
+
+impl ToAnimatedValue for PositiveInteger {
+    type AnimatedValue = CSSInteger;
+
+    #[inline]
+    fn to_animated_value(self) -> Self::AnimatedValue {
+        self.0
+    }
+
+    #[inline]
+    fn from_animated_value(animated: Self::AnimatedValue) -> Self {
+        cmp::max(animated, 1).into()
+    }
+}
 
 impl From<CSSInteger> for PositiveInteger {
     #[inline]
@@ -510,15 +557,6 @@ impl From<CSSInteger> for PositiveInteger {
         GreaterThanOrEqualToOne::<CSSInteger>(int)
     }
 }
-
-/// PositiveInteger | auto
-pub type PositiveIntegerOrAuto = Either<PositiveInteger, Auto>;
-
-/// <length> | <percentage> | <number>
-pub type LengthOrPercentageOrNumber = Either<Number, LengthOrPercentage>;
-
-/// NonNegativeLengthOrPercentage | NonNegativeNumber
-pub type NonNegativeLengthOrPercentageOrNumber = Either<NonNegativeNumber, NonNegativeLengthOrPercentage>;
 
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
@@ -601,50 +639,8 @@ impl ClipRectOrAuto {
     }
 }
 
-/// <color> | auto
-pub type ColorOrAuto = Either<Color, Auto>;
-
-/// The computed value of a CSS `url()`, resolved relative to the stylesheet URL.
-#[cfg(feature = "servo")]
-#[derive(Clone, Debug, Deserialize, MallocSizeOf, PartialEq, Serialize)]
-pub enum ComputedUrl {
-    /// The `url()` was invalid or it wasn't specified by the user.
-    Invalid(#[ignore_malloc_size_of = "Arc"] Arc<String>),
-    /// The resolved `url()` relative to the stylesheet URL.
-    Valid(ServoUrl),
-}
-
-/// TODO: Properly build ComputedUrl for gecko
-#[cfg(feature = "gecko")]
-pub type ComputedUrl = specified::url::SpecifiedUrl;
-
-#[cfg(feature = "servo")]
-impl ComputedUrl {
-    /// Returns the resolved url if it was valid.
-    pub fn url(&self) -> Option<&ServoUrl> {
-        match *self {
-            ComputedUrl::Valid(ref url) => Some(url),
-            _ => None,
-        }
-    }
-}
-
-#[cfg(feature = "servo")]
-impl ToCss for ComputedUrl {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        let string = match *self {
-            ComputedUrl::Valid(ref url) => url.as_str(),
-            ComputedUrl::Invalid(ref invalid_string) => invalid_string,
-        };
-
-        dest.write_str("url(")?;
-        string.to_css(dest)?;
-        dest.write_str(")")
-    }
-}
-
 /// <url> | <none>
 pub type UrlOrNone = Either<ComputedUrl, None_>;
+
+/// <url> | <none> for image
+pub type ImageUrlOrNone = Either<ComputedImageUrl, None_>;

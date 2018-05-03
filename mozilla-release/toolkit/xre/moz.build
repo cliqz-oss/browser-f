@@ -36,11 +36,15 @@ if CONFIG['MOZ_INSTRUMENT_EVENT_LOOP']:
     EXPORTS += ['EventTracer.h']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+    EXPORTS.mozilla += [
+        'WinDllServices.h',
+    ]
     SOURCES += [
         '../../other-licenses/nsis/Contrib/CityHash/cityhash/city.cpp',
     ]
     UNIFIED_SOURCES += [
         'nsNativeAppSupportWin.cpp',
+        'WinDllServices.cpp',
     ]
     DEFINES['PROXY_PRINTING'] = 1
     LOCAL_INCLUDES += [
@@ -140,8 +144,8 @@ FINAL_LIBRARY = 'xul'
 if CONFIG['MOZ_GL_DEFAULT_PROVIDER'] == 'GLX':
     DEFINES['USE_GLX_TEST'] = True
 
-for var in ('MOZ_APP_NAME', 'MOZ_APP_BASENAME', 'MOZ_APP_VERSION', 'OS_TARGET',
-            'MOZ_WIDGET_TOOLKIT'):
+for var in ('MOZ_APP_NAME', 'MOZ_APP_BASENAME', 'MOZ_APP_DISPLAYNAME',
+            'MOZ_APP_VERSION', 'OS_TARGET', 'MOZ_WIDGET_TOOLKIT'):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
 if CONFIG['MOZ_UPDATER'] and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':

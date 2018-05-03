@@ -4,15 +4,15 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = [ "BingTranslator" ];
 
-this.EXPORTED_SYMBOLS = [ "BingTranslator" ];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/Http.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/Http.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 // The maximum amount of net data allowed per request on Bing's API.
 const MAX_REQUEST_DATA = 5000; // Documentation says 10000 but anywhere
@@ -39,7 +39,7 @@ const MAX_REQUESTS = 15;
  * @returns {Promise}          A promise that will resolve when the translation
  *                             task is finished.
  */
-this.BingTranslator = function(translationDocument, sourceLanguage, targetLanguage) {
+var BingTranslator = function(translationDocument, sourceLanguage, targetLanguage) {
   this.translationDocument = translationDocument;
   this.sourceLanguage = sourceLanguage;
   this.targetLanguage = targetLanguage;
@@ -69,7 +69,7 @@ this.BingTranslator.prototype = {
         // let's take the opportunity of the chunkification process to
         // allow for the event loop to attend other pending events
         // before we continue.
-        await CommonUtils.laterTickResolvingPromise();
+        await Async.promiseYield();
 
         // Determine the data for the next request.
         let request = this._generateNextTranslationRequest(currentIndex);
@@ -131,8 +131,8 @@ this.BingTranslator.prototype = {
    * @param   aError   [optional] The XHR object of the request that failed.
    */
   _chunkFailed(aError) {
-    if (aError instanceof Ci.nsIXMLHttpRequest &&
-        [400, 401].indexOf(aError.status) != -1) {
+    if (aError instanceof XMLHttpRequest &&
+        [400, 401].includes(aError.status)) {
       let body = aError.responseText;
       if (body && body.includes("TranslateApiException") &&
           (body.includes("balance") || body.includes("active state")))

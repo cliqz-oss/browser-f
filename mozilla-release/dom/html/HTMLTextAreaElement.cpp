@@ -24,7 +24,6 @@
 #include "nsIConstraintValidation.h"
 #include "nsIControllers.h"
 #include "nsIDocument.h"
-#include "nsIDOMHTMLFormElement.h"
 #include "nsIFormControlFrame.h"
 #include "nsIFormControl.h"
 #include "nsIForm.h"
@@ -789,8 +788,7 @@ nsresult
 HTMLTextAreaElement::Reset()
 {
   nsAutoString resetVal;
-  IgnoredErrorResult res;
-  GetDefaultValue(resetVal, res);
+  GetDefaultValue(resetVal, IgnoreErrors());
   SetValueChanged(false);
 
   nsresult rv = SetValueInternal(resetVal,
@@ -891,8 +889,7 @@ HTMLTextAreaElement::RestoreState(nsPresState* aState)
   }
 
   if (aState->IsDisabledSet() && !aState->GetDisabled()) {
-    IgnoredErrorResult rv;
-    SetDisabled(false, rv);
+    SetDisabled(false, IgnoreErrors());
   }
 
   return false;
@@ -991,33 +988,26 @@ HTMLTextAreaElement::BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 }
 
 void
-HTMLTextAreaElement::CharacterDataChanged(nsIDocument* aDocument,
-                                          nsIContent* aContent,
-                                          CharacterDataChangeInfo* aInfo)
+HTMLTextAreaElement::CharacterDataChanged(nsIContent* aContent,
+                                          const CharacterDataChangeInfo&)
 {
   ContentChanged(aContent);
 }
 
 void
-HTMLTextAreaElement::ContentAppended(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aFirstNewContent)
+HTMLTextAreaElement::ContentAppended(nsIContent* aFirstNewContent)
 {
   ContentChanged(aFirstNewContent);
 }
 
 void
-HTMLTextAreaElement::ContentInserted(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aChild)
+HTMLTextAreaElement::ContentInserted(nsIContent* aChild)
 {
   ContentChanged(aChild);
 }
 
 void
-HTMLTextAreaElement::ContentRemoved(nsIDocument* aDocument,
-                                    nsIContent* aContainer,
-                                    nsIContent* aChild,
+HTMLTextAreaElement::ContentRemoved(nsIContent* aChild,
                                     nsIContent* aPreviousSibling)
 {
   ContentChanged(aChild);
@@ -1312,8 +1302,7 @@ HTMLTextAreaElement::GetRows()
 NS_IMETHODIMP_(void)
 HTMLTextAreaElement::GetDefaultValueFromContent(nsAString& aValue)
 {
-  IgnoredErrorResult rv;
-  GetDefaultValue(aValue, rv);
+  GetDefaultValue(aValue, IgnoreErrors());
 }
 
 NS_IMETHODIMP_(bool)

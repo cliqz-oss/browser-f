@@ -1,9 +1,7 @@
 /* exported startup, shutdown, install, uninstall */
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource:///modules/experiments/Experiments.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource:///modules/experiments/Experiments.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var gStarted = false;
 

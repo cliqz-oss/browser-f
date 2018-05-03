@@ -16,6 +16,7 @@
 #include "nsIPresShell.h"
 #include "mozilla/CSSAlignUtils.h"
 #include "mozilla/ReflowInput.h"
+#include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsGridContainerFrame.h"
@@ -166,6 +167,8 @@ nsAbsoluteContainingBlock::Reflow(nsContainerFrame*        aDelegatingFrame,
       nsReflowStatus kidStatus;
       ReflowAbsoluteFrame(aDelegatingFrame, aPresContext, aReflowInput, cb,
                           aFlags, kidFrame, kidStatus, aOverflowAreas);
+      MOZ_ASSERT(!kidStatus.IsInlineBreakBefore(),
+                 "ShouldAvoidBreakInside should prevent this from happening");
       nsIFrame* nextFrame = kidFrame->GetNextInFlow();
       if (!kidStatus.IsFullyComplete() &&
           aDelegatingFrame->IsFrameOfType(nsIFrame::eCanContainOverflowContainers)) {

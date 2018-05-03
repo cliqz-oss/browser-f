@@ -6,8 +6,8 @@
 // Tests that security info parser gives correct general security state for
 // different cases.
 
-const { require } = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Object.defineProperty(this, "NetworkHelper", {
   get: function () {
@@ -18,7 +18,6 @@ Object.defineProperty(this, "NetworkHelper", {
   enumerable: true
 });
 
-var Ci = Components.interfaces;
 const wpl = Ci.nsIWebProgressListener;
 const MockSecurityInfo = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsITransportSecurityInfo,

@@ -2,22 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* exported AccessFu */
-
 "use strict";
 
-const {utils: Cu, interfaces: Ci} = Components;
+var EXPORTED_SYMBOLS = ["AccessFu"];
 
-this.EXPORTED_SYMBOLS = ["AccessFu"]; // jshint ignore:line
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/accessibility/Utils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/accessibility/Utils.jsm");
 
 if (Utils.MozBuildApp === "mobile/android") {
-  Cu.import("resource://gre/modules/Messaging.jsm");
+  ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 }
 
-const ACCESSFU_DISABLE = 0; // jshint ignore:line
+// const ACCESSFU_DISABLE = 0;
 const ACCESSFU_ENABLE = 1;
 const ACCESSFU_AUTO = 2;
 
@@ -25,7 +21,7 @@ const SCREENREADER_SETTING = "accessibility.screenreader";
 const QUICKNAV_MODES_PREF = "accessibility.accessfu.quicknav_modes";
 const QUICKNAV_INDEX_PREF = "accessibility.accessfu.quicknav_index";
 
-this.AccessFu = { // jshint ignore:line
+var AccessFu = {
   /**
    * Initialize chrome-layer accessibility functionality.
    * If accessibility is enabled on the platform, then a special accessibility
@@ -79,9 +75,9 @@ this.AccessFu = { // jshint ignore:line
     }
     this._enabled = true;
 
-    Cu.import("resource://gre/modules/accessibility/Utils.jsm");
-    Cu.import("resource://gre/modules/accessibility/PointerAdapter.jsm");
-    Cu.import("resource://gre/modules/accessibility/Presentation.jsm");
+    ChromeUtils.import("resource://gre/modules/accessibility/Utils.jsm");
+    ChromeUtils.import("resource://gre/modules/accessibility/PointerAdapter.jsm");
+    ChromeUtils.import("resource://gre/modules/accessibility/Presentation.jsm");
 
     for (let mm of Utils.AllMessageManagers) {
       this._addMessageListeners(mm);
@@ -265,7 +261,7 @@ this.AccessFu = { // jshint ignore:line
   },
 
   _loadFrameScript: function _loadFrameScript(aMessageManager) {
-    if (this._processedMessageManagers.indexOf(aMessageManager) < 0) {
+    if (!this._processedMessageManagers.includes(aMessageManager)) {
       aMessageManager.loadFrameScript(
         "chrome://global/content/accessibility/content-script.js", true);
       this._processedMessageManagers.push(aMessageManager);
@@ -519,7 +515,7 @@ var Output = {
   },
 
   start: function start() {
-    Cu.import("resource://gre/modules/Geometry.jsm");
+    ChromeUtils.import("resource://gre/modules/Geometry.jsm");
   },
 
   stop: function stop() {

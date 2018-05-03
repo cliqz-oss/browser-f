@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::fs::{remove_file, OpenOptions, File};
-use std::sync::atomic;
-use memmap::{Mmap, Protection};
 use errors::*;
+use memmap::{Mmap, MmapViewSync, Protection};
+use std::fs::{remove_file, File, OpenOptions};
+use std::path::Path;
+use std::sync::atomic;
 
 pub struct SharedMemReader {
     mmap: Mmap,
@@ -10,17 +10,16 @@ pub struct SharedMemReader {
 
 impl SharedMemReader {
     pub fn new(path: &Path, size: usize) -> Result<(SharedMemReader, File)> {
-        let file = OpenOptions::new().read(true)
-                                     .write(true)
-                                     .create_new(true)
-                                     .open(path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)?;
         let _ = remove_file(path);
         file.set_len(size as u64)?;
         let mmap = Mmap::open(&file, Protection::Read)?;
         assert_eq!(mmap.len(), size);
-        Ok((SharedMemReader {
-            mmap
-        }, file))
+        Ok((SharedMemReader { mmap }, file))
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<()> {
@@ -42,16 +41,15 @@ impl SharedMemReader {
 }
 
 pub struct SharedMemSlice {
-    mmap: Mmap,
+    view: MmapViewSync,
 }
 
 impl SharedMemSlice {
-    pub fn from(file: File, size: usize) -> Result<SharedMemSlice> {
-        let mmap = Mmap::open(&file, Protection::Read)?;
+    pub fn from(file: &File, size: usize) -> Result<SharedMemSlice> {
+        let mmap = Mmap::open(file, Protection::Read)?;
         assert_eq!(mmap.len(), size);
-        Ok(SharedMemSlice {
-            mmap
-        })
+        let view = mmap.into_view_sync();
+        Ok(SharedMemSlice { view })
     }
 
     pub fn get_slice(&self, size: usize) -> Result<&[u8]> {
@@ -59,12 +57,22 @@ impl SharedMemSlice {
             return Ok(&[]);
         }
         // TODO: Track how much is in the shm area.
-        if size <= self.mmap.len() {
+        if size <= self.view.len() {
             atomic::fence(atomic::Ordering::Acquire);
-            let buf = unsafe { &self.mmap.as_slice()[..size] };
+            let buf = unsafe { &self.view.as_slice()[..size] };
             Ok(buf)
         } else {
             bail!("mmap size");
+        }
+    }
+
+    /// Clones the view of the memory map.
+    ///
+    /// The underlying memory map is shared, and thus the caller must ensure that the memory
+    /// underlying the view is not illegally aliased.
+    pub unsafe fn clone_view(&self) -> Self {
+        SharedMemSlice {
+            view: self.view.clone(),
         }
     }
 }
@@ -75,16 +83,15 @@ pub struct SharedMemWriter {
 
 impl SharedMemWriter {
     pub fn new(path: &Path, size: usize) -> Result<(SharedMemWriter, File)> {
-        let file = OpenOptions::new().read(true)
-                                     .write(true)
-                                     .create_new(true)
-                                     .open(path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)?;
         let _ = remove_file(path);
         file.set_len(size as u64)?;
         let mmap = Mmap::open(&file, Protection::ReadWrite)?;
-        Ok((SharedMemWriter {
-            mmap
-        }, file))
+        Ok((SharedMemWriter { mmap }, file))
     }
 
     pub fn write(&mut self, buf: &[u8]) -> Result<()> {
@@ -105,16 +112,15 @@ impl SharedMemWriter {
 }
 
 pub struct SharedMemMutSlice {
-    mmap: Mmap,
+    view: MmapViewSync,
 }
 
 impl SharedMemMutSlice {
-    pub fn from(file: File, size: usize) -> Result<SharedMemMutSlice> {
-        let mmap = Mmap::open(&file, Protection::ReadWrite)?;
+    pub fn from(file: &File, size: usize) -> Result<SharedMemMutSlice> {
+        let mmap = Mmap::open(file, Protection::ReadWrite)?;
         assert_eq!(mmap.len(), size);
-        Ok(SharedMemMutSlice {
-            mmap
-        })
+        let view = mmap.into_view_sync();
+        Ok(SharedMemMutSlice { view })
     }
 
     pub fn get_mut_slice(&mut self, size: usize) -> Result<&mut [u8]> {
@@ -122,12 +128,23 @@ impl SharedMemMutSlice {
             return Ok(&mut []);
         }
         // TODO: Track how much is in the shm area.
-        if size <= self.mmap.len() {
-            let buf = unsafe { &mut self.mmap.as_mut_slice()[..size] };
+        if size <= self.view.len() {
+            let buf = unsafe { &mut self.view.as_mut_slice()[..size] };
             atomic::fence(atomic::Ordering::Release);
             Ok(buf)
         } else {
             bail!("mmap size");
+        }
+    }
+
+    /// Clones the view of the memory map.
+    ///
+    /// The underlying memory map is shared, and thus the caller must
+    /// ensure that the memory underlying the view is not illegally
+    /// aliased.
+    pub unsafe fn clone_view(&self) -> Self {
+        SharedMemMutSlice {
+            view: self.view.clone(),
         }
     }
 }

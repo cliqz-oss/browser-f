@@ -18,6 +18,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
+#include "mozilla/mozalloc.h"
 #include "mozilla/ReverseIterator.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/Span.h"
@@ -409,6 +410,17 @@ protected:
   template<typename ActualAlloc>
   void ShiftData(index_type aStart, size_type aOldLen, size_type aNewLen,
                  size_type aElemSize, size_t aElemAlign);
+
+  // This method may be called to swap elements from the end of the array to
+  // fill a "gap" in the array. If the resulting array has zero elements, then
+  // the array's memory is free'd.
+  // @param aStart     The starting index of the gap.
+  // @param aCount     The length of the gap.
+  // @param aElemSize  The size of an array element.
+  // @param aElemAlign The alignment in bytes of an array element.
+  template<typename ActualAlloc>
+  void SwapFromEnd(index_type aStart, size_type aCount,
+                   size_type aElemSize, size_t aElemAlign);
 
   // This method increments the length member of the array's header.
   // Note that mHdr may actually be sEmptyHdr in the case where a
@@ -1717,6 +1729,70 @@ public:
   // A variation on the RemoveElementsAt method defined above.
   void RemoveElementAt(index_type aIndex) { RemoveElementsAt(aIndex, 1); }
 
+  // A variation on the RemoveElementAt that removes the last element.
+  void RemoveLastElement() { RemoveElementAt(Length() - 1); }
+
+  // Removes the last element of the array and returns a copy of it.
+  MOZ_MUST_USE
+  elem_type PopLastElement()
+  {
+    elem_type elem = mozilla::Move(LastElement());
+    RemoveLastElement();
+    return elem;
+  }
+
+  // This method performs index-based removals from an array without preserving
+  // the order of the array. This is useful if you are using the array as a
+  // set-like data structure.
+  //
+  // These removals are efficient, as they move as few elements as possible. At
+  // most N elements, where N is the number of removed elements, will have to
+  // be relocated.
+  //
+  // ## Examples
+  //
+  // When removing an element from the end of the array, it can be removed in
+  // place, by destroying it and decrementing the length.
+  //
+  // [ 1, 2, 3 ] => [ 1, 2 ]
+  //         ^
+  //
+  // When removing any other single element, it is removed by swapping it with
+  // the last element, and then decrementing the length as before.
+  //
+  // [ 1, 2, 3, 4, 5, 6 ]  => [ 1, 6, 3, 4, 5 ]
+  //      ^
+  //
+  // This method also supports efficiently removing a range of elements. If they
+  // are at the end, then they can all be removed like in the one element case.
+  //
+  // [ 1, 2, 3, 4, 5, 6 ] => [ 1, 2 ]
+  //         ^--------^
+  //
+  // If more elements are removed than exist after the removed section, the
+  // remaining elements will be shifted down like in a normal removal.
+  //
+  // [ 1, 2, 3, 4, 5, 6, 7, 8 ] => [ 1, 2, 7, 8 ]
+  //         ^--------^
+  //
+  // And if fewer elements are removed than exist after the removed section,
+  // elements will be moved from the end of the array to fill the vacated space.
+  //
+  // [ 1, 2, 3, 4, 5, 6, 7, 8 ] => [ 1, 7, 8, 4, 5, 6 ]
+  //      ^--^
+  //
+  // @param aStart The starting index of the elements to remove. @param aCount
+  // The number of elements to remove.
+  void UnorderedRemoveElementsAt(index_type aStart, size_type aCount);
+
+  // A variation on the UnorderedRemoveElementsAt method defined above to remove
+  // a single element. This operation is sometimes called `SwapRemove`.
+  //
+  // This method is O(1), but does not preserve the order of the elements.
+  void UnorderedRemoveElementAt(index_type aIndex) {
+    UnorderedRemoveElementsAt(aIndex, 1);
+  }
+
   void Clear() {
     ClearAndRetainStorage();
     Compact();
@@ -1792,7 +1868,7 @@ public:
   // Allocation
   //
 
-  // This method may increase the capacity of this array object by the
+  // This method may increase the capacity of this array object to the
   // specified amount.  This method may be called in advance of several
   // AppendElement operations to minimize heap re-allocations.  This method
   // will not reduce the number of elements in this array.
@@ -2051,6 +2127,28 @@ nsTArray_Impl<E, Alloc>::RemoveElementsAt(index_type aStart, size_type aCount)
   this->template ShiftData<InfallibleAlloc>(aStart, aCount, 0,
                                             sizeof(elem_type),
                                             MOZ_ALIGNOF(elem_type));
+}
+
+template<typename E, class Alloc>
+void
+nsTArray_Impl<E, Alloc>::UnorderedRemoveElementsAt(index_type aStart, size_type aCount)
+{
+  MOZ_ASSERT(aCount == 0 || aStart < Length(), "Invalid aStart index");
+
+  mozilla::CheckedInt<index_type> rangeEnd = aStart;
+  rangeEnd += aCount;
+
+  if (MOZ_UNLIKELY(!rangeEnd.isValid() || rangeEnd.value() > Length())) {
+    InvalidArrayIndex_CRASH(aStart, Length());
+  }
+
+  // Destroy the elements which are being removed, and then swap elements in to
+  // replace them from the end. See the docs on the declaration of this
+  // function.
+  DestructRange(aStart, aCount);
+  this->template SwapFromEnd<InfallibleAlloc>(aStart, aCount,
+                                              sizeof(elem_type),
+                                              MOZ_ALIGNOF(elem_type));
 }
 
 template<typename E, class Alloc>
@@ -2353,6 +2451,7 @@ public:
   }
 
   AutoTArray(const self_type& aOther)
+    : nsTArray<E>()
   {
     Init();
     this->AppendElements(aOther);

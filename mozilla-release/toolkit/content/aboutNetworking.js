@@ -4,12 +4,8 @@
 
 "use strict";
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-const FileUtils = Cu.import("resource://gre/modules/FileUtils.jsm").FileUtils;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+const FileUtils = ChromeUtils.import("resource://gre/modules/FileUtils.jsm").FileUtils;
 const gEnv = Cc["@mozilla.org/process/environment;1"]
                .getService(Ci.nsIEnvironment);
 const gDashboard = Cc["@mozilla.org/network/dashboard;1"]
@@ -93,6 +89,7 @@ function displayDns(data) {
     let row = document.createElement("tr");
     row.appendChild(col(data.entries[i].hostname));
     row.appendChild(col(data.entries[i].family));
+    row.appendChild(col(data.entries[i].trr));
     let column = document.createElement("td");
 
     for (let j = 0; j < data.entries[i].hostaddr.length; j++) {

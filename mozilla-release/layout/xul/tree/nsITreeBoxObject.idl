@@ -12,6 +12,9 @@ interface nsITreeColumn;
 interface nsITreeColumns;
 interface nsIScriptableRegion;
 
+/**
+ * This interface cannot become builtinclass until bug 1438525 is fixed.
+ */
 [scriptable, uuid(f3da0c5e-51f5-45f0-b2cd-6be3ab6847ae)]
 interface nsITreeBoxObject : nsISupports
 {

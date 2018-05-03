@@ -51,7 +51,6 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(SVGMPathElement,
                                              SVGMPathElementBase,
                                              nsIDOMNode,
                                              nsIDOMElement,
-                                             nsIDOMSVGElement,
                                              nsIMutationObserver)
 
 // Constructor
@@ -189,8 +188,7 @@ SVGMPathElement::GetStringInfo()
 // nsIMutationObserver methods
 
 void
-SVGMPathElement::AttributeChanged(nsIDocument* aDocument,
-                                  Element* aElement,
+SVGMPathElement::AttributeChanged(Element* aElement,
                                   int32_t aNameSpaceID,
                                   nsAtom* aAttribute,
                                   int32_t aModType,

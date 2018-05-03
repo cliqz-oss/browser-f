@@ -6,6 +6,8 @@ const TEST_MSG = "ContentSearchTest";
 const CONTENT_SEARCH_MSG = "ContentSearch";
 const TEST_CONTENT_SCRIPT_BASENAME = "contentSearch.js";
 
+Cu.importGlobalProperties(["XMLHttpRequest"]);
+
 var gMsgMan;
 /* import-globals-from ../../../components/search/test/head.js */
 Services.scriptloader.loadSubScript(
@@ -372,6 +374,7 @@ var currentStateObj = async function() {
       name: engine.name,
       iconBuffer: await arrayBufferFromDataURI(uri),
       hidden: false,
+      identifier: engine.identifier,
     });
   }
   return state;
@@ -393,8 +396,7 @@ function arrayBufferFromDataURI(uri) {
     return Promise.resolve(null);
   }
   return new Promise(resolve => {
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-              createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("GET", uri, true);
     xhr.responseType = "arraybuffer";
     xhr.onerror = () => {

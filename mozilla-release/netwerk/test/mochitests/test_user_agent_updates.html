@@ -54,9 +54,9 @@ function testUAIFrame(host, expected, sameQ, message, testNavQ, navSameQ, navMes
   document.getElementById('content').appendChild(ifr);
 
   window.addEventListener("message", function recv(e) {
-    ok(sameQ == (e.data.header.indexOf(expected) != -1), message);
+    ok(sameQ == (e.data.header.includes(expected)), message);
     if (testNavQ) {
-      ok(navSameQ == (e.data.nav.indexOf(expected) != -1), navMessage);
+      ok(navSameQ == (e.data.nav.includes(expected)), navMessage);
     }
     window.removeEventListener("message", recv);
     callback();
@@ -213,15 +213,15 @@ SpecialPowers.pushPrefEnv({
 
 const chromeScript = SpecialPowers.loadChromeScript(_ => {
   // Enter update timer manager test mode
-  Components.classes["@mozilla.org/updates/timer-manager;1"].getService(
-    Components.interfaces.nsIObserver).observe(null, "utm-test-init", "");
+  Cc["@mozilla.org/updates/timer-manager;1"].getService(
+    Ci.nsIObserver).observe(null, "utm-test-init", "");
 
   var _notifyOnUpdate = false;
 
-  Components.utils.import("resource://gre/modules/FileUtils.jsm");
+  ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
   var FU = FileUtils;
 
-  const { OS } = Components.utils.import("resource://gre/modules/osfile.jsm");
+  const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
   var OSF = OS.File;
 
   const KEY_PREFDIR = "PrefD";
@@ -235,7 +235,7 @@ const chromeScript = SpecialPowers.loadChromeScript(_ => {
   const PREF_UPDATES_ENABLED = PREF_UPDATES + "enabled";
   const PREF_UPDATES_LASTUPDATED = PREF_UPDATES + "lastupdated";
 
-  let { Services } = Components.utils.import("resource://gre/modules/Services.jsm", {});
+  let { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
   Services.prefs.addObserver(PREF_UPDATES_LASTUPDATED, () => {
     if (_notifyOnUpdate) {
       _notifyOnUpdate = false; // Only notify once, for the first update.
@@ -312,7 +312,7 @@ const chromeScript = SpecialPowers.loadChromeScript(_ => {
   addMessageListener("testProfileLoad", testProfileLoad);
   addMessageListener("set-overrides", function(overrides) { OVERRIDES = overrides});
   addMessageListener("notify-on-update", () => { _notifyOnUpdate = true });
-}, { wantGlobalProperties: ["TextEncoder", "TextDecoder"]});
+}, { wantGlobalProperties: ["ChromeUtils", "TextEncoder", "TextDecoder"]});
 
 chromeScript.addMessageListener("testProfileSaveDone", SimpleTest.finish);
 chromeScript.addMessageListener("testProfileLoadDone", function() {

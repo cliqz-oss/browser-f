@@ -4,16 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsiter.h"
-#include "jswrapper.h"
-
+#include "gc/PublicIterators.h"
+#include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
+#include "vm/Iteration.h"
 #include "vm/WrapperObject.h"
 
-#include "jscompartmentinlines.h"
-#include "jsobjinlines.h"
-
 #include "gc/Nursery-inl.h"
+#include "vm/JSCompartment-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 

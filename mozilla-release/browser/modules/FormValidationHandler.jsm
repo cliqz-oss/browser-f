@@ -8,13 +8,9 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "FormValidationHandler" ];
 
-this.EXPORTED_SYMBOLS = [ "FormValidationHandler" ];
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var FormValidationHandler =
 {
@@ -82,7 +78,7 @@ var FormValidationHandler =
 
   _onPopupHiding(aEvent) {
     aEvent.originalTarget.removeEventListener("popuphiding", this, true);
-    let tabBrowser = aEvent.originalTarget.ownerDocument.getElementById("content");
+    let tabBrowser = aEvent.originalTarget.ownerGlobal.gBrowser;
     tabBrowser.selectedBrowser.removeEventListener("scroll", this, true);
     tabBrowser.selectedBrowser.removeEventListener("FullZoomChange", this);
     tabBrowser.selectedBrowser.removeEventListener("TextZoomChange", this);

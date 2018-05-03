@@ -1,3 +1,5 @@
+# META: timeout=long
+
 import pytest
 
 from tests.support.asserts import (
@@ -219,7 +221,7 @@ def test_input_file_multiple(session, text_file):
 
 def test_select(session):
     session.url = inline("""
-        <select disabled>
+        <select>
           <option>foo
         </select>
         """)

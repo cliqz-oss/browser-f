@@ -12,27 +12,27 @@ import os
 import glob
 import re
 import sys
-import time
 import shlex
 import subprocess
 
 # load modules from parent dir
 sys.path.insert(1, os.path.dirname(sys.path[0]))
 
-from mozharness.base.errors import BaseErrorList, MakefileErrorList
+from mozharness.base.errors import MakefileErrorList
 from mozharness.base.script import BaseScript
 from mozharness.base.transfer import TransferMixin
 from mozharness.base.vcs.vcsbase import VCSMixin
 from mozharness.mozilla.buildbot import BuildbotMixin
 from mozharness.mozilla.purge import PurgeMixin
-from mozharness.mozilla.building.buildbase import MakeUploadOutputParser
+from mozharness.mozilla.building.buildbase import (
+    MakeUploadOutputParser,
+    get_mozconfig_path,
+)
 from mozharness.mozilla.l10n.locales import LocalesMixin
 from mozharness.mozilla.mar import MarMixin
-from mozharness.mozilla.mock import MockMixin
 from mozharness.mozilla.release import ReleaseMixin
 from mozharness.mozilla.signing import SigningMixin
 from mozharness.mozilla.updates.balrog import BalrogMixin
-from mozharness.mozilla.taskcluster_helper import Taskcluster
 from mozharness.base.python import VirtualenvMixin
 
 try:
@@ -55,9 +55,6 @@ FAILURE_STR = "Failed"
 configuration_tokens = ('branch',
                         'platform',
                         'update_channel',
-                        'ssh_key_dir',
-                        'stage_product',
-                        'upload_environment',
                         )
 # some other values such as "%(version)s", "%(buildid)s", ...
 # are defined at run time and they cannot be enforced in the _pre_config_lock
@@ -66,11 +63,11 @@ runtime_config_tokens = ('buildid', 'version', 'locale', 'from_buildid',
                          'abs_objdir', 'revision',
                          'to_buildid', 'en_us_binary_url',
                          'en_us_installer_binary_url', 'mar_tools_url',
-                         'post_upload_extra', 'who')
+                         'who')
 
 
 # DesktopSingleLocale {{{1
-class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
+class DesktopSingleLocale(LocalesMixin, ReleaseMixin, BuildbotMixin,
                           VCSMixin, SigningMixin, PurgeMixin, BaseScript,
                           BalrogMixin, MarMixin, VirtualenvMixin, TransferMixin):
     """Manages desktop repacks"""
@@ -158,7 +155,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         ["--disable-mock"], {
          "dest": "disable_mock",
          "action": "store_true",
-         "help": "do not run under mock despite what gecko-config says"}
+         "help": "(deprecated) no-op for CLI compatability with mobile_l10n.py"}
     ], [
         ['--scm-level'], {  # Ignored on desktop for now: see Bug 1414678.
          "action": "store",
@@ -189,7 +186,6 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
                 "buildbot_json_path": "buildprops.json",
                 "ignore_locales": ["en-US"],
                 "locales_dir": "browser/locales",
-                "update_mar_dir": "dist/update",
                 "buildid_section": "App",
                 "buildid_option": "BuildID",
                 "application_ini": "application.ini",
@@ -197,11 +193,8 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
                 "clobber_file": 'CLOBBER',
                 "appName": "Firefox",
                 "hashType": "sha512",
-                "taskcluster_credentials_file": "oauth.txt",
                 'virtualenv_modules': [
                     'requests==2.8.1',
-                    'PyHawk-with-a-single-extra-commit==0.1.5',
-                    'taskcluster==0.0.26',
                 ],
                 'virtualenv_path': 'venv',
             },
@@ -221,17 +214,12 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         self.bootstrap_env = None
         self.upload_env = None
         self.revision = None
-        self.enUS_revision = None
         self.version = None
         self.upload_urls = {}
         self.locales_property = {}
-        self.package_urls = {}
         self.pushdate = None
         # upload_files is a dictionary of files to upload, keyed by locale.
         self.upload_files = {}
-
-        if 'mock_target' in self.config:
-            self.enable_mock()
 
     def _pre_config_lock(self, rw_config):
         """replaces 'configuration_tokens' with their values, before the
@@ -410,19 +398,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             return self.upload_env
         config = self.config
 
-        replace_dict = {
-            'buildid': self._query_buildid(),
-            'version': self.query_version(),
-            'post_upload_extra': ' '.join(config.get('post_upload_extra', [])),
-            'upload_environment': config['upload_environment'],
-        }
-        if config['branch'] == 'try':
-            replace_dict.update({
-                'who': self.query_who(),
-                'revision': self._query_revision(),
-            })
-        upload_env = self.query_env(partial_env=config.get("upload_env"),
-                                    replace_dict=replace_dict)
+        upload_env = self.query_env(partial_env=config.get("upload_env"))
         # check if there are any extra option from the platform configuration
         # and append them to the env
 
@@ -495,27 +471,11 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             revision = self.buildbot_config['sourcestamp']['revision']
         elif self.buildbot_config and self.buildbot_config.get('revision'):
             revision = self.buildbot_config['revision']
-        elif config.get("update_gecko_source_to_enUS", True):
-            revision = self._query_enUS_revision()
 
         if not revision:
             self.fatal("Can't determine revision!")
         self.revision = str(revision)
         return self.revision
-
-    def _query_enUS_revision(self):
-        """Get revision from the objdir.
-        Only valid after setup is run.
-       """
-        if self.enUS_revision:
-            return self.enUS_revision
-        r = re.compile(r"^(gecko|fx)_revision ([0-9a-f]+\+?)$")
-        output = self._query_make_ident_output()
-        for line in output.splitlines():
-            match = r.match(line)
-            if match:
-                self.enUS_revision = match.groups()[1]
-        return self.enUS_revision
 
     def _query_make_variable(self, variable, make_args=None):
         """returns the value of make echo-variable-<variable>
@@ -638,7 +598,6 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
 
     def setup(self):
         """setup step"""
-        dirs = self.query_abs_dirs()
         self._run_tooltool()
         self._copy_mozconfig()
         self._mach_configure()
@@ -646,30 +605,6 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         self.make_wget_en_US()
         self.make_unpack_en_US()
         self.download_mar_tools()
-
-        # on try we want the source we already have, otherwise update to the
-        # same as the en-US binary
-        if self.config.get("update_gecko_source_to_enUS", True):
-            revision = self._query_enUS_revision()
-            #  TODO do this through VCSMixin instead of hardcoding hg
-            #  self.update(dest=dirs["abs_mozilla_dir"], revision=revision)
-            hg = self.query_exe("hg")
-            self.run_command([hg, "update", "-r", revision],
-                             cwd=dirs["abs_mozilla_dir"],
-                             env=self.query_bootstrap_env(),
-                             error_list=BaseErrorList,
-                             halt_on_failure=True, fatal_exit_code=3)
-            # if checkout updates CLOBBER file with a newer timestamp,
-            # next make -f client.mk configure  will delete archives
-            # downloaded with make wget_en_US, so just touch CLOBBER file
-            _clobber_file = self._clobber_file()
-            if os.path.exists(_clobber_file):
-                self._touch_file(_clobber_file)
-            # and again...
-            # thanks to the last hg update, we can be on different firefox 'version'
-            # than the one on default,
-            self._mach_configure()
-            self._run_make_in_config_dir()
 
     def _run_make_in_config_dir(self):
         """this step creates nsinstall, needed my make_wget_en_US()
@@ -691,8 +626,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         """
         config = self.config
         dirs = self.query_abs_dirs()
-        mozconfig = config['mozconfig']
-        src = os.path.join(dirs['abs_work_dir'], mozconfig)
+        src = get_mozconfig_path(self, config, dirs)
         dst = os.path.join(dirs['abs_mozilla_dir'], '.mozconfig')
         self.copyfile(src, dst)
         self.read_from_file(dst, verbose=True)
@@ -713,12 +647,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         return self._mach(target=target, env=env)
 
     def _get_mach_executable(self):
-        python = sys.executable
-        # A mock environment is a special case, the system python isn't
-        # available there
-        if 'mock_target' in self.config:
-            python = 'python2.7'
-        return [python, 'mach']
+        return [sys.executable, 'mach']
 
     def _get_make_executable(self):
         config = self.config
@@ -772,28 +701,14 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
 
     def make_upload(self, locale):
         """wrapper for make upload command"""
-        config = self.config
         env = self.query_l10n_env()
         dirs = self.query_abs_dirs()
-        buildid = self._query_buildid()
-        replace_dict = {
-            'buildid': buildid,
-            'branch': config['branch']
-        }
-        try:
-            env['POST_UPLOAD_CMD'] = config['base_post_upload_cmd'] % replace_dict
-        except KeyError:
-            # no base_post_upload_cmd in configuration, just skip it
-            pass
         target = ['upload', 'AB_CD=%s' % (locale)]
         cwd = dirs['abs_locales_dir']
         parser = MakeUploadOutputParser(config=self.config,
                                         log_obj=self.log_obj)
         retval = self._make(target=target, cwd=cwd, env=env,
                             halt_on_failure=False, output_parser=parser)
-        if locale not in self.package_urls:
-            self.package_urls[locale] = {}
-        self.package_urls[locale].update(parser.matches)
         if retval == SUCCESS:
             self.info('Upload successful (%s)' % locale)
             ret = SUCCESS
@@ -917,6 +832,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             abs_dirs[directory] = value
         dirs = {}
         dirs['abs_tools_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'tools')
+        dirs['abs_src_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'src')
         for key in dirs.keys():
             if key not in abs_dirs:
                 abs_dirs[key] = dirs[key]
@@ -931,14 +847,12 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         # common values across different locales
         config = self.config
         platform = config["platform"]
-        hashType = config['hashType']
         appName = config['appName']
         branch = config['branch']
         # values from configuration
         self.set_buildbot_property("branch", branch)
         self.set_buildbot_property("appName", appName)
         # it's hardcoded to sha512 in balrog.py
-        self.set_buildbot_property("hashType", hashType)
         self.set_buildbot_property("platform", platform)
         # values common to the current repacks
         self.set_buildbot_property("buildid", self._query_buildid())
@@ -952,80 +866,7 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
             self.generate_balrog_props(props_path)
             return SUCCESS
 
-        if self.config.get('taskcluster_nightly'):
-            self._map(balrog_props_wrapper, self.query_locales())
-        else:
-            if not self.config.get("balrog_servers"):
-                self.info("balrog_servers not set; skipping balrog submission.")
-                return
-            # submit complete mar to balrog
-            # clean up buildbot_properties
-            self._map(self.submit_repack_to_balrog, self.query_locales())
-
-    def submit_repack_to_balrog(self, locale):
-        """submit a single locale to balrog"""
-        # check if locale has been uploaded, if not just return a FAILURE
-        if locale not in self.package_urls:
-            self.error("%s is not present in package_urls. Did you run make upload?" % locale)
-            return FAILURE
-
-        if not self.query_is_nightly():
-            # remove this check when we extend this script to non-nightly builds
-            self.fatal("Not a nightly build")
-            return FAILURE
-
-        # complete mar file
-        c_marfile = self._query_complete_mar_filename(locale)
-        c_mar_url = self._query_complete_mar_url(locale)
-
-        # Set other necessary properties for Balrog submission. None need to
-        # be passed back to buildbot, so we won't write them to the properties
-        # files
-        # Locale is hardcoded to en-US, for silly reasons
-        # The Balrog submitter translates this platform into a build target
-        # via
-        # https://github.com/mozilla/build-tools/blob/master/lib/python/release/platforms.py#L23
-        self.set_buildbot_property("completeMarSize", self.query_filesize(c_marfile))
-        self.set_buildbot_property("completeMarHash", self.query_sha512sum(c_marfile))
-        self.set_buildbot_property("completeMarUrl", c_mar_url)
-        self.set_buildbot_property("locale", locale)
-        if "partialInfo" in self.package_urls[locale]:
-            self.set_buildbot_property("partialInfo",
-                                       self.package_urls[locale]["partialInfo"])
-        ret = FAILURE
-        try:
-            result = self.submit_balrog_updates()
-            self.info("balrog return code: %s" % (result))
-            if result == 0:
-                ret = SUCCESS
-        except Exception as error:
-            self.error("submit repack to balrog failed: %s" % (str(error)))
-        return ret
-
-    def _query_complete_mar_filename(self, locale):
-        """returns the full path to a localized complete mar file"""
-        config = self.config
-        version = self.query_version()
-        complete_mar_name = config['localized_mar'] % {'version': version,
-                                                       'locale': locale}
-        return os.path.join(self._update_mar_dir(), complete_mar_name)
-
-    def _query_complete_mar_url(self, locale):
-        """returns the complete mar url taken from self.package_urls[locale]
-           this value is available only after make_upload"""
-        if "complete_mar_url" in self.config:
-            return self.config["complete_mar_url"]
-        if "completeMarUrl" in self.package_urls[locale]:
-            return self.package_urls[locale]["completeMarUrl"]
-        # url = self.config.get("update", {}).get("mar_base_url")
-        # if url:
-        #    url += os.path.basename(self.query_marfile_path())
-        #    return url.format(branch=self.query_branch())
-        self.fatal("Couldn't find complete mar url in config or package_urls")
-
-    def _update_mar_dir(self):
-        """returns the full path of the update/ directory"""
-        return self._mar_dir('update_mar_dir')
+        self._map(balrog_props_wrapper, self.query_locales())
 
     def _mar_binaries(self):
         """returns a tuple with mar and mbsdiff paths"""
@@ -1067,10 +908,6 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         if not manifest_src and not toolchains:
             return
         python = sys.executable
-        # A mock environment is a special case, the system python isn't
-        # available there
-        if 'mock_target' in self.config:
-            python = 'python2.7'
 
         cmd = [
             python, '-u',
@@ -1100,119 +937,6 @@ class DesktopSingleLocale(LocalesMixin, ReleaseMixin, MockMixin, BuildbotMixin,
         self.info(str(cmd))
         self.run_command(cmd, cwd=dirs['abs_mozilla_dir'], halt_on_failure=True,
                          env=env)
-
-    def funsize_props(self):
-        """Set buildbot properties required to trigger funsize tasks
-         responsible to generate partial updates for successfully generated locales"""
-        locales = self.query_locales()
-        funsize_info = {
-            'locales': locales,
-            'branch': self.config['branch'],
-            'appName': self.config['appName'],
-            'platform': self.config['platform'],
-            'completeMarUrls': {locale: self._query_complete_mar_url(locale)
-                                for locale in locales},
-        }
-        self.info('funsize info: %s' % funsize_info)
-        self.set_buildbot_property('funsize_info', json.dumps(funsize_info),
-                                   write_to_file=True)
-
-    def taskcluster_upload(self):
-        auth = os.path.join(os.getcwd(), self.config['taskcluster_credentials_file'])
-        credentials = {}
-        execfile(auth, credentials)
-        client_id = credentials.get('taskcluster_clientId')
-        access_token = credentials.get('taskcluster_accessToken')
-        if not client_id or not access_token:
-            self.warning('Skipping S3 file upload: No taskcluster credentials.')
-            return
-
-        # We need to activate the virtualenv so that we can import taskcluster
-        # (and its dependent modules, like requests and hawk).  Normally we
-        # could create the virtualenv as an action, but due to some odd
-        # dependencies with query_build_env() being called from build(), which
-        # is necessary before the virtualenv can be created.
-        self.disable_mock()
-        self.create_virtualenv()
-        self.enable_mock()
-        self.activate_virtualenv()
-
-        branch = self.config['branch']
-        revision = self._query_revision()
-        repo = self.query_l10n_repo()
-        if not repo:
-            self.fatal("Unable to determine repository for querying the push info.")
-        pushinfo = self.vcs_query_pushinfo(repo, revision, vcs='hg')
-        pushdate = time.strftime('%Y%m%d%H%M%S', time.gmtime(pushinfo.pushdate))
-
-        routes_json = os.path.join(self.query_abs_dirs()['abs_mozilla_dir'],
-                                   'testing/mozharness/configs/routes.json')
-        with open(routes_json) as f:
-            contents = json.load(f)
-            templates = contents['l10n']
-
-        # Release promotion creates a special task to accumulate all artifacts
-        # under the same task
-        artifacts_task = None
-        self.read_buildbot_config()
-        if "artifactsTaskId" in self.buildbot_config.get("properties", {}):
-            artifacts_task_id = self.buildbot_config["properties"]["artifactsTaskId"]
-            artifacts_tc = Taskcluster(
-                    branch=branch, rank=pushinfo.pushdate, client_id=client_id,
-                    access_token=access_token, log_obj=self.log_obj,
-                    task_id=artifacts_task_id)
-            artifacts_task = artifacts_tc.get_task(artifacts_task_id)
-            artifacts_tc.claim_task(artifacts_task)
-
-        for locale, files in self.upload_files.iteritems():
-            self.info("Uploading files to S3 for locale '%s': %s" % (locale, files))
-            routes = []
-            for template in templates:
-                fmt = {
-                    'index': self.config.get('taskcluster_index', 'index.garbage.staging'),
-                    'project': branch,
-                    'head_rev': revision,
-                    'pushdate': pushdate,
-                    'year': pushdate[0:4],
-                    'month': pushdate[4:6],
-                    'day': pushdate[6:8],
-                    'build_product': self.config['stage_product'],
-                    'build_name': self.query_build_name(),
-                    'build_type': self.query_build_type(),
-                    'locale': locale,
-                }
-                fmt.update(self.buildid_to_dict(self._query_buildid()))
-                routes.append(template.format(**fmt))
-
-            self.info('Using routes: %s' % routes)
-            tc = Taskcluster(branch,
-                             pushinfo.pushdate,  # Use pushdate as the rank
-                             client_id,
-                             access_token,
-                             self.log_obj,
-                             )
-            task = tc.create_task(routes)
-            tc.claim_task(task)
-
-            for upload_file in files:
-                # Create an S3 artifact for each file that gets uploaded. We also
-                # check the uploaded file against the property conditions so that we
-                # can set the buildbot config with the correct URLs for package
-                # locations.
-                artifact_url = tc.create_artifact(task, upload_file)
-                if artifacts_task:
-                    artifacts_tc.create_reference_artifact(
-                            artifacts_task, upload_file, artifact_url)
-
-            tc.report_completed(task)
-
-        if artifacts_task:
-            if not self.query_failed_locales():
-                artifacts_tc.report_completed(artifacts_task)
-            else:
-                # If some locales fail, we want to mark the artifacts
-                # task failed, so a retry can reuse the same task ID
-                artifacts_tc.report_failed(artifacts_task)
 
 
 # main {{{

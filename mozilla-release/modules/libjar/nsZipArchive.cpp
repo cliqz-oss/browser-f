@@ -18,6 +18,7 @@
 #include "nsISupportsUtils.h"
 #include "prio.h"
 #include "plstr.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/Logging.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "stdlib.h"
@@ -473,7 +474,7 @@ MOZ_WIN_MEM_TRY_CATCH(return nullptr)
 // If 'aFd' is null, it only tests the extraction.
 // On extraction error(s) it removes the file.
 //---------------------------------------------
-nsresult nsZipArchive::ExtractFile(nsZipItem *item, const char *outname,
+nsresult nsZipArchive::ExtractFile(nsZipItem *item, nsIFile* outFile,
                                    PRFileDesc* aFd)
 {
   if (!item)
@@ -512,8 +513,9 @@ nsresult nsZipArchive::ExtractFile(nsZipItem *item, const char *outname,
   //-- delete the file on errors
   if (aFd) {
     PR_Close(aFd);
-    if (rv != NS_OK)
-      PR_Delete(outname);
+    if (NS_FAILED(rv) && outFile) {
+      outFile->Remove(false);
+    }
   }
 
   return rv;
@@ -963,6 +965,7 @@ nsZipFind::~nsZipFind()
  *
  * returns a hash key for the entry name
  */
+MOZ_NO_SANITIZE_UNSIGNED_OVERFLOW
 static uint32_t HashName(const char* aName, uint16_t len)
 {
   MOZ_ASSERT(aName != 0);

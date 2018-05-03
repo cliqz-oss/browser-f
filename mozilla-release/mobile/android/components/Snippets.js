@@ -2,16 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Accounts.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Accounts.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "Home", "resource://gre/modules/Home.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
+ChromeUtils.defineModuleGetter(this, "Home", "resource://gre/modules/Home.jsm");
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
+ChromeUtils.defineModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
 
 
 XPCOMUtils.defineLazyGetter(this, "gEncoder", function() { return new gChromeWin.TextEncoder(); });
@@ -186,7 +186,7 @@ function updateBanner(messages) {
     let removedSnippetIds = JSON.parse(Services.prefs.getCharPref(SNIPPETS_REMOVED_IDS_PREF));
     messages = messages.filter(function(message) {
       // Only include the snippet if it has not been previously removed.
-      return removedSnippetIds.indexOf(message.id) === -1;
+      return !removedSnippetIds.includes(message.id);
     });
   } catch (e) {
     // If the pref doesn't exist, there aren't any snippets to filter out.
@@ -194,7 +194,7 @@ function updateBanner(messages) {
 
   messages.forEach(function(message) {
     // Don't add this message to the banner if it's not supposed to be shown in this country.
-    if ("countries" in message && message.countries.indexOf(gCountryCode) === -1) {
+    if ("countries" in message && !message.countries.includes(gCountryCode)) {
       return;
     }
 
@@ -328,7 +328,7 @@ function removeStats() {
  * @param callback function that is called with the xhr responseText
  */
 function _httpGetRequest(url, callback) {
-  let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+  let xhr = new XMLHttpRequest();
   try {
     xhr.open("GET", url, true);
   } catch (e) {

@@ -10,25 +10,21 @@ const FONTS = [{
   name: "Ostrich Sans Medium",
   remote: true,
   url: URL_ROOT + "ostrich-regular.ttf",
-  format: "truetype",
   cssName: "bar"
 }, {
   name: "Ostrich Sans Black",
   remote: true,
   url: URL_ROOT + "ostrich-black.ttf",
-  format: "",
   cssName: "bar"
 }, {
   name: "Ostrich Sans Black",
   remote: true,
   url: URL_ROOT + "ostrich-black.ttf",
-  format: "",
   cssName: "bar"
 }, {
   name: "Ostrich Sans Medium",
   remote: true,
   url: URL_ROOT + "ostrich-regular.ttf",
-  format: "",
   cssName: "barnormal"
 }];
 
@@ -40,46 +36,38 @@ add_task(function* () {
 
   yield testBodyFonts(inspector, viewDoc);
   yield testDivFonts(inspector, viewDoc);
-  yield testShowAllFonts(inspector, viewDoc);
 });
 
+function isRemote(fontLi) {
+  return fontLi.querySelector(".font-origin").classList.contains("remote");
+}
+
 function* testBodyFonts(inspector, viewDoc) {
-  let s = viewDoc.querySelectorAll("#all-fonts > section");
-  is(s.length, 5, "Found 5 fonts");
+  let lis = getUsedFontsEls(viewDoc);
+  is(lis.length, 5, "Found 5 fonts");
 
   for (let i = 0; i < FONTS.length; i++) {
-    let section = s[i];
+    let li = lis[i];
     let font = FONTS[i];
-    is(section.querySelector(".font-name").textContent, font.name,
-       "font " + i + " right font name");
-    is(section.classList.contains("is-remote"), font.remote,
-       "font " + i + " remote value correct");
-    is(section.querySelector(".font-url").value, font.url,
-       "font " + i + " url correct");
-    is(section.querySelector(".font-format").hidden, !font.format,
-       "font " + i + " format hidden value correct");
-    is(section.querySelector(".font-format").textContent,
-       font.format, "font " + i + " format correct");
-    is(section.querySelector(".font-css-name").textContent,
-       font.cssName, "font " + i + " css name correct");
+
+    is(getName(li), font.name, `font ${i} right font name`);
+    is(isRemote(li), font.remote, `font ${i} remote value correct`);
+    is(li.querySelector(".font-origin").textContent, font.url, `font ${i} url correct`);
   }
 
   // test that the bold and regular fonts have different previews
-  let regSrc = s[0].querySelector(".font-preview").src;
-  let boldSrc = s[1].querySelector(".font-preview").src;
+  let regSrc = lis[0].querySelector(".font-preview").src;
+  let boldSrc = lis[1].querySelector(".font-preview").src;
   isnot(regSrc, boldSrc, "preview for bold font is different from regular");
 
   // test system font
-  let localFontName = s[4].querySelector(".font-name").textContent;
-  let localFontCSSName = s[4].querySelector(".font-css-name").textContent;
+  let localFontName = getName(lis[4]);
 
   // On Linux test machines, the Arial font doesn't exist.
   // The fallback is "Liberation Sans"
   ok((localFontName == "Arial") || (localFontName == "Liberation Sans"),
      "local font right font name");
-  ok(s[4].classList.contains("is-local"), "local font is local");
-  ok((localFontCSSName == "Arial") || (localFontCSSName == "Liberation Sans"),
-     "Arial", "local font has right css name");
+  ok(!isRemote(lis[4]), "local font is local");
 }
 
 function* testDivFonts(inspector, viewDoc) {
@@ -87,22 +75,7 @@ function* testDivFonts(inspector, viewDoc) {
   yield selectNode("div", inspector);
   yield updated;
 
-  let sections1 = viewDoc.querySelectorAll("#all-fonts > section");
-  is(sections1.length, 1, "Found 1 font on DIV");
-  is(sections1[0].querySelector(".font-name").textContent,
-     "Ostrich Sans Medium",
-     "The DIV font has the right name");
-}
-
-function* testShowAllFonts(inspector, viewDoc) {
-  info("testing showing all fonts");
-
-  let updated = inspector.once("fontinspector-updated");
-  viewDoc.querySelector("#font-showall").click();
-  yield updated;
-
-  // shouldn't change the node selection
-  is(inspector.selection.nodeFront.nodeName, "DIV", "Show all fonts selected");
-  let sections = viewDoc.querySelectorAll("#all-fonts > section");
-  is(sections.length, 6, "Font inspector shows 6 fonts (1 from iframe)");
+  let lis = getUsedFontsEls(viewDoc);
+  is(lis.length, 1, "Found 1 font on DIV");
+  is(getName(lis[0]), "Ostrich Sans Medium", "The DIV font has the right name");
 }

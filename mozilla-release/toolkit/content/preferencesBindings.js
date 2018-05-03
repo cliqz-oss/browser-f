@@ -7,15 +7,13 @@
 // We attach Preferences to the window object so other contexts (tests, JSMs)
 // have access to it.
 const Preferences = window.Preferences = (function() {
-  const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-  Cu.import("resource://gre/modules/EventEmitter.jsm");
-  Cu.import("resource://gre/modules/Services.jsm");
-  Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+  ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
   const lazy = {};
-  XPCOMUtils.defineLazyModuleGetter(lazy, "DeferredTask",
-                                    "resource://gre/modules/DeferredTask.jsm");
+  ChromeUtils.defineModuleGetter(lazy, "DeferredTask",
+                                 "resource://gre/modules/DeferredTask.jsm");
 
   function getElementsByAttribute(name, value) {
     // If we needed to defend against arbitrary values, we would escape
@@ -228,7 +226,7 @@ const Preferences = window.Preferences = (function() {
         if (aTarget.hasAttribute("on" + aEventName)) {
           const fn = new Function("event", aTarget.getAttribute("on" + aEventName));
           const rv = fn.call(aTarget, event);
-          if (rv == false)
+          if (!rv)
             cancel = true;
         }
         return !cancel;

@@ -10,22 +10,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FormAutofillHandler"];
+var EXPORTED_SYMBOLS = ["FormAutofillHandler"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillHeuristics",
-                                  "resource://formautofill/FormAutofillHeuristics.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormLikeFactory",
-                                  "resource://gre/modules/FormLikeFactory.jsm");
+ChromeUtils.defineModuleGetter(this, "FormAutofillHeuristics",
+                               "resource://formautofill/FormAutofillHeuristics.jsm");
+ChromeUtils.defineModuleGetter(this, "FormLikeFactory",
+                               "resource://gre/modules/FormLikeFactory.jsm");
 
 this.log = null;
-FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
+FormAutofillUtils.defineLazyLogGetter(this, EXPORTED_SYMBOLS[0]);
 
 const {FIELD_STATES} = FormAutofillUtils;
 
@@ -959,7 +957,7 @@ class FormAutofillHandler {
       return true;
     }
 
-    if (this.form.elements.indexOf(element) === -1) {
+    if (!this.form.elements.includes(element)) {
       log.debug("The element can not be found in the current form.");
       this._updateForm(getFormLike());
       return true;

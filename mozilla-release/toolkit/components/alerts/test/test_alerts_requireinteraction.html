@@ -15,10 +15,8 @@ const Cc = SpecialPowers.Cc;
 const Ci = SpecialPowers.Ci;
 
 const chromeScript = SpecialPowers.loadChromeScript(_ => {
-  const { utils: Cu } = Components;
-
-  Cu.import("resource://gre/modules/Services.jsm");
-  Cu.import("resource://gre/modules/Timer.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
   addMessageListener("waitForXULAlert", function() {
     var timer = setTimeout(function() {
@@ -31,7 +29,7 @@ const chromeScript = SpecialPowers.loadChromeScript(_ => {
         return;
       }
 
-      var win = aSubject.QueryInterface(Components.interfaces.nsIDOMWindow);
+      var win = aSubject.QueryInterface(Ci.nsIDOMWindow);
       win.addEventListener("load", function() {
         let windowType = win.document.documentElement.getAttribute("windowtype");
         if (windowType == "alert:alert") {

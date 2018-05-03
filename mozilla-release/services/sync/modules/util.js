@@ -2,24 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["Utils", "Svc"];
+var EXPORTED_SYMBOLS = ["Utils", "Svc", "SerializableSet"];
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-crypto/utils.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
 // FxAccountsCommon.js doesn't use a "namespace", so create one here.
 XPCOMUtils.defineLazyGetter(this, "FxAccountsCommon", function() {
   let FxAccountsCommon = {};
-  Cu.import("resource://gre/modules/FxAccountsCommon.js", FxAccountsCommon);
+  ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js", FxAccountsCommon);
   return FxAccountsCommon;
 });
 
@@ -55,7 +53,7 @@ class HMACMismatch extends Error {
 /*
  * Utility functions
  */
-this.Utils = {
+var Utils = {
   // Aliases from CryptoUtils.
   generateRandomBytes: CryptoUtils.generateRandomBytes,
   computeHTTPMACSHA1: CryptoUtils.computeHTTPMACSHA1,
@@ -524,6 +522,47 @@ this.Utils = {
     return foo.concat(Utils.arraySub(bar, foo));
   },
 
+  /**
+   * Add all the items in `items` to the provided Set in-place.
+   *
+   * @return The provided set.
+   */
+  setAddAll(set, items) {
+    for (let item of items) {
+      set.add(item);
+    }
+    return set;
+  },
+
+  /**
+   * Delete every items in `items` to the provided Set in-place.
+   *
+   * @return The provided set.
+   */
+  setDeleteAll(set, items) {
+    for (let item of items) {
+      set.delete(item);
+    }
+    return set;
+  },
+
+  /**
+   * Take the first `size` items from the Set `items`.
+   *
+   * @return A Set of size at most `size`
+   */
+  subsetOfSize(items, size) {
+    let result = new Set();
+    let count = 0;
+    for (let item of items) {
+      if (count++ == size) {
+        return result;
+      }
+      result.add(item);
+    }
+    return result;
+  },
+
   bind2: function Async_bind2(object, method) {
     return function innerBind() { return method.apply(object, arguments); };
   },
@@ -570,25 +609,6 @@ this.Utils = {
    * reset when we drop sync credentials, etc.
    */
   getSyncCredentialsHosts() {
-    let result = new Set(this.getSyncCredentialsHostsLegacy());
-    for (let host of this.getSyncCredentialsHostsFxA()) {
-      result.add(host);
-    }
-    return result;
-  },
-
-  /*
-   * Get the "legacy" identity hosts.
-   */
-  getSyncCredentialsHostsLegacy() {
-    // the legacy sync host
-    return new Set([PWDMGR_HOST]);
-  },
-
-  /*
-   * Get the FxA identity hosts.
-   */
-  getSyncCredentialsHostsFxA() {
     let result = new Set();
     // the FxA host
     result.add(FxAccountsCommon.FXA_PWDMGR_HOST);
@@ -700,8 +720,31 @@ this.Utils = {
     let seconds = String(date.getSeconds()).padStart(2, "0");
 
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  }
+  },
+
+  * walkTree(tree, parent = null) {
+    if (tree) {
+      // Skip root node
+      if (parent) {
+        yield [tree, parent];
+      }
+      if (tree.children) {
+        for (let child of tree.children) {
+          yield* Utils.walkTree(child, tree);
+        }
+      }
+    }
+  },
 };
+
+/**
+ * A subclass of Set that serializes as an Array when passed to JSON.stringify.
+ */
+class SerializableSet extends Set {
+  toJSON() {
+    return Array.from(this);
+  }
+}
 
 XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function() {
   let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
@@ -716,7 +759,7 @@ XPCOMUtils.defineLazyGetter(Utils, "utf8Encoder", () =>
 /*
  * Commonly-used services
  */
-this.Svc = {};
+var Svc = {};
 Svc.Prefs = new Preferences(PREFS_BRANCH);
 Svc.Obs = Observers;
 

@@ -6,19 +6,18 @@ const {Cu} = require("chrome");
 
 const {TargetFactory} = require("devtools/client/framework/target");
 const Services = require("Services");
-const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm", {});
-const EventEmitter = require("devtools/shared/old-event-emitter");
-const {OS} = Cu.import("resource://gre/modules/osfile.jsm", {});
+const {FileUtils} = require("resource://gre/modules/FileUtils.jsm");
+const EventEmitter = require("devtools/shared/event-emitter");
+const {OS} = require("resource://gre/modules/osfile.jsm");
 const {AppProjects} = require("devtools/client/webide/modules/app-projects");
 const TabStore = require("devtools/client/webide/modules/tab-store");
 const {AppValidator} = require("devtools/client/webide/modules/app-validator");
 const {ConnectionManager, Connection} = require("devtools/shared/client/connection-manager");
-const {AppActorFront} = require("devtools/shared/apps/app-actor-front");
 const {getDeviceFront} = require("devtools/shared/fronts/device");
 const {getPreferenceFront} = require("devtools/shared/fronts/preference");
 const {Task} = require("devtools/shared/task");
 const {RuntimeScanners, RuntimeTypes} = require("devtools/client/webide/modules/runtimes");
-const {NetUtil} = Cu.import("resource://gre/modules/NetUtil.jsm", {});
+const {NetUtil} = require("resource://gre/modules/NetUtil.jsm");
 const Telemetry = require("devtools/client/shared/telemetry");
 
 const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.properties");
@@ -54,8 +53,6 @@ var AppManager = exports.AppManager = {
     RuntimeScanners.on("runtime-list-updated", this._rebuildRuntimeList);
     RuntimeScanners.enable();
     this._rebuildRuntimeList();
-
-    this.onInstallProgress = this.onInstallProgress.bind(this);
 
     this._telemetry = new Telemetry();
   },
@@ -93,10 +90,6 @@ var AppManager = exports.AppManager = {
    *     |cancel| callback that will abort the project change if desired.
    *   connection:
    *     The connection status has changed (connected, disconnected, etc.)
-   *   install-progress:
-   *     A project being installed to a runtime has made further progress.  This
-   *     event contains additional details about exactly how far the process is
-   *     when such information is available.
    *   project:
    *     The selected project has changed.
    *   project-started:
@@ -111,8 +104,6 @@ var AppManager = exports.AppManager = {
    *     name, manifest details, etc.
    *   runtime:
    *     The selected runtime has changed.
-   *   runtime-apps-icons:
-   *     The list of URLs for the runtime app icons are available.
    *   runtime-global-actors:
    *     The list of global actors for the entire runtime (but not actors for a
    *     specific tab or app) are now available, so we can test for features
@@ -160,38 +151,12 @@ var AppManager = exports.AppManager = {
     }
 
     if (!this.connected) {
-      if (this._appsFront) {
-        this._appsFront.off("install-progress", this.onInstallProgress);
-        this._appsFront.unwatchApps();
-        this._appsFront = null;
-      }
       this._listTabsResponse = null;
     } else {
-      this.connection.client.listTabs((response) => {
-        if (response.webappsActor) {
-          let front = new AppActorFront(this.connection.client,
-                                        response);
-          front.on("install-progress", this.onInstallProgress);
-          front.watchApps(() => this.checkIfProjectIsRunning())
-          .then(() => {
-            // This can't be done earlier as many operations
-            // in the apps actor require watchApps to be called
-            // first.
-            this._appsFront = front;
-            this._listTabsResponse = response;
-            this._recordRuntimeInfo();
-            this.update("runtime-global-actors");
-          })
-          .then(() => {
-            this.checkIfProjectIsRunning();
-            this.update("runtime-targets", { type: "apps" });
-            front.fetchIcons().then(() => this.update("runtime-apps-icons"));
-          });
-        } else {
-          this._listTabsResponse = response;
-          this._recordRuntimeInfo();
-          this.update("runtime-global-actors");
-        }
+      this.connection.client.listTabs().then((response) => {
+        this._listTabsResponse = response;
+        this._recordRuntimeInfo();
+        this.update("runtime-global-actors");
       });
     }
 
@@ -209,10 +174,6 @@ var AppManager = exports.AppManager = {
     } else {
       return new Map();
     }
-  },
-
-  onInstallProgress: function (event, details) {
-    this.update("install-progress", details);
   },
 
   isProjectRunning: function () {
@@ -664,7 +625,7 @@ var AppManager = exports.AppManager = {
       let {app} = response;
       if (!app.running) {
         let deferred = new Promise(resolve => {
-          self.on("app-manager-update", function onUpdate(event, what) {
+          self.on("app-manager-update", function onUpdate(what) {
             if (what == "project-started") {
               self.off("app-manager-update", onUpdate);
               resolve();

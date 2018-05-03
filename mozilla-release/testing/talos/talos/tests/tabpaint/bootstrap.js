@@ -20,11 +20,9 @@
  *    for certain types of links (_blank links for example) to open new tabs.
  */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
-Cu.import("resource:///modules/RecentWindow.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource:///modules/RecentWindow.jsm");
 
 const ANIMATION_PREF = "toolkit.cosmeticAnimations.enabled";
 

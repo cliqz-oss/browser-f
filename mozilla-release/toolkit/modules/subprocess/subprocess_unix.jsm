@@ -9,16 +9,14 @@
 
 /* exported SubprocessImpl */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 Cu.importGlobalProperties(["TextDecoder"]);
 
 var EXPORTED_SYMBOLS = ["SubprocessImpl"];
 
-Cu.import("resource://gre/modules/ctypes.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/subprocess/subprocess_common.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/subprocess/subprocess_common.jsm");
 
 /* import-globals-from subprocess_shared.js */
 /* import-globals-from subprocess_shared_unix.js */

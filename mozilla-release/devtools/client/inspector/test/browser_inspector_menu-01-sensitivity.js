@@ -42,7 +42,7 @@ const ALL_MENU_ITEMS = [
 ].concat(PASTE_MENU_ITEMS, ACTIVE_ON_DOCTYPE_ITEMS);
 
 const INACTIVE_ON_DOCTYPE_ITEMS =
-  ALL_MENU_ITEMS.filter(item => ACTIVE_ON_DOCTYPE_ITEMS.indexOf(item) === -1);
+  ALL_MENU_ITEMS.filter(item => !ACTIVE_ON_DOCTYPE_ITEMS.includes(item));
 
 /**
  * Test cases, each item of this array may define the following properties:
@@ -258,7 +258,7 @@ add_task(function* () {
 
     for (let id of ALL_MENU_ITEMS) {
       let menuItem = allMenuItems.find(item => item.id === id);
-      let shouldBeDisabled = disabled.indexOf(id) !== -1;
+      let shouldBeDisabled = disabled.includes(id);
       let shouldBeDisabledText = shouldBeDisabled ? "disabled" : "enabled";
       is(menuItem.disabled, shouldBeDisabled,
         `#${id} should be ${shouldBeDisabledText} for test case ${desc}`);
@@ -302,8 +302,6 @@ function setupClipboard(data, type) {
  * The code below is a simplified version of the sdk/clipboard helper set() method.
  */
 function copyImageToClipboard(data) {
-  let clipboardService = Cc["@mozilla.org/widget/clipboard;1"]
-                              .getService(Ci.nsIClipboard);
   let imageTools = Cc["@mozilla.org/image/tools;1"]
                      .getService(Ci.imgITools);
 
@@ -320,5 +318,5 @@ function copyImageToClipboard(data) {
   xferable.addDataFlavor("image/png");
   xferable.setTransferData("image/png", imgPtr, -1);
 
-  clipboardService.setData(xferable, null, clipboardService.kGlobalClipboard);
+  Services.clipboard.setData(xferable, null, Services.clipboard.kGlobalClipboard);
 }

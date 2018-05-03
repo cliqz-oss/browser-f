@@ -27,6 +27,8 @@
 #include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/ErrorEventBinding.h"
 #include "mozilla/dom/quota/QuotaManager.h"
+#include "mozilla/dom/WorkerScope.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/PBackgroundChild.h"
@@ -43,8 +45,6 @@
 #include "IDBRequest.h"
 #include "ProfilerHelpers.h"
 #include "ScriptErrorHelper.h"
-#include "WorkerScope.h"
-#include "WorkerPrivate.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "unicode/locid.h"
 
@@ -73,7 +73,6 @@ namespace dom {
 namespace indexedDB {
 
 using namespace mozilla::dom::quota;
-using namespace mozilla::dom::workers;
 using namespace mozilla::ipc;
 
 class FileManagerInfo

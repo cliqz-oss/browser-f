@@ -7,7 +7,7 @@
 const { Component, createFactory } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/vendor/react-redux");
+const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
 const { HTMLTooltip } = require("devtools/client/shared/widgets/tooltip/HTMLTooltip");
 
 const Actions = require("../actions/index");
@@ -50,6 +50,9 @@ class RequestListContent extends Component {
     return {
       connector: PropTypes.object.isRequired,
       columns: PropTypes.object.isRequired,
+      networkDetailsOpen: PropTypes.bool.isRequired,
+      networkDetailsWidth: PropTypes.number.isRequired,
+      networkDetailsHeight: PropTypes.number.isRequired,
       cloneSelectedRequest: PropTypes.func.isRequired,
       displayedRequests: PropTypes.array.isRequired,
       firstRequestStartedMillis: PropTypes.number.isRequired,
@@ -63,7 +66,7 @@ class RequestListContent extends Component {
       scale: PropTypes.number,
       selectedRequest: PropTypes.object,
       sortedRequests: PropTypes.array.isRequired,
-      requestFilterTypes: PropTypes.string.isRequired,
+      requestFilterTypes: PropTypes.object.isRequired,
     };
   }
 
@@ -72,6 +75,7 @@ class RequestListContent extends Component {
     this.isScrolledToBottom = this.isScrolledToBottom.bind(this);
     this.onHover = this.onHover.bind(this);
     this.onScroll = this.onScroll.bind(this);
+    this.onResize = this.onResize.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onFocusedNodeChange = this.onFocusedNodeChange.bind(this);
@@ -85,6 +89,7 @@ class RequestListContent extends Component {
       openStatistics,
     });
     this.tooltip = new HTMLTooltip(window.parent.document, { type: "arrow" });
+    window.addEventListener("resize", this.onResize);
   }
 
   componentDidMount() {
@@ -95,6 +100,7 @@ class RequestListContent extends Component {
     });
     // Install event handler to hide the tooltip on scroll
     this.refs.contentEl.addEventListener("scroll", this.onScroll, true);
+    this.onResize();
   }
 
   componentWillUpdate(nextProps) {
@@ -111,6 +117,12 @@ class RequestListContent extends Component {
       // Using maximum scroll height rather than node.scrollHeight to avoid sync reflow.
       node.scrollTop = MAX_SCROLL_HEIGHT;
     }
+    if (prevProps.networkDetailsOpen !== this.props.networkDetailsOpen ||
+      prevProps.networkDetailsWidth !== this.props.networkDetailsWidth ||
+      prevProps.networkDetailsHeight !== this.props.networkDetailsHeight
+    ) {
+      this.onResize();
+    }
   }
 
   componentWillUnmount() {
@@ -118,6 +130,13 @@ class RequestListContent extends Component {
 
     // Uninstall the tooltip event handler
     this.tooltip.stopTogglingOnHover();
+    window.removeEventListener("resize", this.onResize);
+  }
+
+  onResize() {
+    let parent = this.refs.contentEl.parentNode;
+    this.refs.contentEl.style.width = parent.offsetWidth + "px";
+    this.refs.contentEl.style.height = parent.offsetHeight + "px";
   }
 
   isScrolledToBottom() {
@@ -291,6 +310,9 @@ class RequestListContent extends Component {
 module.exports = connect(
   (state) => ({
     columns: state.ui.columns,
+    networkDetailsOpen: state.ui.networkDetailsOpen,
+    networkDetailsWidth: state.ui.networkDetailsWidth,
+    networkDetailsHeight: state.ui.networkDetailsHeight,
     displayedRequests: getDisplayedRequests(state),
     firstRequestStartedMillis: state.requests.firstStartedMillis,
     selectedRequest: getSelectedRequest(state),

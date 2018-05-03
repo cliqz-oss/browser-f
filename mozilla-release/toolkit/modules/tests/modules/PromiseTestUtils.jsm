@@ -8,19 +8,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "PromiseTestUtils",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://testing-common/Assert.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://testing-common/Assert.jsm", this);
 
 // Keep "JSMPromise" separate so "Promise" still refers to DOM Promises.
-let JSMPromise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
+let JSMPromise = ChromeUtils.import("resource://gre/modules/Promise.jsm", {}).Promise;
 
-this.PromiseTestUtils = {
+var PromiseTestUtils = {
   /**
    * Array of objects containing the details of the Promise rejections that are
    * currently left uncaught. This includes DOM Promise and Promise.jsm. When
@@ -134,8 +132,9 @@ this.PromiseTestUtils = {
   // UncaughtRejectionObserver
   onLeftUncaught(promise) {
     let message = "(Unable to convert rejection reason to string.)";
+    let reason = null;
     try {
-      let reason = PromiseDebugging.getState(promise).reason;
+      reason = PromiseDebugging.getState(promise).reason;
       if (reason === this._ensureDOMPromiseRejectionsProcessedReason) {
         // Ignore the special promise for ensureDOMPromiseRejectionsProcessed.
         return;
@@ -148,7 +147,12 @@ this.PromiseTestUtils = {
     // later, if the error occurred in a context that has been unloaded.
     let stack = "(Unable to convert rejection stack to string.)";
     try {
-      stack = "" + PromiseDebugging.getRejectionStack(promise);
+      // In some cases, the rejection stack from `PromiseDebugging` may be null.
+      // If the rejection reason was an Error object, use its `stack` to recover
+      // a meaningful value.
+      stack = "" + (PromiseDebugging.getRejectionStack(promise) ||
+                    (reason && reason.stack) ||
+                    "(No stack available.)");
     } catch (ex) {}
 
     // Always add a newline at the end of the stack for consistent reporting.

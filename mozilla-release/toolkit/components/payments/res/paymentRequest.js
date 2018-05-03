@@ -10,14 +10,14 @@
 
 "use strict";
 
-let PaymentRequest = {
+var paymentRequest = {
   domReadyPromise: null,
 
   init() {
     // listen to content
     window.addEventListener("paymentChromeToContent", this);
 
-    window.addEventListener("keypress", this);
+    window.addEventListener("keydown", this);
 
     this.domReadyPromise = new Promise(function dcl(resolve) {
       window.addEventListener("DOMContentLoaded", resolve, {once: true});
@@ -33,7 +33,7 @@ let PaymentRequest = {
         this.onPaymentRequestLoad();
         break;
       }
-      case "keypress": {
+      case "keydown": {
         if (event.code != "KeyD" || !event.altKey || !event.ctrlKey) {
           break;
         }
@@ -69,8 +69,19 @@ let PaymentRequest = {
     let {messageType} = detail;
 
     switch (messageType) {
+      case "responseSent": {
+        document.querySelector("payment-dialog").requestStore.setState({
+          changesPrevented: true,
+          completionState: "processing",
+        });
+        break;
+      }
       case "showPaymentRequest": {
         this.onShowPaymentRequest(detail);
+        break;
+      }
+      case "updateState": {
+        document.querySelector("payment-dialog").setStateFromParent(detail);
         break;
       }
     }
@@ -79,13 +90,18 @@ let PaymentRequest = {
   onPaymentRequestLoad(requestId) {
     window.addEventListener("unload", this, {once: true});
     this.sendMessageToChrome("paymentDialogReady");
+
+    // Automatically show the debugging console if loaded with a truthy `debug` query parameter.
+    if (new URLSearchParams(location.search).get("debug")) {
+      document.getElementById("debugging-console").hidden = false;
+    }
   },
 
   async onShowPaymentRequest(detail) {
     // Handle getting called before the DOM is ready.
     await this.domReadyPromise;
 
-    document.querySelector("payment-dialog").setLoadingState({
+    document.querySelector("payment-dialog").setStateFromParent({
       request: detail.request,
       savedAddresses: detail.savedAddresses,
       savedBasicCards: detail.savedBasicCards,
@@ -100,10 +116,18 @@ let PaymentRequest = {
     this.sendMessageToChrome("pay", data);
   },
 
+  changeShippingAddress(data) {
+    this.sendMessageToChrome("changeShippingAddress", data);
+  },
+
+  changeShippingOption(data) {
+    this.sendMessageToChrome("changeShippingOption", data);
+  },
+
   onPaymentRequestUnload() {
     // remove listeners that may be used multiple times here
     window.removeEventListener("paymentChromeToContent", this);
   },
 };
 
-PaymentRequest.init();
+paymentRequest.init();

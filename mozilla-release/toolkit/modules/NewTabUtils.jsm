@@ -4,24 +4,26 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["NewTabUtils"];
+var EXPORTED_SYMBOLS = ["NewTabUtils"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["btoa"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
+ChromeUtils.defineModuleGetter(this, "PageThumbs",
   "resource://gre/modules/PageThumbs.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BinarySearch",
+ChromeUtils.defineModuleGetter(this, "BinarySearch",
   "resource://gre/modules/BinarySearch.jsm");
+
+ChromeUtils.defineModuleGetter(this, "pktApi",
+  "chrome://pocket/content/pktApi.jsm");
+
+ChromeUtils.defineModuleGetter(this, "Pocket",
+  "chrome://pocket/content/Pocket.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gCryptoHash", function() {
   return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
@@ -36,13 +38,6 @@ XPCOMUtils.defineLazyGetter(this, "gUnicodeConverter", function() {
 
 // Boolean preferences that control newtab content
 const PREF_NEWTAB_ENABLED = "browser.newtabpage.enabled";
-const PREF_NEWTAB_ENHANCED = "browser.newtabpage.enhanced";
-
-// The preference that tells the number of rows of the newtab grid.
-const PREF_NEWTAB_ROWS = "browser.newtabpage.rows";
-
-// The preference that tells the number of columns of the newtab grid.
-const PREF_NEWTAB_COLUMNS = "browser.newtabpage.columns";
 
 // The maximum number of results PlacesProvider retrieves from history.
 const HISTORY_RESULTS_LIMIT = 100;
@@ -61,6 +56,10 @@ const ACTIVITY_STREAM_DEFAULT_LIMIT = 12;
 
 // Some default seconds ago for Activity Stream recent requests
 const ACTIVITY_STREAM_DEFAULT_RECENT = 5 * 24 * 60 * 60;
+
+const POCKET_UPDATE_TIME = 24 * 60 * 60 * 1000; // 1 day
+const POCKET_INACTIVE_TIME = 7 * 24 * 60 * 60 * 1000; // 1 week
+const PREF_POCKET_LATEST_SINCE = "extensions.pocket.settings.latestSince";
 
 /**
  * Calculate the MD5 hash for a string.
@@ -103,7 +102,7 @@ function LinksStorage() {
   } catch (ex) {
     // Something went wrong in the update process, we can't recover from here,
     // so just clear the storage and start from scratch (dataloss!).
-    Components.utils.reportError(
+    Cu.reportError(
       "Unable to migrate the newTab storage to the current version. " +
       "Restarting from scratch.\n" + ex);
     this.clear();
@@ -203,11 +202,6 @@ var AllPages = {
   _enabled: null,
 
   /**
-   * Cached value that tells whether the New Tab Page feature is enhanced.
-   */
-  _enhanced: null,
-
-  /**
    * Adds a page to the internal list of pages.
    * @param aPage The page to register.
    */
@@ -245,24 +239,6 @@ var AllPages = {
   },
 
   /**
-   * Returns whether the history tiles are enhanced.
-   */
-  get enhanced() {
-    if (this._enhanced === null)
-      this._enhanced = Services.prefs.getBoolPref(PREF_NEWTAB_ENHANCED);
-
-    return this._enhanced;
-  },
-
-  /**
-   * Enables or disables the enhancement of history tiles feature.
-   */
-  set enhanced(aEnhanced) {
-    if (this.enhanced != aEnhanced)
-      Services.prefs.setBoolPref(PREF_NEWTAB_ENHANCED, !!aEnhanced);
-  },
-
-  /**
    * Returns the number of registered New Tab Pages (i.e. the number of open
    * about:newtab instances).
    */
@@ -294,9 +270,6 @@ var AllPages = {
         case PREF_NEWTAB_ENABLED:
           this._enabled = null;
           break;
-        case PREF_NEWTAB_ENHANCED:
-          this._enhanced = null;
-          break;
       }
     }
     // and all notifications get forwarded to each page.
@@ -311,7 +284,6 @@ var AllPages = {
    */
   _addObserver: function AllPages_addObserver() {
     Services.prefs.addObserver(PREF_NEWTAB_ENABLED, this, true);
-    Services.prefs.addObserver(PREF_NEWTAB_ENHANCED, this, true);
     Services.obs.addObserver(this, "page-thumbnail:create", true);
     this._addObserver = function() {};
   },
@@ -319,68 +291,6 @@ var AllPages = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
                                          Ci.nsISupportsWeakReference])
 };
-
-/**
- * Singleton that keeps Grid preferences
- */
-var GridPrefs = {
-  /**
-   * Cached value that tells the number of rows of newtab grid.
-   */
-  _gridRows: null,
-  get gridRows() {
-    if (!this._gridRows) {
-      this._gridRows = Math.max(1, Services.prefs.getIntPref(PREF_NEWTAB_ROWS));
-    }
-
-    return this._gridRows;
-  },
-
-  /**
-   * Cached value that tells the number of columns of newtab grid.
-   */
-  _gridColumns: null,
-  get gridColumns() {
-    if (!this._gridColumns) {
-      this._gridColumns = Math.max(1, Services.prefs.getIntPref(PREF_NEWTAB_COLUMNS));
-    }
-
-    return this._gridColumns;
-  },
-
-
-  /**
-   * Initializes object. Adds a preference observer
-   */
-  init: function GridPrefs_init() {
-    Services.prefs.addObserver(PREF_NEWTAB_ROWS, this);
-    Services.prefs.addObserver(PREF_NEWTAB_COLUMNS, this);
-  },
-
- /**
-  * Uninitializes object. Removes the preference observers
-  */
-  uninit: function GridPrefs_uninit() {
-    Services.prefs.removeObserver(PREF_NEWTAB_ROWS, this);
-    Services.prefs.removeObserver(PREF_NEWTAB_COLUMNS, this);
-  },
-
-  /**
-   * Implements the nsIObserver interface to get notified when the preference
-   * value changes.
-   */
-  observe: function GridPrefs_observe(aSubject, aTopic, aData) {
-    if (aData == PREF_NEWTAB_ROWS) {
-      this._gridRows = null;
-    } else {
-      this._gridColumns = null;
-    }
-
-    AllPages.update();
-  }
-};
-
-GridPrefs.init();
 
 /**
  * Singleton that keeps track of all pinned links and their positions in the
@@ -955,14 +865,21 @@ var ActivityStreamProvider = {
     // the original link object. We must wait until all favicons for the array
     // of links are computed before returning
     return Promise.all(aLinks.map(link => new Promise(async resolve => {
+      // Never add favicon data for pocket items
+      if (link.type === "pocket") {
+        resolve(link);
+        return;
+      }
       let iconData;
       try {
-        const linkUri = Services.io.newURI(link.url);
+        let linkUri = Services.io.newURI(link.url);
         iconData = await this._getIconData(linkUri);
 
         // Switch the scheme to try again with the other
         if (!iconData) {
-          linkUri.scheme = linkUri.scheme === "https" ? "http" : "https";
+          linkUri = linkUri.mutate()
+                           .setScheme(linkUri.scheme === "https" ? "http" : "https")
+                           .finalize();
           iconData = await this._getIconData(linkUri);
         }
       } catch (e) {
@@ -972,6 +889,73 @@ var ActivityStreamProvider = {
       // Add the icon data to the link if we have any
       resolve(Object.assign(link, iconData || {}));
     })));
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to fetch the user's
+   * saved Pocket items.
+   */
+  fetchSavedPocketItems(requestData) {
+    const latestSince = (Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000);
+
+    // Do not fetch Pocket items for users that have been inactive for too long, or are not logged in
+    if (!pktApi.isUserLoggedIn() || (Date.now() - latestSince > POCKET_INACTIVE_TIME)) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve, reject) => {
+      pktApi.retrieve(requestData, {
+        success(data) {
+          resolve(data);
+        },
+        error(error) {
+          reject(error);
+        }
+      });
+    });
+  },
+
+  /**
+   * Get the most recently Pocket-ed items from a user's Pocket list. See:
+   * https://getpocket.com/developer/docs/v3/retrieve for details
+   *
+   * @param {Object} aOptions
+   *   {int} numItems: The max number of pocket items to fetch
+   */
+  async getRecentlyPocketed(aOptions) {
+    const pocketSecondsAgo = Math.floor(Date.now() / 1000) - ACTIVITY_STREAM_DEFAULT_RECENT;
+    const requestData = {
+      detailType: "complete",
+      count: aOptions.numItems,
+      since: pocketSecondsAgo
+    };
+    let data;
+    try {
+      data = await this.fetchSavedPocketItems(requestData);
+      if (!data) {
+        return [];
+      }
+    } catch (e) {
+      Cu.reportError(e);
+      return [];
+    }
+    /* Extract relevant parts needed to show this card as a highlight:
+     * url, preview image, title, description, and the unique item_id
+     * necessary for Pocket to identify the item
+     */
+    let items = Object.values(data.list)
+                  // status "0" means not archived or deleted
+                  .filter(item => item.status === "0")
+                  .map(item => ({
+                    description: item.excerpt,
+                    preview_image_url: item.image && item.image.src,
+                    title: item.resolved_title,
+                    url: item.resolved_url,
+                    pocket_id: item.item_id,
+                    open_url: item.open_url
+                  }));
+
+    return this._processHighlights(items, aOptions, "pocket");
   },
 
   /**
@@ -1017,6 +1001,30 @@ var ActivityStreamProvider = {
         dateAddedThreshold: (Date.now() - options.bookmarkSecondsAgo * 1000) * 1000
       })
     }), options, "bookmark");
+  },
+
+  /**
+   * Get total count of all bookmarks.
+   * Note: this includes default bookmarks
+   *
+   * @return {int} The number bookmarks in the places DB.
+   */
+  async getTotalBookmarksCount() {
+    let sqlQuery = `
+      SELECT count(*) FROM moz_bookmarks b
+      JOIN moz_bookmarks t ON t.id = b.parent
+      AND t.parent <> :tags_folder
+     WHERE b.type = :type_bookmark
+    `;
+
+    const result = await this.executePlacesQuery(sqlQuery, {
+      params: {
+        tags_folder: PlacesUtils.tagsFolderId,
+        type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+      }
+    });
+
+    return result[0][0];
   },
 
   /**
@@ -1160,13 +1168,16 @@ var ActivityStreamProvider = {
   },
 
   /**
-   * Gets a specific bookmark given an id
+   * Gets a specific bookmark given some info about it
    *
-   * @param {String} aGuid
-   *          A bookmark guid to use as a refrence to fetch the bookmark
+   * @param {Obj} aInfo
+   *          An object with one and only one of the following properties:
+   *            - url
+   *            - guid
+   *            - parentGuid and index
    */
-  async getBookmark(aGuid) {
-    let bookmark = await PlacesUtils.bookmarks.fetch(aGuid);
+  async getBookmark(aInfo) {
+    let bookmark = await PlacesUtils.bookmarks.fetch(aInfo);
     if (!bookmark) {
       return null;
     }
@@ -1229,7 +1240,11 @@ var ActivityStreamProvider = {
  * A set of actions which influence what sites shown on the Activity Stream page
  */
 var ActivityStreamLinks = {
-  /**
+  _savedPocketStories: null,
+  _pocketLastUpdated: 0,
+  _pocketLastLatest: 0,
+
+ /**
    * Block a url
    *
    * @param {Object} aLink
@@ -1237,6 +1252,10 @@ var ActivityStreamLinks = {
    */
   blockURL(aLink) {
     BlockedLinks.block(aLink);
+    // If we're blocking a pocket item, invalidate the cache too
+    if (aLink.pocket_id) {
+      this._savedPocketStories = null;
+    }
   },
 
   onLinkBlocked(aLink) {
@@ -1291,11 +1310,73 @@ var ActivityStreamLinks = {
   },
 
   /**
+   * Helper function which makes the call to the Pocket API to delete an item from
+   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
+   *
+   * @param {Integer} aItemID
+   *           The unique pocket ID used to find the item to be deleted
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  deletePocketEntry(aItemID) {
+    this._savedPocketStories = null;
+    return new Promise((success, error) => pktApi.deleteItem(aItemID, {success, error}));
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to archive an item from
+   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
+   *
+   * @param {Integer} aItemID
+   *           The unique pocket ID used to find the item to be archived
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  archivePocketEntry(aItemID) {
+    this._savedPocketStories = null;
+    return new Promise((success, error) => pktApi.archiveItem(aItemID, {success, error}));
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to save an item to
+   * a user's saved to Pocket feed if they are logged in. Also, invalidate the
+   * Pocket stories cache
+   *
+   * @param {String} aUrl
+   *           The URL belonging to the story being saved
+   * @param {String} aTitle
+   *           The title belonging to the story being saved
+   * @param {Browser} aBrowser
+   *           The target browser to show the doorhanger in
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  addPocketEntry(aUrl, aTitle, aBrowser) {
+    // If the user is not logged in, show the panel to prompt them to log in
+    if (!pktApi.isUserLoggedIn()) {
+      Pocket.savePage(aBrowser, aUrl, aTitle);
+      return Promise.resolve(null);
+    }
+
+    // If the user is logged in, just save the link to Pocket and Activity Stream
+    // will update the page
+    this._savedPocketStories = null;
+    return new Promise((success, error) => {
+      pktApi.addLink(aUrl, {
+        title: aTitle,
+        success,
+        error
+      });
+    });
+  },
+
+  /**
    * Get the Highlights links to show on Activity Stream
    *
    * @param {Object} aOptions
    *   {bool} excludeBookmarks: Don't add bookmark items.
    *   {bool} excludeHistory: Don't add history items.
+   *   {bool} excludePocket: Don't add Pocket items.
    *   {bool} withFavicons: Add favicon data: URIs, when possible.
    *   {int}  numItems: Maximum number of (bookmark or history) items to return.
    *
@@ -1308,6 +1389,23 @@ var ActivityStreamLinks = {
     // First get bookmarks if we want them
     if (!aOptions.excludeBookmarks) {
       results.push(...await ActivityStreamProvider.getRecentBookmarks(aOptions));
+    }
+
+    // Add the Pocket items if we need more and want them
+    if (aOptions.numItems - results.length > 0 && !aOptions.excludePocket) {
+      const latestSince = ~~(Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0));
+      // Invalidate the cache, get new stories, and update timestamps if:
+      //  1. we do not have saved to Pocket stories already cached OR
+      //  2. it has been too long since we last got Pocket stories OR
+      //  3. there has been a paged saved to pocket since we last got new stories
+      if (!this._savedPocketStories ||
+          (Date.now() - this._pocketLastUpdated > POCKET_UPDATE_TIME) ||
+          (this._pocketLastLatest < latestSince)) {
+        this._savedPocketStories = await ActivityStreamProvider.getRecentlyPocketed(aOptions);
+        this._pocketLastUpdated = Date.now();
+        this._pocketLastLatest = latestSince;
+      }
+      results.push(...this._savedPocketStories);
     }
 
     // Add in history if we need more and want them
@@ -1644,10 +1742,6 @@ var Links = {
     // Build a list containing a copy of each provider's sortedLinks list.
     let linkLists = [];
     for (let provider of this._providers.keys()) {
-      if (!AllPages.enhanced && provider != PlacesProvider) {
-        // Only show history tiles if we're not in 'enhanced' mode.
-        continue;
-      }
       let links = this._providers.get(provider);
       if (links && links.sortedLinks) {
         linkLists.push(links.sortedLinks.slice());
@@ -1860,8 +1954,6 @@ var Telemetry = {
     let probes = [
       { histogram: "NEWTAB_PAGE_ENABLED",
         value: AllPages.enabled },
-      { histogram: "NEWTAB_PAGE_ENHANCED",
-        value: AllPages.enhanced },
       { histogram: "NEWTAB_PAGE_PINNED_SITES_COUNT",
         value: PinnedLinks.links.length },
       { histogram: "NEWTAB_PAGE_BLOCKED_SITES_COUNT",
@@ -1947,7 +2039,7 @@ var ExpirationFilter = {
 /**
  * Singleton that provides the public API of this JSM.
  */
-this.NewTabUtils = {
+var NewTabUtils = {
   _initialized: false,
 
   /**
@@ -1992,7 +2084,6 @@ this.NewTabUtils = {
   uninit: function NewTabUtils_uninit() {
     if (this.initialized) {
       Telemetry.uninit();
-      GridPrefs.uninit();
       BlockedLinks.removeObservers();
     }
   },
@@ -2045,10 +2136,8 @@ this.NewTabUtils = {
 
   links: Links,
   allPages: AllPages,
-  linkChecker: LinkChecker,
   pinnedLinks: PinnedLinks,
   blockedLinks: BlockedLinks,
-  gridPrefs: GridPrefs,
   placesProvider: PlacesProvider,
   activityStreamLinks: ActivityStreamLinks,
   activityStreamProvider: ActivityStreamProvider

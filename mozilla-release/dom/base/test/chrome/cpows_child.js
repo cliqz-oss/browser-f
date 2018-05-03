@@ -1,7 +1,6 @@
 dump('loaded child cpow test\n');
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 (function start() {
   [is_remote] = sendRpcMessage("cpows:is_remote");
@@ -138,7 +137,7 @@ function dom_test(finish)
   content.document.body.appendChild(element);
 
   sendRpcMessage("cpows:dom_test", {}, {element: element});
-  Components.utils.schedulePreciseGC(function() {
+  Cu.schedulePreciseGC(function() {
     sendRpcMessage("cpows:dom_test_after_gc");
     finish();
   });
@@ -268,7 +267,7 @@ function lifetime_test(finish)
   ok(result == 10, "got sync result");
   ok(obj.wont_die.f == undefined, "got reverse CPOW");
   obj.will_die = null;
-  Components.utils.schedulePreciseGC(function() {
+  Cu.schedulePreciseGC(function() {
     addMessageListener("cpows:lifetime_test_3", (msg) => {
       ok(obj.wont_die.f == undefined, "reverse CPOW still works");
       finish();
@@ -318,8 +317,7 @@ function cancel_test2(finish)
   // CPOW is canceled. The parent starts running again immediately
   // after the CPOW is canceled; f also continues running.
   function f() {
-    let req = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"].
-              createInstance(Components.interfaces.nsIXMLHttpRequest);
+    let req = new XMLHttpRequest();
     let fin = false;
     let reqListener = () => {
       if (req.readyState != req.DONE) {

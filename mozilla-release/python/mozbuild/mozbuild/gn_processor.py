@@ -64,9 +64,10 @@ class MozbuildWriter(object):
         self.write('\n')
 
     def write_attrs(self, context_attrs):
-        for k, v in context_attrs.iteritems():
+        for k in sorted(context_attrs.keys()):
+            v = context_attrs[k]
             if isinstance(v, (list, set)):
-                self.write_mozbuild_list(k, alphabetical_sorted(v))
+                self.write_mozbuild_list(k, v)
             elif isinstance(v, dict):
                 self.write_mozbuild_dict(k, v)
             else:
@@ -77,7 +78,7 @@ class MozbuildWriter(object):
             self.write('\n')
             self.write(self.indent + key)
             self.write(' += [\n    ' + self.indent)
-            self.write((',\n    ' + self.indent).join(self.mb_serialize(v) for v in value))
+            self.write((',\n    ' + self.indent).join(alphabetical_sorted(self.mb_serialize(v) for v in value)))
             self.write('\n')
             self.write_ln(']')
 
@@ -99,7 +100,8 @@ class MozbuildWriter(object):
         )
         if value:
             self.write('\n')
-            for k, v in value.iteritems():
+            for k in sorted(value.keys()):
+                v = value[k]
                 subst_vals = key, self.mb_serialize(k), self.mb_serialize(v)
                 wrote_ln = False
                 for flags, tmpl in replacements:
@@ -119,7 +121,7 @@ class MozbuildWriter(object):
 
         self.write('\n')
         self.write('if ')
-        self.write(' and '.join(mk_condition(k, v) for k, v in values.items()))
+        self.write(' and '.join(mk_condition(k, values[k]) for k in sorted(values.keys())))
         self.write(':\n')
         self.indent += ' ' * self._indent_increment
 
@@ -444,7 +446,7 @@ def write_mozbuild(config, srcdir, output, non_unified_sources, gn_config_files,
                 for args in all_args:
                     cond = tuple(((k, args.get(k)) for k in attrs))
                     conditions.add(cond)
-                for cond in conditions:
+                for cond in sorted(conditions):
                     common_attrs = find_common_attrs([attrs for args, attrs in configs if
                                                       all(args.get(k) == v for k, v in cond)])
                     if any(common_attrs.values()):
@@ -508,7 +510,7 @@ def generate_gn_config(config, srcdir, output, non_unified_sources, gn_binary,
     gn_args = '--args=%s' % ' '.join(['%s=%s' % (k, str_for_arg(v)) for k, v
                                       in input_variables.iteritems()])
     gn_arg_string = '_'.join([str(input_variables[k]) for k in sorted(input_variables.keys())])
-    out_dir = mozpath.join(config.topobjdir, 'gn-output')
+    out_dir = mozpath.join(output, 'gn-output')
     gen_args = [
         config.substs['GN'], 'gen', out_dir, gn_args, '--ide=json',
     ]
@@ -558,7 +560,7 @@ class GnMozbuildWriterBackend(BuildBackend):
                 # Check the objdir for a gn-config in to aide debugging in cases
                 # someone is running both steps on the same machine and want to
                 # sanity check moz.build generation for a particular config.
-                gn_config_files = glob.glob(mozpath.join(obj.topobjdir,
+                gn_config_files = glob.glob(mozpath.join(obj.objdir, obj.target_dir,
                                                          'gn-output', '*.json'))
             if gn_config_files:
                 print("Writing moz.build files based on the following gn configs: %s" %

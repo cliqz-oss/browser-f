@@ -23,7 +23,7 @@ SVGSymbolElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 NS_IMPL_ISUPPORTS_INHERITED(SVGSymbolElement, SVGSymbolElementBase,
                             nsIDOMNode, nsIDOMElement,
-                            nsIDOMSVGElement, mozilla::dom::SVGTests)
+                            mozilla::dom::SVGTests)
 
 //----------------------------------------------------------------------
 // Implementation
@@ -41,15 +41,6 @@ SVGSymbolElement::~SVGSymbolElement()
 // nsIDOMNode methods
 
 NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGSymbolElement)
-
-//----------------------------------------------------------------------
-// SVGTests methods
-
-bool
-SVGSymbolElement::IsInChromeDoc() const
-{
-  return nsContentUtils::IsChromeDoc(OwnerDoc());
-}
 
 } // namespace dom
 } // namespace mozilla

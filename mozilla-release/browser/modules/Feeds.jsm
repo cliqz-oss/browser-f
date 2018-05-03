@@ -4,19 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "Feeds" ];
+var EXPORTED_SYMBOLS = [ "Feeds" ];
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "RecentWindow",
+                               "resource:///modules/RecentWindow.jsm");
 
-const { interfaces: Ci, classes: Cc } = Components;
-
-this.Feeds = {
+var Feeds = {
   // Listeners are added in nsBrowserGlue.js
   receiveMessage(aMessage) {
     let data = aMessage.data;
@@ -47,7 +45,7 @@ this.Feeds = {
       case "FeedConverter:addLiveBookmark": {
         let topWindow = RecentWindow.getMostRecentBrowserWindow();
         topWindow.PlacesCommandHook.addLiveBookmark(data.spec, data.title, data.subtitle)
-                                   .catch(Components.utils.reportError);
+                                   .catch(Cu.reportError);
         break;
       }
     }

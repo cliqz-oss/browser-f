@@ -5,9 +5,9 @@
 "use strict";
 
 let syncService = {};
-Components.utils.import("resource://services-sync/service.js", syncService);
+ChromeUtils.import("resource://services-sync/service.js", syncService);
 const service = syncService.Service;
-const {UIState} = Components.utils.import("resource://services-sync/UIState.jsm", {});
+const {UIState} = ChromeUtils.import("resource://services-sync/UIState.jsm", {});
 
 let getState;
 let originalSync;
@@ -38,7 +38,7 @@ add_task(async function testSyncRemoteTabsButtonFunctionality() {
   // click the button - the panel should open.
   syncRemoteTabsBtn.click();
   await viewShown;
-  ok(remoteTabsPanel.getAttribute("current"), "Sync Panel is in view");
+  ok(remoteTabsPanel.getAttribute("visible"), "Sync Panel is in view");
 
   // Find and click the "setup" button.
   let syncNowButton = document.getElementById("PanelUI-remotetabs-syncnow");
@@ -46,6 +46,10 @@ add_task(async function testSyncRemoteTabsButtonFunctionality() {
   info("The sync now button was clicked");
 
   await waitForCondition(() => syncWasCalled);
+
+  // We need to stop the Syncing animation manually otherwise the button
+  // will be disabled at the beginning of a next test.
+  gSync._onActivityStop();
 });
 
 add_task(async function asyncCleanup() {
@@ -69,20 +73,19 @@ function mockFunctions() {
     email: "user@mozilla.com"
   });
 
-  // mock service.errorHandler.syncAndReportErrors()
-  service.errorHandler.syncAndReportErrors = mocked_syncAndReportErrors;
+  service.sync = mocked_sync;
 }
 
-function mocked_syncAndReportErrors() {
+function mocked_sync() {
   syncWasCalled = true;
 }
 
 function restoreValues() {
   UIState.get = getState;
-  service.syncAndReportErrors = originalSync;
+  service.sync = originalSync;
 }
 
 function storeInitialValues() {
   getState = UIState.get;
-  originalSync = service.syncAndReportErrors;
+  originalSync = service.sync;
 }

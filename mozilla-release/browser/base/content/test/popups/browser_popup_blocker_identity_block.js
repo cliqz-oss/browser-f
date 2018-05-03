@@ -4,8 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource:///modules/SitePermissions.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource:///modules/SitePermissions.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const baseURL = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "http://example.com");
 const URL = baseURL + "popup_blocker2.html";
@@ -55,6 +55,12 @@ add_task(async function check_blocked_popup_indicator() {
   document.getElementById("identity-icon").click();
   await openIdentityPopup();
   await BrowserTestUtils.waitForCondition(() => document.getElementById("blocked-popup-indicator-item") !== null);
+
+  // Check that the default state is correctly set to "Block".
+  let menulist = document.getElementById("identity-popup-popup-menulist");
+  Assert.equal(menulist.value, "0");
+  Assert.equal(menulist.label, "Block");
+
   await closeIdentityPopup();
 
   // Check if blocked popup icon is visible in the identity block.
@@ -163,5 +169,32 @@ add_task(async function check_permission_state_change() {
   state = SitePermissions.get(URI, "popup", gBrowser).state;
   Assert.equal(state, SitePermissions.BLOCK);
 
+  gBrowser.removeTab(tab);
+});
+
+// Explicitly set the permission to the otherwise default state and check that
+// the label still displays correctly.
+add_task(async function check_explicit_default_permission() {
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, URL);
+
+  // DENY only works if triggered through Services.perms (it's very edge-casey),
+  // since SitePermissions.jsm considers setting default permissions to be removal.
+  Services.perms.add(URI, "popup", Ci.nsIPermissionManager.DENY_ACTION);
+
+  await openIdentityPopup();
+  let menulist = document.getElementById("identity-popup-popup-menulist");
+  Assert.equal(menulist.value, "0");
+  Assert.equal(menulist.label, "Block");
+  await closeIdentityPopup();
+
+  SitePermissions.set(URI, "popup", SitePermissions.ALLOW);
+
+  await openIdentityPopup();
+  menulist = document.getElementById("identity-popup-popup-menulist");
+  Assert.equal(menulist.value, "1");
+  Assert.equal(menulist.label, "Allow");
+  await closeIdentityPopup();
+
+  SitePermissions.remove(URI, "popup");
   gBrowser.removeTab(tab);
 });

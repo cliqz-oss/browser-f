@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "encryptPayload",
   "makeIdentityConfig",
   "makeFxAccountsInternalMock",
@@ -21,22 +21,21 @@ this.EXPORTED_SYMBOLS = [
   "syncTestLogging",
 ];
 
-var {utils: Cu} = Components;
-
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-crypto/utils.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://testing-common/services/common/logging.js");
-Cu.import("resource://testing-common/services/sync/fakeservices.js");
-Cu.import("resource://gre/modules/FxAccounts.jsm");
-Cu.import("resource://gre/modules/FxAccountsClient.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://testing-common/Assert.jsm");
+ChromeUtils.import("resource://testing-common/services/common/logging.js");
+ChromeUtils.import("resource://testing-common/services/sync/fakeservices.js");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // and grab non-exported stuff via a backstage pass.
-const {AccountState} = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+const {AccountState} = ChromeUtils.import("resource://gre/modules/FxAccounts.jsm", {});
 
 // A mock "storage manager" for FxAccounts that doesn't actually write anywhere.
 function MockFxaStorageManager() {
@@ -79,7 +78,7 @@ MockFxaStorageManager.prototype = {
  * we can account for the timer in delayedAutoconnect) and then two event
  * loop ticks (to account for the CommonUtils.nextTick() in autoConnect).
  */
-this.waitForZeroTimer = function waitForZeroTimer(callback) {
+function waitForZeroTimer(callback) {
   let ticks = 2;
   function wait() {
     if (ticks) {
@@ -90,15 +89,15 @@ this.waitForZeroTimer = function waitForZeroTimer(callback) {
     callback();
   }
   CommonUtils.namedTimer(wait, 150, {}, "timer");
-};
+}
 
-this.promiseZeroTimer = function() {
+var promiseZeroTimer = function() {
   return new Promise(resolve => {
     waitForZeroTimer(resolve);
   });
 };
 
-this.promiseNamedTimer = function(wait, thisObj, name) {
+var promiseNamedTimer = function(wait, thisObj, name) {
   return new Promise(resolve => {
     CommonUtils.namedTimer(resolve, wait, thisObj, name);
   });
@@ -108,7 +107,7 @@ this.promiseNamedTimer = function(wait, thisObj, name) {
 // providers.  |overrides| can specify overrides for any default values.
 // |server| is optional, but if specified, will be used to form the cluster
 // URL for the FxA identity.
-this.makeIdentityConfig = function(overrides) {
+var makeIdentityConfig = function(overrides) {
   // first setup the defaults.
   let result = {
     // Username used in both fxaccount and sync identity configs.
@@ -117,9 +116,11 @@ this.makeIdentityConfig = function(overrides) {
     fxaccount: {
       user: {
         assertion: "assertion",
-        email: "email",
-        kA: "kA",
-        kB: "kB",
+        email: "foo",
+        kSync: "a".repeat(128),
+        kXCS: "a".repeat(32),
+        kExtSync: "a".repeat(128),
+        kExtKbHash: "a".repeat(32),
         sessionToken: "sessionToken",
         uid: "a".repeat(32),
         verified: true,
@@ -148,7 +149,7 @@ this.makeIdentityConfig = function(overrides) {
   return result;
 };
 
-this.makeFxAccountsInternalMock = function(config) {
+var makeFxAccountsInternalMock = function(config) {
   return {
     newAccountState(credentials) {
       // We only expect this to be called with null indicating the (mock)
@@ -162,16 +163,16 @@ this.makeFxAccountsInternalMock = function(config) {
       return accountState;
     },
     _getAssertion(audience) {
-      return Promise.resolve("assertion");
+      return Promise.resolve(config.fxaccount.user.assertion);
     },
   };
 };
 
 // Configure an instance of an FxAccount identity provider with the specified
 // config (or the default config if not specified).
-this.configureFxAccountIdentity = function(authService,
-                                           config = makeIdentityConfig(),
-                                           fxaInternal = makeFxAccountsInternalMock(config)) {
+var configureFxAccountIdentity = function(authService,
+                                          config = makeIdentityConfig(),
+                                          fxaInternal = makeFxAccountsInternalMock(config)) {
   // until we get better test infrastructure for bid_identity, we set the
   // signedin user's "email" to the username, simply as many tests rely on this.
   config.fxaccount.user.email = config.username;
@@ -191,9 +192,11 @@ this.configureFxAccountIdentity = function(authService,
   fxa.internal._fxAccountsClient = mockFxAClient;
 
   let mockTSC = { // TokenServerClient
-    getTokenFromBrowserIDAssertion(uri, assertion, cb) {
+    async getTokenFromBrowserIDAssertion(uri, assertion) {
+      Assert.equal(uri, Services.prefs.getStringPref("identity.sync.tokenserver.uri"));
+      Assert.equal(assertion, config.fxaccount.user.assertion);
       config.fxaccount.token.uid = config.username;
-      cb(null, config.fxaccount.token);
+      return config.fxaccount.token;
     },
   };
   authService._fxaService = fxa;
@@ -204,10 +207,10 @@ this.configureFxAccountIdentity = function(authService,
   authService._account = config.fxaccount.user.email;
 };
 
-this.configureIdentity = async function(identityOverrides, server) {
+var configureIdentity = async function(identityOverrides, server) {
   let config = makeIdentityConfig(identityOverrides, server);
   let ns = {};
-  Cu.import("resource://services-sync/service.js", ns);
+  ChromeUtils.import("resource://services-sync/service.js", ns);
 
   // If a server was specified, ensure FxA has a correct cluster URL available.
   if (server && !config.fxaccount.token.endpoint) {
@@ -220,10 +223,12 @@ this.configureIdentity = async function(identityOverrides, server) {
   }
 
   configureFxAccountIdentity(ns.Service.identity, config);
-  await ns.Service.identity.initializeWithCurrentIdentity();
-  // The token is fetched in the background, whenReadyToAuthenticate is resolved
-  // when we are ready.
-  await ns.Service.identity.whenReadyToAuthenticate.promise;
+  // because we didn't send any FxA LOGIN notifications we must set the username.
+  ns.Service.identity.username = config.username;
+  // many of these tests assume all the auth stuff is setup and don't hit
+  // a path which causes that auth to magically happen - so do it now.
+  await ns.Service.identity._ensureValidToken();
+
   // and cheat to avoid requiring each test do an explicit login - give it
   // a cluster URL.
   if (config.fxaccount.token.endpoint) {
@@ -238,9 +243,9 @@ function syncTestLogging(level = "Trace") {
   return logStats;
 }
 
-this.SyncTestingInfrastructure = async function(server, username) {
+var SyncTestingInfrastructure = async function(server, username) {
   let ns = {};
-  Cu.import("resource://services-sync/service.js", ns);
+  ChromeUtils.import("resource://services-sync/service.js", ns);
 
   let config = makeIdentityConfig({ username });
   await configureIdentity(config, server);
@@ -255,7 +260,7 @@ this.SyncTestingInfrastructure = async function(server, username) {
 /**
  * Turn WBO cleartext into fake "encrypted" payload as it goes over the wire.
  */
-this.encryptPayload = function encryptPayload(cleartext) {
+function encryptPayload(cleartext) {
   if (typeof cleartext == "object") {
     cleartext = JSON.stringify(cleartext);
   }
@@ -265,9 +270,9 @@ this.encryptPayload = function encryptPayload(cleartext) {
     IV: "irrelevant",
     hmac: fakeSHA256HMAC(cleartext, CryptoUtils.makeHMACKey("")),
   };
-};
+}
 
-this.sumHistogram = function(name, options = {}) {
+var sumHistogram = function(name, options = {}) {
   let histogram = options.key ? Services.telemetry.getKeyedHistogramById(name) :
                   Services.telemetry.getHistogramById(name);
   let snapshot = histogram.snapshot(options.key);
@@ -279,7 +284,7 @@ this.sumHistogram = function(name, options = {}) {
   return sum;
 };
 
-this.getLoginTelemetryScalar = function() {
+var getLoginTelemetryScalar = function() {
   let dataset = Services.telemetry.DATASET_RELEASE_CHANNEL_OPTOUT;
   let snapshot = Services.telemetry.snapshotKeyedScalars(dataset, true);
   return snapshot.parent ? snapshot.parent["services.sync.sync_login_state_transitions"] : {};

@@ -50,8 +50,6 @@
 namespace mozilla {
 namespace dom {
 
-using namespace workers;
-
 static LazyLogModule gEventSourceLog("EventSource");
 
 #define SPACE_CHAR           (char16_t)0x0020
@@ -1015,8 +1013,11 @@ EventSourceImpl::InitChannelAndRequestEventSource()
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
+  // The html spec requires we use fetch cache mode of "no-store".  This
+  // maps to LOAD_BYPASS_CACHE and LOAD_INHIBIT_CACHING in necko.
   nsLoadFlags loadFlags;
-  loadFlags = nsIRequest::LOAD_BACKGROUND | nsIRequest::LOAD_BYPASS_CACHE;
+  loadFlags = nsIRequest::LOAD_BACKGROUND | nsIRequest::LOAD_BYPASS_CACHE
+                                          | nsIRequest::INHIBIT_CACHING;
 
   nsCOMPtr<nsIDocument> doc = mEventSource->GetDocumentIfCurrent();
 
@@ -1036,6 +1037,7 @@ EventSourceImpl::InitChannelAndRequestEventSource()
                        doc,
                        securityFlags,
                        nsIContentPolicy::TYPE_INTERNAL_EVENTSOURCE,
+                       nullptr,          // aPerformanceStorage
                        loadGroup,
                        nullptr,          // aCallbacks
                        loadFlags);       // aLoadFlags
@@ -1046,6 +1048,7 @@ EventSourceImpl::InitChannelAndRequestEventSource()
                        mPrincipal,
                        securityFlags,
                        nsIContentPolicy::TYPE_INTERNAL_EVENTSOURCE,
+                       nullptr,          // aPerformanceStorage
                        nullptr,          // loadGroup
                        nullptr,          // aCallbacks
                        loadFlags);       // aLoadFlags
@@ -1789,9 +1792,9 @@ public:
   {
   }
 
-  bool Notify(Status aStatus) override
+  bool Notify(WorkerStatus aStatus) override
   {
-    MOZ_ASSERT(aStatus > workers::Running);
+    MOZ_ASSERT(aStatus > Running);
     if (aStatus >= Canceling) {
       mEventSourceImpl->Close();
     }

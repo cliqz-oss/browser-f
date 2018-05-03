@@ -3,6 +3,11 @@
 /* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
+// There are shutdown issues for which multiple rejections are left uncaught.
+// See bug 1018184 for resolving these issues.
+const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
+
 // Avoid test timeouts that can occur while waiting for the "addon-console-works" message.
 requestLongerTimeout(2);
 
@@ -12,7 +17,7 @@ const ADDON_MANIFEST_PATH = "addons/test-devtools-webextension/manifest.json";
 
 const {
   BrowserToolboxProcess
-} = Cu.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
+} = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
 
 /**
  * This test file ensures that the webextension addon developer toolbox:

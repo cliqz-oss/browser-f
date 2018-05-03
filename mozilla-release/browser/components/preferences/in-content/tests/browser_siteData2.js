@@ -1,5 +1,5 @@
 "use strict";
-const { SiteDataManager } = Cu.import("resource:///modules/SiteDataManager.jsm", {});
+const { SiteDataManager } = ChromeUtils.import("resource:///modules/SiteDataManager.jsm", {});
 const REMOVE_DIALOG_URL = "chrome://browser/content/preferences/siteDataRemoveSelected.xul";
 
 /* eslint-disable mozilla/no-cpows-in-tests */
@@ -32,33 +32,28 @@ function assertAllSitesNotListed(win) {
 // Test selecting and removing all sites one by one
 add_task(async function() {
   await SpecialPowers.pushPrefEnv({set: [["browser.storageManager.enabled", true]]});
-  mockSiteDataManager.register(SiteDataManager);
-  mockSiteDataManager.fakeSites = [
+  mockSiteDataManager.register(SiteDataManager, [
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://account.xyz.com"),
+      origin: "https://account.xyz.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://shopping.xyz.com"),
+      origin: "https://shopping.xyz.com",
       persisted: false
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://cinema.bar.com"),
+      origin: "http://cinema.bar.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://email.bar.com"),
+      origin: "http://email.bar.com",
       persisted: false
     },
-  ];
+  ]);
   let fakeHosts = mockSiteDataManager.fakeSites.map(site => site.principal.URI.host);
 
   let updatePromise = promiseSiteDataManagerSitesUpdated();
@@ -92,10 +87,12 @@ add_task(async function() {
   settingsDialogClosePromise = promiseSettingsDialogClose();
   frameDoc = win.gSubDialog._topDialog._frame.contentDocument;
   saveBtn = frameDoc.getElementById("save");
+  cancelBtn = frameDoc.getElementById("cancel");
   removeAllSitesOneByOne();
   assertAllSitesNotListed(win);
   saveBtn.doCommand();
   await cancelPromise;
+  cancelBtn.doCommand();
   await settingsDialogClosePromise;
   await openSiteDataSettingsDialog();
   assertSitesListed(doc, fakeHosts);
@@ -115,7 +112,7 @@ add_task(async function() {
   await openSiteDataSettingsDialog();
   assertAllSitesNotListed(win);
 
-  mockSiteDataManager.unregister();
+  await mockSiteDataManager.unregister();
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   function removeAllSitesOneByOne() {
@@ -133,51 +130,43 @@ add_task(async function() {
 // Test selecting and removing partial sites
 add_task(async function() {
   await SpecialPowers.pushPrefEnv({set: [["browser.storageManager.enabled", true]]});
-  mockSiteDataManager.register(SiteDataManager);
-  mockSiteDataManager.fakeSites = [
+  mockSiteDataManager.register(SiteDataManager, [
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://account.xyz.com"),
+      origin: "https://account.xyz.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://shopping.xyz.com"),
+      origin: "https://shopping.xyz.com",
       persisted: false
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://cinema.bar.com"),
+      origin: "http://cinema.bar.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://email.bar.com"),
+      origin: "http://email.bar.com",
       persisted: false
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://s3-us-west-2.amazonaws.com"),
+      origin: "https://s3-us-west-2.amazonaws.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://127.0.0.1"),
+      origin: "https://127.0.0.1",
       persisted: false
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://[0:0:0:0:0:0:0:1]"),
+      origin: "https://[0:0:0:0:0:0:0:1]",
       persisted: true
     },
-  ];
+  ]);
   let fakeHosts = mockSiteDataManager.fakeSites.map(site => site.principal.URI.host);
 
   let updatePromise = promiseSiteDataManagerSitesUpdated();
@@ -212,10 +201,12 @@ add_task(async function() {
   settingsDialogClosePromise = promiseSettingsDialogClose();
   frameDoc = win.gSubDialog._topDialog._frame.contentDocument;
   saveBtn = frameDoc.getElementById("save");
+  cancelBtn = frameDoc.getElementById("cancel");
   removeSelectedSite(fakeHosts.slice(0, 2));
   assertSitesListed(doc, fakeHosts.slice(2));
   saveBtn.doCommand();
   await removeDialogOpenPromise;
+  cancelBtn.doCommand();
   await settingsDialogClosePromise;
   await openSiteDataSettingsDialog();
   assertSitesListed(doc, fakeHosts);
@@ -233,7 +224,7 @@ add_task(async function() {
   await openSiteDataSettingsDialog();
   assertSitesListed(doc, fakeHosts.slice(2));
 
-  mockSiteDataManager.unregister();
+  await mockSiteDataManager.unregister();
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
   function removeSelectedSite(hosts) {
@@ -244,7 +235,9 @@ add_task(async function() {
       let site = sitesList.querySelector(`richlistitem[host="${host}"]`);
       if (site) {
         site.click();
+        is(removeBtn.disabled, false, "Should enable the removeSelected button");
         removeBtn.doCommand();
+        is(removeBtn.disabled, true, "Should disable the removeSelected button");
       } else {
         ok(false, `Should not select and remove inexistent site of ${host}`);
       }
@@ -255,33 +248,28 @@ add_task(async function() {
 // Test searching and then removing only visible sites
 add_task(async function() {
   await SpecialPowers.pushPrefEnv({set: [["browser.storageManager.enabled", true]]});
-  mockSiteDataManager.register(SiteDataManager);
-  mockSiteDataManager.fakeSites = [
+  mockSiteDataManager.register(SiteDataManager, [
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://account.xyz.com"),
+      origin: "https://account.xyz.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://shopping.xyz.com"),
+      origin: "https://shopping.xyz.com",
       persisted: false
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://cinema.bar.com"),
+      origin: "http://cinema.bar.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("http://email.bar.com"),
+      origin: "http://email.bar.com",
       persisted: false
     },
-  ];
+  ]);
   let fakeHosts = mockSiteDataManager.fakeSites.map(site => site.principal.URI.host);
 
   let updatePromise = promiseSiteDataManagerSitesUpdated();
@@ -312,28 +300,25 @@ add_task(async function() {
   await openSiteDataSettingsDialog();
   assertSitesListed(doc, fakeHosts.filter(host => !host.includes("xyz")));
 
-  mockSiteDataManager.unregister();
+  await mockSiteDataManager.unregister();
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 // Test dynamically clearing all site data
 add_task(async function() {
   await SpecialPowers.pushPrefEnv({set: [["browser.storageManager.enabled", true]]});
-  mockSiteDataManager.register(SiteDataManager);
-  mockSiteDataManager.fakeSites = [
+  mockSiteDataManager.register(SiteDataManager, [
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://account.xyz.com"),
+      origin: "https://account.xyz.com",
       persisted: true
     },
     {
       usage: 1024,
-      principal: Services.scriptSecurityManager
-                         .createCodebasePrincipalFromOrigin("https://shopping.xyz.com"),
+      origin: "https://shopping.xyz.com",
       persisted: false
     },
-  ];
+  ]);
   let fakeHosts = mockSiteDataManager.fakeSites.map(site => site.principal.URI.host);
 
   // Test the initial state
@@ -373,6 +358,6 @@ add_task(async function() {
   await openSiteDataSettingsDialog();
   assertAllSitesNotListed(win);
 
-  mockSiteDataManager.unregister();
+  await mockSiteDataManager.unregister();
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

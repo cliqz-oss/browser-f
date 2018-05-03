@@ -8,8 +8,15 @@
 #define mozilla_StyleSetHandleInlines_h
 
 #include "mozilla/StyleSheetInlines.h"
+#include "mozilla/ServoStyleContext.h"
 #include "mozilla/ServoStyleSet.h"
+#ifdef MOZ_OLD_STYLE
+#include "mozilla/GeckoStyleContext.h"
 #include "nsStyleSet.h"
+#endif
+#include "nsStyleContext.h"
+
+#ifdef MOZ_OLD_STYLE
 
 #define FORWARD_CONCRETE(method_, geckoargs_, servoargs_) \
   if (IsGecko()) { \
@@ -27,6 +34,17 @@
     return AsServo()->method_ args_; \
   }
 
+#else
+
+#define FORWARD_CONCRETE(method_, geckoargs_, servoargs_) \
+  return AsServo()->method_ servoargs_;
+
+#define FORWARD_WITH_PARENT(method_, parent_, args_) \
+  auto* parent = parent_ ? parent_->AsServo() : nullptr; \
+  return AsServo()->method_ args_;
+
+#endif
+
 #define FORWARD(method_, args_) FORWARD_CONCRETE(method_, args_, args_)
 
 namespace mozilla {
@@ -36,18 +54,21 @@ StyleSetHandle::Ptr::Delete()
 {
   if (mValue) {
     if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
       delete AsGecko();
-    } else {
-      delete AsServo();
+      return;
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     }
+    delete AsServo();
   }
 }
 
 void
-StyleSetHandle::Ptr::Init(nsPresContext* aPresContext,
-                          nsBindingManager* aBindingManager)
+StyleSetHandle::Ptr::Init(nsPresContext* aPresContext)
 {
-  FORWARD(Init, (aPresContext, aBindingManager));
+  FORWARD(Init, (aPresContext));
 }
 
 void
@@ -68,7 +89,7 @@ StyleSetHandle::Ptr::GetAuthorStyleDisabled() const
   FORWARD(GetAuthorStyleDisabled, ());
 }
 
-nsresult
+void
 StyleSetHandle::Ptr::SetAuthorStyleDisabled(bool aStyleDisabled)
 {
   FORWARD(SetAuthorStyleDisabled, (aStyleDisabled));
@@ -102,13 +123,17 @@ StyleSetHandle::Ptr::ResolveStyleFor(dom::Element* aElement,
                                      TreeMatchContext* aTreeMatchContext)
 {
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     MOZ_ASSERT(aTreeMatchContext);
     auto* parent = aParentContext ? aParentContext->AsGecko() : nullptr;
     return AsGecko()->ResolveStyleFor(aElement, parent, aMayCompute, *aTreeMatchContext);
-  } else {
-    auto* parent = aParentContext ? aParentContext->AsServo() : nullptr;
-    return AsServo()->ResolveStyleFor(aElement, parent, aMayCompute);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
+
+  auto* parent = aParentContext ? aParentContext->AsServo() : nullptr;
+  return AsServo()->ResolveStyleFor(aElement, parent, aMayCompute);
 }
 
 already_AddRefed<nsStyleContext>
@@ -191,18 +216,22 @@ StyleSetHandle::Ptr::ReplaceSheets(SheetType aType,
                        const nsTArray<RefPtr<StyleSheet>>& aNewSheets)
 {
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     nsTArray<RefPtr<CSSStyleSheet>> newSheets(aNewSheets.Length());
     for (auto& sheet : aNewSheets) {
       newSheets.AppendElement(sheet->AsGecko());
     }
     return AsGecko()->ReplaceSheets(aType, newSheets);
-  } else {
-    nsTArray<RefPtr<ServoStyleSheet>> newSheets(aNewSheets.Length());
-    for (auto& sheet : aNewSheets) {
-      newSheets.AppendElement(sheet->AsServo());
-    }
-    return AsServo()->ReplaceSheets(aType, newSheets);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
+
+  nsTArray<RefPtr<ServoStyleSheet>> newSheets(aNewSheets.Length());
+  for (auto& sheet : aNewSheets) {
+    newSheets.AppendElement(sheet->AsServo());
+  }
+  return AsServo()->ReplaceSheets(aType, newSheets);
 }
 
 nsresult
@@ -279,7 +308,7 @@ StyleSetHandle::Ptr::RecordStyleSheetChange(StyleSheet* aSheet,
 }
 
 void
-StyleSetHandle::Ptr::RecordShadowStyleChange(mozilla::dom::ShadowRoot* aShadowRoot)
+StyleSetHandle::Ptr::RecordShadowStyleChange(mozilla::dom::ShadowRoot& aShadowRoot)
 {
   FORWARD(RecordShadowStyleChange, (aShadowRoot));
 }
@@ -290,9 +319,9 @@ StyleSetHandle::Ptr::StyleSheetsHaveChanged() const
   FORWARD(StyleSheetsHaveChanged, ());
 }
 nsRestyleHint
-StyleSetHandle::Ptr::MediumFeaturesChanged(bool aViewportChanged)
+StyleSetHandle::Ptr::MediumFeaturesChanged(mozilla::MediaFeatureChangeReason aReason)
 {
-  FORWARD(MediumFeaturesChanged, (aViewportChanged));
+  FORWARD(MediumFeaturesChanged, (aReason));
 }
 void
 StyleSetHandle::Ptr::InvalidateStyleForCSSRuleChanges()
@@ -316,11 +345,16 @@ StyleSetHandle::Ptr::ProbePseudoElementStyle(dom::Element* aParentElement,
                                              TreeMatchContext* aTreeMatchContext)
 {
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     MOZ_ASSERT(aTreeMatchContext);
     auto* parent = aParentContext ? aParentContext->AsGecko() : nullptr;
     return AsGecko()->ProbePseudoElementStyle(aParentElement, aType, parent,
                                               *aTreeMatchContext);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
+
   auto* parent = aParentContext ? aParentContext->AsServo() : nullptr;
   return AsServo()->ProbePseudoElementStyle(aParentElement, aType, parent);
 }
@@ -329,20 +363,30 @@ void
 StyleSetHandle::Ptr::RootStyleContextAdded()
 {
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     AsGecko()->RootStyleContextAdded();
-  } else {
-    // Not needed.
+    return;
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
+
+  // Not needed.
 }
 
 void
 StyleSetHandle::Ptr::RootStyleContextRemoved()
 {
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     AsGecko()->RootStyleContextRemoved();
-  } else {
-    // Not needed.
+    return;
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
+
+  // Not needed.
 }
 
 bool

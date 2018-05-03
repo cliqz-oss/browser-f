@@ -14,14 +14,12 @@
  * @property {boolean} [syncing] Whether or not we are currently syncing.
  */
 
-this.EXPORTED_SYMBOLS = ["UIState"];
+var EXPORTED_SYMBOLS = ["UIState"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Weave",
-                                  "resource://services-sync/main.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Weave",
+                               "resource://services-sync/main.js");
 
 const TOPICS = [
   "weave:service:login:change",
@@ -30,6 +28,7 @@ const TOPICS = [
   "weave:service:sync:start",
   "weave:service:sync:finish",
   "weave:service:sync:error",
+  "weave:service:start-over:finish",
   "fxaccounts:onverified",
   "fxaccounts:onlogin", // Defined in FxAccountsCommon, pulling it is expensive.
   "fxaccounts:onlogout",
@@ -236,14 +235,14 @@ const UIStateInternal = {
   }
 };
 
-XPCOMUtils.defineLazyModuleGetter(UIStateInternal, "fxAccounts",
-                                  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(UIStateInternal, "fxAccounts",
+                               "resource://gre/modules/FxAccounts.jsm");
 
 for (let topic of TOPICS) {
   Services.obs.addObserver(UIStateInternal, topic);
 }
 
-this.UIState = {
+var UIState = {
   _internal: UIStateInternal,
 
   ON_UPDATE,

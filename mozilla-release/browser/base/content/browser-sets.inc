@@ -38,8 +38,7 @@
     <command id="cmd_CustomizeToolbars" oncommand="gCustomizeMode.enter()"/>
     <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
 
-
-    <commandset id="editMenuCommands"/>
+#include ../../../toolkit/content/editMenuCommands.inc.xul
 
     <command id="View:PageSource" oncommand="BrowserViewSource(window.gBrowser.selectedBrowser);" observes="canViewSource"/>
     <command id="View:PageInfo" oncommand="BrowserPageInfo();"/>
@@ -98,13 +97,34 @@
 
     <command id="Tools:Search" oncommand="BrowserSearch.webSearch();"/>
     <command id="Tools:Downloads" oncommand="BrowserDownloadsUI();"/>
+<<<<<<< HEAD
     <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/plugin');"/>
     <command id="Tools:Sanitize"
      oncommand="Cc['@mozilla.org/browser/browserglue;1'].getService(Ci.nsIBrowserGlue).sanitize(window);"/>
+||||||| merged common ancestors
+    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
+    <command id="Tools:Sanitize"
+     oncommand="Cc['@mozilla.org/browser/browserglue;1'].getService(Ci.nsIBrowserGlue).sanitize(window);"/>
+=======
+    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
+    <command id="Tools:Sanitize" oncommand="Sanitizer.showUI(window);"/>
+>>>>>>> origin/upstream-releases
     <command id="Tools:PrivateBrowsing"
       oncommand="OpenBrowserWindow({private: true});"/>
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
+
+#ifdef NIGHTLY_BUILD
+    <command id="wrCaptureCmd" oncommand="gWebRender.capture();"/>
+#endif
+#ifdef XP_MACOSX
+    <command id="minimizeWindow"
+             label="&minimizeWindow.label;"
+             oncommand="window.minimize();" />
+    <command id="zoomWindow"
+             label="&zoomWindow.label;"
+             oncommand="zoomWindow();" />
+#endif
   </commandset>
 
   <commandset id="placesCommands">
@@ -185,6 +205,8 @@
                  command="View:PageSource">
       <observes element="canViewSource" attribute="disabled"/>
     </broadcaster>
+    <broadcaster id="reportPhishingBroadcaster" disabled="true"/>
+    <broadcaster id="reportPhishingErrorBroadcaster" disabled="true"/>
   </broadcasterset>
 
   <keyset id="mainKeyset">
@@ -286,7 +308,11 @@
     <key id="key_fullScreen" key="&fullScreenCmd.macCommandKey;" command="View:FullScreen" modifiers="accel,control"/>
     <key keycode="VK_F11" command="View:FullScreen"/>
 #endif
+#ifndef XP_WIN
     <key id="key_toggleReaderMode" key="&toggleReaderMode.key;" command="View:ReaderView" modifiers="accel,alt" disabled="true"/>
+#else
+    <key id="key_toggleReaderMode" keycode="&toggleReaderMode.win.keycode;" command="View:ReaderView" disabled="true"/>
+#endif
     <key key="&reloadCmd.commandkey;" command="Browser:Reload" modifiers="accel" id="key_reload"/>
     <key key="&reloadCmd.commandkey;" command="Browser:ReloadSkipCache" modifiers="accel,shift"/>
     <key id="key_viewSource" key="&pageSourceCmd.commandkey;" command="View:PageSource" modifiers="accel"/>
@@ -388,10 +414,33 @@
 #expand    <key id="key_selectTab8" oncommand="gBrowser.selectTabAtIndex(7, event);" key="8" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
 #expand    <key id="key_selectLastTab" oncommand="gBrowser.selectTabAtIndex(-1, event);" key="9" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
 
-  </keyset>
-
-# Used by baseMenuOverlay
+#ifdef NIGHTLY_BUILD
+    <key id="key_wrCaptureCmd"
 #ifdef XP_MACOSX
-  <commandset id="baseMenuCommandSet" />
+    key="3" modifiers="control,shift"
+#else
+    key="#" modifiers="control"
 #endif
-  <keyset id="baseMenuKeyset" />
+    command="wrCaptureCmd"/>
+#endif
+#ifdef XP_MACOSX
+    <key id="key_minimizeWindow"
+         command="minimizeWindow"
+         key="&minimizeWindow.key;"
+         modifiers="accel"/>
+    <key id="key_openHelpMac"
+         oncommand="openHelpLink('firefox-osxkey');"
+         key="&helpMac.commandkey;"
+         modifiers="accel"/>
+    <!-- These are used to build the Application menu -->
+    <key id="key_preferencesCmdMac"
+         key="&preferencesCmdMac.commandkey;"
+         modifiers="accel"/>
+    <key id="key_hideThisAppCmdMac"
+         key="&hideThisAppCmdMac2.commandkey;"
+         modifiers="accel"/>
+    <key id="key_hideOtherAppsCmdMac"
+         key="&hideOtherAppsCmdMac.commandkey;"
+         modifiers="accel,alt"/>
+#endif
+  </keyset>

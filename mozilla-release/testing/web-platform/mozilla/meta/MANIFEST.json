@@ -469,6 +469,18 @@
      {}
     ]
    ],
+   "editor/initial_selection_on_focus.html": [
+    [
+     "/_mozilla/editor/initial_selection_on_focus.html",
+     {}
+    ]
+   ],
+   "editor/joining_nodes.html": [
+    [
+     "/_mozilla/editor/joining_nodes.html",
+     {}
+    ]
+   ],
    "fetch/api/redirect/redirect-referrer.https.html": [
     [
      "/_mozilla/fetch/api/redirect/redirect-referrer.https.html",
@@ -1022,6 +1034,14 @@
    "67a981ba2a4d08b684947ed42aba6648dcd262b4",
    "testharness"
   ],
+  "editor/initial_selection_on_focus.html": [
+   "06948dbf72160a7de5a0baaa2f6cf1bb54fbeb8f",
+   "testharness"
+  ],
+  "editor/joining_nodes.html": [
+   "048cf7d99acdecb927f97c4554c4d04ca8b15a8a",
+   "testharness"
+  ],
   "fetch/api/redirect/redirect-referrer-mixed-content.js": [
    "f9d7ec9cf9fa8c847e45664b05482e3f8c191385",
    "support"
@@ -1423,7 +1443,7 @@
    "support"
   ],
   "wasm/js/harness/index.js": [
-   "654a29a03543230ddd2db8f8a3398f33233cbf69",
+   "b1af046bac238e99d0bc73cc89faf3030149340f",
    "support"
   ],
   "wasm/js/harness/wasm-constants.js": [

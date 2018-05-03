@@ -21,6 +21,7 @@
 #include "js/GCAnnotations.h"
 #include "js/GCPolicyAPI.h"
 #include "js/HeapAPI.h"
+#include "js/ProfilingStack.h"
 #include "js/TypeDecls.h"
 #include "js/UniquePtr.h"
 #include "js/Utility.h"
@@ -199,6 +200,7 @@ template <typename T> class PersistentRooted;
 JS_FRIEND_API(bool) isGCEnabled();
 
 JS_FRIEND_API(void) HeapObjectPostBarrier(JSObject** objp, JSObject* prev, JSObject* next);
+JS_FRIEND_API(void) HeapStringPostBarrier(JSString** objp, JSString* prev, JSString* next);
 
 #ifdef JS_DEBUG
 /**
@@ -208,12 +210,12 @@ JS_FRIEND_API(void) HeapObjectPostBarrier(JSObject** objp, JSObject* prev, JSObj
 extern JS_FRIEND_API(void)
 AssertGCThingMustBeTenured(JSObject* obj);
 extern JS_FRIEND_API(void)
-AssertGCThingIsNotAnObjectSubclass(js::gc::Cell* cell);
+AssertGCThingIsNotNurseryAllocable(js::gc::Cell* cell);
 #else
 inline void
 AssertGCThingMustBeTenured(JSObject* obj) {}
 inline void
-AssertGCThingIsNotAnObjectSubclass(js::gc::Cell* cell) {}
+AssertGCThingIsNotNurseryAllocable(js::gc::Cell* cell) {}
 #endif
 
 /**
@@ -624,7 +626,7 @@ struct BarrierMethods<T*>
     }
     static void postBarrier(T** vp, T* prev, T* next) {
         if (next)
-            JS::AssertGCThingIsNotAnObjectSubclass(reinterpret_cast<js::gc::Cell*>(next));
+            JS::AssertGCThingIsNotNurseryAllocable(reinterpret_cast<js::gc::Cell*>(next));
     }
     static void exposeToJS(T* t) {
         if (t)
@@ -669,6 +671,21 @@ struct BarrierMethods<JSFunction*>
     static void exposeToJS(JSFunction* fun) {
         if (fun)
             JS::ExposeObjectToActiveJS(reinterpret_cast<JSObject*>(fun));
+    }
+};
+
+template <>
+struct BarrierMethods<JSString*>
+{
+    static JSString* initial() { return nullptr; }
+    static gc::Cell* asGCThingOrNull(JSString* v) {
+        if (!v)
+            return nullptr;
+        MOZ_ASSERT(uintptr_t(v) > 32);
+        return reinterpret_cast<gc::Cell*>(v);
+    }
+    static void postBarrier(JSString** vp, JSString* prev, JSString* next) {
+        JS::HeapStringPostBarrier(vp, prev, next);
     }
 };
 
@@ -794,11 +811,19 @@ class RootingContext
     JS::AutoGCRooter* autoGCRooters_;
     friend class JS::AutoGCRooter;
 
+    // Gecko profiling metadata.
+    // This isn't really rooting related. It's only here because we want
+    // GetContextProfilingStack to be inlineable into non-JS code, and we
+    // didn't want to add another superclass of JSContext just for this.
+    js::GeckoProfilerThread geckoProfiler_;
+
   public:
     RootingContext();
 
     void traceStackRoots(JSTracer* trc);
     void checkNoGCRooters();
+
+    js::GeckoProfilerThread& geckoProfiler() { return geckoProfiler_; }
 
   protected:
     // The remaining members in this class should only be accessed through
@@ -870,18 +895,11 @@ class JS_PUBLIC_API(AutoGCRooter)
 #if defined(JS_BUILD_BINAST)
         BINPARSER =    -4, /* js::frontend::BinSource */
 #endif // defined(JS_BUILD_BINAST)
-        VALVECTOR =   -10, /* js::AutoValueVector */
-        IDVECTOR =    -11, /* js::AutoIdVector */
-        OBJVECTOR =   -14, /* js::AutoObjectVector */
         IONMASM =     -19, /* js::jit::MacroAssembler */
         WRAPVECTOR =  -20, /* js::AutoWrapperVector */
         WRAPPER =     -21, /* js::AutoWrapperRooter */
         CUSTOM =      -26  /* js::CustomAutoRooter */
     };
-
-    static ptrdiff_t GetTag(const Value& value) { return VALVECTOR; }
-    static ptrdiff_t GetTag(const jsid& id) { return IDVECTOR; }
-    static ptrdiff_t GetTag(JSObject* obj) { return OBJVECTOR; }
 
   private:
     AutoGCRooter ** const stackTop;
@@ -1014,6 +1032,12 @@ inline JS::Zone*
 GetContextZone(const JSContext* cx)
 {
     return JS::RootingContext::get(cx)->zone_;
+}
+
+inline PseudoStack*
+GetContextProfilingStack(JSContext* cx)
+{
+    return JS::RootingContext::get(cx)->geckoProfiler().getPseudoStack();
 }
 
 /**

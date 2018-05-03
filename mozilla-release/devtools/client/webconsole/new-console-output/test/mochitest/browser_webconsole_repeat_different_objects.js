@@ -3,19 +3,19 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Test that makes sure messages are not considered repeated when console.log()
 // is invoked with different objects, see bug 865288.
 
 "use strict";
 
-const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
-                 "new-console-output/test/mochitest/test-repeated-messages.html";
+const TEST_URI = "data:text/html,Test repeated objects";
 
 add_task(async function () {
-  let hud = await openNewTabAndConsole(TEST_URI);
-  hud.jsterm.clearOutput();
+  const hud = await openNewTabAndConsole(TEST_URI);
 
-  let onMessages = waitForMessages({
+  const onMessages = waitForMessages({
     hud,
     messages: [
       { text: "abba" },
@@ -24,10 +24,14 @@ add_task(async function () {
     ],
   });
 
-  hud.jsterm.execute("window.testConsoleObjects()");
+  ContentTask.spawn(gBrowser.selectedBrowser, null, () => {
+    for (let i = 0; i < 3; i++) {
+      const o = { id: "abba" };
+      content.console.log("abba", o);
+    }
+  });
 
   info("waiting for 3 console.log objects, with the exact same text content");
   let messages = await onMessages;
-
-  is(messages.length, 3, "3 message elements");
+  is(messages.length, 3, "There are 3 messages, as expected.");
 });

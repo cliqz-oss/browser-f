@@ -100,10 +100,6 @@ vbox {
   -moz-box-orient: vertical;
 }
 
-bbox {
-  -moz-box-align: baseline;
-}
-
 /********** button **********/
 
 button {
@@ -167,6 +163,14 @@ browser,
 editor,
 iframe {
   display: inline;
+}
+
+@supports -moz-bool-pref("layout.css.emulate-moz-box-with-flex") {
+  browser,
+  editor,
+  iframe {
+    display: block;
+  }
 }
 
 browser {
@@ -251,11 +255,10 @@ caption {
 
 %ifndef MOZ_WIDGET_GTK
 titlebar,
-toolbar:not([nowindowdrag="true"]):not([customizing="true"]),
-%endif
-windowdragbox {
+toolbar:not([nowindowdrag="true"]):not([customizing="true"]) {
   -moz-window-dragging: drag;
 }
+%endif
 
 /* The list below is non-comprehensive and will probably need some tweaking. */
 toolbaritem,
@@ -274,12 +277,8 @@ menulist {
 /******* toolbar *******/
 
 toolbox {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbox");
+  -moz-appearance: toolbox;
   -moz-box-orient: vertical;
-}
-
-toolbar {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbar");
 }
 
 toolbar[customizing="true"][collapsed="true"] {
@@ -313,16 +312,7 @@ toolbar[type="menubar"][autohide="true"][inactive="true"]:not([customizing="true
 }
 %endif
 
-toolbarseparator {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbardecoration");
-}
-
-toolbarspacer {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbardecoration");
-}
-
 toolbarspring {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbardecoration");
   -moz-box-flex: 1000;
 }
 
@@ -373,17 +363,9 @@ menuitem.menuitem-iconic {
   -moz-binding: url("chrome://global/content/bindings/menu.xml#menuitem-iconic");
 }
 
-menuitem[description] {
-  -moz-binding: url("chrome://global/content/bindings/menu.xml#menuitem-iconic-desc-noaccel");
-}
-
 menuitem[type="checkbox"],
 menuitem[type="radio"] {
   -moz-binding: url("chrome://global/content/bindings/menu.xml#menuitem-iconic");
-}
-
-menuitem.menuitem-non-iconic {
-  -moz-binding: url("chrome://global/content/bindings/menu.xml#menubutton-item");
 }
 
 menucaption {
@@ -563,16 +545,8 @@ listcell[type="checkbox"] {
   -moz-binding: url("chrome://global/content/bindings/listbox.xml#listitem-iconic");
 }
 
-listitem[type="checkbox"].listitem-iconic {
-  -moz-binding: url("chrome://global/content/bindings/listbox.xml#listitem-checkbox-iconic");
-}
-
 .listcell-iconic {
   -moz-binding: url("chrome://global/content/bindings/listbox.xml#listcell-iconic");
-}
-
-listcell[type="checkbox"].listcell-iconic {
-  -moz-binding: url("chrome://global/content/bindings/listbox.xml#listcell-checkbox-iconic");
 }
 
 listbox {
@@ -703,7 +677,7 @@ deck {
   -moz-binding: url("chrome://global/content/bindings/general.xml#deck");
 }
 
-stack, bulletinboard {
+stack {
   display: -moz-stack;
 }
 
@@ -799,23 +773,8 @@ textbox[type="autocomplete"] {
   -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete");
 }
 
-panel[type="autocomplete"] {
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-result-popup");
-}
-
 panel[type="autocomplete-richlistbox"] {
   -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup");
-}
-
-/* FIXME: bug 616258 */
-
-.autocomplete-tree {
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-tree");
-  -moz-user-focus: ignore;
-}
-
-.autocomplete-treebody {
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-treebody");
 }
 
 .autocomplete-richlistbox {
@@ -833,17 +792,7 @@ panel[type="autocomplete-richlistbox"] {
   overflow: -moz-hidden-unscrollable;
 }
 
-.autocomplete-treerows {
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-treerows");
-}
-
 %endif
-
-/* the C++ implementation of widgets is too eager to make popups visible.
-   this causes problems (bug 120155 and others), thus this workaround: */
-popup[type="autocomplete"][hidden="true"] {
-  visibility: hidden;
-}
 
 /* The following rule is here to fix bug 96899 (and now 117952).
    Somehow trees create a situation
@@ -867,10 +816,6 @@ colorpicker[type="button"] {
   -moz-binding: url("chrome://global/content/bindings/colorpicker.xml#colorpicker-button");
 }
 
-.colorpickertile {
-  -moz-binding: url("chrome://global/content/bindings/colorpicker.xml#colorpickertile");
-}
-
 /********** menulist **********/
 
 menulist {
@@ -888,10 +833,6 @@ menulist[popuponly="true"] {
 
 menulist[editable="true"] {
   -moz-binding: url("chrome://global/content/bindings/menulist.xml#menulist-editable");
-}
-
-menulist[type="description"] {
-  -moz-binding: url("chrome://global/content/bindings/menulist.xml#menulist-description");
 }
 
 menulist > menupopup > menuitem {
@@ -918,6 +859,17 @@ grippy {
   min-width: 0% ! important;
   min-height: 0% ! important;
   -moz-box-ordinal-group: 2147483646;
+}
+
+/********** scale **************/
+
+scale {
+  -moz-binding: url(chrome://global/content/bindings/scale.xml#scale);
+}
+
+.scale-slider {
+  -moz-binding: url(chrome://global/content/bindings/general.xml#basecontrol);
+  -moz-user-focus: normal;
 }
 
 /******** scrollbar ********/
@@ -950,16 +902,6 @@ arrowscrollbox[clicktoscroll="true"] {
 
 autorepeatbutton {
   -moz-binding: url("chrome://global/content/bindings/scrollbox.xml#autorepeatbutton");
-}
-
-/********** spinbuttons ***********/
-
-spinbuttons {
-  -moz-binding: url("chrome://global/content/bindings/spinbuttons.xml#spinbuttons");
-}
-
-.spinbuttons-button {
-  -moz-user-focus: ignore;
 }
 
 /********** stringbundle **********/
@@ -1058,4 +1000,51 @@ tabmodalprompt {
 .menu-iconic-highlightable-text:not([highlightable="true"]),
 .menu-iconic-text[highlightable="true"] {
   display: none;
+}
+
+@supports -moz-bool-pref("layout.css.emulate-moz-box-with-flex") {
+  /* Support common XUL attributes in the emulated flex mode so we can
+     test the browser in this configuration without mass-changing existing
+     markup and CSS. */
+  [orient="vertical"] { -moz-box-orient: vertical; }
+  [orient="horizontal"] { -moz-box-orient: horizontal; }
+
+  [dir="reverse"] { -moz-box-direction: reverse; }
+
+  [align="start"] { -moz-box-align: start; }
+  [align="center"] { -moz-box-align: center; }
+  [align="end"] { -moz-box-align: end; }
+  [align="baseline"] { -moz-box-align: baseline; }
+  [align="stretch"] { -moz-box-align: stretch; }
+
+  [pack="start"] { -moz-box-pack: start; }
+  [pack="center"] { -moz-box-pack: center; }
+  [pack="end"] { -moz-box-pack: end; }
+
+  /* This isn't a real solution for [flex] and [ordinal], but it covers enough
+     cases to render the browser chrome. If we get attr() in Bug 435426 this could
+     work for all cases. */
+  [flex="1"] { -moz-box-flex: 1; }
+  [flex="2"] { -moz-box-flex: 2; }
+  [flex="3"] { -moz-box-flex: 3; }
+  [flex="4"] { -moz-box-flex: 4; }
+  [flex="5"] { -moz-box-flex: 5; }
+  [flex="6"] { -moz-box-flex: 6; }
+  [flex="7"] { -moz-box-flex: 7; }
+  [flex="8"] { -moz-box-flex: 8; }
+  [flex="9"] { -moz-box-flex: 9; }
+  [flex="100"] { -moz-box-flex: 100; }
+  [flex="400"] { -moz-box-flex: 400; }
+  [flex="1000"] { -moz-box-flex: 1000; }
+
+  [ordinal="1"] { -moz-box-ordinal-group: 1; }
+  [ordinal="2"] { -moz-box-ordinal-group: 2; }
+  [ordinal="3"] { -moz-box-ordinal-group: 3; }
+  [ordinal="4"] { -moz-box-ordinal-group: 4; }
+  [ordinal="5"] { -moz-box-ordinal-group: 5; }
+  [ordinal="6"] { -moz-box-ordinal-group: 6; }
+  [ordinal="7"] { -moz-box-ordinal-group: 7; }
+  [ordinal="8"] { -moz-box-ordinal-group: 8; }
+  [ordinal="9"] { -moz-box-ordinal-group: 9; }
+  [ordinal="1000"] { -moz-box-ordinal-group: 1000; }
 }

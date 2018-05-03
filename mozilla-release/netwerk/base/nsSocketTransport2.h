@@ -145,16 +145,18 @@ public:
                                      const NetAddr* aAddr,
                                      nsISupports* aSecInfo);
 
+#ifdef XP_UNIX
     // This method instructs the socket transport to open a socket
     // connected to the given Unix domain address. We can only create
     // unlayered, simple, stream sockets.
     nsresult InitWithFilename(const char *filename);
+#endif
 
     // nsASocketHandler methods:
     void OnSocketReady(PRFileDesc *, int16_t outFlags) override;
     void OnSocketDetached(PRFileDesc *) override;
     void IsLocal(bool *aIsLocal) override;
-    void OnKeepaliveEnabledPrefChange(bool aEnabled) override final;
+    void OnKeepaliveEnabledPrefChange(bool aEnabled) final;
 
     // called when a socket event is handled
     void OnSocketEvent(uint32_t type, nsresult status, nsISupports *param);

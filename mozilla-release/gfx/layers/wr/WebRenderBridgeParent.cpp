@@ -6,7 +6,6 @@
 
 #include "mozilla/layers/WebRenderBridgeParent.h"
 
-#include "apz/src/AsyncPanZoomController.h"
 #include "CompositableHost.h"
 #include "gfxEnv.h"
 #include "gfxPrefs.h"
@@ -16,7 +15,7 @@
 #include "GLContextProvider.h"
 #include "mozilla/Range.h"
 #include "mozilla/layers/AnimationHelper.h"
-#include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/APZSampler.h"
 #include "mozilla/layers/Compositor.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -178,6 +177,7 @@ WebRenderBridgeParent::WebRenderBridgeParent(CompositorBridgeParentBase* aCompos
   , mPaused(false)
   , mDestroyed(false)
   , mForceRendering(false)
+  , mReceivedDisplayList(false)
 {
   MOZ_ASSERT(mAsyncImageManager);
   MOZ_ASSERT(mAnimStorage);
@@ -198,6 +198,7 @@ WebRenderBridgeParent::WebRenderBridgeParent(const wr::PipelineId& aPipelineId)
   , mPaused(false)
   , mDestroyed(true)
   , mForceRendering(false)
+  , mReceivedDisplayList(false)
 {
 }
 
@@ -270,7 +271,7 @@ bool
 WebRenderBridgeParent::UpdateResources(const nsTArray<OpUpdateResource>& aResourceUpdates,
                                        const nsTArray<RefCountedShmem>& aSmallShmems,
                                        const nsTArray<ipc::Shmem>& aLargeShmems,
-                                       wr::ResourceUpdateQueue& aUpdates)
+                                       wr::TransactionBuilder& aUpdates)
 {
   wr::ShmSegmentsReader reader(aSmallShmems, aLargeShmems);
 
@@ -374,7 +375,7 @@ WebRenderBridgeParent::UpdateResources(const nsTArray<OpUpdateResource>& aResour
 
 bool
 WebRenderBridgeParent::AddExternalImage(wr::ExternalImageId aExtId, wr::ImageKey aKey,
-                                        wr::ResourceUpdateQueue& aResources)
+                                        wr::TransactionBuilder& aResources)
 {
   Range<wr::ImageKey> keys(&aKey, 1);
   // Check if key is obsoleted.
@@ -446,16 +447,14 @@ WebRenderBridgeParent::RecvUpdateResources(nsTArray<OpUpdateResource>&& aResourc
     return IPC_OK();
   }
 
-  wr::ResourceUpdateQueue updates;
+  wr::TransactionBuilder txn;
 
-  if (!UpdateResources(aResourceUpdates, aSmallShmems, aLargeShmems, updates)) {
+  if (!UpdateResources(aResourceUpdates, aSmallShmems, aLargeShmems, txn)) {
     wr::IpcResourceUpdateQueue::ReleaseShmems(this, aSmallShmems);
     wr::IpcResourceUpdateQueue::ReleaseShmems(this, aLargeShmems);
     IPC_FAIL(this, "Invalid WebRender resource data shmem or address.");
   }
 
-  wr::TransactionBuilder txn;
-  txn.UpdateResources(updates);
   mApi->SendTransaction(txn);
 
   wr::IpcResourceUpdateQueue::ReleaseShmems(this, aSmallShmems);
@@ -517,11 +516,11 @@ WebRenderBridgeParent::UpdateAPZ(bool aUpdateHitTestingTree)
   if (!rootWrbp) {
     return;
   }
-  if (RefPtr<APZCTreeManager> apzc = cbp->GetAPZCTreeManager()) {
-    apzc->UpdateFocusState(rootLayersId, GetLayersId(),
-                           mScrollData.GetFocusTarget());
+  if (RefPtr<APZSampler> apz = cbp->GetAPZSampler()) {
+    apz->UpdateFocusState(rootLayersId, GetLayersId(),
+                          mScrollData.GetFocusTarget());
     if (aUpdateHitTestingTree) {
-      apzc->UpdateHitTestingTree(rootLayersId, rootWrbp->GetScrollData(),
+      apz->UpdateHitTestingTree(rootLayersId, rootWrbp->GetScrollData(),
           mScrollData.IsFirstPaint(), GetLayersId(),
           mScrollData.GetPaintSequenceNumber());
     }
@@ -536,7 +535,7 @@ WebRenderBridgeParent::PushAPZStateToWR(wr::TransactionBuilder& aTxn,
   if (!cbp) {
     return false;
   }
-  if (RefPtr<APZCTreeManager> apzc = cbp->GetAPZCTreeManager()) {
+  if (RefPtr<APZSampler> apz = cbp->GetAPZSampler()) {
     TimeStamp animationTime = cbp->GetTestingTimeStamp().valueOr(
         mCompositorScheduler->GetLastComposeTime());
     TimeDuration frameInterval = cbp->GetVsyncInterval();
@@ -545,7 +544,7 @@ WebRenderBridgeParent::PushAPZStateToWR(wr::TransactionBuilder& aTxn,
     if (frameInterval != TimeDuration::Forever()) {
       animationTime += frameInterval;
     }
-    return apzc->PushStateToWR(aTxn, animationTime, aTransformArray);
+    return apz->PushStateToWR(aTxn, animationTime, aTransformArray);
   }
   return false;
 }
@@ -595,13 +594,12 @@ WebRenderBridgeParent::RecvSetDisplayList(const gfx::IntSize& aSize,
 
   ProcessWebRenderParentCommands(aCommands);
 
-  wr::ResourceUpdateQueue resources;
-  if (!UpdateResources(aResourceUpdates, aSmallShmems, aLargeShmems, resources)) {
+  wr::TransactionBuilder txn;
+  if (!UpdateResources(aResourceUpdates, aSmallShmems, aLargeShmems, txn)) {
     return IPC_FAIL(this, "Failed to deserialize resource updates");
   }
 
-  wr::TransactionBuilder txn;
-  txn.UpdateResources(resources);
+  mReceivedDisplayList = true;
 
   wr::Vec<uint8_t> dlData(Move(dl));
 
@@ -610,8 +608,9 @@ WebRenderBridgeParent::RecvSetDisplayList(const gfx::IntSize& aSize,
   // In that case do not send the commands to webrender.
   if (mIdNamespace == aIdNamespace) {
     if (mWidget) {
-      LayoutDeviceIntSize size = mWidget->GetClientSize();
-      txn.SetWindowParameters(size);
+      LayoutDeviceIntSize widgetSize = mWidget->GetClientSize();
+      LayoutDeviceIntRect docRect(LayoutDeviceIntPoint(), widgetSize);
+      txn.SetWindowParameters(widgetSize, docRect);
     }
     gfx::Color clearColor(0.f, 0.f, 0.f, 0.f);
     txn.SetDisplayList(clearColor, wr::NewEpoch(wrEpoch), LayerSize(aSize.width, aSize.height),
@@ -809,11 +808,7 @@ WebRenderBridgeParent::RecvGetSnapshot(PTextureParent* aTexture)
 
   mForceRendering = true;
 
-  if (mCompositorScheduler->NeedsComposite()) {
-    mCompositorScheduler->CancelCurrentCompositeTask();
-    mCompositorScheduler->ForceComposeToTarget(nullptr, nullptr);
-  }
-
+  mCompositorScheduler->FlushPendingComposite();
   mApi->Readback(size, buffer, buffer_size);
 
   mForceRendering = false;
@@ -1006,7 +1001,7 @@ WebRenderBridgeParent::UpdateWebRender(CompositorVsyncScheduler* aScheduler,
 }
 
 mozilla::ipc::IPCResult
-WebRenderBridgeParent::RecvForceComposite()
+WebRenderBridgeParent::RecvScheduleComposite()
 {
   if (mDestroyed) {
     return IPC_OK();
@@ -1015,16 +1010,13 @@ WebRenderBridgeParent::RecvForceComposite()
   return IPC_OK();
 }
 
-already_AddRefed<AsyncPanZoomController>
-WebRenderBridgeParent::GetTargetAPZC(const FrameMetrics::ViewID& aScrollId)
+mozilla::ipc::IPCResult
+WebRenderBridgeParent::RecvCapture()
 {
-  RefPtr<AsyncPanZoomController> apzc;
-  if (CompositorBridgeParent* cbp = GetRootCompositorBridgeParent()) {
-    if (RefPtr<APZCTreeManager> apzctm = cbp->GetAPZCTreeManager()) {
-      apzc = apzctm->GetTargetAPZC(GetLayersId(), aScrollId);
-    }
+  if (!mDestroyed) {
+    mApi->Capture();
   }
-  return apzc.forget();
+  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
@@ -1104,11 +1096,7 @@ WebRenderBridgeParent::RecvSetAsyncScrollOffset(const FrameMetrics::ViewID& aScr
   if (mDestroyed) {
     return IPC_OK();
   }
-  RefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aScrollId);
-  if (!apzc) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  apzc->SetTestAsyncScrollOffset(CSSPoint(aX, aY));
+  mCompositorBridge->SetTestAsyncScrollOffset(GetLayersId(), aScrollId, CSSPoint(aX, aY));
   return IPC_OK();
 }
 
@@ -1119,11 +1107,7 @@ WebRenderBridgeParent::RecvSetAsyncZoom(const FrameMetrics::ViewID& aScrollId,
   if (mDestroyed) {
     return IPC_OK();
   }
-  RefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aScrollId);
-  if (!apzc) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  apzc->SetTestAsyncZoom(LayerToParentLayerScale(aZoom));
+  mCompositorBridge->SetTestAsyncZoom(GetLayersId(), aScrollId, LayerToParentLayerScale(aZoom));
   return IPC_OK();
 }
 
@@ -1194,8 +1178,13 @@ WebRenderBridgeParent::SampleAnimations(nsTArray<wr::WrOpacityProperty>& aOpacit
 void
 WebRenderBridgeParent::CompositeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect)
 {
+  // The two arguments are part of the CompositorVsyncSchedulerOwner API but in
+  // this implementation they should never be non-null.
+  MOZ_ASSERT(aTarget == nullptr);
+  MOZ_ASSERT(aRect == nullptr);
+
   AUTO_PROFILER_TRACING("Paint", "CompositeToTraget");
-  if (mPaused) {
+  if (mPaused || !mReceivedDisplayList) {
     return;
   }
 
@@ -1258,14 +1247,7 @@ WebRenderBridgeParent::HoldPendingTransactionId(uint32_t aWrEpoch,
                                                 const TimeStamp& aTxnStartTime,
                                                 const TimeStamp& aFwdTime)
 {
-  // The transaction ID might get reset to 1 if the page gets reloaded, see
-  // https://bugzilla.mozilla.org/show_bug.cgi?id=1145295#c41
-  // Otherwise, it should be continually increasing.
-  MOZ_ASSERT(aTransactionId == 1 || aTransactionId > LastPendingTransactionId());
-  // Handle TransactionIdAllocator(RefreshDriver) change.
-  if (aTransactionId == 1) {
-    FlushPendingTransactionIds();
-  }
+  MOZ_ASSERT(aTransactionId > LastPendingTransactionId());
   mPendingTransactionIds.push(PendingTransactionId(wr::NewEpoch(aWrEpoch), aTransactionId, aTxnStartTime, aFwdTime));
 }
 
@@ -1283,9 +1265,9 @@ uint64_t
 WebRenderBridgeParent::FlushPendingTransactionIds()
 {
   uint64_t id = 0;
-  while (!mPendingTransactionIds.empty()) {
-    id = mPendingTransactionIds.front().mId;
-    mPendingTransactionIds.pop();
+  if (!mPendingTransactionIds.empty()) {
+    id = mPendingTransactionIds.back().mId;
+    std::queue<PendingTransactionId>().swap(mPendingTransactionIds); // clear queue
   }
   return id;
 }
@@ -1295,9 +1277,7 @@ WebRenderBridgeParent::FlushTransactionIdsForEpoch(const wr::Epoch& aEpoch, cons
 {
   uint64_t id = 0;
   while (!mPendingTransactionIds.empty()) {
-    int64_t diff =
-      static_cast<int64_t>(aEpoch.mHandle) - static_cast<int64_t>(mPendingTransactionIds.front().mEpoch.mHandle);
-    if (diff < 0) {
+    if (aEpoch.mHandle < mPendingTransactionIds.front().mEpoch.mHandle) {
       break;
     }
 #if defined(ENABLE_FRAME_LATENCY_LOG)
@@ -1332,23 +1312,27 @@ WebRenderBridgeParent::ScheduleGenerateFrame()
 }
 
 void
-WebRenderBridgeParent::FlushRendering(bool aIsSync)
+WebRenderBridgeParent::FlushRendering()
 {
   if (mDestroyed) {
     return;
   }
 
-  if (!mCompositorScheduler->NeedsComposite()) {
-    return;
-  }
-
   mForceRendering = true;
-  mCompositorScheduler->CancelCurrentCompositeTask();
-  mCompositorScheduler->ForceComposeToTarget(nullptr, nullptr);
-  if (aIsSync) {
+  if (mCompositorScheduler->FlushPendingComposite()) {
     mApi->WaitFlushed();
   }
   mForceRendering = false;
+}
+
+void
+WebRenderBridgeParent::FlushRenderingAsync()
+{
+  if (mDestroyed) {
+    return;
+  }
+
+  mCompositorScheduler->FlushPendingComposite();
 }
 
 void
@@ -1392,6 +1376,7 @@ WebRenderBridgeParent::ClearResources()
 
   wr::TransactionBuilder txn;
   txn.ClearDisplayList(wr::NewEpoch(wrEpoch), mPipelineId);
+  mReceivedDisplayList = false;
 
   // Schedule generate frame to clean up Pipeline
   ScheduleGenerateFrame();

@@ -6,22 +6,23 @@
 
 #include "jit/Linker.h"
 
-#include "jsgc.h"
+#include "gc/GC.h"
 
 #include "gc/StoreBuffer-inl.h"
 
 namespace js {
 namespace jit {
 
-template <AllowGC allowGC>
 JitCode*
 Linker::newCode(JSContext* cx, CodeKind kind, bool hasPatchableBackedges /* = false */)
 {
-    MOZ_ASSERT_IF(hasPatchableBackedges, kind == ION_CODE);
+    MOZ_ASSERT_IF(hasPatchableBackedges, kind == CodeKind::Ion);
 
-    gc::AutoSuppressGC suppressGC(cx);
+    JS::AutoAssertNoGC nogc(cx);
     if (masm.oom())
         return fail(cx);
+
+    masm.performPendingReadBarriers();
 
     static const size_t ExecutableAllocatorAlignment = sizeof(void*);
     static_assert(CodeAlignment >= ExecutableAllocatorAlignment,
@@ -53,10 +54,10 @@ Linker::newCode(JSContext* cx, CodeKind kind, bool hasPatchableBackedges /* = fa
     codeStart = (uint8_t*)AlignBytes((uintptr_t)codeStart, CodeAlignment);
     MOZ_ASSERT(codeStart + masm.bytesNeeded() <= result + bytesNeeded);
     uint32_t headerSize = codeStart - result;
-    JitCode* code = JitCode::New<allowGC>(cx, codeStart, bytesNeeded - headerSize,
-                                          headerSize, pool, kind);
+    JitCode* code = JitCode::New<NoGC>(cx, codeStart, bytesNeeded - headerSize,
+                                       headerSize, pool, kind);
     if (!code)
-        return nullptr;
+        return fail(cx);
     if (masm.oom())
         return fail(cx);
     awjc.emplace(result, bytesNeeded);
@@ -66,9 +67,6 @@ Linker::newCode(JSContext* cx, CodeKind kind, bool hasPatchableBackedges /* = fa
         cx->zone()->group()->storeBuffer().putWholeCell(code);
     return code;
 }
-
-template JitCode* Linker::newCode<CanGC>(JSContext* cx, CodeKind kind, bool hasPatchableBackedges);
-template JitCode* Linker::newCode<NoGC>(JSContext* cx, CodeKind kind, bool hasPatchableBackedges);
 
 } // namespace jit
 } // namespace js

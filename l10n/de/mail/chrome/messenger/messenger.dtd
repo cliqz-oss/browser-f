@@ -367,6 +367,8 @@
 <!ENTITY editAsNewMsgCmd.key "e">
 <!ENTITY editDraftMsgCmd.label "Entwurf bearbeiten">
 <!ENTITY editDraftMsgCmd.accesskey "w">
+<!ENTITY editTemplateMsgCmd.label "Vorlage bearbeiten">
+<!ENTITY editTemplateMsgCmd.accesskey "o">
 <!ENTITY newMsgFromTemplateCmd.label "Neue Nachricht aus Vorlage">
 <!ENTITY newMsgFromTemplateCmd.keycode "VK_RETURN"><!-- do not change "VK_RETURN" -->
 <!ENTITY createFilter.label "Filter aus Nachricht erstellen…">
@@ -460,6 +462,11 @@
 <!ENTITY addressBookCmd.key "B">
 <!ENTITY addons.label "Add-ons">
 <!ENTITY addons.accesskey "A">
+<!ENTITY addonPrefs.label "Add-on-Einstellungen">
+<!ENTITY addonPrefs.accesskey "g">
+<!ENTITY addonPrefsUnix.label "Add-on-Einstellungen">
+<!ENTITY addonPrefsUnix.accesskey "g">
+<!ENTITY addonNoPrefs.label "Keine Add-on-Einstellungen gefunden">
 <!ENTITY activitymanager.label "Aktivitäten">
 <!ENTITY activitymanager.accesskey "v">
 <!ENTITY imAccountsStatus.label "Chat-Status">
@@ -505,6 +512,8 @@
 <!ENTITY devToolboxCmd.commandkey "i">
 <!ENTITY addonDebugCmd.label "Addon-Debugger">
 <!ENTITY addonDebugCmd.accesskey "A">
+<!ENTITY debugAddonsCmd.label "Add-ons debuggen">
+<!ENTITY debugAddonsCmd.accesskey "A">
 <!ENTITY tabsDebugCmd.label "Inhaltsframe-Debugger">
 <!ENTITY tabsDebugCmd.accesskey "n">
 <!ENTITY errorConsoleCmd.label "Fehlerkonsole">
@@ -753,6 +762,8 @@
 <!ENTITY contextEditMsgAsNew.label "Als neu bearbeiten">
 <!ENTITY contextEditMsgAsNew.accesskey "b">
 <!ENTITY contextEditDraftMsg.label "Entwurf bearbeiten">
+<!ENTITY contextEditTemplate.label "Vorlage bearbeiten">
+<!ENTITY contextEditTemplate.accesskey "o">
 <!ENTITY contextArchive.label "Archivieren">
 <!ENTITY contextArchive.accesskey "">
 <!ENTITY contextReplySender.label "Antworten nur an Absender">

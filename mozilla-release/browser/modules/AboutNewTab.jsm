@@ -4,20 +4,16 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "AboutNewTab" ];
 
-this.EXPORTED_SYMBOLS = [ "AboutNewTab" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AutoMigrate",
+ChromeUtils.defineModuleGetter(this, "AutoMigrate",
   "resource:///modules/AutoMigrate.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
+ChromeUtils.defineModuleGetter(this, "NewTabUtils",
   "resource://gre/modules/NewTabUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RemotePages",
+ChromeUtils.defineModuleGetter(this, "RemotePages",
   "resource://gre/modules/RemotePageManager.jsm");
 
 var AboutNewTab = {

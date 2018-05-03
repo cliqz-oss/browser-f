@@ -10,54 +10,52 @@
 
 #include "vm/Interpreter-inl.h"
 
-#include "mozilla/ArrayUtils.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/PodOperations.h"
 #include "mozilla/Sprintf.h"
 
 #include <string.h>
 
 #include "jsarray.h"
-#include "jsatom.h"
-#include "jscntxt.h"
-#include "jsfun.h"
-#include "jsiter.h"
 #include "jslibmath.h"
 #include "jsnum.h"
-#include "jsobj.h"
-#include "jsopcode.h"
-#include "jsprf.h"
-#include "jsscript.h"
-#include "jsstr.h"
 
 #include "builtin/Eval.h"
+#include "builtin/String.h"
 #include "jit/AtomicOperations.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/IonAnalysis.h"
 #include "jit/Jit.h"
+#include "util/StringBuffer.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
+#include "vm/BytecodeUtil.h"
 #include "vm/Debugger.h"
 #include "vm/GeneratorObject.h"
+#include "vm/Iteration.h"
+#include "vm/JSAtom.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/Opcodes.h"
 #include "vm/Scope.h"
 #include "vm/Shape.h"
 #include "vm/Stopwatch.h"
-#include "vm/StringBuffer.h"
+#include "vm/StringType.h"
 #include "vm/TraceLogging.h"
 
-#include "jsatominlines.h"
 #include "jsboolinlines.h"
-#include "jsfuninlines.h"
-#include "jsscriptinlines.h"
 
 #include "jit/JitFrames-inl.h"
 #include "vm/Debugger-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/GeckoProfiler-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSFunction-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Probes-inl.h"
 #include "vm/Stack-inl.h"
@@ -65,11 +63,8 @@
 using namespace js;
 using namespace js::gc;
 
-using mozilla::ArrayLength;
 using mozilla::DebugOnly;
 using mozilla::NumberEqualsInt32;
-using mozilla::PodCopy;
-using JS::ForOfIterator;
 
 template <bool Eq>
 static MOZ_ALWAYS_INLINE bool
@@ -1151,20 +1146,13 @@ js::UnwindEnvironmentToTryPc(JSScript* script, JSTryNote* tn)
 }
 
 static bool
-ForcedReturn(JSContext* cx, EnvironmentIter& ei, InterpreterRegs& regs, bool frameOk = true)
+ForcedReturn(JSContext* cx, InterpreterRegs& regs)
 {
-    bool ok = Debugger::onLeaveFrame(cx, regs.fp(), regs.pc, frameOk);
+    bool ok = Debugger::onLeaveFrame(cx, regs.fp(), regs.pc, true);
     // Point the frame to the end of the script, regardless of error. The
     // caller must jump to the correct continuation depending on 'ok'.
     regs.setToEndOfScript();
     return ok;
-}
-
-static bool
-ForcedReturn(JSContext* cx, InterpreterRegs& regs)
-{
-    EnvironmentIter ei(cx, regs.fp(), regs.pc);
-    return ForcedReturn(cx, ei, regs);
 }
 
 static void
@@ -1206,7 +1194,7 @@ UnwindIteratorsForUncatchableException(JSContext* cx, const InterpreterRegs& reg
         JSTryNote* tn = *tni;
         if (tn->kind == JSTRY_FOR_IN) {
             Value* sp = regs.spForStackDepth(tn->stackDepth);
-            UnwindIteratorForUncatchableException(cx, &sp[-1].toObject());
+            UnwindIteratorForUncatchableException(&sp[-1].toObject());
         }
     }
 }
@@ -1358,7 +1346,7 @@ HandleError(JSContext* cx, InterpreterRegs& regs)
 
               case JSTRAP_RETURN:
                 UnwindIteratorsForUncatchableException(cx, regs);
-                if (!ForcedReturn(cx, ei, regs))
+                if (!ForcedReturn(cx, regs))
                     return ErrorReturnContinuation;
                 return SuccessfulReturnContinuation;
 
@@ -1389,7 +1377,7 @@ HandleError(JSContext* cx, InterpreterRegs& regs)
         // callback, which cannot easily force a return.
         if (MOZ_UNLIKELY(cx->isPropagatingForcedReturn())) {
             cx->clearPropagatingForcedReturn();
-            if (!ForcedReturn(cx, ei, regs))
+            if (!ForcedReturn(cx, regs))
                 return ErrorReturnContinuation;
             return SuccessfulReturnContinuation;
         }
@@ -1689,11 +1677,11 @@ js::ReportInNotObjectError(JSContext* cx, HandleValue lref, int lindex,
                            HandleValue rref, int rindex)
 {
     auto uniqueCharsFromString = [](JSContext* cx, HandleValue ref) -> UniqueChars {
-        static const size_t MAX_STRING_LENGTH = 16;
+        static const size_t MaxStringLength = 16;
         RootedString str(cx, ref.toString());
-        if (str->length() > MAX_STRING_LENGTH) {
+        if (str->length() > MaxStringLength) {
             StringBuffer buf(cx);
-            if (!buf.appendSubstring(str, 0, MAX_STRING_LENGTH))
+            if (!buf.appendSubstring(str, 0, MaxStringLength))
                 return nullptr;
             if (!buf.append("..."))
                 return nullptr;
@@ -1704,18 +1692,20 @@ js::ReportInNotObjectError(JSContext* cx, HandleValue lref, int lindex,
         return UniqueChars(JS_EncodeString(cx, str));
     };
 
-    UniqueChars lbytes = lref.isString()
-                       ? uniqueCharsFromString(cx, lref)
-                       : DecompileValueGenerator(cx, lindex, lref, nullptr);
-    if (!lbytes)
+    if (lref.isString() && rref.isString()) {
+        UniqueChars lbytes = uniqueCharsFromString(cx, lref);
+        if (!lbytes)
+            return;
+        UniqueChars rbytes = uniqueCharsFromString(cx, rref);
+        if (!rbytes)
+            return;
+        JS_ReportErrorNumberLatin1(cx, GetErrorMessage, nullptr, JSMSG_IN_STRING,
+                                   lbytes.get(), rbytes.get());
         return;
-    UniqueChars rbytes = rref.isString()
-                       ? uniqueCharsFromString(cx, rref)
-                       : DecompileValueGenerator(cx, rindex, rref, nullptr);
-    if (!rbytes)
-        return;
+    }
+
     JS_ReportErrorNumberLatin1(cx, GetErrorMessage, nullptr, JSMSG_IN_NOT_OBJECT,
-                               lbytes.get(), rbytes.get());
+                               InformalValueTypeName(rref));
 }
 
 static MOZ_NEVER_INLINE bool
@@ -2037,7 +2027,7 @@ CASE(JSOP_LOOPENTRY)
     COUNT_COVERAGE();
     // Attempt on-stack replacement with Baseline code.
     if (jit::IsBaselineEnabled(cx)) {
-        jit::MethodStatus status = jit::CanEnterBaselineAtBranch(cx, REGS.fp(), false);
+        jit::MethodStatus status = jit::CanEnterBaselineAtBranch(cx, REGS.fp());
         if (status == jit::Method_Error)
             goto error;
         if (status == jit::Method_Compiled) {
@@ -3317,7 +3307,7 @@ CASE(JSOP_CALLSITEOBJ)
     ReservedRooted<JSObject*> cso(&rootObject0, script->getObject(REGS.pc));
     ReservedRooted<JSObject*> raw(&rootObject1, script->getObject(GET_UINT32_INDEX(REGS.pc) + 1));
 
-    if (!cx->compartment()->getTemplateLiteralObject(cx, raw.as<ArrayObject>(), &cso))
+    if (!ProcessCallSiteObjOperation(cx, cso, raw))
         goto error;
 
     PUSH_OBJECT(*cso);
@@ -3664,11 +3654,13 @@ END_CASE(JSOP_TOASYNCGEN)
 
 CASE(JSOP_TOASYNCITER)
 {
-    ReservedRooted<JSObject*> iter(&rootObject1, &REGS.sp[-1].toObject());
-    JSObject* asyncIter = CreateAsyncFromSyncIterator(cx, iter);
+    ReservedRooted<Value> nextMethod(&rootValue0, REGS.sp[-1]);
+    ReservedRooted<JSObject*> iter(&rootObject1, &REGS.sp[-2].toObject());
+    JSObject* asyncIter = CreateAsyncFromSyncIterator(cx, iter, nextMethod);
     if (!asyncIter)
         goto error;
 
+    REGS.sp--;
     REGS.sp[-1].setObject(*asyncIter);
 }
 END_CASE(JSOP_TOASYNCITER)
@@ -4131,7 +4123,7 @@ CASE(JSOP_FINALYIELDRVAL)
 {
     ReservedRooted<JSObject*> gen(&rootObject0, &REGS.sp[-1].toObject());
     REGS.sp--;
-    GeneratorObject::finalSuspend(cx, gen);
+    GeneratorObject::finalSuspend(gen);
     goto successful_return_continuation;
 }
 

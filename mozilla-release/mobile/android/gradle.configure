@@ -5,9 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # If --with-gradle is specified, build mobile/android with Gradle.  If no
-# Gradle binary is specified, or if --without-gradle is specified, use the in
-# tree Gradle wrapper.  The wrapper downloads and installs Gradle, which is
-# good for local developers but not good in automation.
+# Gradle binary is specified use the in tree Gradle wrapper.  The wrapper
+# downloads and installs Gradle, which is good for local developers but not
+# good in automation.
 option('--with-gradle', nargs='?',
        default=True,
        help='Enable building mobile/android with Gradle '
@@ -15,10 +15,12 @@ option('--with-gradle', nargs='?',
 
 @depends('--with-gradle')
 def with_gradle(value):
+    if not value:
+        die('Building --without-gradle is no longer supported: '
+            'see https://bugzilla.mozilla.org/show_bug.cgi?id=1414415.')
+
     if value:
         return True
-
-set_config('MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE', with_gradle)
 
 
 @depends('--with-gradle', check_build_environment)
@@ -46,9 +48,6 @@ def gradle_android_build_config():
         else:
             return s
 
-    # It's not really possible to abstract the GeckoView details just yet; post
-    # Android-Gradle plugin 3.0+, the configurations can be more sensible and
-    # we'll do this work.
     def variant(productFlavors, buildType):
         return namespace(
             productFlavors=productFlavors,
@@ -59,13 +58,19 @@ def gradle_android_build_config():
 
     return namespace(
         app=namespace(
-            variant=variant(('official', 'photon'), 'debug'),
+            variant=variant(('official', 'withoutGeckoBinaries', 'noMinApi', 'photon'), 'debug'),
+        ),
+        geckoview=namespace(
+            variant=variant(('official', 'withGeckoBinaries', 'noMinApi'), 'release'),
+        ),
+        geckoview_example=namespace(
+            variant=variant(('official', 'withGeckoBinaries', 'noMinApi'), 'debug'),
         ),
     )
 
 
 @depends(gradle_android_build_config)
-def gradle_android_app_variant_name(build_config):
+def gradle_android_variant_name(build_config):
     '''Like "officialPhotonDebug".'''
     def uncapitalize(s):
         if s:
@@ -73,16 +78,21 @@ def gradle_android_app_variant_name(build_config):
         else:
             return s
 
-    return uncapitalize(build_config.app.variant.name)
+    return namespace(
+        app=uncapitalize(build_config.app.variant.name),
+        geckoview=uncapitalize(build_config.geckoview.variant.name),
+    )
 
-set_config('GRADLE_ANDROID_APP_VARIANT_NAME', gradle_android_app_variant_name)
+set_config('GRADLE_ANDROID_APP_VARIANT_NAME', gradle_android_variant_name.app)
+
+set_config('GRADLE_ANDROID_GECKOVIEW_VARIANT_NAME', gradle_android_variant_name.geckoview)
 
 
 @depends(gradle_android_build_config)
 def gradle_android_app_tasks(build_config):
     '''Gradle tasks run by |mach android assemble-app|.'''
     return [
-        'geckoview:generateJNIWrappersForGeneratedRelease',
+        'geckoview:generateJNIWrappersForGenerated{geckoview.variant.name}'.format(geckoview=build_config.geckoview),
         'app:generateJNIWrappersForFennec{app.variant.name}'.format(app=build_config.app),
         'app:assemble{app.variant.name}'.format(app=build_config.app),
         'app:assemble{app.variant.name}AndroidTest'.format(app=build_config.app),
@@ -92,14 +102,39 @@ set_config('GRADLE_ANDROID_APP_TASKS', gradle_android_app_tasks)
 
 
 @depends(gradle_android_build_config, check_build_environment)
+@imports(_from='itertools', _import='imap')
 def gradle_android_app_apks(build_config, build_env):
     '''Paths to APK files produced by |mach android assemble-app|.'''
-    flavor = '-'.join(build_config.app.variant.productFlavors)
-    buildType = build_config.app.variant.buildType
-    f = '{}/gradle/build/mobile/android/app/outputs/apk/app-{}-{}.apk'
-    g = '{}/gradle/build/mobile/android/app/outputs/apk/app-{}-{}-androidTest.apk'
-    return namespace(app_apk=f.format(build_env.topobjdir, flavor, buildType),
-                     app_androidTest_apk=g.format(build_env.topobjdir, flavor, buildType))
+    def capitalize(s):
+        # str.capitalize lower cases trailing letters.
+        if s:
+            return s[0].upper() + s[1:]
+        else:
+            return s
+
+    def uncapitalize(s):
+        if s:
+            return s[0].lower() + s[1:]
+        else:
+            return s
+
+    # Like 'officialPhoton'.
+    productFlavor = uncapitalize(''.join(imap(capitalize, build_config.app.variant.productFlavors)))
+    # Like 'official-photon'.
+    product_flavor = '-'.join(build_config.app.variant.productFlavors)
+
+    substs = {
+        'topobjdir': build_env.topobjdir,
+        'productFlavor': productFlavor,
+        'product_flavor': product_flavor,
+        'buildType': build_config.app.variant.buildType,
+    }
+
+    f = '{topobjdir}/gradle/build/mobile/android/app/outputs/apk/{productFlavor}/{buildType}/app-{product_flavor}-{buildType}.apk'
+    g = '{topobjdir}/gradle/build/mobile/android/app/outputs/apk/androidTest/{productFlavor}/{buildType}/app-{product_flavor}-{buildType}-androidTest.apk'
+
+    return namespace(app_apk=f.format(**substs),
+                     app_androidTest_apk=g.format(**substs))
 
 set_config('GRADLE_ANDROID_APP_APK', gradle_android_app_apks.app_apk)
 set_config('GRADLE_ANDROID_APP_ANDROIDTEST_APK', gradle_android_app_apks.app_androidTest_apk)
@@ -110,6 +145,8 @@ def gradle_android_test_tasks(build_config):
     '''Gradle tasks run by |mach android test|.'''
     return [
         'app:test{app.variant.name}UnitTest'.format(app=build_config.app),
+        'geckoview:test{geckoview.variant.name}UnitTest'.format(
+            geckoview=build_config.geckoview),
     ]
 
 set_config('GRADLE_ANDROID_TEST_TASKS', gradle_android_test_tasks)
@@ -146,13 +183,13 @@ def gradle_android_findbugs_tasks(build_config):
 set_config('GRADLE_ANDROID_FINDBUGS_TASKS', gradle_android_findbugs_tasks)
 
 
-@dependable
-def gradle_android_archive_geckoview_tasks():
+@depends(gradle_android_build_config)
+def gradle_android_archive_geckoview_tasks(build_config):
     '''Gradle tasks run by |mach android archive-geckoview|.'''
     return [
-        'geckoview:assembleWithGeckoBinaries',
-        'geckoview_example:assembleWithGeckoBinaries',
-        'geckoview_example:assembleWithGeckoBinariesAndroidTest',
+        'geckoview:assemble{geckoview.variant.name}'.format(geckoview=build_config.geckoview),
+        'geckoview_example:assemble{geckoview_example.variant.name}'.format(geckoview_example=build_config.geckoview_example),
+        'geckoview_example:assemble{geckoview_example.variant.name}AndroidTest'.format(geckoview_example=build_config.geckoview_example),
         'geckoview:uploadArchives',
     ]
 

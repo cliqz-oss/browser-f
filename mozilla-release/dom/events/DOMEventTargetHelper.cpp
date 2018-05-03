@@ -89,8 +89,8 @@ NS_IMPL_DOMTARGET_DEFAULTS(DOMEventTargetHelper)
 
 DOMEventTargetHelper::~DOMEventTargetHelper()
 {
-  if (nsPIDOMWindowInner* owner = GetOwner()) {
-    nsGlobalWindowInner::Cast(owner)->RemoveEventTargetObject(this);
+  if (mParentObject) {
+    mParentObject->RemoveEventTargetObject(this);
   }
   if (mListenerManager) {
     mListenerManager->Disconnect();
@@ -101,30 +101,27 @@ DOMEventTargetHelper::~DOMEventTargetHelper()
 void
 DOMEventTargetHelper::BindToOwner(nsPIDOMWindowInner* aOwner)
 {
-  nsCOMPtr<nsIGlobalObject> glob = do_QueryInterface(aOwner);
-  BindToOwner(glob);
+  BindToOwner(aOwner ? aOwner->AsGlobal() : nullptr);
 }
 
 void
 DOMEventTargetHelper::BindToOwner(nsIGlobalObject* aOwner)
 {
-  nsCOMPtr<nsIGlobalObject> parentObject = do_QueryReferent(mParentObject);
-  if (parentObject) {
+  if (mParentObject) {
+    mParentObject->RemoveEventTargetObject(this);
     if (mOwnerWindow) {
-      nsGlobalWindowInner::Cast(mOwnerWindow)->RemoveEventTargetObject(this);
       mOwnerWindow = nullptr;
     }
     mParentObject = nullptr;
     mHasOrHasHadOwnerWindow = false;
   }
   if (aOwner) {
-    mParentObject = do_GetWeakReference(aOwner);
-    MOZ_ASSERT(mParentObject, "All nsIGlobalObjects must support nsISupportsWeakReference");
+    mParentObject = aOwner;
+    aOwner->AddEventTargetObject(this);
     // Let's cache the result of this QI for fast access and off main thread usage
     mOwnerWindow = nsCOMPtr<nsPIDOMWindowInner>(do_QueryInterface(aOwner)).get();
     if (mOwnerWindow) {
       mHasOrHasHadOwnerWindow = true;
-      nsGlobalWindowInner::Cast(mOwnerWindow)->AddEventTargetObject(this);
     }
   }
 }
@@ -132,30 +129,20 @@ DOMEventTargetHelper::BindToOwner(nsIGlobalObject* aOwner)
 void
 DOMEventTargetHelper::BindToOwner(DOMEventTargetHelper* aOther)
 {
-  if (mOwnerWindow) {
-    nsGlobalWindowInner::Cast(mOwnerWindow)->RemoveEventTargetObject(this);
-    mOwnerWindow = nullptr;
-    mParentObject = nullptr;
-    mHasOrHasHadOwnerWindow = false;
+  if (!aOther) {
+    BindToOwner(static_cast<nsIGlobalObject*>(nullptr));
+    return;
   }
-  if (aOther) {
-    mHasOrHasHadOwnerWindow = aOther->HasOrHasHadOwner();
-    if (aOther->GetParentObject()) {
-      mParentObject = do_GetWeakReference(aOther->GetParentObject());
-      MOZ_ASSERT(mParentObject, "All nsIGlobalObjects must support nsISupportsWeakReference");
-      // Let's cache the result of this QI for fast access and off main thread usage
-      mOwnerWindow = nsCOMPtr<nsPIDOMWindowInner>(do_QueryInterface(aOther->GetParentObject())).get();
-      if (mOwnerWindow) {
-        mHasOrHasHadOwnerWindow = true;
-        nsGlobalWindowInner::Cast(mOwnerWindow)->AddEventTargetObject(this);
-      }
-    }
-  }
+  BindToOwner(aOther->GetParentObject());
+  mHasOrHasHadOwnerWindow = aOther->HasOrHasHadOwner();
 }
 
 void
 DOMEventTargetHelper::DisconnectFromOwner()
 {
+  if (mParentObject) {
+    mParentObject->RemoveEventTargetObject(this);
+  }
   mOwnerWindow = nullptr;
   mParentObject = nullptr;
   // Event listeners can't be handled anymore, so we can release them here.
@@ -360,32 +347,30 @@ DOMEventTargetHelper::WantsUntrusted(bool* aRetVal)
 void
 DOMEventTargetHelper::EventListenerAdded(nsAtom* aType)
 {
-  IgnoredErrorResult rv;
-  EventListenerWasAdded(Substring(nsDependentAtomString(aType), 2), rv);
+  EventListenerWasAdded(Substring(nsDependentAtomString(aType), 2),
+                        IgnoreErrors());
   MaybeUpdateKeepAlive();
 }
 
 void
 DOMEventTargetHelper::EventListenerAdded(const nsAString& aType)
 {
-  IgnoredErrorResult rv;
-  EventListenerWasAdded(aType, rv);
+  EventListenerWasAdded(aType, IgnoreErrors());
   MaybeUpdateKeepAlive();
 }
 
 void
 DOMEventTargetHelper::EventListenerRemoved(nsAtom* aType)
 {
-  IgnoredErrorResult rv;
-  EventListenerWasRemoved(Substring(nsDependentAtomString(aType), 2), rv);
+  EventListenerWasRemoved(Substring(nsDependentAtomString(aType), 2),
+                          IgnoreErrors());
   MaybeUpdateKeepAlive();
 }
 
 void
 DOMEventTargetHelper::EventListenerRemoved(const nsAString& aType)
 {
-  IgnoredErrorResult rv;
-  EventListenerWasRemoved(aType, rv);
+  EventListenerWasRemoved(aType, IgnoreErrors());
   MaybeUpdateKeepAlive();
 }
 

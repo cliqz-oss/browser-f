@@ -37,7 +37,7 @@ public:
   virtual DrawTargetType GetType() const override;
   virtual BackendType GetBackendType() const override { return BackendType::SKIA; }
   virtual already_AddRefed<SourceSurface> Snapshot() override;
-  virtual IntSize GetSize() override { return mSize; }
+  virtual IntSize GetSize() const override { return mSize; };
   virtual bool LockBits(uint8_t** aData, IntSize* aSize,
                         int32_t* aStride, SurfaceFormat* aFormat,
                         IntPoint* aOrigin = nullptr) override;
@@ -109,8 +109,13 @@ public:
                          const Matrix& aMaskTransform,
                          const IntRect& aBounds = IntRect(),
                          bool aCopyBackground = false) override;
+  virtual void PushLayerWithBlend(bool aOpaque, Float aOpacity,
+                                  SourceSurface* aMask,
+                                  const Matrix& aMaskTransform,
+                                  const IntRect& aBounds = IntRect(),
+                                  bool aCopyBackground = false,
+                                  CompositionOp aCompositionOp = CompositionOp::OP_OVER) override;
   virtual void PopLayer() override;
-  virtual void Blur(const AlphaBoxBlur& aBlur) override;
   virtual already_AddRefed<SourceSurface> CreateSourceSurfaceFromData(unsigned char *aData,
                                                             const IntSize &aSize,
                                                             int32_t aStride,
@@ -178,12 +183,14 @@ private:
     PushedLayer(bool aOldPermitSubpixelAA,
                 bool aOpaque,
                 Float aOpacity,
+                CompositionOp aCompositionOp,
                 SourceSurface* aMask,
                 const Matrix& aMaskTransform,
                 SkBaseDevice* aPreviousDevice)
       : mOldPermitSubpixelAA(aOldPermitSubpixelAA),
         mOpaque(aOpaque),
         mOpacity(aOpacity),
+        mCompositionOp(aCompositionOp),
         mMask(aMask),
         mMaskTransform(aMaskTransform),
         mPreviousDevice(aPreviousDevice)
@@ -191,6 +198,7 @@ private:
     bool mOldPermitSubpixelAA;
     bool mOpaque;
     Float mOpacity;
+    CompositionOp mCompositionOp;
     RefPtr<SourceSurface> mMask;
     Matrix mMaskTransform;
     SkBaseDevice* mPreviousDevice;

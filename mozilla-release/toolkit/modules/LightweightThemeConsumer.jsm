@@ -2,34 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["LightweightThemeConsumer"];
+var EXPORTED_SYMBOLS = ["LightweightThemeConsumer"];
 
-const {utils: Cu, interfaces: Ci, classes: Cc} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+// Get the theme variables from the app resource directory.
+// This allows per-app variables.
+const toolkitVariableMap = [
+  ["--arrowpanel-background", "popup"],
+  ["--arrowpanel-color", "popup_text"],
+  ["--arrowpanel-border-color", "popup_border"],
+];
+ChromeUtils.import("resource:///modules/ThemeVariableMap.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeImageOptimizer",
+ChromeUtils.defineModuleGetter(this, "LightweightThemeImageOptimizer",
   "resource://gre/modules/addons/LightweightThemeImageOptimizer.jsm");
 
-const kCSSVarsMap = new Map([
-  ["--lwt-background-alignment", "backgroundsAlignment"],
-  ["--lwt-background-tiling", "backgroundsTiling"],
-  ["--lwt-tab-text", "tab_text"],
-  ["--toolbar-bgcolor", "toolbarColor"],
-  ["--toolbar-color", "toolbar_text"],
-  ["--url-and-searchbar-background-color", "toolbar_field"],
-  ["--url-and-searchbar-color", "toolbar_field_text"],
-  ["--lwt-toolbar-field-border-color", "toolbar_field_border"],
-  ["--urlbar-separator-color", "toolbar_field_separator"],
-  ["--tabs-border-color", "toolbar_top_separator"],
-  ["--toolbox-border-bottom-color", "toolbar_bottom_separator"],
-  ["--lwt-toolbar-vertical-separator", "toolbar_vertical_separator"],
-]);
-
-this.LightweightThemeConsumer =
- function LightweightThemeConsumer(aDocument) {
+function LightweightThemeConsumer(aDocument) {
   this._doc = aDocument;
   this._win = aDocument.defaultView;
 
@@ -40,10 +31,11 @@ this.LightweightThemeConsumer =
   Services.obs.addObserver(this, "lightweight-theme-styling-update");
 
   var temp = {};
-  Cu.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
+  ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
   this._update(temp.LightweightThemeManager.currentThemeForDisplay);
   this._win.addEventListener("resize", this);
-};
+  this._win.addEventListener("unload", this.destroy.bind(this), { once: true });
+}
 
 LightweightThemeConsumer.prototype = {
   _lastData: null,
@@ -121,7 +113,7 @@ LightweightThemeConsumer.prototype = {
       return;
 
     let root = this._doc.documentElement;
-    let active = !!aData.headerURL;
+    let active = aData.accentcolor || aData.headerURL;
 
     // We need to clear these either way: either because the theme is being removed,
     // or because we are applying a new theme and the data might be bogus CSS,
@@ -142,6 +134,12 @@ LightweightThemeConsumer.prototype = {
     } else {
       root.removeAttribute("lwthemetextcolor");
       root.removeAttribute("lwtheme");
+    }
+
+    if (aData.headerURL) {
+      root.setAttribute("lwtheme-image", "true");
+    } else {
+      root.removeAttribute("lwtheme-image");
     }
 
     this._active = active;
@@ -192,17 +190,21 @@ function _setImage(aRoot, aActive, aVariableName, aURLs) {
   _setProperty(aRoot, aActive, aVariableName, aURLs && aURLs.map(v => `url("${v.replace(/"/g, '\\"')}")`).join(","));
 }
 
-function _setProperty(root, active, variableName, value) {
+function _setProperty(elem, active, variableName, value) {
   if (active && value) {
-    root.style.setProperty(variableName, value);
+    elem.style.setProperty(variableName, value);
   } else {
-    root.style.removeProperty(variableName);
+    elem.style.removeProperty(variableName);
   }
 }
 
 function _setProperties(root, active, vars) {
-  for (let [cssVarName, varsKey] of kCSSVarsMap) {
-    _setProperty(root, active, cssVarName, vars[varsKey]);
+  for (let map of [toolkitVariableMap, ThemeVariableMap]) {
+    for (let [cssVarName, varsKey, optionalElementID] of map) {
+      let elem = optionalElementID ? root.ownerDocument.getElementById(optionalElementID)
+                                   : root;
+      _setProperty(elem, active, cssVarName, vars[varsKey]);
+    }
   }
 }
 

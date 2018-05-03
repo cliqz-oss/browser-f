@@ -13,9 +13,11 @@ const {
   getUrlQuery,
   parseQueryString,
 } = require("../utils/request-utils");
-
+const { buildHarLog } = require("./har-builder-utils");
 const L10N = new LocalizationHelper("devtools/client/locales/har.properties");
-const HAR_VERSION = "1.1";
+const {
+  TIMING_KEYS
+} = require("../constants");
 
 /**
  * This object is responsible for building HAR file. See HAR spec:
@@ -55,37 +57,21 @@ HarBuilder.prototype = {
     this.promises = [];
 
     // Build basic structure for data.
-    let log = this.buildLog();
+    let log = buildHarLog(appInfo);
 
     // Build entries.
     for (let file of this._options.items) {
-      log.entries.push(await this.buildEntry(log, file));
+      log.log.entries.push(await this.buildEntry(log.log, file));
     }
 
     // Some data needs to be fetched from the backend during the
     // build process, so wait till all is done.
     await Promise.all(this.promises);
 
-    return { log };
+    return log;
   },
 
   // Helpers
-
-  buildLog: function () {
-    return {
-      version: HAR_VERSION,
-      creator: {
-        name: appInfo.name,
-        version: appInfo.version
-      },
-      browser: {
-        name: appInfo.name,
-        version: appInfo.version
-      },
-      pages: [],
-      entries: [],
-    };
-  },
 
   buildPage: function (file) {
     let page = {};
@@ -118,7 +104,6 @@ HarBuilder.prototype = {
     let entry = {};
     entry.pageref = page.id;
     entry.startedDateTime = dateToJSON(new Date(file.startedMillis));
-    entry.time = file.endedMillis - file.startedMillis;
 
     let eventTimings = file.eventTimings;
     if (!eventTimings && this._options.requestData) {
@@ -129,6 +114,23 @@ HarBuilder.prototype = {
     entry.response = await this.buildResponse(file);
     entry.cache = this.buildCache(file);
     entry.timings = eventTimings ? eventTimings.timings : {};
+
+    // Calculate total time by summing all timings. Note that
+    // `file.totalTime` can't be used since it doesn't have to
+    // correspond to plain summary of individual timings.
+    // With TCP Fast Open and TLS early data sending data can
+    // start at the same time as connect (we can send data on
+    // TCP syn packet). Also TLS handshake can carry application
+    // data thereby overlapping a sending data period and TLS
+    // handshake period.
+    entry.time = TIMING_KEYS.reduce((sum, type) => {
+      let time = entry.timings[type];
+      return (typeof time != "undefined") ? (sum + time) : sum;
+    }, 0);
+
+    // Security state isn't part of HAR spec, and so create
+    // custom field that needs to use '_' prefix.
+    entry._securityState = file.securityState;
 
     if (file.remoteAddress) {
       entry.serverIPAddress = file.remoteAddress;
@@ -153,6 +155,12 @@ HarBuilder.prototype = {
       onContentLoad: -1,
       onLoad: -1
     };
+
+    let getTimingMarker = this._options.getTimingMarker;
+    if (getTimingMarker) {
+      timings.onContentLoad = getTimingMarker("firstDocumentDOMContentLoadedTimestamp");
+      timings.onLoad = getTimingMarker("firstDocumentLoadTimestamp");
+    }
 
     return timings;
   },
@@ -226,7 +234,7 @@ HarBuilder.prototype = {
       return [];
     }
 
-    return this.buildNameValuePairs(input.cookies);
+    return this.buildNameValuePairs(input.cookies || input);
   },
 
   buildNameValuePairs: function (entries) {

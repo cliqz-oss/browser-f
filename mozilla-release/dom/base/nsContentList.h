@@ -7,7 +7,7 @@
 /*
  * nsBaseContentList is a basic list of content nodes; nsContentList
  * is a commonly used NodeList implementation (used for
- * getElementsByTagName, some properties on nsIDOMHTMLDocument, etc).
+ * getElementsByTagName, some properties on HTMLDocument/Document, etc).
  */
 
 #ifndef nsContentList_h___
@@ -172,7 +172,7 @@ public:
     nsWrapperCache::PreserveWrapper(aScriptObjectHolder);
   }
 
-  virtual uint32_t Length() override final
+  uint32_t Length() final
   {
     return 0;
   }
@@ -346,7 +346,7 @@ public:
     return mRootNode;
   }
 
-  virtual uint32_t Length() override final
+  uint32_t Length() final
   {
     return Length(true);
   }

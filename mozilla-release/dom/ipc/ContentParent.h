@@ -751,9 +751,7 @@ private:
   bool LaunchSubprocess(hal::ProcessPriority aInitialPriority = hal::PROCESS_PRIORITY_FOREGROUND);
 
   // Common initialization after sub process launch or adoption.
-  void InitInternal(ProcessPriority aPriority,
-                    bool aSetupOffMainThreadCompositing,
-                    bool aSendRegisteredChrome);
+  void InitInternal(ProcessPriority aPriority);
 
   virtual ~ContentParent();
 
@@ -978,6 +976,7 @@ private:
   virtual mozilla::ipc::IPCResult RecvSetClipboard(const IPCDataTransfer& aDataTransfer,
                                                    const bool& aIsPrivateData,
                                                    const IPC::Principal& aRequestingPrincipal,
+                                                   const uint32_t& aContentPolicyType,
                                                    const int32_t& aWhichClipboard) override;
 
   virtual mozilla::ipc::IPCResult RecvGetClipboard(nsTArray<nsCString>&& aTypes,
@@ -1060,6 +1059,26 @@ private:
                                                   const uint32_t& aFlags,
                                                   const nsCString& aCategory) override;
 
+  virtual mozilla::ipc::IPCResult RecvScriptErrorWithStack(const nsString& aMessage,
+                                                           const nsString& aSourceName,
+                                                           const nsString& aSourceLine,
+                                                           const uint32_t& aLineNumber,
+                                                           const uint32_t& aColNumber,
+                                                           const uint32_t& aFlags,
+                                                           const nsCString& aCategory,
+                                                           const ClonedMessageData& aStack) override;
+
+private:
+  mozilla::ipc::IPCResult RecvScriptErrorInternal(const nsString& aMessage,
+                                                  const nsString& aSourceName,
+                                                  const nsString& aSourceLine,
+                                                  const uint32_t& aLineNumber,
+                                                  const uint32_t& aColNumber,
+                                                  const uint32_t& aFlags,
+                                                  const nsCString& aCategory,
+                                                  const ClonedMessageData* aStack = nullptr);
+
+public:
   virtual mozilla::ipc::IPCResult RecvPrivateDocShellsExist(const bool& aExist) override;
 
   virtual mozilla::ipc::IPCResult RecvFirstIdle() override;
@@ -1068,7 +1087,7 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvKeywordToURI(const nsCString& aKeyword,
                                                    nsString* aProviderName,
-                                                   OptionalIPCStream* aPostData,
+                                                   nsCOMPtr<nsIInputStream>* aPostData,
                                                    OptionalURIParams* aURI) override;
 
   virtual mozilla::ipc::IPCResult RecvNotifyKeywordSearchLoading(const nsString &aProvider,

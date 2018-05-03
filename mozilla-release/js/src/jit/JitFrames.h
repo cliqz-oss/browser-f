@@ -9,11 +9,10 @@
 
 #include <stdint.h>
 
-#include "jscntxt.h"
-#include "jsfun.h"
-
 #include "jit/JSJitFrameIter.h"
 #include "jit/Safepoints.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
 
 namespace js {
 namespace jit {
@@ -288,7 +287,7 @@ void EnsureBareExitFrame(JitActivation* act, JitFrameLayout* frame);
 
 void TraceJitActivations(JSContext* cx, const CooperatingContext& target, JSTracer* trc);
 
-void UpdateJitActivationsForMinorGC(JSRuntime* rt, JSTracer* trc);
+void UpdateJitActivationsForMinorGC(JSRuntime* rt);
 
 static inline uint32_t
 EncodeFrameHeaderSize(size_t headerSize)
@@ -477,6 +476,7 @@ enum class ExitFrameType : uint8_t
     IonDOMMethod      = 0x4,
     IonOOLNative      = 0x5,
     IonOOLProxy       = 0x6,
+    WasmJitEntry      = 0x7,
     InterpreterStub   = 0xFC,
     VMFunction        = 0xFD,
     LazyLink          = 0xFE,
@@ -823,65 +823,59 @@ struct IonDOMMethodExitFrameLayoutTraits {
 
 // Cannot inherit implementation since we need to extend the top of
 // ExitFrameLayout.
-class LazyLinkExitFrameLayout
+class CalledFromJitExitFrameLayout
 {
   protected: // silence clang warning about unused private fields
     ExitFooterFrame footer_;
     JitFrameLayout exit_;
 
+  public:
+    static inline size_t Size() {
+        return sizeof(CalledFromJitExitFrameLayout);
+    }
+    inline JitFrameLayout* jsFrame() {
+        return &exit_;
+    }
+    static size_t offsetOfExitFrame() {
+        return offsetof(CalledFromJitExitFrameLayout, exit_);
+    }
+};
+
+class LazyLinkExitFrameLayout : public CalledFromJitExitFrameLayout
+{
   public:
     static ExitFrameType Type() { return ExitFrameType::LazyLink; }
-
-    static inline size_t Size() {
-        return sizeof(LazyLinkExitFrameLayout);
-    }
-
-    inline JitFrameLayout* jsFrame() {
-        return &exit_;
-    }
-    static size_t offsetOfExitFrame() {
-        return offsetof(LazyLinkExitFrameLayout, exit_);
-    }
 };
 
-template <>
-inline LazyLinkExitFrameLayout*
-ExitFrameLayout::as<LazyLinkExitFrameLayout>()
+class InterpreterStubExitFrameLayout : public CalledFromJitExitFrameLayout
 {
-    MOZ_ASSERT(is<LazyLinkExitFrameLayout>());
-    uint8_t* sp = reinterpret_cast<uint8_t*>(this);
-    sp -= LazyLinkExitFrameLayout::offsetOfExitFrame();
-    return reinterpret_cast<LazyLinkExitFrameLayout*>(sp);
-}
-
-class InterpreterStubExitFrameLayout
-{
-  protected: // silence clang warning about unused private fields
-    ExitFooterFrame footer_;
-    JitFrameLayout exit_;
-
   public:
     static ExitFrameType Type() { return ExitFrameType::InterpreterStub; }
-
-    static inline size_t Size() {
-        return sizeof(InterpreterStubExitFrameLayout);
-    }
-    inline JitFrameLayout* jsFrame() {
-        return &exit_;
-    }
-    static size_t offsetOfExitFrame() {
-        return offsetof(InterpreterStubExitFrameLayout, exit_);
-    }
 };
 
-template <>
-inline InterpreterStubExitFrameLayout*
-ExitFrameLayout::as<InterpreterStubExitFrameLayout>()
+class WasmExitFrameLayout : CalledFromJitExitFrameLayout
 {
-    MOZ_ASSERT(is<InterpreterStubExitFrameLayout>());
+  public:
+    static ExitFrameType Type() { return ExitFrameType::WasmJitEntry; }
+};
+
+template<>
+inline bool
+ExitFrameLayout::is<CalledFromJitExitFrameLayout>()
+{
+    return is<InterpreterStubExitFrameLayout>() ||
+           is<LazyLinkExitFrameLayout>() ||
+           is<WasmExitFrameLayout>();
+}
+
+template <>
+inline CalledFromJitExitFrameLayout*
+ExitFrameLayout::as<CalledFromJitExitFrameLayout>()
+{
+    MOZ_ASSERT(is<CalledFromJitExitFrameLayout>());
     uint8_t* sp = reinterpret_cast<uint8_t*>(this);
-    sp -= InterpreterStubExitFrameLayout::offsetOfExitFrame();
-    return reinterpret_cast<InterpreterStubExitFrameLayout*>(sp);
+    sp -= CalledFromJitExitFrameLayout::offsetOfExitFrame();
+    return reinterpret_cast<CalledFromJitExitFrameLayout*>(sp);
 }
 
 class ICStub;

@@ -21,22 +21,17 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "jsnum.h"
-#include "jsprf.h"
 
 #include "builtin/TypedObject.h"
 #include "jit/AtomicOperations.h"
 #include "jit/InlinableNatives.h"
 #include "js/Value.h"
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 
-using mozilla::ArrayLength;
-using mozilla::IsFinite;
 using mozilla::IsNaN;
-using mozilla::FloorLog2;
-using mozilla::NumberIsInt32;
 using mozilla::EnableIf;
 using mozilla::IsIntegral;
 using mozilla::IsFloatingPoint;
@@ -755,7 +750,15 @@ struct Abs {
 template<typename T>
 struct Neg {
     using MaybeUnsignedT = typename detail::MaybeMakeUnsigned<T>::Type;
-    static T apply(T x) { return MaybeUnsignedT(-1) * MaybeUnsignedT(x); }
+    static T apply(T x) {
+        // Prepend |1U| to force integral promotion through *unsigned* types.
+        // Otherwise when |T = uint16_t| and |int| is 32-bit, we could have
+        // |uint16_t(-1) * uint16_t(65535)| which would really be
+        // |int(65535) * int(65535)|, but as |4294836225 > 2147483647| would
+        // perform signed integer overflow.
+        // https://stackoverflow.com/questions/24795651/whats-the-best-c-way-to-multiply-unsigned-integers-modularly-safely
+        return static_cast<MaybeUnsignedT>(1U * MaybeUnsignedT(-1) * MaybeUnsignedT(x));
+    }
 };
 template<typename T>
 struct Not {

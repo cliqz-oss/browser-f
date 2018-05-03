@@ -125,6 +125,8 @@ public:
                                                nsACString &, int32_t &);
   MOZ_MUST_USE nsresult ConvertPushHeaders(Http2Decompressor *, nsACString &,
                                            nsACString &);
+  MOZ_MUST_USE nsresult ConvertResponseTrailers(Http2Decompressor *,
+                                                nsACString &);
 
   bool AllowFlowControlledWrite();
   void UpdateServerReceiveWindow(int32_t delta);
@@ -162,11 +164,11 @@ public:
   Http2Session *Session() { return mSession; }
 
   static MOZ_MUST_USE nsresult MakeOriginURL(const nsACString &origin,
-                                             RefPtr<nsStandardURL> &url);
+                                             nsCOMPtr<nsIURI> &url);
 
   static MOZ_MUST_USE nsresult MakeOriginURL(const nsACString &scheme,
                                              const nsACString &origin,
-                                             RefPtr<nsStandardURL> &url);
+                                             nsCOMPtr<nsIURI> &url);
 
   // Mirrors nsAHttpTransaction
   bool Do0RTT();

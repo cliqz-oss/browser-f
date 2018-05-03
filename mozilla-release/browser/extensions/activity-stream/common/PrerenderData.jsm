@@ -51,12 +51,14 @@ this.PrerenderData = new _PrerenderData({
     "migrationExpired": true,
     "showTopSites": true,
     "showSearch": true,
-    "topSitesCount": 6,
+    "topSitesRows": 1,
     "collapseTopSites": false,
     "section.highlights.collapsed": false,
     "section.topstories.collapsed": false,
     "feeds.section.topstories": true,
-    "feeds.section.highlights": true
+    "feeds.section.highlights": true,
+    "enableWideLayout": true,
+    "sectionOrder": "topsites,topstories,highlights"
   },
   // Prefs listed as invalidating will prevent the prerendered version
   // of AS from being used if their value is something other than what is listed
@@ -67,10 +69,12 @@ this.PrerenderData = new _PrerenderData({
   validation: [
     "showTopSites",
     "showSearch",
-    "topSitesCount",
+    "topSitesRows",
     "collapseTopSites",
     "section.highlights.collapsed",
     "section.topstories.collapsed",
+    "enableWideLayout",
+    "sectionOrder",
     // This means if either of these are set to their default values,
     // prerendering can be used.
     {oneOf: ["feeds.section.topstories", "feeds.section.highlights"]}
@@ -94,4 +98,4 @@ this.PrerenderData = new _PrerenderData({
 });
 
 this._PrerenderData = _PrerenderData;
-this.EXPORTED_SYMBOLS = ["PrerenderData", "_PrerenderData"];
+const EXPORTED_SYMBOLS = ["PrerenderData", "_PrerenderData"];

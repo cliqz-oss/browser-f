@@ -12,18 +12,18 @@
 #include "nsIXPConnect.h"
 #include "nsIMutableArray.h"
 #include "nsVariant.h"
-#include "nsIDOMBeforeUnloadEvent.h"
 #include "nsGkAtoms.h"
 #include "xpcpublic.h"
 #include "nsJSEnvironment.h"
 #include "nsDOMJSUtils.h"
-#include "WorkerPrivate.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/JSEventHandler.h"
 #include "mozilla/Likely.h"
+#include "mozilla/dom/BeforeUnloadEvent.h"
 #include "mozilla/dom/ErrorEvent.h"
+#include "mozilla/dom/WorkerPrivate.h"
 
 namespace mozilla {
 
@@ -126,7 +126,7 @@ JSEventHandler::HandleEvent(nsIDOMEvent* aEvent)
       nsContentUtils::ObjectPrincipal(
         GetTypedEventHandler().Ptr()->CallbackPreserveColor()) ==
         nsContentUtils::GetSystemPrincipal() :
-      mozilla::dom::workers::IsCurrentThreadRunningChromeWorker();
+      mozilla::dom::IsCurrentThreadRunningChromeWorker();
 
   if (mTypedHandler.Type() == TypedEventHandler::eOnError) {
     MOZ_ASSERT_IF(mEventName, mEventName == nsGkAtoms::onerror);
@@ -188,7 +188,7 @@ JSEventHandler::HandleEvent(nsIDOMEvent* aEvent)
       return rv.StealNSResult();
     }
 
-    nsCOMPtr<nsIDOMBeforeUnloadEvent> beforeUnload = do_QueryInterface(aEvent);
+    BeforeUnloadEvent* beforeUnload = event->AsBeforeUnloadEvent();
     NS_ENSURE_STATE(beforeUnload);
 
     if (!DOMStringIsNull(retval)) {

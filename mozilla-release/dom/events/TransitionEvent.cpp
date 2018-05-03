@@ -26,13 +26,6 @@ TransitionEvent::TransitionEvent(EventTarget* aOwner,
   }
 }
 
-NS_INTERFACE_MAP_BEGIN(TransitionEvent)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMTransitionEvent)
-NS_INTERFACE_MAP_END_INHERITING(Event)
-
-NS_IMPL_ADDREF_INHERITED(TransitionEvent, Event)
-NS_IMPL_RELEASE_INHERITED(TransitionEvent, Event)
-
 // static
 already_AddRefed<TransitionEvent>
 TransitionEvent::Constructor(const GlobalObject& aGlobal,
@@ -56,18 +49,10 @@ TransitionEvent::Constructor(const GlobalObject& aGlobal,
   return e.forget();
 }
 
-NS_IMETHODIMP
-TransitionEvent::GetPropertyName(nsAString& aPropertyName)
+void
+TransitionEvent::GetPropertyName(nsAString& aPropertyName) const
 {
   aPropertyName = mEvent->AsTransitionEvent()->mPropertyName;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TransitionEvent::GetElapsedTime(float* aElapsedTime)
-{
-  *aElapsedTime = ElapsedTime();
-  return NS_OK;
 }
 
 float
@@ -76,11 +61,10 @@ TransitionEvent::ElapsedTime()
   return mEvent->AsTransitionEvent()->mElapsedTime;
 }
 
-NS_IMETHODIMP
-TransitionEvent::GetPseudoElement(nsAString& aPseudoElement)
+void
+TransitionEvent::GetPseudoElement(nsAString& aPseudoElement) const
 {
   aPseudoElement = mEvent->AsTransitionEvent()->mPseudoElement;
-  return NS_OK;
 }
 
 } // namespace dom

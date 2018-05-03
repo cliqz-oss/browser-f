@@ -11,15 +11,15 @@
 #include "jsboolinlines.h"
 
 #include "jsapi.h"
-#include "jsatom.h"
-#include "jscntxt.h"
-#include "jsobj.h"
 #include "jstypes.h"
 
 #include "jit/InlinableNatives.h"
+#include "util/StringBuffer.h"
 #include "vm/GlobalObject.h"
+#include "vm/JSAtom.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/ProxyObject.h"
-#include "vm/StringBuffer.h"
 
 #include "vm/BooleanObject-inl.h"
 
@@ -36,7 +36,6 @@ IsBoolean(HandleValue v)
     return v.isBoolean() || (v.isObject() && v.toObject().is<BooleanObject>());
 }
 
-#if JS_HAS_TOSOURCE
 MOZ_ALWAYS_INLINE bool
 bool_toSource_impl(JSContext* cx, const CallArgs& args)
 {
@@ -62,7 +61,6 @@ bool_toSource(JSContext* cx, unsigned argc, Value* vp)
     CallArgs args = CallArgsFromVp(argc, vp);
     return CallNonGenericMethod<IsBoolean, bool_toSource_impl>(cx, args);
 }
-#endif
 
 MOZ_ALWAYS_INLINE bool
 bool_toString_impl(JSContext* cx, const CallArgs& args)
@@ -101,9 +99,7 @@ bool_valueOf(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static const JSFunctionSpec boolean_methods[] = {
-#if JS_HAS_TOSOURCE
     JS_FN(js_toSource_str,  bool_toSource,  0, 0),
-#endif
     JS_FN(js_toString_str,  bool_toString,  0, 0),
     JS_FN(js_valueOf_str,   bool_valueOf,   0, 0),
     JS_FS_END

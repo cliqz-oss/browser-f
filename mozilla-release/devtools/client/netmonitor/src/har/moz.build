@@ -4,9 +4,11 @@
 
 DevToolsModules(
     'har-automation.js',
+    'har-builder-utils.js',
     'har-builder.js',
     'har-collector.js',
     'har-exporter.js',
+    'har-importer.js',
     'har-utils.js',
     'toolbox-overlay.js',
 )

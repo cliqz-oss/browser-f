@@ -15,7 +15,7 @@ var gNeedReset;
 var gSecHistogram;
 var gNsISecTel;
 
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 function initExceptionDialog() {
   gNeedReset = false;
@@ -23,7 +23,7 @@ function initExceptionDialog() {
   gBundleBrand = document.getElementById("brand_bundle");
   gPKIBundle = document.getElementById("pippki_bundle");
   gSecHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
-  gNsISecTel = Components.interfaces.nsISecurityUITelemetry;
+  gNsISecTel = Ci.nsISecurityUITelemetry;
 
   var brandName = gBundleBrand.getString("brandShortName");
   setText("warningText", gPKIBundle.getFormattedString("addExceptionBrandedWarning2", [brandName]));
@@ -59,6 +59,7 @@ function initExceptionDialog() {
     // Set out parameter to false by default
     args[0].exceptionAdded = false;
   }
+  window.sizeToContent();
 }
 
 /**
@@ -127,15 +128,16 @@ function getURI() {
     return null;
   }
 
+  let mutator = uri.mutate();
   if (uri.scheme == "http") {
-    uri.scheme = "https";
+    mutator.setScheme("https");
   }
 
   if (uri.port == -1) {
-    uri.port = 443;
+    mutator.setPort(443);
   }
 
-  return uri;
+  return mutator.finalize();
 }
 
 function resetDialog() {
@@ -149,6 +151,7 @@ function resetDialog() {
   setText("status2LongDescription", "");
   setText("status3Description", "");
   setText("status3LongDescription", "");
+  window.sizeToContent();
 }
 
 /**
@@ -274,7 +277,6 @@ function updateCertStatus() {
   }
 
   window.sizeToContent();
-
   gNeedReset = true;
 }
 
@@ -296,8 +298,8 @@ function addException() {
     return;
   }
 
-  var overrideService = Components.classes["@mozilla.org/security/certoverride;1"]
-                                  .getService(Components.interfaces.nsICertOverrideService);
+  var overrideService = Cc["@mozilla.org/security/certoverride;1"]
+                          .getService(Ci.nsICertOverrideService);
   var flags = 0;
   let confirmBucketId = gNsISecTel.WARNING_BAD_CERT_TOP_CONFIRM_ADD_EXCEPTION_BASE;
   if (gSSLStatus.isUntrusted) {

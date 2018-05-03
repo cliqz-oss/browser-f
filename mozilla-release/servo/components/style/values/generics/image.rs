@@ -7,11 +7,11 @@
 //! [images]: https://drafts.csswg.org/css-images/#image-values
 
 use Atom;
-use cssparser::serialize_identifier;
 use custom_properties;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
+use values::serialize_atom_identifier;
 
 /// An [image].
 ///
@@ -42,10 +42,8 @@ pub struct Gradient<LineDirection, Length, LengthOrPercentage, Position, Color, 
     /// The color stops and interpolation hints.
     pub items: Vec<GradientItem<Color, LengthOrPercentage>>,
     /// True if this is a repeating gradient.
-    #[compute(clone)]
     pub repeating: bool,
     /// Compatibility mode.
-    #[compute(clone)]
     pub compat_mode: CompatMode,
 }
 
@@ -97,15 +95,18 @@ pub enum Ellipse<LengthOrPercentage> {
 }
 
 /// <https://drafts.csswg.org/css-images/#typedef-extent-keyword>
-define_css_keyword_enum!(ShapeExtent:
-    "closest-side" => ClosestSide,
-    "farthest-side" => FarthestSide,
-    "closest-corner" => ClosestCorner,
-    "farthest-corner" => FarthestCorner,
-    "contain" => Contain,
-    "cover" => Cover
-);
-add_impls_for_keyword_enum!(ShapeExtent);
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum ShapeExtent {
+    ClosestSide,
+    FarthestSide,
+    ClosestCorner,
+    FarthestCorner,
+    Contain,
+    Cover,
+}
 
 /// A gradient item.
 /// <https://drafts.csswg.org/css-images-4/#color-stop-syntax>
@@ -129,8 +130,8 @@ pub struct ColorStop<Color, LengthOrPercentage> {
 
 /// Specified values for a paint worklet.
 /// <https://drafts.css-houdini.org/css-paint-api/>
-#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(Clone, Debug, PartialEq, ToComputedValue)]
 pub struct PaintWorklet {
     /// The name the worklet was registered with.
     pub name: Atom,
@@ -140,15 +141,13 @@ pub struct PaintWorklet {
     pub arguments: Vec<Arc<custom_properties::SpecifiedValue>>,
 }
 
-trivial_to_computed_value!(PaintWorklet);
-
 impl ToCss for PaintWorklet {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
     {
         dest.write_str("paint(")?;
-        serialize_identifier(&*self.name.to_string(), dest)?;
+        serialize_atom_identifier(&self.name, dest)?;
         for argument in &self.arguments {
             dest.write_str(", ")?;
             argument.to_css(dest)?;
@@ -197,7 +196,7 @@ impl<G, R, U> ToCss for Image<G, R, U>
             Image::PaintWorklet(ref paint_worklet) => paint_worklet.to_css(dest),
             Image::Element(ref selector) => {
                 dest.write_str("-moz-element(#")?;
-                serialize_identifier(&selector.to_string(), dest)?;
+                serialize_atom_identifier(selector, dest)?;
                 dest.write_str(")")
             },
         }

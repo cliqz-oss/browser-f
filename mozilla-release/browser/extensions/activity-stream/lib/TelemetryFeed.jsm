@@ -5,17 +5,18 @@
 
 "use strict";
 
-const {interfaces: Ci, utils: Cu} = Components;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-const {actionTypes: at, actionUtils: au} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {actionTypes: at, actionUtils: au} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "perfService",
+ChromeUtils.defineModuleGetter(this, "perfService",
   "resource://activity-stream/common/PerfService.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PingCentre",
+ChromeUtils.defineModuleGetter(this, "PingCentre",
   "resource:///modules/PingCentre.jsm");
+ChromeUtils.defineModuleGetter(this, "UTEventReporting",
+  "resource://activity-stream/lib/UTEventReporting.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gUUIDGenerator",
   "@mozilla.org/uuid-generator;1",
@@ -36,6 +37,7 @@ const USER_PREFS_ENCODING = {
 
 const PREF_IMPRESSION_ID = "impressionId";
 const TELEMETRY_PREF = "telemetry";
+const EVENTS_TELEMETRY_PREF = "telemetry.ut.events";
 
 this.TelemetryFeed = class TelemetryFeed {
   constructor(options) {
@@ -43,9 +45,12 @@ this.TelemetryFeed = class TelemetryFeed {
     this._prefs = new Prefs();
     this._impressionId = this.getOrCreateImpressionId();
     this.telemetryEnabled = this._prefs.get(TELEMETRY_PREF);
+    this.eventTelemetryEnabled = this._prefs.get(EVENTS_TELEMETRY_PREF);
     this._aboutHomeSeen = false;
     this._onTelemetryPrefChange = this._onTelemetryPrefChange.bind(this);
     this._prefs.observe(TELEMETRY_PREF, this._onTelemetryPrefChange);
+    this._onEventsTelemetryPrefChange = this._onEventsTelemetryPrefChange.bind(this);
+    this._prefs.observe(EVENTS_TELEMETRY_PREF, this._onEventsTelemetryPrefChange);
   }
 
   init() {
@@ -104,6 +109,10 @@ this.TelemetryFeed = class TelemetryFeed {
     this.telemetryEnabled = prefVal;
   }
 
+  _onEventsTelemetryPrefChange(prefVal) {
+    this.eventTelemetryEnabled = prefVal;
+  }
+
   /**
    * Lazily initialize PingCentre to send pings
    */
@@ -116,6 +125,14 @@ this.TelemetryFeed = class TelemetryFeed {
         })
       });
     return this.pingCentre;
+  }
+
+  /**
+   * Lazily initialize UTEventReporting to send pings
+   */
+  get utEvents() {
+    Object.defineProperty(this, "utEvents", {value: new UTEventReporting()});
+    return this.utEvents;
   }
 
   /**
@@ -218,7 +235,9 @@ this.TelemetryFeed = class TelemetryFeed {
       session.session_duration = Math.round(perfService.absNow() - session.perf.visibility_event_rcvd_ts);
     }
 
-    this.sendEvent(this.createSessionEndEvent(session));
+    let sessionEndEvent = this.createSessionEndEvent(session);
+    this.sendEvent(sessionEndEvent);
+    this.sendUTEvent(sessionEndEvent, this.utEvents.sendSessionEndEvent);
     this.sessions.delete(portID);
   }
 
@@ -333,10 +352,16 @@ this.TelemetryFeed = class TelemetryFeed {
     );
   }
 
-  async sendEvent(event_object) {
+  sendEvent(event_object) {
     if (this.telemetryEnabled) {
       this.pingCentre.sendPing(event_object,
       {filter: ACTIVITY_STREAM_ID});
+    }
+  }
+
+  sendUTEvent(event_object, eventFunction) {
+    if (this.telemetryEnabled && this.eventTelemetryEnabled) {
+      eventFunction(event_object);
     }
   }
 
@@ -345,7 +370,9 @@ this.TelemetryFeed = class TelemetryFeed {
   }
 
   handleUserEvent(action) {
-    this.sendEvent(this.createUserEvent(action));
+    let userEvent = this.createUserEvent(action);
+    this.sendEvent(userEvent);
+    this.sendUTEvent(userEvent, this.utEvents.sendUserEvent);
   }
 
   handleUndesiredEvent(action) {
@@ -431,9 +458,13 @@ this.TelemetryFeed = class TelemetryFeed {
     if (Object.prototype.hasOwnProperty.call(this, "pingCentre")) {
       this.pingCentre.uninit();
     }
+    if (Object.prototype.hasOwnProperty.call(this, "utEvents")) {
+      this.utEvents.uninit();
+    }
 
     try {
       this._prefs.ignore(TELEMETRY_PREF, this._onTelemetryPrefChange);
+      this._prefs.ignore(EVENTS_TELEMETRY_PREF, this._onEventsTelemetryPrefChange);
     } catch (e) {
       Cu.reportError(e);
     }
@@ -441,9 +472,10 @@ this.TelemetryFeed = class TelemetryFeed {
   }
 };
 
-this.EXPORTED_SYMBOLS = [
+const EXPORTED_SYMBOLS = [
   "TelemetryFeed",
   "USER_PREFS_ENCODING",
   "PREF_IMPRESSION_ID",
-  "TELEMETRY_PREF"
+  "TELEMETRY_PREF",
+  "EVENTS_TELEMETRY_PREF"
 ];

@@ -5,27 +5,27 @@
 
 /* global ADDON_ENABLE:false, ADDON_DISABLE:false, APP_SHUTDOWN: false */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, manager: Cm} = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AboutPocket",
-                                  "chrome://pocket/content/AboutPocket.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManagerPrivate",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PageActions",
-                                  "resource:///modules/PageActions.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Pocket",
-                                  "chrome://pocket/content/Pocket.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
-                                  "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "AboutPocket",
+                               "chrome://pocket/content/AboutPocket.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManagerPrivate",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PageActions",
+                               "resource:///modules/PageActions.jsm");
+ChromeUtils.defineModuleGetter(this, "Pocket",
+                               "chrome://pocket/content/Pocket.jsm");
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
+                               "resource://gre/modules/ReaderMode.jsm");
+ChromeUtils.defineModuleGetter(this, "RecentWindow",
+                               "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyGetter(this, "gPocketBundle", function() {
   return Services.strings.createBundle("chrome://pocket/locale/pocket.properties");
 });
@@ -135,9 +135,6 @@ var PocketPageAction = {
             let {BrowserPageActions} = wrapper.ownerGlobal;
             BrowserPageActions.doCommandForAction(this, event, wrapper);
           });
-        },
-        onPlacedInPanel(panelNode, urlbarNode) {
-          PocketOverlay.onWindowOpened(panelNode.ownerGlobal);
         },
         onIframeShowing(iframe, panel) {
           Pocket.onShownInPhotonPageActionPanel(panel, iframe);
@@ -402,6 +399,7 @@ var PocketOverlay = {
     this._cachedSheet = styleSheetService.preloadSheet(gPocketStyleURI,
                                                        this._sheetType);
     Services.ppmm.loadProcessScript(PROCESS_SCRIPT, true);
+    Services.obs.addObserver(this, "browser-delayed-startup-finished");
     PocketReader.startup();
     PocketPageAction.init();
     PocketContextMenu.init();
@@ -413,6 +411,7 @@ var PocketOverlay = {
     let ppmm = Cc["@mozilla.org/parentprocessmessagemanager;1"]
                  .getService(Ci.nsIMessageBroadcaster);
     ppmm.broadcastAsyncMessage("PocketShuttingDown");
+    Services.obs.removeObserver(this, "browser-delayed-startup-finished");
     // Although the ppmm loads the scripts into the chrome process as well,
     // we need to manually unregister here anyway to ensure these aren't part
     // of the chrome process and avoid errors.
@@ -422,8 +421,7 @@ var PocketOverlay = {
     PocketPageAction.shutdown();
 
     for (let window of browserWindows()) {
-      for (let id of ["panelMenu_pocket", "panelMenu_pocketSeparator",
-                      "appMenu-library-pocket-button"]) {
+      for (let id of ["appMenu-library-pocket-button"]) {
         let element = window.document.getElementById(id) ||
                       window.gNavToolbox.palette.querySelector("#" + id);
         if (element)
@@ -440,6 +438,11 @@ var PocketOverlay = {
     PocketContextMenu.shutdown();
     PocketReader.shutdown();
   },
+  observe(subject, topic, detail) {
+    if (topic == "browser-delayed-startup-finished") {
+      this.onWindowOpened(subject);
+    }
+  },
   onWindowOpened(window) {
     if (window.hasOwnProperty("pktUI"))
       return;
@@ -448,8 +451,8 @@ var PocketOverlay = {
     this.updateWindow(window);
   },
   setWindowScripts(window) {
-    XPCOMUtils.defineLazyModuleGetter(window, "Pocket",
-                                      "chrome://pocket/content/Pocket.jsm");
+    ChromeUtils.defineModuleGetter(window, "Pocket",
+                                   "chrome://pocket/content/Pocket.jsm");
     // Can't use XPCOMUtils for these because the scripts try to define the variables
     // on window, and so the defineProperty inside defineLazyGetter fails.
     Object.defineProperty(window, "pktApi", pktUIGetter("pktApi", window));
@@ -462,29 +465,8 @@ var PocketOverlay = {
     let document = window.document;
     let hidden = !isPocketEnabled();
 
-    // add to PanelUI-bookmarks
-    let sib = document.getElementById("panelMenuBookmarkThisPage");
-    if (sib && !document.getElementById("panelMenu_pocket")) {
-      let menu = createElementWithAttrs(document, "toolbarbutton", {
-        "id": "panelMenu_pocket",
-        "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
-        "class": "subviewbutton cui-withicon",
-        "oncommand": "Pocket.openList(event)",
-        "hidden": hidden
-      });
-      let sep = createElementWithAttrs(document, "toolbarseparator", {
-        "id": "panelMenu_pocketSeparator",
-        "hidden": hidden
-      });
-      // nextSibling is no-id toolbarseparator
-      // insert separator first then button
-      sib = sib.nextSibling;
-      sib.parentNode.insertBefore(sep, sib);
-      sib.parentNode.insertBefore(menu, sib);
-    }
-
     // Add to library panel
-    sib = document.getElementById("appMenu-library-history-button");
+    let sib = document.getElementById("appMenu-library-history-button");
     if (sib && !document.getElementById("appMenu-library-pocket-button")) {
       let menu = createElementWithAttrs(document, "toolbarbutton", {
         "id": "appMenu-library-pocket-button",

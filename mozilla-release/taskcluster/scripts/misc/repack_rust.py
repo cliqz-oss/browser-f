@@ -231,6 +231,14 @@ def fetch_std(manifest, targets):
     return stds
 
 
+def fetch_optional(manifest, pkg, host):
+    try:
+        return fetch_package(manifest, pkg, host)
+    except KeyError:
+        # The package is not available, oh well!
+        return None
+
+
 def tar_for_host(host):
     if 'linux' in host:
         tar_options = 'cJf'
@@ -274,6 +282,7 @@ def repack(host, targets, channel='stable', cargo_channel=None):
     rustc = fetch_package(manifest, 'rustc', host)
     cargo = fetch_package(cargo_manifest, 'cargo', host)
     stds = fetch_std(manifest, targets)
+    rustfmt = fetch_optional(manifest, 'rustfmt-preview', host)
 
     log('Installing packages...')
     install_dir = 'rustc'
@@ -285,6 +294,8 @@ def repack(host, targets, channel='stable', cargo_channel=None):
             raise
     install(os.path.basename(rustc['url']), install_dir)
     install(os.path.basename(cargo['url']), install_dir)
+    if rustfmt:
+        install(os.path.basename(rustfmt['url']), install_dir)
     for std in stds:
         install(os.path.basename(std['url']), install_dir)
         pass
@@ -373,16 +384,29 @@ def expand_platform(name):
     return platforms.get(name, name)
 
 
+def validate_channel(channel):
+    '''Require a specific release version.
+
+    Packaging from meta-channels, like `stable`, `beta`, or `nightly`
+    doesn't give repeatable output. Reject such channels.'''
+    channel_prefixes = ('stable', 'beta', 'nightly')
+    if any([channel.startswith(c) for c in channel_prefixes]):
+        if '-' not in channel:
+            raise ValueError('Generic channel "%s" specified!'
+                             '\nPlease give a specific release version'
+                             ' like "1.24.0" or "beta-2018-02-20".' % channel)
+
+
 def args():
     '''Read command line arguments and return options.'''
     parser = argparse.ArgumentParser()
     parser.add_argument('--channel',
                         help='Release channel to use:'
-                             ' stable, beta, or nightly',
-                        default='stable')
+                             ' 1.xx.y, beta-yyyy-mm-dd,'
+                             ' or nightly-yyyy-mm-dd.',
+                             required=True)
     parser.add_argument('--cargo-channel',
-                        help='Release channel to use for cargo:'
-                             ' stable, beta, or nightly.'
+                        help='Release channel version to use for cargo.'
                              ' Defaults to the same as --channel.')
     parser.add_argument('--host',
                         help='Host platform for the toolchain executable:'
@@ -395,6 +419,8 @@ def args():
     args = parser.parse_args()
     if not args.cargo_channel:
         args.cargo_channel = args.channel
+    validate_channel(args.channel)
+    validate_channel(args.cargo_channel)
     if not args.host:
         args.host = 'linux64'
     args.host = expand_platform(args.host)

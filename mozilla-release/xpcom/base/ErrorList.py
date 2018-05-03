@@ -1093,6 +1093,7 @@ with modules["DOM_MEDIA"]:
 # 42: NS_ERROR_MODULE_URL_CLASSIFIER
 # =======================================================================
 with modules["URL_CLASSIFIER"]:
+    # Errors during list updates
     errors["NS_ERROR_UC_UPDATE_UNKNOWN"] = FAILURE(1)
     errors["NS_ERROR_UC_UPDATE_DUPLICATE_PREFIX"] = FAILURE(2)
     errors["NS_ERROR_UC_UPDATE_INFINITE_LOOP"] = FAILURE(3)
@@ -1103,7 +1104,11 @@ with modules["URL_CLASSIFIER"]:
     errors["NS_ERROR_UC_UPDATE_TABLE_NOT_FOUND"] = FAILURE(8)
     errors["NS_ERROR_UC_UPDATE_BUILD_PREFIX_FAILURE"] = FAILURE(9)
     errors["NS_ERROR_UC_UPDATE_FAIL_TO_WRITE_DISK"] = FAILURE(10)
-    errors["NS_ERROR_UC_UPDATE_PROTOCOL_PARSER_ERROR"] = FAILURE(11)
+
+    # Specific errors while parsing pver2/pver4 responses
+    errors["NS_ERROR_UC_PARSER_MISSING_PARAM"] = FAILURE(12)
+    errors["NS_ERROR_UC_PARSER_DECODE_FAILURE"] = FAILURE(13)
+    errors["NS_ERROR_UC_PARSER_UNKNOWN_THREAT"] = FAILURE(14)
 
 
 # =======================================================================
@@ -1157,6 +1162,10 @@ with modules["GENERAL"]:
 
     # see nsTextEquivUtils
     errors["NS_OK_NO_NAME_CLAUSE_HANDLED"] = SUCCESS(34)
+
+    # Error code used to indicate that functionality has been blocked by the
+    # Policy Manager
+    errors["NS_ERROR_BLOCKED_BY_POLICY"] = FAILURE(3)
 
 
 # ============================================================================

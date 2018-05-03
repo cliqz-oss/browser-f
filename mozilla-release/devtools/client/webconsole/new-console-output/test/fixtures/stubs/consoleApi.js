@@ -13,7 +13,7 @@ const { ConsoleMessage } =
 
 let stubPreparedMessages = new Map();
 let stubPackets = new Map();
-stubPreparedMessages.set("console.log('foobar', 'test')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('foobar', 'test')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -26,7 +26,7 @@ stubPreparedMessages.set("console.log('foobar', 'test')", new ConsoleMessage({
     "foobar",
     "test"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foobar\",\"test\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foobar\",\"test\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -37,10 +37,12 @@ stubPreparedMessages.set("console.log('foobar', 'test')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log(undefined)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log(undefined)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -54,7 +56,7 @@ stubPreparedMessages.set("console.log(undefined)", new ConsoleMessage({
       "type": "undefined"
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"undefined\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"undefined\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -65,10 +67,12 @@ stubPreparedMessages.set("console.log(undefined)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.warn('danger, will robinson!')", new ConsoleMessage({
+stubPreparedMessages.set(`console.warn('danger, will robinson!')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -80,7 +84,7 @@ stubPreparedMessages.set("console.warn('danger, will robinson!')", new ConsoleMe
   "parameters": [
     "danger, will robinson!"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":null,\"parameters\":[\"danger, will robinson!\"],\"source\":\"console-api\",\"type\":\"warn\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":null,\"parameters\":[\"danger, will robinson!\"],\"source\":\"console-api\",\"type\":\"warn\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -91,10 +95,12 @@ stubPreparedMessages.set("console.warn('danger, will robinson!')", new ConsoleMe
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log(NaN)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log(NaN)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -108,7 +114,7 @@ stubPreparedMessages.set("console.log(NaN)", new ConsoleMessage({
       "type": "NaN"
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"NaN\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"NaN\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -119,10 +125,12 @@ stubPreparedMessages.set("console.log(NaN)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log(null)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log(null)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -136,7 +144,7 @@ stubPreparedMessages.set("console.log(null)", new ConsoleMessage({
       "type": "null"
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"null\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"null\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -147,10 +155,12 @@ stubPreparedMessages.set("console.log(null)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('鼬')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('鼬')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -162,7 +172,7 @@ stubPreparedMessages.set("console.log('鼬')", new ConsoleMessage({
   "parameters": [
     "鼬"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"鼬\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"鼬\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -173,10 +183,12 @@ stubPreparedMessages.set("console.log('鼬')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.clear()", new ConsoleMessage({
+stubPreparedMessages.set(`console.clear()`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -188,7 +200,7 @@ stubPreparedMessages.set("console.clear()", new ConsoleMessage({
   "parameters": [
     "Console was cleared."
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"Console was cleared.\"],\"source\":\"console-api\",\"type\":\"clear\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"Console was cleared.\"],\"source\":\"console-api\",\"type\":\"clear\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -199,10 +211,12 @@ stubPreparedMessages.set("console.clear()", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.count('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -212,7 +226,7 @@ stubPreparedMessages.set("console.count('bar')", new ConsoleMessage({
   "level": "log",
   "messageText": "bar: 1",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"bar: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"bar: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -223,10 +237,12 @@ stubPreparedMessages.set("console.count('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.assert(false, {message: 'foobar'})", new ConsoleMessage({
+stubPreparedMessages.set(`console.assert(false, {message: 'foobar'})`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -261,7 +277,7 @@ stubPreparedMessages.set("console.assert(false, {message: 'foobar'})", new Conso
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj30\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":1,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"message\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"foobar\"}},\"ownSymbols\":[],\"ownPropertiesLength\":1,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"assert\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj30\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":1,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"message\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"foobar\"}},\"ownSymbols\":[],\"ownPropertiesLength\":1,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"assert\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": [
     {
       "columnNumber": 27,
@@ -279,10 +295,12 @@ stubPreparedMessages.set("console.assert(false, {message: 'foobar'})", new Conso
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('hello \nfrom \rthe \"string world!')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('hello \nfrom \rthe \"string world!')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -294,7 +312,7 @@ stubPreparedMessages.set("console.log('hello \nfrom \rthe \"string world!')", ne
   "parameters": [
     "hello \nfrom \rthe \"string world!"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"hello \\nfrom \\rthe \\\"string world!\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"hello \\nfrom \\rthe \\\"string world!\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -305,10 +323,12 @@ stubPreparedMessages.set("console.log('hello \nfrom \rthe \"string world!')", ne
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('úṇĩçödê țĕșť')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('úṇĩçödê țĕșť')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -320,7 +340,7 @@ stubPreparedMessages.set("console.log('úṇĩçödê țĕșť')", new ConsoleMe
   "parameters": [
     "úṇĩçödê țĕșť"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"úṇĩçödê țĕșť\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"úṇĩçödê țĕșť\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -331,10 +351,12 @@ stubPreparedMessages.set("console.log('úṇĩçödê țĕșť')", new ConsoleMe
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.dirxml(window)", new ConsoleMessage({
+stubPreparedMessages.set(`console.dirxml(window)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -358,7 +380,7 @@ stubPreparedMessages.set("console.dirxml(window)", new ConsoleMessage({
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj31\",\"class\":\"Window\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":830,\"preview\":{\"kind\":\"ObjectWithURL\",\"url\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\"}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj31\",\"class\":\"Window\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":830,\"preview\":{\"kind\":\"ObjectWithURL\",\"url\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\"}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -369,10 +391,12 @@ stubPreparedMessages.set("console.dirxml(window)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('myarray', ['red', 'green', 'blue'])", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('myarray', ['red', 'green', 'blue'])`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -402,7 +426,7 @@ stubPreparedMessages.set("console.log('myarray', ['red', 'green', 'blue'])", new
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myarray\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj32\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"red\",\"green\",\"blue\"]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myarray\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj32\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"red\",\"green\",\"blue\"]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -413,10 +437,12 @@ stubPreparedMessages.set("console.log('myarray', ['red', 'green', 'blue'])", new
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('myregex', /a.b.c/)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('myregex', /a.b.c/)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -438,7 +464,7 @@ stubPreparedMessages.set("console.log('myregex', /a.b.c/)", new ConsoleMessage({
       "displayString": "/a.b.c/"
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myregex\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj33\",\"class\":\"RegExp\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":1,\"displayString\":\"/a.b.c/\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myregex\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj33\",\"class\":\"RegExp\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":1,\"displayString\":\"/a.b.c/\"}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -449,10 +475,12 @@ stubPreparedMessages.set("console.log('myregex', /a.b.c/)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.table(['red', 'green', 'blue']);", new ConsoleMessage({
+stubPreparedMessages.set(`console.table(['red', 'green', 'blue']);`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -481,7 +509,7 @@ stubPreparedMessages.set("console.table(['red', 'green', 'blue']);", new Console
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj34\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"red\",\"green\",\"blue\"]}}],\"source\":\"console-api\",\"type\":\"table\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj34\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"red\",\"green\",\"blue\"]}}],\"source\":\"console-api\",\"type\":\"table\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -492,10 +520,12 @@ stubPreparedMessages.set("console.table(['red', 'green', 'blue']);", new Console
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('myobject', {red: 'redValue', green: 'greenValue', blue: 'blueValue'});", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('myobject', {red: 'redValue', green: 'greenValue', blue: 'blueValue'});`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -543,7 +573,7 @@ stubPreparedMessages.set("console.log('myobject', {red: 'redValue', green: 'gree
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myobject\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj35\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":3,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"red\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"redValue\"},\"green\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"greenValue\"},\"blue\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"blueValue\"}},\"ownSymbols\":[],\"ownPropertiesLength\":3,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myobject\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj35\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":3,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"red\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"redValue\"},\"green\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"greenValue\"},\"blue\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"blueValue\"}},\"ownSymbols\":[],\"ownPropertiesLength\":3,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -554,10 +584,12 @@ stubPreparedMessages.set("console.log('myobject', {red: 'redValue', green: 'gree
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.debug('debug message');", new ConsoleMessage({
+stubPreparedMessages.set(`console.debug('debug message');`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -569,7 +601,7 @@ stubPreparedMessages.set("console.debug('debug message');", new ConsoleMessage({
   "parameters": [
     "debug message"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"debug\",\"messageText\":null,\"parameters\":[\"debug message\"],\"source\":\"console-api\",\"type\":\"debug\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"debug\",\"messageText\":null,\"parameters\":[\"debug message\"],\"source\":\"console-api\",\"type\":\"debug\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -580,10 +612,12 @@ stubPreparedMessages.set("console.debug('debug message');", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.info('info message');", new ConsoleMessage({
+stubPreparedMessages.set(`console.info('info message');`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -595,7 +629,7 @@ stubPreparedMessages.set("console.info('info message');", new ConsoleMessage({
   "parameters": [
     "info message"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"info\",\"messageText\":null,\"parameters\":[\"info message\"],\"source\":\"console-api\",\"type\":\"info\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"info\",\"messageText\":null,\"parameters\":[\"info message\"],\"source\":\"console-api\",\"type\":\"info\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -606,10 +640,12 @@ stubPreparedMessages.set("console.info('info message');", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.error('error message');", new ConsoleMessage({
+stubPreparedMessages.set(`console.error('error message');`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -621,7 +657,7 @@ stubPreparedMessages.set("console.error('error message');", new ConsoleMessage({
   "parameters": [
     "error message"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":null,\"parameters\":[\"error message\"],\"source\":\"console-api\",\"type\":\"error\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":null,\"parameters\":[\"error message\"],\"source\":\"console-api\",\"type\":\"error\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": [
     {
       "columnNumber": 27,
@@ -639,10 +675,12 @@ stubPreparedMessages.set("console.error('error message');", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('mymap')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('mymap')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -677,7 +715,7 @@ stubPreparedMessages.set("console.log('mymap')", new ConsoleMessage({
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"mymap\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj36\",\"class\":\"Map\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":0,\"preview\":{\"kind\":\"MapLike\",\"size\":2,\"entries\":[[\"key1\",\"value1\"],[\"key2\",\"value2\"]]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"mymap\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj36\",\"class\":\"Map\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":0,\"preview\":{\"kind\":\"MapLike\",\"size\":2,\"entries\":[[\"key1\",\"value1\"],[\"key2\",\"value2\"]]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -688,10 +726,12 @@ stubPreparedMessages.set("console.log('mymap')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log('myset')", new ConsoleMessage({
+stubPreparedMessages.set(`console.log('myset')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -720,7 +760,7 @@ stubPreparedMessages.set("console.log('myset')", new ConsoleMessage({
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myset\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj37\",\"class\":\"Set\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":0,\"preview\":{\"kind\":\"ArrayLike\",\"length\":2,\"items\":[\"a\",\"b\"]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"myset\",{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj37\",\"class\":\"Set\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":0,\"preview\":{\"kind\":\"ArrayLike\",\"length\":2,\"items\":[\"a\",\"b\"]}}],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -731,10 +771,12 @@ stubPreparedMessages.set("console.log('myset')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.trace()", new ConsoleMessage({
+stubPreparedMessages.set(`console.trace()`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -744,7 +786,7 @@ stubPreparedMessages.set("console.trace()", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": [],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":3},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[],\"source\":\"console-api\",\"type\":\"trace\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":3},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[],\"source\":\"console-api\",\"type\":\"trace\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": [
     {
       "columnNumber": 3,
@@ -774,10 +816,12 @@ stubPreparedMessages.set("console.trace()", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.time('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.time('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -787,7 +831,7 @@ stubPreparedMessages.set("console.time('bar')", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"nullMessage\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"nullMessage\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -798,10 +842,12 @@ stubPreparedMessages.set("console.time('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("timerAlreadyExists", new ConsoleMessage({
+stubPreparedMessages.set(`timerAlreadyExists`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -811,7 +857,7 @@ stubPreparedMessages.set("timerAlreadyExists", new ConsoleMessage({
   "level": "warn",
   "messageText": "Timer “bar” already exists.",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":\"Timer “bar” already exists.\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"time\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":\"Timer “bar” already exists.\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"time\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -822,10 +868,12 @@ stubPreparedMessages.set("timerAlreadyExists", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.timeEnd('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.timeEnd('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -835,7 +883,7 @@ stubPreparedMessages.set("console.timeEnd('bar')", new ConsoleMessage({
   "level": "log",
   "messageText": "bar: 1.21ms",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":4,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"bar: 1.21ms\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"timeEnd\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":4,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"bar: 1.21ms\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"timeEnd\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -846,10 +894,12 @@ stubPreparedMessages.set("console.timeEnd('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("timerDoesntExist", new ConsoleMessage({
+stubPreparedMessages.set(`timerDoesntExist`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -859,7 +909,7 @@ stubPreparedMessages.set("timerDoesntExist", new ConsoleMessage({
   "level": "warn",
   "messageText": "Timer “bar” doesn’t exist.",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":\"Timer “bar” doesn’t exist.\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"timeEnd\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"warn\",\"messageText\":\"Timer “bar” doesn’t exist.\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"timeEnd\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -870,10 +920,12 @@ stubPreparedMessages.set("timerDoesntExist", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.table('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.table('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -885,7 +937,7 @@ stubPreparedMessages.set("console.table('bar')", new ConsoleMessage({
   "parameters": [
     "bar"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"bar\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"bar\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -896,10 +948,12 @@ stubPreparedMessages.set("console.table('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.table(['a', 'b', 'c'])", new ConsoleMessage({
+stubPreparedMessages.set(`console.table(['a', 'b', 'c'])`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -928,7 +982,7 @@ stubPreparedMessages.set("console.table(['a', 'b', 'c'])", new ConsoleMessage({
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj39\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"a\",\"b\",\"c\"]}}],\"source\":\"console-api\",\"type\":\"table\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj39\",\"class\":\"Array\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"ArrayLike\",\"length\":3,\"items\":[\"a\",\"b\",\"c\"]}}],\"source\":\"console-api\",\"type\":\"table\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -939,10 +993,12 @@ stubPreparedMessages.set("console.table(['a', 'b', 'c'])", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.group('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.group('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -954,7 +1010,7 @@ stubPreparedMessages.set("console.group('bar')", new ConsoleMessage({
   "parameters": [
     "bar"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"bar\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"bar\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -965,10 +1021,12 @@ stubPreparedMessages.set("console.group('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupEnd('bar')", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupEnd('bar')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -978,7 +1036,7 @@ stubPreparedMessages.set("console.groupEnd('bar')", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -989,10 +1047,12 @@ stubPreparedMessages.set("console.groupEnd('bar')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupCollapsed('foo')", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupCollapsed('foo')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1004,7 +1064,7 @@ stubPreparedMessages.set("console.groupCollapsed('foo')", new ConsoleMessage({
   "parameters": [
     "foo"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\"],\"source\":\"console-api\",\"type\":\"startGroupCollapsed\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\"],\"source\":\"console-api\",\"type\":\"startGroupCollapsed\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1015,10 +1075,12 @@ stubPreparedMessages.set("console.groupCollapsed('foo')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupEnd('foo')", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupEnd('foo')`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1028,7 +1090,7 @@ stubPreparedMessages.set("console.groupEnd('foo')", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1039,10 +1101,12 @@ stubPreparedMessages.set("console.groupEnd('foo')", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.group()", new ConsoleMessage({
+stubPreparedMessages.set(`console.group()`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1054,7 +1118,7 @@ stubPreparedMessages.set("console.group()", new ConsoleMessage({
   "parameters": [
     "<no group label>"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"<no group label>\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"<no group label>\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1065,10 +1129,12 @@ stubPreparedMessages.set("console.group()", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupEnd()", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupEnd()`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1078,7 +1144,7 @@ stubPreparedMessages.set("console.groupEnd()", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1089,10 +1155,12 @@ stubPreparedMessages.set("console.groupEnd()", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.log(%cfoobar)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log(%cfoobar)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1105,7 +1173,7 @@ stubPreparedMessages.set("console.log(%cfoobar)", new ConsoleMessage({
     "foo",
     "bar"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"bar\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[\"color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px\",\"color:red;background:url('http://example.com/test')\"]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"bar\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[\"color:blue; font-size:1.3em; background:url('http://example.com/test'); position:absolute; top:10px; \",\"color:red; line-height: 1.5; background:url('http://example.com/test')\"],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1115,14 +1183,50 @@ stubPreparedMessages.set("console.log(%cfoobar)", new ConsoleMessage({
   "groupId": null,
   "exceptionDocURL": null,
   "userProvidedStyles": [
-    "color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px",
-    "color:red;background:url('http://example.com/test')"
+    "color:blue; font-size:1.3em; background:url('http://example.com/test'); position:absolute; top:10px; ",
+    "color:red; line-height: 1.5; background:url('http://example.com/test')"
   ],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.group(%cfoo%cbar)", new ConsoleMessage({
+stubPreparedMessages.set(`console.log("%cHello%c|%cWorld")`, new ConsoleMessage({
+  "id": "1",
+  "allowRepeating": true,
+  "source": "console-api",
+  "timeStamp": 1518681614352,
+  "type": "log",
+  "helperType": null,
+  "level": "log",
+  "messageText": null,
+  "parameters": [
+    "Hello",
+    "|",
+    "World"
+  ],
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":3},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"Hello\",\"|\",\"World\"],\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[\"color:red\",\"\",\"color: blue\"],\"private\":false}",
+  "stacktrace": null,
+  "frame": {
+    "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
+    "line": 2,
+    "column": 3
+  },
+  "groupId": null,
+  "exceptionDocURL": null,
+  "userProvidedStyles": [
+    "color:red",
+    "",
+    "color: blue"
+  ],
+  "notes": null,
+  "indent": 0,
+  "prefix": "",
+  "private": false
+}));
+
+stubPreparedMessages.set(`console.group(%cfoo%cbar)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1135,7 +1239,7 @@ stubPreparedMessages.set("console.group(%cfoo%cbar)", new ConsoleMessage({
     "foo",
     "bar"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"bar\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[\"color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px\",\"color:red;background:url('http://example.com/test')\"]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"bar\"],\"source\":\"console-api\",\"type\":\"startGroup\",\"userProvidedStyles\":[\"color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px\",\"color:red;background:url('http://example.com/test')\"],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1149,10 +1253,12 @@ stubPreparedMessages.set("console.group(%cfoo%cbar)", new ConsoleMessage({
     "color:red;background:url('http://example.com/test')"
   ],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupEnd(%cfoo%cbar)", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupEnd(%cfoo%cbar)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1162,7 +1268,7 @@ stubPreparedMessages.set("console.groupEnd(%cfoo%cbar)", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1173,10 +1279,12 @@ stubPreparedMessages.set("console.groupEnd(%cfoo%cbar)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupCollapsed(%cfoo%cbaz)", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupCollapsed(%cfoo%cbaz)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1189,7 +1297,7 @@ stubPreparedMessages.set("console.groupCollapsed(%cfoo%cbaz)", new ConsoleMessag
     "foo",
     "baz"
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"baz\"],\"source\":\"console-api\",\"type\":\"startGroupCollapsed\",\"userProvidedStyles\":[\"color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px\",\"color:red;background:url('http://example.com/test')\"]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"foo\",\"baz\"],\"source\":\"console-api\",\"type\":\"startGroupCollapsed\",\"userProvidedStyles\":[\"color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px\",\"color:red;background:url('http://example.com/test')\"],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1203,10 +1311,12 @@ stubPreparedMessages.set("console.groupCollapsed(%cfoo%cbaz)", new ConsoleMessag
     "color:red;background:url('http://example.com/test')"
   ],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.groupEnd(%cfoo%cbaz)", new ConsoleMessage({
+stubPreparedMessages.set(`console.groupEnd(%cfoo%cbaz)`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1216,7 +1326,7 @@ stubPreparedMessages.set("console.groupEnd(%cfoo%cbaz)", new ConsoleMessage({
   "level": "log",
   "messageText": null,
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":1},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":null,\"source\":\"console-api\",\"type\":\"endGroup\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1227,10 +1337,12 @@ stubPreparedMessages.set("console.groupEnd(%cfoo%cbaz)", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.dir({C, M, Y, K})", new ConsoleMessage({
+stubPreparedMessages.set(`console.dir({C, M, Y, K})`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1242,7 +1354,7 @@ stubPreparedMessages.set("console.dir({C, M, Y, K})", new ConsoleMessage({
   "parameters": [
     {
       "type": "object",
-      "actor": "server1.conn0.child1/obj40",
+      "actor": "server1.conn0.child1/obj36",
       "class": "Object",
       "extensible": true,
       "frozen": false,
@@ -1283,7 +1395,7 @@ stubPreparedMessages.set("console.dir({C, M, Y, K})", new ConsoleMessage({
       }
     }
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj40\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"cyan\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"C\"},\"magenta\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"M\"},\"yellow\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"Y\"},\"black\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"K\"}},\"ownSymbols\":[],\"ownPropertiesLength\":4,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"dir\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":27},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[{\"type\":\"object\",\"actor\":\"server1.conn0.child1/obj36\",\"class\":\"Object\",\"extensible\":true,\"frozen\":false,\"sealed\":false,\"ownPropertyLength\":4,\"preview\":{\"kind\":\"Object\",\"ownProperties\":{\"cyan\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"C\"},\"magenta\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"M\"},\"yellow\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"Y\"},\"black\":{\"configurable\":true,\"enumerable\":true,\"writable\":true,\"value\":\"K\"}},\"ownSymbols\":[],\"ownPropertiesLength\":4,\"ownSymbolsLength\":0,\"safeGetterValues\":{}}}],\"source\":\"console-api\",\"type\":\"dir\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1294,10 +1406,12 @@ stubPreparedMessages.set("console.dir({C, M, Y, K})", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | default: 1", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | default: 1`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1307,7 +1421,7 @@ stubPreparedMessages.set("console.count | default: 1", new ConsoleMessage({
   "level": "log",
   "messageText": "default: 1",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1318,10 +1432,12 @@ stubPreparedMessages.set("console.count | default: 1", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | default: 2", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | default: 2`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1331,7 +1447,7 @@ stubPreparedMessages.set("console.count | default: 2", new ConsoleMessage({
   "level": "log",
   "messageText": "default: 2",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 2\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 2\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1342,10 +1458,12 @@ stubPreparedMessages.set("console.count | default: 2", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | test counter: 1", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | test counter: 1`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1355,7 +1473,7 @@ stubPreparedMessages.set("console.count | test counter: 1", new ConsoleMessage({
   "level": "log",
   "messageText": "test counter: 1",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":4,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":4,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 1\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1366,10 +1484,12 @@ stubPreparedMessages.set("console.count | test counter: 1", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | test counter: 2", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | test counter: 2`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1379,7 +1499,7 @@ stubPreparedMessages.set("console.count | test counter: 2", new ConsoleMessage({
   "level": "log",
   "messageText": "test counter: 2",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 2\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":5,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 2\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1390,10 +1510,12 @@ stubPreparedMessages.set("console.count | test counter: 2", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | default: 3", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | default: 3`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1403,7 +1525,7 @@ stubPreparedMessages.set("console.count | default: 3", new ConsoleMessage({
   "level": "log",
   "messageText": "default: 3",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 3\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":6,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 3\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1414,10 +1536,12 @@ stubPreparedMessages.set("console.count | default: 3", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | clear", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | clear`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1429,7 +1553,7 @@ stubPreparedMessages.set("console.count | clear", new ConsoleMessage({
   "parameters": [
     "Console was cleared."
   ],
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":7,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"Console was cleared.\"],\"source\":\"console-api\",\"type\":\"clear\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":7,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":null,\"parameters\":[\"Console was cleared.\"],\"source\":\"console-api\",\"type\":\"clear\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1440,10 +1564,12 @@ stubPreparedMessages.set("console.count | clear", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | default: 4", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | default: 4`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1453,7 +1579,7 @@ stubPreparedMessages.set("console.count | default: 4", new ConsoleMessage({
   "level": "log",
   "messageText": "default: 4",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":8,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 4\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":8,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"default: 4\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1464,10 +1590,12 @@ stubPreparedMessages.set("console.count | default: 4", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("console.count | test counter: 3", new ConsoleMessage({
+stubPreparedMessages.set(`console.count | test counter: 3`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "console-api",
@@ -1477,7 +1605,7 @@ stubPreparedMessages.set("console.count | test counter: 3", new ConsoleMessage({
   "level": "log",
   "messageText": "test counter: 3",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":9,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 3\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[]}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":9,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"log\",\"messageText\":\"test counter: 3\",\"parameters\":null,\"source\":\"console-api\",\"type\":\"log\",\"userProvidedStyles\":[],\"private\":false}",
   "stacktrace": null,
   "frame": {
     "source": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -1488,10 +1616,12 @@ stubPreparedMessages.set("console.count | test counter: 3", new ConsoleMessage({
   "exceptionDocURL": null,
   "userProvidedStyles": [],
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPackets.set("console.log('foobar', 'test')", {
+stubPackets.set(`console.log('foobar', 'test')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1517,7 +1647,7 @@ stubPackets.set("console.log('foobar', 'test')", {
   }
 });
 
-stubPackets.set("console.log(undefined)", {
+stubPackets.set(`console.log(undefined)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1544,7 +1674,7 @@ stubPackets.set("console.log(undefined)", {
   }
 });
 
-stubPackets.set("console.warn('danger, will robinson!')", {
+stubPackets.set(`console.warn('danger, will robinson!')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1569,7 +1699,7 @@ stubPackets.set("console.warn('danger, will robinson!')", {
   }
 });
 
-stubPackets.set("console.log(NaN)", {
+stubPackets.set(`console.log(NaN)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1596,7 +1726,7 @@ stubPackets.set("console.log(NaN)", {
   }
 });
 
-stubPackets.set("console.log(null)", {
+stubPackets.set(`console.log(null)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1623,7 +1753,7 @@ stubPackets.set("console.log(null)", {
   }
 });
 
-stubPackets.set("console.log('鼬')", {
+stubPackets.set(`console.log('鼬')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1648,7 +1778,7 @@ stubPackets.set("console.log('鼬')", {
   }
 });
 
-stubPackets.set("console.clear()", {
+stubPackets.set(`console.clear()`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1671,7 +1801,7 @@ stubPackets.set("console.clear()", {
   }
 });
 
-stubPackets.set("console.count('bar')", {
+stubPackets.set(`console.count('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1699,7 +1829,7 @@ stubPackets.set("console.count('bar')", {
   }
 });
 
-stubPackets.set("console.assert(false, {message: 'foobar'})", {
+stubPackets.set(`console.assert(false, {message: 'foobar'})`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1755,7 +1885,7 @@ stubPackets.set("console.assert(false, {message: 'foobar'})", {
   }
 });
 
-stubPackets.set("console.log('hello \nfrom \rthe \"string world!')", {
+stubPackets.set(`console.log('hello \nfrom \rthe \"string world!')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1780,7 +1910,7 @@ stubPackets.set("console.log('hello \nfrom \rthe \"string world!')", {
   }
 });
 
-stubPackets.set("console.log('úṇĩçödê țĕșť')", {
+stubPackets.set(`console.log('úṇĩçödê țĕșť')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1805,7 +1935,7 @@ stubPackets.set("console.log('úṇĩçödê țĕșť')", {
   }
 });
 
-stubPackets.set("console.dirxml(window)", {
+stubPackets.set(`console.dirxml(window)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1842,7 +1972,7 @@ stubPackets.set("console.dirxml(window)", {
   }
 });
 
-stubPackets.set("console.log('myarray', ['red', 'green', 'blue'])", {
+stubPackets.set(`console.log('myarray', ['red', 'green', 'blue'])`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1885,7 +2015,7 @@ stubPackets.set("console.log('myarray', ['red', 'green', 'blue'])", {
   }
 });
 
-stubPackets.set("console.log('myregex', /a.b.c/)", {
+stubPackets.set(`console.log('myregex', /a.b.c/)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1920,7 +2050,7 @@ stubPackets.set("console.log('myregex', /a.b.c/)", {
   }
 });
 
-stubPackets.set("console.table(['red', 'green', 'blue']);", {
+stubPackets.set(`console.table(['red', 'green', 'blue']);`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -1962,7 +2092,7 @@ stubPackets.set("console.table(['red', 'green', 'blue']);", {
   }
 });
 
-stubPackets.set("console.log('myobject', {red: 'redValue', green: 'greenValue', blue: 'blueValue'});", {
+stubPackets.set(`console.log('myobject', {red: 'redValue', green: 'greenValue', blue: 'blueValue'});`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2023,7 +2153,7 @@ stubPackets.set("console.log('myobject', {red: 'redValue', green: 'greenValue', 
   }
 });
 
-stubPackets.set("console.debug('debug message');", {
+stubPackets.set(`console.debug('debug message');`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2048,7 +2178,7 @@ stubPackets.set("console.debug('debug message');", {
   }
 });
 
-stubPackets.set("console.info('info message');", {
+stubPackets.set(`console.info('info message');`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2073,7 +2203,7 @@ stubPackets.set("console.info('info message');", {
   }
 });
 
-stubPackets.set("console.error('error message');", {
+stubPackets.set(`console.error('error message');`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2106,7 +2236,7 @@ stubPackets.set("console.error('error message');", {
   }
 });
 
-stubPackets.set("console.log('mymap')", {
+stubPackets.set(`console.log('mymap')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2154,7 +2284,7 @@ stubPackets.set("console.log('mymap')", {
   }
 });
 
-stubPackets.set("console.log('myset')", {
+stubPackets.set(`console.log('myset')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2196,7 +2326,7 @@ stubPackets.set("console.log('myset')", {
   }
 });
 
-stubPackets.set("console.trace()", {
+stubPackets.set(`console.trace()`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2239,7 +2369,7 @@ stubPackets.set("console.trace()", {
   }
 });
 
-stubPackets.set("console.time('bar')", {
+stubPackets.set(`console.time('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2266,7 +2396,7 @@ stubPackets.set("console.time('bar')", {
   }
 });
 
-stubPackets.set("timerAlreadyExists", {
+stubPackets.set(`timerAlreadyExists`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2294,7 +2424,7 @@ stubPackets.set("timerAlreadyExists", {
   }
 });
 
-stubPackets.set("console.timeEnd('bar')", {
+stubPackets.set(`console.timeEnd('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2322,7 +2452,7 @@ stubPackets.set("console.timeEnd('bar')", {
   }
 });
 
-stubPackets.set("timerDoesntExist", {
+stubPackets.set(`timerDoesntExist`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2350,7 +2480,7 @@ stubPackets.set("timerDoesntExist", {
   }
 });
 
-stubPackets.set("console.table('bar')", {
+stubPackets.set(`console.table('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2375,7 +2505,7 @@ stubPackets.set("console.table('bar')", {
   }
 });
 
-stubPackets.set("console.table(['a', 'b', 'c'])", {
+stubPackets.set(`console.table(['a', 'b', 'c'])`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2417,7 +2547,7 @@ stubPackets.set("console.table(['a', 'b', 'c'])", {
   }
 });
 
-stubPackets.set("console.group('bar')", {
+stubPackets.set(`console.group('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2442,7 +2572,7 @@ stubPackets.set("console.group('bar')", {
   }
 });
 
-stubPackets.set("console.groupEnd('bar')", {
+stubPackets.set(`console.groupEnd('bar')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2465,7 +2595,7 @@ stubPackets.set("console.groupEnd('bar')", {
   }
 });
 
-stubPackets.set("console.groupCollapsed('foo')", {
+stubPackets.set(`console.groupCollapsed('foo')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2490,7 +2620,7 @@ stubPackets.set("console.groupCollapsed('foo')", {
   }
 });
 
-stubPackets.set("console.groupEnd('foo')", {
+stubPackets.set(`console.groupEnd('foo')`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2513,7 +2643,7 @@ stubPackets.set("console.groupEnd('foo')", {
   }
 });
 
-stubPackets.set("console.group()", {
+stubPackets.set(`console.group()`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2536,7 +2666,7 @@ stubPackets.set("console.group()", {
   }
 });
 
-stubPackets.set("console.groupEnd()", {
+stubPackets.set(`console.groupEnd()`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2559,7 +2689,7 @@ stubPackets.set("console.groupEnd()", {
   }
 });
 
-stubPackets.set("console.log(%cfoobar)", {
+stubPackets.set(`console.log(%cfoobar)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2578,8 +2708,8 @@ stubPackets.set("console.log(%cfoobar)", {
     "prefix": "",
     "private": false,
     "styles": [
-      "color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px",
-      "color:red;background:url('http://example.com/test')"
+      "color:blue; font-size:1.3em; background:url('http://example.com/test'); position:absolute; top:10px; ",
+      "color:red; line-height: 1.5; background:url('http://example.com/test')"
     ],
     "timeStamp": 1502884924883,
     "timer": null,
@@ -2588,7 +2718,38 @@ stubPackets.set("console.log(%cfoobar)", {
   }
 });
 
-stubPackets.set("console.group(%cfoo%cbar)", {
+stubPackets.set(`console.log("%cHello%c|%cWorld")`, {
+  "from": "server1.conn0.child1/consoleActor2",
+  "type": "consoleAPICall",
+  "message": {
+    "addonId": "",
+    "arguments": [
+      "Hello",
+      "|",
+      "World"
+    ],
+    "columnNumber": 3,
+    "counter": null,
+    "filename": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
+    "functionName": "triggerPacket",
+    "groupName": "",
+    "level": "log",
+    "lineNumber": 2,
+    "prefix": "",
+    "private": false,
+    "styles": [
+      "color:red",
+      "",
+      "color: blue"
+    ],
+    "timeStamp": 1518681614352,
+    "timer": null,
+    "workerType": "none",
+    "category": "webdev"
+  }
+});
+
+stubPackets.set(`console.group(%cfoo%cbar)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2617,7 +2778,7 @@ stubPackets.set("console.group(%cfoo%cbar)", {
   }
 });
 
-stubPackets.set("console.groupEnd(%cfoo%cbar)", {
+stubPackets.set(`console.groupEnd(%cfoo%cbar)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2640,7 +2801,7 @@ stubPackets.set("console.groupEnd(%cfoo%cbar)", {
   }
 });
 
-stubPackets.set("console.groupCollapsed(%cfoo%cbaz)", {
+stubPackets.set(`console.groupCollapsed(%cfoo%cbaz)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2669,7 +2830,7 @@ stubPackets.set("console.groupCollapsed(%cfoo%cbaz)", {
   }
 });
 
-stubPackets.set("console.groupEnd(%cfoo%cbaz)", {
+stubPackets.set(`console.groupEnd(%cfoo%cbaz)`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2692,7 +2853,7 @@ stubPackets.set("console.groupEnd(%cfoo%cbaz)", {
   }
 });
 
-stubPackets.set("console.dir({C, M, Y, K})", {
+stubPackets.set(`console.dir({C, M, Y, K})`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2700,7 +2861,7 @@ stubPackets.set("console.dir({C, M, Y, K})", {
     "arguments": [
       {
         "type": "object",
-        "actor": "server1.conn0.child1/obj40",
+        "actor": "server1.conn0.child1/obj36",
         "class": "Object",
         "extensible": true,
         "frozen": false,
@@ -2758,7 +2919,7 @@ stubPackets.set("console.dir({C, M, Y, K})", {
   }
 });
 
-stubPackets.set("console.count | default: 1", {
+stubPackets.set(`console.count | default: 1`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2786,7 +2947,7 @@ stubPackets.set("console.count | default: 1", {
   }
 });
 
-stubPackets.set("console.count | default: 2", {
+stubPackets.set(`console.count | default: 2`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2814,7 +2975,7 @@ stubPackets.set("console.count | default: 2", {
   }
 });
 
-stubPackets.set("console.count | test counter: 1", {
+stubPackets.set(`console.count | test counter: 1`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2842,7 +3003,7 @@ stubPackets.set("console.count | test counter: 1", {
   }
 });
 
-stubPackets.set("console.count | test counter: 2", {
+stubPackets.set(`console.count | test counter: 2`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2870,7 +3031,7 @@ stubPackets.set("console.count | test counter: 2", {
   }
 });
 
-stubPackets.set("console.count | default: 3", {
+stubPackets.set(`console.count | default: 3`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2898,7 +3059,7 @@ stubPackets.set("console.count | default: 3", {
   }
 });
 
-stubPackets.set("console.count | clear", {
+stubPackets.set(`console.count | clear`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2921,7 +3082,7 @@ stubPackets.set("console.count | clear", {
   }
 });
 
-stubPackets.set("console.count | default: 4", {
+stubPackets.set(`console.count | default: 4`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {
@@ -2949,7 +3110,7 @@ stubPackets.set("console.count | default: 4", {
   }
 });
 
-stubPackets.set("console.count | test counter: 3", {
+stubPackets.set(`console.count | test counter: 3`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "consoleAPICall",
   "message": {

@@ -8,8 +8,10 @@ extern crate regex;
 extern crate cookie;
 extern crate time;
 extern crate url;
+extern crate unicode_segmentation;
 
 #[macro_use] pub mod macros;
+pub mod actions;
 pub mod httpapi;
 pub mod capabilities;
 pub mod command;

@@ -43,6 +43,15 @@ HasCompilerSupport(JSContext* cx);
 bool
 HasSupport(JSContext* cx);
 
+// ToWebAssemblyValue and ToJSValue are conversion functions defined in
+// the Wasm JS API spec.
+
+bool
+ToWebAssemblyValue(JSContext* cx, ValType targetType, HandleValue v, Val* val);
+
+void
+ToJSValue(const Val& val, MutableHandleValue v);
+
 // Compiles the given binary wasm module given the ArrayBufferObject
 // and links the module's imports with the given import object.
 
@@ -121,6 +130,7 @@ class WasmInstanceObject : public NativeObject
     static const unsigned EXPORTS_SLOT = 2;
     static const unsigned SCOPES_SLOT = 3;
     static const unsigned INSTANCE_SCOPE_SLOT = 4;
+
     static const ClassOps classOps_;
     static bool exportsGetterImpl(JSContext* cx, const CallArgs& args);
     static bool exportsGetter(JSContext* cx, unsigned argc, Value* vp);
@@ -158,7 +168,7 @@ class WasmInstanceObject : public NativeObject
     static WasmInstanceObject* create(JSContext* cx,
                                       RefPtr<const wasm::Code> code,
                                       UniquePtr<wasm::DebugState> debug,
-                                      UniquePtr<wasm::GlobalSegment> globals,
+                                      wasm::UniqueTlsData tlsData,
                                       HandleWasmMemoryObject memory,
                                       Vector<RefPtr<wasm::Table>, 0, SystemAllocPolicy>&& tables,
                                       Handle<FunctionVector> funcImports,
@@ -195,7 +205,7 @@ class WasmMemoryObject : public NativeObject
     static bool bufferGetter(JSContext* cx, unsigned argc, Value* vp);
     static bool growImpl(JSContext* cx, const CallArgs& args);
     static bool grow(JSContext* cx, unsigned argc, Value* vp);
-    static uint32_t growShared(HandleWasmMemoryObject memory, uint32_t delta, JSContext* cx);
+    static uint32_t growShared(HandleWasmMemoryObject memory, uint32_t delta);
 
     using InstanceSet = JS::WeakCache<GCHashSet<ReadBarrieredWasmInstanceObject,
                                                 MovableCellHasher<ReadBarrieredWasmInstanceObject>,
@@ -274,6 +284,42 @@ class WasmTableObject : public NativeObject
     static WasmTableObject* create(JSContext* cx, const wasm::Limits& limits);
     wasm::Table& table() const;
 };
+
+#if defined(ENABLE_WASM_GLOBAL) && defined(EARLY_BETA_OR_EARLIER)
+
+// The class of WebAssembly.Global.  A WasmGlobalObject holds either the value
+// of an immutable wasm global or the cell of a mutable wasm global.
+
+class WasmGlobalObject : public NativeObject
+{
+    static const unsigned TYPE_SLOT = 0;
+    static const unsigned MUTABLE_SLOT = 1;
+    static const unsigned VALUE_SLOT = 2;
+
+    static const ClassOps classOps_;
+
+    static bool valueGetterImpl(JSContext* cx, const CallArgs& args);
+    static bool valueGetter(JSContext* cx, unsigned argc, Value* vp);
+    static bool valueSetterImpl(JSContext* cx, const CallArgs& args);
+    static bool valueSetter(JSContext* cx, unsigned argc, Value* vp);
+
+  public:
+    static const unsigned RESERVED_SLOTS = 3;
+    static const Class class_;
+    static const JSPropertySpec properties[];
+    static const JSFunctionSpec methods[];
+    static const JSFunctionSpec static_methods[];
+    static bool construct(JSContext*, unsigned, Value*);
+
+    static WasmGlobalObject* create(JSContext* cx, wasm::ValType type, bool isMutable,
+                                    HandleValue value);
+
+    wasm::ValType type() const;
+    bool isMutable() const;
+    Value value() const;
+};
+
+#endif // ENABLE_WASM_GLOBAL && EARLY_BETA_OR_EARLIER
 
 } // namespace js
 

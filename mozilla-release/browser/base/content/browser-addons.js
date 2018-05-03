@@ -37,7 +37,7 @@ var gXPInstallObserver = {
     if (aDocShell == aSoughtShell)
       return aDocShell;
 
-    var node = aDocShell.QueryInterface(Components.interfaces.nsIDocShellTreeItem);
+    var node = aDocShell.QueryInterface(Ci.nsIDocShellTreeItem);
     for (var i = 0; i < node.childCount; ++i) {
       var docShell = node.getChildAt(i);
       docShell = this._findChildShell(docShell, aSoughtShell);
@@ -72,7 +72,7 @@ var gXPInstallObserver = {
 
     let showNextConfirmation = () => {
       // Make sure the browser is still alive.
-      if (gBrowser.browsers.indexOf(browser) == -1)
+      if (!gBrowser.browsers.includes(browser))
         return;
 
       let pending = this.pendingInstalls.get(browser);
@@ -223,7 +223,7 @@ var gXPInstallObserver = {
     var browser = installInfo.browser;
 
     // Make sure the browser is still alive.
-    if (!browser || gBrowser.browsers.indexOf(browser) == -1)
+    if (!browser || !gBrowser.browsers.includes(browser))
       return;
 
     const anchorID = "addons-notification-icon";
@@ -522,7 +522,7 @@ var gExtensionsNotifications = {
     button.setAttribute("image", icon || DEFAULT_EXTENSION_ICON);
     button.className = "addon-banner-item";
 
-    button.addEventListener("click", callback);
+    button.addEventListener("command", callback);
     PanelUI.addonNotificationContainer.appendChild(button);
   },
 
@@ -559,6 +559,10 @@ var gExtensionsNotifications = {
 
       let text = gNavigatorBundle.getFormattedString("webextPerms.sideloadMenuItem", [addon.name, appName]);
       this._createAddonButton(text, addon.iconURL, evt => {
+        // We need to hide the main menu manually because the toolbarbutton is
+        // removed immediately while processing this event, and PanelUI is
+        // unable to identify which panel should be closed automatically.
+        PanelUI.hide();
         ExtensionsUI.showSideloaded(gBrowser, addon);
       });
     }
@@ -571,6 +575,8 @@ var LightWeightThemeWebInstaller = {
     mm.addMessageListener("LightWeightThemeWebInstaller:Install", this);
     mm.addMessageListener("LightWeightThemeWebInstaller:Preview", this);
     mm.addMessageListener("LightWeightThemeWebInstaller:ResetPreview", this);
+
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_apiTesting", "extensions.webapi.testing", false);
   },
 
   receiveMessage(message) {
@@ -583,16 +589,16 @@ var LightWeightThemeWebInstaller = {
 
     switch (message.name) {
       case "LightWeightThemeWebInstaller:Install": {
-        this._installRequest(data.themeData, data.baseURI);
+        this._installRequest(data.themeData, data.principal, data.baseURI);
         break;
       }
 #if 0
       case "LightWeightThemeWebInstaller:Preview": {
-        this._preview(data.themeData, data.baseURI);
+        this._preview(data.themeData, data.principal, data.baseURI);
         break;
       }
       case "LightWeightThemeWebInstaller:ResetPreview": {
-        this._resetPreview(data && data.baseURI);
+        this._resetPreview(data && data.principal);
         break;
       }
 #endif
@@ -610,11 +616,12 @@ var LightWeightThemeWebInstaller = {
 
   get _manager() {
     let temp = {};
-    Cu.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
+    ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
     delete this._manager;
     return this._manager = temp.LightweightThemeManager;
   },
 
+<<<<<<< HEAD
   _installRequest(dataString, baseURI) {
     let notificationBox = gBrowser.getNotificationBox();
     // remove previous notification
@@ -632,32 +639,28 @@ var LightWeightThemeWebInstaller = {
 #if 0
     // Disable LW themes in Cliqz.
 
+||||||| merged common ancestors
+  _installRequest(dataString, baseURI) {
+=======
+  _installRequest(dataString, principal, baseURI) {
+    // Don't allow installing off null principals.
+    if (!principal.URI) {
+      return;
+    }
+
+>>>>>>> origin/upstream-releases
     let data = this._manager.parseTheme(dataString, baseURI);
 
     if (!data) {
       return;
     }
 
-    let uri = makeURI(baseURI);
-
     // A notification bar with the option to undo is normally shown after a
     // theme is installed.  But the discovery pane served from the url(s)
     // below has its own toggle switch for quick undos, so don't show the
     // notification in that case.
-    let notify = uri.prePath != "https://discovery.addons.mozilla.org";
-    if (notify) {
-      try {
-        if (Services.prefs.getBoolPref("extensions.webapi.testing")
-            && (uri.prePath == "https://discovery.addons.allizom.org"
-                || uri.prePath == "https://discovery.addons-dev.allizom.org")) {
-          notify = false;
-        }
-      } catch (e) {
-        // getBoolPref() throws if the testing pref isn't set.  ignore it.
-      }
-    }
-
-    if (this._isAllowed(baseURI)) {
+    let notify = this._shouldShowUndoPrompt(principal);
+    if (this._isAllowed(principal)) {
       this._install(data, notify);
       return;
     }
@@ -666,7 +669,7 @@ var LightWeightThemeWebInstaller = {
       header: gNavigatorBundle.getFormattedString("webextPerms.header", ["<>"]),
       addonName: data.name,
       text: gNavigatorBundle.getFormattedString("lwthemeInstallRequest.message2",
-                                                [uri.host]),
+                                                [principal.URI.host]),
       acceptText: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton2"),
       acceptKey: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton.accesskey2"),
       cancelText: gNavigatorBundle.getString("webextPerms.cancel.label"),
@@ -721,8 +724,8 @@ var LightWeightThemeWebInstaller = {
     AddonManager.removeAddonListener(listener);
   },
 
-  _preview(dataString, baseURI) {
-    if (!this._isAllowed(baseURI))
+  _preview(dataString, principal, baseURI) {
+    if (!this._isAllowed(principal))
       return;
 
     let data = this._manager.parseTheme(dataString, baseURI);
@@ -734,13 +737,14 @@ var LightWeightThemeWebInstaller = {
     this._manager.previewTheme(data);
   },
 
-  _resetPreview(baseURI) {
-    if (baseURI && !this._isAllowed(baseURI))
+  _resetPreview(principal) {
+    if (!this._isAllowed(principal))
       return;
     gBrowser.tabContainer.removeEventListener("TabSelect", this);
     this._manager.resetPreview();
   },
 
+<<<<<<< HEAD
   _isAllowed(srcURIString) {
     return false;  // Disable LW themes in Cliqz.
 #if 0
@@ -749,15 +753,50 @@ var LightWeightThemeWebInstaller = {
       uri = makeURI(srcURIString);
     } catch (e) {
       // makeURI fails if srcURIString is a nonsense URI
-      return false;
-    }
-
-    if (!uri.schemeIs("https")) {
+||||||| merged common ancestors
+  _isAllowed(srcURIString) {
+    let uri;
+    try {
+      uri = makeURI(srcURIString);
+    } catch (e) {
+      // makeURI fails if srcURIString is a nonsense URI
+=======
+  _isAllowed(principal) {
+    if (!principal || !principal.URI || !principal.URI.schemeIs("https")) {
       return false;
     }
 
     let pm = Services.perms;
+    return pm.testPermission(principal.URI, "install") == pm.ALLOW_ACTION;
+  },
+
+  _shouldShowUndoPrompt(principal) {
+    if (!principal || !principal.URI) {
+      return true;
+    }
+
+    let prePath = principal.URI.prePath;
+    if (prePath == "https://discovery.addons.mozilla.org") {
+>>>>>>> origin/upstream-releases
+      return false;
+    }
+
+    if (this._apiTesting && (prePath == "https://discovery.addons.allizom.org" ||
+                             prePath == "https://discovery.addons-dev.allizom.org")) {
+      return false;
+    }
+    return true;
+  },
+
+<<<<<<< HEAD
+    let pm = Services.perms;
     return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
 #endif
   }
+||||||| merged common ancestors
+    let pm = Services.perms;
+    return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
+  }
+=======
+>>>>>>> origin/upstream-releases
 };

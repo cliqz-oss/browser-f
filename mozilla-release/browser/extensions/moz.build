@@ -11,10 +11,21 @@ DIRS += [
 #    'formautofill',
 #    'onboarding',
     'pdfjs',
+<<<<<<< HEAD
 #    'pocket',
 #    'screenshots',
 #    'shield-recipe-client',
 #    'webcompat',
+||||||| merged common ancestors
+    'pocket',
+    'screenshots',
+    'shield-recipe-client',
+    'webcompat',
+=======
+    'pocket',
+    'screenshots',
+    'webcompat',
+>>>>>>> origin/upstream-releases
 ]
 
 ''' disabled by Cliqz

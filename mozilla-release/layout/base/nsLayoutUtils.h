@@ -9,6 +9,7 @@
 
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/LookAndFeel.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/TypedEnumBits.h"
 #include "nsBoundingMetrics.h"
@@ -23,7 +24,9 @@
 #include "nsStyleCoord.h"
 #include "nsStyleConsts.h"
 #include "nsGkAtoms.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleNode.h"
+#endif
 #include "imgIContainer.h"
 #include "mozilla/gfx/2D.h"
 #include "Units.h"
@@ -156,6 +159,7 @@ class nsLayoutUtils
   typedef mozilla::gfx::RectDouble RectDouble;
   typedef mozilla::gfx::Size Size;
   typedef mozilla::gfx::Matrix4x4 Matrix4x4;
+  typedef mozilla::gfx::Matrix4x4Flagged Matrix4x4Flagged;
   typedef mozilla::gfx::RectCornerRadii RectCornerRadii;
   typedef mozilla::gfx::StrokeOptions StrokeOptions;
   typedef mozilla::image::ImgDrawResult ImgDrawResult;
@@ -854,7 +858,7 @@ public:
                                              const nsRect& aRect,
                                              const nsIFrame* aAncestor,
                                              bool* aPreservesAxisAlignedRectangles = nullptr,
-                                             mozilla::Maybe<Matrix4x4>* aMatrixCache = nullptr,
+                                             mozilla::Maybe<Matrix4x4Flagged>* aMatrixCache = nullptr,
                                              bool aStopAtStackingContextAndDisplayPort = false,
                                              nsIFrame** aOutAncestor = nullptr);
 
@@ -864,7 +868,7 @@ public:
    * aAncestor to go up to the root frame. aInCSSUnits set to true will
    * return CSS units, set to false (the default) will return App units.
    */
-  static Matrix4x4 GetTransformToAncestor(nsIFrame *aFrame,
+  static Matrix4x4Flagged GetTransformToAncestor(nsIFrame *aFrame,
                                           const nsIFrame *aAncestor,
                                           uint32_t aFlags = 0,
                                           nsIFrame** aOutAncestor = nullptr);
@@ -957,7 +961,7 @@ public:
    * transaction were opened at the time this helper is called.
    */
   static bool GetLayerTransformForFrame(nsIFrame* aFrame,
-                                        Matrix4x4* aTransform);
+                                        Matrix4x4Flagged* aTransform);
 
   /**
    * Given a point in the global coordinate space, returns that point expressed
@@ -993,6 +997,8 @@ public:
    */
   static nsRect MatrixTransformRect(const nsRect &aBounds,
                                     const Matrix4x4 &aMatrix, float aFactor);
+  static nsRect MatrixTransformRect(const nsRect &aBounds,
+                                    const Matrix4x4Flagged &aMatrix, float aFactor);
 
   /**
    * Helper function that, given a point and a matrix, returns the image
@@ -2275,21 +2281,25 @@ public:
   /**
    * Adds all font faces used in the frame tree starting from aFrame
    * to the list aFontFaceList.
+   * aMaxRanges: maximum number of text ranges to record for each face.
    */
   static nsresult GetFontFacesForFrames(nsIFrame* aFrame,
-                                        UsedFontFaceTable& aResult);
+                                        UsedFontFaceTable& aResult,
+                                        uint32_t aMaxRanges);
 
   /**
    * Adds all font faces used within the specified range of text in aFrame,
    * and optionally its continuations, to the list in aFontFaceList.
    * Pass 0 and INT32_MAX for aStartOffset and aEndOffset to specify the
    * entire text is to be considered.
+   * aMaxRanges: maximum number of text ranges to record for each face.
    */
-  static nsresult GetFontFacesForText(nsIFrame* aFrame,
-                                      int32_t aStartOffset,
-                                      int32_t aEndOffset,
-                                      bool aFollowContinuations,
-                                      UsedFontFaceTable& aResult);
+  static void GetFontFacesForText(nsIFrame* aFrame,
+                                  int32_t aStartOffset,
+                                  int32_t aEndOffset,
+                                  bool aFollowContinuations,
+                                  UsedFontFaceTable& aResult,
+                                  uint32_t aMaxRanges);
 
   /**
    * Walks the frame tree starting at aFrame looking for textRuns.
@@ -2518,8 +2528,10 @@ public:
   // or disabled at compile-time. However, we provide the additional capability
   // to disable it dynamically in stylo-enabled builds via a pref.
   static bool StyloEnabled() {
-#ifdef MOZ_STYLO
+#if defined(MOZ_STYLO) && defined(MOZ_OLD_STYLE)
     return sStyloEnabled && StyloSupportedInCurrentProcess();
+#elif defined(MOZ_STYLO)
+    return true;
 #else
     return false;
 #endif
@@ -2582,35 +2594,11 @@ public:
 
 #ifdef MOZ_STYLO
   /**
-   * Return whether stylo should be used for a given document URI and
-   * principal.
+   * Return whether stylo should be used for a given document principal.
    */
-  static bool ShouldUseStylo(nsIURI* aDocumentURI, nsIPrincipal* aPrincipal);
-
-  /**
-   * Principal-based blocklist for stylo.
-   * Check if aPrincipal is blocked by stylo's blocklist and should fallback to
-   * use Gecko's style backend. Note that using a document's principal rather
-   * than the document URI will let us piggy-back off the existing principal
-   * relationships and symmetries.
-   */
-  static bool IsInStyloBlocklist(nsIPrincipal* aPrincipal);
-
-  /**
-   * Add aBlockedDomain to the existing stylo blocklist, i.e., sStyloBlocklist.
-   * This function is exposed to nsDOMWindowUtils and only for testing purpose.
-   * So, NEVER use this in any other cases.
-   */
-  static void AddToStyloBlocklist(const nsACString& aBlockedDomain);
-
-  /**
-   * Remove aBlockedDomain from the existing stylo blocklist, i.e., sStyloBlocklist.
-   * This function is exposed to nsDOMWindowUtils and only for testing purpose.
-   * So, NEVER use this in any other cases.
-   */
-  static void RemoveFromStyloBlocklist(const nsACString& aBlockedDomain);
+  static bool ShouldUseStylo(nsIPrincipal* aPrincipal);
 #else
-  static bool ShouldUseStylo(nsIURI* aDocumentURI, nsIPrincipal* aPrincipal) {
+  static bool ShouldUseStylo(nsIPrincipal* aPrincipal) {
     return false;
   }
 #endif
@@ -2744,7 +2732,7 @@ public:
     const nsIFrame* aAncestorFrame,
     nsRegion* aPreciseTargetDest,
     nsRegion* aImpreciseTargetDest,
-    mozilla::Maybe<Matrix4x4>* aMatrixCache,
+    mozilla::Maybe<Matrix4x4Flagged>* aMatrixCache,
     const mozilla::DisplayItemClip* aClip);
 
   /**
@@ -3134,8 +3122,6 @@ private:
   static bool sTextCombineUprightDigitsEnabled;
 #ifdef MOZ_STYLO
   static bool sStyloEnabled;
-  static bool sStyloBlocklistEnabled;
-  static nsTArray<nsCString>* sStyloBlocklist;
 #endif
   static uint32_t sIdlePeriodDeadlineLimit;
   static uint32_t sQuiescentFramesBeforeIdlePeriod;

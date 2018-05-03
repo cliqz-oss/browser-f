@@ -9,6 +9,7 @@
 
 #include "nsIContent.h"
 #include "nsIDocument.h"
+#include "nsBindingManager.h"
 #include "nsContentUtils.h"
 #include "nsAtom.h"
 #include "nsIFrame.h"
@@ -77,10 +78,10 @@ GetFlattenedTreeParentNode(const nsINode* aNode)
 
   if (aType == nsINode::eForStyle &&
       content->IsRootOfNativeAnonymousSubtree() &&
-      parentAsContent == content->OwnerDoc()->GetRootElement() &&
-      !content->IsGeneratedContentContainerForAfter() &&
-      !content->IsGeneratedContentContainerForBefore()) {
-    return content->GetFlattenedTreeParentForDocumentElementNAC();
+      parentAsContent == content->OwnerDoc()->GetRootElement()) {
+    const bool docLevel =
+      content->GetProperty(nsGkAtoms::docLevelNativeAnonymousContent);
+    return docLevel ? content->OwnerDocAsNode() : parent;
   }
 
   if (content->IsRootOfAnonymousSubtree()) {

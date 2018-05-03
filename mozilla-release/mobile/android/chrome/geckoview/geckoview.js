@@ -4,19 +4,19 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher",
+ChromeUtils.defineModuleGetter(this, "EventDispatcher",
   "resource://gre/modules/Messaging.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+  "resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyGetter(this, "WindowEventDispatcher",
   () => EventDispatcher.for(window));
 
 XPCOMUtils.defineLazyGetter(this, "dump", () =>
-    Cu.import("resource://gre/modules/AndroidLog.jsm",
-              {}).AndroidLog.d.bind(null, "View"));
+    ChromeUtils.import("resource://gre/modules/AndroidLog.jsm",
+                       {}).AndroidLog.d.bind(null, "View"));
 
 // Creates and manages GeckoView modules.
 // A module must extend GeckoViewModule.
@@ -25,15 +25,15 @@ XPCOMUtils.defineLazyGetter(this, "dump", () =>
 // and remove by calling
 //   remove(<type name>)
 var ModuleManager = {
-  init: function() {
-    this.browser = document.getElementById("content");
+  init: function(aBrowser) {
+    this.browser = aBrowser;
     this.modules = {};
   },
 
   add: function(aResource, aType, ...aArgs) {
     this.remove(aType);
     let scope = {};
-    Cu.import(aResource, scope);
+    ChromeUtils.import(aResource, scope);
     this.modules[aType] = new scope[aType](
       aType, window, this.browser, WindowEventDispatcher, ...aArgs
     );
@@ -47,8 +47,24 @@ var ModuleManager = {
   }
 };
 
+function createBrowser() {
+  const browser = window.browser = document.createElement("browser");
+  browser.setAttribute("type", "content");
+  browser.setAttribute("primary", "true");
+  browser.setAttribute("flex", "1");
+
+  // There may be a GeckoViewNavigation module in another window waiting for us to
+  // create a browser so it can call presetOpenerWindow(), so allow them to do that now.
+  Services.obs.notifyObservers(window, "geckoview-window-created");
+  window.document.getElementById("main-window").appendChild(browser);
+
+  browser.stop();
+  return browser;
+}
+
 function startup() {
-  ModuleManager.init();
+  const browser = createBrowser();
+  ModuleManager.init(browser);
 
   // GeckoViewNavigation needs to go first because nsIDOMBrowserWindow must set up
   // before the first remote browser. Bug 1365364.
@@ -66,8 +82,10 @@ function startup() {
                     "GeckoViewTab");
   ModuleManager.add("resource://gre/modules/GeckoViewRemoteDebugger.jsm",
                     "GeckoViewRemoteDebugger");
+  ModuleManager.add("resource://gre/modules/GeckoViewTrackingProtection.jsm",
+                    "GeckoViewTrackingProtection");
 
   // Move focus to the content window at the end of startup,
   // so things like text selection can work properly.
-  document.getElementById("content").focus();
+  browser.focus();
 }

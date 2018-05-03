@@ -6,7 +6,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "DeferredTask",
 ];
 
@@ -84,12 +84,10 @@ this.EXPORTED_SYMBOLS = [
 
 // Globals
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
+                               "resource://gre/modules/PromiseUtils.jsm");
 
 const Timer = Components.Constructor("@mozilla.org/timer;1", "nsITimer",
                                      "initWithCallback");
@@ -114,7 +112,7 @@ const Timer = Components.Constructor("@mozilla.org/timer;1", "nsITimer",
  *        aDelayMs have elapsed. If omitted, waits indefinitely for an idle
  *        callback.
  */
-this.DeferredTask = function(aTaskFn, aDelayMs, aIdleTimeoutMs) {
+var DeferredTask = function(aTaskFn, aDelayMs, aIdleTimeoutMs) {
   this._taskFn = aTaskFn;
   this._delayMs = aDelayMs;
   this._timeoutMs = aIdleTimeoutMs;

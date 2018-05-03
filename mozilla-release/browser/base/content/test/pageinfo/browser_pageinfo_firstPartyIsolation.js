@@ -1,4 +1,4 @@
-const {classes: Cc, interfaces: Ci, manager: Cm} = Components;
+const Cm = Components.manager;
 
 function waitForEvent(elem, event) {
   return new Promise(resolve => {
@@ -49,8 +49,8 @@ function testFirstPartyDomain(pageInfo) {
         }
 
         // Check the node has the attribute 'triggeringprincipal'.
-        let serial = Components.classes["@mozilla.org/network/serialization-helper;1"]
-                               .getService(Components.interfaces.nsISerializationHelper);
+        let serial = Cc["@mozilla.org/network/serialization-helper;1"]
+                       .getService(Ci.nsISerializationHelper);
         let loadingPrincipalStr = preview.getAttribute("triggeringprincipal");
         let loadingPrincipal = serial.deserializeObject(loadingPrincipalStr);
         Assert.equal(loadingPrincipal.originAttributes.firstPartyDomain, EXPECTED_DOMAIN,
@@ -73,8 +73,9 @@ async function test() {
 
   let url = "https://example.com/browser/browser/base/content/test/pageinfo/image.html";
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
+  let loadPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, url);
   gBrowser.selectedBrowser.loadURI(url);
-  await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, url);
+  await loadPromise;
 
   // Pass a dummy imageElement, if there isn't an imageElement, pageInfo.js
   // will do a preview, however this sometimes will cause intermittent failures,

@@ -8,9 +8,7 @@ this.event = {};
 "use strict";
 /* global content, is */
 
-const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
-
-Cu.import("chrome://marionette/content/element.js");
+ChromeUtils.import("chrome://marionette/content/element.js");
 
 const dblclickTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
 
@@ -31,9 +29,6 @@ function getDOMWindowUtils(win) {
   return win.QueryInterface(Ci.nsIInterfaceRequestor)
       .getInterface(Ci.nsIDOMWindowUtils);
 }
-
-/** @namespace */
-this.event = {};
 
 event.MouseEvents = {
   click: 0,
@@ -192,7 +187,7 @@ event.sendString = function(string, window = undefined) {
  * Send the non-character key to the focused element.
  *
  * The name of the key should be the part that comes after "DOM_VK_"
- * in the nsIDOMKeyEvent constant name for this key.  No modifiers are
+ * in the KeyboardEvent constant name for this key.  No modifiers are
  * handled at this point.
  */
 event.sendKey = function(key, window = undefined) {
@@ -217,7 +212,7 @@ event.parseModifiers_ = function(modifiers) {
     mval |= Ci.nsIDOMNSEvent.META_MASK;
   }
   if (modifiers.accelKey) {
-    if (navigator.platform.indexOf("Mac") >= 0) {
+    if (navigator.platform.includes("Mac")) {
       mval |= Ci.nsIDOMNSEvent.META_MASK;
     } else {
       mval |= Ci.nsIDOMNSEvent.CONTROL_MASK;
@@ -358,103 +353,105 @@ event.synthesizeMouseAtCenter = function(element, event, window) {
 };
 
 /* eslint-disable */
-function computeKeyCodeFromChar_(char) {
+function computeKeyCodeFromChar_(char, win = window) {
   if (char.length != 1) {
     return 0;
   }
 
+  let KeyboardEvent = getKeyboardEvent_(win);
+
   if (char in VIRTUAL_KEYCODE_LOOKUP) {
-    return Ci.nsIDOMKeyEvent["DOM_" + VIRTUAL_KEYCODE_LOOKUP[char]];
+    return KeyboardEvent["DOM_" + VIRTUAL_KEYCODE_LOOKUP[char]];
   }
 
   if (char >= "a" && char <= "z") {
-    return Ci.nsIDOMKeyEvent.DOM_VK_A + char.charCodeAt(0) - "a".charCodeAt(0);
+    return KeyboardEvent.DOM_VK_A + char.charCodeAt(0) - "a".charCodeAt(0);
   }
   if (char >= "A" && char <= "Z") {
-    return Ci.nsIDOMKeyEvent.DOM_VK_A + char.charCodeAt(0) - "A".charCodeAt(0);
+    return KeyboardEvent.DOM_VK_A + char.charCodeAt(0) - "A".charCodeAt(0);
   }
   if (char >= "0" && char <= "9") {
-    return Ci.nsIDOMKeyEvent.DOM_VK_0 + char.charCodeAt(0) - "0".charCodeAt(0);
+    return KeyboardEvent.DOM_VK_0 + char.charCodeAt(0) - "0".charCodeAt(0);
   }
 
   // returns US keyboard layout's keycode
   switch (char) {
     case "~":
     case "`":
-      return Ci.nsIDOMKeyEvent.DOM_VK_BACK_QUOTE;
+      return KeyboardEvent.DOM_VK_BACK_QUOTE;
 
     case "!":
-      return Ci.nsIDOMKeyEvent.DOM_VK_1;
+      return KeyboardEvent.DOM_VK_1;
 
     case "@":
-      return Ci.nsIDOMKeyEvent.DOM_VK_2;
+      return KeyboardEvent.DOM_VK_2;
 
     case "#":
-      return Ci.nsIDOMKeyEvent.DOM_VK_3;
+      return KeyboardEvent.DOM_VK_3;
 
     case "$":
-      return Ci.nsIDOMKeyEvent.DOM_VK_4;
+      return KeyboardEvent.DOM_VK_4;
 
     case "%":
-      return Ci.nsIDOMKeyEvent.DOM_VK_5;
+      return KeyboardEvent.DOM_VK_5;
 
     case "^":
-      return Ci.nsIDOMKeyEvent.DOM_VK_6;
+      return KeyboardEvent.DOM_VK_6;
 
     case "&":
-      return Ci.nsIDOMKeyEvent.DOM_VK_7;
+      return KeyboardEvent.DOM_VK_7;
 
     case "*":
-      return Ci.nsIDOMKeyEvent.DOM_VK_8;
+      return KeyboardEvent.DOM_VK_8;
 
     case "(":
-      return Ci.nsIDOMKeyEvent.DOM_VK_9;
+      return KeyboardEvent.DOM_VK_9;
 
     case ")":
-      return Ci.nsIDOMKeyEvent.DOM_VK_0;
+      return KeyboardEvent.DOM_VK_0;
 
     case "-":
     case "_":
-      return Ci.nsIDOMKeyEvent.DOM_VK_SUBTRACT;
+      return KeyboardEvent.DOM_VK_SUBTRACT;
 
     case "+":
     case "=":
-      return Ci.nsIDOMKeyEvent.DOM_VK_EQUALS;
+      return KeyboardEvent.DOM_VK_EQUALS;
 
     case "{":
     case "[":
-      return Ci.nsIDOMKeyEvent.DOM_VK_OPEN_BRACKET;
+      return KeyboardEvent.DOM_VK_OPEN_BRACKET;
 
     case "}":
     case "]":
-      return Ci.nsIDOMKeyEvent.DOM_VK_CLOSE_BRACKET;
+      return KeyboardEvent.DOM_VK_CLOSE_BRACKET;
 
     case "|":
     case "\\":
-      return Ci.nsIDOMKeyEvent.DOM_VK_BACK_SLASH;
+      return KeyboardEvent.DOM_VK_BACK_SLASH;
 
     case ":":
     case ";":
-      return Ci.nsIDOMKeyEvent.DOM_VK_SEMICOLON;
+      return KeyboardEvent.DOM_VK_SEMICOLON;
 
     case "'":
     case "\"":
-      return Ci.nsIDOMKeyEvent.DOM_VK_QUOTE;
+      return KeyboardEvent.DOM_VK_QUOTE;
 
     case "<":
     case ",":
-      return Ci.nsIDOMKeyEvent.DOM_VK_COMMA;
+      return KeyboardEvent.DOM_VK_COMMA;
 
     case ">":
     case ".":
-      return Ci.nsIDOMKeyEvent.DOM_VK_PERIOD;
+      return KeyboardEvent.DOM_VK_PERIOD;
 
     case "?":
     case "/":
-      return Ci.nsIDOMKeyEvent.DOM_VK_SLASH;
+      return KeyboardEvent.DOM_VK_SLASH;
 
     case "\n":
-      return Ci.nsIDOMKeyEvent.DOM_VK_RETURN;
+      return KeyboardEvent.DOM_VK_RETURN;
 
     default:
       return 0;
@@ -466,13 +463,15 @@ function computeKeyCodeFromChar_(char) {
  * Returns true if the given key should cause keypress event when widget
  * handles the native key event.  Otherwise, false.
  *
- * The key code should be one of consts of nsIDOMKeyEvent.DOM_VK_*,
+ * The key code should be one of consts of KeyboardEvent.DOM_VK_*,
  * or a key name begins with "VK_", or a character.
  */
 event.isKeypressFiredKey = function(key) {
+  let KeyboardEvent = getKeyboardEvent_();
+
   if (typeof key == "string") {
     if (key.indexOf("VK_") === 0) {
-      key = Ci.nsIDOMKeyEvent["DOM_" + key];
+      key = KeyboardEvent["DOM_" + key];
       if (!key) {
         throw new TypeError("Unknown key: " + key);
       }
@@ -484,13 +483,13 @@ event.isKeypressFiredKey = function(key) {
   }
 
   switch (key) {
-    case Ci.nsIDOMKeyEvent.DOM_VK_SHIFT:
-    case Ci.nsIDOMKeyEvent.DOM_VK_CONTROL:
-    case Ci.nsIDOMKeyEvent.DOM_VK_ALT:
-    case Ci.nsIDOMKeyEvent.DOM_VK_CAPS_LOCK:
-    case Ci.nsIDOMKeyEvent.DOM_VK_NUM_LOCK:
-    case Ci.nsIDOMKeyEvent.DOM_VK_SCROLL_LOCK:
-    case Ci.nsIDOMKeyEvent.DOM_VK_META:
+    case KeyboardEvent.DOM_VK_SHIFT:
+    case KeyboardEvent.DOM_VK_CONTROL:
+    case KeyboardEvent.DOM_VK_ALT:
+    case KeyboardEvent.DOM_VK_CAPS_LOCK:
+    case KeyboardEvent.DOM_VK_NUM_LOCK:
+    case KeyboardEvent.DOM_VK_SCROLL_LOCK:
+    case KeyboardEvent.DOM_VK_META:
       return false;
 
     default:
@@ -600,7 +599,7 @@ function createKeyboardEventDictionary_(key, keyEvent, win = window) {
     keyName = key.substr("KEY_".length);
     result.flags |= Ci.nsITextInputProcessor.KEY_NON_PRINTABLE_KEY;
   } else if (key.indexOf("VK_") == 0) {
-    keyCode = Ci.nsIDOMKeyEvent["DOM_" + key];
+    keyCode = getKeyboardEvent_(win)["DOM_" + key];
     if (!keyCode) {
       throw "Unknown key: " + key;
     }
@@ -611,7 +610,7 @@ function createKeyboardEventDictionary_(key, keyEvent, win = window) {
   } else if (key != "") {
     keyName = key;
     if (!keyCodeIsDefined) {
-      keyCode = computeKeyCodeFromChar_(key.charAt(0));
+      keyCode = computeKeyCodeFromChar_(key.charAt(0), win);
     }
     if (!keyCode) {
       result.flags |= Ci.nsITextInputProcessor.KEY_KEEP_KEYCODE_ZERO;
@@ -1015,107 +1014,6 @@ event.synthesizeKeyExpectEvent = function(
 };
 
 /**
- * Synthesize a composition event.
- *
- * @param {DOMEvent} ev
- *     The composition event information.  This must have |type|
- *     member.  The value must be "compositionstart", "compositionend" or
- *     "compositionupdate".  And also this may have |data| and |locale|
- *     which would be used for the value of each property of the
- *     composition event.  Note that the data would be ignored if the
- *     event type were "compositionstart".
- * @param {Window=} window
- *     Window object.  Defaults to the current window.
- */
-event.synthesizeComposition = function(ev, window = undefined) {
-  let domutils = getDOMWindowUtils(window);
-  domutils.sendCompositionEvent(ev.type, ev.data || "", ev.locale || "");
-};
-
-/**
- * Synthesize a text event.
- *
- * The text event's information, this has |composition| and |caret|
- * members.  |composition| has |string| and |clauses| members. |clauses|
- * must be array object.  Each object has |length| and |attr|.
- * And |caret| has |start| and |length|.  See the following tree image.
- *
- *     ev
- *      +-- composition
- *      |     +-- string
- *      |     +-- clauses[]
- *      |           +-- length
- *      |           +-- attr
- *      +-- caret
- *            +-- start
- *            +-- length
- *
- * Set the composition string to |composition.string|.  Set its clauses
- * information to the |clauses| array.
- *
- * When it's composing, set the each clauses' length
- * to the |composition.clauses[n].length|.  The sum
- * of the all length values must be same as the length of
- * |composition.string|. Set nsIDOMWindowUtils.COMPOSITION_ATTR_* to the
- * |composition.clauses[n].attr|.
- *
- * When it's not composing, set 0 to the |composition.clauses[0].length|
- * and |composition.clauses[0].attr|.
- *
- * Set caret position to the |caret.start|. Its offset from the start of
- * the composition string.  Set caret length to |caret.length|.  If it's
- * larger than 0, it should be wide caret.  However, current nsEditor
- * doesn't support wide caret, therefore, you should always set 0 now.
- *
- * @param {Object.<string, ?>} ev
- *     The text event's information,
- * @param {Window=} window
- *     Window object.  Defaults to the current window.
- */
-event.synthesizeText = function(ev, window = undefined) {
-  let domutils = getDOMWindowUtils(window);
-
-  if (!ev.composition ||
-      !ev.composition.clauses ||
-      !ev.composition.clauses[0]) {
-    return;
-  }
-
-  let firstClauseLength = ev.composition.clauses[0].length;
-  let firstClauseAttr   = ev.composition.clauses[0].attr;
-  let secondClauseLength = 0;
-  let secondClauseAttr = 0;
-  let thirdClauseLength = 0;
-  let thirdClauseAttr = 0;
-  if (ev.composition.clauses[1]) {
-    secondClauseLength = ev.composition.clauses[1].length;
-    secondClauseAttr   = ev.composition.clauses[1].attr;
-    if (event.composition.clauses[2]) {
-      thirdClauseLength = ev.composition.clauses[2].length;
-      thirdClauseAttr   = ev.composition.clauses[2].attr;
-    }
-  }
-
-  let caretStart = -1;
-  let caretLength = 0;
-  if (event.caret) {
-    caretStart = ev.caret.start;
-    caretLength = ev.caret.length;
-  }
-
-  domutils.sendTextEvent(
-      ev.composition.string,
-      firstClauseLength,
-      firstClauseAttr,
-      secondClauseLength,
-      secondClauseAttr,
-      thirdClauseLength,
-      thirdClauseAttr,
-      caretStart,
-      caretLength);
-};
-
-/**
  * Synthesize a query selected text event.
  *
  * @param {Window=}
@@ -1306,8 +1204,8 @@ event.sendKeyDown = function(keyToSend, modifiers, document) {
   // TODO: This doesn't do anything since |synthesizeKeyEvent| ignores
   // explicit keypress request, and instead figures out itself when to
   // send keypress.
-  if (["VK_SHIFT", "VK_CONTROL", "VK_ALT", "VK_META"]
-      .indexOf(getKeyCode(keyToSend)) < 0) {
+  if (!["VK_SHIFT", "VK_CONTROL", "VK_ALT", "VK_META"]
+      .includes(getKeyCode(keyToSend))) {
     modifiers.type = "keypress";
     event.sendSingleKey(keyToSend, modifiers, document);
   }

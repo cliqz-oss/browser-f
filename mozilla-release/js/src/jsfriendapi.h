@@ -14,13 +14,22 @@
 #include "mozilla/UniquePtr.h"
 
 #include "jsapi.h" // For JSAutoByteString.  See bug 1033916.
-#include "jsbytecode.h"
 #include "jspubtd.h"
 
 #include "js/CallArgs.h"
 #include "js/CallNonGenericMethod.h"
 #include "js/Class.h"
+#include "js/HeapAPI.h"
+#include "js/TypeDecls.h"
 #include "js/Utility.h"
+
+#ifndef JS_STACK_GROWTH_DIRECTION
+# ifdef __hppa
+#  define JS_STACK_GROWTH_DIRECTION (1)
+# else
+#  define JS_STACK_GROWTH_DIRECTION (-1)
+# endif
+#endif
 
 #if JS_STACK_GROWTH_DIRECTION > 0
 # define JS_CHECK_STACK_SIZE(limit, sp) (MOZ_LIKELY((uintptr_t)(sp) < (limit)))
@@ -28,7 +37,6 @@
 # define JS_CHECK_STACK_SIZE(limit, sp) (MOZ_LIKELY((uintptr_t)(sp) > (limit)))
 #endif
 
-class JSAtom;
 struct JSErrorFormatString;
 class JSLinearString;
 struct JSJitInfo;
@@ -128,7 +136,6 @@ enum {
     JS_TELEMETRY_GC_BUDGET_MS,
     JS_TELEMETRY_GC_BUDGET_OVERRUN,
     JS_TELEMETRY_GC_ANIMATION_MS,
-    JS_TELEMETRY_GC_MAX_PAUSE_MS,
     JS_TELEMETRY_GC_MAX_PAUSE_MS_2,
     JS_TELEMETRY_GC_MARK_MS,
     JS_TELEMETRY_GC_SWEEP_MS,
@@ -193,6 +200,11 @@ JS_SetCompartmentPrincipals(JSCompartment* compartment, JSPrincipals* principals
 
 extern JS_FRIEND_API(JSPrincipals*)
 JS_GetScriptPrincipals(JSScript* script);
+
+namespace js {
+extern JS_FRIEND_API(JSCompartment*)
+GetScriptCompartment(JSScript* script);
+} /* namespace js */
 
 extern JS_FRIEND_API(bool)
 JS_ScriptHasMutedErrors(JSScript* script);
@@ -433,6 +445,15 @@ extern JS_FRIEND_API(bool)
 UseInternalJobQueues(JSContext* cx, bool cooperative = false);
 
 /**
+ * Enqueue |job| on the internal job queue.
+ *
+ * This is useful in tests for creating situations where a call occurs with no
+ * other JavaScript on the stack.
+ */
+extern JS_FRIEND_API(bool)
+EnqueueJob(JSContext* cx, JS::HandleObject job);
+
+/**
  * Instruct the runtime to stop draining the internal job queue.
  *
  * Useful if the embedding is in the process of quitting in reaction to a
@@ -612,10 +633,11 @@ struct Function {
 
 struct String
 {
-    static const uint32_t INLINE_CHARS_BIT = JS_BIT(2);
+    static const uint32_t NON_ATOM_BIT     = JS_BIT(0);
+    static const uint32_t LINEAR_BIT       = JS_BIT(1);
+    static const uint32_t INLINE_CHARS_BIT = JS_BIT(3);
     static const uint32_t LATIN1_CHARS_BIT = JS_BIT(6);
-    static const uint32_t ROPE_FLAGS       = 0;
-    static const uint32_t EXTERNAL_FLAGS   = JS_BIT(5);
+    static const uint32_t EXTERNAL_FLAGS   = LINEAR_BIT | NON_ATOM_BIT | JS_BIT(5);
     static const uint32_t TYPE_FLAGS_MASK  = JS_BIT(6) - 1;
     uint32_t flags;
     uint32_t length;
@@ -626,12 +648,17 @@ struct String
         char16_t inlineStorageTwoByte[1];
     };
     const JSStringFinalizer* externalFinalizer;
+
+    static bool nurseryCellIsString(const js::gc::Cell* cell) {
+        MOZ_ASSERT(IsInsideNursery(cell));
+        return reinterpret_cast<const String*>(cell)->flags & NON_ATOM_BIT;
+    }
 };
 
 } /* namespace shadow */
 
 // This is equal to |&JSObject::class_|.  Use it in places where you don't want
-// to #include jsobj.h.
+// to #include vm/JSObject.h.
 extern JS_FRIEND_DATA(const js::Class* const) ObjectClassPtr;
 
 inline const js::Class*
@@ -904,7 +931,7 @@ StringToLinearString(JSContext* cx, JSString* str)
 {
     using shadow::String;
     String* s = reinterpret_cast<String*>(str);
-    if (MOZ_UNLIKELY((s->flags & String::TYPE_FLAGS_MASK) == String::ROPE_FLAGS))
+    if (MOZ_UNLIKELY(!(s->flags & String::LINEAR_BIT)))
         return StringToLinearStringSlow(cx, str);
     return reinterpret_cast<JSLinearString*>(str);
 }
@@ -1379,12 +1406,6 @@ DateGetMsecSinceEpoch(JSContext* cx, JS::HandleObject obj, double* msecSinceEpoc
 
 } /* namespace js */
 
-/* Implemented in jscntxt.cpp. */
-
-/**
- * Report an exception, which is currently realized as a printf-style format
- * string and its arguments.
- */
 typedef enum JSErrNum {
 #define MSG_DEF(name, count, exception, format) \
     name,
@@ -1394,6 +1415,8 @@ typedef enum JSErrNum {
 } JSErrNum;
 
 namespace js {
+
+/* Implemented in vm/JSContext.cpp. */
 
 extern JS_FRIEND_API(const JSErrorFormatString*)
 GetErrorMessage(void* userRef, const unsigned errorNumber);
@@ -2601,7 +2624,7 @@ FunctionObjectToShadowFunction(JSObject* fun)
     return reinterpret_cast<shadow::Function*>(fun);
 }
 
-/* Statically asserted in jsfun.h. */
+/* Statically asserted in JSFunction.h. */
 static const unsigned JS_FUNCTION_INTERPRETED_BITS = 0x0201;
 
 // Return whether the given function object is native.
@@ -2973,6 +2996,15 @@ SetJitExceptionHandler(JitExceptionHandler handler);
  */
 extern JS_FRIEND_API(JSObject*)
 GetFirstSubsumedSavedFrame(JSContext* cx, JS::HandleObject savedFrame, JS::SavedFrameSelfHosted selfHosted);
+
+/**
+ * Get the first SavedFrame object in this SavedFrame stack whose principals are
+ * subsumed by the given |principals|. If there is no such frame, return nullptr.
+ *
+ * Do NOT pass a non-SavedFrame object here.
+ */
+extern JS_FRIEND_API(JSObject*)
+GetFirstSubsumedSavedFrame(JSContext* cx, JSPrincipals* principals, JS::HandleObject savedFrame, JS::SavedFrameSelfHosted selfHosted);
 
 extern JS_FRIEND_API(bool)
 ReportIsNotFunction(JSContext* cx, JS::HandleValue v);

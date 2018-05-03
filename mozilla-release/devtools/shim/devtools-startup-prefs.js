@@ -13,9 +13,9 @@ pref("devtools.jsonview.enabled", true);
 
 // Default theme ("dark" or "light")
 #ifdef MOZ_DEV_EDITION
-sticky_pref("devtools.theme", "dark");
+pref("devtools.theme", "dark", sticky);
 #else
-sticky_pref("devtools.theme", "light");
+pref("devtools.theme", "light", sticky);
 #endif
 
 // Should the devtools toolbar be opened on startup
@@ -35,3 +35,7 @@ pref("devtools.onboarding.experiment.flipped", false);
 
 // Flag to check if we already logged the devtools onboarding related probe.
 pref("devtools.onboarding.telemetry.logged", false);
+
+// Completely disable DevTools entry points, as well as all DevTools command line
+// arguments This should be merged with devtools.enabled, see Bug 1440675.
+pref("devtools.policy.disabled", false);

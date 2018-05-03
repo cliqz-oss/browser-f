@@ -58,13 +58,6 @@ ServoPageRuleDeclaration::GetParentObject()
   return Rule()->GetDocument();
 }
 
-DocGroup*
-ServoPageRuleDeclaration::GetDocGroup() const
-{
-  nsIDocument* document = Rule()->GetDocument();
-  return document ? document->GetDocGroup() : nullptr;
-}
-
 DeclarationBlock*
 ServoPageRuleDeclaration::GetCSSDeclaration(Operation aOperation)
 {
@@ -200,7 +193,7 @@ ServoPageRule::List(FILE* out, int32_t aIndent) const
 /* CSSRule implementation */
 
 void
-ServoPageRule::GetCssTextImpl(nsAString& aCssText) const
+ServoPageRule::GetCssText(nsAString& aCssText) const
 {
   Servo_PageRule_GetCssText(mRawRule, &aCssText);
 }

@@ -2,7 +2,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -50,7 +50,7 @@ function test() {
       }
 
       dialog = await openAndLoadSubDialog(connectionURL);
-      dialogClosingPromise = waitForEvent(dialog.document.documentElement, "dialogclosing");
+      dialogClosingPromise = BrowserTestUtils.waitForEvent(dialog.document.documentElement, "dialogclosing");
 
       doc = dialog.document;
       proxyTypePref = dialog.Preferences.get("network.proxy.type");

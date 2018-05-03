@@ -7,6 +7,7 @@
 #include "SandboxFilter.h"
 #include "SandboxFilterUtil.h"
 
+#include "Sandbox.h" // for ContentProcessSandboxParams
 #include "SandboxBrokerClient.h"
 #include "SandboxInfo.h"
 #include "SandboxInternal.h"
@@ -14,9 +15,11 @@
 #ifdef MOZ_GMP_SANDBOX
 #include "SandboxOpenedFiles.h"
 #endif
+#include "mozilla/Move.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/TemplateLib.h"
 #include "mozilla/UniquePtr.h"
+#include "prenv.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +33,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -174,7 +178,7 @@ public:
       .Default(InvalidSyscall());
   }
 
-  Maybe<ResultExpr> EvaluateSocketCall(int aCall) const override {
+  Maybe<ResultExpr> EvaluateSocketCall(int aCall, bool aHasArgs) const override {
     switch (aCall) {
     case SYS_RECVMSG:
     case SYS_SENDMSG:
@@ -373,7 +377,38 @@ public:
 class ContentSandboxPolicy : public SandboxPolicyCommon {
 private:
   SandboxBrokerClient* mBroker;
-  std::vector<int> mSyscallWhitelist;
+  ContentProcessSandboxParams mParams;
+  bool mAllowSysV;
+
+  bool BelowLevel(int aLevel) const {
+    return mParams.mLevel < aLevel;
+  }
+  ResultExpr AllowBelowLevel(int aLevel, ResultExpr aOrElse) const {
+    return BelowLevel(aLevel) ? Allow() : Move(aOrElse);
+  }
+  ResultExpr AllowBelowLevel(int aLevel) const {
+    return AllowBelowLevel(aLevel, InvalidSyscall());
+  }
+
+  // Returns true if the running kernel supports separate syscalls for
+  // socket operations, or false if it supports only socketcall(2).
+  static bool
+  HasSeparateSocketCalls() {
+#ifdef __NR_socket
+    // If there's no socketcall, then obviously there are separate syscalls.
+#ifdef __NR_socketcall
+    int fd = syscall(__NR_socket, AF_LOCAL, SOCK_STREAM, 0);
+    if (fd < 0) {
+      MOZ_DIAGNOSTIC_ASSERT(errno == ENOSYS);
+      return false;
+    }
+    close(fd);
+#endif // __NR_socketcall
+    return true;
+#else // ifndef __NR_socket
+    return false;
+#endif // __NR_socket
+  }
 
   // Trap handlers for filesystem brokering.
   // (The amount of code duplication here could be improved....)
@@ -543,6 +578,17 @@ private:
     return ConvertError(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds));
   }
 
+  static intptr_t SocketpairUnpackTrap(ArgsRef aArgs, void* aux) {
+#ifdef __NR_socketpair
+    auto argsPtr = reinterpret_cast<unsigned long*>(aArgs.args[1]);
+    return DoSyscall(__NR_socketpair, argsPtr[0], argsPtr[1], argsPtr[2],
+                     argsPtr[3]);
+#else
+    MOZ_CRASH("unreachable?");
+    return -ENOSYS;
+#endif
+  }
+
   static intptr_t StatFsTrap(ArgsRef aArgs, void* aux) {
     // Warning: the kernel interface is not the C interface.  The
     // structs are different (<asm/statfs.h> vs. <sys/statfs.h>), and
@@ -577,13 +623,132 @@ private:
     return rv;
   }
 
+  // This just needs to return something to stand in for the
+  // unconnected socket until ConnectTrap, below, and keep track of
+  // the socket type somehow.  Half a socketpair *is* a socket, so it
+  // should result in minimal confusion in the caller.
+  static intptr_t FakeSocketTrapCommon(int domain, int type, int protocol) {
+    int fds[2];
+    // X11 client libs will still try to getaddrinfo() even for a
+    // local connection.  Also, WebRTC still has vestigial network
+    // code trying to do things in the content process.  Politely tell
+    // them no.
+    if (domain != AF_UNIX) {
+      return -EAFNOSUPPORT;
+    }
+    if (socketpair(domain, type, protocol, fds) != 0) {
+      return -errno;
+    }
+    close(fds[1]);
+    return fds[0];
+  }
+
+  static intptr_t FakeSocketTrap(ArgsRef aArgs, void* aux) {
+    return FakeSocketTrapCommon(static_cast<int>(aArgs.args[0]),
+                                static_cast<int>(aArgs.args[1]),
+                                static_cast<int>(aArgs.args[2]));
+  }
+
+  static intptr_t FakeSocketTrapLegacy(ArgsRef aArgs, void* aux) {
+    const auto innerArgs = reinterpret_cast<unsigned long*>(aArgs.args[1]);
+
+    return FakeSocketTrapCommon(static_cast<int>(innerArgs[0]),
+                                static_cast<int>(innerArgs[1]),
+                                static_cast<int>(innerArgs[2]));
+  }
+
+  static Maybe<int>
+  DoGetSockOpt(int fd, int optname) {
+    int optval;
+    socklen_t optlen = sizeof(optval);
+
+    if (getsockopt(fd, SOL_SOCKET, optname, &optval, &optlen) != 0) {
+      return Nothing();
+    }
+    MOZ_RELEASE_ASSERT(static_cast<size_t>(optlen) == sizeof(optval));
+    return Some(optval);
+  }
+
+  // Substitute the newly connected socket from the broker for the
+  // original socket.  This is meant to be used on a fd from
+  // FakeSocketTrap, above, but it should also work to simulate
+  // re-connect()ing a real connected socket.
+  //
+  // Warning: This isn't quite right if the socket is dup()ed, because
+  // other duplicates will still be the original socket, but hopefully
+  // nothing we're dealing with does that.
+  static intptr_t ConnectTrapCommon(SandboxBrokerClient* aBroker, int aFd,
+                                    const struct sockaddr_un* aAddr,
+                                    socklen_t aLen) {
+    if (aFd < 0) {
+      return -EBADF;
+    }
+    const auto maybeDomain = DoGetSockOpt(aFd, SO_DOMAIN);
+    if (!maybeDomain) {
+      return -errno;
+    }
+    if (*maybeDomain != AF_UNIX) {
+      return -EAFNOSUPPORT;
+    }
+    const auto maybeType = DoGetSockOpt(aFd, SO_TYPE);
+    if (!maybeType) {
+      return -errno;
+    }
+    const int oldFlags = fcntl(aFd, F_GETFL);
+    if (oldFlags == -1) {
+      return -errno;
+    }
+    const int newFd = aBroker->Connect(aAddr, aLen, *maybeType);
+    if (newFd < 0) {
+      return newFd;
+    }
+    // Copy over the nonblocking flag.  The connect() won't be
+    // nonblocking in that case, but that shouldn't matter for
+    // AF_UNIX.  The other fcntl-settable flags are either irrelevant
+    // for sockets (e.g., O_APPEND) or would be blocked by this
+    // seccomp-bpf policy, so they're ignored.
+    if (fcntl(newFd, F_SETFL, oldFlags & O_NONBLOCK) != 0) {
+      close(newFd);
+      return -errno;
+    }
+    if (dup2(newFd, aFd) < 0) {
+      close(newFd);
+      return -errno;
+    }
+    close(newFd);
+    return 0;
+  }
+
+  static intptr_t ConnectTrap(ArgsRef aArgs, void* aux) {
+    typedef const struct sockaddr_un* AddrPtr;
+
+    return ConnectTrapCommon(static_cast<SandboxBrokerClient*>(aux),
+                             static_cast<int>(aArgs.args[0]),
+                             reinterpret_cast<AddrPtr>(aArgs.args[1]),
+                             static_cast<socklen_t>(aArgs.args[2]));
+  }
+
+  static intptr_t ConnectTrapLegacy(ArgsRef aArgs, void* aux) {
+    const auto innerArgs = reinterpret_cast<unsigned long*>(aArgs.args[1]);
+    typedef const struct sockaddr_un* AddrPtr;
+
+    return ConnectTrapCommon(static_cast<SandboxBrokerClient*>(aux),
+                             static_cast<int>(innerArgs[0]),
+                             reinterpret_cast<AddrPtr>(innerArgs[1]),
+                             static_cast<socklen_t>(innerArgs[2]));
+  }
+
 public:
-  explicit ContentSandboxPolicy(SandboxBrokerClient* aBroker,
-                                const std::vector<int>& aSyscallWhitelist)
-    : mBroker(aBroker),
-      mSyscallWhitelist(aSyscallWhitelist) {}
+  ContentSandboxPolicy(SandboxBrokerClient* aBroker,
+                       ContentProcessSandboxParams&& aParams)
+    : mBroker(aBroker)
+    , mParams(Move(aParams))
+    , mAllowSysV(PR_GetEnv("MOZ_SANDBOX_ALLOW_SYSV") != nullptr)
+    { }
+
   ~ContentSandboxPolicy() override = default;
-  Maybe<ResultExpr> EvaluateSocketCall(int aCall) const override {
+
+  Maybe<ResultExpr> EvaluateSocketCall(int aCall, bool aHasArgs) const override {
     switch(aCall) {
     case SYS_RECVFROM:
     case SYS_SENDTO:
@@ -592,13 +757,20 @@ public:
 
     case SYS_SOCKETPAIR: {
       // See bug 1066750.
-      if (!kSocketCallHasArgs) {
-        // We can't filter the args if the platform passes them by pointer.
+      if (!aHasArgs) {
+        // If this is a socketcall(2) platform, but the kernel also
+        // supports separate syscalls (>= 4.2.0), we can unpack the
+        // arguments and filter them.
+        if (HasSeparateSocketCalls()) {
+          return Some(Trap(SocketpairUnpackTrap, nullptr));
+        }
+        // Otherwise, we can't filter the args if the platform passes
+        // them by pointer.
         return Some(Allow());
       }
       Arg<int> domain(0), type(1);
       return Some(If(domain == AF_UNIX,
-                     Switch(type & ~SOCK_CLOEXEC)
+                     Switch(type & ~(SOCK_CLOEXEC | SOCK_NONBLOCK))
                      .Case(SOCK_STREAM, Allow())
                      .Case(SOCK_SEQPACKET, Allow())
                      .Case(SOCK_DGRAM, Trap(SocketpairDatagramTrap, nullptr))
@@ -610,10 +782,16 @@ public:
     case SYS_SOCKET:
       return Some(Error(EACCES));
 #else // #ifdef DESKTOP
+    case SYS_SOCKET: {
+      const auto trapFn = aHasArgs ? FakeSocketTrap : FakeSocketTrapLegacy;
+      return Some(AllowBelowLevel(4, Trap(trapFn, nullptr)));
+    }
+    case SYS_CONNECT: {
+      const auto trapFn = aHasArgs ? ConnectTrap : ConnectTrapLegacy;
+      return Some(AllowBelowLevel(4, Trap(trapFn, mBroker)));
+    }
     case SYS_RECV:
     case SYS_SEND:
-    case SYS_SOCKET: // DANGEROUS
-    case SYS_CONNECT: // DANGEROUS
     case SYS_GETSOCKOPT:
     case SYS_SETSOCKOPT:
     case SYS_GETSOCKNAME:
@@ -622,26 +800,32 @@ public:
       return Some(Allow());
 #endif
     default:
-      return SandboxPolicyCommon::EvaluateSocketCall(aCall);
+      return SandboxPolicyCommon::EvaluateSocketCall(aCall, aHasArgs);
     }
   }
 
 #ifdef DESKTOP
   Maybe<ResultExpr> EvaluateIpcCall(int aCall) const override {
     switch(aCall) {
-      // These are a problem: SysV shared memory follows the Unix
-      // "same uid policy" and can't be restricted/brokered like file
-      // access.  But the graphics layer might not be using them
-      // anymore; this needs to be studied.
+      // These are a problem: SysV IPC follows the Unix "same uid
+      // policy" and can't be restricted/brokered like file access.
+      // We're not using it directly, but there are some library
+      // dependencies that do; see ContentNeedsSysVIPC() in
+      // SandboxLaunch.cpp.  Also, Cairo as used by GTK will sometimes
+      // try to use MIT-SHM, so shmget() is a non-fatal error.  See
+      // also bug 1376910 and bug 1438401.
     case SHMGET:
+      return Some(mAllowSysV ? Allow() : Error(EPERM));
     case SHMCTL:
     case SHMAT:
     case SHMDT:
     case SEMGET:
     case SEMCTL:
     case SEMOP:
-    case MSGGET:
-      return Some(Allow());
+      if (mAllowSysV) {
+        return Some(Allow());
+      }
+      return SandboxPolicyCommon::EvaluateIpcCall(aCall);
     default:
       return SandboxPolicyCommon::EvaluateIpcCall(aCall);
     }
@@ -650,16 +834,20 @@ public:
 
 #ifdef MOZ_PULSEAUDIO
   ResultExpr PrctlPolicy() const override {
-    Arg<int> op(0);
-    return If(op == PR_GET_NAME, Allow())
-      .Else(SandboxPolicyCommon::PrctlPolicy());
+    if (BelowLevel(4)) {
+      Arg<int> op(0);
+      return If(op == PR_GET_NAME, Allow())
+             .Else(SandboxPolicyCommon::PrctlPolicy());
+    }
+    return SandboxPolicyCommon::PrctlPolicy();
   }
 #endif
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     // Straight allow for anything that got overriden via prefs
-    if (std::find(mSyscallWhitelist.begin(), mSyscallWhitelist.end(), sysno)
-        != mSyscallWhitelist.end()) {
+    const auto& whitelist = mParams.mSyscallWhitelist;
+    if (std::find(whitelist.begin(), whitelist.end(), sysno)
+        != whitelist.end()) {
       if (SandboxInfo::Get().Test(SandboxInfo::kVerbose)) {
         SANDBOX_LOG_ERROR("Allowing syscall nr %d via whitelist", sysno);
       }
@@ -737,18 +925,30 @@ public:
     case __NR_getcwd:
       return Error(ENOENT);
 
+#ifdef MOZ_PULSEAUDIO
+    CASES_FOR_fchown:
+    case __NR_fchmod:
+      return AllowBelowLevel(4);
+#endif
     CASES_FOR_fstatfs: // fontconfig, pulseaudio, GIO (see also statfs)
-    CASES_FOR_fchown: // pulseaudio
-    case __NR_fchmod: // pulseaudio
     case __NR_flock: // graphics
       return Allow();
 
       // Bug 1354731: proprietary GL drivers try to mknod() their devices
-    case __NR_mknod: {
-      Arg<mode_t> mode(1);
+#ifdef __NR_mknod
+    case __NR_mknod:
+#endif
+    case __NR_mknodat: {
+      Arg<mode_t> mode(sysno == __NR_mknodat ? 2 : 1);
       return If((mode & S_IFMT) == S_IFCHR, Error(EPERM))
         .Else(InvalidSyscall());
     }
+      // Bug 1438389: ...and nvidia GL will sometimes try to chown the devices
+#ifdef __NR_chown
+    case __NR_chown:
+#endif
+    case __NR_fchownat:
+      return Error(EPERM);
 
       // For ORBit called by GConf (on some systems) to get proxy
       // settings.  Can remove when bug 1325242 happens in some form.
@@ -770,11 +970,12 @@ public:
 #endif
       return Allow();
 
-#ifdef MOZ_ALSA
-    case __NR_ioctl:
-      return Allow();
-#else
     case __NR_ioctl: {
+#ifdef MOZ_ALSA
+      if (BelowLevel(4)) {
+        return Allow();
+      }
+#endif
       static const unsigned long kTypeMask = _IOC_TYPEMASK << _IOC_TYPESHIFT;
       static const unsigned long kTtyIoctls = TIOCSTI & kTypeMask;
       // On some older architectures (but not x86 or ARM), ioctls are
@@ -801,7 +1002,6 @@ public:
         .ElseIf(shifted_type != kTtyIoctls, Allow())
         .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
     }
-#endif // !MOZ_ALSA
 
     CASES_FOR_fcntl: {
       Arg<int> cmd(1);
@@ -858,6 +1058,7 @@ public:
       return Allow();
 
     case __NR_dup:
+    case __NR_dup2: // See ConnectTrapCommon
       return Allow();
 
     CASES_FOR_getuid:
@@ -910,15 +1111,18 @@ public:
       // really do anything one way or the other, now that file
       // accesses are brokered to another process.
     case __NR_umask:
-      return Allow();
+      return AllowBelowLevel(4);
 
     case __NR_kill: {
-      Arg<int> sig(1);
-      // PulseAudio uses kill(pid, 0) to check if purported owners of
-      // shared memory files are still alive; see bug 1397753 for more
-      // details.
-      return If(sig == 0, Error(EPERM))
-        .Else(InvalidSyscall());
+      if (BelowLevel(4)) {
+        Arg<int> sig(1);
+        // PulseAudio uses kill(pid, 0) to check if purported owners of
+        // shared memory files are still alive; see bug 1397753 for more
+        // details.
+        return If(sig == 0, Error(EPERM))
+               .Else(InvalidSyscall());
+      }
+      return InvalidSyscall();
     }
 
     case __NR_wait4:
@@ -1003,9 +1207,9 @@ public:
 
 UniquePtr<sandbox::bpf_dsl::Policy>
 GetContentSandboxPolicy(SandboxBrokerClient* aMaybeBroker,
-                        const std::vector<int>& aSyscallWhitelist)
+                        ContentProcessSandboxParams&& aParams)
 {
-  return MakeUnique<ContentSandboxPolicy>(aMaybeBroker, aSyscallWhitelist);
+  return MakeUnique<ContentSandboxPolicy>(aMaybeBroker, Move(aParams));
 }
 #endif // MOZ_CONTENT_SANDBOX
 

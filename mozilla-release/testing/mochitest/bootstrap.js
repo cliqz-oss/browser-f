@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { utils: Cu, interfaces: Ci, classes: Cc } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var WindowListener = {
   // browser-test.js is only loaded into the first window. Setup that
   // needs to happen in all navigator:browser windows should go here.
   setupWindow: function(win) {
     win.nativeConsole = win.console;
-    XPCOMUtils.defineLazyModuleGetter(win, "console",
+    ChromeUtils.defineModuleGetter(win, "console",
       "resource://gre/modules/Console.jsm");
   },
 

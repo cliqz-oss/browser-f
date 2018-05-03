@@ -15,10 +15,13 @@
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
 #include "nsIDocument.h"
+#include "nsIDocumentInlines.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsMappedAttributes.h"
 #include "nsIDocShell.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleWalker.h"
+#endif
 #include "nsGlobalWindow.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(Body)
@@ -37,8 +40,6 @@ HTMLBodyElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
   return HTMLBodyElementBinding::Wrap(aCx, this, aGivenProto);
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(HTMLBodyElement, nsGenericHTMLElement)
 
 NS_IMPL_ELEMENT_CLONE(HTMLBodyElement)
 
@@ -274,7 +275,7 @@ HTMLBodyElement::GetAssociatedEditor()
   }
 
   // Make sure this is the actual body of the document
-  if (!IsCurrentBodyElement()) {
+  if (this != OwnerDoc()->GetBodyElement()) {
     return nullptr;
   }
 

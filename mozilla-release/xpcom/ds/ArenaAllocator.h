@@ -125,14 +125,12 @@ public:
   }
 
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   void Check()
   {
     if (mCurrent) {
       mCurrent->canary.Check();
     }
   }
-#endif
 
 private:
   struct ArenaHeader

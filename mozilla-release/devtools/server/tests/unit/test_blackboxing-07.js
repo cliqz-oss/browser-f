@@ -29,10 +29,10 @@ function run_test() {
 const BLACK_BOXED_URL = "http://example.com/black-boxed.min.js";
 const SOURCE_URL = "http://example.com/source.js";
 
-const testBlackBox = Task.async(function* () {
-  yield executeOnNextTickAndWaitForPause(evalCode, gClient);
+const testBlackBox = async function () {
+  await executeOnNextTickAndWaitForPause(evalCode, gClient);
 
-  const { sources } = yield getSources(gThreadClient);
+  const { sources } = await getSources(gThreadClient);
   equal(sources.length, 2);
 
   const blackBoxedSource = sources.filter(s => s.url === BLACK_BOXED_URL)[0];
@@ -42,10 +42,10 @@ const testBlackBox = Task.async(function* () {
   equal(regularSource.isBlackBoxed, false);
 
   finishClient(gClient);
-});
+};
 
 function evalCode() {
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "" + function blackBoxed() {},
     gDebuggee,
     "1.8",
@@ -53,7 +53,7 @@ function evalCode() {
     1
   );
 
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "" + function source() {}
       + "\ndebugger;",
     gDebuggee,

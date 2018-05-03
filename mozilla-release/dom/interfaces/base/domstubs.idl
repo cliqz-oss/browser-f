@@ -13,12 +13,11 @@ class nsWrapperCache;
 
 typedef unsigned long long DOMTimeStamp;
 typedef double DOMHighResTimeStamp;
+typedef unsigned long long nsViewID;
 
 // Core
-interface nsIDOMCDATASection;
 interface nsIDOMCharacterData;
 interface nsIDOMComment;
-interface nsIDOMDOMImplementation;
 interface nsIDOMDocument;
 interface nsIDOMDocumentFragment;
 interface nsIDOMDocumentType;
@@ -42,7 +41,6 @@ class DOMException;
 // Base
 interface nsIDOMWindow;
 interface nsIDOMWindowCollection;
-interface nsIDOMNavigator;
 interface nsIDOMScreen;
 
 // Events
@@ -51,12 +49,8 @@ interface nsIDOMEventTarget;
 interface nsIDOMEventListener;
 
 // HTML
-interface nsIDOMHTMLElement;
 interface nsIDOMHTMLFormElement;
 interface nsIDOMHTMLHeadElement;
 
 // Range
 interface nsIDOMRange;
-
-// Crypto
-interface nsIDOMCrypto;

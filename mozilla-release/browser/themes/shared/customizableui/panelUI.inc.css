@@ -333,6 +333,12 @@ panelview:not([mainview]) .toolbarbutton-text,
   margin-bottom: 0;
 }
 
+#extension-new-tab-notification-description > .extension-controlled-icon {
+  height: 16px;
+  width: 16px;
+  vertical-align: bottom;
+}
+
 #extension-new-tab-notification > .popup-notification-body-container > .popup-notification-body > .popup-notification-warning,
 #extension-new-tab-notification > .popup-notification-body-container > .popup-notification-icon {
   display: none;
@@ -622,23 +628,18 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 }
 
 #PanelUI-remotetabs {
-  --panel-ui-sync-illustration-height: 157.5px;
+  --panel-ui-sync-illustration-height: 91px;
 }
 
-.PanelUI-remotetabs-instruction-title,
 .PanelUI-remotetabs-instruction-label {
   /* If you change the margin here, the min-height of the synced tabs panel
     (e.g. #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-setupsync, etc) may
     need adjusting (see bug 1248506) */
-  margin: 15px;
+  margin: 0;
   text-align: center;
   text-shadow: none;
   max-width: 15em;
   color: GrayText;
-}
-
-.PanelUI-remotetabs-instruction-title {
-  font-size: 1.3em;
 }
 
 /* The boxes with "instructions" get extra top and bottom padding for space
@@ -648,7 +649,6 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
     (e.g. #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-setupsync, etc) may
     need adjusting (see bug 1248506) */
   padding-bottom: 30px;
-  padding-top: 15px;
 }
 
 .PanelUI-remotetabs-button {
@@ -661,8 +661,8 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   /* If you change the margin or padding below, the min-height of the synced tabs
      panel (e.g. #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-setupsync,
      etc) may need adjusting (see bug 1248506) */
-  margin-top: 10px;
-  margin-bottom: 10px;
+  margin-top: 15px;
+  margin-bottom: 15px;
   padding: 8px;
   text-shadow: none;
   min-width: 200px;
@@ -692,8 +692,12 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 
 .fxaSyncIllustration,
 .fxaSyncIllustrationIssue {
-  width: 180px;
+  /* If you change the margin here, the min-height of the synced tabs panel
+    (e.g. #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-setupsync, etc) may
+    need adjusting (see bug 1248506) */
+  width: 104px;
   height: var(--panel-ui-sync-illustration-height);
+  margin: 38px 0 15px;
   -moz-context-properties: fill;
   fill: #cdcdcd;
 }
@@ -725,10 +729,10 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-nodevicespane,
 #PanelUI-remotetabs[mainview] #PanelUI-remotetabs-tabsdisabledpane {
   min-height: calc(var(--panel-ui-sync-illustration-height) +
-                   20px + /* margin of .PanelUI-remotetabs-button */
+                   53px + /* margin of .fxaSyncIllustration */
+                   30px + /* margin of .PanelUI-remotetabs-button */
                    16px + /* padding of .PanelUI-remotetabs-button */
-                   30px + /* margin of .PanelUI-remotetabs-instruction-label */
-                   30px + 15px + /* padding of .PanelUI-remotetabs-instruction-box */
+                   30px + /* padding of .PanelUI-remotetabs-instruction-box */
                    11em);
 }
 
@@ -863,9 +867,10 @@ panelview .toolbarbutton-1,
 }
 
 .PanelUI-subView .subviewbutton-nav::after {
-  -moz-context-properties: fill;
+  -moz-context-properties: fill, fill-opacity;
   content: url(chrome://browser/skin/back-12.svg);
-  fill: GrayText;
+  fill: currentColor;
+  fill-opacity: 0.6;
   float: right;
   transform: translateY(1px);
 }
@@ -894,10 +899,10 @@ panelview .toolbarbutton-1,
 
 .subviewbutton[type="highlight-bookmark"]::after,
 .subviewbutton[type="highlight-history"]::after {
-  -moz-context-properties: fill;
-  fill: GrayText;
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: 0.4;
   float: right;
-  opacity: .5;
   /* Centers the icon and resizes it to 12px square. */
   transform: translateY(2px) scaleX(.75);
 }
@@ -953,6 +958,18 @@ panelmultiview .toolbaritem-combined-buttons > spacer.after-label {
 /* Unset the min-height constraint, because that works better for a text-only button. */
 #appMenu-zoomReset-button {
   min-height: unset;
+  border: 1px solid var(--panel-separator-color);
+  border-radius: 10000px;
+  padding: 1px 8px;
+  background-color: var(--arrowpanel-dimmed);
+}
+
+#appMenu-zoomReset-button@buttonStateHover@ {
+  background-color: var(--arrowpanel-dimmed-further);
+}
+
+#appMenu-zoomReset-button@buttonStateActive@ {
+  background-color: var(--arrowpanel-dimmed-even-further);
 }
 
 #appMenu-zoomReset-button > .toolbarbutton-text {
@@ -968,14 +985,6 @@ panelmultiview .toolbaritem-combined-buttons > spacer.after-label {
 .PanelUI-subView .toolbaritem-combined-buttons > .subviewbutton-iconic > .toolbarbutton-text,
 .PanelUI-subView .toolbaritem-combined-buttons > .subviewbutton:not(.subviewbutton-iconic) > .toolbarbutton-icon {
   display: none;
-}
-
-/* Using this selector, because this way the hover and active selectors will apply properly. */
-.PanelUI-subView .toolbaritem-combined-buttons > .subviewbutton:not(.subviewbutton-iconic) {
-  background-color: #f9f9f9;
-  border: 1px solid #e1e1e1;
-  border-radius: 10000px;
-  padding: 1px 8px;
 }
 
 .toolbaritem-combined-buttons > .subviewbutton:not(.subviewbutton-iconic) > .toolbarbutton-text {
@@ -1002,6 +1011,7 @@ menu.subviewbutton@menuStateHover@,
 menuitem.subviewbutton@menuStateHover@,
 .widget-overflow-list .toolbarbutton-1@buttonStateHover@,
 .toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton@buttonStateHover@ {
+  color: inherit;
   background-color: var(--arrowpanel-dimmed);
 }
 
@@ -1011,6 +1021,7 @@ menu.subviewbutton@menuStateActive@,
 menuitem.subviewbutton@menuStateActive@,
 .widget-overflow-list .toolbarbutton-1@buttonStateActive@,
 .toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton@buttonStateActive@ {
+  color: inherit;
   background-color: var(--arrowpanel-dimmed-further);
   box-shadow: 0 1px 0 hsla(210,4%,10%,.03) inset;
 }
@@ -1127,6 +1138,8 @@ menuitem.panel-subview-footer@menuStateActive@,
 #PanelUI-remotetabs-tabslist > toolbarbutton[itemtype="tab"],
 #PanelUI-historyItems > toolbarbutton {
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 #appMenu-fxa-avatar,
@@ -1173,6 +1186,11 @@ toolbarpaletteitem[place="palette"] > #search-container {
 toolbarpaletteitem[place="menu-panel"] > .toolbaritem-combined-buttons > toolbarbutton {
   min-width: calc(@menuPanelButtonWidth@ - 1px);
   max-width: calc(@menuPanelButtonWidth@ - 1px);
+}
+
+.toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton[disabled] {
+  /* Override toolbarbutton.css which sets the color to GrayText */
+  color: inherit;
 }
 
 #main-window:not([customizing]) .toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton[disabled] > .toolbarbutton-icon {
@@ -1253,15 +1271,16 @@ toolbaritem[overflowedItem=true],
 }
 
 .widget-overflow-list .subviewbutton-nav:-moz-locale-dir(ltr)::after {
-    transform: scaleX(-1);
+  transform: scaleX(-1);
 }
 
 .widget-overflow-list .subviewbutton-nav::after {
-    margin-inline-start: 10px;
-    -moz-context-properties: fill;
-    content: url(chrome://browser/skin/back-12.svg);
-    fill: GrayText;
-    float: right;
+  margin-inline-start: 10px;
+  -moz-context-properties: fill, fill-opacity;
+  content: url(chrome://browser/skin/back-12.svg);
+  fill: currentColor;
+  fill-opacity: 0.6;
+  float: right;
 }
 
 toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
@@ -1277,19 +1296,6 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
   -moz-appearance: none;
   margin-inline-end: 0;
 }
-
-%ifdef XP_WIN
-/* Overrides from menu.css to prevent items in the bookmarks popup from being too tall.
-   These won't be necessary once menu.css is loaded as a UA style (Bug 1420229). */
-#BMB_bookmarksPopup .subviewbutton > .menu-iconic-left {
-  padding-top: 0;
-  -moz-appearance: none;
-}
-
-#BMB_bookmarksPopup .subviewbutton {
-  -moz-appearance: none;
-}
-%endif
 
 menuitem[checked="true"].subviewbutton > .menu-iconic-left {
   visibility: hidden;
@@ -1523,10 +1529,6 @@ menuitem[checked="true"].subviewbutton > .menu-iconic-left {
   display: none !important;
 }
 
-#panelMenu_pocket {
-  display: none;
-}
-
 .subviewbutton.download {
   -moz-box-align: start;
   min-height: 48px;
@@ -1550,8 +1552,9 @@ menuitem[checked="true"].subviewbutton > .menu-iconic-left {
 
 .subviewbutton.download > .action-button {
   -moz-appearance: none; /* To avoid native Windows hover styling */
-  -moz-context-properties: fill;
+  -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
+  fill-opacity: 1;
 %ifdef XP_MACOSX
   list-style-image: url("chrome://browser/skin/search-glass.svg");
 %else
@@ -1567,8 +1570,8 @@ menuitem[checked="true"].subviewbutton > .menu-iconic-left {
 }
 
 .subviewbutton.download:not([openLabel]):not([retryLabel]) > .action-button {
-  fill: GrayText;
-  opacity: .5;
+  fill: currentColor;
+  fill-opacity: 0.4;
 }
 
 .subviewbutton.download:-moz-any([openLabel],[retryLabel]) > .action-button@buttonStateHover@ {

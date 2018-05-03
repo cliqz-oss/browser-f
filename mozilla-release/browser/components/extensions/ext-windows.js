@@ -8,8 +8,8 @@
 XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
                                    "@mozilla.org/browser/aboutnewtab-service;1",
                                    "nsIAboutNewTabService");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 var {
   promiseObserved,
@@ -127,6 +127,9 @@ this.windows = class extends ExtensionAPI {
             let incognito = PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser);
             if (createData.incognito !== null && createData.incognito != incognito) {
               return Promise.reject({message: "`incognito` property must match the incognito state of tab"});
+            }
+            if (createData.incognito && !PrivateBrowsingUtils.enabled) {
+              return Promise.reject({message: "`incognito` cannot be used if incognito mode is disabled"});
             }
             createData.incognito = incognito;
 

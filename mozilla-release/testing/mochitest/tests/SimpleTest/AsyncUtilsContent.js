@@ -3,7 +3,7 @@
  * Generally it just delegates to EventUtils.js.
  */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Set up a dummy environment so that EventUtils works. We need to be careful to
 // pass a window object into each EventUtils method we call rather than having
@@ -11,8 +11,8 @@ Components.utils.import("resource://gre/modules/Services.jsm");
 var EventUtils = {};
 EventUtils.window = {};
 EventUtils.parent = EventUtils.window;
-EventUtils._EU_Ci = Components.interfaces;
-EventUtils._EU_Cc = Components.classes;
+EventUtils._EU_Ci = Ci;
+EventUtils._EU_Cc = Cc;
 // EventUtils' `sendChar` function relies on the navigator to synthetize events.
 EventUtils.navigator = content.document.defaultView.navigator;
 EventUtils.KeyboardEvent = content.document.defaultView.KeyboardEvent;

@@ -32,15 +32,23 @@ public:
 
   void AddCookie(nsICookie *aCookie);
 
+  // This will return true if the CookieServiceParent is currently processing
+  // an update from the content process. This is used in ContentParent to make
+  // sure that we are only forwarding those cookie updates to other content
+  // processes, not the one they originated from.
+  bool ProcessingCookie() { return mProcessingCookie; }
 protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   virtual mozilla::ipc::IPCResult RecvGetCookieString(const URIParams& aHost,
                                                       const bool& aIsForeign,
+                                                      const bool& aIsSafeTopLevelNav,
+                                                      const bool& aIsSameSiteForeign,
                                                       const OriginAttributes& aAttrs,
                                                       nsCString* aResult) override;
 
   virtual mozilla::ipc::IPCResult RecvSetCookieString(const URIParams& aHost,
+                                                      const URIParams& aChannelURI,
                                                       const bool& aIsForeign,
                                                       const nsCString& aCookieString,
                                                       const nsCString& aServerTime,
@@ -49,6 +57,8 @@ protected:
   virtual
   mozilla::ipc::IPCResult RecvPrepareCookieList(const URIParams &aHost,
                                                 const bool &aIsForeign,
+                                                const bool &aIsSafeTopLevelNav,
+                                                const bool &aIsSameSiteForeign,
                                                 const OriginAttributes &aAttrs) override;
 
   void
@@ -57,6 +67,7 @@ protected:
                          nsIURI *aHostURI);
 
   RefPtr<nsCookieService> mCookieService;
+  bool mProcessingCookie;
 };
 
 } // namespace net

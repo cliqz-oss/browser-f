@@ -8,7 +8,6 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/IntegerRange.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/TimeStamp.h"
@@ -17,11 +16,11 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "jsgc.h"
-#include "jsprf.h"
 #include "jsutil.h"
 
+#include "gc/GC.h"
 #include "gc/Memory.h"
+#include "util/Text.h"
 #include "vm/Debugger.h"
 #include "vm/HelperThreads.h"
 #include "vm/Runtime.h"
@@ -33,8 +32,6 @@ using namespace js::gcstats;
 
 using mozilla::DebugOnly;
 using mozilla::EnumeratedArray;
-using mozilla::IntegerRange;
-using mozilla::PodArrayZero;
 using mozilla::PodZero;
 using mozilla::TimeStamp;
 using mozilla::TimeDuration;
@@ -956,7 +953,6 @@ Statistics::endGC()
     gcDuration(&total, &longest);
 
     runtime->addTelemetry(JS_TELEMETRY_GC_MS, t(total));
-    runtime->addTelemetry(JS_TELEMETRY_GC_MAX_PAUSE_MS, t(longest));
     runtime->addTelemetry(JS_TELEMETRY_GC_MAX_PAUSE_MS_2, t(longest));
 
     const double mmu50 = computeMMU(TimeDuration::FromMilliseconds(50));

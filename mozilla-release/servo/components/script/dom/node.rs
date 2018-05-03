@@ -1334,7 +1334,7 @@ impl TreeIterator {
             }
             self.depth -= 1;
         }
-        debug_assert!(self.depth == 0);
+        debug_assert_eq!(self.depth, 0);
         self.current = None;
         Some(current)
     }
@@ -2741,6 +2741,8 @@ impl Into<LayoutElementType> for ElementTypeId {
     #[inline(always)]
     fn into(self) -> LayoutElementType {
         match self {
+            ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLBRElement) =>
+                LayoutElementType::HTMLBRElement,
             ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLCanvasElement) =>
                 LayoutElementType::HTMLCanvasElement,
             ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLIFrameElement) =>
@@ -2751,6 +2753,8 @@ impl Into<LayoutElementType> for ElementTypeId {
                 LayoutElementType::HTMLInputElement,
             ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLObjectElement) =>
                 LayoutElementType::HTMLObjectElement,
+            ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLParagraphElement) =>
+                LayoutElementType::HTMLParagraphElement,
             ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLTableCellElement(_)) =>
                 LayoutElementType::HTMLTableCellElement,
             ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLTableColElement) =>

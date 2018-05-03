@@ -1,17 +1,17 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-crypto/utils.js");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/rest.js");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/rest.js");
+ChromeUtils.import("resource://services-common/utils.js");
 
 function run_test() {
   initTestLogging("Trace");
   run_next_test();
 }
 
-add_test(function test_authenticated_request() {
+add_task(async function test_authenticated_request() {
   _("Ensure that sending a MAC authenticated GET request works as expected.");
 
   let message = "Great Success!";
@@ -41,12 +41,10 @@ add_test(function test_authenticated_request() {
   auth = sig.getHeader();
 
   let req = new TokenAuthenticatedRESTRequest(uri, {id, key}, extra);
-  let cb = Async.makeSpinningCallback();
-  req.get(cb);
-  let result = cb.wait();
+  let error = await new Promise(res => req.get(res));
 
-  Assert.equal(null, result);
+  Assert.equal(null, error);
   Assert.equal(message, req.response.body);
 
-  server.stop(run_next_test);
+  await promiseStopServer(server);
 });

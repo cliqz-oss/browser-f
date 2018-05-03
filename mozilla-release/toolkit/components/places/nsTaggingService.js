@@ -3,13 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
 
 const TOPIC_SHUTDOWN = "places-shutdown";
 
@@ -541,13 +537,7 @@ TagAutoCompleteResult.prototype = {
    * Get the style hint for the result at the given index
    */
   getStyleAt: function PTACR_getStyleAt(index) {
-    if (!this._comments[index])
-      return null; // not a category label, so no special styling
-
-    if (index == 0)
-      return "suggestfirst"; // category label on first line of results
-
-    return "suggesthint"; // category label on any other line of results
+    return null;
   },
 
   /**

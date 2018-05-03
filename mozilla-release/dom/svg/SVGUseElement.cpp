@@ -8,6 +8,7 @@
 #include "mozilla/ErrorResult.h"
 
 #include "mozilla/dom/SVGUseElement.h"
+#include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/dom/SVGUseElementBinding.h"
 #include "nsGkAtoms.h"
 #include "mozilla/dom/SVGSVGElement.h"
@@ -36,10 +37,10 @@ SVGUseElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::LengthInfo SVGUseElement::sLengthInfo[4] =
 {
-  { &nsGkAtoms::x, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::y, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
-  { &nsGkAtoms::width, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::height, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { &nsGkAtoms::x, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { &nsGkAtoms::y, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { &nsGkAtoms::width, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { &nsGkAtoms::height, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
 };
 
 nsSVGElement::StringInfo SVGUseElement::sStringInfo[2] =
@@ -146,9 +147,8 @@ SVGUseElement::Height()
 // nsIMutationObserver methods
 
 void
-SVGUseElement::CharacterDataChanged(nsIDocument *aDocument,
-                                    nsIContent *aContent,
-                                    CharacterDataChangeInfo* aInfo)
+SVGUseElement::CharacterDataChanged(nsIContent* aContent,
+                                    const CharacterDataChangeInfo&)
 {
   if (nsContentUtils::IsInSameAnonymousTree(this, aContent)) {
     TriggerReclone();
@@ -156,8 +156,7 @@ SVGUseElement::CharacterDataChanged(nsIDocument *aDocument,
 }
 
 void
-SVGUseElement::AttributeChanged(nsIDocument* aDocument,
-                                Element* aElement,
+SVGUseElement::AttributeChanged(Element* aElement,
                                 int32_t aNameSpaceID,
                                 nsAtom* aAttribute,
                                 int32_t aModType,
@@ -169,30 +168,27 @@ SVGUseElement::AttributeChanged(nsIDocument* aDocument,
 }
 
 void
-SVGUseElement::ContentAppended(nsIDocument *aDocument,
-                               nsIContent *aContainer,
-                               nsIContent *aFirstNewContent)
+SVGUseElement::ContentAppended(nsIContent* aFirstNewContent)
 {
-  if (nsContentUtils::IsInSameAnonymousTree(this, aContainer)) {
+  // FIXME(emilio, bug 1442336): Why does this check the parent but
+  // ContentInserted the child?
+  if (nsContentUtils::IsInSameAnonymousTree(this, aFirstNewContent->GetParent())) {
     TriggerReclone();
   }
 }
 
 void
-SVGUseElement::ContentInserted(nsIDocument *aDocument,
-                               nsIContent *aContainer,
-                               nsIContent *aChild)
+SVGUseElement::ContentInserted(nsIContent* aChild)
 {
+  // FIXME(emilio, bug 1442336): Why does this check the child but
+  // ContentAppended the parent?
   if (nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
     TriggerReclone();
   }
 }
 
 void
-SVGUseElement::ContentRemoved(nsIDocument *aDocument,
-                              nsIContent *aContainer,
-                              nsIContent *aChild,
-                              nsIContent *aPreviousSibling)
+SVGUseElement::ContentRemoved(nsIContent* aChild, nsIContent* aPreviousSibling)
 {
   if (nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
     TriggerReclone();
@@ -258,9 +254,9 @@ SVGUseElement::CreateAnonymousContent()
   nsNodeInfoManager* nodeInfoManager =
     targetContent->OwnerDoc() == OwnerDoc() ?
       nullptr : OwnerDoc()->NodeInfoManager();
-  IgnoredErrorResult rv;
   nsCOMPtr<nsINode> newnode =
-    nsNodeUtils::Clone(targetContent, true, nodeInfoManager, nullptr, rv);
+    nsNodeUtils::Clone(targetContent, true, nodeInfoManager, nullptr,
+                       IgnoreErrors());
   nsCOMPtr<nsIContent> newcontent = do_QueryInterface(newnode);
 
   if (!newcontent)
@@ -350,7 +346,7 @@ SVGUseElement::SyncWidthOrHeight(nsAtom* aName)
     // need to set the value to 100%
     nsSVGLength2 length;
     length.Init(SVGContentUtils::XY, 0xff,
-                100, nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE);
+                100, SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE);
     target->SetLength(aName, length);
     return;
   }

@@ -59,6 +59,7 @@ ServoMediaRule::Clone() const
   return nullptr;
 }
 
+#ifdef MOZ_OLD_STYLE
 /* virtual */ bool
 ServoMediaRule::UseForPresentation(nsPresContext* aPresContext,
                                    nsMediaQueryResultCacheKey& aKey)
@@ -68,6 +69,7 @@ ServoMediaRule::UseForPresentation(nsPresContext* aPresContext,
   MOZ_ASSERT_UNREACHABLE("Shouldn't be calling UseForPresentation");
   return false;
 }
+#endif
 
 /* virtual */ void
 ServoMediaRule::SetStyleSheet(StyleSheet* aSheet)
@@ -105,7 +107,7 @@ ServoMediaRule::SetConditionText(const nsAString& aConditionText,
 }
 
 /* virtual */ void
-ServoMediaRule::GetCssTextImpl(nsAString& aCssText) const
+ServoMediaRule::GetCssText(nsAString& aCssText) const
 {
   Servo_MediaRule_GetCssText(mRawRule, &aCssText);
 }

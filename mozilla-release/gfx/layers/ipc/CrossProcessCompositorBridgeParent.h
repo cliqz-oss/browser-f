@@ -89,12 +89,18 @@ public:
   void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                            const TransactionInfo& aInfo,
                            bool aHitTestUpdate) override;
-  void ForceComposite(LayerTransactionParent* aLayerTree) override;
+  void ScheduleComposite(LayerTransactionParent* aLayerTree) override;
   void NotifyClearCachedResources(LayerTransactionParent* aLayerTree) override;
   bool SetTestSampleTime(const uint64_t& aId,
                          const TimeStamp& aTime) override;
   void LeaveTestMode(const uint64_t& aId) override;
   void ApplyAsyncProperties(LayerTransactionParent* aLayerTree) override;
+  void SetTestAsyncScrollOffset(const uint64_t& aLayersId,
+                                const FrameMetrics::ViewID& aScrollId,
+                                const CSSPoint& aPoint) override;
+  void SetTestAsyncZoom(const uint64_t& aLayersId,
+                        const FrameMetrics::ViewID& aScrollId,
+                        const LayerToParentLayerScale& aZoom) override;
   void FlushApzRepaints(const uint64_t& aLayersId) override;
   void GetAPZTestData(const uint64_t& aLayersId,
                       APZTestData* aOutData) override;
@@ -116,6 +122,7 @@ public:
                     TimeStamp& aCompositeEnd) override;
 
   PTextureParent* AllocPTextureParent(const SurfaceDescriptor& aSharedData,
+                                      const ReadLockDescriptor& aReadLock,
                                       const LayersBackend& aLayersBackend,
                                       const TextureFlags& aFlags,
                                       const uint64_t& aId,

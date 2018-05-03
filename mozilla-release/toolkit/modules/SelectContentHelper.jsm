@@ -4,16 +4,12 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
 
 Cu.importGlobalProperties(["InspectorUtils"]);
 
@@ -32,11 +28,11 @@ const SUPPORTED_PROPERTIES = [
 // via SelectContentHelper.open.
 var gOpen = false;
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "SelectContentHelper"
 ];
 
-this.SelectContentHelper = function(aElement, aOptions, aGlobal) {
+var SelectContentHelper = function(aElement, aOptions, aGlobal) {
   this.element = aElement;
   this.initialSelection = aElement[aElement.selectedIndex] || null;
   this.global = aGlobal;
@@ -365,7 +361,7 @@ this.SelectContentHelper.prototype = {
         }
         break;
       case "transitionend":
-        if (SUPPORTED_PROPERTIES.indexOf(event.propertyName) != -1) {
+        if (SUPPORTED_PROPERTIES.includes(event.propertyName)) {
           this._updateTimer.arm();
         }
         break;

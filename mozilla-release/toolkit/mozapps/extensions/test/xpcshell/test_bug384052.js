@@ -2,7 +2,7 @@ const CLASS_ID = Components.ID("{12345678-1234-1234-1234-123456789abc}");
 const CONTRACT_ID = "@mozilla.org/test-parameter-source;1";
 
 // Get and create the HTTP server.
-Components.utils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 var testserver = new HttpServer();
 testserver.start(-1);
 gPort = testserver.identity.primaryPort;
@@ -20,7 +20,7 @@ var paramHandlerFactory = {
     if (iid.equals(AM_Ci.nsIFactory) || iid.equals(AM_Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   createInstance(outer, iid) {

@@ -18,6 +18,8 @@
 #include "nsXBLBinding.h"
 #include "nsTArray.h"
 #include "nsThreadUtils.h"
+#include "mozilla/MediaFeatureChange.h"
+#include "mozilla/MemoryReporting.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/EventStates.h"
 
@@ -124,6 +126,7 @@ public:
 
   nsresult GetBindingImplementation(nsIContent* aContent, REFNSIID aIID, void** aResult);
 
+#ifdef MOZ_OLD_STYLE
   // Style rule methods
   nsresult WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc,
                      ElementDependentRuleProcessorData* aData,
@@ -131,16 +134,14 @@ public:
 
   void WalkAllRules(nsIStyleRuleProcessor::EnumFunc aFunc,
                     ElementDependentRuleProcessorData* aData);
+#endif
 
   // Do any processing that needs to happen as a result of a change in the
   // characteristics of the medium, and return whether this rule processor's
   // rules or the servo style set have changed (e.g., because of media
   // queries).
-  bool MediumFeaturesChanged(nsPresContext* aPresContext);
-
-  // Update the content bindings in mBoundContentSet due to medium features
-  // changed.
-  void UpdateBoundContentBindingsForServo(nsPresContext* aPresContext);
+  bool MediumFeaturesChanged(nsPresContext* aPresContext,
+                             mozilla::MediaFeatureChangeReason);
 
   void AppendAllSheets(nsTArray<mozilla::StyleSheet*>& aArray);
 
@@ -173,7 +174,15 @@ public:
 
   nsIContent* FindNestedSingleInsertionPoint(nsIContent* aContainer, bool* aMulti);
 
-  bool AnyBindingHasDocumentStateDependency(mozilla::EventStates aStateMask);
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
+
+  // Enumerate each bound content's bindings (including its base bindings)
+  // in mBoundContentSet. Return false from the callback to stop enumeration.
+  using BoundContentProtoBindingCallback =
+    std::function<bool (nsXBLPrototypeBinding*)>;
+
+  bool EnumerateBoundContentProtoBindings(
+      const BoundContentProtoBindingCallback&) const;
 
 protected:
   nsIXPConnectWrappedJS* GetWrappedJS(nsIContent* aContent);
@@ -195,14 +204,7 @@ protected:
   // Call PostProcessAttachedQueueEvent() on a timer.
   static void PostPAQEventCallback(nsITimer* aTimer, void* aClosure);
 
-  // Enumerate each bound content's bindings (including its base bindings)
-  // in mBoundContentSet. Return false from the callback to stop enumeration.
-  using BoundContentBindingCallback = std::function<bool (nsXBLBinding*)>;
-  bool EnumerateBoundContentBindings(
-    const BoundContentBindingCallback& aCallback) const;
-
 // MEMBER VARIABLES
-protected:
   // A set of nsIContent that currently have a binding installed.
   nsAutoPtr<nsTHashtable<nsRefPtrHashKey<nsIContent> > > mBoundContentSet;
 

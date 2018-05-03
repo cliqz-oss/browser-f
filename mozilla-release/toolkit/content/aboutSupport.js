@@ -4,18 +4,16 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Troubleshoot.jsm");
+ChromeUtils.import("resource://gre/modules/ResetProfile.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Troubleshoot.jsm");
-Cu.import("resource://gre/modules/ResetProfile.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesDBUtils",
-                                  "resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PluralForm",
+                               "resource://gre/modules/PluralForm.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesDBUtils",
+                               "resource://gre/modules/PlacesDBUtils.jsm");
 
 window.addEventListener("load", function onload(event) {
   try {
@@ -102,6 +100,26 @@ var snapshotFormatters = {
     $("stylo-box").textContent =
       `content = ${data.styloResult} (${styloReason}), ` +
       `chrome = ${data.styloChromeResult} (${styloChromeReason})`;
+
+    if (Services.policies) {
+      let policiesText = "";
+      switch (data.policiesStatus) {
+        case Services.policies.INACTIVE:
+          policiesText = strings.GetStringFromName("policies.inactive");
+          break;
+
+        case Services.policies.ACTIVE:
+          policiesText = strings.GetStringFromName("policies.active");
+          break;
+
+        default:
+          policiesText = strings.GetStringFromName("policies.error");
+          break;
+      }
+      $("policies-status").textContent = policiesText;
+    } else {
+      $("policies-status-row").hidden = true;
+    }
 
     let keyGoogleFound = data.keyGoogleFound ? "found" : "missing";
     $("key-google-box").textContent = strings.GetStringFromName(keyGoogleFound);
@@ -469,7 +487,9 @@ var snapshotFormatters = {
     addRowFromKey("features", "webgl2Extensions");
     addRowFromKey("features", "supportsHardwareH264", "hardwareH264");
     addRowFromKey("features", "direct2DEnabled", "#Direct2D");
+    addRowFromKey("features", "usesTiling");
     addRowFromKey("features", "offMainThreadPaintEnabled");
+    addRowFromKey("features", "offMainThreadPaintWorkerCount");
 
     if ("directWriteEnabled" in data) {
       let message = data.directWriteEnabled;
@@ -1186,6 +1206,10 @@ function populateActionBox() {
   if (!Services.appinfo.inSafeMode && AppConstants.platform !== "android") {
     $("safe-mode-box").style.display = "block";
     $("action-box").style.display = "block";
+
+    if (Services.policies && !Services.policies.isAllowed("safeMode")) {
+      $("restart-in-safe-mode-button").setAttribute("disabled", "true");
+    }
   }
 }
 

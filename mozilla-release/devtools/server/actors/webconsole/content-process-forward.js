@@ -4,17 +4,14 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
-
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 
 XPCOMUtils.defineLazyServiceGetter(this, "cpmm",
                                    "@mozilla.org/childprocessmessagemanager;1",
                                    "nsIMessageSender");
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-                                  "resource://gre/modules/E10SUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
+                               "resource://gre/modules/E10SUtils.jsm");
 
 /*
  * The message manager has an upper limit on message sizes that it can
@@ -58,14 +55,13 @@ ContentProcessForward.prototype = {
         let consoleMsg = subject.wrappedJSObject;
 
         let msgData = {
-          level: consoleMsg.level,
+          ...consoleMsg,
+          arguments: [],
           filename: consoleMsg.filename.substring(0, MSG_MGR_CONSOLE_INFO_MAX),
-          lineNumber: consoleMsg.lineNumber,
           functionName: consoleMsg.functionName &&
             consoleMsg.functionName.substring(0, MSG_MGR_CONSOLE_INFO_MAX),
-          timeStamp: consoleMsg.timeStamp,
-          addonId: consoleMsg.addonId,
-          arguments: [],
+          // Prevents cyclic object error when using msgData in sendAsyncMessage
+          wrappedJSObject: null,
         };
 
         // We can't send objects over the message manager, so we sanitize

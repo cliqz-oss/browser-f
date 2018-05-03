@@ -249,6 +249,7 @@ Var AppLaunchWaitTickCount
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
+<<<<<<< HEAD
 ; Cliqz: do not support beta version distributon with mini_installer
 ; !ifdef OFFICIAL
 ; !ifdef BETA_UPDATE_CHANNEL
@@ -262,6 +263,33 @@ Var AppLaunchWaitTickCount
 ; !define Channel "beta"
 ; !endif
 ; !endif
+||||||| merged common ancestors
+!ifdef OFFICIAL
+!ifdef BETA_UPDATE_CHANNEL
+!undef URLStubDownload32
+!undef URLStubDownload64
+!define URLStubDownload32 "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+!define URLStubDownload64 "http://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+!undef URLManualDownload
+!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+!undef Channel
+!define Channel "beta"
+!endif
+!endif
+=======
+!ifdef OFFICIAL
+!ifdef BETA_UPDATE_CHANNEL
+!undef URLStubDownload32
+!undef URLStubDownload64
+!define URLStubDownload32 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+!define URLStubDownload64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+!undef URLManualDownload
+!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+!undef Channel
+!define Channel "beta"
+!endif
+!endif
+>>>>>>> origin/upstream-releases
 
 !undef INSTALL_BLURB_TEXT_COLOR
 !define INSTALL_BLURB_TEXT_COLOR 0xFFFFFF

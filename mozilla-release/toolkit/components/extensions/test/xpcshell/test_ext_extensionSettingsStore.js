@@ -2,10 +2,10 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSettingsStore",
-                                  "resource://gre/modules/ExtensionSettingsStore.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
+                               "resource://gre/modules/ExtensionSettingsStore.jsm");
 
 const {
   createAppInfo,
@@ -532,6 +532,41 @@ add_task(async function test_settings_store_setByUser() {
   for (let extension of testExtensions) {
     await extension.unload();
   }
+
+  await promiseShutdownManager();
+});
+
+add_task(async function test_settings_store_add_disabled() {
+  await promiseStartupManager();
+
+  let id = "@add-on-disable";
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: {
+      applications: {gecko: {id}},
+    },
+  });
+
+  await extension.startup();
+  await ExtensionSettingsStore.initialize();
+
+  await ExtensionSettingsStore.addSetting(id, "foo", "bar", "set", () => "not set");
+
+  let item = ExtensionSettingsStore.getSetting("foo", "bar");
+  equal(item.id, id, "The add-on is in control");
+  equal(item.value, "set", "The value is set");
+
+  ExtensionSettingsStore.disable(id, "foo", "bar");
+  item = ExtensionSettingsStore.getSetting("foo", "bar");
+  equal(item.id, undefined, "The add-on is not in control");
+  equal(item.initialValue, "not set", "The value is not set");
+
+  await ExtensionSettingsStore.addSetting(id, "foo", "bar", "set", () => "not set");
+  item = ExtensionSettingsStore.getSetting("foo", "bar");
+  equal(item.id, id, "The add-on is in control");
+  equal(item.value, "set", "The value is set");
+
+  await extension.unload();
 
   await promiseShutdownManager();
 });

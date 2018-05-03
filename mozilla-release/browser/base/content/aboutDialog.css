@@ -27,6 +27,13 @@
   padding: 15px 10px 0;
 }
 
+#release {
+  font-weight: bold;
+  font-size: 125%;
+  margin-top: 10px;
+  margin-inline-start: 0;
+}
+
 #version {
   margin-top: 10px;
   margin-left: 0;

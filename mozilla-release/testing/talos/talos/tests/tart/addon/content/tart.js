@@ -27,8 +27,8 @@
 //   X - tab drag
 //   X - tab remove from the middle
 //   X - Without add-tab button -> can be hidden while testing manually. in talos always with the button
-let aboutNewTabService = Components.classes["@mozilla.org/browser/aboutnewtab-service;1"]
-                                   .getService(Components.interfaces.nsIAboutNewTabService);
+let aboutNewTabService = Cc["@mozilla.org/browser/aboutnewtab-service;1"]
+                           .getService(Ci.nsIAboutNewTabService);
 
 /* globals res:true, sequenceArray:true */
 
@@ -202,8 +202,6 @@ Tart.prototype = {
     var timeoutId = 0;
     var detector; // will be assigned after calling trigger.
     var rAF = window.requestAnimationFrame || window.mozRequestAnimationFrame;
-    const Ci = Components.interfaces;
-    const Cc = Components.classes;
 
     var _recording = [];
     var _abortRecording = false;
@@ -436,7 +434,6 @@ Tart.prototype = {
   _startTest() {
 
     // Save prefs and states which will change during the test, to get restored when done.
-    var origNewtabEnabled = Services.prefs.getBoolPref("browser.newtabpage.enabled");
     var origPreload =       Services.prefs.getBoolPref("browser.newtab.preload");
     var origDpi =           Services.prefs.getCharPref("layout.css.devPixelsPerPx");
     var origPinned =        this._tartTab.pinned;
@@ -492,7 +489,6 @@ Tart.prototype = {
     var subtests = {
       init: [ // This is called before each subtest, so it's safe to assume the following prefs:
         function() {
-          Services.prefs.setBoolPref("browser.newtabpage.enabled", true);
           Services.prefs.setBoolPref("browser.newtab.preload", false);
           self.pinTart();
           self.makeNewTabURLChangePromise("about:blank").then(next);
@@ -502,7 +498,6 @@ Tart.prototype = {
       restore: [
         // Restore prefs which were modified during the test
         function() {
-          Services.prefs.setBoolPref("browser.newtabpage.enabled", origNewtabEnabled);
           Services.prefs.setBoolPref("browser.newtab.preload", origPreload);
           Services.prefs.setCharPref("layout.css.devPixelsPerPx", origDpi);
           if (origPinned) self.pinTart(); else self.unpinTart();
@@ -685,9 +680,7 @@ Tart.prototype = {
     };
     this._config = config;
 
-    const Ci = Components.interfaces;
-    var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
-    this._win = wm.getMostRecentWindow("navigator:browser");
+    this._win = Services.wm.getMostRecentWindow("navigator:browser");
     this._tartTab = this._win.gBrowser.selectedTab;
     this._win.gBrowser.selectedBrowser.focus(); // Unfocus the URL bar to avoid caret blink
 

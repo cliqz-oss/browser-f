@@ -184,16 +184,8 @@ ToAnyRegister(const LDefinition* def)
     return ToAnyRegister(def->output());
 }
 
-static inline RegisterOrInt32Constant
-ToRegisterOrInt32Constant(const LAllocation* a)
-{
-    if (a->isConstant())
-        return RegisterOrInt32Constant(ToInt32(a));
-    return RegisterOrInt32Constant(ToRegister(a));
-}
-
 static inline ValueOperand
-GetValueOutput(LInstruction* ins)
+ToOutValue(LInstruction* ins)
 {
 #if defined(JS_NUNBOX32)
     return ValueOperand(ToRegister(ins->getDef(TYPE_INDEX)),

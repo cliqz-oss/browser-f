@@ -93,7 +93,8 @@ CertVerifier::CertVerifier(OcspDownloadConfig odc,
                            SHA1Mode sha1Mode,
                            BRNameMatchingPolicy::Mode nameMatchingMode,
                            NetscapeStepUpPolicy netscapeStepUpPolicy,
-                           CertificateTransparencyMode ctMode)
+                           CertificateTransparencyMode ctMode,
+                           DistrustedCAPolicy distrustedCAPolicy)
   : mOCSPDownloadConfig(odc)
   , mOCSPStrict(osc == ocspStrict)
   , mOCSPGETEnabled(ogc == ocspGetEnabled)
@@ -105,6 +106,7 @@ CertVerifier::CertVerifier(OcspDownloadConfig odc,
   , mNameMatchingMode(nameMatchingMode)
   , mNetscapeStepUpPolicy(netscapeStepUpPolicy)
   , mCTMode(ctMode)
+  , mDistrustedCAPolicy(distrustedCAPolicy)
 {
   LoadKnownCTLogs();
 }
@@ -554,7 +556,7 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                        ValidityCheckingMode::CheckingOff,
                                        SHA1Mode::Allowed,
                                        NetscapeStepUpPolicy::NeverMatch,
-                                       originAttributes,
+                                       mDistrustedCAPolicy, originAttributes,
                                        builtChain, nullptr, nullptr);
       rv = BuildCertChain(trustDomain, certDER, time,
                           EndEntityOrCA::MustBeEndEntity,
@@ -629,8 +631,8 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                       mCertShortLifetimeInDays, mPinningMode, MIN_RSA_BITS,
                       ValidityCheckingMode::CheckForEV,
                       sha1ModeConfigurations[i], mNetscapeStepUpPolicy,
-                      originAttributes, builtChain, pinningTelemetryInfo,
-                      hostname);
+                      mDistrustedCAPolicy, originAttributes, builtChain,
+                      pinningTelemetryInfo, hostname);
         rv = BuildCertChainForOneKeyUsage(trustDomain, certDER, time,
                                           KeyUsage::digitalSignature,// (EC)DHE
                                           KeyUsage::keyEncipherment, // RSA
@@ -718,8 +720,9 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                            ValidityCheckingMode::CheckingOff,
                                            sha1ModeConfigurations[j],
                                            mNetscapeStepUpPolicy,
-                                           originAttributes, builtChain,
-                                           pinningTelemetryInfo, hostname);
+                                           mDistrustedCAPolicy, originAttributes,
+                                           builtChain, pinningTelemetryInfo,
+                                           hostname);
           rv = BuildCertChainForOneKeyUsage(trustDomain, certDER, time,
                                             KeyUsage::digitalSignature,//(EC)DHE
                                             KeyUsage::keyEncipherment,//RSA
@@ -728,6 +731,15 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                             CertPolicyId::anyPolicy,
                                             stapledOCSPResponse,
                                             ocspStaplingStatus);
+          if (rv != Success && !IsFatalError(rv) &&
+              rv != Result::ERROR_REVOKED_CERTIFICATE &&
+              trustDomain.GetIsErrorDueToDistrustedCAPolicy()) {
+            // Bug 1444440 - If there are multiple paths, at least one to a CA
+            // distrusted-by-policy, and none of them ending in a trusted root,
+            // then we might show a different error (UNKNOWN_ISSUER) than we
+            // intend, confusing users.
+            rv = Result::ERROR_ADDITIONAL_POLICY_CONSTRAINT_FAILED;
+          }
           if (rv == Success &&
               sha1ModeConfigurations[j] == SHA1Mode::ImportedRoot) {
             bool isBuiltInRoot = false;
@@ -782,8 +794,8 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                        pinningDisabled, MIN_RSA_BITS_WEAK,
                                        ValidityCheckingMode::CheckingOff,
                                        SHA1Mode::Allowed, mNetscapeStepUpPolicy,
-                                       originAttributes, builtChain, nullptr,
-                                       nullptr);
+                                       mDistrustedCAPolicy, originAttributes,
+                                       builtChain, nullptr, nullptr);
       rv = BuildCertChain(trustDomain, certDER, time,
                           EndEntityOrCA::MustBeCA, KeyUsage::keyCertSign,
                           KeyPurposeId::id_kp_serverAuth,
@@ -800,8 +812,8 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                        ValidityCheckingMode::CheckingOff,
                                        SHA1Mode::Allowed,
                                        NetscapeStepUpPolicy::NeverMatch,
-                                       originAttributes, builtChain, nullptr,
-                                       nullptr);
+                                       mDistrustedCAPolicy, originAttributes,
+                                       builtChain, nullptr, nullptr);
       rv = BuildCertChain(trustDomain, certDER, time,
                           EndEntityOrCA::MustBeEndEntity,
                           KeyUsage::digitalSignature,
@@ -829,8 +841,8 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
                                        ValidityCheckingMode::CheckingOff,
                                        SHA1Mode::Allowed,
                                        NetscapeStepUpPolicy::NeverMatch,
-                                       originAttributes, builtChain, nullptr,
-                                       nullptr);
+                                       mDistrustedCAPolicy, originAttributes,
+                                       builtChain, nullptr, nullptr);
       rv = BuildCertChain(trustDomain, certDER, time,
                           EndEntityOrCA::MustBeEndEntity,
                           KeyUsage::keyEncipherment, // RSA

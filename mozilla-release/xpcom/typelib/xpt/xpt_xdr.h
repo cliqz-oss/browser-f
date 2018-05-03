@@ -1,4 +1,5 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* vim: set ts=8 sts=4 et sw=4 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,42 +16,39 @@
 
 using mozilla::NotNull;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+struct XPTArena;
+struct XPTCursor;
+struct XPTState;
 
-typedef struct XPTState         XPTState;
-typedef struct XPTCursor        XPTCursor;
-
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_SkipStringInline(NotNull<XPTCursor*> cursor);
 
-extern XPT_PUBLIC_API(bool)
-XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, char **strp,
+bool
+XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, const char **strp,
               bool ignore = false);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_DoIID(NotNull<XPTCursor*> cursor, nsID *iidp);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_Do64(NotNull<XPTCursor*> cursor, int64_t *u64p);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_Do32(NotNull<XPTCursor*> cursor, uint32_t *u32p);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_Do16(NotNull<XPTCursor*> cursor, uint16_t *u16p);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_Do8(NotNull<XPTCursor*> cursor, uint8_t *u8p);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_DoHeader(XPTArena *arena, NotNull<XPTCursor*> cursor, XPTHeader **headerp);
 
-typedef enum {
+enum XPTPool {
     XPT_HEADER = 0,
     XPT_DATA = 1
-} XPTPool;
+};
 
 struct XPTState {
     uint32_t         data_offset;
@@ -66,21 +64,17 @@ struct XPTCursor {
     uint8_t     bits;
 };
 
-extern XPT_PUBLIC_API(void)
+void
 XPT_InitXDRState(XPTState* state, char* data, uint32_t len);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_MakeCursor(XPTState *state, XPTPool pool, uint32_t len,
                NotNull<XPTCursor*> cursor);
 
-extern XPT_PUBLIC_API(bool)
+bool
 XPT_SeekTo(NotNull<XPTCursor*> cursor, uint32_t offset);
 
-extern XPT_PUBLIC_API(void)
+void
 XPT_SetDataOffset(XPTState *state, uint32_t data_offset);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* __xpt_xdr_h__ */

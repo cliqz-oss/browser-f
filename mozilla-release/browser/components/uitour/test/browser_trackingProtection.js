@@ -1,6 +1,5 @@
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 const PREF_INTRO_COUNT = "privacy.trackingprotection.introCount";
 const PREF_TP_ENABLED = "privacy.trackingprotection.enabled";
 const BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/benignPage.html";
@@ -8,7 +7,7 @@ const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/
 const TOOLTIP_PANEL = document.getElementById("UITourTooltip");
 const TOOLTIP_ANCHOR = document.getElementById("tracking-protection-icon");
 
-var {UrlClassifierTestUtils} = Cu.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
+var {UrlClassifierTestUtils} = ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
 
 registerCleanupFunction(function() {
   UrlClassifierTestUtils.cleanupTestTrackers();

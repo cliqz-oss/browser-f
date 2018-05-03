@@ -43,7 +43,7 @@ require("./src/assets/styles/netmonitor.css");
 const EventEmitter = require("devtools-modules/src/utils/event-emitter");
 EventEmitter.decorate(window);
 
-const { configureStore } = require("./src/utils/create-store");
+const { configureStore } = require("./src/create-store");
 const App = require("./src/components/App");
 const { Connector } = require("./src/connector/index");
 const connector = new Connector();
@@ -82,6 +82,6 @@ bootstrap(React, ReactDOM).then((connection) => {
     return;
   }
 
-  renderRoot(React, ReactDOM, App, store, {connector});
+  renderRoot(React, ReactDOM, App, store, {actions, connector});
   connector.connect(connection, actions, store.getState);
 });

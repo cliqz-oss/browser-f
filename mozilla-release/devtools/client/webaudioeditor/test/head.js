@@ -1,43 +1,22 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
+
+/* eslint no-unused-vars: [2, {"vars": "local"}] */
+/* import-globals-from ../../shared/test/shared-head.js */
+
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+// Load the shared-head file first.
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
+  this);
 
-// There are shutdown issues for which multiple rejections are left uncaught.
-// This bug should be fixed, but for the moment devtools are whitelisted.
-//
-// NOTE: Entire directory whitelisting should be kept to a minimum. Normally you
-//       should use "expectUncaughtRejection" to flag individual failures.
-const { PromiseTestUtils } = Cu.import("resource://testing-common/PromiseTestUtils.jsm", {});
-PromiseTestUtils.whitelistRejectionsGlobally(/Component not initialized/);
-PromiseTestUtils.whitelistRejectionsGlobally(/Connection closed/);
-PromiseTestUtils.whitelistRejectionsGlobally(/destroy/);
-PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
-PromiseTestUtils.whitelistRejectionsGlobally(/is no longer, usable/);
-PromiseTestUtils.whitelistRejectionsGlobally(/NS_ERROR_FAILURE/);
-PromiseTestUtils.whitelistRejectionsGlobally(/this\._urls is null/);
-PromiseTestUtils.whitelistRejectionsGlobally(/this\.tabTarget is null/);
-PromiseTestUtils.whitelistRejectionsGlobally(/this\.toolbox is null/);
-PromiseTestUtils.whitelistRejectionsGlobally(/this\.webConsoleClient is null/);
-PromiseTestUtils.whitelistRejectionsGlobally(/this\.worker is null/);
-
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-var { Task } = require("devtools/shared/task");
-var Services = require("Services");
-var { gDevTools } = require("devtools/client/framework/devtools");
-var { TargetFactory } = require("devtools/client/framework/target");
 var { DebuggerServer } = require("devtools/server/main");
 var { generateUUID } = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
 
-var Services = require("Services");
 var { WebAudioFront } = require("devtools/shared/fronts/webaudio");
-var DevToolsUtils = require("devtools/shared/DevToolsUtils");
-var flags = require("devtools/shared/flags");
 var audioNodes = require("devtools/server/actors/utils/audionodes.json");
-var mm = null;
 
-const FRAME_SCRIPT_UTILS_URL = "chrome://devtools/content/shared/frame-script-utils.js";
 const EXAMPLE_URL = "http://example.com/browser/devtools/client/webaudioeditor/test/";
 const SIMPLE_CONTEXT_URL = EXAMPLE_URL + "doc_simple-context.html";
 const COMPLEX_CONTEXT_URL = EXAMPLE_URL + "doc_complex-context.html";
@@ -55,85 +34,13 @@ const AUTOMATION_URL = EXAMPLE_URL + "doc_automation.html";
 var gEnableLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 Services.prefs.setBoolPref("devtools.debugger.log", false);
 
-// All tests are asynchronous.
-waitForExplicitFinish();
-
 var gToolEnabled = Services.prefs.getBoolPref("devtools.webaudioeditor.enabled");
 
-flags.testing = true;
-
 registerCleanupFunction(() => {
-  flags.testing = false;
-  info("finish() was called, cleaning up...");
   Services.prefs.setBoolPref("devtools.debugger.log", gEnableLogging);
   Services.prefs.setBoolPref("devtools.webaudioeditor.enabled", gToolEnabled);
   Cu.forceGC();
 });
-
-/**
- * Call manually in tests that use frame script utils after initializing
- * the web audio editor. Call after init but before navigating to a different page.
- */
-function loadFrameScripts() {
-  mm = gBrowser.selectedBrowser.messageManager;
-  mm.loadFrameScript(FRAME_SCRIPT_UTILS_URL, false);
-}
-
-function addTab(aUrl, aWindow) {
-  info("Adding tab: " + aUrl);
-
-  let targetWindow = aWindow || window;
-  let targetBrowser = targetWindow.gBrowser;
-
-  targetWindow.focus();
-  let tab = targetBrowser.selectedTab = targetBrowser.addTab(aUrl);
-  let linkedBrowser = tab.linkedBrowser;
-
-  return new Promise((resolve, reject) => {
-    BrowserTestUtils.browserLoaded(linkedBrowser).then(function () {
-      info("Tab added and finished loading: " + aUrl);
-      resolve(tab);
-    });
-  });
-}
-
-function removeTab(aTab, aWindow) {
-  info("Removing tab.");
-
-  let targetWindow = aWindow || window;
-  let targetBrowser = targetWindow.gBrowser;
-  let tabContainer = targetBrowser.tabContainer;
-
-  return new Promise((resolve, reject) => {
-    tabContainer.addEventListener("TabClose", function (aEvent) {
-      info("Tab removed and finished closing.");
-      resolve();
-    }, {once: true});
-
-    targetBrowser.removeTab(aTab);
-  });
-}
-
-function once(aTarget, aEventName, aUseCapture = false) {
-  info("Waiting for event: '" + aEventName + "' on " + aTarget + ".");
-
-  return new Promise((resolve, reject) => {
-    for (let [add, remove] of [
-      ["on", "off"], // Use event emitter before DOM events for consistency
-      ["addEventListener", "removeEventListener"],
-      ["addListener", "removeListener"]
-    ]) {
-      if ((add in aTarget) && (remove in aTarget)) {
-        aTarget[add](aEventName, function onEvent(...aArgs) {
-          aTarget[remove](aEventName, onEvent, aUseCapture);
-          info("Got event: '" + aEventName + "' on " + aTarget + ".");
-          resolve(...aArgs);
-        }, aUseCapture);
-        break;
-      }
-    }
-  });
-}
 
 function reload(aTarget, aWaitForTargetEvent = "navigate") {
   aTarget.activeTab.reload();
@@ -143,15 +50,6 @@ function reload(aTarget, aWaitForTargetEvent = "navigate") {
 function navigate(aTarget, aUrl, aWaitForTargetEvent = "navigate") {
   executeSoon(() => aTarget.activeTab.navigateTo(aUrl));
   return once(aTarget, aWaitForTargetEvent);
-}
-
-/**
- * Call manually in tests that use frame script utils after initializing
- * the shader editor. Call after init but before navigating to different pages.
- */
-function loadFrameScripts() {
-  mm = gBrowser.selectedBrowser.messageManager;
-  mm.loadFrameScript(FRAME_SCRIPT_UTILS_URL, false);
 }
 
 /**
@@ -253,7 +151,7 @@ function waitForGraphRendered(front, nodeCount, edgeCount, paramEdgeCount) {
   info(`Wait for graph rendered with ${nodeCount} nodes, ${edgeCount} edges`);
 
   return new Promise((resolve, reject) => {
-    front.on(eventName, function onGraphRendered(_, nodes, edges, pEdges) {
+    front.on(eventName, function onGraphRendered(nodes, edges, pEdges) {
       let paramEdgesDone = paramEdgeCount != null ? paramEdgeCount === pEdges : true;
       info(`Got graph rendered with ${nodes} / ${nodeCount} nodes, ` +
            `${edges} / ${edgeCount} edges`);
@@ -309,8 +207,17 @@ function modifyVariableView(win, view, index, prop, value) {
   scope.expand();
 
   return new Promise((resolve, reject) => {
-    win.on(win.EVENTS.UI_SET_PARAM, handleSetting);
-    win.on(win.EVENTS.UI_SET_PARAM_ERROR, handleSetting);
+    const onParamSetSuccess = () => {
+      win.off(win.EVENTS.UI_SET_PARAM_ERROR, onParamSetError);
+      resolve();
+    }
+
+    const onParamSetError = () => {
+      win.off(win.EVENTS.UI_SET_PARAM, onParamSetSuccess);
+      reject();
+    }
+    win.once(win.EVENTS.UI_SET_PARAM, onParamSetSuccess);
+    win.once(win.EVENTS.UI_SET_PARAM_ERROR, onParamSetError);
 
     // Focus and select the variable to begin editing
     win.focus();
@@ -326,15 +233,6 @@ function modifyVariableView(win, view, index, prop, value) {
       }
       EventUtils.sendKey("RETURN", win);
     });
-
-    function handleSetting(eventName) {
-      win.off(win.EVENTS.UI_SET_PARAM, handleSetting);
-      win.off(win.EVENTS.UI_SET_PARAM_ERROR, handleSetting);
-      if (eventName === win.EVENTS.UI_SET_PARAM)
-        resolve();
-      if (eventName === win.EVENTS.UI_SET_PARAM_ERROR)
-        reject();
-    }
   });
 }
 
@@ -367,16 +265,6 @@ function command(button) {
 
 function isVisible(element) {
   return !element.getAttribute("hidden");
-}
-
-/**
- * Used in debugging, returns a promise that resolves in `n` milliseconds.
- */
-function wait(n) {
-  return new Promise((resolve, reject) => {
-    setTimeout(resolve, n);
-    info("Waiting " + n / 1000 + " seconds.");
-  });
 }
 
 /**
@@ -487,31 +375,6 @@ function waitForInspectorRender(panelWin, EVENTS) {
     once(panelWin, EVENTS.UI_PROPERTIES_TAB_RENDERED),
     once(panelWin, EVENTS.UI_AUTOMATION_TAB_RENDERED)
   ]);
-}
-
-/**
- * Takes a string `script` and evaluates it directly in the content
- * in potentially a different process.
- */
-function evalInDebuggee(script) {
-  if (!mm) {
-    throw new Error("`loadFrameScripts()` must be called when using MessageManager.");
-  }
-
-  return new Promise((resolve, reject) => {
-    let id = generateUUID().toString();
-    mm.sendAsyncMessage("devtools:test:eval", { script: script, id: id });
-    mm.addMessageListener("devtools:test:eval:response", handler);
-
-    function handler({ data }) {
-      if (id !== data.id) {
-        return;
-      }
-
-      mm.removeMessageListener("devtools:test:eval:response", handler);
-      resolve(data.value);
-    }
-  });
 }
 
 /**

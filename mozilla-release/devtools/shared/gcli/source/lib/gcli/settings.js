@@ -22,7 +22,7 @@ var Cc = require('chrome').Cc;
 var Ci = require('chrome').Ci;
 var Cu = require('chrome').Cu;
 
-var XPCOMUtils = Cu.import('resource://gre/modules/XPCOMUtils.jsm', {}).XPCOMUtils;
+var XPCOMUtils = require('resource://gre/modules/XPCOMUtils.jsm').XPCOMUtils;
 var Services = require("Services");
 
 XPCOMUtils.defineLazyGetter(imports, 'prefBranch', function() {
@@ -95,7 +95,7 @@ Settings.prototype.getAll = function(filter) {
   }
 
   return this._settingsAll.filter(setting => {
-    return setting.name.indexOf(filter) !== -1;
+    return setting.name.includes(filter);
   });
 };
 

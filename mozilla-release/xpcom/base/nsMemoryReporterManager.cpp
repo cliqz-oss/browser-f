@@ -724,6 +724,14 @@ SystemHeapSize(int64_t* aSizeOut)
   for (DWORD i = 0; i < nHeaps; i++) {
     HANDLE heap = heaps[i];
 
+    // Bug 1235982: When Control Flow Guard is enabled for the process,
+    // GetProcessHeap may return some protected heaps that are in read-only
+    // memory and thus crash in HeapLock. Ignore such heaps.
+    MEMORY_BASIC_INFORMATION mbi = {0};
+    if (VirtualQuery(heap, &mbi, sizeof(mbi)) && mbi.Protect == PAGE_READONLY) {
+      continue;
+    }
+
     NS_ENSURE_TRUE(HeapLock(heap), NS_ERROR_FAILURE);
 
     int64_t heapSize = 0;
@@ -1387,16 +1395,28 @@ public:
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
                             nsISupports* aData, bool aAnonymize) override
   {
-    size_t Main, Static;
-    NS_SizeOfAtomTablesIncludingThis(MallocSizeOf, &Main, &Static);
+    AtomsSizes sizes;
+    NS_AddSizeOfAtoms(MallocSizeOf, sizes);
 
     MOZ_COLLECT_REPORT(
-      "explicit/atom-tables/main", KIND_HEAP, UNITS_BYTES, Main,
-      "Memory used by the main atoms table.");
+      "explicit/atoms/table", KIND_HEAP, UNITS_BYTES, sizes.mTable,
+      "Memory used by the atom table.");
 
     MOZ_COLLECT_REPORT(
-      "explicit/atom-tables/static", KIND_HEAP, UNITS_BYTES, Static,
-      "Memory used by the static atoms table.");
+      "explicit/atoms/static/atom-objects", KIND_HEAP, UNITS_BYTES,
+      sizes.mStaticAtomObjects,
+      "Memory used by static atom objects.");
+
+    MOZ_COLLECT_REPORT(
+      "explicit/atoms/dynamic/atom-objects", KIND_HEAP, UNITS_BYTES,
+      sizes.mDynamicAtomObjects,
+      "Memory used by dynamic atom objects.");
+
+    MOZ_COLLECT_REPORT(
+      "explicit/atoms/dynamic/unshared-buffers", KIND_HEAP, UNITS_BYTES,
+      sizes.mDynamicUnsharedBuffers,
+      "Memory used by unshared string buffers pointed to by dynamic atom "
+      "objects.");
 
     return NS_OK;
   }

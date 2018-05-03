@@ -18,7 +18,6 @@ class nsCaret;
 class nsIContent;
 class nsIDOMDragEvent;
 class nsIDOMEvent;
-class nsIDOMKeyEvent;
 class nsIDOMMouseEvent;
 class nsIPresShell;
 class nsPresContext;
@@ -77,8 +76,8 @@ protected:
 
   bool CanDrop(nsIDOMDragEvent* aEvent);
   void CleanupDragDropCaret();
-  already_AddRefed<nsIPresShell> GetPresShell();
-  nsPresContext* GetPresContext();
+  nsIPresShell* GetPresShell() const;
+  nsPresContext* GetPresContext() const;
   nsIContent* GetFocusedRootContent();
   // Returns true if IME consumes the mouse event.
   bool NotifyIMEOfMouseButtonEvent(WidgetMouseEvent* aMouseEvent);

@@ -3,28 +3,26 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-this.EXPORTED_SYMBOLS = ["RemoteWebProgressManager"];
+var EXPORTED_SYMBOLS = ["RemoteWebProgressManager"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-function RemoteWebProgressRequest(spec, originalSpec, requestCPOW) {
+function RemoteWebProgressRequest(spec, originalSpec, matchedList, requestCPOW) {
   this.wrappedJSObject = this;
 
   this._uri = Services.io.newURI(spec);
   this._originalURI = Services.io.newURI(originalSpec);
   this._requestCPOW = requestCPOW;
+  this._matchedList = matchedList;
 }
 
 RemoteWebProgressRequest.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIChannel]),
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIChannel, Ci.nsIClassifiedChannel]),
 
   get URI() { return this._uri.clone(); },
-  get originalURI() { return this._originalURI.clone(); }
+  get originalURI() { return this._originalURI.clone(); },
+  get matchedList() { return this._matchedList; }
 };
 
 function RemoteWebProgress(aManager, aIsTopLevel) {
@@ -74,35 +72,6 @@ function RemoteWebProgressManager(aBrowser) {
   this.swapBrowser(aBrowser);
 }
 
-RemoteWebProgressManager.argumentsForAddonListener = function(kind, args) {
-  function checkType(arg, typ) {
-    if (!arg) {
-      return false;
-    }
-    return (arg instanceof typ) ||
-      (arg instanceof Ci.nsISupports && arg.wrappedJSObject instanceof typ);
-  }
-
-  // Arguments for a tabs listener are shifted over one since the
-  // <browser> element is passed as the first argument.
-  let webProgressIndex = 0;
-  let requestIndex = 1;
-  if (kind == "tabs") {
-    webProgressIndex = 1;
-    requestIndex = 2;
-  }
-
-  if (checkType(args[webProgressIndex], RemoteWebProgress)) {
-    args[webProgressIndex] = args[webProgressIndex].wrappedJSObject._webProgressCPOW;
-  }
-
-  if (checkType(args[requestIndex], RemoteWebProgressRequest)) {
-    args[requestIndex] = args[requestIndex].wrappedJSObject._requestCPOW;
-  }
-
-  return args;
-};
-
 RemoteWebProgressManager.prototype = {
   swapBrowser(aBrowser) {
     if (this._messageManager) {
@@ -145,7 +114,7 @@ RemoteWebProgressManager.prototype = {
     let deserialized = null;
     if (aStatus) {
       let helper = Cc["@mozilla.org/network/serialization-helper;1"]
-                    .getService(Components.interfaces.nsISerializationHelper);
+                    .getService(Ci.nsISerializationHelper);
 
       deserialized = helper.deserializeObject(aStatus);
       deserialized.QueryInterface(Ci.nsISSLStatus);
@@ -213,6 +182,7 @@ RemoteWebProgressManager.prototype = {
     if (json.requestURI) {
       request = new RemoteWebProgressRequest(json.requestURI,
                                              json.originalRequestURI,
+                                             json.matchedList,
                                              objects.request);
     }
 

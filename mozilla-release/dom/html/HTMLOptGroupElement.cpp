@@ -37,8 +37,6 @@ HTMLOptGroupElement::~HTMLOptGroupElement()
 }
 
 
-NS_IMPL_ISUPPORTS_INHERITED0(HTMLOptGroupElement, nsGenericHTMLElement)
-
 NS_IMPL_ELEMENT_CLONE(HTMLOptGroupElement)
 
 
@@ -48,15 +46,14 @@ HTMLOptGroupElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   aVisitor.mCanHandle = false;
   // Do not process any DOM events if the element is disabled
   // XXXsmaug This is not the right thing to do. But what is?
-  if (HasAttr(kNameSpaceID_None, nsGkAtoms::disabled)) {
+  if (IsDisabled()) {
     return NS_OK;
   }
 
-  nsIFrame* frame = GetPrimaryFrame();
-  if (frame) {
-    const nsStyleUserInterface* uiStyle = frame->StyleUserInterface();
-    if (uiStyle->mUserInput == StyleUserInput::None ||
-        uiStyle->mUserInput == StyleUserInput::Disabled) {
+  if (nsIFrame* frame = GetPrimaryFrame()) {
+    // FIXME(emilio): This poking at the style of the frame is broken unless we
+    // flush before every event handling, which we don't really want to.
+    if (frame->StyleUserInterface()->mUserInput == StyleUserInput::None) {
       return NS_OK;
     }
   }
@@ -75,12 +72,28 @@ HTMLOptGroupElement::GetSelect()
 }
 
 nsresult
-HTMLOptGroupElement::InsertChildAt(nsIContent* aKid,
-                                   uint32_t aIndex,
-                                   bool aNotify)
+HTMLOptGroupElement::InsertChildBefore(nsIContent* aKid,
+                                       nsIContent* aBeforeThis,
+                                       bool aNotify)
+{
+  int32_t index = aBeforeThis ? ComputeIndexOf(aBeforeThis) : GetChildCount();
+  SafeOptionListMutation safeMutation(GetSelect(), this, aKid, index, aNotify);
+  nsresult rv =
+    nsGenericHTMLElement::InsertChildBefore(aKid, aBeforeThis, aNotify);
+  if (NS_FAILED(rv)) {
+    safeMutation.MutationFailed();
+  }
+  return rv;
+}
+
+nsresult
+HTMLOptGroupElement::InsertChildAt_Deprecated(nsIContent* aKid,
+                                              uint32_t aIndex,
+                                              bool aNotify)
 {
   SafeOptionListMutation safeMutation(GetSelect(), this, aKid, aIndex, aNotify);
-  nsresult rv = nsGenericHTMLElement::InsertChildAt(aKid, aIndex, aNotify);
+  nsresult rv = nsGenericHTMLElement::InsertChildAt_Deprecated(aKid, aIndex,
+                                                               aNotify);
   if (NS_FAILED(rv)) {
     safeMutation.MutationFailed();
   }
@@ -98,8 +111,8 @@ HTMLOptGroupElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 void
 HTMLOptGroupElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
 {
-  SafeOptionListMutation safeMutation(GetSelect(), this, nullptr, IndexOf(aKid),
-                                      aNotify);
+  SafeOptionListMutation safeMutation(GetSelect(), this, nullptr,
+                                      ComputeIndexOf(aKid), aNotify);
   nsGenericHTMLElement::RemoveChildNode(aKid, aNotify);
 }
 

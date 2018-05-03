@@ -1,8 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/service.js");
 
 function PetrolEngine() {}
 PetrolEngine.prototype.name = "petrol";
@@ -16,9 +16,11 @@ function DummyEngine() {}
 DummyEngine.prototype.name = "dummy";
 DummyEngine.prototype.finalize = async function() {};
 
-function ActualEngine() {}
-ActualEngine.prototype = {__proto__: Engine.prototype,
-                          name: "actual"};
+class ActualEngine extends SyncEngine {
+  constructor(service) {
+    super("Actual", service);
+  }
+}
 
 add_task(async function test_basics() {
   _("We start out with a clean slate");
@@ -81,7 +83,7 @@ add_task(async function test_basics() {
 
   engines = await manager.getEnabled();
 
-  do_check_array_eq(engines, [petrol, dummy, diesel]);
+  Assert.deepEqual(engines, [petrol, dummy, diesel]);
 
   _("Changing the priorities should change the order in getEnabled()");
 
@@ -89,10 +91,10 @@ add_task(async function test_basics() {
 
   engines = await manager.getEnabled();
 
-  do_check_array_eq(engines, [petrol, diesel, dummy]);
+  Assert.deepEqual(engines, [petrol, diesel, dummy]);
 
   _("Unregister an engine by name");
-  manager.unregister("dummy");
+  await manager.unregister("dummy");
   Assert.equal((await manager.get("dummy")), undefined);
   engines = await manager.getAll();
   Assert.equal(engines.length, 2);
@@ -103,9 +105,9 @@ add_task(async function test_basics() {
   await manager.register(ActualEngine);
   let actual = await manager.get("actual");
   Assert.ok(actual instanceof ActualEngine);
-  Assert.ok(actual instanceof Engine);
+  Assert.ok(actual instanceof SyncEngine);
 
-  manager.unregister(actual);
+  await manager.unregister(actual);
   Assert.equal((await manager.get("actual")), undefined);
 });
 

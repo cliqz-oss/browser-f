@@ -9,13 +9,13 @@ use properties::StyleBuilder;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 use values::{CSSInteger, CSSFloat};
-use values::animated::ToAnimatedZero;
 use values::computed::{NonNegativeLength, NonNegativeNumber};
 use values::computed::length::{Length, LengthOrPercentage};
 use values::generics::text::InitialLetter as GenericInitialLetter;
 use values::generics::text::LineHeight as GenericLineHeight;
+use values::generics::text::MozTabSize as GenericMozTabSize;
 use values::generics::text::Spacing;
-use values::specified::text::{TextOverflowSide, TextDecorationLine};
+use values::specified::text::{TextDecorationLine, TextEmphasisFillMode, TextEmphasisShapeKeyword, TextOverflowSide};
 
 pub use values::specified::TextAlignKeyword as TextAlign;
 
@@ -30,11 +30,6 @@ pub type WordSpacing = Spacing<LengthOrPercentage>;
 
 /// A computed value for the `line-height` property.
 pub type LineHeight = GenericLineHeight<NonNegativeNumber, NonNegativeLength>;
-
-impl ToAnimatedZero for LineHeight {
-    #[inline]
-    fn to_animated_zero(&self) -> Result<Self, ()> { Err(()) }
-}
 
 #[derive(Clone, Debug, MallocSizeOf, PartialEq)]
 /// text-overflow.
@@ -71,7 +66,7 @@ impl ToCss for TextOverflow {
         W: Write,
     {
         if self.sides_are_logical {
-            debug_assert!(self.first == TextOverflowSide::Clip);
+            debug_assert_eq!(self.first, TextOverflowSide::Clip);
             self.second.to_css(dest)?;
         } else {
             self.first.to_css(dest)?;
@@ -152,4 +147,27 @@ impl TextDecorationsInEffect {
 
         result
     }
+}
+
+/// A specified value for the `-moz-tab-size` property.
+pub type MozTabSize = GenericMozTabSize<NonNegativeNumber, NonNegativeLength>;
+
+/// computed value for the text-emphasis-style property
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
+pub enum TextEmphasisStyle {
+    /// Keyword value for the text-emphasis-style property (`filled` `open`)
+    Keyword(TextEmphasisKeywordValue),
+    /// `none`
+    None,
+    /// String (will be used only first grapheme cluster) for the text-emphasis-style property
+    String(String),
+}
+
+/// Keyword value for the text-emphasis-style property
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToCss)]
+pub struct TextEmphasisKeywordValue {
+    /// fill for the text-emphasis-style property
+    pub fill: TextEmphasisFillMode,
+    /// shape for the text-emphasis-style property
+    pub shape: TextEmphasisShapeKeyword,
 }

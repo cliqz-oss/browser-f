@@ -4,9 +4,8 @@
 
 "use strict";
 
-const { Cu } = require("chrome");
 const Services = require("Services");
-const promise = Cu.import("resource://devtools/shared/deprecated-sync-thenables.js", {}).Promise;
+const promise = require("devtools/shared/deprecated-sync-thenables");
 
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { getStack, callFunctionWithAsyncStack } = require("devtools/shared/platform/stack");
@@ -316,8 +315,8 @@ DebuggerClient.prototype = {
    * This function exists only to preserve DebuggerClient's interface;
    * new code should say 'client.mainRoot.listTabs()'.
    */
-  listTabs: function (onResponse) {
-    return this.mainRoot.listTabs(onResponse);
+  listTabs: function (options, onResponse) {
+    return this.mainRoot.listTabs(options, onResponse);
   },
 
   /*
@@ -880,7 +879,7 @@ DebuggerClient.prototype = {
     if (this._clients.has(packet.from) && packet.type) {
       let client = this._clients.get(packet.from);
       let type = packet.type;
-      if (client.events.indexOf(type) != -1) {
+      if (client.events.includes(type)) {
         client.emit(type, packet);
         // we ignore the rest, as the client is expected to handle this packet.
         return;

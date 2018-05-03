@@ -94,21 +94,13 @@ nsJARURI::CreateEntryURL(const nsACString& entryFilename,
                          nsIURL** url)
 {
     *url = nullptr;
-
-    nsCOMPtr<nsIStandardURL> stdURL(do_CreateInstance(NS_STANDARDURL_CONTRACTID));
-    if (!stdURL) {
-        return NS_ERROR_OUT_OF_MEMORY;
-    }
-
     // Flatten the concatenation, just in case.  See bug 128288
     nsAutoCString spec(NS_BOGUS_ENTRY_SCHEME + entryFilename);
-    nsresult rv = stdURL->Init(nsIStandardURL::URLTYPE_NO_AUTHORITY, -1,
-                               spec, charset, nullptr);
-    if (NS_FAILED(rv)) {
-        return rv;
-    }
-
-    return CallQueryInterface(stdURL, url);
+    return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+        .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                nsIStandardURL::URLTYPE_NO_AUTHORITY, -1,
+                                spec, charset, nullptr, nullptr))
+        .Finalize(url);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,7 +256,46 @@ nsJARURI::SetSpecInternal(const nsACString& aSpec)
     return SetSpecWithBase(aSpec, nullptr);
 }
 
-NS_IMPL_ISUPPORTS(nsJARURI::Mutator, nsIURISetters, nsIURIMutator)
+NS_IMPL_ISUPPORTS(nsJARURI::Mutator, nsIURISetters, nsIURIMutator, nsIURLMutator)
+
+NS_IMETHODIMP
+nsJARURI::Mutator::SetFileName(const nsACString& aFileName, nsIURIMutator** aMutator)
+{
+    if (!mURI) {
+        return NS_ERROR_NULL_POINTER;
+    }
+    if (aMutator) {
+        nsCOMPtr<nsIURIMutator> mutator = this;
+        mutator.forget(aMutator);
+    }
+    return mURI->SetFileNameInternal(aFileName);
+}
+
+NS_IMETHODIMP
+nsJARURI::Mutator::SetFileBaseName(const nsACString& aFileBaseName, nsIURIMutator** aMutator)
+{
+    if (!mURI) {
+        return NS_ERROR_NULL_POINTER;
+    }
+    if (aMutator) {
+        nsCOMPtr<nsIURIMutator> mutator = this;
+        mutator.forget(aMutator);
+    }
+    return mURI->SetFileBaseNameInternal(aFileBaseName);
+}
+
+NS_IMETHODIMP
+nsJARURI::Mutator::SetFileExtension(const nsACString& aFileExtension, nsIURIMutator** aMutator)
+{
+    if (!mURI) {
+        return NS_ERROR_NULL_POINTER;
+    }
+    if (aMutator) {
+        nsCOMPtr<nsIURIMutator> mutator = this;
+        mutator.forget(aMutator);
+    }
+    return mURI->SetFileExtensionInternal(aFileExtension);
+}
 
 NS_IMETHODIMP
 nsJARURI::Mutate(nsIURIMutator** aMutator)
@@ -299,14 +330,17 @@ nsJARURI::SetSpecWithBase(const nsACString &aSpec, nsIURI* aBaseURL)
 
         mJARFile = otherJAR->mJARFile;
 
-        nsCOMPtr<nsIStandardURL> entry(do_CreateInstance(NS_STANDARDURL_CONTRACTID));
-        if (!entry)
-            return NS_ERROR_OUT_OF_MEMORY;
+        nsCOMPtr<nsIURI> entry;
 
-        rv = entry->Init(nsIStandardURL::URLTYPE_NO_AUTHORITY, -1,
-                         aSpec, mCharsetHint.get(), otherJAR->mJAREntry);
-        if (NS_FAILED(rv))
+        rv = NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+               .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                       nsIStandardURL::URLTYPE_NO_AUTHORITY,
+                                       -1, nsCString(aSpec), mCharsetHint.get(),
+                                       otherJAR->mJAREntry, nullptr))
+               .Finalize(entry);
+        if (NS_FAILED(rv)) {
             return rv;
+        }
 
         mJAREntry = do_QueryInterface(entry);
         if (!mJAREntry)
@@ -384,7 +418,7 @@ nsJARURI::GetScheme(nsACString &aScheme)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetScheme(const nsACString &aScheme)
 {
     // doesn't make sense to set the scheme of a jar: URL
@@ -397,7 +431,7 @@ nsJARURI::GetUserPass(nsACString &aUserPass)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetUserPass(const nsACString &aUserPass)
 {
     return NS_ERROR_FAILURE;
@@ -409,7 +443,7 @@ nsJARURI::GetUsername(nsACString &aUsername)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetUsername(const nsACString &aUsername)
 {
     return NS_ERROR_FAILURE;
@@ -421,7 +455,7 @@ nsJARURI::GetPassword(nsACString &aPassword)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetPassword(const nsACString &aPassword)
 {
     return NS_ERROR_FAILURE;
@@ -433,14 +467,8 @@ nsJARURI::GetHostPort(nsACString &aHostPort)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetHostPort(const nsACString &aHostPort)
-{
-    return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsJARURI::SetHostAndPort(const nsACString &aHostPort)
 {
     return NS_ERROR_FAILURE;
 }
@@ -451,7 +479,7 @@ nsJARURI::GetHost(nsACString &aHost)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetHost(const nsACString &aHost)
 {
     return NS_ERROR_FAILURE;
@@ -463,13 +491,13 @@ nsJARURI::GetPort(int32_t *aPort)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetPort(int32_t aPort)
 {
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::GetPathQueryRef(nsACString &aPath)
 {
     nsAutoCString entrySpec;
@@ -477,7 +505,7 @@ nsJARURI::GetPathQueryRef(nsACString &aPath)
     return FormatSpec(entrySpec, aPath, false);
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetPathQueryRef(const nsACString &aPath)
 {
     return NS_ERROR_FAILURE;
@@ -627,10 +655,12 @@ nsJARURI::GetFilePath(nsACString& filePath)
     return mJAREntry->GetFilePath(filePath);
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetFilePath(const nsACString& filePath)
 {
-    return mJAREntry->SetFilePath(filePath);
+    return NS_MutateURI(mJAREntry)
+             .SetFilePath(filePath)
+             .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -639,17 +669,21 @@ nsJARURI::GetQuery(nsACString& query)
     return mJAREntry->GetQuery(query);
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetQuery(const nsACString& query)
 {
-    return mJAREntry->SetQuery(query);
+    return NS_MutateURI(mJAREntry)
+             .SetQuery(query)
+             .Finalize(mJAREntry);
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetQueryWithEncoding(const nsACString& query,
                                const Encoding* encoding)
 {
-    return mJAREntry->SetQueryWithEncoding(query, encoding);
+    return NS_MutateURI(mJAREntry)
+             .SetQueryWithEncoding(query, encoding)
+             .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -658,10 +692,12 @@ nsJARURI::GetRef(nsACString& ref)
     return mJAREntry->GetRef(ref);
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetRef(const nsACString& ref)
 {
-    return mJAREntry->SetRef(ref);
+    return NS_MutateURI(mJAREntry)
+             .SetRef(ref)
+             .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -671,21 +707,18 @@ nsJARURI::GetDirectory(nsACString& directory)
 }
 
 NS_IMETHODIMP
-nsJARURI::SetDirectory(const nsACString& directory)
-{
-    return mJAREntry->SetDirectory(directory);
-}
-
-NS_IMETHODIMP
 nsJARURI::GetFileName(nsACString& fileName)
 {
     return mJAREntry->GetFileName(fileName);
 }
 
-NS_IMETHODIMP
-nsJARURI::SetFileName(const nsACString& fileName)
+nsresult
+nsJARURI::SetFileNameInternal(const nsACString& fileName)
 {
-    return mJAREntry->SetFileName(fileName);
+    return NS_MutateURI(mJAREntry)
+        .Apply(NS_MutatorMethod(&nsIURLMutator::SetFileName,
+                                nsCString(fileName), nullptr))
+        .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -694,10 +727,13 @@ nsJARURI::GetFileBaseName(nsACString& fileBaseName)
     return mJAREntry->GetFileBaseName(fileBaseName);
 }
 
-NS_IMETHODIMP
-nsJARURI::SetFileBaseName(const nsACString& fileBaseName)
+nsresult
+nsJARURI::SetFileBaseNameInternal(const nsACString& fileBaseName)
 {
-    return mJAREntry->SetFileBaseName(fileBaseName);
+    return NS_MutateURI(mJAREntry)
+        .Apply(NS_MutatorMethod(&nsIURLMutator::SetFileBaseName,
+                                nsCString(fileBaseName), nullptr))
+        .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -706,10 +742,13 @@ nsJARURI::GetFileExtension(nsACString& fileExtension)
     return mJAREntry->GetFileExtension(fileExtension);
 }
 
-NS_IMETHODIMP
-nsJARURI::SetFileExtension(const nsACString& fileExtension)
+nsresult
+nsJARURI::SetFileExtensionInternal(const nsACString& fileExtension)
 {
-    return mJAREntry->SetFileExtension(fileExtension);
+    return NS_MutateURI(mJAREntry)
+        .Apply(NS_MutatorMethod(&nsIURLMutator::SetFileExtension,
+                                nsCString(fileExtension), nullptr))
+        .Finalize(mJAREntry);
 }
 
 NS_IMETHODIMP
@@ -833,7 +872,7 @@ nsJARURI::GetJAREntry(nsACString &entryPath)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsJARURI::SetJAREntry(const nsACString &entryPath)
 {
     return CreateEntryURL(entryPath, mCharsetHint.get(),

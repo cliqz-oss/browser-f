@@ -5,13 +5,12 @@
 /* globals  APP_STARTUP, ADDON_INSTALL */
 "use strict";
 
-const {utils: Cu, interfaces: Ci} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   OnboardingTourType: "resource://onboarding/modules/OnboardingTourType.jsm",
   OnboardingTelemetry: "resource://onboarding/modules/OnboardingTelemetry.jsm",
   Services: "resource://gre/modules/Services.jsm",
-  fxAccounts: "resource://gre/modules/FxAccounts.jsm",
+  UIState: "resource://services-sync/UIState.jsm",
 });
 
 const {PREF_STRING, PREF_BOOL, PREF_INT} = Ci.nsIPrefBranch;
@@ -90,33 +89,31 @@ let syncTourChecker = {
   },
 
   observe(subject, topic) {
-    switch (topic) {
-      case "fxaccounts:onlogin":
-        this.setComplete();
-        break;
-      case "fxaccounts:onlogout":
-        this._loggedIn = false;
-        break;
+    const state = UIState.get();
+    if (state.status == UIState.STATUS_NOT_CONFIGURED) {
+      this._loggedIn = false;
+    } else {
+      this.setComplete();
     }
   },
 
   init() {
+    if (!Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+      return;
+    }
     // Check if we've already logged in at startup.
-    fxAccounts.getSignedInUser().then(user => {
-      if (user) {
-        this.setComplete();
-      }
-      // Observe for login action if we haven't logged in yet.
-      this.register();
-    });
+    const state = UIState.get();
+    if (state.status != UIState.STATUS_NOT_CONFIGURED) {
+      this.setComplete();
+    }
+    this.register();
   },
 
   register() {
     if (this._registered) {
       return;
     }
-    Services.obs.addObserver(this, "fxaccounts:onlogin");
-    Services.obs.addObserver(this, "fxaccounts:onlogout");
+    Services.obs.addObserver(this, "sync-ui-state:update");
     this._registered = true;
   },
 
@@ -129,8 +126,7 @@ let syncTourChecker = {
     if (!this._registered) {
       return;
     }
-    Services.obs.removeObserver(this, "fxaccounts:onlogin");
-    Services.obs.removeObserver(this, "fxaccounts:onlogout");
+    Services.obs.removeObserver(this, "sync-ui-state:update");
     this._registered = false;
   },
 

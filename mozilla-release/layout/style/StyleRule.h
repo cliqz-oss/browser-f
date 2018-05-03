@@ -345,9 +345,9 @@ public:
 
   // WebIDL interface
   uint16_t Type() const override;
-  void GetCssTextImpl(nsAString& aCssText) const override;
-  void GetSelectorText(nsAString& aSelectorText) final override;
-  void SetSelectorText(const nsAString& aSelectorText) final override;
+  void GetCssText(nsAString& aCssText) const override;
+  void GetSelectorText(nsAString& aSelectorText) final;
+  void SetSelectorText(const nsAString& aSelectorText) final;
   nsICSSDeclaration* Style() override;
 
   // null for style attribute
@@ -359,11 +359,13 @@ public:
 
   int32_t GetType() const override;
 
+#ifdef MOZ_OLD_STYLE
   CSSStyleSheet* GetStyleSheet() const
   {
     StyleSheet* sheet = Rule::GetStyleSheet();
     return sheet ? sheet->AsGecko() : nullptr;
   }
+#endif
 
   already_AddRefed<Rule> Clone() const override;
 

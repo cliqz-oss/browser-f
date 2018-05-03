@@ -1,10 +1,8 @@
 // Tests illegal UTF-8 sequences
 
 var Cc = Components.Constructor;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const tests = [
 { inStrings: ["%80",                 // Illegal or incomplete sequences

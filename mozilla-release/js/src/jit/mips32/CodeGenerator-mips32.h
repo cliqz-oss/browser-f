@@ -31,8 +31,6 @@ class CodeGeneratorMIPS : public CodeGeneratorMIPSShared
         emitBranch(value.typeReg(), (Imm32)ImmType(JSVAL_TYPE_OBJECT), cond, ifTrue, ifFalse);
     }
 
-    void emitTableSwitchDispatch(MTableSwitch* mir, Register index, Register base);
-
     template <typename T>
     void emitWasmLoadI64(T* ins);
     template <typename T>
@@ -66,14 +64,12 @@ class CodeGeneratorMIPS : public CodeGeneratorMIPSShared
 
     // Out of line visitors.
     void visitOutOfLineBailout(OutOfLineBailout* ool);
-    void visitOutOfLineTableSwitch(OutOfLineTableSwitch* ool);
   protected:
     ValueOperand ToValue(LInstruction* ins, size_t pos);
-    ValueOperand ToOutValue(LInstruction* ins);
     ValueOperand ToTempValue(LInstruction* ins, size_t pos);
 
     // Functions for LTestVAndBranch.
-    Register splitTagForTest(const ValueOperand& value);
+    void splitTagForTest(const ValueOperand& value, ScratchTagScope& tag);
 
   public:
     CodeGeneratorMIPS(MIRGenerator* gen, LIRGraph* graph, MacroAssembler* masm)
@@ -85,6 +81,8 @@ class CodeGeneratorMIPS : public CodeGeneratorMIPSShared
     void visitBoxFloatingPoint(LBoxFloatingPoint* box);
     void visitUnbox(LUnbox* unbox);
     void setReturnDoubleRegs(LiveRegisterSet* regs);
+    void visitWasmAtomicLoadI64(LWasmAtomicLoadI64* lir);
+    void visitWasmAtomicStoreI64(LWasmAtomicStoreI64* lir);
 };
 
 typedef CodeGeneratorMIPS CodeGeneratorSpecific;

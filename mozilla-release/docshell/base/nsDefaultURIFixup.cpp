@@ -17,12 +17,14 @@
 #endif
 
 #include "nsIURIFixup.h"
+#include "nsIURIMutator.h"
 #include "nsDefaultURIFixup.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/Tokenizer.h"
+#include "mozilla/Unused.h"
 #include "nsIObserverService.h"
 #include "nsXULAppAPI.h"
 
@@ -70,35 +72,18 @@ nsDefaultURIFixup::CreateExposableURI(nsIURI* aURI, nsIURI** aReturn)
   // Rats, we have to massage the URI
   nsCOMPtr<nsIURI> uri;
   if (isWyciwyg) {
-    nsAutoCString path;
-    nsresult rv = aURI->GetPathQueryRef(path);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    uint32_t pathLength = path.Length();
-    if (pathLength <= 2) {
-      return NS_ERROR_FAILURE;
-    }
-
-    // Path is of the form "//123/http://foo/bar", with a variable number of
-    // digits. To figure out where the "real" URL starts, search path for a '/',
-    // starting at the third character.
-    int32_t slashIndex = path.FindChar('/', 2);
-    if (slashIndex == kNotFound) {
-      return NS_ERROR_FAILURE;
-    }
-
-    rv = NS_NewURI(getter_AddRefs(uri),
-                   Substring(path, slashIndex + 1, pathLength - slashIndex - 1));
+    nsresult rv = nsContentUtils::RemoveWyciwygScheme(aURI, getter_AddRefs(uri));
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
-    // clone the URI so zapping user:pass doesn't change the original
-    nsresult rv = aURI->Clone(getter_AddRefs(uri));
-    NS_ENSURE_SUCCESS(rv, rv);
+    // No need to clone the URI as NS_MutateURI does that for us.
+    uri = aURI;
   }
 
   // hide user:pass unless overridden by pref
   if (Preferences::GetBool("browser.fixup.hide_user_pass", true)) {
-    uri->SetUserPass(EmptyCString());
+    Unused << NS_MutateURI(uri)
+                .SetUserPass(EmptyCString())
+                .Finalize(uri);
   }
 
   uri.forget(aReturn);
@@ -180,7 +165,7 @@ nsDefaultURIFixup::GetFixupURIInfo(const nsACString& aStringURI,
   // after it. The easiest way to do that is to call this method again with the
   // "view-source:" lopped off and then prepend it again afterwards.
 
-  if (scheme.LowerCaseEqualsLiteral("view-source")) {
+  if (scheme.EqualsLiteral("view-source")) {
     nsCOMPtr<nsIURIFixupInfo> uriInfo;
     // We disable keyword lookup and alternate URIs so that small typos don't
     // cause us to look at very different domains
@@ -195,7 +180,7 @@ nsDefaultURIFixup::GetFixupURIInfo(const nsACString& aStringURI,
     innerURIString.Trim(" ");
     nsAutoCString innerScheme;
     ioService->ExtractScheme(innerURIString, innerScheme);
-    if (innerScheme.LowerCaseEqualsLiteral("view-source")) {
+    if (innerScheme.EqualsLiteral("view-source")) {
       return NS_ERROR_FAILURE;
     }
 
@@ -251,47 +236,47 @@ nsDefaultURIFixup::GetFixupURIInfo(const nsACString& aStringURI,
   if (sFixTypos && (aFixupFlags & FIXUP_FLAG_FIX_SCHEME_TYPOS)) {
     // Fast-path for common cases.
     if (scheme.IsEmpty() ||
-        scheme.LowerCaseEqualsLiteral("http") ||
-        scheme.LowerCaseEqualsLiteral("https") ||
-        scheme.LowerCaseEqualsLiteral("ftp") ||
-        scheme.LowerCaseEqualsLiteral("file")) {
+        scheme.EqualsLiteral("http") ||
+        scheme.EqualsLiteral("https") ||
+        scheme.EqualsLiteral("ftp") ||
+        scheme.EqualsLiteral("file")) {
       // Do nothing.
-    } else if (scheme.LowerCaseEqualsLiteral("ttp")) {
+    } else if (scheme.EqualsLiteral("ttp")) {
       // ttp -> http.
       uriString.ReplaceLiteral(0, 3, "http");
       scheme.AssignLiteral("http");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("htp")) {
+    } else if (scheme.EqualsLiteral("htp")) {
       // htp -> http.
       uriString.ReplaceLiteral(0, 3, "http");
       scheme.AssignLiteral("http");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("ttps")) {
+    } else if (scheme.EqualsLiteral("ttps")) {
       // ttps -> https.
       uriString.ReplaceLiteral(0, 4, "https");
       scheme.AssignLiteral("https");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("tps")) {
+    } else if (scheme.EqualsLiteral("tps")) {
       // tps -> https.
       uriString.ReplaceLiteral(0, 3, "https");
       scheme.AssignLiteral("https");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("ps")) {
+    } else if (scheme.EqualsLiteral("ps")) {
       // ps -> https.
       uriString.ReplaceLiteral(0, 2, "https");
       scheme.AssignLiteral("https");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("htps")) {
+    } else if (scheme.EqualsLiteral("htps")) {
       // htps -> https.
       uriString.ReplaceLiteral(0, 4, "https");
       scheme.AssignLiteral("https");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("ile")) {
+    } else if (scheme.EqualsLiteral("ile")) {
       // ile -> file.
       uriString.ReplaceLiteral(0, 3, "file");
       scheme.AssignLiteral("file");
       info->mFixupChangedProtocol = true;
-    } else if (scheme.LowerCaseEqualsLiteral("le")) {
+    } else if (scheme.EqualsLiteral("le")) {
       // le -> file.
       uriString.ReplaceLiteral(0, 2, "file");
       scheme.AssignLiteral("file");
@@ -436,7 +421,7 @@ nsDefaultURIFixup::KeywordToURI(const nsACString& aKeyword,
       return NS_ERROR_NOT_AVAILABLE;
     }
 
-    ipc::OptionalIPCStream postData;
+    nsCOMPtr<nsIInputStream> postData;
     ipc::OptionalURIParams uri;
     nsAutoString providerName;
     if (!contentChild->SendKeywordToURI(keyword, &providerName, &postData,
@@ -448,8 +433,7 @@ nsDefaultURIFixup::KeywordToURI(const nsACString& aKeyword,
     info->mKeywordProviderName = providerName;
 
     if (aPostData) {
-      nsCOMPtr<nsIInputStream> temp = ipc::DeserializeIPCStream(postData);
-      temp.forget(aPostData);
+      postData.forget(aPostData);
     }
 
     nsCOMPtr<nsIURI> temp = DeserializeURI(uri);
@@ -527,7 +511,7 @@ nsDefaultURIFixup::TryKeywordFixupForURIInfo(const nsACString& aURIString,
 }
 
 bool
-nsDefaultURIFixup::MakeAlternateURI(nsIURI* aURI)
+nsDefaultURIFixup::MakeAlternateURI(nsCOMPtr<nsIURI>& aURI)
 {
   if (!Preferences::GetRootBranch()) {
     return false;
@@ -622,7 +606,10 @@ nsDefaultURIFixup::MakeAlternateURI(nsIURI* aURI)
   }
 
   // Assign the new host string over the old one
-  aURI->SetHost(newHost);
+  Unused << NS_MutateURI(aURI)
+              .SetHost(newHost)
+              .Finalize(aURI);
+
   return true;
 }
 

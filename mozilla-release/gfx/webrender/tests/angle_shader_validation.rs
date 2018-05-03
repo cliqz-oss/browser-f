@@ -1,7 +1,11 @@
-extern crate angle;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+extern crate mozangle;
 extern crate webrender;
 
-use angle::hl::{BuiltInResources, Output, ShaderSpec, ShaderValidator};
+use mozangle::shaders::{BuiltInResources, Output, ShaderSpec, ShaderValidator};
 
 // from glslang
 const FRAGMENT_SHADER: u32 = 0x8B30;
@@ -29,6 +33,10 @@ const SHADERS: &[Shader] = &[
         features: CLIP_FEATURES,
     },
     Shader {
+        name: "cs_clip_box_shadow",
+        features: CLIP_FEATURES,
+    },
+    Shader {
         name: "cs_clip_border",
         features: CLIP_FEATURES,
     },
@@ -51,26 +59,6 @@ const SHADERS: &[Shader] = &[
         features: PRIM_FEATURES,
     },
     Shader {
-        name: "ps_gradient",
-        features: PRIM_FEATURES,
-    },
-    Shader {
-        name: "ps_angle_gradient",
-        features: PRIM_FEATURES,
-    },
-    Shader {
-        name: "ps_radial_gradient",
-        features: PRIM_FEATURES,
-    },
-    Shader {
-        name: "ps_blend",
-        features: PRIM_FEATURES,
-    },
-    Shader {
-        name: "ps_composite",
-        features: PRIM_FEATURES,
-    },
-    Shader {
         name: "ps_hardware_composite",
         features: PRIM_FEATURES,
     },
@@ -83,14 +71,14 @@ const SHADERS: &[Shader] = &[
         features: PRIM_FEATURES,
     },
     Shader {
-        name: "ps_yuv_image",
-        features: PRIM_FEATURES,
-    },
-    Shader {
         name: "ps_text_run",
         features: PRIM_FEATURES,
     },
     // Brush shaders
+    Shader {
+        name: "brush_yuv_image",
+        features: &["", "YUV_NV12", "YUV_PLANAR", "YUV_INTERLEAVED", "YUV_NV12,TEXTURE_RECT"],
+    },
     Shader {
         name: "brush_mask",
         features: &[],
@@ -100,11 +88,23 @@ const SHADERS: &[Shader] = &[
         features: &[],
     },
     Shader {
-        name: "brush_picture",
-        features: &["COLOR_TARGET", "ALPHA_TARGET"],
+        name: "brush_blend",
+        features: &[],
+    },
+    Shader {
+        name: "brush_composite",
+        features: &[],
     },
     Shader {
         name: "brush_line",
+        features: &[],
+    },
+    Shader {
+        name: "brush_radial_gradient",
+        features: &[ "DITHERING" ],
+    },
+    Shader {
+        name: "brush_linear_gradient",
         features: &[],
     },
 ];
@@ -113,7 +113,7 @@ const VERSION_STRING: &str = "#version 300 es\n";
 
 #[test]
 fn validate_shaders() {
-    angle::hl::initialize().unwrap();
+    mozangle::shaders::initialize().unwrap();
 
     let resources = BuiltInResources::default();
     let vs_validator =
@@ -141,6 +141,11 @@ fn validate_shaders() {
 }
 
 fn validate(validator: &ShaderValidator, name: &str, source: String) {
+    // Check for each `switch` to have a `default`, see
+    // https://github.com/servo/webrender/wiki/Driver-issues#lack-of-default-case-in-a-switch
+    assert_eq!(source.matches("switch").count(), source.matches("default:").count(),
+        "Shader '{}' doesn't have all `switch` covered with `default` cases", name);
+    // Run Angle validator
     match validator.compile_and_translate(&[&source]) {
         Ok(_) => {
             println!("Shader translated succesfully: {}", name);

@@ -5,15 +5,8 @@
 /* import-globals-from report.js */
 /* eslint mozilla/avoid-Date-timing: "off" */
 
-try {
-  if (Cc === undefined) {
-    var Cc = Components.classes;
-    var Ci = Components.interfaces;
-  }
-} catch (ex) {}
-
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/E10SUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
 
 var NUM_CYCLES = 5;
 var numPageCycles = 1;
@@ -38,6 +31,7 @@ var forceCC = true;
 
 var useMozAfterPaint = false;
 var useFNBPaint = false;
+var isFNBPaintPending = false;
 var useHero = false;
 var gPaintWindow = window;
 var gPaintListener = false;
@@ -64,9 +58,6 @@ var browserWindow = null;
 
 var recordedName = null;
 var pageUrls;
-
-// the io service
-var gIOS = null;
 
 /**
  * SingleTimeout class. Allow to register one and only one callback using
@@ -145,8 +136,8 @@ function plInit() {
 
     // for pageloader tests the profiling info is found in an env variable
     // because it is not available early enough to set it as a browser pref
-    var env = Components.classes["@mozilla.org/process/environment;1"].
-              getService(Components.interfaces.nsIEnvironment);
+    var env = Cc["@mozilla.org/process/environment;1"].
+              getService(Ci.nsIEnvironment);
 
     if (env.exists("TPPROFILINGINFO")) {
       profilingInfo = env.get("TPPROFILINGINFO");
@@ -156,16 +147,13 @@ function plInit() {
     }
 
     if (forceCC &&
-        !window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-               .getInterface(Components.interfaces.nsIDOMWindowUtils)
+        !window.QueryInterface(Ci.nsIInterfaceRequestor)
+               .getInterface(Ci.nsIDOMWindowUtils)
                .garbageCollect) {
       forceCC = false;
     }
 
-    gIOS = Cc["@mozilla.org/network/io-service;1"]
-      .getService(Ci.nsIIOService);
-
-    var fileURI = gIOS.newURI(manifestURI);
+    var fileURI = Services.io.newURI(manifestURI);
     pages = plLoadURLsFromURI(fileURI);
 
     if (!pages) {
@@ -187,8 +175,6 @@ function plInit() {
     }
 
     // Create a new chromed browser window for content
-    var wwatch = Cc["@mozilla.org/embedcomp/window-watcher;1"]
-      .getService(Ci.nsIWindowWatcher);
     var blank = Cc["@mozilla.org/supports-string;1"]
       .createInstance(Ci.nsISupportsString);
     blank.data = "about:blank";
@@ -198,7 +184,7 @@ function plInit() {
       toolbars = "titlebar,resizable";
     }
 
-    browserWindow = wwatch.openWindow(null, "chrome://browser/content/", "_blank",
+    browserWindow = Services.ww.openWindow(null, "chrome://browser/content/", "_blank",
        `chrome,${toolbars},dialog=no,width=${winWidth},height=${winHeight}`, blank);
 
     gPaintWindow = browserWindow;
@@ -247,6 +233,7 @@ function plInit() {
 
         }
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/talos-content.js", false);
+        content.selectedBrowser.messageManager.loadFrameScript("chrome://talos-powers-content/content/TalosContentProfiler.js", false, true);
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/tscroll.js", false, true);
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/Profiler.js", false, true);
 
@@ -316,6 +303,10 @@ function plLoadPage() {
   failTimeout.register(loadFail, timeout);
   // record which page we are about to open
   TalosParentProfiler.mark("Opening " + pages[pageIndex].url.pathQueryRef);
+
+  if (useFNBPaint) {
+    isFNBPaintPending = true;
+  }
 
   startAndLoadURI(pageName);
 }
@@ -398,6 +389,14 @@ var plNextPage = async function() {
     await waitForIdleCallback();
   }
 
+  if (useFNBPaint) {
+    // don't move to next page until we've received fnbpaint
+    if (isFNBPaintPending) {
+      dumpLine("Waiting for fnbpaint");
+      await waitForFNBPaint();
+    }
+  }
+
   if (profilingInfo) {
     await TalosParentProfiler.finishTest();
   }
@@ -412,11 +411,11 @@ var plNextPage = async function() {
     doNextPage = true;
   }
 
-  if (doNextPage == true) {
+  if (doNextPage) {
     if (forceCC) {
       var tccstart = new Date();
-      window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-            .getInterface(Components.interfaces.nsIDOMWindowUtils)
+      window.QueryInterface(Ci.nsIInterfaceRequestor)
+            .getInterface(Ci.nsIDOMWindowUtils)
             .garbageCollect();
       var tccend = new Date();
       report.recordCCTime(tccend - tccstart);
@@ -452,6 +451,19 @@ function plIdleCallbackSet() {
 
 function plIdleCallbackReceived() {
   isIdleCallbackPending = false;
+}
+
+function waitForFNBPaint() {
+  return new Promise(resolve => {
+    function checkForFNBPaint() {
+      if (!isFNBPaintPending) {
+        resolve();
+      } else {
+        setTimeout(checkForFNBPaint, 200);
+      }
+    }
+    checkForFNBPaint();
+  });
 }
 
 function forceContentGC() {
@@ -516,8 +528,8 @@ function plLoadHandlerCapturing(evt) {
   };
 
   content.contentWindow.wrappedJSObject.plGarbageCollect = function() {
-    window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-          .getInterface(Components.interfaces.nsIDOMWindowUtils)
+    window.QueryInterface(Ci.nsIInterfaceRequestor)
+          .getInterface(Ci.nsIDOMWindowUtils)
           .garbageCollect();
   };
 
@@ -542,11 +554,11 @@ function plWaitForPaintingCapturing() {
   if (gPaintListener)
     return;
 
-  var utils = gPaintWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                   .getInterface(Components.interfaces.nsIDOMWindowUtils);
+  var utils = gPaintWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                   .getInterface(Ci.nsIDOMWindowUtils);
 
   if (utils.isMozAfterPaintPending && useMozAfterPaint) {
-    if (gPaintListener == false)
+    if (!gPaintListener)
       gPaintWindow.addEventListener("MozAfterPaint", plPaintedCapturing, true);
     gPaintListener = true;
     return;
@@ -599,15 +611,15 @@ function plLoadHandler(evt) {
 // This is called after we have received a load event, now we wait for painted
 function waitForPainted() {
 
-  var utils = gPaintWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                   .getInterface(Components.interfaces.nsIDOMWindowUtils);
+  var utils = gPaintWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                   .getInterface(Ci.nsIDOMWindowUtils);
 
   if (!utils.isMozAfterPaintPending || !useMozAfterPaint) {
     _loadHandler();
     return;
   }
 
-  if (gPaintListener == false)
+  if (!gPaintListener)
     gPaintWindow.addEventListener("MozAfterPaint", plPainted, true);
   gPaintListener = true;
 }
@@ -624,6 +636,7 @@ function _loadHandler(paint_time = 0) {
 
   if (paint_time !== 0) {
     // window.performance.timing.timeToNonBlankPaint is a timestamp
+    // this may have a value for hero element (also a timestamp)
     end_time = paint_time;
   } else {
     end_time = Date.now();
@@ -651,7 +664,12 @@ function plLoadHandlerMessage(message) {
   // we can record several times per load.
   if (message.json.time !== undefined) {
       paint_time = message.json.time;
+      if (message.json.name == "fnbpaint") {
+        // we've received fnbpaint; no longer pending for this current pageload
+        isFNBPaintPending = false;
+      }
   }
+
   failTimeout.clear();
 
   if ((plPageFlags() & EXECUTE_SCROLL_TEST)) {
@@ -709,7 +727,7 @@ function plStop(force) {
 
 function plStopAll(force) {
   try {
-    if (force == false) {
+    if (!force) {
       pageIndex = 0;
       pageCycle = 1;
       if (cycle < NUM_CYCLES - 1) {
@@ -807,7 +825,7 @@ function plLoadURLsFromURI(manifestUri) {
         return null;
       }
 
-      var subManifest = gIOS.newURI(items[1], null, manifestUri);
+      var subManifest = Services.io.newURI(items[1], null, manifestUri);
       if (subManifest == null) {
         dumpLine("tp: invalid URI on line " + manifestUri.spec + ":" + lineNo + " : '" + line.value + "'");
         return null;
@@ -832,7 +850,7 @@ function plLoadURLsFromURI(manifestUri) {
       }
 
       if (items.length == 2) {
-        if (items[0].indexOf("%") != -1)
+        if (items[0].includes("%"))
           flags |= TEST_DOES_OWN_TIMING;
 
         urlspec = items[1];
@@ -842,7 +860,7 @@ function plLoadURLsFromURI(manifestUri) {
         // & http://localhost/tests/perf-reftest/base-page.html, http://localhost/tests/perf-reftest/reference-page.html
         // test will run with the base page, then with the reference page; and ultimately the actual test results will
         // be the comparison values of those two pages; more than one line will result in base vs ref subtests
-        if (items[0].indexOf("&") != -1) {
+        if (items[0].includes("&")) {
           baseVsRef = true;
           flags |= TEST_DOES_OWN_TIMING;
           // for the base, must remove the comma on the end of the actual url
@@ -860,7 +878,7 @@ function plLoadURLsFromURI(manifestUri) {
       var url;
 
       if (!baseVsRef) {
-        url = gIOS.newURI(urlspec, null, manifestUri);
+        url = Services.io.newURI(urlspec, null, manifestUri);
 
         if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
           continue;
@@ -872,13 +890,13 @@ function plLoadURLsFromURI(manifestUri) {
         // page; later on this 'pre' is used when recording the actual time value/result; because in
         // the results we use the url as the results key; but we might use the same test page as a reference
         // page in the same test suite, so we need to add a prefix so this results key is always unique
-        url = gIOS.newURI(urlspecBase, null, manifestUri);
+        url = Services.io.newURI(urlspecBase, null, manifestUri);
         if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
           continue;
         var pre = "base_page_" + baseVsRefIndex + "_";
         url_array.push({ url, flags, pre });
 
-        url = gIOS.newURI(urlspecRef, null, manifestUri);
+        url = Services.io.newURI(urlspecRef, null, manifestUri);
         if (pageFilterRegexp && !pageFilterRegexp.test(url.spec))
           continue;
         pre = "ref_page_" + baseVsRefIndex + "_";
@@ -896,4 +914,3 @@ function dumpLine(str) {
   dump(str);
   dump("\n");
 }
-

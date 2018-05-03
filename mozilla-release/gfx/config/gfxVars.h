@@ -39,20 +39,11 @@ class gfxVarReceiver;
   _(UseWebRenderProgramBinary,  bool,             false)                \
   _(WebRenderDebugFlags,        int32_t,          0)                    \
   _(ScreenDepth,                int32_t,          0)                    \
-  _(GREDirectory,               nsCString,        nsCString())          \
+  _(GREDirectory,               nsString,         nsString())           \
   _(UseOMTP,                    bool,             false)                \
   _(AllowD3D11KeyedMutex,       bool,             false)                \
 
   /* Add new entries above this line. */
-
-// Define the default animation backend on the compositor. Now we don't use
-// stylo on the compositor only on Android, and this is a fixed flag. If
-// we want to update this flag, please add a new gfxVars for it.
-#if defined(MOZ_STYLO) && !defined(ANDROID)
-  #define USE_STYLO_ON_COMPOSITOR true
-#else
-  #define USE_STYLO_ON_COMPOSITOR false
-#endif
 
 // Some graphics settings are computed on the UI process and must be
 // communicated to content and GPU processes. gfxVars helps facilitate
@@ -144,6 +135,12 @@ private:                                                        \
   VarImpl<DataType, Get##CxxName##Default> mVar##CxxName;       \
 public:                                                         \
   static const DataType& CxxName() {                            \
+    return sInstance->mVar##CxxName.Get();                      \
+  }                                                             \
+  static DataType Get##CxxName##OrDefault() {                   \
+    if (!sInstance) {                                           \
+      return DefaultValue;                                      \
+    }                                                           \
     return sInstance->mVar##CxxName.Get();                      \
   }                                                             \
   static void Set##CxxName(const DataType& aValue) {            \

@@ -5,6 +5,7 @@
 //! A gecko snapshot, that stores the element attributes and state before they
 //! change in order to properly calculate restyle hints.
 
+use WeakAtom;
 use dom::TElement;
 use element_state::ElementState;
 use gecko::snapshot_helpers;
@@ -80,17 +81,20 @@ impl GeckoElementSnapshot {
     }
 
     /// selectors::Element::attr_matches
-    pub fn attr_matches(&self,
-                        ns: &NamespaceConstraint<&Namespace>,
-                        local_name: &Atom,
-                        operation: &AttrSelectorOperation<&Atom>)
-                        -> bool {
+    pub fn attr_matches(
+        &self,
+        ns: &NamespaceConstraint<&Namespace>,
+        local_name: &Atom,
+        operation: &AttrSelectorOperation<&Atom>,
+    ) -> bool {
         unsafe {
             match *operation {
                 AttrSelectorOperation::Exists => {
-                    bindings:: Gecko_SnapshotHasAttr(self,
-                                                     ns.atom_or_null(),
-                                                     local_name.as_ptr())
+                    bindings:: Gecko_SnapshotHasAttr(
+                        self,
+                        ns.atom_or_null(),
+                        local_name.as_ptr(),
+                    )
                 }
                 AttrSelectorOperation::WithValue { operator, case_sensitivity, expected_value } => {
                     let ignore_case = match case_sensitivity {
@@ -163,7 +167,7 @@ impl ElementSnapshot for GeckoElementSnapshot {
     }
 
     #[inline]
-    fn id_attr(&self) -> Option<Atom> {
+    fn id_attr(&self) -> Option<&WeakAtom> {
         if !self.has_any(Flags::Id) {
             return None
         }
@@ -172,10 +176,11 @@ impl ElementSnapshot for GeckoElementSnapshot {
             bindings::Gecko_SnapshotAtomAttrValue(self, atom!("id").as_ptr())
         };
 
+        // FIXME(emilio): This should assert, since this flag is exact.
         if ptr.is_null() {
             None
         } else {
-            Some(Atom::from(ptr))
+            Some(unsafe { WeakAtom::new(ptr) })
         }
     }
 
@@ -185,10 +190,12 @@ impl ElementSnapshot for GeckoElementSnapshot {
             return false;
         }
 
-        snapshot_helpers::has_class(self.as_ptr(),
-                                    name,
-                                    case_sensitivity,
-                                    bindings::Gecko_SnapshotClassOrClassList)
+        snapshot_helpers::has_class(
+            self.as_ptr(),
+            name,
+            case_sensitivity,
+            bindings::Gecko_SnapshotHasClass,
+        )
     }
 
     #[inline]
@@ -200,9 +207,11 @@ impl ElementSnapshot for GeckoElementSnapshot {
             return;
         }
 
-        snapshot_helpers::each_class(self.as_ptr(),
-                                     callback,
-                                     bindings::Gecko_SnapshotClassOrClassList)
+        snapshot_helpers::each_class(
+            self.as_ptr(),
+            callback,
+            bindings::Gecko_SnapshotClassOrClassList,
+        )
     }
 
     #[inline]

@@ -8,6 +8,9 @@
 </head>
 <body>
 <p id="display"></p>
+<p><input type="text" id="input"></p>
+<p><input type="text" id="input_readonly" readonly></p>
+<p><textarea id="textarea"></textarea></p>
 <div id="content" style="display: none">
   
 </div>
@@ -16,6 +19,9 @@
 
 SimpleTest.waitForExplicitFinish();
 SimpleTest.waitForFocus(runTests, window);
+
+const kStrictKeyPressEvents =
+  SpecialPowers.getBoolPref("dom.keyboardevent.keypress.dispatch_non_printable_keys_only_system_group_in_content");
 
 function testInitializingUntrustedEvent()
 {
@@ -207,86 +213,106 @@ function testInitializingUntrustedEvent()
 function testSynthesizedKeyLocation()
 {
   const kTests = [
-    { key: "a", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "a", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_A,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_SHIFT", isModifier: true,
-      event: { shiftKey: true, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Shift", isModifier: true, isPrintable: false,
+      event: { shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_SHIFT,
                location: KeyboardEvent.DOM_KEY_LOCATION_LEFT },
     },
-    { key: "VK_SHIFT", isModifier: true,
-      event: { shiftKey: true, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Shift", isModifier: true, isPrintable: false,
+      event: { shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_SHIFT,
                location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT },
     },
-    { key: "VK_CONTROL", isModifier: true,
-      event: { shiftKey: false, ctrlKey: true, altKey: false, metaKey: false,
+    { key: "KEY_Control", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: true, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_CONTROL,
                location: KeyboardEvent.DOM_KEY_LOCATION_LEFT },
     },
-    { key: "VK_CONTROL", isModifier: true,
-      event: { shiftKey: false, ctrlKey: true, altKey: false, metaKey: false,
+    { key: "KEY_Control", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: true, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_CONTROL,
                location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT },
     },
 /* XXX Alt key activates menubar even if we consume the key events.
-    { key: "VK_ALT", isModifier: true,
-      event: { shiftKey: false, ctrlKey: false, altKey: true, metaKey: false,
+    { key: "KEY_Alt", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: true, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_ALT,
                location: KeyboardEvent.DOM_KEY_LOCATION_LEFT },
     },
-    { key: "VK_ALT", isModifier: true,
-      event: { shiftKey: false, ctrlKey: false, altKey: true, metaKey: false,
+    { key: "KEY_Alt", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: true, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_ALT,
                location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT },
     },
 */
-    { key: "VK_META", isModifier: true,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: true,
+    { key: "KEY_Meta", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: true, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_META,
                location: KeyboardEvent.DOM_KEY_LOCATION_LEFT },
     },
-    { key: "VK_META", isModifier: true,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: true,
+    { key: "KEY_Meta", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: true, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_META,
                location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT },
     },
-    { key: "VK_DOWN", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_ArrowDown", isModifier: false, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_DOWN,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_DOWN", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_ArrowDown", isModifier: false, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_DOWN,
                location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD },
     },
-    { key: "5", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "5", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_5,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_NUMPAD5", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "5", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,  numLockKey: true,
+               keyCode: KeyboardEvent.DOM_VK_NUMPAD5,
                location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD },
     },
-    { key: "+", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "+", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_EQUALS,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_ADD", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "+", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: true,
+               keyCode: KeyboardEvent.DOM_VK_ADD,
                location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD },
     },
-    { key: "VK_RETURN", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Enter", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_RETURN,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_RETURN", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Enter", isModifier: false, isPrintable: true,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_RETURN,
                location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD },
     },
-    { key: "VK_NUM_LOCK", isModifier: true,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_NumLock", isModifier: true, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_NUM_LOCK,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_INSERT", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Insert", isModifier: false, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_INSERT,
                location: KeyboardEvent.DOM_KEY_LOCATION_STANDARD },
     },
-    { key: "VK_INSERT", isModifier: false,
-      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+    { key: "KEY_Insert", isModifier: false, isPrintable: false,
+      event: { shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, numLockKey: false,
+               keyCode: KeyboardEvent.DOM_VK_INSERT,
                location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD },
     },
   ];
@@ -333,10 +359,18 @@ function testSynthesizedKeyLocation()
       getLocationName(currentTest.event.location) + ": ";
     synthesizeKey(currentTest.key, currentTest.event);
     ok(events.keydown, description + "keydown event wasn't fired");
-    if (currentTest.isModifier) {
-      todo(events.keypress, description + "keypress event was fired for modifier key");
+    if (kStrictKeyPressEvents) {
+      if (currentTest.isPrintable) {
+        ok(events.keypress, description + "keypress event wasn't fired for printable key");
+      } else {
+        ok(!events.keypress, description + "keypress event was fired for non-printable key");
+      }
     } else {
-      ok(events.keypress, description + "keypress event wasn't fired");
+      if (currentTest.isModifier) {
+        todo(events.keypress, description + "keypress event was fired for modifier key");
+      } else {
+        ok(events.keypress, description + "keypress event wasn't fired");
+      }
     }
     ok(events.keyup, description + "keyup event wasn't fired");
   }
@@ -346,10 +380,163 @@ function testSynthesizedKeyLocation()
   window.removeEventListener("keyup", handler, true);
 }
 
+// We're using TextEventDispatcher to decide if we should keypress event
+// on content in the default event group.  So, we can test if keypress
+// event is NOT fired unexpectedly with synthesizeKey().
+function testEnterKeyPressEvent()
+{
+  let keydownFired, keypressFired, beforeinputFired;
+  function onEvent(aEvent) {
+    switch (aEvent.type) {
+      case "keydown":
+        keydownFired = true;
+        return;
+      case "keypress":
+        keypressFired = true;
+        return;
+      case "beforeinput":
+        beforeinputFired = true;
+        return;
+    }
+  }
+
+  for (let targetId of ["input", "textarea", "input_readonly"]) {
+    let target = document.getElementById(targetId);
+
+    function reset() {
+      keydownFired = keypressFired = beforeinputFired = false;
+      target.value = "";
+    }
+
+    target.addEventListener("keydown", onEvent);
+    target.addEventListener("keypress", onEvent);
+    target.addEventListener("beforeinput", onEvent);
+
+    const kDescription = "<" + targetId.replace("_", " ") + ">: ";
+    let isEditable = kDescription.includes("readonly");
+    let isTextarea = kDescription.includes("textarea");
+
+    target.focus();
+
+    reset();
+    synthesizeKey("KEY_Enter");
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Enter key is pressed");
+    is(keypressFired, true,
+       kDescription + "keypress event should be fired when Enter key is pressed");
+    if (isEditable) {
+      todo_is(beforeinputFired, true,
+              kDescription + "beforeinput event should be fired when Enter key is pressed");
+    } else {
+      is(beforeinputFired, false,
+         kDescription + "beforeinput event shouldn't be fired when Enter key is pressed");
+    }
+    if (isTextarea) {
+      is(target.value, "\n",
+         kDescription + "Enter key should cause inputting a line break in <textarea>");
+    } else {
+      is(target.value, "",
+         kDescription + "Enter key should not cause inputting a line break");
+    }
+
+    reset();
+    synthesizeKey("KEY_Enter", {shiftKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Shift + Enter key is pressed");
+    is(keypressFired, true,
+       kDescription + "keypress event should be fired when Shift + Enter key is pressed");
+    if (isEditable) {
+      todo_is(beforeinputFired, true,
+              kDescription + "beforeinput event should be fired when Shift + Enter key is pressed");
+    } else {
+      is(beforeinputFired, false,
+         kDescription + "beforeinput event shouldn't be fired when Shift + Enter key is pressed");
+    }
+    if (isTextarea) {
+      is(target.value, "\n",
+         kDescription + "Shift + Enter key should cause inputting a line break in <textarea>");
+    } else {
+      is(target.value, "",
+         kDescription + "Shift + Enter key should not cause inputting a line break");
+    }
+
+    reset();
+    synthesizeKey("KEY_Enter", {ctrlKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Ctrl + Enter key is pressed");
+    is(keypressFired, true,
+       kDescription + "keypress event should be fired when Ctrl + Enter key is pressed");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Ctrl + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Ctrl + Enter key should not cause inputting a line break");
+
+    reset();
+    synthesizeKey("KEY_Enter", {altKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Alt + Enter key is pressed");
+    is(keypressFired, !kStrictKeyPressEvents,
+       kDescription + "keypress event shouldn't be fired when Alt + Enter key is pressed in strict keypress dispatching mode");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Alt + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Alt + Enter key should not cause inputting a line break");
+
+    reset();
+    synthesizeKey("KEY_Enter", {metaKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Meta + Enter key is pressed");
+    is(keypressFired, !kStrictKeyPressEvents,
+       kDescription + "keypress event shouldn't be fired when Meta + Enter key is pressed in strict keypress dispatching mode");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Meta + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Meta + Enter key should not cause inputting a line break");
+
+    reset();
+    synthesizeKey("KEY_Enter", {shiftKey: true, ctrlKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Ctrl + Shift + Enter key is pressed");
+    is(keypressFired, !kStrictKeyPressEvents,
+       kDescription + "keypress event shouldn't be fired when Ctrl + Shift + Enter key is pressed in strict keypress dispatching mode");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Ctrl + Shift + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Ctrl + Shift + Enter key should not cause inputting a line break");
+
+    reset();
+    synthesizeKey("KEY_Enter", {shiftKey: true, altKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Alt + Shift + Enter key is pressed");
+    is(keypressFired, !kStrictKeyPressEvents,
+       kDescription + "keypress event shouldn't be fired when Alt + Shift + Enter key is pressed in strict keypress dispatching mode");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Alt + Shift + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Alt + Shift + Enter key should not cause inputting a line break");
+
+    reset();
+    synthesizeKey("KEY_Enter", {shiftKey: true, metaKey: true});
+    is(keydownFired, true,
+       kDescription + "keydown event should be fired when Meta + Shift + Enter key is pressed");
+    is(keypressFired, !kStrictKeyPressEvents,
+       kDescription + "keypress event shouldn't be fired when Meta + Shift + Enter key is pressed in strict keypress dispatching mode");
+    is(beforeinputFired, false,
+       kDescription + "beforeinput event shouldn't be fired when Meta + Shift + Enter key is pressed");
+    is(target.value, "",
+       kDescription + "Meta + Shift + Enter key should not cause inputting a line break");
+
+    target.removeEventListener("keydown", onEvent);
+    target.removeEventListener("keypress", onEvent);
+    target.removeEventListener("beforeinput", onEvent);
+  }
+}
+
 function runTests()
 {
   testInitializingUntrustedEvent();
   testSynthesizedKeyLocation();
+  testEnterKeyPressEvent();
   SimpleTest.finish();
 }
 

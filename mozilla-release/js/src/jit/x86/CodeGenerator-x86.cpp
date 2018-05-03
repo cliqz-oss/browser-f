@@ -6,6 +6,7 @@
 
 #include "jit/x86/CodeGenerator-x86.h"
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/Casting.h"
 #include "mozilla/DebugOnly.h"
 
@@ -16,10 +17,9 @@
 #include "js/Conversions.h"
 #include "vm/Shape.h"
 
-#include "jsscriptinlines.h"
-
 #include "jit/MacroAssembler-inl.h"
 #include "jit/shared/CodeGenerator-shared-inl.h"
+#include "vm/JSScript-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -39,7 +39,7 @@ static const uint32_t FrameSizes[] = { 128, 256, 512, 1024 };
 FrameSizeClass
 FrameSizeClass::FromDepth(uint32_t frameDepth)
 {
-    for (uint32_t i = 0; i < JS_ARRAY_LENGTH(FrameSizes); i++) {
+    for (uint32_t i = 0; i < mozilla::ArrayLength(FrameSizes); i++) {
         if (frameDepth < FrameSizes[i])
             return FrameSizeClass(i);
     }
@@ -50,14 +50,14 @@ FrameSizeClass::FromDepth(uint32_t frameDepth)
 FrameSizeClass
 FrameSizeClass::ClassLimit()
 {
-    return FrameSizeClass(JS_ARRAY_LENGTH(FrameSizes));
+    return FrameSizeClass(mozilla::ArrayLength(FrameSizes));
 }
 
 uint32_t
 FrameSizeClass::frameSize() const
 {
     MOZ_ASSERT(class_ != NO_FRAME_SIZE_CLASS_ID);
-    MOZ_ASSERT(class_ < JS_ARRAY_LENGTH(FrameSizes));
+    MOZ_ASSERT(class_ < mozilla::ArrayLength(FrameSizes));
 
     return FrameSizes[class_];
 }
@@ -67,14 +67,6 @@ CodeGeneratorX86::ToValue(LInstruction* ins, size_t pos)
 {
     Register typeReg = ToRegister(ins->getOperand(pos + TYPE_INDEX));
     Register payloadReg = ToRegister(ins->getOperand(pos + PAYLOAD_INDEX));
-    return ValueOperand(typeReg, payloadReg);
-}
-
-ValueOperand
-CodeGeneratorX86::ToOutValue(LInstruction* ins)
-{
-    Register typeReg = ToRegister(ins->getDef(TYPE_INDEX));
-    Register payloadReg = ToRegister(ins->getDef(PAYLOAD_INDEX));
     return ValueOperand(typeReg, payloadReg);
 }
 
@@ -121,20 +113,28 @@ CodeGeneratorX86::visitUnbox(LUnbox* unbox)
 {
     // Note that for unbox, the type and payload indexes are switched on the
     // inputs.
+    Operand type = ToOperand(unbox->type());
+    Operand payload = ToOperand(unbox->payload());
+    Register output = ToRegister(unbox->output());
     MUnbox* mir = unbox->mir();
 
     JSValueTag tag = MIRTypeToTag(mir->type());
     if (mir->fallible()) {
-        masm.cmp32(ToOperand(unbox->type()), Imm32(tag));
+        masm.cmp32(type, Imm32(tag));
         bailoutIf(Assembler::NotEqual, unbox->snapshot());
     } else {
 #ifdef DEBUG
         Label ok;
-        masm.branch32(Assembler::Equal, ToOperand(unbox->type()), Imm32(tag), &ok);
+        masm.branch32(Assembler::Equal, type, Imm32(tag), &ok);
         masm.assumeUnreachable("Infallible unbox type mismatch");
         masm.bind(&ok);
 #endif
     }
+
+    // Note: If spectreValueMasking is disabled, then this instruction will
+    // default to a no-op as long as the lowering allocate the same register for
+    // the output and the payload.
+    masm.unboxNonDouble(type, payload, output, ValueTypeFromMIRType(mir->type()));
 }
 
 void
@@ -258,55 +258,6 @@ CodeGeneratorX86::visitWasmUint32ToFloat32(LWasmUint32ToFloat32* lir)
     masm.convertUInt32ToFloat32(temp, output);
 }
 
-void
-CodeGeneratorX86::visitLoadTypedArrayElementStatic(LLoadTypedArrayElementStatic* ins)
-{
-    const MLoadTypedArrayElementStatic* mir = ins->mir();
-    Scalar::Type accessType = mir->accessType();
-    MOZ_ASSERT_IF(accessType == Scalar::Float32, mir->type() == MIRType::Float32);
-
-    Register ptr = ToRegister(ins->ptr());
-    AnyRegister out = ToAnyRegister(ins->output());
-    OutOfLineLoadTypedArrayOutOfBounds* ool = nullptr;
-    uint32_t offset = mir->offset();
-
-    if (mir->needsBoundsCheck()) {
-        MOZ_ASSERT(offset == 0);
-        if (!mir->fallible()) {
-            ool = new(alloc()) OutOfLineLoadTypedArrayOutOfBounds(out, accessType);
-            addOutOfLineCode(ool, ins->mir());
-        }
-
-        masm.cmpPtr(ptr, ImmWord(mir->length()));
-        if (ool)
-            masm.j(Assembler::AboveOrEqual, ool->entry());
-        else
-            bailoutIf(Assembler::AboveOrEqual, ins->snapshot());
-    }
-
-    Operand srcAddr(ptr, int32_t(mir->base().asValue()) + int32_t(offset));
-    switch (accessType) {
-      case Scalar::Int8:         masm.movsblWithPatch(srcAddr, out.gpr()); break;
-      case Scalar::Uint8Clamped:
-      case Scalar::Uint8:        masm.movzblWithPatch(srcAddr, out.gpr()); break;
-      case Scalar::Int16:        masm.movswlWithPatch(srcAddr, out.gpr()); break;
-      case Scalar::Uint16:       masm.movzwlWithPatch(srcAddr, out.gpr()); break;
-      case Scalar::Int32:
-      case Scalar::Uint32:       masm.movlWithPatch(srcAddr, out.gpr()); break;
-      case Scalar::Float32:      masm.vmovssWithPatch(srcAddr, out.fpu()); break;
-      case Scalar::Float64:      masm.vmovsdWithPatch(srcAddr, out.fpu()); break;
-      default:                   MOZ_CRASH("Unexpected type");
-    }
-
-    if (accessType == Scalar::Float64)
-        masm.canonicalizeDouble(out.fpu());
-    if (accessType == Scalar::Float32)
-        masm.canonicalizeFloat(out.fpu());
-
-    if (ool)
-        masm.bind(ool->rejoin());
-}
-
 template <typename T>
 void
 CodeGeneratorX86::emitWasmLoad(T* ins)
@@ -417,55 +368,6 @@ CodeGeneratorX86::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins)
 
     if (ool)
         masm.bind(ool->rejoin());
-}
-
-void
-CodeGeneratorX86::visitStoreTypedArrayElementStatic(LStoreTypedArrayElementStatic* ins)
-{
-    MStoreTypedArrayElementStatic* mir = ins->mir();
-    Scalar::Type accessType = mir->accessType();
-    Register ptr = ToRegister(ins->ptr());
-    const LAllocation* value = ins->value();
-
-    canonicalizeIfDeterministic(accessType, value);
-
-    uint32_t offset = mir->offset();
-    MOZ_ASSERT_IF(mir->needsBoundsCheck(), offset == 0);
-
-    Label rejoin;
-    if (mir->needsBoundsCheck()) {
-        MOZ_ASSERT(offset == 0);
-        masm.cmpPtr(ptr, ImmWord(mir->length()));
-        masm.j(Assembler::AboveOrEqual, &rejoin);
-    }
-
-    Operand dstAddr(ptr, int32_t(mir->base().asValue()) + int32_t(offset));
-    switch (accessType) {
-      case Scalar::Int8:
-      case Scalar::Uint8Clamped:
-      case Scalar::Uint8:
-        masm.movbWithPatch(ToRegister(value), dstAddr);
-        break;
-      case Scalar::Int16:
-      case Scalar::Uint16:
-        masm.movwWithPatch(ToRegister(value), dstAddr);
-        break;
-      case Scalar::Int32:
-      case Scalar::Uint32:
-        masm.movlWithPatch(ToRegister(value), dstAddr);
-        break;
-      case Scalar::Float32:
-        masm.vmovssWithPatch(ToFloatRegister(value), dstAddr);
-        break;
-      case Scalar::Float64:
-        masm.vmovsdWithPatch(ToFloatRegister(value), dstAddr);
-        break;
-      default:
-        MOZ_CRASH("unexpected type");
-    }
-
-    if (rejoin.used())
-        masm.bind(&rejoin);
 }
 
 void
@@ -1030,22 +932,26 @@ CodeGeneratorX86::visitDivOrModI64(LDivOrModI64* lir)
     Label done;
 
     // Handle divide by zero.
-    if (lir->canBeDivideByZero())
-        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, oldTrap(lir, wasm::Trap::IntegerDivideByZero));
+    if (lir->canBeDivideByZero()) {
+        Label nonZero;
+        masm.branchTest64(Assembler::NonZero, rhs, rhs, temp, &nonZero);
+        masm.wasmTrap(wasm::Trap::IntegerDivideByZero, lir->bytecodeOffset());
+        masm.bind(&nonZero);
+    }
 
     MDefinition* mir = lir->mir();
 
     // Handle an integer overflow exception from INT64_MIN / -1.
     if (lir->canBeNegativeOverflow()) {
-        Label notmin;
-        masm.branch64(Assembler::NotEqual, lhs, Imm64(INT64_MIN), &notmin);
-        masm.branch64(Assembler::NotEqual, rhs, Imm64(-1), &notmin);
+        Label notOverflow;
+        masm.branch64(Assembler::NotEqual, lhs, Imm64(INT64_MIN), &notOverflow);
+        masm.branch64(Assembler::NotEqual, rhs, Imm64(-1), &notOverflow);
         if (mir->isMod())
             masm.xor64(output, output);
         else
-            masm.jump(oldTrap(lir, wasm::Trap::IntegerOverflow));
+            masm.wasmTrap(wasm::Trap::IntegerOverflow, lir->bytecodeOffset());
         masm.jump(&done);
-        masm.bind(&notmin);
+        masm.bind(&notOverflow);
     }
 
     masm.setupWasmABICall();
@@ -1078,8 +984,12 @@ CodeGeneratorX86::visitUDivOrModI64(LUDivOrModI64* lir)
     MOZ_ASSERT(output == ReturnReg64);
 
     // Prevent divide by zero.
-    if (lir->canBeDivideByZero())
-        masm.branchTest64(Assembler::Zero, rhs, rhs, temp, oldTrap(lir, wasm::Trap::IntegerDivideByZero));
+    if (lir->canBeDivideByZero()) {
+        Label nonZero;
+        masm.branchTest64(Assembler::NonZero, rhs, rhs, temp, &nonZero);
+        masm.wasmTrap(wasm::Trap::IntegerDivideByZero, lir->bytecodeOffset());
+        masm.bind(&nonZero);
+    }
 
     masm.setupWasmABICall();
     masm.passABIArg(lhs.high);
@@ -1249,19 +1159,24 @@ CodeGeneratorX86::visitWasmTruncateToInt64(LWasmTruncateToInt64* lir)
 
     MOZ_ASSERT (mir->input()->type() == MIRType::Double || mir->input()->type() == MIRType::Float32);
 
-    auto* ool = new(alloc()) OutOfLineWasmTruncateCheck(mir, input);
+    auto* ool = new(alloc()) OutOfLineWasmTruncateCheck(mir, input, output);
     addOutOfLineCode(ool, mir);
 
+    bool isSaturating = mir->isSaturating();
     if (mir->input()->type() == MIRType::Float32) {
         if (mir->isUnsigned())
-            masm.wasmTruncateFloat32ToUInt64(input, output, ool->entry(), ool->rejoin(), floatTemp);
+            masm.wasmTruncateFloat32ToUInt64(input, output, isSaturating,
+                                             ool->entry(), ool->rejoin(), floatTemp);
         else
-            masm.wasmTruncateFloat32ToInt64(input, output, ool->entry(), ool->rejoin(), floatTemp);
+            masm.wasmTruncateFloat32ToInt64(input, output, isSaturating,
+                                            ool->entry(), ool->rejoin(), floatTemp);
     } else {
         if (mir->isUnsigned())
-            masm.wasmTruncateDoubleToUInt64(input, output, ool->entry(), ool->rejoin(), floatTemp);
+            masm.wasmTruncateDoubleToUInt64(input, output, isSaturating,
+                                            ool->entry(), ool->rejoin(), floatTemp);
         else
-            masm.wasmTruncateDoubleToInt64(input, output, ool->entry(), ool->rejoin(), floatTemp);
+            masm.wasmTruncateDoubleToInt64(input, output, isSaturating,
+                                           ool->entry(), ool->rejoin(), floatTemp);
     }
 }
 

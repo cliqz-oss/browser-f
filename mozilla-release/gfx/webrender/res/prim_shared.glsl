@@ -16,6 +16,8 @@
 #define SUBPX_DIR_HORIZONTAL  1
 #define SUBPX_DIR_VERTICAL    2
 
+#define EPSILON     0.0001
+
 uniform sampler2DArray sCacheA8;
 uniform sampler2DArray sCacheRGBA8;
 
@@ -24,8 +26,8 @@ uniform sampler2DArray sSharedCacheA8;
 
 uniform sampler2D sGradients;
 
-vec2 clamp_rect(vec2 point, RectWithSize rect) {
-    return clamp(point, rect.p0, rect.p0 + rect.size);
+vec2 clamp_rect(vec2 pt, RectWithSize rect) {
+    return clamp(pt, rect.p0, rect.p0 + rect.size);
 }
 
 float distance_to_line(vec2 p0, vec2 perp_dir, vec2 p) {
@@ -69,12 +71,11 @@ vec4[2] fetch_from_resource_cache_2(int address) {
 
 #ifdef WR_VERTEX_SHADER
 
-#define VECS_PER_CLIP_SCROLL_NODE   5
+#define VECS_PER_CLIP_SCROLL_NODE   9
 #define VECS_PER_LOCAL_CLIP_RECT    1
 #define VECS_PER_RENDER_TASK        3
 #define VECS_PER_PRIM_HEADER        2
 #define VECS_PER_TEXT_RUN           3
-#define VECS_PER_GRADIENT           3
 #define VECS_PER_GRADIENT_STOP      2
 
 uniform HIGHP_SAMPLER_FLOAT sampler2D sClipScrollNodes;
@@ -89,7 +90,8 @@ in ivec4 aData1;
 // TODO: convert back to a function once the driver issues are resolved, if ever.
 // https://github.com/servo/webrender/pull/623
 // https://github.com/servo/servo/issues/13953
-#define get_fetch_uv(i, vpi)  ivec2(vpi * (i % (WR_MAX_VERTEX_TEXTURE_WIDTH/vpi)), i / (WR_MAX_VERTEX_TEXTURE_WIDTH/vpi))
+// Do the division with unsigned ints because that's more efficient with D3D
+#define get_fetch_uv(i, vpi)  ivec2(int(uint(vpi) * (uint(i) % uint(WR_MAX_VERTEX_TEXTURE_WIDTH/vpi))), int(uint(i) / uint(WR_MAX_VERTEX_TEXTURE_WIDTH/vpi)))
 
 
 vec4[8] fetch_from_resource_cache_8(int address) {
@@ -112,6 +114,14 @@ vec4[3] fetch_from_resource_cache_3(int address) {
         TEXEL_FETCH(sResourceCache, uv, 0, ivec2(0, 0)),
         TEXEL_FETCH(sResourceCache, uv, 0, ivec2(1, 0)),
         TEXEL_FETCH(sResourceCache, uv, 0, ivec2(2, 0))
+    );
+}
+
+vec4[3] fetch_from_resource_cache_3_direct(ivec2 address) {
+    return vec4[3](
+        TEXEL_FETCH(sResourceCache, address, 0, ivec2(0, 0)),
+        TEXEL_FETCH(sResourceCache, address, 0, ivec2(1, 0)),
+        TEXEL_FETCH(sResourceCache, address, 0, ivec2(2, 0))
     );
 }
 
@@ -145,6 +155,7 @@ vec4 fetch_from_resource_cache_1(int address) {
 
 struct ClipScrollNode {
     mat4 transform;
+    mat4 inv_transform;
     bool is_axis_aligned;
 };
 
@@ -157,13 +168,19 @@ ClipScrollNode fetch_clip_scroll_node(int index) {
     // of OSX.
     ivec2 uv = get_fetch_uv(index, VECS_PER_CLIP_SCROLL_NODE);
     ivec2 uv0 = ivec2(uv.x + 0, uv.y);
+    ivec2 uv1 = ivec2(uv.x + 8, uv.y);
 
     node.transform[0] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(0, 0));
     node.transform[1] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(1, 0));
     node.transform[2] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(2, 0));
     node.transform[3] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(3, 0));
 
-    vec4 misc = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(4, 0));
+    node.inv_transform[0] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(4, 0));
+    node.inv_transform[1] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(5, 0));
+    node.inv_transform[2] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(6, 0));
+    node.inv_transform[3] = TEXEL_FETCH(sClipScrollNodes, uv0, 0, ivec2(7, 0));
+
+    vec4 misc = TEXEL_FETCH(sClipScrollNodes, uv1, 0, ivec2(0, 0));
     node.is_axis_aligned = misc.x == 0.0;
 
     return node;
@@ -233,7 +250,6 @@ RenderTaskCommonData fetch_render_task_common_data(int index) {
 
 #define PIC_TYPE_IMAGE          1
 #define PIC_TYPE_TEXT_SHADOW    2
-#define PIC_TYPE_BOX_SHADOW     3
 
 /*
  The dynamic picture that this brush exists on. Right now, it
@@ -260,80 +276,31 @@ PictureTask fetch_picture_task(int address) {
     return task;
 }
 
-struct BlurTask {
-    RenderTaskCommonData common_data;
-    float blur_radius;
-    float scale_factor;
-    vec4 color;
-};
-
-BlurTask fetch_blur_task(int address) {
-    RenderTaskData task_data = fetch_render_task_data(address);
-
-    BlurTask task = BlurTask(
-        task_data.common_data,
-        task_data.data1.x,
-        task_data.data1.y,
-        task_data.data2
-    );
-
-    return task;
-}
-
 struct ClipArea {
     RenderTaskCommonData common_data;
     vec2 screen_origin;
+    bool local_space;
 };
 
 ClipArea fetch_clip_area(int index) {
     ClipArea area;
 
-    if (index == 0x7FFFFFFF) { //special sentinel task index
+    if (index == 0x7FFF) { //special sentinel task index
         area.common_data = RenderTaskCommonData(
             RectWithSize(vec2(0.0), vec2(0.0)),
             0.0
         );
         area.screen_origin = vec2(0.0);
+        area.local_space = false;
     } else {
         RenderTaskData task_data = fetch_render_task_data(index);
 
         area.common_data = task_data.common_data;
         area.screen_origin = task_data.data1.xy;
+        area.local_space = task_data.data1.z == 0.0;
     }
 
     return area;
-}
-
-struct Gradient {
-    vec4 start_end_point;
-    vec4 tile_size_repeat;
-    vec4 extend_mode;
-};
-
-Gradient fetch_gradient(int address) {
-    vec4 data[3] = fetch_from_resource_cache_3(address);
-    return Gradient(data[0], data[1], data[2]);
-}
-
-struct GradientStop {
-    vec4 color;
-    vec4 offset;
-};
-
-GradientStop fetch_gradient_stop(int address) {
-    vec4 data[2] = fetch_from_resource_cache_2(address);
-    return GradientStop(data[0], data[1]);
-}
-
-struct RadialGradient {
-    vec4 start_end_center;
-    vec4 start_end_radius_ratio_xy_extend_mode;
-    vec4 tile_size_repeat;
-};
-
-RadialGradient fetch_radial_gradient(int address) {
-    vec4 data[3] = fetch_from_resource_cache_3(address);
-    return RadialGradient(data[0], data[1], data[2]);
 }
 
 struct Glyph {
@@ -368,6 +335,7 @@ Glyph fetch_glyph(int specific_prim_address,
         case SUBPX_DIR_VERTICAL:
             glyph.y = floor(glyph.y + 0.125);
             break;
+        default: break;
     }
 
     return Glyph(glyph);
@@ -481,11 +449,11 @@ Primitive load_primitive() {
 // Return the intersection of the plane (set up by "normal" and "point")
 // with the ray (set up by "ray_origin" and "ray_dir"),
 // writing the resulting scaler into "t".
-bool ray_plane(vec3 normal, vec3 point, vec3 ray_origin, vec3 ray_dir, out float t)
+bool ray_plane(vec3 normal, vec3 pt, vec3 ray_origin, vec3 ray_dir, out float t)
 {
     float denom = dot(normal, ray_dir);
     if (abs(denom) > 1e-6) {
-        vec3 d = point - ray_origin;
+        vec3 d = pt - ray_origin;
         t = dot(d, normal) / denom;
         return t >= 0.0;
     }
@@ -518,9 +486,8 @@ vec4 get_node_pos(vec2 pos, ClipScrollNode node) {
     vec3 a = ah.xyz / ah.w;
 
     // get the normal to the scroll node plane
-    mat4 inv_transform = inverse(node.transform);
-    vec3 n = transpose(mat3(inv_transform)) * vec3(0.0, 0.0, 1.0);
-    return untransform(pos, n, a, inv_transform);
+    vec3 n = transpose(mat3(node.inv_transform)) * vec3(0.0, 0.0, 1.0);
+    return untransform(pos, n, a, node.inv_transform);
 }
 
 // Compute a snapping offset in world space (adjusted to pixel ratio),
@@ -554,6 +521,8 @@ vec2 compute_snap_offset(vec2 local_pos,
 struct VertexInfo {
     vec2 local_pos;
     vec2 screen_pos;
+    float w;
+    vec2 snapped_device_pos;
 };
 
 VertexInfo write_vertex(RectWithSize instance_rect,
@@ -579,13 +548,20 @@ VertexInfo write_vertex(RectWithSize instance_rect,
     vec2 device_pos = world_pos.xy / world_pos.w * uDevicePixelRatio;
 
     // Apply offsets for the render task to get correct screen location.
-    vec2 final_pos = device_pos + snap_offset -
+    vec2 snapped_device_pos = device_pos + snap_offset;
+    vec2 final_pos = snapped_device_pos -
                      task.content_origin +
                      task.common_data.task_rect.p0;
 
     gl_Position = uTransform * vec4(final_pos, z, 1.0);
 
-    VertexInfo vi = VertexInfo(clamped_local_pos, device_pos);
+    VertexInfo vi = VertexInfo(
+        clamped_local_pos,
+        device_pos,
+        world_pos.w,
+        snapped_device_pos
+    );
+
     return vi;
 }
 
@@ -614,7 +590,8 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
                                   vec4 clip_edge_mask,
                                   float z,
                                   ClipScrollNode scroll_node,
-                                  PictureTask task) {
+                                  PictureTask task,
+                                  bool do_perspective_interpolation) {
     // Calculate a clip rect from local_rect + local clip
     RectWithEndpoint clip_rect = to_rect_with_endpoint(local_clip_rect);
     RectWithEndpoint segment_rect = to_rect_with_endpoint(local_segment_rect);
@@ -651,13 +628,16 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
     vec2 device_pos = world_pos.xy / world_pos.w * uDevicePixelRatio;
     vec2 task_offset = task.common_data.task_rect.p0 - task.content_origin;
 
+    // Force w = 1, if we don't want perspective interpolation (for
+    // example, drawing a screen-space quad on an element with a
+    // perspective transform).
+    world_pos.w = mix(1.0, world_pos.w, do_perspective_interpolation);
+
     // We want the world space coords to be perspective divided by W.
     // We also want that to apply to any interpolators. However, we
     // want a constant Z across the primitive, since we're using it
     // for draw ordering - so scale by the W coord to ensure this.
-    vec4 final_pos = vec4((device_pos + task_offset) * world_pos.w,
-                          z * world_pos.w,
-                          world_pos.w);
+    vec4 final_pos = vec4(device_pos + task_offset, z, 1.0) * world_pos.w;
     gl_Position = uTransform * final_pos;
 
     vLocalBounds = mix(
@@ -666,7 +646,13 @@ VertexInfo write_transform_vertex(RectWithSize local_segment_rect,
         clip_edge_mask
     );
 
-    VertexInfo vi = VertexInfo(local_pos, device_pos);
+    VertexInfo vi = VertexInfo(
+        local_pos,
+        device_pos,
+        world_pos.w,
+        device_pos
+    );
+
     return vi;
 }
 
@@ -678,7 +664,8 @@ VertexInfo write_transform_vertex_primitive(Primitive prim) {
         vec4(1.0),
         prim.z,
         prim.scroll_node,
-        prim.task
+        prim.task,
+        true
     );
 }
 
@@ -695,20 +682,23 @@ GlyphResource fetch_glyph_resource(int address) {
 }
 
 struct ImageResource {
-    vec4 uv_rect;
+    RectWithEndpoint uv_rect;
     float layer;
     vec3 user_data;
+    vec4 color;
 };
 
 ImageResource fetch_image_resource(int address) {
     //Note: number of blocks has to match `renderer::BLOCKS_PER_UV_RECT`
-    vec4 data[2] = fetch_from_resource_cache_2(address);
-    return ImageResource(data[0], data[1].x, data[1].yzw);
+    vec4 data[3] = fetch_from_resource_cache_3(address);
+    RectWithEndpoint uv_rect = RectWithEndpoint(data[0].xy, data[0].zw);
+    return ImageResource(uv_rect, data[1].x, data[1].yzw, data[2]);
 }
 
 ImageResource fetch_image_resource_direct(ivec2 address) {
-    vec4 data[2] = fetch_from_resource_cache_2_direct(address);
-    return ImageResource(data[0], data[1].x, data[1].yzw);
+    vec4 data[3] = fetch_from_resource_cache_3_direct(address);
+    RectWithEndpoint uv_rect = RectWithEndpoint(data[0].xy, data[0].zw);
+    return ImageResource(uv_rect, data[1].x, data[1].yzw, data[2]);
 }
 
 struct TextRun {
@@ -725,12 +715,11 @@ TextRun fetch_text_run(int address) {
 struct Image {
     vec4 stretch_size_and_tile_spacing;  // Size of the actual image and amount of space between
                                          //     tiled instances of this image.
-    vec4 sub_rect;                          // If negative, ignored.
 };
 
 Image fetch_image(int address) {
-    vec4 data[2] = fetch_from_resource_cache_2(address);
-    return Image(data[0], data[1]);
+    vec4 data = fetch_from_resource_cache_1(address);
+    return Image(data);
 }
 
 void write_clip(vec2 global_pos, ClipArea area) {
@@ -747,7 +736,7 @@ void write_clip(vec2 global_pos, ClipArea area) {
 
 #ifdef WR_FRAGMENT_SHADER
 
-/// Find the appropriate half range to apply the AA smoothstep over.
+/// Find the appropriate half range to apply the AA approximation over.
 /// This range represents a coefficient to go from one CSS pixel to half a device pixel.
 float compute_aa_range(vec2 position) {
     // The constant factor is chosen to compensate for the fact that length(fw) is equal
@@ -758,22 +747,41 @@ float compute_aa_range(vec2 position) {
     // such a pixel (axis aligned) is fully inside the border). We need this so that antialiased
     // curves properly connect with non-antialiased vertical or horizontal lines, among other things.
     //
-    // Using larger aa steps is quite common when rendering shapes with distance fields.
-    // It gives a smoother (although blurrier look) by extending the range that is smoothed
-    // to produce the anti aliasing. In our case, however, extending the range inside of
-    // the shape causes noticeable artifacts at the junction between an antialiased corner
-    // and a straight edge.
+    // Lines over a half-pixel away from the pixel center *can* intersect with the pixel square;
+    // indeed, unless they are horizontal or vertical, they are guaranteed to. However, choosing
+    // a nonzero area for such pixels causes noticeable artifacts at the junction between an anti-
+    // aliased corner and a straight edge.
+    //
     // We may want to adjust this constant in specific scenarios (for example keep the principled
     // value for straight edges where we want pixel-perfect equivalence with non antialiased lines
     // when axis aligned, while selecting a larger and smoother aa range on curves).
     return 0.35355 * length(fwidth(position));
 }
 
-/// Return the blending coefficient to for distance antialiasing.
+/// Return the blending coefficient for distance antialiasing.
 ///
 /// 0.0 means inside the shape, 1.0 means outside.
+///
+/// This cubic polynomial approximates the area of a 1x1 pixel square under a
+/// line, given the signed Euclidean distance from the center of the square to
+/// that line. Calculating the *exact* area would require taking into account
+/// not only this distance but also the angle of the line. However, in
+/// practice, this complexity is not required, as the area is roughly the same
+/// regardless of the angle.
+///
+/// The coefficients of this polynomial were determined through least-squares
+/// regression and are accurate to within 2.16% of the total area of the pixel
+/// square 95% of the time, with a maximum error of 3.53%.
+///
+/// See the comments in `compute_aa_range()` for more information on the
+/// cutoff values of -0.5 and 0.5.
 float distance_aa(float aa_range, float signed_distance) {
-    return 1.0 - smoothstep(-aa_range, aa_range, signed_distance);
+    float dist = 0.5 * signed_distance / aa_range;
+    if (dist <= -0.5 + EPSILON)
+        return 1.0;
+    if (dist >= 0.5 - EPSILON)
+        return 0.0;
+    return 0.5 + dist * (0.8431027 * dist * dist - 1.14453603);
 }
 
 float signed_distance_rect(vec2 pos, vec2 p0, vec2 p1) {
@@ -803,7 +811,7 @@ float do_clip() {
         vec4(vClipMaskUv.xy, vClipMaskUvBounds.zw));
     // check for the dummy bounds, which are given to the opaque objects
     return vClipMaskUvBounds.xy == vClipMaskUvBounds.zw ? 1.0:
-        all(inside) ? texelFetch(sSharedCacheA8, ivec3(vClipMaskUv), 0).r : 0.0;
+        all(inside) ? texelFetch(sCacheA8, ivec3(vClipMaskUv), 0).r : 0.0;
 }
 
 #ifdef WR_FEATURE_DITHERING

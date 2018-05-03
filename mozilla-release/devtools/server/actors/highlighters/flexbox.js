@@ -9,6 +9,7 @@ const {
   CANVAS_SIZE,
   DEFAULT_COLOR,
   clearRect,
+  drawLine,
   drawRect,
   getCurrentMatrix,
   updateCanvasElement,
@@ -27,7 +28,7 @@ const {
 
 const FLEXBOX_LINES_PROPERTIES = {
   "edge": {
-    lineDash: [2, 2]
+    lineDash: [12, 10]
   },
   "item": {
     lineDash: [0, 0]
@@ -36,6 +37,8 @@ const FLEXBOX_LINES_PROPERTIES = {
 
 const FLEXBOX_CONTAINER_PATTERN_WIDTH = 14; // px
 const FLEXBOX_CONTAINER_PATTERN_HEIGHT = 14; // px
+const FLEXBOX_JUSTIFY_CONTENT_PATTERN_WIDTH = 7; // px
+const FLEXBOX_JUSTIFY_CONTENT_PATTERN_HEIGHT = 7; // px
 const FLEXBOX_CONTAINER_PATTERN_LINE_DISH = [5, 3]; // px
 const BASIS_FILL_COLOR = "rgb(109, 184, 255, 0.4)";
 
@@ -45,6 +48,7 @@ const BASIS_FILL_COLOR = "rgb(109, 184, 255, 0.4)";
 const gCachedFlexboxPattern = new Map();
 
 const FLEXBOX = "flexbox";
+const JUSTIFY_CONTENT = "justify-content";
 
 class FlexboxHighlighter extends AutoRefreshHighlighter {
   constructor(highlighterEnv) {
@@ -119,6 +123,7 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
     highlighterEnv.off("will-navigate", this.onWillNavigate);
 
     let { pageListenerTarget } = highlighterEnv;
+
     if (pageListenerTarget) {
       pageListenerTarget.removeEventListener("pagehide", this.onPageHide);
     }
@@ -128,6 +133,16 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
     // Clear the pattern cache to avoid dead object exceptions (Bug 1342051).
     this.clearCache();
     AutoRefreshHighlighter.prototype.destroy.call(this);
+  }
+
+  /**
+   * Draw the justify content for a given flex item (left, top, right, bottom) position.
+   */
+  drawJustifyContent(left, top, right, bottom) {
+    let { devicePixelRatio } = this.win;
+    this.ctx.fillStyle = this.getJustifyContentPattern(devicePixelRatio);
+    drawRect(this.ctx, left, top, right, bottom, this.currentMatrix);
+    this.ctx.fill();
   }
 
   get canvas() {
@@ -182,6 +197,53 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
 
     let pattern = ctx.createPattern(canvas, "repeat");
     flexboxPatternMap.set(FLEXBOX, pattern);
+    gCachedFlexboxPattern.set(devicePixelRatio, flexboxPatternMap);
+
+    return pattern;
+  }
+
+  /**
+  * Gets the flexbox justify content pattern used to render the justify content regions.
+  *
+  * @param  {Number} devicePixelRatio
+  *         The device pixel ratio we want the pattern for.
+  * @return {CanvasPattern} flex justify content pattern.
+  */
+  getJustifyContentPattern(devicePixelRatio) {
+    let flexboxPatternMap = null;
+
+    if (gCachedFlexboxPattern.has(devicePixelRatio)) {
+      flexboxPatternMap = gCachedFlexboxPattern.get(devicePixelRatio);
+    } else {
+      flexboxPatternMap = new Map();
+    }
+
+    if (gCachedFlexboxPattern.has(JUSTIFY_CONTENT)) {
+      return gCachedFlexboxPattern.get(JUSTIFY_CONTENT);
+    }
+
+    // Create the inversed diagonal lines pattern
+    // for the rendering the justify content gaps.
+    let canvas = createNode(this.win, { nodeType: "canvas" });
+    let width = canvas.width = FLEXBOX_JUSTIFY_CONTENT_PATTERN_WIDTH * devicePixelRatio;
+    let height = canvas.height = FLEXBOX_JUSTIFY_CONTENT_PATTERN_HEIGHT *
+      devicePixelRatio;
+
+    let ctx = canvas.getContext("2d");
+    ctx.save();
+    ctx.setLineDash(FLEXBOX_CONTAINER_PATTERN_LINE_DISH);
+    ctx.beginPath();
+    ctx.translate(.5, .5);
+
+    ctx.moveTo(0, height);
+    ctx.lineTo(width, 0);
+
+    ctx.strokeStyle = DEFAULT_COLOR;
+    ctx.stroke();
+    ctx.restore();
+
+    let pattern = ctx.createPattern(canvas, "repeat");
+    flexboxPatternMap.set(JUSTIFY_CONTENT, pattern);
     gCachedFlexboxPattern.set(devicePixelRatio, flexboxPatternMap);
 
     return pattern;
@@ -312,13 +374,18 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
    */
   renderFlexItemBasis(flexItem, left, top, right, bottom, boundsWidth) {
     let computedStyle = getComputedStyle(flexItem);
+
+    if (!computedStyle) {
+      return;
+    }
+
     let basis = computedStyle.getPropertyValue("flex-basis");
 
     if (basis.endsWith("px")) {
-      right = left + parseFloat(basis);
+      right = Math.round(left + parseFloat(basis));
     } else if (basis.endsWith("%")) {
       basis = parseFloat(basis) / 100 * boundsWidth;
-      right = left + basis;
+      right = Math.round(left + basis);
     }
 
     this.ctx.fillStyle = BASIS_FILL_COLOR;
@@ -344,28 +411,32 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
     this.ctx.strokeStyle = DEFAULT_COLOR;
 
     let { bounds } = this.currentQuads.content[0];
-    let flexItems = this.currentNode.children;
+    let flexLines = this.currentNode.getAsFlexContainer().getLines();
 
-    // TODO: Utilize the platform API that will be implemented in Bug 1414290 to
-    // retrieve the flex item properties.
-    for (let flexItem of flexItems) {
-      let quads = getAdjustedQuads(this.win, flexItem, "border");
-      if (!quads.length) {
-        continue;
+    for (let flexLine of flexLines) {
+      let flexItems = flexLine.getItems();
+
+      for (let flexItem of flexItems) {
+        let { node } = flexItem;
+        let quads = getAdjustedQuads(this.win, node, "border");
+
+        if (!quads.length) {
+          continue;
+        }
+
+        // Adjust the flex item bounds relative to the current quads.
+        let { bounds: flexItemBounds } = quads[0];
+        let left = Math.round(flexItemBounds.left - bounds.left);
+        let top = Math.round(flexItemBounds.top - bounds.top);
+        let right = Math.round(flexItemBounds.right - bounds.left);
+        let bottom = Math.round(flexItemBounds.bottom - bounds.top);
+
+        clearRect(this.ctx, left, top, right, bottom, this.currentMatrix);
+        drawRect(this.ctx, left, top, right, bottom, this.currentMatrix);
+        this.ctx.stroke();
+
+        this.renderFlexItemBasis(node, left, top, right, bottom, bounds.width);
       }
-
-      // Adjust the flex item bounds relative to the current quads.
-      let { bounds: flexItemBounds } = quads[0];
-      let left = flexItemBounds.left - bounds.left;
-      let top = flexItemBounds.top - bounds.top;
-      let right = flexItemBounds.right - bounds.left;
-      let bottom = flexItemBounds.bottom - bounds.top;
-
-      clearRect(this.ctx, left, top, right, bottom, this.currentMatrix);
-      drawRect(this.ctx, left, top, right, bottom, this.currentMatrix);
-      this.ctx.stroke();
-
-      this.renderFlexItemBasis(flexItem, left, top, right, bottom, bounds.width);
     }
 
     this.ctx.restore();
@@ -388,33 +459,100 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
     this.ctx.strokeStyle = DEFAULT_COLOR;
 
     let { bounds } = this.currentQuads.content[0];
-    let computedStyle = getComputedStyle(this.currentNode);
     let flexLines = this.currentNode.getAsFlexContainer().getLines();
+    let computedStyle = getComputedStyle(this.currentNode);
+    let isColumn = computedStyle.getPropertyValue("flex-direction").startsWith("column");
+    let options = { matrix: this.currentMatrix };
 
     for (let flexLine of flexLines) {
       let { crossStart, crossSize } = flexLine;
 
-      if (computedStyle.getPropertyValue("flex-direction") === "column" ||
-          computedStyle.getPropertyValue("flex-direction") === "column-reverse") {
+      if (isColumn) {
         clearRect(this.ctx, crossStart, 0, crossStart + crossSize, bounds.height,
           this.currentMatrix);
-        drawRect(this.ctx, crossStart, 0, crossStart, bounds.height, this.currentMatrix);
-        this.ctx.stroke();
-        drawRect(this.ctx, crossStart + crossSize, 0, crossStart + crossSize,
-          bounds.height, this.currentMatrix);
-        this.ctx.stroke();
+
+        // Avoid drawing the start flex line when they overlap with the flex container.
+        if (crossStart != 0) {
+          drawLine(this.ctx, crossStart, 0, crossStart, bounds.height, options);
+          this.ctx.stroke();
+        }
+
+        // Avoid drawing the end flex line when they overlap with the flex container.
+        if (bounds.width - crossStart - crossSize >= lineWidth) {
+          drawLine(this.ctx, crossStart + crossSize, 0, crossStart + crossSize,
+            bounds.height, options);
+          this.ctx.stroke();
+        }
       } else {
         clearRect(this.ctx, 0, crossStart, bounds.width, crossStart + crossSize,
           this.currentMatrix);
-        drawRect(this.ctx, 0, crossStart, bounds.width, crossStart, this.currentMatrix);
-        this.ctx.stroke();
-        drawRect(this.ctx, 0, crossStart + crossSize, bounds.width,
-          crossStart + crossSize, this.currentMatrix);
-        this.ctx.stroke();
+
+        // Avoid drawing the start flex line when they overlap with the flex container.
+        if (crossStart != 0) {
+          drawLine(this.ctx, 0, crossStart, bounds.width, crossStart, options);
+          this.ctx.stroke();
+        }
+
+        // Avoid drawing the end flex line when they overlap with the flex container.
+        if (bounds.height - crossStart - crossSize >= lineWidth) {
+          drawLine(this.ctx, 0, crossStart + crossSize, bounds.width,
+            crossStart + crossSize, options);
+          this.ctx.stroke();
+        }
       }
     }
 
     this.ctx.restore();
+  }
+
+  renderJustifyContent() {
+    if (!this.currentQuads.content || !this.currentQuads.content[0]) {
+      return;
+    }
+
+    let { bounds } = this.currentQuads.content[0];
+    let flexLines = this.currentNode.getAsFlexContainer().getLines();
+    let computedStyle = getComputedStyle(this.currentNode);
+    let isColumn = computedStyle.getPropertyValue("flex-direction").startsWith("column");
+
+    for (let flexLine of flexLines) {
+      let { crossStart, crossSize } = flexLine;
+      let flexItems = flexLine.getItems();
+      let mainStart = 0;
+
+      for (let flexItem of flexItems) {
+        let { node } = flexItem;
+        let quads = getAdjustedQuads(this.win, node, "margin");
+
+        if (!quads.length) {
+          continue;
+        }
+
+        // Adjust the flex item bounds relative to the current quads.
+        let { bounds: flexItemBounds } = quads[0];
+        let left = Math.round(flexItemBounds.left - bounds.left);
+        let top = Math.round(flexItemBounds.top - bounds.top);
+        let right = Math.round(flexItemBounds.right - bounds.left);
+        let bottom = Math.round(flexItemBounds.bottom - bounds.top);
+
+        if (isColumn) {
+          this.drawJustifyContent(crossStart, mainStart, crossStart + crossSize, top);
+          mainStart = bottom;
+        } else {
+          this.drawJustifyContent(mainStart, crossStart, left, crossStart + crossSize);
+          mainStart = right;
+        }
+      }
+
+      // Draw the last justify-content area after the last flex item.
+      if (isColumn) {
+        this.drawJustifyContent(crossStart, mainStart, crossStart + crossSize,
+          bounds.height);
+      } else {
+        this.drawJustifyContent(mainStart, crossStart, bounds.width,
+          crossStart + crossSize);
+      }
+    }
   }
 
   _update() {
@@ -441,6 +579,7 @@ class FlexboxHighlighter extends AutoRefreshHighlighter {
 
     this.renderFlexContainerFill();
     this.renderFlexLines();
+    this.renderJustifyContent();
     this.renderFlexItems();
     this.renderFlexContainerBorder();
 

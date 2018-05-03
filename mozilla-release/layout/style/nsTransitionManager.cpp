@@ -17,8 +17,11 @@
 #include "mozilla/TimeStamp.h"
 #include "nsRefreshDriver.h"
 #include "nsRuleProcessorData.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleWalker.h"
+#endif
 #include "nsCSSPropertyIDSet.h"
+#include "mozilla/AnimationEventDispatcher.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/EventDispatcher.h"
@@ -34,7 +37,9 @@
 #include "nsDisplayList.h"
 #include "nsRFPService.h"
 #include "nsStyleChangeList.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "mozilla/RestyleManager.h"
 #include "mozilla/RestyleManagerInlines.h"
 #include "nsDOMMutationObserver.h"
@@ -125,20 +130,26 @@ ElementPropertyTransition::UpdateStartValueFromReplacedTransition()
           Servo_AnimationValue_Uncompute(startValue.mServo).Consume();
         mProperties[0].mSegments[0].mFromValue = Move(startValue);
       }
-    } else if (StyleAnimationValue::Interpolate(mProperties[0].mProperty,
+    } else {
+#ifdef MOZ_OLD_STYLE
+      if (StyleAnimationValue::Interpolate(mProperties[0].mProperty,
                                                 replacedFrom.mGecko,
                                                 replacedTo.mGecko,
                                                 valuePosition,
                                                 startValue.mGecko)) {
-      nsCSSValue cssValue;
-      DebugOnly<bool> uncomputeResult =
-        StyleAnimationValue::UncomputeValue(mProperties[0].mProperty,
-                                            startValue.mGecko,
-                                            cssValue);
-      MOZ_ASSERT(uncomputeResult, "UncomputeValue should not fail");
-      mKeyframes[0].mPropertyValues[0].mValue = cssValue;
+        nsCSSValue cssValue;
+        DebugOnly<bool> uncomputeResult =
+          StyleAnimationValue::UncomputeValue(mProperties[0].mProperty,
+                                              startValue.mGecko,
+                                              cssValue);
+        MOZ_ASSERT(uncomputeResult, "UncomputeValue should not fail");
+        mKeyframes[0].mPropertyValues[0].mValue = cssValue;
 
-      mProperties[0].mSegments[0].mFromValue = Move(startValue);
+        mProperties[0].mSegments[0].mFromValue = Move(startValue);
+      }
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     }
   }
 
@@ -249,21 +260,26 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
     currentPhase = TransitionPhase::Pending;
   }
 
-  AutoTArray<TransitionEventInfo, 3> events;
+  AutoTArray<AnimationEventInfo, 3> events;
 
   auto appendTransitionEvent = [&](EventMessage aMessage,
                                    const StickyTimeDuration& aElapsedTime,
                                    const TimeStamp& aTimeStamp) {
     double elapsedTime = aElapsedTime.ToSeconds();
     if (aMessage == eTransitionCancel) {
-      elapsedTime = nsRFPService::ReduceTimePrecisionAsSecs(elapsedTime);
+      // 0 is an inappropriate value for this callsite. What we need to do is
+      // use a single random value for all increasing times reportable.
+      // That is to say, whenever elapsedTime goes negative (because an
+      // animation restarts, something rewinds the animation, or otherwise)
+      // a new random value for the mix-in must be generated.
+      elapsedTime = nsRFPService::ReduceTimePrecisionAsSecs(elapsedTime, 0, TimerPrecisionType::RFPOnly);
     }
-    events.AppendElement(TransitionEventInfo(mOwningElement.Target(),
-                                             aMessage,
-                                             TransitionProperty(),
-                                             elapsedTime,
-                                             aTimeStamp,
-                                             this));
+    events.AppendElement(AnimationEventInfo(TransitionProperty(),
+                                            mOwningElement.Target(),
+                                            aMessage,
+                                            elapsedTime,
+                                            aTimeStamp,
+                                            this));
   };
 
   // Handle cancel events first
@@ -336,7 +352,7 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
   mPreviousTransitionPhase = currentPhase;
 
   if (!events.IsEmpty()) {
-    presContext->TransitionManager()->QueueEvents(Move(events));
+    presContext->AnimationEventDispatcher()->QueueEvents(Move(events));
   }
 }
 
@@ -422,11 +438,7 @@ CSSTransition::SetEffectFromStyle(dom::AnimationEffectReadOnly* aEffect)
 
 ////////////////////////// nsTransitionManager ////////////////////////////
 
-NS_IMPL_CYCLE_COLLECTION(nsTransitionManager, mEventDispatcher)
-
-NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(nsTransitionManager, AddRef)
-NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(nsTransitionManager, Release)
-
+#ifdef MOZ_OLD_STYLE
 static inline bool
 ExtractNonDiscreteComputedValue(nsCSSPropertyID aProperty,
                                 GeckoStyleContext* aStyleContext,
@@ -437,6 +449,7 @@ ExtractNonDiscreteComputedValue(nsCSSPropertyID aProperty,
          StyleAnimationValue::ExtractComputedValue(aProperty, aStyleContext,
                                                    aAnimationValue.mGecko);
 }
+#endif
 
 static inline bool
 ExtractNonDiscreteComputedValue(nsCSSPropertyID aProperty,
@@ -454,6 +467,7 @@ ExtractNonDiscreteComputedValue(nsCSSPropertyID aProperty,
   return !!aAnimationValue.mServo;
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 nsTransitionManager::StyleContextChanged(dom::Element *aElement,
                                          GeckoStyleContext* aOldStyleContext,
@@ -614,6 +628,7 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
                                                               cascadeLevel);
   }
 }
+#endif
 
 bool
 nsTransitionManager::UpdateTransitions(
@@ -791,6 +806,7 @@ AppendKeyframe(double aOffset,
     frame.mPropertyValues.AppendElement(
       Move(PropertyValuePair(aProperty, Move(decl))));
   } else {
+#ifdef MOZ_OLD_STYLE
     nsCSSValue propertyValue;
     DebugOnly<bool> uncomputeResult =
       StyleAnimationValue::UncomputeValue(aProperty, Move(aValue.mGecko),
@@ -799,6 +815,9 @@ AppendKeyframe(double aOffset,
                "Unable to get specified value from computed value");
     frame.mPropertyValues.AppendElement(
       Move(PropertyValuePair(aProperty, Move(propertyValue))));
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
   return frame;
 }
@@ -1103,6 +1122,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
   aWhichStarted->AddProperty(aProperty);
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 nsTransitionManager::PruneCompletedTransitions(mozilla::dom::Element* aElement,
                                                CSSPseudoElementType aPseudoType,
@@ -1151,3 +1171,4 @@ nsTransitionManager::PruneCompletedTransitions(mozilla::dom::Element* aElement,
     collection = nullptr;
   }
 }
+#endif

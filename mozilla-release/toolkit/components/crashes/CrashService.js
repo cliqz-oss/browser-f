@@ -4,15 +4,13 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm", this);
-Cu.import("resource://gre/modules/AsyncShutdown.jsm", this);
-Cu.import("resource://gre/modules/KeyValueParser.jsm");
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm", this);
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", this);
+ChromeUtils.import("resource://gre/modules/KeyValueParser.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
 // Set to true if the application is quitting
 var gQuitting = false;
@@ -200,7 +198,7 @@ CrashService.prototype = Object.freeze({
     }
 
     let cr = Cc["@mozilla.org/toolkit/crash-reporter;1"]
-               .getService(Components.interfaces.nsICrashReporter);
+               .getService(Ci.nsICrashReporter);
     let minidumpPath = cr.getMinidumpForID(id).path;
     let extraPath = cr.getExtraFileForID(id).path;
     let metadata = {};

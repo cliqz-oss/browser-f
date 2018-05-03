@@ -1,4 +1,4 @@
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 
 function is_hidden(element) {
@@ -8,7 +8,7 @@ function is_hidden(element) {
   if (style.visibility != "visible")
     return true;
   if (style.display == "-moz-popup")
-    return ["hiding", "closed"].indexOf(element.state) != -1;
+    return ["hiding", "closed"].includes(element.state);
 
   // Hiding a parent element will hide all its children
   if (element.parentNode != element.ownerDocument)
@@ -89,7 +89,7 @@ function isSecurityState(browser, expectedState) {
     return;
   }
 
-  const wpl = Components.interfaces.nsIWebProgressListener;
+  const wpl = Ci.nsIWebProgressListener;
 
   // determine the security state
   let isSecure = ui.state & wpl.STATE_IS_SECURE;
@@ -204,7 +204,9 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
   }
 
   // Make sure the identity popup has the correct mixedcontent states
+  let promisePanelOpen = BrowserTestUtils.waitForEvent(gIdentityHandler._identityPopup, "popupshown");
   gIdentityHandler._identityBox.click();
+  await promisePanelOpen;
   let popupAttr = doc.getElementById("identity-popup").getAttribute("mixedcontent");
   let bodyAttr = doc.getElementById("identity-popup-securityView-body").getAttribute("mixedcontent");
 

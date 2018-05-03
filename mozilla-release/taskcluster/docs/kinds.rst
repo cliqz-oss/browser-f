@@ -222,30 +222,40 @@ google-play-strings
 Download strings to display on Google Play from https://l10n.mozilla-community.org/stores_l10n/.
 Artifact is then used by push-apk.
 
-push-apk-breakpoint
--------------------
-Decides whether or not APKs should be published onto Google Play Store. Jobs of this
-kind depend on all the signed multi-locales (aka "multi") APKs for a given release,
-in order to make the decision.
-
 push-apk
 --------
 PushApk publishes Android packages onto Google Play Store. Jobs of this kind take
 all the signed multi-locales (aka "multi") APKs for a given release and upload them
-all at once. They also depend on the breakpoint.
+all at once.
 
-release-balrog-publishing
+release-balrog-submit-toplevel
+----------------------
+Push a top-level release blob to Balrog.
+
+release-secondary-balrog-submit-toplevel
+----------------------
+Push a top-level RC release blob to Balrog.
+
+release-balrog-scheduling
 ----------------------
 Schedule a release to go live in Balrog.
+
+release-secondary-balrog-scheduling
+----------------------
+Schedule an RC release to go live in Balrog.
 
 release-binary-transparency
 ---------------------------
 Binary transparency creates a publicly verifiable log of binary shas for downstream
 release auditing. https://wiki.mozilla.org/Security/Binary_Transparency
 
-release-snap
-------------
+release-snap-repackage
+----------------------
 Generate an installer using Ubuntu's Snap format.
+
+release-snap-push
+----------------------
+Pushes Snap repackage on Snap store.
 
 release-notify-push
 ----------------------
@@ -272,32 +282,60 @@ release-mark-as-shipped
 Marks releases as shipped in Ship-It.
 
 release-bouncer-aliases
-------------------------------
+-----------------------
 Update Bouncer's (download.mozilla.org) "latest" aliases.
 
 release-bouncer-check
-------------------------------
+---------------------
 Checks Bouncer (download.mozilla.org) uptake.
 
 release-generate-checksums
 --------------------------
-Generate the per-release checksums along with the summaries and upload it to S3.
+Generate the per-release checksums along with the summaries
+
+release-generate-checksums-signing
+----------------------------------
+Sign the pre-release checksums produced by the above task
+
+release-generate-checksums-beetmover
+------------------------------------
+Submit to S3 the artifacts produced by the release-checksums task and its signing counterpart.
 
 release-final-verify
----------------------
+--------------------
 Verifies the contents and package of release update MARs.
 
 release-secondary-final-verify
----------------------
+------------------------------
 Verifies the contents and package of release update MARs for RC releases.
 
 release-secondary-balrog-publishing
 ---------------------
 Schedule an RC release to go live in Balrog. Usually this will happen on the beta channel, to a smaller audience, before the RC goes live on the release channel.
 
+release-sign-and-push-langpacks
+-------------------------------
+Sign a langpack XPI and publishes it onto addons.mozilla.org.
+
+release-beetmover-signed-langpacks
+----------------------------------
+Publishes signed langpacks to archive.mozilla.org
+
 release-update-verify
 ---------------------
 Verifies the contents and package of release update MARs.
+
+release-secondary-update-verify
+---------------------
+Verifies the contents and package of release update MARs.
+
+release-update-verify-config
+----------------------------
+Creates configs for release-update-verify tasks
+
+release-secondary-update-verify-config
+--------------------------------------
+Creates configs for release-secondary-update-verify tasks
 
 release-updates-builder
 -----------------------
@@ -318,6 +356,46 @@ Signs source for the release
 release-partner-repack
 ----------------------
 Generates customized versions of releases for partners.
+
+release-partner-repack-chunking-dummy
+----------------------
+Chunks the partner repacks by locale.
+
+release-partner-repack-signing
+------------------------------
+Internal signing of partner repacks.
+
+release-partner-repack-repackage
+------------------------------
+Repackaging of partner repacks.
+
+release-partner-repack-repackage-signing
+------------------------------
+External signing of partner repacks.
+
+release-partner-repack-beetmover
+------------------------------
+Moves the partner repacks to S3 buckets.
+
+release-eme-free-repack
+----------------------
+Generates customized versions of releases for eme-free repacks.
+
+release-eme-free-repack-signing
+------------------------------
+Internal signing of eme-free repacks
+
+release-eme-free-repack-repackage
+------------------------------
+Repackaging of eme-free repacks.
+
+release-eme-free-repack-repackage-signing
+------------------------------
+External signing of eme-free repacks.
+
+release-eme-free-repack-beetmover
+------------------------------
+Moves the eme-free repacks to S3 buckets.
 
 repackage
 ---------
@@ -340,6 +418,12 @@ repo-update
 Repo-Update tasks are tasks that perform some action on the project repo itself,
 in order to update its state in some way.
 
+repo-update-bb
+--------------
+Repo-Update tasks are tasks that perform some action on the project repo itself,
+in order to update its state in some way. This kind is the older, buildbot version.
+It will be removed after the migration to taskcluster.
+
 partials
 --------
 Partials takes the complete.mar files produced in previous tasks and generates partial
@@ -361,6 +445,10 @@ Dummy tasks to consolidate beetmover dependencies to avoid taskcluster limits on
 post-beetmover-checksums-dummy
 ------------------------------
 Dummy tasks to consolidate beetmover-checksums dependencies to avoid taskcluster limits on number of dependencies per task.
+
+post-langpack-dummy
+------------------------------
+Dummy tasks to consolidate language pack beetmover dependencies to avoid taskcluster limits on number of dependencies per task.
 
 packages
 --------

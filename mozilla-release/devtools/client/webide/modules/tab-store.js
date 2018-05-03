@@ -5,7 +5,7 @@
 const { Cu } = require("chrome");
 
 const { TargetFactory } = require("devtools/client/framework/target");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const { Connection } = require("devtools/shared/client/connection-manager");
 const { Task } = require("devtools/shared/task");
 
@@ -98,7 +98,7 @@ TabStore.prototype = {
     }
 
     return new Promise((resolve, reject) => {
-      this._connection.client.listTabs(response => {
+      this._connection.client.listTabs().then(response => {
         if (response.error) {
           this._connection.disconnect();
           reject(response.error);

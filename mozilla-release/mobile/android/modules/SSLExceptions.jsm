@@ -3,13 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-this.EXPORTED_SYMBOLS = ["SSLExceptions"];
+var EXPORTED_SYMBOLS = ["SSLExceptions"];
 
 /**
   A class to add exceptions to override SSL certificate problems. The functionality
@@ -33,7 +31,7 @@ SSLExceptions.prototype = {
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   /**
@@ -52,7 +50,7 @@ SSLExceptions.prototype = {
   _checkCert: function SSLE_checkCert(aURI) {
     this._sslStatus = null;
 
-    let req = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let req = new XMLHttpRequest();
     try {
       if (aURI) {
         req.open("GET", aURI.prePath, false);
@@ -63,9 +61,9 @@ SSLExceptions.prototype = {
       // We *expect* exceptions if there are problems with the certificate
       // presented by the site.  Log it, just in case, but we can proceed here,
       // with appropriate sanity checks
-      Components.utils.reportError("Attempted to connect to a site with a bad certificate in the add exception dialog. " +
-                                   "This results in a (mostly harmless) exception being thrown. " +
-                                   "Logged for information purposes only: " + e);
+      Cu.reportError("Attempted to connect to a site with a bad certificate in the add exception dialog. " +
+                     "This results in a (mostly harmless) exception being thrown. " +
+                     "Logged for information purposes only: " + e);
     }
 
     return this._sslStatus;

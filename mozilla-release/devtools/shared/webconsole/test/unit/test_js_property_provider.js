@@ -3,11 +3,11 @@
 // http://creativecommons.org/publicdomain/zero/1.0/
 
 "use strict";
-const { require } = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { FallibleJSPropertyProvider: JSPropertyProvider } =
   require("devtools/shared/webconsole/js-property-provider");
 
-Components.utils.import("resource://gre/modules/jsdebugger.jsm");
+ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
 
 function run_test() {
@@ -45,15 +45,15 @@ function run_test() {
     }
   })();`;
 
-  let sandbox = Components.utils.Sandbox("http://example.com");
+  let sandbox = Cu.Sandbox("http://example.com");
   let dbg = new Debugger();
   let dbgObject = dbg.addDebuggee(sandbox);
   let dbgEnv = dbgObject.asEnvironment();
-  Components.utils.evalInSandbox(testArray, sandbox);
-  Components.utils.evalInSandbox(testObject, sandbox);
-  Components.utils.evalInSandbox(testHyphenated, sandbox);
-  Components.utils.evalInSandbox(testLet, sandbox);
-  Components.utils.evalInSandbox(testGenerators, sandbox);
+  Cu.evalInSandbox(testArray, sandbox);
+  Cu.evalInSandbox(testObject, sandbox);
+  Cu.evalInSandbox(testHyphenated, sandbox);
+  Cu.evalInSandbox(testLet, sandbox);
+  Cu.evalInSandbox(testGenerators, sandbox);
 
   info("Running tests with dbgObject");
   runChecks(dbgObject, null, sandbox);
@@ -165,18 +165,18 @@ function runChecks(dbgObject, dbgEnv, sandbox) {
   Assert.equal(null, results);
 
   info("Test that we have suggestions for generators.");
-  let gen1Result = Components.utils.evalInSandbox("gen1.next().value", sandbox);
+  let gen1Result = Cu.evalInSandbox("gen1.next().value", sandbox);
   results = JSPropertyProvider(dbgObject, dbgEnv, "gen1.");
   test_has_result(results, "next");
   info("Test that the generator next() was not executed");
-  let gen1NextResult = Components.utils.evalInSandbox("gen1.next().value", sandbox);
+  let gen1NextResult = Cu.evalInSandbox("gen1.next().value", sandbox);
   Assert.equal(gen1Result + 1, gen1NextResult);
 
   info("Test with an anonymous generator.");
-  let gen2Result = Components.utils.evalInSandbox("gen2.next().value", sandbox);
+  let gen2Result = Cu.evalInSandbox("gen2.next().value", sandbox);
   results = JSPropertyProvider(dbgObject, dbgEnv, "gen2.");
   test_has_result(results, "next");
-  let gen2NextResult = Components.utils.evalInSandbox("gen2.next().value", sandbox);
+  let gen2NextResult = Cu.evalInSandbox("gen2.next().value", sandbox);
   Assert.equal(gen2Result + 1, gen2NextResult);
 }
 
@@ -199,5 +199,5 @@ function test_has_no_results(results) {
 function test_has_result(results, requiredSuggestion) {
   Assert.notEqual(results, null);
   Assert.ok(results.matches.length > 0);
-  Assert.ok(results.matches.indexOf(requiredSuggestion) !== -1);
+  Assert.ok(results.matches.includes(requiredSuggestion));
 }

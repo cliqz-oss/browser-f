@@ -6,6 +6,7 @@
 
 #include "vm/RegExpStatics.h"
 
+#include "gc/FreeOp.h"
 #include "vm/RegExpStaticsObject.h"
 
 #include "vm/NativeObject-inl.h"
@@ -57,7 +58,7 @@ const Class RegExpStaticsObject::class_ = {
 };
 
 RegExpStaticsObject*
-RegExpStatics::create(JSContext* cx, Handle<GlobalObject*> parent)
+RegExpStatics::create(JSContext* cx)
 {
     RegExpStaticsObject* obj = NewObjectWithGivenProto<RegExpStaticsObject>(cx, nullptr);
     if (!obj)

@@ -15,7 +15,6 @@ var global = this;
     return;
   }
 
-  const Ci = Components.interfaces;
   const gDeviceSizeWasPageSize = docShell.deviceSizeIsPageSize;
   const gFloatingScrollbarsStylesheet = Services.io.newURI("chrome://devtools/skin/floating-scrollbars-responsive-design.css");
 
@@ -190,7 +189,7 @@ var global = this;
           iid.equals(Ci.nsISupports)) {
         return this;
       }
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   };
 })();

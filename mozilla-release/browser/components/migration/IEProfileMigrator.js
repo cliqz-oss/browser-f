@@ -4,30 +4,24 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
-
 const kLoginsKey = "Software\\Microsoft\\Internet Explorer\\IntelliForms\\Storage2";
-const kMainKey = "Software\\Microsoft\\Internet Explorer\\Main";
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource:///modules/MigrationUtils.jsm");
-Cu.import("resource:///modules/MSMigrationUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
+ChromeUtils.import("resource:///modules/MSMigrationUtils.jsm");
 
 
-XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
-                                  "resource://gre/modules/ctypes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OSCrypto",
-                                  "resource://gre/modules/OSCrypto.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WindowsRegistry",
-                                  "resource://gre/modules/WindowsRegistry.jsm");
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "OSCrypto",
+                               "resource://gre/modules/OSCrypto.jsm");
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -54,7 +48,7 @@ History.prototype = {
       // MSIE stores some types of URLs in its history that we don't handle,
       // like HTMLHelp and others.  Since we don't properly map handling for
       // all of them we just avoid importing them.
-      if (["http", "https", "ftp", "file"].indexOf(uri.scheme) == -1) {
+      if (!["http", "https", "ftp", "file"].includes(uri.scheme)) {
         continue;
       }
 
@@ -78,7 +72,7 @@ History.prototype = {
         { uri,
           title,
           visits: [{ transitionType,
-                     visitDate: lastVisitTime }]
+                     visitDate: lastVisitTime }],
         }
       );
     }
@@ -94,9 +88,9 @@ History.prototype = {
       ignoreResults: true,
       handleCompletion(updatedCount) {
         aCallback(updatedCount > 0);
-      }
+      },
     });
-  }
+  },
 };
 
 // IE form password migrator supporting windows from XP until 7 and IE from 7 until 11
@@ -128,7 +122,7 @@ IE7FormPasswords.prototype = {
     }
   },
 
-  migrate(aCallback) {
+  async migrate(aCallback) {
     let historyEnumerator = Cc["@mozilla.org/profile/migrator/iehistoryenumerator;1"].
                             createInstance(Ci.nsISimpleEnumerator);
     let uris = []; // the uris of the websites that are going to be migrated
@@ -138,13 +132,13 @@ IE7FormPasswords.prototype = {
       // MSIE stores some types of URLs in its history that we don't handle, like HTMLHelp
       // and others. Since we are not going to import the logins that are performed in these URLs
       // we can just skip them.
-      if (["http", "https", "ftp"].indexOf(uri.scheme) == -1) {
+      if (!["http", "https", "ftp"].includes(uri.scheme)) {
         continue;
       }
 
       uris.push(uri);
     }
-    this._migrateURIs(uris);
+    await this._migrateURIs(uris);
     aCallback(true);
   },
 
@@ -152,7 +146,7 @@ IE7FormPasswords.prototype = {
    * Migrate the logins that were saved for the uris arguments.
    * @param {nsIURI[]} uris - the uris that are going to be migrated.
    */
-  _migrateURIs(uris) {
+  async _migrateURIs(uris) {
     this.ctypesKernelHelpers = new MSMigrationUtils.CtypesKernelHelpers();
     this._crypto = new OSCrypto();
     let nsIWindowsRegKey = Ci.nsIWindowsRegKey;
@@ -172,6 +166,7 @@ IE7FormPasswords.prototype = {
      * to the Firefox password manager.
      */
 
+    let logins = [];
     for (let uri of uris) {
       try {
         // remove the query and the ref parts of the URL
@@ -206,11 +201,23 @@ IE7FormPasswords.prototype = {
         if (ieLogins.length) {
           successfullyDecryptedValues++;
         }
-        this._addLogins(ieLogins);
+        for (let ieLogin of ieLogins) {
+          logins.push({
+            username: ieLogin.username,
+            password: ieLogin.password,
+            hostname: ieLogin.url,
+            timeCreated: ieLogin.creation,
+          });
+        }
       } catch (e) {
         Cu.reportError("Error while importing logins for " + uri.spec + ": " + e);
       }
     }
+
+    if (logins.length > 0) {
+      await MigrationUtils.insertLoginsWrapper(logins);
+    }
+
     // if the number of the imported values is less than the number of values in the key, it means
     // that not all the values were imported and an error should be reported
     if (successfullyDecryptedValues < key.valueCount) {
@@ -226,27 +233,6 @@ IE7FormPasswords.prototype = {
   },
 
   _crypto: null,
-
-  /**
-   * Add the logins to the password manager.
-   * @param {Object[]} logins - array of the login details.
-   */
-  _addLogins(ieLogins) {
-    for (let ieLogin of ieLogins) {
-      try {
-        // create a new login
-        let login = {
-          username: ieLogin.username,
-          password: ieLogin.password,
-          hostname: ieLogin.url,
-          timeCreated: ieLogin.creation,
-        };
-        MigrationUtils.insertLoginWrapper(login);
-      } catch (e) {
-        Cu.reportError(e);
-      }
-    }
-  },
 
   /**
    * Extract the details of one or more logins from the raw decrypted data.
@@ -272,7 +258,7 @@ IE7FormPasswords.prototype = {
       // Bytes 24-35 are not needed and not documented
       {"unknown4": ctypes.uint32_t},
       {"unknown5": ctypes.uint32_t},
-      {"unknown6": ctypes.uint32_t}
+      {"unknown6": ctypes.uint32_t},
     ]);
 
     // the structure of a IE7 decrypted login item
@@ -289,7 +275,7 @@ IE7FormPasswords.prototype = {
       // Bytes 20-31 are not needed and not documented
       {"unknown1": ctypes.uint32_t},
       {"unknown2": ctypes.uint32_t},
-      {"unknown3": ctypes.uint32_t}
+      {"unknown3": ctypes.uint32_t},
     ]);
 
     let url = uri.prePath;
@@ -377,33 +363,6 @@ IEProfileMigrator.prototype.getLastUsedDate = function IE_getLastUsedDate() {
     return new Date(Math.max.apply(Math, dates));
   });
 };
-
-Object.defineProperty(IEProfileMigrator.prototype, "sourceHomePageURL", {
-  get: function IE_get_sourceHomePageURL() {
-    let defaultStartPage = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,
-                                                      kMainKey, "Default_Page_URL");
-    let startPage = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                               kMainKey, "Start Page");
-    // If the user didn't customize the Start Page, he is still on the default
-    // page, that may be considered the equivalent of our about:home.  There's
-    // no reason to retain it, since it is heavily targeted to IE.
-    let homepage = startPage != defaultStartPage ? startPage : "";
-
-    // IE7+ supports secondary home pages located in a REG_MULTI_SZ key.  These
-    // are in addition to the Start Page, and no empty entries are possible,
-    // thus a Start Page is always defined if any of these exists, though it
-    // may be the default one.
-    let secondaryPages = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                                    kMainKey, "Secondary Start Pages");
-    if (secondaryPages) {
-      if (homepage)
-        secondaryPages.unshift(homepage);
-      homepage = secondaryPages.join("|");
-    }
-
-    return homepage;
-  }
-});
 
 IEProfileMigrator.prototype.classDescription = "IE Profile Migrator";
 IEProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=ie";

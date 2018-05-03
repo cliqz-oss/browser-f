@@ -6,39 +6,44 @@ use cg;
 use quote::Tokens;
 use syn::DeriveInput;
 use synstructure;
+use to_css::CssVariantAttrs;
 
 pub fn derive(input: DeriveInput) -> Tokens {
     let name = &input.ident;
+    let s = synstructure::Structure::new(&input);
 
-    let mut match_body = quote! {};
-
-    let style = synstructure::BindStyle::Ref.into();
-    synstructure::each_variant(&input, &style, |bindings, variant| {
+    let match_body = s.variants().iter().fold(quote!(), |match_body, variant| {
+        let bindings = variant.bindings();
         assert!(
             bindings.is_empty(),
             "Parse is only supported for single-variant enums for now"
         );
 
-        let variant_attrs = cg::parse_variant_attrs::<ParseVariantAttrs>(variant);
-        let identifier = cg::to_css_identifier(variant.ident.as_ref());
-        let ident = &variant.ident;
+        let variant_attrs = cg::parse_variant_attrs::<CssVariantAttrs>(&variant.ast());
+        let identifier = cg::to_css_identifier(
+            &variant_attrs.keyword.unwrap_or(variant.ast().ident.as_ref().into()),
+        );
+        let ident = &variant.ast().ident;
 
-        match_body = quote! {
+        let mut body = quote! {
             #match_body
             #identifier => Ok(#name::#ident),
         };
 
+
         let aliases = match variant_attrs.aliases {
             Some(aliases) => aliases,
-            None => return,
+            None => return body,
         };
 
         for alias in aliases.split(",") {
-            match_body = quote! {
-                #match_body
+            body = quote! {
+                #body
                 #alias => Ok(#name::#ident),
             };
         }
+
+        body
     });
 
     let parse_trait_impl = quote! {
@@ -86,12 +91,4 @@ pub fn derive(input: DeriveInput) -> Tokens {
         #parse_trait_impl
         #methods_impl
     }
-}
-
-#[darling(attributes(parse), default)]
-#[derive(Default, FromVariant)]
-struct ParseVariantAttrs {
-    /// The comma-separated list of aliases this variant should be aliased to at
-    /// parse time.
-    aliases: Option<String>,
 }

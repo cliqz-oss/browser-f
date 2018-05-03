@@ -18,8 +18,7 @@
 #include "nsIClassInfoImpl.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIDOMHTMLDocument.h"
-#include "nsIDOMHTMLElement.h"
+#include "nsIDOMDocument.h"
 #include "nsIDOMNode.h"
 #include "nsIHttpChannel.h"
 #include "nsIInterfaceRequestor.h"
@@ -31,6 +30,7 @@
 #include "nsIStringStream.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIUploadChannel.h"
+#include "nsIURIMutator.h"
 #include "nsIScriptError.h"
 #include "nsIWebNavigation.h"
 #include "nsMimeTypes.h"
@@ -51,6 +51,7 @@
 #include "nsIScriptElement.h"
 #include "nsIEventTarget.h"
 #include "mozilla/dom/DocGroup.h"
+#include "mozilla/dom/Element.h"
 #include "nsXULAppAPI.h"
 
 using namespace mozilla;
@@ -189,10 +190,10 @@ nsCSPContext::ShouldLoad(nsContentPolicyType aContentType,
   if (!isPreload) {
     if (aContentType == nsIContentPolicy::TYPE_SCRIPT ||
         aContentType == nsIContentPolicy::TYPE_STYLESHEET) {
-      nsCOMPtr<nsIDOMHTMLElement> htmlElement = do_QueryInterface(aRequestContext);
-      if (htmlElement) {
-        rv = htmlElement->GetAttribute(NS_LITERAL_STRING("nonce"), nonce);
-        NS_ENSURE_SUCCESS(rv, rv);
+      nsCOMPtr<Element> element = do_QueryInterface(aRequestContext);
+      if (element && element->IsHTMLElement()) {
+        // XXXbz What about SVG elements that can have nonce?
+        element->GetAttribute(NS_LITERAL_STRING("nonce"), nonce);
       }
     }
 
@@ -1073,6 +1074,7 @@ nsCSPContext::SendReports(
                          doc,
                          nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                          nsIContentPolicy::TYPE_CSP_REPORT,
+                         nullptr, // aPerformanceStorage
                          nullptr, // aLoadGroup
                          nullptr, // aCallbacks
                          loadFlags);
@@ -1083,6 +1085,7 @@ nsCSPContext::SendReports(
                          mLoadingPrincipal,
                          nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                          nsIContentPolicy::TYPE_CSP_REPORT,
+                         nullptr, // PerformanceStorage
                          nullptr, // aLoadGroup
                          nullptr, // aCallbacks
                          loadFlags);
@@ -1453,12 +1456,17 @@ nsCSPContext::PermitsAncestry(nsIDocShell* aDocShell, bool* outPermitsAncestry)
 
     if (currentURI) {
       // delete the userpass from the URI.
-      rv = currentURI->CloneIgnoringRef(getter_AddRefs(uriClone));
-      NS_ENSURE_SUCCESS(rv, rv);
+      rv = NS_MutateURI(currentURI)
+             .SetRef(EmptyCString())
+             .SetUserPass(EmptyCString())
+             .Finalize(uriClone);
 
-      // We don't care if this succeeds, just want to delete a userpass if
-      // there was one.
-      uriClone->SetUserPass(EmptyCString());
+      // If setUserPass fails for some reason, just return a clone of the
+      // current URI
+      if (NS_FAILED(rv)) {
+        rv = currentURI->CloneIgnoringRef(getter_AddRefs(uriClone));
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
 
       if (CSPCONTEXTLOGENABLED()) {
         CSPCONTEXTLOG(("nsCSPContext::PermitsAncestry, found ancestor: %s",

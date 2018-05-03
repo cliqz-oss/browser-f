@@ -56,24 +56,30 @@ CSS_PSEUDO_ELEMENT(mozFocusOuter, ":-moz-focus-outer", 0)
 CSS_PSEUDO_ELEMENT(mozListBullet, ":-moz-list-bullet", 0)
 CSS_PSEUDO_ELEMENT(mozListNumber, ":-moz-list-number", 0)
 
-CSS_PSEUDO_ELEMENT(mozMathAnonymous, ":-moz-math-anonymous", 0)
+// FIXME(emilio): It's unclear why this needs to exist at all, we don't ever
+// style them.
+//
+// This is a pseudo instead of an anon box because of how the
+// AdditionalStyleContext APIs work.
+CSS_PSEUDO_ELEMENT(mozMathAnonymous, ":-moz-math-anonymous",
+  CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
 
 // HTML5 Forms pseudo elements
 CSS_PSEUDO_ELEMENT(mozNumberWrapper, ":-moz-number-wrapper",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
-                   CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY)
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(mozNumberText, ":-moz-number-text",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
-                   CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY)
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(mozNumberSpinBox, ":-moz-number-spin-box",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
-                   CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY)
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(mozNumberSpinUp, ":-moz-number-spin-up",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
-                   CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY)
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(mozNumberSpinDown, ":-moz-number-spin-down",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
-                   CSS_PSEUDO_ELEMENT_UA_SHEET_ONLY)
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(mozProgressBar, ":-moz-progress-bar",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE)
 CSS_PSEUDO_ELEMENT(mozRangeTrack, ":-moz-range-track",

@@ -146,6 +146,10 @@ public:
         MOZ_ASSERT(aPos < GetLength());
         return mCharacterGlyphs[aPos].CharMayHaveEmphasisMark();
     }
+    bool CharIsFormattingControl(uint32_t aPos) const {
+        MOZ_ASSERT(aPos < GetLength());
+        return mCharacterGlyphs[aPos].CharIsFormattingControl();
+    }
 
     // All offsets are in terms of the string passed into MakeTextRun.
 
@@ -541,11 +545,11 @@ public:
     void SortGlyphRuns();
     void SanitizeGlyphRuns();
 
-    const CompressedGlyph* GetCharacterGlyphs() const final override {
+    const CompressedGlyph* GetCharacterGlyphs() const final {
         MOZ_ASSERT(mCharacterGlyphs, "failed to initialize mCharacterGlyphs");
         return mCharacterGlyphs;
     }
-    CompressedGlyph* GetCharacterGlyphs() final override {
+    CompressedGlyph* GetCharacterGlyphs() final {
         MOZ_ASSERT(mCharacterGlyphs, "failed to initialize mCharacterGlyphs");
         return mCharacterGlyphs;
     }
@@ -588,6 +592,9 @@ public:
     }
     void SetNoEmphasisMark(uint32_t aIndex) {
         EnsureComplexGlyph(aIndex).SetNoEmphasisMark();
+    }
+    void SetIsFormattingControl(uint32_t aIndex) {
+        EnsureComplexGlyph(aIndex).SetIsFormattingControl();
     }
 
     /**

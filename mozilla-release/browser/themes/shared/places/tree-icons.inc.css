@@ -2,18 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+treechildren:-moz-tree-image {
+  -moz-context-properties: fill, fill-opacity;
+  fill: -moz-FieldText;
+  fill-opacity: 0.7;
+}
+
 treechildren::-moz-tree-image(title) {
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
   padding-inline-end: 2px;
   margin: 0 2px;
   width: 16px;
   height: 16px;
-}
-
-treechildren:-moz-tree-image {
-  -moz-context-properties: fill, fill-opacity;
-  fill: -moz-FieldText;
-  fill-opacity: 0.7;
 }
 
 treechildren::-moz-tree-image(title, livemarkItem) {
@@ -37,29 +37,29 @@ treechildren::-moz-tree-image(title, separator) {
   margin: 0;
 }
 
-treechildren::-moz-tree-image(container, OrganizerQuery_AllBookmarks) {
-  list-style-image: url("chrome://browser/skin/places/allBookmarks.png");
-}
-
 treechildren::-moz-tree-image(container, livemark) {
   list-style-image: url("chrome://browser/skin/places/folder-live.svg");
 }
 
-treechildren::-moz-tree-image(container, OrganizerQuery_BookmarksToolbar) {
+treechildren::-moz-tree-image(container, queryFolder_toolbar_____) {
   list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.svg");
 }
 
-treechildren::-moz-tree-image(container, OrganizerQuery_BookmarksMenu) {
+treechildren::-moz-tree-image(container, queryFolder_menu________) {
   list-style-image: url("chrome://browser/skin/places/bookmarksMenu.svg");
 }
 
-treechildren::-moz-tree-image(container, OrganizerQuery_UnfiledBookmarks) {
+treechildren::-moz-tree-image(container, queryFolder_unfiled_____) {
   list-style-image: url("chrome://browser/skin/places/unfiledBookmarks.svg");
 }
 
 /* query-nodes should be styled even if they're not expandable */
 treechildren::-moz-tree-image(query) {
   list-style-image: url("chrome://browser/skin/places/folder-smart.svg");
+}
+
+treechildren::-moz-tree-image(query, OrganizerQuery_AllBookmarks) {
+  list-style-image: url("chrome://browser/skin/places/allBookmarks.png");
 }
 
 treechildren::-moz-tree-image(query, OrganizerQuery_Downloads) {

@@ -3,8 +3,6 @@
 # This configuration should be combined with suite definitions and other
 # mozharness configuration from android_common.py, or similar.
 
-import os
-
 config = {
     "deprecated_sdk_path": True,
     "tooltool_manifest_path": "testing/config/tooltool-manifests/androidx86/releng.manifest",
@@ -22,7 +20,6 @@ config = {
     "emulator_extra_args": "-show-kernel -debug init,console,gles,memcheck,adbserver,adbclient,adb,avd_config,socket -qemu -m 1024",
     "exes": {
         'adb': '%(abs_work_dir)s/android-sdk18/platform-tools/adb',
-        'tooltool.py': ['python', '/builds/worker/scripts/tooltool.py'],
     },
     "env": {
         "DISPLAY": ":0.0",

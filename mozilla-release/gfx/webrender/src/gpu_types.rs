@@ -2,16 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{LayerToWorldTransform};
-use gpu_cache::GpuCacheAddress;
+use api::{DevicePoint, LayerToWorldTransform, PremultipliedColorF, WorldToLayerTransform};
+use gpu_cache::{GpuCacheAddress, GpuDataRequest};
 use prim_store::EdgeAaSegmentMask;
 use render_task::RenderTaskAddress;
 
 // Contains type that must exactly match the same structures declared in GLSL.
 
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[repr(C)]
+pub enum RasterizationSpace {
+    Local = 0,
+    Screen = 1,
+}
+
 #[repr(i32)]
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub enum BlurDirection {
     Horizontal = 0,
     Vertical,
@@ -19,7 +29,8 @@ pub enum BlurDirection {
 
 #[derive(Debug)]
 #[repr(C)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct BlurInstance {
     pub task_address: RenderTaskAddress,
     pub src_task_address: RenderTaskAddress,
@@ -30,7 +41,8 @@ pub struct BlurInstance {
 /// Could be an image or a rectangle, which defines the
 /// way `address` is treated.
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
 pub struct ClipMaskInstance {
     pub render_task_address: RenderTaskAddress,
@@ -42,7 +54,8 @@ pub struct ClipMaskInstance {
 
 // 32 bytes per instance should be enough for anyone!
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct PrimitiveInstance {
     data: [i32; 8],
 }
@@ -143,6 +156,14 @@ impl From<CompositePrimitiveInstance> for PrimitiveInstance {
     }
 }
 
+bitflags! {
+    /// Flags that define how the common brush shader
+    /// code should process this instance.
+    pub struct BrushFlags: u8 {
+        const PERSPECTIVE_INTERPOLATION = 0x1;
+    }
+}
+
 // TODO(gw): While we are comverting things over, we
 //           need to have the instance be the same
 //           size as an old PrimitiveInstance. In the
@@ -160,48 +181,42 @@ pub struct BrushInstance {
     pub z: i32,
     pub segment_index: i32,
     pub edge_flags: EdgeAaSegmentMask,
-    pub user_data0: i32,
-    pub user_data1: i32,
+    pub brush_flags: BrushFlags,
+    pub user_data: [i32; 3],
 }
 
 impl From<BrushInstance> for PrimitiveInstance {
     fn from(instance: BrushInstance) -> Self {
         PrimitiveInstance {
             data: [
-                instance.picture_address.0 as i32,
+                instance.picture_address.0 as i32 | (instance.clip_task_address.0 as i32) << 16,
                 instance.prim_address.as_int(),
                 ((instance.clip_chain_rect_index.0 as i32) << 16) | instance.scroll_id.0 as i32,
-                instance.clip_task_address.0 as i32,
                 instance.z,
-                instance.segment_index | ((instance.edge_flags.bits() as i32) << 16),
-                instance.user_data0,
-                instance.user_data1,
+                instance.segment_index |
+                    ((instance.edge_flags.bits() as i32) << 16) |
+                    ((instance.brush_flags.bits() as i32) << 24),
+                instance.user_data[0],
+                instance.user_data[1],
+                instance.user_data[2],
             ]
         }
     }
 }
 
-// Defines how a brush image is stretched onto the primitive.
-// In the future, we may draw with segments for each portion
-// of the primitive, in which case this will be redundant.
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub enum BrushImageKind {
-    Simple = 0,     // A normal rect
-    NinePatch = 1,  // A nine-patch image (stretch inside segments)
-    Mirror = 2,     // A top left corner only (mirror across x/y axes)
-}
-
 #[derive(Copy, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
 pub struct ClipScrollNodeIndex(pub u32);
 
 #[derive(Debug)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
 pub struct ClipScrollNodeData {
     pub transform: LayerToWorldTransform,
+    pub inv_transform: WorldToLayerTransform,
     pub transform_kind: f32,
     pub padding: [f32; 3],
 }
@@ -210,6 +225,7 @@ impl ClipScrollNodeData {
     pub fn invalid() -> Self {
         ClipScrollNodeData {
             transform: LayerToWorldTransform::identity(),
+            inv_transform: WorldToLayerTransform::identity(),
             transform_kind: 0.0,
             padding: [0.0; 3],
         }
@@ -221,10 +237,40 @@ impl ClipScrollNodeData {
 pub struct ClipChainRectIndex(pub usize);
 
 #[derive(Copy, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
 pub enum PictureType {
     Image = 1,
     TextShadow = 2,
-    BoxShadow = 3,
+}
+
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[repr(C)]
+pub struct ImageSource {
+    pub p0: DevicePoint,
+    pub p1: DevicePoint,
+    pub texture_layer: f32,
+    pub user_data: [f32; 3],
+    pub color: PremultipliedColorF,
+}
+
+impl ImageSource {
+    pub fn write_gpu_blocks(&self, request: &mut GpuDataRequest) {
+        request.push([
+            self.p0.x,
+            self.p0.y,
+            self.p1.x,
+            self.p1.y,
+        ]);
+        request.push([
+            self.texture_layer,
+            self.user_data[0],
+            self.user_data[1],
+            self.user_data[2],
+        ]);
+        request.push(self.color);
+    }
 }

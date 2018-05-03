@@ -9,12 +9,12 @@
 
 "use strict";
 
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://testing-common/services/sync/utils.js");
 
 let {sanitizeStorageObject, AutofillRecord, AddressesEngine} =
-  Cu.import("resource://formautofill/FormAutofillSync.jsm", {});
+  ChromeUtils.import("resource://formautofill/FormAutofillSync.jsm", {});
 
 
 Services.prefs.setCharPref("extensions.formautofill.loglevel", "Trace");
@@ -142,6 +142,7 @@ add_task(async function test_outgoing() {
       },
     ]);
 
+    await engine._tracker.asyncObserver.promiseObserversComplete();
     // The tracker should have a score recorded for the 2 additions we had.
     equal(engine._tracker.score, SCORE_INCREMENT_XLARGE * 2);
 

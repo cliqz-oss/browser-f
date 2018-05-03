@@ -9,7 +9,9 @@ include protocol PHttpChannel;
 include protocol PFTPChannel;
 include protocol PChildToParentStream;
 include BlobTypes;
+include ClientIPCTypes;
 include URIParams;
+include IPCServiceWorkerDescriptor;
 include IPCStream;
 include PBackgroundSharedTypes;
 
@@ -17,7 +19,7 @@ using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 using RequestHeaderTuples from "mozilla/net/PHttpChannelParams.h";
 using struct nsHttpAtom from "nsHttp.h";
-using class nsHttpResponseHead from "nsHttpResponseHead.h";
+using class mozilla::net::nsHttpResponseHead from "nsHttpResponseHead.h";
 using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
 
 namespace mozilla {
@@ -45,9 +47,12 @@ struct LoadInfoArgs
   uint32_t                    contentPolicyType;
   uint32_t                    tainting;
   bool                        upgradeInsecureRequests;
+  bool                        browserUpgradeInsecureRequests;
   bool                        verifySignedContent;
   bool                        enforceSRI;
+  bool                        allowDocumentToBeAgnosticToCSP;
   bool                        forceAllowDataURI;
+  bool                        allowInsecureRedirectToDataURI;
   bool                        forceInheritPrincipalDropped;
   uint64_t                    innerWindowID;
   uint64_t                    outerWindowID;
@@ -57,6 +62,7 @@ struct LoadInfoArgs
   bool                        enforceSecurity;
   bool                        initialSecurityCheckDone;
   bool                        isInThirdPartyContext;
+  bool                        isDocshellReload;
   OriginAttributes            originAttributes;
   RedirectHistoryEntryInfo[]  redirectChainIncludingInternalRedirects;
   RedirectHistoryEntryInfo[]  redirectChain;
@@ -67,6 +73,29 @@ struct LoadInfoArgs
    */
   PrincipalInfo[]             ancestorPrincipals;
   uint64_t[]                  ancestorOuterWindowIDs;
+
+  /**
+   * ClientInfo structure representing the window or worker that triggered
+   * this network request.  May be void_t if its a system internal request.
+   */
+  OptionalIPCClientInfo       clientInfo;
+
+  /**
+   * Non-subresource requests will result in the creation of a window or
+   * worker client.  The reserved and initial ClientInfo values represent
+   * this resulting client.  An initial ClientInfo represents an initial
+   * about:blank window that will be re-used while a reserved ClientInfo
+   * represents a to-be-newly-created window/worker.
+   */
+  OptionalIPCClientInfo       reservedClientInfo;
+  OptionalIPCClientInfo       initialClientInfo;
+
+  /**
+   * Subresource loads may have a controller set based on their owning
+   * window/worker client.  We must send this across IPC to support
+   * performing interception in the parent.
+   */
+  OptionalIPCServiceWorkerDescriptor controller;
 
   nsCString[]                 corsUnsafeHeaders;
   bool                        forcePreflight;
@@ -82,6 +111,25 @@ union OptionalLoadInfoArgs
 {
   void_t;
   LoadInfoArgs;
+};
+
+/**
+ * This structure is used to carry selected properties of a LoadInfo
+ * object to child processes to merge LoadInfo changes from the parent
+ * process.  We don't want to use LoadInfoArgs for that since it's
+ * too huge and we only care about small subpart of properties anyway.
+ */
+struct ParentLoadInfoForwarderArgs
+{
+  // WebExtextensions' WebRequest API allows extensions to intercept and
+  // redirect a channel to a data URI. This modifications happens in
+  // the parent and needs to be mirrored to the child so that security
+  // checks can pass.
+  bool allowInsecureRedirectToDataURI;
+
+  // IMPORTANT: when you add new properites here you must also update
+  // LoadInfoToParentLoadInfoForwarder and MergeParentLoadInfoForwarder
+  // in BackgroundUtils.cpp/.h!
 };
 
 //-----------------------------------------------------------------------------
@@ -147,6 +195,8 @@ struct HttpChannelOpenArgs
   bool                        suspendAfterSynthesizeResponse;
   bool                        allowStaleCacheContent;
   nsCString                   contentTypeHint;
+  uint32_t                    corsMode;
+  uint32_t                    redirectMode;
   uint64_t                    channelId;
   uint64_t                    contentWindowId;
   nsCString                   preferredAlternativeType;

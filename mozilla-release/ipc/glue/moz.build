@@ -33,6 +33,7 @@ EXPORTS.mozilla.ipc += [
     'IPCStreamDestination.h',
     'IPCStreamSource.h',
     'IPCStreamUtils.h',
+    'IPDLParamTraits.h',
     'MessageChannel.h',
     'MessageLink.h',
     'Neutering.h',
@@ -190,7 +191,6 @@ LOCAL_INCLUDES += [
     '/dom/broadcastchannel',
     '/dom/indexedDB',
     '/dom/storage',
-    '/dom/workers',
     '/media/webrtc/trunk',
     '/xpcom/build',
 ]

@@ -3,20 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NewTabUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NewTabUtils.jsm");
 Cu.importGlobalProperties(["fetch"]);
 
-const {actionTypes: at, actionCreators: ac} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
-const {shortURL} = Cu.import("resource://activity-stream/lib/ShortURL.jsm", {});
-const {SectionsManager} = Cu.import("resource://activity-stream/lib/SectionsManager.jsm", {});
-const {UserDomainAffinityProvider} = Cu.import("resource://activity-stream/lib/UserDomainAffinityProvider.jsm", {});
-const {PersistentCache} = Cu.import("resource://activity-stream/lib/PersistentCache.jsm", {});
+const {actionTypes: at, actionCreators: ac} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm", {});
+const {SectionsManager} = ChromeUtils.import("resource://activity-stream/lib/SectionsManager.jsm", {});
+const {UserDomainAffinityProvider} = ChromeUtils.import("resource://activity-stream/lib/UserDomainAffinityProvider.jsm", {});
+const {PersistentCache} = ChromeUtils.import("resource://activity-stream/lib/PersistentCache.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "perfService", "resource://activity-stream/common/PerfService.jsm");
+ChromeUtils.defineModuleGetter(this, "perfService", "resource://activity-stream/common/PerfService.jsm");
 
 const STORIES_UPDATE_TIME = 30 * 60 * 1000; // 30 minutes
 const TOPICS_UPDATE_TIME = 3 * 60 * 60 * 1000; // 3 hours
@@ -30,8 +29,6 @@ const MAX_LIFETIME_CAP = 100; // Guard against misconfiguration on the server
 
 this.TopStoriesFeed = class TopStoriesFeed {
   constructor() {
-    this.spocsPerNewTabs = 0;
-    this.newTabsSinceSpoc = 0;
     this.spocCampaignMap = new Map();
     this.contentUpdateQueue = [];
     this.cache = new PersistentCache(SECTION_ID, true);
@@ -42,7 +39,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
     const initFeed = () => {
       SectionsManager.enableSection(SECTION_ID);
       try {
-        const options = SectionsManager.sections.get(SECTION_ID).options;
+        const {options} = SectionsManager.sections.get(SECTION_ID);
         const apiKey = this.getApiKeyFromPref(options.api_key_pref);
         this.stories_endpoint = this.produceFinalEndpointUrl(options.stories_endpoint, apiKey);
         this.topics_endpoint = this.produceFinalEndpointUrl(options.topics_endpoint, apiKey);
@@ -102,7 +99,8 @@ this.TopStoriesFeed = class TopStoriesFeed {
       }
 
       this.dispatchUpdateEvent(this.storiesLastUpdated, {rows: this.stories});
-      body._timestamp = this.storiesLastUpdated = Date.now();
+      this.storiesLastUpdated = Date.now();
+      body._timestamp = this.storiesLastUpdated;
       // This is filtered so an update function can return true to retry on the next run
       this.contentUpdateQueue = this.contentUpdateQueue.filter(update => update());
 
@@ -143,7 +141,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
       .filter(s => !NewTabUtils.blockedLinks.isBlocked({"url": s.url}))
       .map(s => ({
         "guid": s.id,
-        "hostname": shortURL(Object.assign({}, s, {url: s.url})),
+        "hostname": s.domain || shortURL(Object.assign({}, s, {url: s.url})),
         "type": (Date.now() - (s.published_timestamp * 1000)) <= STORIES_NOW_THRESHOLD ? "now" : "trending",
         "context": s.context,
         "icon": s.icon,
@@ -172,7 +170,8 @@ this.TopStoriesFeed = class TopStoriesFeed {
       const {topics} = body;
       if (topics) {
         this.dispatchUpdateEvent(this.topicsLastUpdated, {topics, read_more_endpoint: this.read_more_endpoint});
-        body._timestamp = this.topicsLastUpdated = Date.now();
+        this.topicsLastUpdated = Date.now();
+        body._timestamp = this.topicsLastUpdated;
         this.cache.set("topics", body);
       }
     } catch (error) {
@@ -193,7 +192,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return;
     }
 
-    this.spocsPerNewTabs = settings.spocsPerNewTabs;
+    this.spocsPerNewTabs = settings.spocsPerNewTabs; // Probability of a new tab getting a spoc [0,1]
     this.timeSegments = settings.timeSegments;
     this.domainAffinityParameterSets = settings.domainAffinityParameterSets;
     this.recsExpireTime = settings.recsExpireTime;
@@ -224,7 +223,8 @@ this.TopStoriesFeed = class TopStoriesFeed {
     }));
 
     const affinities = this.affinityProvider.getAffinities();
-    affinities._timestamp = this.domainAffinitiesLastUpdated = Date.now();
+    this.domainAffinitiesLastUpdated = Date.now();
+    affinities._timestamp = this.domainAffinitiesLastUpdated;
     this.cache.set("domainAffinities", affinities);
   }
 
@@ -291,7 +291,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return;
     }
 
-    if (this.newTabsSinceSpoc === 0 || this.newTabsSinceSpoc === this.spocsPerNewTabs) {
+    if (Math.random() <= this.spocsPerNewTabs) {
       const updateContent = () => {
         if (!this.spocs || !this.spocs.length) {
           // We have stories but no spocs so there's nothing to do and this update can be
@@ -309,13 +309,13 @@ this.TopStoriesFeed = class TopStoriesFeed {
         }
 
         // Create a new array with a spoc inserted at index 2
-        const position = SectionsManager.sections.get(SECTION_ID).order;
-        let rows = this.store.getState().Sections[position].rows.slice(0, this.stories.length);
-        rows.splice(2, 0, spocs[0]);
+        const section = this.store.getState().Sections.find(s => s.id === SECTION_ID);
+        let rows = section.rows.slice(0, this.stories.length);
+        rows.splice(2, 0, Object.assign(spocs[0], {pinned: true}));
 
         // Send a content update to the target tab
-        const action = {type: at.SECTION_UPDATE, meta: {skipMain: true}, data: Object.assign({rows}, {id: SECTION_ID})};
-        this.store.dispatch(ac.SendToContent(action, target));
+        const action = {type: at.SECTION_UPDATE, data: Object.assign({rows}, {id: SECTION_ID})};
+        this.store.dispatch(ac.OnlyToOneContent(action, target));
         return false;
       };
 
@@ -325,10 +325,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
         // Delay updating tab content until initial data has been fetched
         this.contentUpdateQueue.push(updateContent);
       }
-
-      this.newTabsSinceSpoc = 0;
     }
-    this.newTabsSinceSpoc++;
   }
 
   // Frequency caps are based on campaigns, which may include multiple spocs.
@@ -509,4 +506,4 @@ this.SPOC_IMPRESSION_TRACKING_PREF = SPOC_IMPRESSION_TRACKING_PREF;
 this.REC_IMPRESSION_TRACKING_PREF = REC_IMPRESSION_TRACKING_PREF;
 this.MIN_DOMAIN_AFFINITIES_UPDATE_TIME = MIN_DOMAIN_AFFINITIES_UPDATE_TIME;
 this.DEFAULT_RECS_EXPIRE_TIME = DEFAULT_RECS_EXPIRE_TIME;
-this.EXPORTED_SYMBOLS = ["TopStoriesFeed", "STORIES_UPDATE_TIME", "TOPICS_UPDATE_TIME", "SECTION_ID", "SPOC_IMPRESSION_TRACKING_PREF", "MIN_DOMAIN_AFFINITIES_UPDATE_TIME", "REC_IMPRESSION_TRACKING_PREF", "DEFAULT_RECS_EXPIRE_TIME"];
+const EXPORTED_SYMBOLS = ["TopStoriesFeed", "STORIES_UPDATE_TIME", "TOPICS_UPDATE_TIME", "SECTION_ID", "SPOC_IMPRESSION_TRACKING_PREF", "MIN_DOMAIN_AFFINITIES_UPDATE_TIME", "REC_IMPRESSION_TRACKING_PREF", "DEFAULT_RECS_EXPIRE_TIME"];

@@ -4,39 +4,37 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["UITour"];
+var EXPORTED_SYMBOLS = ["UITour"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/TelemetryController.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
+ChromeUtils.defineModuleGetter(this, "BrowserUITelemetry",
   "resource:///modules/BrowserUITelemetry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
+ChromeUtils.defineModuleGetter(this, "FxAccounts",
   "resource://gre/modules/FxAccounts.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
   "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PageActions",
+ChromeUtils.defineModuleGetter(this, "PageActions",
   "resource:///modules/PageActions.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
+ChromeUtils.defineModuleGetter(this, "ProfileAge",
   "resource://gre/modules/ProfileAge.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
+ChromeUtils.defineModuleGetter(this, "ReaderParent",
   "resource:///modules/ReaderParent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ResetProfile",
+ChromeUtils.defineModuleGetter(this, "ResetProfile",
   "resource://gre/modules/ResetProfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
+ChromeUtils.defineModuleGetter(this, "UITelemetry",
   "resource://gre/modules/UITelemetry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
   "resource://gre/modules/UpdateUtils.jsm");
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
@@ -73,7 +71,7 @@ const TARGET_SEARCHENGINE_PREFIX = "searchEngine-";
 
 // Create a new instance of the ConsoleAPI so we can control the maxLogLevel with a pref.
 XPCOMUtils.defineLazyGetter(this, "log", () => {
-  let ConsoleAPI = Cu.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
+  let ConsoleAPI = ChromeUtils.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
   let consoleOptions = {
     maxLogLevelPref: PREF_LOG_LEVEL,
     prefix: "UITour",
@@ -81,7 +79,7 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
   return new ConsoleAPI(consoleOptions);
 });
 
-this.UITour = {
+var UITour = {
   url: null,
   seenPageIDs: null,
   // This map is not persisted and is used for
@@ -157,7 +155,7 @@ this.UITour = {
         // The pocket's urlbar page action button is pre-defined in the DOM.
         // It would be hidden if toggled off from the urlbar.
         let node = aDocument.getElementById("pocket-button-box");
-        if (node && node.hidden == false) {
+        if (node && !node.hidden) {
           return node;
         }
         return aDocument.getElementById("pageAction-panel-pocket");
@@ -223,7 +221,7 @@ this.UITour = {
         // The bookmark's urlbar page action button is pre-defined in the DOM.
         // It would be hidden if toggled off from the urlbar.
         let node = aDocument.getElementById("star-button-box");
-        if (node && node.hidden == false) {
+        if (node && !node.hidden) {
           return node;
         }
         return aDocument.getElementById("pageAction-panel-bookmark");
@@ -415,7 +413,7 @@ this.UITour = {
             return;
           }
           let effect = undefined;
-          if (this.highlightEffects.indexOf(data.effect) !== -1) {
+          if (this.highlightEffects.includes(data.effect)) {
             effect = data.effect;
           }
           this.showHighlight(window, target, effect);
@@ -553,8 +551,8 @@ this.UITour = {
 
       case "showFirefoxAccounts": {
         Promise.resolve().then(() => {
-          return data.email ? fxAccounts.promiseAccountsEmailURI(data.email, "uitour") :
-                              fxAccounts.promiseAccountsSignUpURI("uitour");
+          return data.email ? FxAccounts.config.promiseEmailURI(data.email, "uitour") :
+                              FxAccounts.config.promiseSignUpURI("uitour");
         }).then(uri => {
           const url = new URL(uri);
           // Call our helper to validate extraURLCampaignParams and populate URLSearchParams
@@ -570,16 +568,17 @@ this.UITour = {
       }
 
       case "showConnectAnotherDevice": {
-        const url = new URL(Services.prefs.getCharPref("identity.fxaccounts.remote.connectdevice.uri"));
-        url.searchParams.append("entrypoint", "uitour");
-        // Call our helper to validate extraURLCampaignParams and populate URLSearchParams
-        if (!this._populateCampaignParams(url, data.extraURLCampaignParams)) {
-          log.warn("showConnectAnotherDevice: invalid campaign args specified");
-          return false;
-        }
+        FxAccounts.config.promiseConnectDeviceURI("uitour").then(uri => {
+          const url = new URL(uri);
+          // Call our helper to validate extraURLCampaignParams and populate URLSearchParams
+          if (!this._populateCampaignParams(url, data.extraURLCampaignParams)) {
+            log.warn("showConnectAnotherDevice: invalid campaign args specified");
+            return;
+          }
 
-        // We want to replace the current tab.
-        browser.loadURI(url.href);
+          // We want to replace the current tab.
+          browser.loadURI(url.href);
+        });
         break;
       }
 

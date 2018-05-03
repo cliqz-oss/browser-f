@@ -7,11 +7,11 @@ repository = "https://hg.mozilla.org/mozilla-central/file/tip/testing/mozbase/ru
 license = "MPL-2.0"
 
 [dependencies]
-log = "0.3"
-mozprofile = "0.3"
+log = "0.4"
+mozprofile = { path = "../mozprofile" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.3.5"
+winreg = "0.5"
 
 [[bin]]
 name = "firefox-default-path"

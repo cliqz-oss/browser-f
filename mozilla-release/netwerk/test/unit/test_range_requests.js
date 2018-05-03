@@ -18,8 +18,8 @@
 //  The test has one handler for each case and run_tests() fires one request
 //  for each. None of the handlers should see a Range-header.
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver = null;
 
@@ -49,16 +49,16 @@ Canceler.prototype = {
         iid.equals(Ci.nsIRequestObserver) ||
         iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onStartRequest: function(request, context) { },
 
   onDataAvailable: function(request, context, stream, offset, count) {
     request.QueryInterface(Ci.nsIChannel)
-           .cancel(Components.results.NS_BINDING_ABORTED);
+           .cancel(Cr.NS_BINDING_ABORTED);
   },
   onStopRequest: function(request, context, status) {
-    Assert.equal(status, Components.results.NS_BINDING_ABORTED);
+    Assert.equal(status, Cr.NS_BINDING_ABORTED);
     this.continueFn(request, null);
   }
 };
@@ -73,7 +73,7 @@ MyListener.prototype = {
         iid.equals(Ci.nsIRequestObserver) ||
         iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onStartRequest: function(request, context) { this._buffer = ""; },
 
@@ -95,7 +95,7 @@ FailedChannelListener.prototype = {
         iid.equals(Ci.nsIRequestObserver) ||
         iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onStartRequest: function(request, context) { },
 
@@ -103,7 +103,7 @@ FailedChannelListener.prototype = {
 
   onStopRequest: function(request, context, status) {
     if (case_8_range_request)
-      Assert.equal(status, Components.results.NS_ERROR_CORRUPTED_CONTENT);
+      Assert.equal(status, Cr.NS_ERROR_CORRUPTED_CONTENT);
     this.continueFn(request, null);
   }
 };

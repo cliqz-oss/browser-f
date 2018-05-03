@@ -7,9 +7,17 @@
 /* import-globals-from aboutDialog-appUpdater.js */
 
 // Services = object with smart getters for common XPCOM services
+<<<<<<< HEAD
 Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
+||||||| merged common ancestors
+Components.utils.import("resource://gre/modules/Services.jsm");
+Components.utils.import("resource://gre/modules/AppConstants.jsm");
+=======
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+>>>>>>> origin/upstream-releases
 
 function init(aEvent) {
   if (aEvent.target != document)
@@ -93,6 +101,9 @@ function init(aEvent) {
         currentChannelText.hidden = true;
   }
 
+  if (AppConstants.MOZ_UPDATE_CHANNEL == "esr") {
+    document.getElementById("release").hidden = false;
+  }
   if (AppConstants.platform == "macosx") {
     // it may not be sized at this point, and we need its width to calculate its position
     window.sizeToContent();

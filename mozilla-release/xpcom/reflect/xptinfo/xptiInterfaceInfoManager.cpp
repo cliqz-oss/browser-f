@@ -116,67 +116,63 @@ XPTInterfaceInfoManager::RegisterBuffer(char *buf, uint32_t length)
 }
 
 void
-XPTInterfaceInfoManager::RegisterXPTHeader(XPTHeader* aHeader)
+XPTInterfaceInfoManager::RegisterXPTHeader(const XPTHeader* aHeader)
 {
-    if (aHeader->major_version >= XPT_MAJOR_INCOMPATIBLE_VERSION) {
-        NS_ASSERTION(!aHeader->num_interfaces,"bad libxpt");
-        LOG_AUTOREG(("      file is version %d.%d  Type file of version %d.0 or higher can not be read.\n", (int)header->major_version, (int)header->minor_version, (int)XPT_MAJOR_INCOMPATIBLE_VERSION));
+    if (aHeader->mMajorVersion >= XPT_MAJOR_INCOMPATIBLE_VERSION) {
+        MOZ_ASSERT(!aHeader->mNumInterfaces, "bad libxpt");
     }
 
     xptiTypelibGuts* typelib = xptiTypelibGuts::Create(aHeader);
 
     ReentrantMonitorAutoEnter monitor(mWorkingSet.mTableReentrantMonitor);
-    for(uint16_t k = 0; k < aHeader->num_interfaces; k++)
-        VerifyAndAddEntryIfNew(aHeader->interface_directory + k, k, typelib);
+    for(uint16_t k = 0; k < aHeader->mNumInterfaces; k++)
+        VerifyAndAddEntryIfNew(aHeader->mInterfaceDirectory + k, k, typelib);
 }
 
 void
-XPTInterfaceInfoManager::VerifyAndAddEntryIfNew(XPTInterfaceDirectoryEntry* iface,
+XPTInterfaceInfoManager::VerifyAndAddEntryIfNew(const XPTInterfaceDirectoryEntry* iface,
                                                 uint16_t idx,
                                                 xptiTypelibGuts* typelib)
 {
-    if (!iface->interface_descriptor)
+    if (!iface->mInterfaceDescriptor)
         return;
 
     // The number of maximum methods is not arbitrary. It is the same value as
     // in xpcom/reflect/xptcall/genstubs.pl; do not change this value
     // without changing that one or you WILL see problems.
-    if (iface->interface_descriptor->num_methods > 250 &&
-            !(XPT_ID_IS_BUILTINCLASS(iface->interface_descriptor->flags))) {
+    if (iface->mInterfaceDescriptor->mNumMethods > 250 &&
+            !iface->mInterfaceDescriptor->IsBuiltinClass()) {
         NS_ASSERTION(0, "Too many methods to handle for the stub, cannot load");
-        fprintf(stderr, "ignoring too large interface: %s\n", iface->name);
+        fprintf(stderr, "ignoring too large interface: %s\n", iface->mName);
         return;
     }
 
     mWorkingSet.mTableReentrantMonitor.AssertCurrentThreadIn();
-    xptiInterfaceEntry* entry = mWorkingSet.mIIDTable.Get(iface->iid);
+    xptiInterfaceEntry* entry = mWorkingSet.mIIDTable.Get(iface->mIID);
     if (entry) {
         // XXX validate this info to find possible inconsistencies
-        LOG_AUTOREG(("      ignoring repeated interface: %s\n", iface->name));
         return;
     }
 
     // Build a new xptiInterfaceEntry object and hook it up.
 
-    entry = xptiInterfaceEntry::Create(iface->name,
-                                       iface->iid,
-                                       iface->interface_descriptor,
+    entry = xptiInterfaceEntry::Create(iface->mName,
+                                       iface->mIID,
+                                       iface->mInterfaceDescriptor,
                                        typelib);
     if (!entry)
         return;
 
     //XXX  We should SetHeader too as part of the validation, no?
-    entry->SetScriptableFlag(XPT_ID_IS_SCRIPTABLE(iface->interface_descriptor->flags));
-    entry->SetBuiltinClassFlag(XPT_ID_IS_BUILTINCLASS(iface->interface_descriptor->flags));
+    entry->SetScriptableFlag(iface->mInterfaceDescriptor->IsScriptable());
+    entry->SetBuiltinClassFlag(iface->mInterfaceDescriptor->IsBuiltinClass());
     entry->SetMainProcessScriptableOnlyFlag(
-      XPT_ID_IS_MAIN_PROCESS_SCRIPTABLE_ONLY(iface->interface_descriptor->flags));
+      iface->mInterfaceDescriptor->IsMainProcessScriptableOnly());
 
     mWorkingSet.mIIDTable.Put(entry->IID(), entry);
     mWorkingSet.mNameTable.Put(entry->GetTheName(), entry);
 
     typelib->SetEntryAt(idx, entry);
-
-    LOG_AUTOREG(("      added interface: %s\n", iface->name));
 }
 
 // this is a private helper

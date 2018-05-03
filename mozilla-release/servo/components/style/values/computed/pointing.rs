@@ -15,6 +15,10 @@ use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 use style_traits::ParseError;
 use style_traits::cursor::CursorKind;
+use values::computed::color::Color;
+use values::generics::pointing::CaretColor as GenericCaretColor;
+#[cfg(feature = "gecko")]
+use values::specified::url::SpecifiedImageUrl;
 
 /// The computed value for the `cursor` property.
 ///
@@ -22,8 +26,6 @@ use style_traits::cursor::CursorKind;
 pub use values::specified::pointing::Cursor;
 #[cfg(feature = "gecko")]
 pub use values::specified::pointing::CursorImage;
-#[cfg(feature = "gecko")]
-use values::specified::url::SpecifiedUrl;
 
 impl Cursor {
     /// Set `cursor` to `auto`
@@ -63,10 +65,7 @@ impl Parse for Cursor {
         let mut images = vec![];
         loop {
             match input.try(|input| CursorImage::parse_image(context, input)) {
-                Ok(mut image) => {
-                    image.url.build_image_value();
-                    images.push(image)
-                }
+                Ok(image) => images.push(image),
                 Err(_) => break,
             }
             input.expect_comma()?;
@@ -112,7 +111,7 @@ impl CursorImage {
         input: &mut Parser<'i, 't>
     ) -> Result<Self, ParseError<'i>> {
         Ok(Self {
-            url: SpecifiedUrl::parse(context, input)?,
+            url: SpecifiedImageUrl::parse(context, input)?,
             // FIXME(emilio): Should use Number::parse to handle calc() correctly.
             hotspot: match input.try(|input| input.expect_number()) {
                 Ok(number) => Some((number, input.expect_number()?)),
@@ -138,3 +137,6 @@ impl ToCss for CursorImage {
         Ok(())
     }
 }
+
+/// A computed value for the `caret-color` property.
+pub type CaretColor = GenericCaretColor<Color>;

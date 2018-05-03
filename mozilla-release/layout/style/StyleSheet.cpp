@@ -6,14 +6,22 @@
 
 #include "mozilla/StyleSheet.h"
 
+#include "nsStyleContextInlines.h"
+#include "mozilla/css/GroupRule.h"
 #include "mozilla/dom/CSSImportRule.h"
 #include "mozilla/dom/CSSRuleList.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/MediaList.h"
 #include "mozilla/dom/ShadowRoot.h"
+#include "mozilla/dom/ShadowRootBinding.h"
 #include "mozilla/ServoCSSRuleList.h"
+#include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoStyleSheet.h"
+#include "mozilla/StyleSetHandleInlines.h"
 #include "mozilla/StyleSheetInlines.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/CSSStyleSheet.h"
+#endif
 
 #include "mozAutoDocUpdate.h"
 #include "NullPrincipal.h"
@@ -76,7 +84,11 @@ StyleSheet::LastRelease()
 
   UnparentChildren();
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     AsGecko()->LastRelease();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     AsServo()->LastRelease();
   }
@@ -386,36 +398,23 @@ StyleSheet::EnsureUniqueInner()
     return;
   }
 
-  // If this stylesheet is for XBL with Servo, don't bother cloning
-  // it, as it may break ServoStyleRuleMap. XBL stylesheets are not
-  // supposed to change anyway.
-  //
-  // The mDocument check is used as a fast reject path because no
-  // XBL stylesheets would have associated document, but in normal
-  // cases, content stylesheets should usually have one.
-  //
-  // FIXME(emilio): Shadow DOM definitely modifies stylesheets! Right now all of
-  // them are unique anyway because we don't support <link>, but that needs to
-  // change.
-  if (!mDocument && IsServo() &&
-      mStyleSets.Length() == 1 &&
-      mStyleSets[0]->AsServo()->IsForXBL()) {
-    return;
-  }
-
   StyleSheetInfo* clone = mInner->CloneFor(this);
   MOZ_ASSERT(clone);
   mInner->RemoveSheet(this);
   mInner = clone;
 
-  if (CSSStyleSheet* geckoSheet = GetAsGecko()) {
+  if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     // Ensure we're using the new rules.
     //
     // NOTE: In Servo, all kind of changes that change the set of selectors or
     // rules we match are covered by the PresShell notifications. In Gecko
     // that's true too, but this is probably needed because selectors are not
     // refcounted and can become stale.
-    geckoSheet->ClearRuleCascades();
+    AsGecko()->ClearRuleCascades();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     // Fixup the child lists and parent links in the Servo sheet. This is done
     // here instead of in StyleSheetInner::CloneFor, because it's just more
@@ -441,11 +440,19 @@ StyleSheet::AppendAllChildSheets(nsTArray<StyleSheet*>& aArray)
 
 // WebIDL CSSStyleSheet API
 
+#ifdef MOZ_OLD_STYLE
 #define FORWARD_INTERNAL(method_, args_) \
   if (IsServo()) { \
     return AsServo()->method_ args_; \
   } \
   return AsGecko()->method_ args_;
+#else
+#define FORWARD_INTERNAL(method_, args_) \
+  if (IsServo()) { \
+    return AsServo()->method_ args_; \
+  } \
+  MOZ_CRASH("old style system disabled");
+#endif
 
 dom::CSSRuleList*
 StyleSheet::GetCssRules(nsIPrincipal& aSubjectPrincipal,
@@ -608,7 +615,11 @@ StyleSheet::InsertRuleIntoGroup(const nsAString& aRule,
 
   nsresult result;
   if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     result = AsGecko()->InsertRuleIntoGroupInternal(aRule, aGroup, aIndex);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     result = AsServo()->InsertRuleIntoGroupInternal(aRule, aGroup, aIndex);
   }

@@ -1,8 +1,8 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/osfile.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 // Test that OS.Constants is defined correctly.
 add_task(async function check_definition() {
@@ -14,7 +14,7 @@ add_task(async function check_definition() {
   Assert.equal(Services.appinfo.OS, OS.Constants.Sys.Name);
 
   // check if using DEBUG build
-  if (Components.classes["@mozilla.org/xpcom/debug;1"].getService(Components.interfaces.nsIDebug2).isDebugBuild == true) {
+  if (Cc["@mozilla.org/xpcom/debug;1"].getService(Ci.nsIDebug2).isDebugBuild) {
     Assert.ok(OS.Constants.Sys.DEBUG);
   } else {
     Assert.ok(typeof(OS.Constants.Sys.DEBUG) == "undefined");

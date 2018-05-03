@@ -4,7 +4,7 @@
 
 "use strict";
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const KeyShortcuts = require("devtools/client/shared/key-shortcuts");
 const {HTMLTooltip} = require("devtools/client/shared/widgets/tooltip/HTMLTooltip");
 const InlineTooltip = require("devtools/client/shared/widgets/tooltip/InlineTooltip");
@@ -48,7 +48,7 @@ class SwatchBasedEditorTooltip {
     this.shortcuts = new KeyShortcuts({
       window: this.tooltip.topWindow
     });
-    this.shortcuts.on("Escape", (name, event) => {
+    this.shortcuts.on("Escape", event => {
       if (!this.tooltip.isVisible()) {
         return;
       }
@@ -57,7 +57,7 @@ class SwatchBasedEditorTooltip {
       event.stopPropagation();
       event.preventDefault();
     });
-    this.shortcuts.on("Return", (name, event) => {
+    this.shortcuts.on("Return", event => {
       if (!this.tooltip.isVisible()) {
         return;
       }
@@ -213,7 +213,7 @@ class SwatchBasedEditorTooltip {
   }
 
   /**
-   * This parent class only calls this on <esc> keypress
+   * This parent class only calls this on <esc> keydown
    */
   revert() {
     if (this.activeSwatch) {
@@ -226,7 +226,7 @@ class SwatchBasedEditorTooltip {
   }
 
   /**
-   * This parent class only calls this on <enter> keypress
+   * This parent class only calls this on <enter> keydown
    */
   commit() {
     if (this.activeSwatch) {
@@ -238,7 +238,7 @@ class SwatchBasedEditorTooltip {
   destroy() {
     this.swatches.clear();
     this.activeSwatch = null;
-    this.tooltip.off("keypress", this._onTooltipKeypress);
+    this.tooltip.off("keydown", this._onTooltipKeydown);
     this.tooltip.destroy();
     this.shortcuts.destroy();
   }

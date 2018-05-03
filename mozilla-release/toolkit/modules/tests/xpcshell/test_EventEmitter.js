@@ -1,9 +1,9 @@
 /* Any copyright do_check_eq dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu, manager: Cm} = Components;
+var Cm = Components.manager;
 
-Cu.import("resource://gre/modules/EventEmitter.jsm");
+ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
 
 add_task(async function test_extractFiles() {
   testEmitter(new EventEmitter());

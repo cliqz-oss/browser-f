@@ -17,16 +17,11 @@
 
 var EXPORTED_SYMBOLS = ["PdfjsChromeUtils"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
 const PREF_PREFIX = "pdfjs";
 const PDF_CONTENT_TYPE = "application/pdf";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var Svc = {};
 XPCOMUtils.defineLazyServiceGetter(Svc, "mime",
@@ -39,7 +34,6 @@ var DEFAULT_PREFERENCES =
   "showPreviousViewOnLoad": true,
   "defaultZoomValue": "",
   "sidebarViewOnLoad": 0,
-  "enableHandToolOnLoad": false,
   "cursorToolOnLoad": 0,
   "enableWebGL": false,
   "pdfBugEnabled": false,
@@ -47,10 +41,9 @@ var DEFAULT_PREFERENCES =
   "disableStream": false,
   "disableAutoFetch": false,
   "disableFontFace": false,
-  "disableTextLayer": false,
+  "textLayerMode": 1,
   "useOnlyCssZoom": false,
   "externalLinkTarget": 0,
-  "enhanceTextSelection": false,
   "renderer": "canvas",
   "renderInteractiveForms": false,
   "enablePrintAutoRotate": false,
@@ -75,8 +68,7 @@ var PdfjsChromeUtils = {
     this._browsers = new WeakSet();
     if (!this._ppmm) {
       // global parent process message manager (PPMM)
-      this._ppmm = Cc["@mozilla.org/parentprocessmessagemanager;1"].
-        getService(Ci.nsIMessageBroadcaster);
+      this._ppmm = Services.ppmm;
       this._ppmm.addMessageListener("PDFJS:Parent:clearUserPref", this);
       this._ppmm.addMessageListener("PDFJS:Parent:setIntPref", this);
       this._ppmm.addMessageListener("PDFJS:Parent:setBoolPref", this);
@@ -85,8 +77,7 @@ var PdfjsChromeUtils = {
       this._ppmm.addMessageListener("PDFJS:Parent:isDefaultHandlerApp", this);
 
       // global dom message manager (MMg)
-      this._mmg = Cc["@mozilla.org/globalmessagemanager;1"].
-        getService(Ci.nsIMessageListenerManager);
+      this._mmg = Services.mm;
       this._mmg.addMessageListener("PDFJS:Parent:displayWarning", this);
 
       this._mmg.addMessageListener("PDFJS:Parent:addEventListener", this);
@@ -265,7 +256,7 @@ var PdfjsChromeUtils = {
   _ensurePreferenceAllowed(aPrefName) {
     let unPrefixedName = aPrefName.split(PREF_PREFIX + ".");
     if (unPrefixedName[0] !== "" ||
-        this._allowedPrefNames.indexOf(unPrefixedName[1]) === -1) {
+        !this._allowedPrefNames.includes(unPrefixedName[1])) {
       let msg = "\"" + aPrefName + "\" " +
                 "can't be accessed from content. See PdfjsChromeUtils.";
       throw new Error(msg);

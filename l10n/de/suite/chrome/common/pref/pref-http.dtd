@@ -13,11 +13,7 @@
 <!ENTITY prefEnableHTTP11.label              "HTTP 1.1 verwenden">
 <!ENTITY prefEnableHTTP11.accesskey          "H">
 <!ENTITY prefEnableHTTP11Proxy.accesskey     "T">
-<!ENTITY prefEnablePipelining.label          "Pipelining verwenden">
-<!ENTITY prefEnablePipelining.accesskey      "P">
-<!ENTITY prefEnablePipeliningProxy.accesskey "i">
 <!ENTITY prefPara                            "HTTP-Verbindungen können mit diesen Optionen feineingestelt werden, um Geschwindigkeit oder Kompatibilität zu verbessern. Manche Proxy-Server zum Beispiel benötigen bekannterweise HTTP/1.0 (siehe Release Notes für Details).">
-<!ENTITY prefPipeWarning                     "ACHTUNG: Pipelining ist eine experimentelle Funktion, um die Seitenladegeschwindigkeit zu verbessern, die aber leider von manchen Webservern und Proxies nicht gut unterstützt wird.">
 <!ENTITY prefUseragent.label                 "User-Agent-String">
 <!ENTITY prefFirefoxCompat.label             "Firefox-Kompatibilität ausweisen">
 <!ENTITY prefFirefoxCompat.accesskey         "F">

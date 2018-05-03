@@ -19,6 +19,7 @@ const {
   MESSAGE_CLOSE,
 } = require("devtools/client/webconsole/new-console-output/constants");
 const { INDENT_WIDTH } = require("devtools/client/webconsole/new-console-output/components/MessageIndent");
+const {prepareMessage} = require("devtools/client/webconsole/new-console-output/utils/messages");
 
 // Test fakes.
 const { stubPreparedMessages } = require("devtools/client/webconsole/new-console-output/test/fixtures/stubs/index");
@@ -62,8 +63,60 @@ describe("ConsoleAPICall component:", () => {
       const secondElementStyle = elements.eq(1).prop("style");
       // Allowed styles are applied accordingly on the second element.
       expect(secondElementStyle.color).toBe(`red`);
+      expect(secondElementStyle["line-height"]).toBe("1.5");
       // Forbidden styles are not applied.
       expect(secondElementStyle.background).toBe(undefined);
+    });
+
+    it("renders custom styled logs with empty style as expected", () => {
+      const message = stubPreparedMessages.get('console.log("%cHello%c|%cWorld")');
+      const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+
+      const elements = wrapper.find(".objectBox-string");
+      expect(elements.text()).toBe("Hello|World");
+      expect(elements.length).toBe(3);
+
+      const firstElementStyle = elements.eq(0).prop("style");
+      // Allowed styles are applied accordingly on the first element.
+      expect(firstElementStyle.color).toBe("red");
+
+      const secondElementStyle = elements.eq(1).prop("style");
+      expect(secondElementStyle.color).toBe(undefined);
+
+      const thirdElementStyle = elements.eq(2).prop("style");
+      // Allowed styles are applied accordingly on the third element.
+      expect(thirdElementStyle.color).toBe("blue");
+    });
+
+    it("renders prefixed messages", () => {
+      const stub = {
+        "level": "debug",
+        "filename": "resource:///modules/CustomizableUI.jsm",
+        "lineNumber": 181,
+        "functionName": "initialize",
+        "timeStamp": 1519311532912,
+        "arguments": [
+          "Initializing"
+        ],
+        "prefix": "MyNicePrefix",
+        "workerType": "none",
+        "styles": [],
+        "category": "webdev",
+        "_type": "ConsoleAPI"
+      };
+      const wrapper = render(ConsoleApiCall({
+        message: prepareMessage(stub, {getNextId: () => "p"}),
+        serviceContainer
+      }));
+      const prefix = wrapper.find(".console-message-prefix");
+      expect(prefix.text()).toBe("MyNicePrefix: ");
+
+      expect(wrapper.find(".message-body").text()).toBe("MyNicePrefix: Initializing");
+
+      // There should be the location
+      const locationLink = wrapper.find(`.message-location`);
+      expect(locationLink.length).toBe(1);
+      expect(locationLink.text()).toBe("CustomizableUI.jsm:181");
     });
 
     it("renders repeat node", () => {
@@ -303,6 +356,60 @@ describe("ConsoleAPICall component:", () => {
         id: message.id,
         type: MESSAGE_OPEN
       });
+    });
+
+    it("toggle the group when the group name is clicked", () => {
+      const store = setupStore();
+      store.dispatch = sinon.spy();
+      const message = stubPreparedMessages.get("console.group('bar')");
+
+      let wrapper = mount(Provider({store},
+        ConsoleApiCall({
+          message,
+          open: true,
+          dispatch: store.dispatch,
+          serviceContainer,
+        })
+      ));
+      wrapper.find(".message-flex-body").simulate("click");
+      let call = store.dispatch.getCall(0);
+      expect(call.args[0]).toEqual({
+        id: message.id,
+        type: MESSAGE_CLOSE
+      });
+
+      wrapper = mount(Provider({store},
+        ConsoleApiCall({
+          message,
+          open: false,
+          dispatch: store.dispatch,
+          serviceContainer,
+        })
+      ));
+      wrapper.find(".message-flex-body").simulate("click");
+      call = store.dispatch.getCall(1);
+      expect(call.args[0]).toEqual({
+        id: message.id,
+        type: MESSAGE_OPEN
+      });
+    });
+
+    it("doesn't toggle the group when the location link is clicked", () => {
+      const store = setupStore();
+      store.dispatch = sinon.spy();
+      const message = stubPreparedMessages.get("console.group('bar')");
+
+      let wrapper = mount(Provider({store},
+        ConsoleApiCall({
+          message,
+          open: true,
+          dispatch: store.dispatch,
+          serviceContainer,
+        })
+      ));
+      wrapper.find(".frame-link-source").simulate("click");
+      let call = store.dispatch.getCall(0);
+      expect(call).toNotExist();
     });
   });
 

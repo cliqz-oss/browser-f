@@ -8,7 +8,9 @@
 #include "mozilla/TypeTraits.h"
 
 #include <cstdlib>
-#include "jsfun.h"
+
+#include "vm/JSFunction.h"
+
 using namespace js;
 using namespace js::jit;
 
@@ -233,6 +235,11 @@ DefaultJitOptions::DefaultJitOptions()
     }
 
     SET_DEFAULT(spectreIndexMasking, true);
+    SET_DEFAULT(spectreObjectMitigationsBarriers, true);
+    SET_DEFAULT(spectreObjectMitigationsMisc, true);
+    SET_DEFAULT(spectreStringMitigations, true);
+    SET_DEFAULT(spectreValueMasking, true);
+    SET_DEFAULT(spectreJitToCxxCalls, true);
 
     // Toggles whether unboxed plain objects can be created by the VM.
     SET_DEFAULT(disableUnboxedObjects, false);
@@ -243,6 +250,12 @@ DefaultJitOptions::DefaultJitOptions()
     // Toggles the optimization whereby offsets are folded into loads and not
     // included in the bounds check.
     SET_DEFAULT(wasmFoldOffsets, true);
+
+    // Controls whether two-tiered compilation should be requested when
+    // compiling a new wasm module, independently of other heuristics, and
+    // should be delayed to test both baseline and ion paths in compiled code,
+    // as well as the transition from one tier to the other.
+    SET_DEFAULT(wasmDelayTier2, false);
 
     // Until which wasm bytecode size should we accumulate functions, in order
     // to compile efficiently on helper threads. Baseline code compiles much

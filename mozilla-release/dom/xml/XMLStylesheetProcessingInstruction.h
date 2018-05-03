@@ -31,7 +31,7 @@ public:
     : ProcessingInstruction(aNodeInfoManager->GetNodeInfo(
                                        nsGkAtoms::processingInstructionTagName,
                                        nullptr, kNameSpaceID_None,
-                                       nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
+                                       PROCESSING_INSTRUCTION_NODE,
                                        nsGkAtoms::xml_stylesheet), aData)
   {
   }
@@ -60,7 +60,7 @@ public:
   virtual void OverrideBaseURI(nsIURI* aNewBaseURI) override;
 
   // nsStyleLinkElement
-  NS_IMETHOD GetCharset(nsAString& aCharset) override;
+  void GetCharset(nsAString& aCharset) override;
 
   virtual void SetData(const nsAString& aData, mozilla::ErrorResult& rv) override
   {

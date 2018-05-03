@@ -3,10 +3,7 @@ window.gActivityStreamPrerenderedState = {
   "TopSites": {
     "initialized": false,
     "rows": [],
-    "editForm": {
-      "visible": false,
-      "index": -1
-    }
+    "editForm": null
   },
   "App": {
     "initialized": false,
@@ -21,12 +18,14 @@ window.gActivityStreamPrerenderedState = {
       "migrationExpired": true,
       "showTopSites": true,
       "showSearch": true,
-      "topSitesCount": 6,
+      "topSitesRows": 1,
       "collapseTopSites": false,
       "section.highlights.collapsed": false,
       "section.topstories.collapsed": false,
       "feeds.section.topstories": true,
-      "feeds.section.highlights": true
+      "feeds.section.highlights": true,
+      "enableWideLayout": true,
+      "sectionOrder": "topsites,topstories,highlights"
     }
   },
   "Dialog": {
@@ -42,10 +41,10 @@ window.gActivityStreamPrerenderedState = {
         }
       },
       "rows": [],
-      "order": 1,
       "enabled": true,
       "icon": "pocket",
       "id": "topstories",
+      "order": 1,
       "initialized": false
     },
     {
@@ -53,10 +52,10 @@ window.gActivityStreamPrerenderedState = {
         "id": "header_highlights"
       },
       "rows": [],
-      "order": 2,
       "enabled": true,
       "id": "highlights",
       "icon": "highlights",
+      "order": 2,
       "initialized": false
     }
   ],

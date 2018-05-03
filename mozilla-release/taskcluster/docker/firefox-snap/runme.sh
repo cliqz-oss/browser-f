@@ -15,7 +15,7 @@ test "$L10N_CHANGESETS"
 
 SCRIPT_DIRECTORY="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-TARGET="firefox-${VERSION}.snap"
+TARGET="target.snap"
 TARGET_FULL_PATH="$ARTIFACTS_DIR/$TARGET"
 SOURCE_DEST="${WORKSPACE}/source"
 
@@ -47,10 +47,26 @@ for locale in $locales; do
         "$CANDIDATES_DIR/${VERSION}-candidates/build${BUILD_NUMBER}/linux-x86_64/xpi/${locale}.xpi"
 done
 
+# Extract gtk30.mo from Ubuntu language packs
+apt download language-pack-gnome-*-base
+for i in *.deb; do
+    # shellcheck disable=SC2086
+    dpkg-deb --fsys-tarfile $i | tar xv -C "$SOURCE_DEST" --wildcards "./usr/share/locale-langpack/*/LC_MESSAGES/gtk30.mo" || true
+done
+
 # Generate snapcraft manifest
 sed -e "s/@VERSION@/${VERSION}/g" -e "s/@BUILD_NUMBER@/${BUILD_NUMBER}/g" snapcraft.yaml.in > "${WORKSPACE}/snapcraft.yaml"
 cp -v "$SCRIPT_DIRECTORY/mimeapps.list" "$WORKSPACE"
 cd "${WORKSPACE}"
+
+# Make sure snapcraft knows we're building amd64, even though we may not be on this arch.
+export SNAP_ARCH='amd64'
+
+# When a snap is built, snapcraft fetches deb packages from ubuntu.com. They may bump packages
+# there and remove the old ones. Updating the database allows snapcraft to find the latest packages.
+# For more context, see 1448239
+apt-get update
+
 snapcraft
 
 mv -- *.snap "$TARGET_FULL_PATH"
@@ -73,14 +89,3 @@ EOF
 find . -ls
 cat "$TARGET.checksums"
 cat signing_manifest.json
-
-
-# Upload snaps to Ubuntu Snap Store
-# TODO: Make this part an independent task
-if [[ "$PUSH_TO_CHANNEL" =~ (^(edge|candidate)$)  ]]; then
-  echo "Uploading to Ubuntu Store on channel $PUSH_TO_CHANNEL"
-  bash "$SCRIPT_DIRECTORY/fetch_macaroons.sh" "http://taskcluster/secrets/v1/secret/project/releng/snapcraft/firefox/$PUSH_TO_CHANNEL"
-  snapcraft push --release "$PUSH_TO_CHANNEL" "$TARGET_FULL_PATH"
-else
-  echo "No upload done: PUSH_TO_CHANNEL value \"$PUSH_TO_CHANNEL\" doesn't match a known channel."
-fi

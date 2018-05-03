@@ -91,7 +91,7 @@ var PointerlockFsWarning = {
       let hostElem = this._element.querySelector(".pointerlockfswarning-domain");
       // Document's principal's URI has a host. Display a warning including it.
       let utils = {};
-      Cu.import("resource://gre/modules/DownloadUtils.jsm", utils);
+      ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm", utils);
       hostElem.textContent = utils.DownloadUtils.getURIHost(uri.spec)[0];
     }
 
@@ -370,14 +370,13 @@ var FullScreen = {
       case "MozDOMFullscreen:Entered": {
         // The event target is the element which requested the DOM
         // fullscreen. If we were entering DOM fullscreen for a remote
-        // browser, the target would be `gBrowser` and the original
-        // target would be the browser which was the parameter of
+        // browser, the target would be the browser which was the parameter of
         // `remoteFrameFullscreenChanged` call. If the fullscreen
         // request was initiated from an in-process browser, we need
         // to get its corresponding browser here.
         let browser;
-        if (event.target == gBrowser) {
-          browser = event.originalTarget;
+        if (event.target.ownerGlobal == window) {
+          browser = event.target;
         } else {
           let topWin = event.target.ownerGlobal.top;
           browser = gBrowser.getBrowserForContentWindow(topWin);

@@ -42,7 +42,7 @@ class Shmem;
 
 namespace wr {
 class DisplayListBuilder;
-class ResourceUpdateQueue;
+class TransactionBuilder;
 }
 
 namespace layers {
@@ -401,6 +401,7 @@ public:
    */
   static already_AddRefed<TextureHost> Create(
     const SurfaceDescriptor& aDesc,
+    const ReadLockDescriptor& aReadLock,
     ISurfaceAllocator* aDeallocator,
     LayersBackend aBackend,
     TextureFlags aFlags,
@@ -548,6 +549,7 @@ public:
    */
   static PTextureParent* CreateIPDLActor(HostIPCAllocator* aAllocator,
                                          const SurfaceDescriptor& aSharedData,
+                                         const ReadLockDescriptor& aDescriptor,
                                          LayersBackend aLayersBackend,
                                          TextureFlags aFlags,
                                          uint64_t aSerial,
@@ -612,7 +614,7 @@ public:
 
   void DeserializeReadLock(const ReadLockDescriptor& aDesc,
                            ISurfaceAllocator* aAllocator);
-  void SetReadLock(TextureReadLock* aReadLock);
+  void SetReadLocked();
 
   TextureReadLock* GetReadLock() { return mReadLock; }
 
@@ -637,7 +639,7 @@ public:
   };
 
   // Add all necessary TextureHost informations to the resource update queue.
-  virtual void PushResourceUpdates(wr::ResourceUpdateQueue& aResources,
+  virtual void PushResourceUpdates(wr::TransactionBuilder& aResources,
                                    ResourceUpdateOp aOp,
                                    const Range<wr::ImageKey>& aImageKeys,
                                    const wr::ExternalImageId& aExtID)
@@ -681,6 +683,7 @@ protected:
   TextureFlags mFlags;
   int mCompositableCount;
   uint64_t mFwdTransactionId;
+  bool mReadLocked;
 
   friend class Compositor;
   friend class TextureParent;
@@ -754,7 +757,7 @@ public:
 
   virtual uint32_t NumSubTextures() const override;
 
-  virtual void PushResourceUpdates(wr::ResourceUpdateQueue& aResources,
+  virtual void PushResourceUpdates(wr::TransactionBuilder& aResources,
                                    ResourceUpdateOp aOp,
                                    const Range<wr::ImageKey>& aImageKeys,
                                    const wr::ExternalImageId& aExtID) override;

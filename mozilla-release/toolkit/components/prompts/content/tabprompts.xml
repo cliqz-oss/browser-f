@@ -5,7 +5,6 @@
 
 <!-- This file is imported into the browser window, and expects various variables,
      e.g. Ci, Services, to be available. -->
-<!-- eslint-env mozilla/browser-window -->
 
 <!DOCTYPE bindings [
 <!ENTITY % commonDialogDTD  SYSTEM "chrome://global/locale/commonDialog.dtd">
@@ -169,7 +168,7 @@
                 // a "pagehide" event.
 
                 let tmp = {};
-                Components.utils.import("resource://gre/modules/CommonDialog.jsm", tmp);
+                ChromeUtils.import("resource://gre/modules/CommonDialog.jsm", tmp);
                 this.Dialog = new tmp.CommonDialog(args, this.ui);
                 this.Dialog.onLoad(null);
 
@@ -331,7 +330,7 @@
             let defaultButton = this.ui["button" + bnum];
 
             let { AppConstants } =
-                Components.utils.import("resource://gre/modules/AppConstants.jsm", {});
+                ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
             if (AppConstants.platform == "macosx") {
               // On OS X, the default button always stays marked as such (until
               // the entire prompt blurs).

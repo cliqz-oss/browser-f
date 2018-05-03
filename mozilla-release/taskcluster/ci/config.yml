@@ -41,6 +41,7 @@ treeherder:
         'BMcs': 'Beetmover checksums,'
         'Aries': 'Aries Device Image'
         'Deb7': 'Packages for Debian 7'
+        'Deb9': 'Packages for Debian 9'
         'Nexus 5-L': 'Nexus 5-L Device Image'
         'I': 'Docker Image Builds'
         'TL': 'Toolchain builds for Linux 64-bits'
@@ -48,6 +49,8 @@ treeherder:
         'TMW': 'Toolchain builds for Windows MinGW'
         'TW32': 'Toolchain builds for Windows 32-bits'
         'TW64': 'Toolchain builds for Windows 64-bits'
+        'WM32': 'MinGW builds for Windows 32-bits'
+        'WM64': 'MinGW builds for Windows 64-bits'
         'Searchfox': 'Searchfox builds'
         'SM': 'Spidermonkey builds'
         'pub': 'APK publishing'
@@ -55,6 +58,7 @@ treeherder:
         'ps': 'Partials signing'
         'Rel': 'Release promotion'
         'Snap': 'Snap image generation'
+        'langpack': 'Langpack sigatures and uploads'
 
 index:
     products:
@@ -100,6 +104,13 @@ scriptworker:
     # See additional configuration in taskcluster/taskgraph/util/scriptworker.py
     scope-prefix: 'project:releng'
     worker-types:
+        'scriptworker-prov-v1/beetmoverworker-v1':
+            - 'project:releng:beetmover:bucket:release'
+            - 'project:releng:beetmover:bucket:nightly'
+            - 'project:releng:beetmover:bucket:partner'
+        'scriptworker-prov-v1/beetmoverworker-dev':
+            - 'project:releng:beetmover:bucket:dep'
+            - 'project:releng:beetmover:bucket:dep-partner'
         'scriptworker-prov-v1/signing-linux-v1':
             - 'project:releng:signing:cert:release-signing'
             - 'project:releng:signing:cert:nightly-signing'

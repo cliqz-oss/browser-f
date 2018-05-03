@@ -7,7 +7,7 @@
 #ifndef mozilla_a11y_HandlerDataCleanup_h
 #define mozilla_a11y_HandlerDataCleanup_h
 
-#include <OleAuto.h>
+#include <oleauto.h>
 #include "HandlerData.h"
 
 namespace mozilla {
@@ -22,9 +22,6 @@ ReleaseStaticIA2DataInterfaces(StaticIA2Data& aData)
   // that must not be released here.
   if (aData.mIA2) {
     aData.mIA2->Release();
-  }
-  if (aData.mIEnumVARIANT) {
-    aData.mIEnumVARIANT->Release();
   }
   if (aData.mIAHypertext) {
     aData.mIAHypertext->Release();

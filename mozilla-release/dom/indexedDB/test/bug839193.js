@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const nsIQuotaManagerService = Components.interfaces.nsIQuotaManagerService;
+const nsIQuotaManagerService = Ci.nsIQuotaManagerService;
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var gURI = Services.io.newURI("http://localhost");
 
@@ -13,8 +13,8 @@ function onUsageCallback(request) {}
 function onLoad()
 {
   var quotaManagerService =
-    Components.classes["@mozilla.org/dom/quota-manager-service;1"]
-              .getService(nsIQuotaManagerService);
+    Cc["@mozilla.org/dom/quota-manager-service;1"]
+      .getService(nsIQuotaManagerService);
   let principal = Services.scriptSecurityManager.createCodebasePrincipal(gURI, {});
   var quotaRequest = quotaManagerService.getUsageForPrincipal(principal,
                                                               onUsageCallback);

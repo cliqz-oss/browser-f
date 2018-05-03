@@ -2,15 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderRadius, BorderSide, BorderStyle, BorderWidths, ClipAndScrollInfo, ColorF};
-use api::{LayerPoint, LayerRect};
-use api::{LayerPrimitiveInfo, LayerSize, NormalBorder, RepeatMode};
+use api::{BorderRadius, BorderSide, BorderStyle, BorderWidths, ColorF, LayerPoint};
+use api::{LayerPrimitiveInfo, LayerRect, LayerSize, NormalBorder, RepeatMode, TexelRect};
 use clip::ClipSource;
 use ellipse::Ellipse;
-use frame_builder::FrameBuilder;
+use display_list_flattener::DisplayListFlattener;
 use gpu_cache::GpuDataRequest;
-use prim_store::{BorderPrimitiveCpu, BrushSegment, BrushSegmentDescriptor};
-use prim_store::{BrushClipMaskKind, EdgeAaSegmentMask, PrimitiveContainer, TexelRect};
+use prim_store::{BorderPrimitiveCpu, BrushClipMaskKind, BrushSegment, BrushSegmentDescriptor};
+use prim_store::{EdgeAaSegmentMask, PrimitiveContainer, ScrollNodeAndClipChain};
 use util::{lerp, pack_as_float};
 
 #[repr(u8)]
@@ -280,13 +279,13 @@ pub fn ensure_no_corner_overlap(
     }
 }
 
-impl FrameBuilder {
+impl<'a> DisplayListFlattener<'a> {
     fn add_normal_border_primitive(
         &mut self,
         info: &LayerPrimitiveInfo,
         border: &NormalBorder,
         widths: &BorderWidths,
-        clip_and_scroll: ClipAndScrollInfo,
+        clip_and_scroll: ScrollNodeAndClipChain,
         corner_instances: [BorderCornerInstance; 4],
         edges: [BorderEdgeKind; 4],
         clip_sources: Vec<ClipSource>,
@@ -354,7 +353,7 @@ impl FrameBuilder {
         info: &LayerPrimitiveInfo,
         border: &NormalBorder,
         widths: &BorderWidths,
-        clip_and_scroll: ClipAndScrollInfo,
+        clip_and_scroll: ScrollNodeAndClipChain,
     ) {
         // The border shader is quite expensive. For simple borders, we can just draw
         // the border with a few rectangles. This generally gives better batching, and

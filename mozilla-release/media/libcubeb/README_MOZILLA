@@ -1,12 +1,8 @@
 The source from this directory was copied from the cubeb 
 git repository using the update.sh script.  The only changes
-made were those applied by update.sh, the addition of
-Makefile.in build files for the Mozilla build system,
-and the following patches, which may be overwritten when
-included upstream.
-https://github.com/kinetiknz/cubeb/pull/398/commits/c8e66dee61a35e6a6d54e3630e1668bdbd6984b4
-https://github.com/kinetiknz/cubeb/pull/398/commits/2ed979bc891cf1a7822799947a357d4d3b625964
+made were those applied by update.sh and the addition of
+Makefile.in build files for the Mozilla build system.
 
 The cubeb git repository is: git://github.com/kinetiknz/cubeb.git
 
-The git commit ID used was bda37c26b0ed46c568e35b10728fc498262778f3 (2017-12-28 09:34:08 +1000)
+The git commit ID used was eb3409e201daaaf03401ff234de5e1f69ba10c8d (2018-03-01 13:31:19 +0100)

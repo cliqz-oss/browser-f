@@ -21,10 +21,11 @@ if CONFIG['MOZ_GECKO_PROFILER']:
         'core/platform.cpp',
         'core/ProfileBuffer.cpp',
         'core/ProfileBufferEntry.cpp',
+        'core/ProfiledThreadData.cpp',
         'core/ProfileJSONWriter.cpp',
         'core/ProfilerBacktrace.cpp',
         'core/ProfilerMarkerPayload.cpp',
-        'core/ThreadInfo.cpp',
+        'core/RegisteredThread.cpp',
         'gecko/ChildProfilerController.cpp',
         'gecko/nsProfilerFactory.cpp',
         'gecko/nsProfilerStartParams.cpp',
@@ -121,6 +122,13 @@ EXPORTS += [
     'public/GeckoProfiler.h',
 ]
 
+if CONFIG['MOZ_VTUNE']:
+    DEFINES['MOZ_VTUNE_INSTRUMENTATION'] = True
+    UNIFIED_SOURCES += [
+        'core/VTuneProfiler.cpp',
+    ]
+
+
 if CONFIG['MOZ_TASK_TRACER']:
     EXPORTS += [
         'tasktracer/GeckoTaskTracer.h',
@@ -134,6 +142,7 @@ if CONFIG['MOZ_TASK_TRACER']:
     ]
 
 XPCSHELL_TESTS_MANIFESTS += ['tests/xpcshell.ini']
+MOCHITEST_CHROME_MANIFESTS += ['tests/chrome/chrome.ini']
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += [

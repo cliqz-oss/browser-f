@@ -84,7 +84,7 @@ class nsWindow final : public nsWindowBase
 public:
   explicit nsWindow(bool aIsChildWindow = false);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, nsWindowBase)
 
   friend class nsWindowGfx;
 
@@ -112,9 +112,9 @@ public:
   virtual void            SetParent(nsIWidget *aNewParent) override;
   virtual nsIWidget*      GetParent(void) override;
   virtual float           GetDPI() override;
-  double                  GetDefaultScaleInternal() final override;
-  int32_t                 LogToPhys(double aValue) final override;
-  mozilla::DesktopToLayoutDeviceScale GetDesktopToDeviceScale() final override
+  double                  GetDefaultScaleInternal() final;
+  int32_t                 LogToPhys(double aValue) final;
+  mozilla::DesktopToLayoutDeviceScale GetDesktopToDeviceScale() final
   {
     if (mozilla::widget::WinUtils::IsPerMonitorDPIAware()) {
       return mozilla::DesktopToLayoutDeviceScale(1.0);
@@ -156,6 +156,7 @@ public:
                                            uint16_t aDuration,
                                            nsISupports* aData,
                                            nsIRunnable* aCallback) override;
+  virtual void CleanupFullscreenTransition() override;
   virtual nsresult        MakeFullScreen(bool aFullScreen,
                                          nsIScreen* aScreen = nullptr) override;
   virtual void            HideWindowChrome(bool aShouldHide) override;
@@ -428,7 +429,7 @@ protected:
    * Event handlers
    */
   virtual void            OnDestroy() override;
-  virtual bool            OnResize(nsIntRect &aWindowRect);
+  bool                    OnResize(const LayoutDeviceIntSize& aSize);
   bool                    OnGesture(WPARAM wParam, LPARAM lParam);
   bool                    OnTouch(WPARAM wParam, LPARAM lParam);
   bool                    OnHotKey(WPARAM wParam, LPARAM lParam);
@@ -493,10 +494,11 @@ protected:
    * Misc.
    */
   void                    StopFlashing();
+  static HWND             WindowAtMouse();
   static bool             IsTopLevelMouseExit(HWND aWnd);
   virtual nsresult        SetWindowClipRegion(const nsTArray<LayoutDeviceIntRect>& aRects,
                                               bool aIntersectWithExisting) override;
-  nsIntRegion             GetRegionToPaint(bool aForceFullRepaint,
+  LayoutDeviceIntRegion   GetRegionToPaint(bool aForceFullRepaint,
                                            PAINTSTRUCT ps, HDC aDC);
   void                    ClearCachedResources();
   nsIWidgetListener*      GetPaintListener();
@@ -671,13 +673,6 @@ protected:
   static void InitMouseWheelScrollData();
 
   double mSizeConstraintsScale; // scale in effect when setting constraints
-
-  // Used to remember the wParam (i.e. currently pressed modifier keys)
-  // and lParam (i.e. last mouse position) in screen coordinates from
-  // the previous mouse-exit.  Static since it is not
-  // associated with a particular widget (since we exited the widget).
-  static WPARAM sMouseExitwParam;
-  static LPARAM sMouseExitlParamScreen;
 
   // Pointer events processing and management
   WinPointerEvents mPointerEvents;

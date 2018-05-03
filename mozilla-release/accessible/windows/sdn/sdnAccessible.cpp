@@ -12,7 +12,6 @@
 #include "nsAttrName.h"
 #include "nsCoreUtils.h"
 #include "nsIAccessibleTypes.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsICSSDeclaration.h"
 #include "nsNameSpaceManager.h"
 #include "nsServiceManagerUtils.h"
@@ -90,20 +89,15 @@ sdnAccessible::get_nodeInfo(BSTR __RPC_FAR* aNodeName,
   if (IsDefunct())
     return CO_E_OBJNOTCONNECTED;
 
-  nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mNode));
-
-  uint16_t nodeType = 0;
-  DOMNode->GetNodeType(&nodeType);
+  uint16_t nodeType = mNode->NodeType();
   *aNodeType = static_cast<unsigned short>(nodeType);
 
   if (*aNodeType !=  NODETYPE_TEXT) {
-    nsAutoString nodeName;
-    DOMNode->GetNodeName(nodeName);
-    *aNodeName = ::SysAllocString(nodeName.get());
+    *aNodeName = ::SysAllocString(mNode->NodeName().get());
   }
 
   nsAutoString nodeValue;
-  DOMNode->GetNodeValue(nodeValue);
+  mNode->GetNodeValue(nodeValue);
   *aNodeValue = ::SysAllocString(nodeValue.get());
 
   *aNameSpaceID = mNode->IsContent()
@@ -235,8 +229,7 @@ sdnAccessible::get_computedStyle(unsigned short aMaxStyleProperties,
     nsWinUtils::GetComputedStyleDeclaration(mNode->AsContent());
   NS_ENSURE_TRUE(cssDecl, E_FAIL);
 
-  uint32_t length = 0;
-  cssDecl->GetLength(&length);
+  uint32_t length = cssDecl->Length();
 
   uint32_t index = 0, realIndex = 0;
   for (index = realIndex = 0; index < length && realIndex < aMaxStyleProperties;

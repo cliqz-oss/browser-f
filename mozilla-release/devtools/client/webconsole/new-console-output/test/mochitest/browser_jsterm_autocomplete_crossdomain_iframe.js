@@ -1,6 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Test that autocomplete doesn't break when trying to reach into objects from
 // a different domain. See Bug 989025.
 
@@ -20,12 +22,12 @@ add_task(async function () {
   // Make sure we don't throw when trying to autocomplete
   let autocompleteUpdated = hud.jsterm.once("autocomplete-updated");
   jsterm.setInputValue("window[0].document");
-  EventUtils.synthesizeKey(".", {});
+  EventUtils.sendString(".");
   await autocompleteUpdated;
 
   hud.jsterm.setInputValue("window[0].document.title");
   const onPermissionDeniedMessage = waitForMessage(hud, "Permission denied");
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   const permissionDenied = await onPermissionDeniedMessage;
   ok(permissionDenied.node.classList.contains("error"),
     "A message error is shown when trying to inspect window[0]");

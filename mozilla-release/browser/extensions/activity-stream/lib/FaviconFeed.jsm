@@ -3,18 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Cu.importGlobalProperties(["fetch", "URL"]);
 
-const {actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {PersistentCache} = Cu.import("resource://activity-stream/lib/PersistentCache.jsm", {});
-const {getDomain} = Cu.import("resource://activity-stream/lib/TippyTopProvider.jsm", {});
+const {actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {PersistentCache} = ChromeUtils.import("resource://activity-stream/lib/PersistentCache.jsm", {});
+const {getDomain} = ChromeUtils.import("resource://activity-stream/lib/TippyTopProvider.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
 const FIVE_MINUTES = 5 * 60 * 1000;
@@ -125,7 +124,7 @@ this.FaviconFeed = class FaviconFeed {
     if (domain in sitesByDomain) {
       let iconUri = Services.io.newURI(sitesByDomain[domain].image_url);
       // The #tippytop is to be able to identify them for telemetry.
-      iconUri.ref = "tippytop";
+      iconUri = iconUri.mutate().setRef("tippytop").finalize();
       PlacesUtils.favicons.setAndFetchFaviconForPage(
         Services.io.newURI(url),
         iconUri,
@@ -159,4 +158,4 @@ this.FaviconFeed = class FaviconFeed {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["FaviconFeed"];
+const EXPORTED_SYMBOLS = ["FaviconFeed"];

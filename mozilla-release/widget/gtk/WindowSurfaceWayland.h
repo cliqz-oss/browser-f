@@ -108,11 +108,12 @@ public:
   ~WindowSurfaceWayland();
 
   already_AddRefed<gfx::DrawTarget> Lock(const LayoutDeviceIntRegion& aRegion) override;
-  void                      Commit(const LayoutDeviceIntRegion& aInvalidRegion) final override;
+  void                      Commit(const LayoutDeviceIntRegion& aInvalidRegion) final;
   void                      FrameCallbackHandler();
 
 private:
   WindowBackBuffer*         GetBufferToDraw(int aWidth, int aHeight);
+  void                      UpdateScaleFactor();
 
   // TODO: Do we need to hold a reference to nsWindow object?
   nsWindow*                 mWindow;

@@ -25,6 +25,10 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseWorkerProxy.h"
 #include "mozilla/dom/ServiceWorkerGlobalScopeBinding.h"
+#include "mozilla/dom/ServiceWorkerManager.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
+#include "mozilla/dom/WorkerScope.h"
 
 #include "nsAlertsUtils.h"
 #include "nsComponentManagerUtils.h"
@@ -53,15 +57,9 @@
 #include "nsThreadUtils.h"
 #include "nsToolkitCompsCID.h"
 #include "nsXULAppAPI.h"
-#include "ServiceWorkerManager.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
-#include "WorkerScope.h"
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 struct NotificationStrings
 {
@@ -94,7 +92,7 @@ public:
                     const nsAString& aIcon,
                     const nsAString& aData,
                     const nsAString& aBehavior,
-                    const nsAString& aServiceWorkerRegistrationScope) final override
+                    const nsAString& aServiceWorkerRegistrationScope) final
   {
     AssertIsOnMainThread();
     MOZ_ASSERT(!aID.IsEmpty());
@@ -147,7 +145,7 @@ public:
     MOZ_ASSERT(aPromise);
   }
 
-  NS_IMETHOD Done() final override
+  NS_IMETHOD Done() final
   {
     ErrorResult result;
     AutoTArray<RefPtr<Notification>, 5> notifications;
@@ -1204,7 +1202,8 @@ Notification::GetPrincipal()
 class WorkerNotificationObserver final : public MainThreadNotificationObserver
 {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(WorkerNotificationObserver,
+                                       MainThreadNotificationObserver)
   NS_DECL_NSIOBSERVER
 
   explicit WorkerNotificationObserver(UniquePtr<NotificationRef> aRef)
@@ -1233,8 +1232,6 @@ protected:
     }
   }
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(WorkerNotificationObserver, MainThreadNotificationObserver)
 
 class ServiceWorkerNotificationObserver final : public nsIObserver
 {
@@ -1796,8 +1793,7 @@ Notification::RequestPermission(const GlobalObject& aGlobal,
   }
   nsCOMPtr<nsIPrincipal> principal = sop->GetPrincipal();
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(window);
-  RefPtr<Promise> promise = Promise::Create(global, aRv);
+  RefPtr<Promise> promise = Promise::Create(window->AsGlobal(), aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
@@ -1809,7 +1805,7 @@ Notification::RequestPermission(const GlobalObject& aGlobal,
   nsCOMPtr<nsIRunnable> request = new NotificationPermissionRequest(
     principal, isHandlingUserInput, window, promise, permissionCallback);
 
-  global->Dispatch(TaskCategory::Other, request.forget());
+  window->AsGlobal()->Dispatch(TaskCategory::Other, request.forget());
 
   return promise.forget();
 }
@@ -1994,19 +1990,18 @@ Notification::Get(nsPIDOMWindowInner* aWindow,
     return nullptr;
   }
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aWindow);
-  RefPtr<Promise> promise = Promise::Create(global, aRv);
+  RefPtr<Promise> promise = Promise::Create(aWindow->AsGlobal(), aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
 
   nsCOMPtr<nsINotificationStorageCallback> callback =
-    new NotificationStorageCallback(global, aScope, promise);
+    new NotificationStorageCallback(aWindow->AsGlobal(), aScope, promise);
 
   RefPtr<NotificationGetRunnable> r =
     new NotificationGetRunnable(origin, aFilter.mTag, callback);
 
-  aRv = global->Dispatch(TaskCategory::Other, r.forget());
+  aRv = aWindow->AsGlobal()->Dispatch(TaskCategory::Other, r.forget());
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -2090,7 +2085,7 @@ public:
     MOZ_ASSERT(aProxy);
   }
 
-  NS_IMETHOD Done() final override
+  NS_IMETHOD Done() final
   {
     AssertIsOnMainThread();
     MOZ_ASSERT(mPromiseProxy, "Was Done() called twice?");
@@ -2425,7 +2420,7 @@ class CloseNotificationRunnable final
 };
 
 bool
-NotificationWorkerHolder::Notify(Status aStatus)
+NotificationWorkerHolder::Notify(WorkerStatus aStatus)
 {
   if (aStatus >= Canceling) {
     // CloseNotificationRunnable blocks the worker by pushing a sync event loop

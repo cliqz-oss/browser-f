@@ -12,14 +12,11 @@ ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
 # ASan specific options on Linux
 ac_add_options --enable-valgrind
 
-. $topsrcdir/build/unix/mozconfig.fuzzing
+. $topsrcdir/build/unix/mozconfig.asan
+ac_add_options --disable-elf-hack
 
 ac_add_options --enable-fuzzing
 unset MOZ_STDCXX_COMPAT
-
-if [ -f /etc/redhat-release ]; then
-export PKG_CONFIG_LIBDIR=/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig
-fi
 
 # Package js shell.
 export MOZ_PACKAGE_JSSHELL=1

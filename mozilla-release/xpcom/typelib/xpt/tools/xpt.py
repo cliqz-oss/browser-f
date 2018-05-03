@@ -102,6 +102,38 @@ def enum(*names):
     return Foo()
 
 
+# List with constant time index() and contains() methods.
+class IndexedList(object):
+    def __init__(self, iterable):
+        self._list = []
+        self._index_map = {}
+        for i in iterable:
+            self.append(i)
+
+    def sort(self):
+        self._list.sort()
+        self._index_map = {val: i for i, val in enumerate(self._list)}
+
+    def append(self, val):
+        self._index_map[val] = len(self._list)
+        self._list.append(val)
+
+    def index(self, what):
+        return self._index_map[what]
+
+    def __contains__(self, what):
+        return what in self._index_map
+
+    def __iter__(self):
+        return iter(self._list)
+
+    def __getitem__(self, index):
+        return self._list[index]
+
+    def __len__(self):
+        return len(self._list)
+
+
 # Descriptor types as described in the spec
 class Type(object):
     """
@@ -569,6 +601,28 @@ class WideStringWithSizeType(Type):
         return "wstring_s"
 
 
+class CachedStringWriter(object):
+    """
+    A cache that sits in front of a file to avoid adding the same
+    string multiple times.
+    """
+    def __init__(self, file, data_pool_offset):
+        self.file = file
+        self.data_pool_offset = data_pool_offset
+        self.names = {}
+
+    def write(self, s):
+        if s:
+            if s in self.names:
+                return self.names[s]
+            offset = self.file.tell() - self.data_pool_offset + 1
+            self.names[s] = offset
+            self.file.write(s + "\x00")
+            return offset
+        else:
+            return 0
+
+
 class Param(object):
     """
     A parameter to a method, or the return value of a method.
@@ -842,30 +896,24 @@ class Method(object):
             p.write(typelib, file)
         self.result.write(typelib, file)
 
-    def write_name(self, file, data_pool_offset):
+    def write_name(self, string_writer):
         """
-        Write this method's name to |file|.
-        Assumes that |file| is currently seeked to an unused portion
-        of the data pool.
+        Write this method's name to |string_writer|'s file.
+        Assumes that this file is currently seeked to an unused
+        portion of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
-        else:
-            self._name_offset = 0
+        self._name_offset = string_writer.write(self.name)
 
 
 class Constant(object):
     """
     A constant value of a specific type defined on an interface.
-    (ConstantDesciptor from the typelib specification.)
+    (ConstantDescriptor from the typelib specification.)
 
     """
     _descriptorstart = struct.Struct(">I")
     # Actual value is restricted to this set of types
-    # XXX: the spec lies, the source allows a bunch more
-    # https://hg.mozilla.org/mozilla-central/annotate/9c85f9aaec8c/xpcom/typelib/xpt/src/xpt_struct.c#l689
     typemap = {Type.Tags.int16: '>h',
                Type.Tags.uint16: '>H',
                Type.Tags.int32: '>i',
@@ -919,18 +967,14 @@ class Constant(object):
         tt = Constant.typemap[self.type.tag]
         file.write(struct.pack(tt, self.value))
 
-    def write_name(self, file, data_pool_offset):
+    def write_name(self, string_writer):
         """
-        Write this constants's name to |file|.
-        Assumes that |file| is currently seeked to an unused portion
-        of the data pool.
+        Write this constants's name to |string_writer|'s file.
+        Assumes that this file is currently seeked to an unused
+        portion of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
-        else:
-            self._name_offset = 0
+        self._name_offset = string_writer.write(self.name)
 
     def __repr__(self):
         return "Constant(%s, %s, %d)" % (self.name, str(self.type), self.value)
@@ -1104,28 +1148,20 @@ class Interface(object):
             flags |= 0x10
         file.write(struct.pack(">B", flags))
 
-    def write_names(self, file, data_pool_offset):
+    def write_names(self, string_writer):
         """
-        Write this interface's name and namespace to |file|,
-        as well as the names of all of its methods and constants.
-        Assumes that |file| is currently seeked to an unused portion
+        Write this interface's name and namespace to |string_writer|'s
+        file, as well as the names of all of its methods and constants.
+        Assumes that this file is currently seeked to an unused portion
         of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
-        else:
-            self._name_offset = 0
-        if self.namespace:
-            self._namespace_offset = file.tell() - data_pool_offset + 1
-            file.write(self.namespace + "\x00")
-        else:
-            self._namespace_offset = 0
+        self._name_offset = string_writer.write(self.name)
+        self._namespace_offset = string_writer.write(self.namespace)
         for m in self.methods:
-            m.write_name(file, data_pool_offset)
+            m.write_name(string_writer)
         for c in self.constants:
-            c.write_name(file, data_pool_offset)
+            c.write_name(string_writer)
 
 
 class Typelib(object):
@@ -1146,7 +1182,7 @@ class Typelib(object):
 
         """
         self.version = version
-        self.interfaces = list(interfaces)
+        self.interfaces = IndexedList(interfaces)
         self.annotations = list(annotations)
         self.filename = None
 
@@ -1279,9 +1315,12 @@ class Typelib(object):
         fd.write("\x00" * Interface._direntry.size * len(self.interfaces))
         # save this offset, it's the data pool offset.
         data_pool_offset = fd.tell()
+
+        string_writer = CachedStringWriter(fd, data_pool_offset)
+
         # write out all the interface descriptors to the data pool
         for i in self.interfaces:
-            i.write_names(fd, data_pool_offset)
+            i.write_names(string_writer)
             i.write(self, fd, data_pool_offset)
         # now, seek back and write the header
         file_len = fd.tell()

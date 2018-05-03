@@ -21,7 +21,6 @@
 #include "nsTArray.h"
 
 class nsCycleCollectionNoteRootCallback;
-class nsIException;
 class nsIRunnable;
 class nsThread;
 class nsWrapperCache;
@@ -30,6 +29,10 @@ namespace mozilla {
 class AutoSlowOperation;
 
 class CycleCollectedJSRuntime;
+
+namespace dom {
+class Exception;
+} // namespace dom
 
 // Contains various stats about the cycle collection.
 struct CycleCollectorResults
@@ -100,9 +103,6 @@ protected:
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-  std::queue<nsCOMPtr<nsIRunnable>> mPromiseMicroTaskQueue;
-  std::queue<nsCOMPtr<nsIRunnable>> mDebuggerPromiseMicroTaskQueue;
-
 private:
   MOZ_IS_CLASS_INIT
   void InitializeCommon();
@@ -118,11 +118,11 @@ private:
                                               JS::PromiseRejectionHandlingState state,
                                               void* aData);
 
-  void AfterProcessMicrotask(uint32_t aRecursionDepth);
+  void AfterProcessMicrotasks();
 public:
   void ProcessStableStateQueue();
 private:
-  void ProcessMetastableStateQueue(uint32_t aRecursionDepth);
+  void CleanupIDBTransactions(uint32_t aRecursionDepth);
 
 public:
   enum DeferredFinalizeType {
@@ -136,11 +136,11 @@ public:
     return mRuntime;
   }
 
-  already_AddRefed<nsIException> GetPendingException() const;
-  void SetPendingException(nsIException* aException);
+  already_AddRefed<dom::Exception> GetPendingException() const;
+  void SetPendingException(dom::Exception* aException);
 
-  std::queue<nsCOMPtr<nsIRunnable>>& GetPromiseMicroTaskQueue();
-  std::queue<nsCOMPtr<nsIRunnable>>& GetDebuggerPromiseMicroTaskQueue();
+  std::queue<RefPtr<MicroTaskRunnable>>& GetMicroTaskQueue();
+  std::queue<RefPtr<MicroTaskRunnable>>& GetDebuggerMicroTaskQueue();
 
   JSContext* Context() const
   {
@@ -154,45 +154,18 @@ public:
     return JS::RootingContext::get(mJSContext);
   }
 
-  bool MicroTaskCheckpointDisabled() const
+  void SetTargetedMicroTaskRecursionDepth(uint32_t aDepth)
   {
-    return mDisableMicroTaskCheckpoint;
+    mTargetedMicroTaskRecursionDepth = aDepth;
   }
-
-  void DisableMicroTaskCheckpoint(bool aDisable)
-  {
-    mDisableMicroTaskCheckpoint = aDisable;
-  }
-
-  class MOZ_RAII AutoDisableMicroTaskCheckpoint
-  {
-    public:
-    AutoDisableMicroTaskCheckpoint()
-    : mCCJSCX(CycleCollectedJSContext::Get())
-    {
-      mOldValue = mCCJSCX->MicroTaskCheckpointDisabled();
-      mCCJSCX->DisableMicroTaskCheckpoint(true);
-    }
-
-    ~AutoDisableMicroTaskCheckpoint()
-    {
-      mCCJSCX->DisableMicroTaskCheckpoint(mOldValue);
-    }
-
-    CycleCollectedJSContext* mCCJSCX;
-    bool mOldValue;
-  };
 
 protected:
   JSContext* MaybeContext() const { return mJSContext; }
 
 public:
   // nsThread entrypoints
-  virtual void BeforeProcessTask(bool aMightBlock) { };
+  virtual void BeforeProcessTask(bool aMightBlock);
   virtual void AfterProcessTask(uint32_t aRecursionDepth);
-
-  // microtask processor entry point
-  void AfterProcessMicrotask();
 
   // Check whether we need an idle GC task.
   void IsIdleGCTaskNeeded();
@@ -201,16 +174,15 @@ public:
 
   // Run in stable state (call through nsContentUtils)
   void RunInStableState(already_AddRefed<nsIRunnable>&& aRunnable);
-  // This isn't in the spec at all yet, but this gets the behavior we want for IDB.
-  // Runs after the current microtask completes.
-  void RunInMetastableState(already_AddRefed<nsIRunnable>&& aRunnable);
+
+  void AddPendingIDBTransaction(already_AddRefed<nsIRunnable>&& aTransaction);
 
   // Get the current thread's CycleCollectedJSContext.  Returns null if there
   // isn't one.
   static CycleCollectedJSContext* Get();
 
   // Queue an async microtask to the current main or worker thread.
-  virtual void DispatchToMicroTask(already_AddRefed<nsIRunnable> aRunnable);
+  virtual void DispatchToMicroTask(already_AddRefed<MicroTaskRunnable> aRunnable);
 
   // Call EnterMicroTask when you're entering JS execution.
   // Usually the best way to do this is to use nsAutoMicroTask.
@@ -241,9 +213,9 @@ public:
     mMicroTaskLevel = aLevel;
   }
 
-  void PerformMicroTaskCheckPoint();
+  bool PerformMicroTaskCheckPoint();
 
-  void DispatchMicroTaskRunnable(already_AddRefed<MicroTaskRunnable> aRunnable);
+  void PerformDebuggerMicroTaskCheckpoint();
 
   bool IsInStableOrMetaStableState()
   {
@@ -275,24 +247,28 @@ private:
 
   JSContext* mJSContext;
 
-  nsCOMPtr<nsIException> mPendingException;
+  nsCOMPtr<dom::Exception> mPendingException;
   nsThread* mOwningThread; // Manual refcounting to avoid include hell.
 
-  struct RunInMetastableStateData
+  struct PendingIDBTransactionData
   {
-    nsCOMPtr<nsIRunnable> mRunnable;
+    nsCOMPtr<nsIRunnable> mTransaction;
     uint32_t mRecursionDepth;
   };
 
   nsTArray<nsCOMPtr<nsIRunnable>> mStableStateEvents;
-  nsTArray<RunInMetastableStateData> mMetastableStateEvents;
+  nsTArray<PendingIDBTransactionData> mPendingIDBTransactions;
   uint32_t mBaseRecursionDepth;
   bool mDoingStableStates;
 
-  bool mDisableMicroTaskCheckpoint;
+  // If set to none 0, microtasks will be processed only when recursion depth
+  // is the set value.
+  uint32_t mTargetedMicroTaskRecursionDepth;
 
   uint32_t mMicroTaskLevel;
+
   std::queue<RefPtr<MicroTaskRunnable>> mPendingMicroTaskRunnables;
+  std::queue<RefPtr<MicroTaskRunnable>> mDebuggerMicroTaskQueue;
 
   uint32_t mMicroTaskRecursionDepth;
 };

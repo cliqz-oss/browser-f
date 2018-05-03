@@ -15,9 +15,8 @@
 #include "mozilla/Casting.h"
 #include "mozilla/PodOperations.h"
 
-#include "jsgc.h"
-
-#include "builtin/SymbolObject.h"
+#include "builtin/Symbol.h"
+#include "gc/GC.h"
 #include "jit/BaselineJIT.h"
 #include "vm/ArrayObject.h"
 #include "vm/BooleanObject.h"
@@ -27,8 +26,7 @@
 #include "vm/TypedArrayObject.h"
 #include "vm/UnboxedObject.h"
 
-#include "jscntxtinlines.h"
-
+#include "vm/JSContext-inl.h"
 #include "vm/ObjectGroup-inl.h"
 
 namespace js {
@@ -1075,6 +1073,18 @@ TypeSet::getGroupNoBarrier(unsigned i) const
 {
     ObjectKey* key = getObject(i);
     return (key && key->isGroup()) ? key->groupNoBarrier() : nullptr;
+}
+
+inline bool
+TypeSet::hasGroup(unsigned i) const
+{
+    return getGroupNoBarrier(i);
+}
+
+inline bool
+TypeSet::hasSingleton(unsigned i) const
+{
+    return getSingletonNoBarrier(i);
 }
 
 inline const Class*

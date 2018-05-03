@@ -27,8 +27,6 @@
 #include "nsITooltipListener.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMNodeList.h"
-#include "nsIDOMDocument.h"
-#include "nsIDOMDocumentType.h"
 #include "nsIDOMElement.h"
 #include "Link.h"
 #include "mozilla/dom/Element.h"
@@ -37,11 +35,8 @@
 #include "nsIDOMFileList.h"
 #include "nsIDOMMouseEvent.h"
 #include "nsIFormControl.h"
-#include "nsIDOMHTMLInputElement.h"
-#include "nsIDOMHTMLDocument.h"
 #include "nsIImageLoadingContent.h"
 #include "nsIWebNavigation.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsIPresShell.h"
 #include "nsIStringBundle.h"
 #include "nsPIDOMWindow.h"
@@ -416,16 +411,12 @@ nsDocShellTreeOwner::SizeShellTo(nsIDocShellTreeItem* aShellItem,
     return webBrowserChrome->SizeBrowserTo(aCX, aCY);
   }
 
-  nsCOMPtr<nsIWebNavigation> webNav(do_QueryInterface(aShellItem));
-  NS_ENSURE_TRUE(webNav, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(aShellItem, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsIDOMDocument> domDocument;
-  webNav->GetDocument(getter_AddRefs(domDocument));
-  NS_ENSURE_TRUE(domDocument, NS_ERROR_FAILURE);
+  nsCOMPtr<nsIDocument> document = aShellItem->GetDocument();
+  NS_ENSURE_TRUE(document, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsIDOMElement> domElement;
-  domDocument->GetDocumentElement(getter_AddRefs(domElement));
-  NS_ENSURE_TRUE(domElement, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(document->GetDocumentElement(), NS_ERROR_FAILURE);
 
   // Set the preferred Size
   //XXX
@@ -948,23 +939,30 @@ nsDocShellTreeOwner::HandleEvent(nsIDOMEvent* aEvent)
 
   nsCOMPtr<nsIDroppedLinkHandler> handler =
     do_GetService("@mozilla.org/content/dropped-link-handler;1");
-  if (handler) {
-    nsAutoString eventType;
-    aEvent->GetType(eventType);
-    if (eventType.EqualsLiteral("dragover")) {
-      bool canDropLink = false;
-      handler->CanDropLink(dragEvent, false, &canDropLink);
-      if (canDropLink) {
-        aEvent->PreventDefault();
-      }
-    } else if (eventType.EqualsLiteral("drop")) {
-      nsIWebNavigation* webnav = static_cast<nsIWebNavigation*>(mWebBrowser);
+  if (!handler) {
+    return NS_OK;
+  }
 
-      uint32_t linksCount;
-      nsIDroppedLinkItem** links;
-      if (webnav &&
-          NS_SUCCEEDED(handler->DropLinks(dragEvent, true, &linksCount, &links))) {
-        if (linksCount >= 1) {
+  nsAutoString eventType;
+  aEvent->GetType(eventType);
+  if (eventType.EqualsLiteral("dragover")) {
+    bool canDropLink = false;
+    handler->CanDropLink(dragEvent, false, &canDropLink);
+    if (canDropLink) {
+      aEvent->PreventDefault();
+    }
+  } else if (eventType.EqualsLiteral("drop")) {
+    nsIWebNavigation* webnav = static_cast<nsIWebNavigation*>(mWebBrowser);
+
+    uint32_t linksCount;
+    nsIDroppedLinkItem** links;
+    if (webnav &&
+        NS_SUCCEEDED(handler->DropLinks(dragEvent, true, &linksCount, &links))) {
+      if (linksCount >= 1) {
+        nsCOMPtr<nsIPrincipal> triggeringPrincipal;
+        handler->GetTriggeringPrincipal(dragEvent,
+                                        getter_AddRefs(triggeringPrincipal));
+        if (triggeringPrincipal) {
           nsCOMPtr<nsIWebBrowserChrome> webBrowserChrome = GetWebBrowserChrome();
           if (webBrowserChrome) {
             nsCOMPtr<nsITabChild> tabChild = do_QueryInterface(webBrowserChrome);
@@ -981,7 +979,7 @@ nsDocShellTreeOwner::HandleEvent(nsIDOMEvent* aEvent)
           if (NS_SUCCEEDED(links[0]->GetUrl(url))) {
             if (!url.IsEmpty()) {
               webnav->LoadURI(url.get(), 0, nullptr, nullptr, nullptr,
-                              nsContentUtils::GetSystemPrincipal());
+                              triggeringPrincipal);
             }
           }
 
@@ -990,10 +988,10 @@ nsDocShellTreeOwner::HandleEvent(nsIDOMEvent* aEvent)
           }
           free(links);
         }
-      } else {
-        aEvent->StopPropagation();
-        aEvent->PreventDefault();
       }
+    } else {
+      aEvent->StopPropagation();
+      aEvent->PreventDefault();
     }
   }
 

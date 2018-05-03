@@ -5,7 +5,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "ContentPref",
   "cbHandleResult",
   "cbHandleError",
@@ -14,10 +14,8 @@ this.EXPORTED_SYMBOLS = [
   "_methodsCallableFromChild",
 ];
 
-const { interfaces: Ci, classes: Cc, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function ContentPref(domain, name, value) {
   this.domain = domain;

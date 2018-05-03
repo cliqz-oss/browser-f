@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
@@ -206,7 +204,8 @@ BrowserCLH.prototype = {
     }, options);
 
     aWindow.addEventListener("pageshow", event => {
-      if (event.target instanceof Ci.nsIDOMHTMLDocument) {
+      // XXXbz what about non-HTML documents??
+      if (ChromeUtils.getClassName(event.target) == "HTMLDocument") {
         this.LoginManagerContent.onPageShow(event, event.target.defaultView.top);
       }
     }, options);

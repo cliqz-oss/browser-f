@@ -122,6 +122,10 @@ PaintThread::AddRef()
 /* static */ int32_t
 PaintThread::CalculatePaintWorkerCount()
 {
+  if (!gfxPlatform::GetPlatform()->UsesTiling()) {
+    return 0;
+  }
+
   int32_t cpuCores = 1;
   nsCOMPtr<nsIPropertyBag2> systemInfo = do_GetService(NS_SYSTEMINFO_CONTRACTID);
   if (systemInfo) {
@@ -133,13 +137,10 @@ PaintThread::CalculatePaintWorkerCount()
 
   int32_t workerCount = gfxPrefs::LayersOMTPPaintWorkers();
 
-  // If not manually specified, default to (cpuCores * 3) / 4
+  // If not manually specified, default to (cpuCores * 3) / 4, and clamp
+  // between 1 and 4. If a user wants more, they can manually specify it
   if (workerCount < 1) {
-    workerCount = std::max((cpuCores * 3) / 4, 1);
-
-    if (workerCount > 32) {
-      workerCount = 32;
-    }
+    workerCount = std::min(std::max((cpuCores * 3) / 4, 1), 4);
   }
 
   return workerCount;
@@ -290,6 +291,10 @@ PaintThread::PaintContents(CapturedPaintState* aState,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aState);
 
+  if (gfxPrefs::LayersOMTPDumpCapture() && aState->mCapture) {
+    aState->mCapture->Dump();
+  }
+
   RefPtr<CompositorBridgeChild> cbc(CompositorBridgeChild::Get());
   RefPtr<CapturedPaintState> state(aState);
 
@@ -359,6 +364,10 @@ PaintThread::PaintTiledContents(CapturedTiledPaintState* aState)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aState);
+
+  if (gfxPrefs::LayersOMTPDumpCapture() && aState->mCapture) {
+    aState->mCapture->Dump();
+  }
 
   RefPtr<CompositorBridgeChild> cbc(CompositorBridgeChild::Get());
   RefPtr<CapturedTiledPaintState> state(aState);

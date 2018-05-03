@@ -61,6 +61,37 @@ gfxDWriteFontFamily::~gfxDWriteFontFamily()
 {
 }
 
+static bool
+GetEnglishOrFirstName(nsAString& aName, IDWriteLocalizedStrings* aStrings)
+{
+    UINT32 englishIdx = 0;
+    BOOL exists;
+    HRESULT hr = aStrings->FindLocaleName(L"en-us", &englishIdx, &exists);
+    if (FAILED(hr)) {
+        return false;
+    }
+    if (!exists) {
+        // Use 0 index if english is not found.
+        englishIdx = 0;
+    }
+    AutoTArray<WCHAR, 32> enName;
+    UINT32 length;
+    hr = aStrings->GetStringLength(englishIdx, &length);
+    if (FAILED(hr)) {
+        return false;
+    }
+    if (!enName.SetLength(length + 1, fallible)) {
+        // Eeep - running out of memory. Unlikely to end well.
+        return false;
+    }
+    hr = aStrings->GetString(englishIdx, enName.Elements(), length + 1);
+    if (FAILED(hr)) {
+        return false;
+    }
+    aName.Assign(enName.Elements());
+    return true;
+}
+
 static HRESULT
 GetDirectWriteFontName(IDWriteFont *aFont, nsAString& aFontName)
 {
@@ -72,30 +103,10 @@ GetDirectWriteFontName(IDWriteFont *aFont, nsAString& aFontName)
         return hr;
     }
 
-    BOOL exists;
-    AutoTArray<wchar_t,32> faceName;
-    UINT32 englishIdx = 0;
-    hr = names->FindLocaleName(L"en-us", &englishIdx, &exists);
-    if (FAILED(hr)) {
-        return hr;
+    if (!GetEnglishOrFirstName(aFontName, names)) {
+        return E_FAIL;
     }
 
-    if (!exists) {
-        // No english found, use whatever is first in the list.
-        englishIdx = 0;
-    }
-    UINT32 length;
-    hr = names->GetStringLength(englishIdx, &length);
-    if (FAILED(hr)) {
-        return hr;
-    }
-    faceName.SetLength(length + 1);
-    hr = names->GetString(englishIdx, faceName.Elements(), length + 1);
-    if (FAILED(hr)) {
-        return hr;
-    }
-
-    aFontName.Assign(faceName.Elements());
     return S_OK;
 }
 
@@ -117,29 +128,10 @@ GetDirectWriteFaceName(IDWriteFont *aFont,
         return E_FAIL;
     }
 
-    AutoTArray<wchar_t,32> faceName;
-    UINT32 englishIdx = 0;
-    hr = infostrings->FindLocaleName(L"en-us", &englishIdx, &exists);
-    if (FAILED(hr)) {
-        return hr;
+    if (!GetEnglishOrFirstName(aFontName, infostrings)) {
+        return E_FAIL;
     }
 
-    if (!exists) {
-        // No english found, use whatever is first in the list.
-        englishIdx = 0;
-    }
-    UINT32 length;
-    hr = infostrings->GetStringLength(englishIdx, &length);
-    if (FAILED(hr)) {
-        return hr;
-    }
-    faceName.SetLength(length + 1);
-    hr = infostrings->GetString(englishIdx, faceName.Elements(), length + 1);
-    if (FAILED(hr)) {
-        return hr;
-    }
-
-    aFontName.Assign(faceName.Elements());
     return S_OK;
 }
 
@@ -608,6 +600,62 @@ gfxDWriteFontEntry::HasVariations()
     return mHasVariations;
 }
 
+void
+gfxDWriteFontEntry::GetVariationAxes(nsTArray<gfxFontVariationAxis>& aAxes)
+{
+    if (!HasVariations()) {
+        return;
+    }
+    // HasVariations() will have ensured the mFontFace5 interface is available;
+    // so we can get an IDWriteFontResource and ask it for the axis info.
+    RefPtr<IDWriteFontResource> resource;
+    HRESULT hr = mFontFace5->GetFontResource(getter_AddRefs(resource));
+    MOZ_ASSERT(SUCCEEDED(hr));
+
+    uint32_t count = resource->GetFontAxisCount();
+    AutoTArray<DWRITE_FONT_AXIS_VALUE, 4> defaultValues;
+    AutoTArray<DWRITE_FONT_AXIS_RANGE, 4> ranges;
+    defaultValues.SetLength(count);
+    ranges.SetLength(count);
+    resource->GetDefaultFontAxisValues(defaultValues.Elements(), count);
+    resource->GetFontAxisRanges(ranges.Elements(), count);
+    for (uint32_t i = 0; i < count; ++i) {
+        gfxFontVariationAxis axis;
+        MOZ_ASSERT(ranges[i].axisTag == defaultValues[i].axisTag);
+        DWRITE_FONT_AXIS_ATTRIBUTES attrs = resource->GetFontAxisAttributes(i);
+        if (attrs & DWRITE_FONT_AXIS_ATTRIBUTES_HIDDEN) {
+            continue;
+        }
+        if (!(attrs & DWRITE_FONT_AXIS_ATTRIBUTES_VARIABLE)) {
+            continue;
+        }
+        // Extract the 4 chars of the tag from DWrite's packed version,
+        // and reassemble them in the order we use for TRUETYPE_TAG.
+        uint32_t t = defaultValues[i].axisTag;
+        axis.mTag = TRUETYPE_TAG(t & 0xff,
+                                 (t >> 8) & 0xff,
+                                 (t >> 16) & 0xff,
+                                 (t >> 24) & 0xff);
+        // Try to get a human-friendly name (may not be present)
+        RefPtr<IDWriteLocalizedStrings> names;
+        resource->GetAxisNames(i, getter_AddRefs(names));
+        if (names) {
+            GetEnglishOrFirstName(axis.mName, names);
+        }
+        axis.mMinValue = ranges[i].minValue;
+        axis.mMaxValue = ranges[i].maxValue;
+        axis.mDefaultValue = defaultValues[i].value;
+        aAxes.AppendElement(axis);
+    }
+}
+
+void
+gfxDWriteFontEntry::GetVariationInstances(
+    nsTArray<gfxFontVariationInstance>& aInstances)
+{
+    gfxFontUtils::GetVariationInstances(this, aInstances);
+}
+
 gfxFont *
 gfxDWriteFontEntry::CreateFontInstance(const gfxFontStyle* aFontStyle,
                                        bool aNeedsBold)
@@ -652,6 +700,15 @@ gfxDWriteFontEntry::CreateFontFace(IDWriteFontFace **aFontFace,
                                    const nsTArray<gfxFontVariation>* aVariations,
                                    DWRITE_FONT_SIMULATIONS aSimulations)
 {
+    // Convert an OpenType font tag from our uint32_t representation
+    // (as constructed by TRUETYPE_TAG(...)) to the order DWrite wants.
+    auto makeDWriteAxisTag = [](uint32_t aTag) {
+        return DWRITE_MAKE_FONT_AXIS_TAG((aTag >> 24) & 0xff,
+                                         (aTag >> 16) & 0xff,
+                                         (aTag >> 8) & 0xff,
+                                          aTag & 0xff);
+    };
+
     // initialize mFontFace if this hasn't been done before
     if (!mFontFace) {
         HRESULT hr;
@@ -678,6 +735,26 @@ gfxDWriteFontEntry::CreateFontFace(IDWriteFontFace **aFontFace,
         if (mFontFace) {
             mFontFace->QueryInterface(__uuidof(IDWriteFontFace5),
                 (void**)getter_AddRefs(mFontFace5));
+            if (!mVariationSettings.IsEmpty()) {
+                // If the font entry has variations specified, mFontFace5 will
+                // be a distinct face that has the variations applied.
+                RefPtr<IDWriteFontResource> resource;
+                HRESULT hr =
+                    mFontFace5->GetFontResource(getter_AddRefs(resource));
+                MOZ_ASSERT(SUCCEEDED(hr));
+                AutoTArray<DWRITE_FONT_AXIS_VALUE, 4> fontAxisValues;
+                for (const auto& v : mVariationSettings) {
+                    DWRITE_FONT_AXIS_VALUE axisValue = {
+                        makeDWriteAxisTag(v.mTag),
+                        v.mValue
+                    };
+                    fontAxisValues.AppendElement(axisValue);
+                }
+                resource->CreateFontFace(mFontFace->GetSimulations(),
+                                         fontAxisValues.Elements(),
+                                         fontAxisValues.Length(),
+                                         getter_AddRefs(mFontFace5));
+            }
         }
     }
 
@@ -695,13 +772,24 @@ gfxDWriteFontEntry::CreateFontFace(IDWriteFontFace **aFontFace,
         MOZ_ASSERT(SUCCEEDED(hr));
         AutoTArray<DWRITE_FONT_AXIS_VALUE, 4> fontAxisValues;
         if (aVariations) {
-            for (const auto& v : *aVariations) {
+            // Merge mVariationSettings and *aVariations if both present
+            const nsTArray<gfxFontVariation>* vars;
+            AutoTArray<gfxFontVariation,4> mergedSettings;
+            if (!aVariations) {
+                vars = &mVariationSettings;
+            } else  {
+                if (mVariationSettings.IsEmpty()) {
+                    vars = aVariations;
+                } else {
+                    gfxFontUtils::MergeVariations(mVariationSettings,
+                                                  *aVariations,
+                                                  &mergedSettings);
+                    vars = &mergedSettings;
+                }
+            }
+            for (const auto& v : *vars) {
                 DWRITE_FONT_AXIS_VALUE axisValue = {
-                    // let dwrite put the tag bytes in the order it wants
-                    DWRITE_MAKE_FONT_AXIS_TAG((v.mTag >> 24) & 0xff,
-                                              (v.mTag >> 16) & 0xff,
-                                              (v.mTag >> 8) & 0xff,
-                                              v.mTag & 0xff),
+                    makeDWriteAxisTag(v.mTag),
                     v.mValue
                 };
                 fontAxisValues.AppendElement(axisValue);
@@ -745,8 +833,13 @@ gfxDWriteFontEntry::CreateFontFace(IDWriteFontFace **aFontFace,
         return FAILED(hr) ? NS_ERROR_FAILURE : NS_OK;
     }
 
-    // no simulation: we can just add a reference to mFontFace and return that
-    *aFontFace = mFontFace;
+    // no simulation: we can just add a reference to mFontFace5 (if present)
+    // or mFontFace (otherwise) and return that
+    if (mFontFace5) {
+        *aFontFace = mFontFace5;
+    } else {
+        *aFontFace = mFontFace;
+    }
     (*aFontFace)->AddRef();
     return NS_OK;
 }
@@ -893,32 +986,21 @@ gfxDWriteFontList::MakePlatformFont(const nsAString& aFontName,
                                     const uint8_t* aFontData,
                                     uint32_t aLength)
 {
-    nsresult rv;
-    nsAutoString uniqueName;
-    rv = gfxFontUtils::MakeUniqueUserFontName(uniqueName);
-    if (NS_FAILED(rv)) {
-        free((void*)aFontData);
-        return nullptr;
-    }
-
-    FallibleTArray<uint8_t> newFontData;
-
-    rv = gfxFontUtils::RenameFont(uniqueName, aFontData, aLength, &newFontData);
-    free((void*)aFontData);
-
-    if (NS_FAILED(rv)) {
-        return nullptr;
-    }
-    
     RefPtr<IDWriteFontFileStream> fontFileStream;
     RefPtr<IDWriteFontFile> fontFile;
     HRESULT hr =
-      gfxDWriteFontFileLoader::CreateCustomFontFile(newFontData,
+      gfxDWriteFontFileLoader::CreateCustomFontFile(aFontData, aLength,
                                                     getter_AddRefs(fontFile),
                                                     getter_AddRefs(fontFileStream));
-
+    free((void*)aFontData);
     if (FAILED(hr)) {
         NS_WARNING("Failed to create custom font file reference.");
+        return nullptr;
+    }
+
+    nsAutoString uniqueName;
+    nsresult rv = gfxFontUtils::MakeUniqueUserFontName(uniqueName);
+    if (NS_FAILED(rv)) {
         return nullptr;
     }
 
@@ -927,7 +1009,7 @@ gfxDWriteFontList::MakePlatformFont(const nsAString& aFontName,
     UINT32 numFaces;
 
     gfxDWriteFontEntry *entry = 
-        new gfxDWriteFontEntry(uniqueName, 
+        new gfxDWriteFontEntry(uniqueName,
                                fontFile,
                                fontFileStream,
                                aWeight,
@@ -1154,37 +1236,12 @@ gfxDWriteFontList::GetFontsFromCollection(IDWriteFontCollection* aCollection)
             continue;
         }
 
-        UINT32 englishIdx = 0;
-
-        BOOL exists;
-        hr = names->FindLocaleName(L"en-us", &englishIdx, &exists);
-        if (FAILED(hr)) {
+        nsAutoString name;
+        if (!GetEnglishOrFirstName(name, names)) {
             continue;
         }
-        if (!exists) {
-            // Use 0 index if english is not found.
-            englishIdx = 0;
-        }
+        nsAutoString familyName(name); // keep a copy before we lowercase it as a key
 
-        AutoTArray<WCHAR, 32> enName;
-        UINT32 length;
-
-        hr = names->GetStringLength(englishIdx, &length);
-        if (FAILED(hr)) {
-            continue;
-        }
-
-        if (!enName.SetLength(length + 1, fallible)) {
-            // Eeep - running out of memory. Unlikely to end well.
-            continue;
-        }
-
-        hr = names->GetString(englishIdx, enName.Elements(), length + 1);
-        if (FAILED(hr)) {
-            continue;
-        }
-
-        nsAutoString name(enName.Elements());
         BuildKeyNameFromFontName(name);
 
         RefPtr<gfxFontFamily> fam;
@@ -1192,8 +1249,6 @@ gfxDWriteFontList::GetFontsFromCollection(IDWriteFontCollection* aCollection)
         if (mFontFamilies.GetWeak(name)) {
             continue;
         }
-
-        nsDependentString familyName(enName.Elements());
 
         fam = new gfxDWriteFontFamily(familyName, family, aCollection == mSystemFonts);
         if (!fam) {
@@ -1209,36 +1264,43 @@ gfxDWriteFontList::GetFontsFromCollection(IDWriteFontCollection* aCollection)
         uint32_t nameCount = names->GetCount();
         uint32_t nameIndex;
 
-        for (nameIndex = 0; nameIndex < nameCount; nameIndex++) {
-            UINT32 nameLen;
-            AutoTArray<WCHAR, 32> localizedName;
+        if (nameCount > 1) {
+            UINT32 englishIdx = 0;
+            BOOL exists;
+            // if this fails/doesn't exist, we'll have used name index 0,
+            // so that's the one we'll want to skip here
+            names->FindLocaleName(L"en-us", &englishIdx, &exists);
 
-            // only add other names
-            if (nameIndex == englishIdx) {
-                continue;
+            for (nameIndex = 0; nameIndex < nameCount; nameIndex++) {
+                UINT32 nameLen;
+                AutoTArray<WCHAR, 32> localizedName;
+
+                // only add other names
+                if (nameIndex == englishIdx) {
+                    continue;
+                }
+
+                hr = names->GetStringLength(nameIndex, &nameLen);
+                if (FAILED(hr)) {
+                    continue;
+                }
+
+                if (!localizedName.SetLength(nameLen + 1, fallible)) {
+                    continue;
+                }
+
+                hr = names->GetString(nameIndex, localizedName.Elements(),
+                                      nameLen + 1);
+                if (FAILED(hr)) {
+                    continue;
+                }
+
+                nsDependentString locName(localizedName.Elements());
+
+                if (!familyName.Equals(locName)) {
+                    AddOtherFamilyName(fam, locName);
+                }
             }
-
-            hr = names->GetStringLength(nameIndex, &nameLen);
-            if (FAILED(hr)) {
-                continue;
-            }
-
-            if (!localizedName.SetLength(nameLen + 1, fallible)) {
-                continue;
-            }
-
-            hr = names->GetString(nameIndex, localizedName.Elements(),
-                                  nameLen + 1);
-            if (FAILED(hr)) {
-                continue;
-            }
-
-            nsDependentString locName(localizedName.Elements());
-
-            if (!familyName.Equals(locName)) {
-                AddOtherFamilyName(fam, locName);
-            }
-
         }
 
         // at this point, all family names have been read in
@@ -1427,36 +1489,10 @@ static HRESULT GetFamilyName(IDWriteFont *aFont, nsString& aFamilyName)
         return hr;
     }
 
-    UINT32 index = 0;
-    BOOL exists = false;
-
-    hr = familyNames->FindLocaleName(L"en-us", &index, &exists);
-    if (FAILED(hr)) {
-        return hr;
-    }
-
-    // If the specified locale doesn't exist, select the first on the list.
-    if (!exists) {
-        index = 0;
-    }
-
-    AutoTArray<WCHAR, 32> name;
-    UINT32 length;
-
-    hr = familyNames->GetStringLength(index, &length);
-    if (FAILED(hr)) {
-        return hr;
-    }
-
-    if (!name.SetLength(length + 1, fallible)) {
+    if (!GetEnglishOrFirstName(aFamilyName, familyNames)) {
         return E_FAIL;
     }
-    hr = familyNames->GetString(index, name.Elements(), length + 1);
-    if (FAILED(hr)) {
-        return hr;
-    }
 
-    aFamilyName.Assign(name.Elements());
     return S_OK;
 }
 

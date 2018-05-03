@@ -2,29 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["TabEngine", "TabSetRecord"];
-
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = ["TabEngine", "TabSetRecord"];
 
 const TABS_TTL = 1814400; // 21 days.
 const TAB_ENTRIES_LIMIT = 5; // How many URLs to include in tab history.
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/constants.js");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
 
-this.TabSetRecord = function TabSetRecord(collection, id) {
+function TabSetRecord(collection, id) {
   CryptoWrapper.call(this, collection, id);
-};
+}
 TabSetRecord.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Tabs",
@@ -34,9 +32,9 @@ TabSetRecord.prototype = {
 Utils.deferGetSet(TabSetRecord, "cleartext", ["clientName", "tabs"]);
 
 
-this.TabEngine = function TabEngine(service) {
+function TabEngine(service) {
   SyncEngine.call(this, "Tabs", service);
-};
+}
 TabEngine.prototype = {
   __proto__: SyncEngine.prototype,
   _storeObj: TabStore,
@@ -277,8 +275,6 @@ TabStore.prototype = {
 
 function TabTracker(name, engine) {
   Tracker.call(this, name, engine);
-  Svc.Obs.add("weave:engine:start-tracking", this);
-  Svc.Obs.add("weave:engine:stop-tracking", this);
 
   // Make sure "this" pointer is always set correctly for event listeners.
   this.onTab = Utils.bind2(this, this.onTab);
@@ -322,25 +318,23 @@ TabTracker.prototype = {
     }
   },
 
-  startTracking() {
-    Svc.Obs.add("domwindowopened", this);
+  onStart() {
+    Svc.Obs.add("domwindowopened", this.asyncObserver);
     let wins = Services.wm.getEnumerator("navigator:browser");
     while (wins.hasMoreElements()) {
       this._registerListenersForWindow(wins.getNext());
     }
   },
 
-  stopTracking() {
-    Svc.Obs.remove("domwindowopened", this);
+  onStop() {
+    Svc.Obs.remove("domwindowopened", this.asyncObserver);
     let wins = Services.wm.getEnumerator("navigator:browser");
     while (wins.hasMoreElements()) {
       this._unregisterListenersForWindow(wins.getNext());
     }
   },
 
-  observe(subject, topic, data) {
-    Tracker.prototype.observe.call(this, subject, topic, data);
-
+  async observe(subject, topic, data) {
     switch (topic) {
       case "domwindowopened":
         let onLoad = () => {

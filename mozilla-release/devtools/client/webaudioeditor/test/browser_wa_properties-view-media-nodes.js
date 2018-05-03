@@ -12,7 +12,7 @@ function waitForDeviceClosed() {
   info("Checking that getUserMedia streams are no longer in use.");
 
   let temp = {};
-  Cu.import("resource:///modules/webrtcUI.jsm", temp);
+  ChromeUtils.import("resource:///modules/webrtcUI.jsm", temp);
   let webrtcUI = temp.webrtcUI;
 
   if (!webrtcUI.showGlobalIndicator)
@@ -42,7 +42,7 @@ add_task(function* () {
   let mediaPermissionPref = Services.prefs.getBoolPref(MEDIA_PERMISSION);
   Services.prefs.setBoolPref(MEDIA_PERMISSION, true);
 
-  yield loadFrameScripts();
+  yield loadFrameScriptUtils();
 
   let events = Promise.all([
     getN(gFront, "create-node", 4),

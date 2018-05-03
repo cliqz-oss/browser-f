@@ -8,9 +8,8 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FormAutofillPreferences"];
+var EXPORTED_SYMBOLS = ["FormAutofillPreferences"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 // Add addresses enabled flag in telemetry environment for recording the number of
 // users who disable/enable the address autofill feature.
 const BUNDLE_URI = "chrome://formautofill/locale/formautofill.properties";
@@ -18,9 +17,9 @@ const MANAGE_ADDRESSES_URL = "chrome://formautofill/content/manageAddresses.xhtm
 const MANAGE_CREDITCARDS_URL = "chrome://formautofill/content/manageCreditCards.xhtml";
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
 const {
   ENABLED_AUTOFILL_ADDRESSES_PREF,
@@ -34,7 +33,7 @@ const {
 // users who disable/enable the credit card autofill feature.
 
 this.log = null;
-FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
+FormAutofillUtils.defineLazyLogGetter(this, EXPORTED_SYMBOLS[0]);
 
 function FormAutofillPreferences() {
   this.bundle = Services.strings.createBundle(BUNDLE_URI);
@@ -91,6 +90,7 @@ FormAutofillPreferences.prototype = {
 
     addressAutofill.setAttribute("data-subcategory", "address-autofill");
     addressAutofillCheckboxLabel.textContent = this.bundle.GetStringFromName("autofillAddressesCheckbox");
+    addressAutofillCheckbox.setAttribute("aria-label", addressAutofillCheckboxLabel.textContent);
     addressAutofillLearnMore.textContent = this.bundle.GetStringFromName("learnMoreLabel");
     savedAddressesBtn.setAttribute("label", this.bundle.GetStringFromName("savedAddressesBtnLabel"));
     // Align the start to keep the savedAddressesBtn as original size
@@ -145,6 +145,7 @@ FormAutofillPreferences.prototype = {
 
       creditCardAutofill.setAttribute("data-subcategory", "credit-card-autofill");
       creditCardAutofillCheckboxLabel.textContent = this.bundle.GetStringFromName("autofillCreditCardsCheckbox");
+      creditCardAutofillCheckbox.setAttribute("aria-label", creditCardAutofillCheckboxLabel.textContent);
       creditCardAutofillLearnMore.textContent = this.bundle.GetStringFromName("learnMoreLabel");
       savedCreditCardsBtn.setAttribute("label", this.bundle.GetStringFromName("savedCreditCardsBtnLabel"));
       // Align the start to keep the savedCreditCardsBtn as original size

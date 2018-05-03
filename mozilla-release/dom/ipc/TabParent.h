@@ -276,8 +276,8 @@ public:
                             nsTArray<nsCString>&& aEnabledCommands,
                             nsTArray<nsCString>&& aDisabledCommands) override;
 
-  virtual mozilla::ipc::IPCResult
-  RecvSetCursor(const uint32_t& aValue, const bool& aForce) override;
+  virtual mozilla::ipc::IPCResult RecvSetCursor(const nsCursor& aValue,
+                                                const bool& aForce) override;
 
   virtual mozilla::ipc::IPCResult RecvSetCustomCursor(const nsCString& aUri,
                                                       const uint32_t& aWidth,
@@ -433,10 +433,6 @@ public:
                       int32_t aButton, int32_t aClickCount,
                       int32_t aModifiers, bool aIgnoreRootScrollFrame);
 
-  void SendKeyEvent(const nsAString& aType, int32_t aKeyCode,
-                    int32_t aCharCode, int32_t aModifiers,
-                    bool aPreventDefault);
-
   /**
    * The following Send*Event() marks aEvent as posted to remote process if
    * it succeeded.  So, you can check the result with
@@ -446,7 +442,8 @@ public:
 
   void SendRealDragEvent(WidgetDragEvent& aEvent,
                          uint32_t aDragAction,
-                         uint32_t aDropEffect);
+                         uint32_t aDropEffect,
+                         const nsCString& aPrincipalURISpec);
 
   void SendMouseWheelEvent(WidgetWheelEvent& aEvent);
 
@@ -504,7 +501,8 @@ public:
 
   bool SendPasteTransferable(const IPCDataTransfer& aDataTransfer,
                              const bool& aIsPrivateData,
-                             const IPC::Principal& aRequestingPrincipal);
+                             const IPC::Principal& aRequestingPrincipal,
+                             const uint32_t& aContentPolicyType);
 
   static TabParent* GetFrom(nsFrameLoader* aFrameLoader);
 
@@ -578,9 +576,11 @@ public:
                         const uint32_t& aAction,
                         const OptionalShmem& aVisualDnDData,
                         const uint32_t& aStride, const uint8_t& aFormat,
-                        const LayoutDeviceIntRect& aDragRect) override;
+                        const LayoutDeviceIntRect& aDragRect,
+                        const nsCString& aPrincipalURISpec) override;
 
-  void AddInitialDnDDataTo(DataTransfer* aDataTransfer);
+  void AddInitialDnDDataTo(DataTransfer* aDataTransfer,
+                           nsACString& aPrincipalURISpec);
 
   bool TakeDragVisualization(RefPtr<mozilla::gfx::SourceSurface>& aSurface,
                              LayoutDeviceIntRect* aDragRect);
@@ -689,6 +689,7 @@ private:
   RefPtr<gfx::DataSourceSurface> mDnDVisualization;
   bool mDragValid;
   LayoutDeviceIntRect mDragRect;
+  nsCString mDragPrincipalURISpec;
 
   // When true, the TabParent is initialized without child side's request.
   // When false, the TabParent is initialized by window.open() from child side.

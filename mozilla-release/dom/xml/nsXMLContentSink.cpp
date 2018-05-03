@@ -8,7 +8,6 @@
 #include "nsXMLContentSink.h"
 #include "nsIParser.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMDocumentType.h"
 #include "nsIContent.h"
 #include "nsIURI.h"
@@ -16,7 +15,6 @@
 #include "nsIDocShell.h"
 #include "nsIStyleSheetLinkingElement.h"
 #include "nsIDOMComment.h"
-#include "nsIDOMCDATASection.h"
 #include "DocumentType.h"
 #include "nsHTMLParts.h"
 #include "nsCRT.h"
@@ -61,6 +59,7 @@
 #include "mozilla/dom/HTMLTemplateElement.h"
 #include "mozilla/dom/ProcessingInstruction.h"
 #include "mozilla/dom/ScriptLoader.h"
+#include "mozilla/dom/txMozillaXSLTProcessor.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -222,7 +221,7 @@ nsXMLContentSink::MaybePrettyPrint()
 static void
 CheckXSLTParamPI(nsIDOMProcessingInstruction* aPi,
                  nsIDocumentTransformer* aProcessor,
-                 nsIDocument* aDocument)
+                 nsINode* aSource)
 {
   nsAutoString target, data;
   aPi->GetTarget(target);
@@ -255,8 +254,7 @@ CheckXSLTParamPI(nsIDOMProcessingInstruction* aPi,
       value.SetIsVoid(true);
     }
     if (!name.IsEmpty()) {
-      nsCOMPtr<nsIDOMNode> doc = do_QueryInterface(aDocument);
-      aProcessor->AddXSLTParam(name, namespaceAttr, select, value, doc);
+      aProcessor->AddXSLTParam(name, namespaceAttr, select, value, aSource);
     }
   }
 }
@@ -280,13 +278,23 @@ nsXMLContentSink::DidBuildModel(bool aTerminated)
     mDocument->RemoveObserver(this);
     mIsDocumentObserver = false;
 
+    ErrorResult rv;
+    RefPtr<DocumentFragment> source = mDocument->CreateDocumentFragment();
+    for (nsIContent* child : mDocumentChildren) {
+        // XPath data model doesn't have DocumentType nodes.
+        if (child->NodeType() != nsINode::DOCUMENT_TYPE_NODE) {
+            source->AppendChild(*child, rv);
+            if (rv.Failed()) {
+                return rv.StealNSResult();
+            }
+        }
+    }
+
     // Check for xslt-param and xslt-param-namespace PIs
-    for (nsIContent* child = mDocument->GetFirstChild();
-         child;
-         child = child->GetNextSibling()) {
+    for (nsIContent* child : mDocumentChildren) {
       if (child->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
         nsCOMPtr<nsIDOMProcessingInstruction> pi = do_QueryInterface(child);
-        CheckXSLTParamPI(pi, mXSLTProcessor, mDocument);
+        CheckXSLTParamPI(pi, mXSLTProcessor, source);
       }
       else if (child->IsElement()) {
         // Only honor PIs in the prolog
@@ -294,7 +302,7 @@ nsXMLContentSink::DidBuildModel(bool aTerminated)
       }
     }
 
-    mXSLTProcessor->SetSourceContentModel(mDocument, mDocumentChildren);
+    mXSLTProcessor->SetSourceContentModel(source);
     // Since the processor now holds a reference to us we drop our reference
     // to it to avoid owning cycles
     mXSLTProcessor = nullptr;
@@ -329,9 +337,9 @@ nsXMLContentSink::DidBuildModel(bool aTerminated)
     mIsDocumentObserver = false;
 
     mDocument->EndLoad();
-  }
 
-  DropParserAndPerfHint();
+    DropParserAndPerfHint();
+  }
 
   return NS_OK;
 }
@@ -362,8 +370,6 @@ nsXMLContentSink::OnTransformDone(nsresult aResult,
 
   mDocumentChildren.Clear();
 
-  nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(aResultDocument);
-
   nsCOMPtr<nsIContentViewer> contentViewer;
   mDocShell->GetContentViewer(getter_AddRefs(contentViewer));
 
@@ -371,10 +377,17 @@ nsXMLContentSink::OnTransformDone(nsresult aResult,
     // Transform failed.
     aResultDocument->SetMayStartLayout(false);
     // We have an error document.
-    contentViewer->SetDOMDocument(domDoc);
+    contentViewer->SetDocument(aResultDocument);
   }
 
   nsCOMPtr<nsIDocument> originalDocument = mDocument;
+  bool blockingOnload = mIsBlockingOnload;
+  if (!mRunsToCompletion) {
+    // This BlockOnload call corresponds to the UnblockOnload call in
+    // nsContentSink::DropParserAndPerfHint.
+    aResultDocument->BlockOnload();
+    mIsBlockingOnload = true;
+  }
   // Transform succeeded, or it failed and we have an error document to display.
   mDocument = aResultDocument;
   nsCOMPtr<nsIHTMLDocument> htmlDoc = do_QueryInterface(mDocument);
@@ -388,7 +401,7 @@ nsXMLContentSink::OnTransformDone(nsresult aResult,
   // documentElement?
   nsIContent *rootElement = mDocument->GetRootElement();
   if (rootElement) {
-    NS_ASSERTION(mDocument->IndexOf(rootElement) != -1,
+    NS_ASSERTION(mDocument->ComputeIndexOf(rootElement) != -1,
                  "rootElement not in doc?");
     mDocument->BeginUpdate(UPDATE_CONTENT_MODEL);
     nsNodeUtils::ContentInserted(mDocument, rootElement);
@@ -401,6 +414,13 @@ nsXMLContentSink::OnTransformDone(nsresult aResult,
   ScrollToRef();
 
   originalDocument->EndLoad();
+  if (blockingOnload) {
+    // This UnblockOnload call corresponds to the BlockOnload call in
+    // nsContentSink::WillBuildModelImpl.
+    originalDocument->UnblockOnload(true);
+  }
+
+  DropParserAndPerfHint();
 
   return NS_OK;
 }
@@ -630,12 +650,7 @@ nsXMLContentSink::AddContentAsLeaf(nsIContent *aContent)
 nsresult
 nsXMLContentSink::LoadXSLStyleSheet(nsIURI* aUrl)
 {
-  nsCOMPtr<nsIDocumentTransformer> processor =
-    do_CreateInstance("@mozilla.org/document-transformer;1?type=xslt");
-  if (!processor) {
-    // No XSLT processor available, continue normal document loading
-    return NS_OK;
-  }
+  nsCOMPtr<nsIDocumentTransformer> processor = new txMozillaXSLTProcessor();
 
   processor->SetTransformObserver(this);
 
@@ -987,7 +1002,7 @@ nsXMLContentSink::HandleStartElement(const char16_t *aName,
 
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(localName, prefix, nameSpaceID,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   result = CreateElement(aAtts, aAttsCount, nodeInfo, aLineNumber,
                          getter_AddRefs(content), &appendContent,
@@ -1369,15 +1384,8 @@ nsXMLContentSink::ReportError(const char16_t* aErrorText,
 
   // Clear the current content
   mDocumentChildren.Clear();
-  nsCOMPtr<nsIDOMNode> node(do_QueryInterface(mDocument));
-  if (node) {
-    for (;;) {
-      nsCOMPtr<nsIDOMNode> child, dummy;
-      node->GetLastChild(getter_AddRefs(child));
-      if (!child)
-        break;
-      node->RemoveChild(child, getter_AddRefs(dummy));
-    }
+  while (mDocument->GetLastChild()) {
+    mDocument->GetLastChild()->Remove();
   }
   mDocElement = nullptr;
 
@@ -1630,7 +1638,7 @@ nsXMLContentSink::ContinueInterruptedParsingAsync()
                       this,
                       &nsXMLContentSink::ContinueInterruptedParsingIfEnabled);
 
-  NS_DispatchToCurrentThread(ev);
+  mDocument->Dispatch(mozilla::TaskCategory::Other, ev.forget());
 }
 
 nsIParser*

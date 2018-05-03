@@ -131,6 +131,11 @@ add_task(async function copyURLFromPanel() {
   // does not appear on about:blank for example.)
   let url = "http://example.com/";
   await BrowserTestUtils.withNewTab(url, async () => {
+    // Add action to URL bar.
+    let action = PageActions._builtInActions.find(a => a.id == "copyURL");
+    action.pinnedToUrlbar = true;
+    registerCleanupFunction(() => action.pinnedToUrlbar = false);
+
     // Open the panel and click Copy URL.
     await promisePageActionPanelOpen();
     Assert.ok(true, "page action panel opened");
@@ -147,6 +152,8 @@ add_task(async function copyURLFromPanel() {
     Assert.equal(feedbackPanel.anchorNode.id, "pageActionButton", "Feedback menu should be anchored on the main Page Action button");
     let feedbackHiddenPromise = promisePanelHidden("pageActionFeedback");
     await feedbackHiddenPromise;
+
+    action.pinnedToUrlbar = false;
   });
 });
 
@@ -170,6 +177,8 @@ add_task(async function copyURLFromURLBar() {
     Assert.equal(panel.anchorNode.id, "pageAction-urlbar-copyURL", "Feedback menu should be anchored on the main URL bar button");
     let feedbackHiddenPromise = promisePanelHidden("pageActionFeedback");
     await feedbackHiddenPromise;
+
+    action.pinnedToUrlbar = false;
   });
 });
 
@@ -551,10 +560,10 @@ add_task(async function sendToDevice_inUrlbar() {
     Assert.notEqual(urlbarButton, null, "The urlbar button should exist");
     Assert.ok(!urlbarButton.disabled,
               "The urlbar button should not be disabled");
-    let panelPromise =
-      promisePanelShown(BrowserPageActions._activatedActionPanelID);
     EventUtils.synthesizeMouseAtCenter(urlbarButton, {});
-    await panelPromise;
+    // The panel element for _activatedActionPanelID is created synchronously
+    // only after the associated button has been clicked.
+    await promisePanelShown(BrowserPageActions._activatedActionPanelID);
     Assert.equal(urlbarButton.getAttribute("open"), "true",
       "Button has open attribute");
 
@@ -739,7 +748,7 @@ add_task(async function contextMenu() {
 
 function promiseSyncReady() {
   let service = Cc["@mozilla.org/weave/service;1"]
-                  .getService(Components.interfaces.nsISupports)
+                  .getService(Ci.nsISupports)
                   .wrappedJSObject;
   return service.whenLoaded().then(() => {
     UIState.isReady();

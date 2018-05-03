@@ -2,12 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var unsafeAboutModule = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
@@ -25,11 +22,11 @@ var unsafeAboutModule = {
 var factory = {
   createInstance: function(aOuter, aIID) {
     if (aOuter)
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     return unsafeAboutModule.QueryInterface(aIID);
   },
   lockFactory: function(aLock) {
-    throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
 };

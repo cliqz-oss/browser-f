@@ -1,10 +1,8 @@
 "use strict";
 
-var { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource:///modules/ChromeMigrationUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource:///modules/ChromeMigrationUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 function getRootPath() {
   let dirKey;
@@ -52,19 +50,6 @@ add_task(async function test_getDataPath_function() {
     Assert.equal(canaryUserDataPath, null,
       "Should get null for Canary.");
   }
-});
-
-add_task(async function test_getChromeUserDataPath_function() {
-  let chromeUserDataPath = ChromeMigrationUtils.getChromeUserDataPath();
-  let expectedPath;
-  if (AppConstants.platform == "win") {
-    expectedPath = OS.Path.join(getRootPath(), "Google", "Chrome", "User Data");
-  } else if (AppConstants.platform == "macosx") {
-    expectedPath = OS.Path.join(getRootPath(), "Application Support", "Google", "Chrome");
-  } else {
-    expectedPath = OS.Path.join(getRootPath(), ".config", "google-chrome");
-  }
-  Assert.equal(chromeUserDataPath, expectedPath, "Should get the path of Chrome user data directory.");
 });
 
 add_task(async function test_getExtensionPath_function() {

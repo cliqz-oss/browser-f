@@ -4,13 +4,11 @@
 
 "use strict";
 
-const { utils: Cu, interfaces: Ci, classes: Cc, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
 function MainProcessSingleton() {}
 MainProcessSingleton.prototype = {
@@ -32,11 +30,16 @@ MainProcessSingleton.prototype = {
       // Make sure the URLs are HTTP, HTTPS, or FTP.
       let isWeb = ["https", "http", "ftp"];
 
-      if (isWeb.indexOf(engineURL.scheme) < 0)
-        throw "Unsupported search engine URL: " + engineURL;
+      if (!isWeb.includes(engineURL.scheme))
+        throw "Unsupported search engine URL: " + engineURL.spec;
 
-      if (iconURL && isWeb.indexOf(iconURL.scheme) < 0)
-        throw "Unsupported search icon URL: " + iconURL;
+      if (iconURL && !isWeb.includes(iconURL.scheme))
+        throw "Unsupported search icon URL: " + iconURL.spec;
+
+      if (Services.policies &&
+          !Services.policies.isAllowed("installSearchEngine")) {
+        throw "Search Engine installation blocked by the Enterprise Policy Manager.";
+      }
     } catch (ex) {
       Cu.reportError("Invalid argument passed to window.external.AddSearchProvider: " + ex);
 

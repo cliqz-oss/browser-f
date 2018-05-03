@@ -402,93 +402,6 @@ interface nsINavBookmarksService : nsISupports
                          [optional] in unsigned short aSource);
 
   /**
-   * Gets an undo-able transaction for removing a folder from the bookmarks
-   * tree.
-   *  @param aItemId
-   *         The id of the folder to remove.
-   *  @param [optional] aSource
-   *         The change source, forwarded to all bookmark observers. Defaults
-   *         to SOURCE_DEFAULT.
-   *  @return An object implementing nsITransaction that can be used to undo
-   *          or redo the action.
-   *
-   * This method exists because complex delete->undo operations rely on
-   * recreated folders to have the same ID they had before they were deleted,
-   * so that any other items deleted in different transactions can be
-   * re-inserted correctly. This provides a safe encapsulation of this
-   * functionality without exposing the ability to recreate folders with
-   * specific IDs (potentially dangerous if abused by other code!) in the
-   * public API.
-   */
-  nsITransaction getRemoveFolderTransaction(in long long aItemId,
-                                            [optional] in unsigned short aSource);
-
-  /**
-   * Convenience function for container services.  Removes
-   * all children of the given folder.
-   *  @param aItemId
-   *         The id of the folder to remove children from.
-   *  @param [optional] aSource
-   *         The change source, forwarded to all bookmark observers. Defaults
-   *         to SOURCE_DEFAULT.
-   */
-  void removeFolderChildren(in long long aItemId,
-                            [optional] in unsigned short aSource);
-
-  /**
-   * Moves an item to a different container, preserving its contents.
-   *  @param aItemId
-   *         The id of the item to move
-   *  @param aNewParentId
-   *         The id of the new parent
-   *  @param aIndex
-   *         The index under aNewParent, or DEFAULT_INDEX to append
-   *  @param [optional] aSource
-   *         The change source, forwarded to all bookmark observers. Defaults
-   *         to SOURCE_DEFAULT.
-   *
-   * NOTE: When moving down in the same container we take into account the
-   * removal of the original item. If you want to move from index X to
-   * index Y > X you must use moveItem(id, folder, Y + 1)
-   */
-  void moveItem(in long long aItemId,
-                in long long aNewParentId,
-                in long aIndex,
-                [optional] in unsigned short aSource);
-
-  /**
-   * Inserts a bookmark separator into the given folder at the given index.
-   * The separator can be removed using removeChildAt().
-   *  @param aParentId
-   *         The id of the parent folder
-   *  @param aIndex
-   *         The separator's index under folder, or DEFAULT_INDEX to append
-   *  @param [optional] aGuid
-   *         The GUID to be set for the new item.  If not set, a new GUID is
-   *         generated.  Unless you've a very sound reason, such as an undo
-   *         manager implementation, do not pass this argument.
-   *  @param [optional] aSource
-   *         The change source, forwarded to all bookmark observers. Defaults
-   *         to SOURCE_DEFAULT.
-   *  @return The ID of the new separator.
-   *  @throws if aGuid is malformed.
-   */
-  long long insertSeparator(in long long aParentId, in long aIndex,
-                            [optional] in ACString aGuid,
-                            [optional] in unsigned short aSource);
-
-  /**
-   * Get the itemId given the containing folder and the index.
-   *  @param aParentId
-   *         The id of the diret parent folder of the item
-   *  @param aIndex
-   *         The index of the item within the parent folder.
-   *         Pass DEFAULT_INDEX for the last item.
-   *  @return The ID of the found item, -1 if the item does not exists.
-   */
-  long long getIdForItemAt(in long long aParentId, in long aIndex);
-
-  /**
    * Set the title for an item.
    *  @param aItemId
    *         The id of the item whose title should be updated.
@@ -515,32 +428,6 @@ interface nsINavBookmarksService : nsISupports
   AUTF8String getItemTitle(in long long aItemId);
 
   /**
-   * Set the date added time for an item.
-   *
-   * @param aItemId
-   *        the id of the item whose date added time should be updated.
-   * @param aDateAdded
-   *        the new date added value in microseconds.  Note that it is rounded
-   *        down to milliseconds precision.
-   *  @param [optional] aSource
-   *         The change source, forwarded to all bookmark observers. Defaults
-   *         to SOURCE_DEFAULT.
-   */
-  void setItemDateAdded(in long long aItemId,
-                        in PRTime aDateAdded,
-                        [optional] in unsigned short aSource);
-
-  /**
-   * Get the date added time for an item.
-   *
-   * @param aItemId
-   *        the id of the item whose date added time should be retrieved.
-   *
-   * @return the date added value in microseconds.
-   */
-  PRTime getItemDateAdded(in long long aItemId);
-
-  /**
    * Set the last modified time for an item.
    *
    * @param aItemId
@@ -562,63 +449,11 @@ interface nsINavBookmarksService : nsISupports
                            [optional] in unsigned short aSource);
 
   /**
-   * Get the last modified time for an item.
-   *
-   * @param aItemId
-   *        the id of the item whose last modified time should be retrieved.
-   *
-   * @return the date added value in microseconds.
-   *
-   * @note When an item is added lastModified is set to the same value as
-   *       dateAdded.
-   */
-  PRTime getItemLastModified(in long long aItemId);
-
-  /**
    * Get the URI for a bookmark item.
    */
   nsIURI getBookmarkURI(in long long aItemId);
 
   /**
-   * Get the index for an item.
-   */
-  long getItemIndex(in long long aItemId);
-
-  /**
-   * Changes the index for a item. This method does not change the indices of
-   * any other items in the same folder, so ensure that the new index does not
-   * already exist, or change the index of other items accordingly, otherwise
-   * the indices will become corrupted.
-   *
-   * WARNING: This is API is intended for scenarios such as folder sorting,
-   *          where the caller manages the indices of *all* items in the folder.
-   *          You must always ensure each index is unique after a reordering.
-   *
-   *  @param aItemId    The id of the item to modify
-   *  @param aNewIndex  The new index
-   *  @param aSource    The optional change source, forwarded to all bookmark
-   *                    observers. Defaults to SOURCE_DEFAULT.
-   *
-   *  @throws If aNewIndex is out of bounds.
-   */
-  void setItemIndex(in long long aItemId,
-                    in long aNewIndex,
-                    [optional] in unsigned short aSource);
-
-  /**
-   * Get an item's type (bookmark, separator, folder).
-   * The type is one of the TYPE_* constants defined above.
-   */
-  unsigned short getItemType(in long long aItemId);
-
-  /**
-   * Change the bookmarked URI for a bookmark.
-   * This changes which "place" the bookmark points at,
-   * which means all annotations, etc are carried along.
-   */
-  void changeBookmarkURI(in long long aItemId,
-                         in nsIURI aNewURI,
-                         [optional] in unsigned short aSource);
 
   /**
    * Get the parent folder's id for an item.
@@ -626,31 +461,7 @@ interface nsINavBookmarksService : nsISupports
   long long getFolderIdForItem(in long long aItemId);
 
   /**
-   * Returns the list of bookmark ids that contain the given URI.
-   */
-  void getBookmarkIdsForURI(in nsIURI aURI, [optional] out unsigned long count,
-                            [array, retval, size_is(count)] out long long bookmarks);
 
-  /**
-   * Associates the given keyword with the given bookmark.
-   *
-   * Use an empty keyword to clear the keyword associated with the URI.
-   * In both of these cases, succeeds but does nothing if the URL/keyword is not found.
-   *
-   * @deprecated Use PlacesUtils.keywords.insert() API instead.
-   */
-  void setKeywordForBookmark(in long long aItemId,
-                             in AString aKeyword,
-                             [optional] in unsigned short aSource);
-
-  /**
-   * Retrieves the keyword for the given bookmark. Will be void string
-   * (null in JS) if no such keyword is found.
-   *
-   * @deprecated Use PlacesUtils.keywords.fetch() API instead.
-   */
-  AString getKeywordForBookmark(in long long aItemId);
-  /**
    * Adds a bookmark observer. If ownsWeak is false, the bookmark service will
    * keep an owning reference to the observer.  If ownsWeak is true, then
    * aObserver must implement nsISupportsWeakReference, and the bookmark

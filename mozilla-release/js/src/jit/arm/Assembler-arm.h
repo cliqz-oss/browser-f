@@ -12,14 +12,21 @@
 #include "mozilla/MathAlgorithms.h"
 
 #include "jit/arm/Architecture-arm.h"
+#include "jit/arm/disasm/Disasm-arm.h"
 #include "jit/CompactBuffer.h"
 #include "jit/IonCode.h"
 #include "jit/JitCompartment.h"
 #include "jit/shared/Assembler-shared.h"
+#include "jit/shared/Disassembler-shared.h"
 #include "jit/shared/IonAssemblerBufferWithConstantPools.h"
+
+union PoolHintPun;
 
 namespace js {
 namespace jit {
+
+using LiteralDoc = DisassemblerSpew::LiteralDoc;
+using LabelDoc = DisassemblerSpew::LabelDoc;
 
 // NOTE: there are duplicates in this list! Sometimes we want to specifically
 // refer to the link register as a link register (bl lr is much clearer than bl
@@ -112,6 +119,10 @@ bool IsUnaligned(const wasm::MemoryAccessDesc& access);
 static constexpr Register ABINonArgReg0 = r4;
 static constexpr Register ABINonArgReg1 = r5;
 static constexpr Register ABINonArgReg2 = r6;
+
+// This register may be volatile or nonvolatile. Avoid d15 which is the
+// ScratchDoubleReg.
+static constexpr FloatRegister ABINonArgDoubleReg { FloatRegisters::d8, VFPRegister::Double };
 
 // These registers may be volatile or nonvolatile.
 // Note: these three registers are all guaranteed to be different
@@ -1243,22 +1254,27 @@ class Assembler : public AssemblerShared
 
   protected:
     // Shim around AssemblerBufferWithConstantPools::allocEntry.
-    BufferOffset allocEntry(size_t numInst, unsigned numPoolEntries,
-                            uint8_t* inst, uint8_t* data, ARMBuffer::PoolEntry* pe = nullptr,
-                            bool loadToPC = false);
+    BufferOffset allocLiteralLoadEntry(size_t numInst, unsigned numPoolEntries,
+                                       PoolHintPun& php, uint8_t* data,
+                                       const LiteralDoc& doc = LiteralDoc(),
+                                       ARMBuffer::PoolEntry* pe = nullptr,
+                                       bool loadToPC = false);
 
     Instruction* editSrc(BufferOffset bo) {
         return m_buffer.getInst(bo);
     }
 
 #ifdef JS_DISASM_ARM
-    static void spewInst(Instruction* i);
+    typedef disasm::EmbeddedVector<char, disasm::ReasonableBufferSize> DisasmBuffer;
+
+    static void disassembleInstruction(const Instruction* i, DisasmBuffer& buffer);
+
+    void initDisassembler();
+    void finishDisassembler();
     void spew(Instruction* i);
-    void spewBranch(Instruction* i, Label* target);
-    void spewData(BufferOffset addr, size_t numInstr, bool loadToPC);
-    void spewLabel(Label* label);
-    void spewRetarget(Label* label, Label* target);
-    void spewTarget(Label* l);
+    void spewBranch(Instruction* i, const LabelDoc& target);
+    void spewLiteralLoad(PoolHintPun& php, bool loadToPC, const Instruction* offs,
+                         const LiteralDoc& doc);
 #endif
 
   public:
@@ -1296,35 +1312,7 @@ class Assembler : public AssemblerShared
     ARMBuffer m_buffer;
 
 #ifdef JS_DISASM_ARM
-  private:
-    class SpewNodes {
-        struct Node {
-            uint32_t key;
-            uint32_t value;
-            Node* next;
-        };
-
-        Node* nodes;
-
-    public:
-        SpewNodes() : nodes(nullptr) {}
-        ~SpewNodes();
-
-        bool lookup(uint32_t key, uint32_t* value);
-        bool add(uint32_t key, uint32_t value);
-        bool remove(uint32_t key);
-    };
-
-    SpewNodes spewNodes_;
-    uint32_t spewNext_;
-    Sprinter* printer_;
-
-    bool spewDisabled();
-    uint32_t spewResolve(Label* l);
-    uint32_t spewProbe(Label* l);
-    uint32_t spewDefine(Label* l);
-    void spew(const char* fmt, ...) MOZ_FORMAT_PRINTF(2, 3);
-    void spew(const char* fmt, va_list args) MOZ_FORMAT_PRINTF(2, 0);
+    DisassemblerSpew spew_;
 #endif
 
   public:
@@ -1332,14 +1320,20 @@ class Assembler : public AssemblerShared
     // For the nopFill use a branch to the next instruction: 0xeaffffff.
     Assembler()
       : m_buffer(1, 1, 8, GetPoolMaxOffset(), 8, 0xe320f000, 0xeaffffff, GetNopFill()),
-#ifdef JS_DISASM_ARM
-        spewNext_(1000),
-        printer_(nullptr),
-#endif
         isFinished(false),
         dtmActive(false),
         dtmCond(Always)
-    { }
+    {
+#ifdef JS_DISASM_ARM
+        initDisassembler();
+#endif
+    }
+
+    ~Assembler() {
+#ifdef JS_DISASM_ARM
+        finishDisassembler();
+#endif
+    }
 
     // We need to wait until an AutoJitContextAlloc is created by the
     // MacroAssembler, before allocating any space.
@@ -1359,14 +1353,11 @@ class Assembler : public AssemblerShared
         jumpRelocations_.writeUnsigned(src.getOffset());
     }
 
-    // As opposed to x86/x64 version, the data relocation has to be executed
-    // before to recover the pointer, and not after.
-    void writeDataRelocation(ImmGCPtr ptr) {
+    void writeDataRelocation(BufferOffset offset, ImmGCPtr ptr) {
         if (ptr.value) {
             if (gc::IsInsideNursery(ptr.value))
                 embedsNurseryPointers_ = true;
-            if (ptr.value)
-                dataRelocations_.writeUnsigned(nextOffset().getOffset());
+            dataRelocations_.writeUnsigned(offset.getOffset());
         }
     }
 
@@ -1397,7 +1388,7 @@ class Assembler : public AssemblerShared
 
     void setPrinter(Sprinter* sp) {
 #ifdef JS_DISASM_ARM
-        printer_ = sp;
+        spew_.setPrinter(sp);
 #endif
     }
 
@@ -1407,6 +1398,16 @@ class Assembler : public AssemblerShared
 
   private:
     bool isFinished;
+
+  protected:
+    LabelDoc refLabel(const Label* label) {
+#ifdef JS_DISASM_ARM
+        return spew_.refLabel(label);
+#else
+        return LabelDoc();
+#endif
+    }
+
   public:
     void finish();
     bool appendRawCode(const uint8_t* code, size_t numBytes);
@@ -1436,7 +1437,8 @@ class Assembler : public AssemblerShared
 
     // As above, but also mark the instruction as a branch.  Very hot, inlined
     // for performance
-    MOZ_ALWAYS_INLINE BufferOffset writeBranchInst(uint32_t x, Label* documentation = nullptr) {
+    MOZ_ALWAYS_INLINE BufferOffset
+    writeBranchInst(uint32_t x, const LabelDoc& documentation) {
         BufferOffset offs = m_buffer.putInt(x);
 #ifdef JS_DISASM_ARM
         spewBranch(m_buffer.getInstOrNull(offs), documentation);
@@ -1454,7 +1456,7 @@ class Assembler : public AssemblerShared
     static void WriteInstStatic(uint32_t x, uint32_t* dest);
 
   public:
-    void writeCodePointer(CodeOffset* label);
+    void writeCodePointer(CodeLabel* label);
 
     void haltingAlign(int alignment);
     void nopAlign(int alignment);
@@ -1559,8 +1561,8 @@ class Assembler : public AssemblerShared
     BufferOffset as_Imm32Pool(Register dest, uint32_t value, Condition c = Always);
     // Make a patchable jump that can target the entire 32 bit address space.
     BufferOffset as_BranchPool(uint32_t value, RepatchLabel* label,
-                               ARMBuffer::PoolEntry* pe = nullptr, Condition c = Always,
-                               Label* documentation = nullptr);
+                               const LabelDoc& documentation,
+                               ARMBuffer::PoolEntry* pe = nullptr, Condition c = Always);
 
     // Load a 64 bit floating point immediate from a pool into a register.
     BufferOffset as_FImm64Pool(VFPRegister dest, double value, Condition c = Always);
@@ -1603,6 +1605,9 @@ class Assembler : public AssemblerShared
     BufferOffset as_dsb_trap();
     BufferOffset as_dmb_trap();
     BufferOffset as_isb_trap();
+
+    // Speculation barrier
+    BufferOffset as_csdb();
 
     // Control flow stuff:
 
@@ -1730,7 +1735,7 @@ class Assembler : public AssemblerShared
     // I'm going to pretend this doesn't exist for now.
     void retarget(Label* label, void* target, Relocation::Kind reloc);
 
-    static void Bind(uint8_t* rawCode, CodeOffset label, CodeOffset target);
+    static void Bind(uint8_t* rawCode, const CodeLabel& label);
 
     void as_bkpt();
     BufferOffset as_illegal_trap();
@@ -1769,7 +1774,7 @@ class Assembler : public AssemblerShared
 
     void comment(const char* msg) {
 #ifdef JS_DISASM_ARM
-        spew("; %s", msg);
+        spew_.spew("; %s", msg);
 #endif
     }
 

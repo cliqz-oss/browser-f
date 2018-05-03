@@ -5,7 +5,7 @@ Scalars
 Historically we started to overload our histogram mechanism to also collect scalar data,
 such as flag values, counts, labels and others.
 The scalar measurement types are the suggested way to collect that kind of scalar data.
-The serialized scalar data is submitted with the :doc:`main pings <../data/main-ping>`.
+The serialized scalar data is submitted with the :doc:`main pings <../data/main-ping>`. Adding scalars is supported in artifact builds and build faster workflows.
 
 .. important::
 
@@ -149,7 +149,7 @@ Required Fields
 
 - ``bug_numbers``: A list of unsigned integers representing the number of the bugs the probe was introduced in.
 - ``description``: A single or multi-line string describing what data the probe collects and when it gets collected.
-- ``expires``: The version number in which the scalar expires, e.g. "30"; a version number of type "N" and "N.0" is automatically converted to "N.0a1" in order to expire the scalar also in the development channels. A telemetry probe acting on an expired scalar will print a warning into the browser console. For scalars that never expire the value ``never`` can be used.
+- ``expires``: The version number in which the scalar expires, e.g. "30"; a version number of type "N" is automatically converted to "N.0a1" in order to expire the scalar also in the development channels. A telemetry probe acting on an expired scalar will print a warning into the browser console. For scalars that never expire the value ``never`` can be used.
 - ``kind``: A string representing the scalar type. Allowed values are ``uint``, ``string`` and ``boolean``.
 - ``notification_emails``: A list of email addresses to notify with alerts of expiring probes. More importantly, these are used by the data steward to verify that the probe is still useful.
 - ``record_in_processes``: A list of processes the scalar is allowed to record in. Currently supported values are:
@@ -157,7 +157,7 @@ Required Fields
   - ``main``;
   - ``content``;
   - ``gpu``;
-  - ``all_child`` (record in all the child processes);
+  - ``all_children`` (record in all the child processes);
   - ``all`` (record in all the processes).
 
 Optional Fields
@@ -290,3 +290,5 @@ Version History
 
   - Added support for recording new scalars from add-ons (`bug 1393801 <bug https://bugzilla.mozilla.org/show_bug.cgi?id=1393801>`_).
   - Ignore re-registering existing scalars for a category instead of failing (`bug 1409323 <https://bugzilla.mozilla.org/show_bug.cgi?id=1409323>`_).
+
+- Firefox 60: Enabled support for adding scalars in artifact builds and build-faster workflows (`bug 1425909 <https://bugzilla.mozilla.org/show_bug.cgi?id=1425909`_).

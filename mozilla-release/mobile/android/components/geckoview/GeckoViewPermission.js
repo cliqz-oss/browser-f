@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   EventDispatcher: "resource://gre/modules/Messaging.jsm",
@@ -13,6 +11,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 });
 
 // See: http://developer.android.com/reference/android/Manifest.permission.html
+const PERM_ACCESS_COARSE_LOCATION = "android.permission.ACCESS_COARSE_LOCATION";
 const PERM_ACCESS_FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION";
 const PERM_CAMERA = "android.permission.CAMERA";
 const PERM_RECORD_AUDIO = "android.permission.RECORD_AUDIO";
@@ -183,7 +182,7 @@ GeckoViewPermission.prototype = {
     let perm = types.queryElementAt(0, Ci.nsIContentPermissionType);
     let dispatcher = GeckoViewUtils.getDispatcherForWindow(
         aRequest.window ? aRequest.window : aRequest.element.ownerGlobal);
-    let promise = dispatcher.sendRequestForResult({
+    dispatcher.sendRequestForResult({
         type: "GeckoView:ContentPermission",
         uri: aRequest.principal.URI.displaySpec,
         perm: perm.type,

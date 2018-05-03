@@ -2,16 +2,11 @@
  * Bug 1270338 - Add a mochitest to ensure Sanitizer clears data for all containers
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
-
-let {LoadContextInfo} = Cu.import("resource://gre/modules/LoadContextInfo.jsm", {});
+const CC = Components.Constructor;
 
 const TEST_DOMAIN = "http://example.net/";
 
-let tempScope = {};
-Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js",
-                                    tempScope);
-let Sanitizer = tempScope.Sanitizer;
+const {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
 
 function setCookies(aBrowser) {
   ContentTask.spawn(aBrowser, null, function() {
@@ -34,7 +29,7 @@ function cacheDataForContext(loadContextInfo) {
         if (iid.equals(Ci.nsICacheStorageVisitor))
           return this;
 
-        throw Components.results.NS_ERROR_NO_INTERFACE;
+        throw Cr.NS_ERROR_NO_INTERFACE;
       }
     };
     // Visiting the disk cache also visits memory storage so we do not
@@ -54,11 +49,11 @@ function checkCookiesSanitized(aBrowser) {
 function checkCacheExists(aShouldExist) {
   return async function() {
     let loadContextInfos = [
-      LoadContextInfo.default,
-      LoadContextInfo.custom(false, { userContextId: 1 }),
-      LoadContextInfo.custom(false, { userContextId: 2 }),
-      LoadContextInfo.custom(false, { firstPartyDomain: "example.com" }),
-      LoadContextInfo.custom(false, { firstPartyDomain: "example.org" }),
+      Services.loadContextInfo.default,
+      Services.loadContextInfo.custom(false, { userContextId: 1 }),
+      Services.loadContextInfo.custom(false, { userContextId: 2 }),
+      Services.loadContextInfo.custom(false, { firstPartyDomain: "example.com" }),
+      Services.loadContextInfo.custom(false, { firstPartyDomain: "example.org" }),
     ];
     let i = 0;
     for (let loadContextInfo of loadContextInfos) {
@@ -79,8 +74,7 @@ IsolationTestTools.runTests(TEST_DOMAIN, setCookies, () => true);
 add_task(checkCacheExists(true));
 
 add_task(async function sanitize() {
-  let sanitizer = new Sanitizer();
-  await sanitizer.sanitize(["cookies", "cache"]);
+  await Sanitizer.sanitize(["cookies", "cache"]);
 });
 
 add_task(checkCacheExists(false));

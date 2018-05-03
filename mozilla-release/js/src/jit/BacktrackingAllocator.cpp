@@ -6,9 +6,8 @@
 
 #include "jit/BacktrackingAllocator.h"
 
-#include "jsprf.h"
-
 #include "jit/BitSet.h"
+#include "js/Printf.h"
 
 using namespace js;
 using namespace js::jit;
@@ -974,25 +973,37 @@ BacktrackingAllocator::tryMergeBundles(LiveBundle* bundle0, LiveBundle* bundle1)
 }
 
 static inline LDefinition*
-FindReusingDefOrTemp(LNode* ins, LAllocation* alloc)
+FindReusingDefOrTemp(LNode* node, LAllocation* alloc)
 {
+    if (node->isPhi()) {
+        MOZ_ASSERT(node->toPhi()->numDefs() == 1);
+        MOZ_ASSERT(node->toPhi()->getDef(0)->policy() != LDefinition::MUST_REUSE_INPUT);
+        return nullptr;
+    }
+
+    LInstruction* ins = node->toInstruction();
+
     for (size_t i = 0; i < ins->numDefs(); i++) {
         LDefinition* def = ins->getDef(i);
         if (def->policy() == LDefinition::MUST_REUSE_INPUT &&
             ins->getOperand(def->getReusedInput()) == alloc)
+        {
             return def;
+        }
     }
     for (size_t i = 0; i < ins->numTemps(); i++) {
         LDefinition* def = ins->getTemp(i);
         if (def->policy() == LDefinition::MUST_REUSE_INPUT &&
             ins->getOperand(def->getReusedInput()) == alloc)
+        {
             return def;
+        }
     }
     return nullptr;
 }
 
 static inline size_t
-NumReusingDefs(LNode* ins)
+NumReusingDefs(LInstruction* ins)
 {
     size_t num = 0;
     for (size_t i = 0; i < ins->numDefs(); i++) {
@@ -1163,7 +1174,8 @@ BacktrackingAllocator::mergeAndQueueRegisters()
             continue;
 
         if (reg.def()->policy() == LDefinition::MUST_REUSE_INPUT) {
-            LUse* use = reg.ins()->getOperand(reg.def()->getReusedInput())->toUse();
+            LUse* use =
+                reg.ins()->toInstruction()->getOperand(reg.def()->getReusedInput())->toUse();
             if (!tryMergeReusedRegister(reg, vreg(use)))
                 return false;
         }
@@ -2049,7 +2061,7 @@ BacktrackingAllocator::reifyAllocations()
                     if (res != *alloc) {
                         if (!this->alloc().ensureBallast())
                             return false;
-                        if (NumReusingDefs(ins) <= 1) {
+                        if (NumReusingDefs(ins->toInstruction()) <= 1) {
                             LMoveGroup* group = getInputMoveGroup(ins->toInstruction());
                             if (!group->addAfter(sourceAlloc, res, reg.type()))
                                 return false;

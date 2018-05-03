@@ -195,6 +195,9 @@ class Tree extends Component {
       // Handle when a new item is focused.
       onFocus: PropTypes.func,
 
+      // Handle when item is activated with a keyboard (using Space or Enter)
+      onActivate: PropTypes.func,
+
       // The depth to which we should automatically expand new items.
       autoExpandDepth: PropTypes.number,
 
@@ -235,6 +238,7 @@ class Tree extends Component {
       scroll: 0,
       height: window.innerHeight,
       seen: new Set(),
+      mouseDown: false
     };
 
     this._onExpand = oncePerAnimationFrame(this._onExpand).bind(this);
@@ -243,6 +247,9 @@ class Tree extends Component {
     this._focusPrevNode = oncePerAnimationFrame(this._focusPrevNode).bind(this);
     this._focusNextNode = oncePerAnimationFrame(this._focusNextNode).bind(this);
     this._focusParentNode = oncePerAnimationFrame(this._focusParentNode).bind(this);
+    this._focusFirstNode = oncePerAnimationFrame(this._focusFirstNode).bind(this);
+    this._focusLastNode = oncePerAnimationFrame(this._focusLastNode).bind(this);
+    this._activateNode = oncePerAnimationFrame(this._activateNode).bind(this);
 
     this._autoExpand = this._autoExpand.bind(this);
     this._preventArrowKeyScrolling = this._preventArrowKeyScrolling.bind(this);
@@ -263,6 +270,15 @@ class Tree extends Component {
   componentWillReceiveProps(nextProps) {
     this._autoExpand();
     this._updateHeight();
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    let { scroll, height, seen, mouseDown } = this.state;
+
+    return scroll !== nextState.scroll ||
+           height !== nextState.height ||
+           seen !== nextState.seen ||
+           mouseDown === nextState.mouseDown;
   }
 
   componentWillUnmount() {
@@ -323,9 +339,7 @@ class Tree extends Component {
    * Updates the state's height based on clientHeight.
    */
   _updateHeight() {
-    this.setState({
-      height: this.refs.tree.clientHeight
-    });
+    this.setState({ height: this.refs.tree.clientHeight });
   }
 
   /**
@@ -494,7 +508,37 @@ class Tree extends Component {
           this._focusNextNode();
         }
         break;
+
+      case "Home":
+        this._focusFirstNode();
+        break;
+
+      case "End":
+        this._focusLastNode();
+        break;
+
+      case "Enter":
+      case " ":
+        this._activateNode();
+        break;
     }
+  }
+
+  _activateNode() {
+    if (this.props.onActivate) {
+      this.props.onActivate(this.props.focused);
+    }
+  }
+
+  _focusFirstNode() {
+    const traversal = this._dfsFromRoots();
+    this._focus(0, traversal[0].item);
+  }
+
+  _focusLastNode() {
+    const traversal = this._dfsFromRoots();
+    const lastIndex = traversal.length - 1;
+    this._focus(lastIndex, traversal[lastIndex].item);
   }
 
   /**
@@ -646,19 +690,17 @@ class Tree extends Component {
         onKeyPress: this._preventArrowKeyScrolling,
         onKeyUp: this._preventArrowKeyScrolling,
         onScroll: this._onScroll,
-        onFocus: ({nativeEvent}) => {
-          if (focused || !nativeEvent || !this.refs.tree) {
+        onMouseDown: () => this.setState({ mouseDown: true }),
+        onMouseUp: () => this.setState({ mouseDown: false }),
+        onFocus: () => {
+          if (focused || this.state.mouseDown) {
             return;
           }
 
-          let { explicitOriginalTarget } = nativeEvent;
-          // Only set default focus to the first tree node if the focus came
-          // from outside the tree (e.g. by tabbing to the tree from other
-          // external elements).
-          if (explicitOriginalTarget !== this.refs.tree &&
-              !this.refs.tree.contains(explicitOriginalTarget)) {
-            this._focus(begin, toRender[0].item);
-          }
+          // Only set default focus to the first tree node if focused node is
+          // not yet set and the focus event is not the result of a mouse
+          // interarction.
+          this._focus(begin, toRender[0].item);
         },
         onClick: () => {
           // Focus should always remain on the tree container itself.
@@ -772,7 +814,7 @@ class TreeNodeClass extends Component {
         id: this.props.id,
         className: classList.join(" "),
         role: "treeitem",
-        "aria-level": this.props.depth,
+        "aria-level": this.props.depth + 1,
         onClick: this.props.onClick,
         "aria-expanded": ariaExpanded,
         "data-expanded": this.props.expanded ? "" : undefined,

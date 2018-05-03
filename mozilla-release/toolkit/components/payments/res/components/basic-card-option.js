@@ -13,37 +13,35 @@
 class BasicCardOption extends ObservedPropertiesMixin(RichOption) {
   static get observedAttributes() {
     return RichOption.observedAttributes.concat([
-      "expiration",
-      "number",
-      "owner",
-      "type",
+      "cc-exp",
+      "cc-name",
+      "cc-number",
+      "guid",
+      "type", // XXX Bug 1429181.
     ]);
   }
 
-  connectedCallback() {
-    for (let child of this.children) {
-      child.remove();
+  constructor() {
+    super();
+
+    for (let name of ["cc-name", "cc-number", "cc-exp", "type"]) {
+      this[`_${name}`] = document.createElement("span");
+      this[`_${name}`].classList.add(name);
     }
+  }
 
-    let fragment = document.createDocumentFragment();
-    RichOption._createElement(fragment, "owner");
-    RichOption._createElement(fragment, "number");
-    RichOption._createElement(fragment, "expiration");
-    RichOption._createElement(fragment, "type");
-    this.appendChild(fragment);
-
+  connectedCallback() {
+    for (let name of ["cc-name", "cc-number", "cc-exp", "type"]) {
+      this.appendChild(this[`_${name}`]);
+    }
     super.connectedCallback();
   }
 
   render() {
-    if (!this.parentNode) {
-      return;
-    }
-
-    this.querySelector(".owner").textContent = this.owner;
-    this.querySelector(".number").textContent = this.number;
-    this.querySelector(".expiration").textContent = this.expiration;
-    this.querySelector(".type").textContent = this.type;
+    this["_cc-name"].textContent = this.ccName;
+    this["_cc-number"].textContent = this.ccNumber;
+    this["_cc-exp"].textContent = this.ccExp;
+    this._type.textContent = this.type;
   }
 }
 

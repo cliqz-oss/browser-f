@@ -4,20 +4,15 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cr = Components.results;
-
 /* BrowserElementParent injects script to listen for certain events in the
  * child.  We then listen to messages from the child script and take
  * appropriate action here in the parent.
  */
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/BrowserElementPromptService.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserElementPromptService.jsm");
 
 function debug(msg) {
   //dump("BrowserElementParent - " + msg + "\n");

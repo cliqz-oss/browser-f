@@ -2,7 +2,7 @@
 
 #include "jsapi-tests/tests.h"
 
-#include "vm/StringBuffer.h"
+#include "util/StringBuffer.h"
 
 // Tests for JS_GetErrorInterceptorCallback and JS_SetErrorInterceptorCallback.
 
@@ -104,7 +104,8 @@ BEGIN_TEST(testErrorInterceptor)
 
         js::StringBuffer buffer(cx);
         CHECK(ValueToStringBuffer(cx, exn, buffer));
-        CHECK(equalStrings(cx, buffer.finishString(), gLatestMessage));
+        JS::Rooted<JSFlatString*> flat(cx, buffer.finishString());
+        CHECK(equalStrings(cx, flat, gLatestMessage));
 
         // Cleanup.
         gLatestMessage = nullptr;
@@ -127,7 +128,8 @@ BEGIN_TEST(testErrorInterceptor)
 
         js::StringBuffer buffer(cx);
         CHECK(ValueToStringBuffer(cx, exn, buffer));
-        CHECK(js::StringEqualsAscii(buffer.finishString(), TO_STRING[i]));
+        JS::Rooted<JSFlatString*> flat(cx, buffer.finishString());
+        CHECK(js::StringEqualsAscii(flat, TO_STRING[i]));
 
         // Cleanup.
         gLatestMessage = nullptr;

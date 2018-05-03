@@ -1410,10 +1410,10 @@ gfxUtils::GetInputStream(gfx::DataSourceSurface* aSurface,
                                              encoder, aEncoderOptions, outStream);
 }
 
-class GetFeatureStatusRunnable final : public dom::workers::WorkerMainThreadRunnable
+class GetFeatureStatusRunnable final : public dom::WorkerMainThreadRunnable
 {
 public:
-    GetFeatureStatusRunnable(dom::workers::WorkerPrivate* workerPrivate,
+    GetFeatureStatusRunnable(dom::WorkerPrivate* workerPrivate,
                              const nsCOMPtr<nsIGfxInfo>& gfxInfo,
                              int32_t feature,
                              nsACString& failureId,
@@ -1458,15 +1458,14 @@ gfxUtils::ThreadSafeGetFeatureStatus(const nsCOMPtr<nsIGfxInfo>& gfxInfo,
                                      int32_t* status)
 {
   if (!NS_IsMainThread()) {
-    dom::workers::WorkerPrivate* workerPrivate =
-      dom::workers::GetCurrentThreadWorkerPrivate();
+    dom::WorkerPrivate* workerPrivate = dom::GetCurrentThreadWorkerPrivate();
 
     RefPtr<GetFeatureStatusRunnable> runnable =
       new GetFeatureStatusRunnable(workerPrivate, gfxInfo, feature, failureId,
                                    status);
 
     ErrorResult rv;
-    runnable->Dispatch(dom::workers::Terminating, rv);
+    runnable->Dispatch(dom::WorkerStatus::Terminating, rv);
     if (rv.Failed()) {
         // XXXbz This is totally broken, since we're supposed to just abort
         // everything up the callstack but the callers basically eat the

@@ -22,7 +22,6 @@ public:
                       RefPtr<widget::CompositorWidget>&& aWidget);
   virtual ~RenderCompositorOGL();
 
-  bool Destroy() override;
   bool BeginFrame() override;
   void EndFrame() override;
   void Pause() override;
@@ -32,7 +31,7 @@ public:
 
   bool UseANGLE() const override { return false; }
 
-  LayoutDeviceIntSize GetClientSize() override;
+  LayoutDeviceIntSize GetBufferSize() override;
 
 protected:
   RefPtr<gl::GLContext> mGL;

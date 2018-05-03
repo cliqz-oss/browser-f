@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const CHILD_SCRIPT = "chrome://quitter/content/contentscript.js";
 
@@ -17,7 +14,7 @@ QuitterObserver.prototype = {
   classDescription: "Quitter Observer for use in testing.",
   classID:          Components.ID("{c235a986-5ac1-4f28-ad73-825dae9bad90}"),
   contractID:       "@mozilla.org/quitter-observer;1",
-  QueryInterface:   XPCOMUtils.generateQI([Components.interfaces.nsIObserver]),
+  QueryInterface:   XPCOMUtils.generateQI([Ci.nsIObserver]),
   _xpcom_categories: [{category: "profile-after-change", service: true }],
   isFrameScriptLoaded: false,
 

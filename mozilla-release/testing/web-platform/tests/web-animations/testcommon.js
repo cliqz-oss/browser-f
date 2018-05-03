@@ -21,8 +21,16 @@ const TIME_PRECISION = 0.0005; // ms
 // times based on their precision requirements.
 if (!window.assert_times_equal) {
   window.assert_times_equal = (actual, expected, description) => {
-    assert_approx_equals(actual, expected, TIME_PRECISION, description);
+    assert_approx_equals(actual, expected, TIME_PRECISION * 2, description);
   };
+}
+
+// Allow implementations to substitute an alternative method for comparing
+// a time value based on its precision requirements with a fixed value.
+if (!window.assert_time_equals_literal) {
+  window.assert_time_equals_literal = (actual, expected, description) => {
+    assert_approx_equals(actual, expected, TIME_PRECISION, description);
+  }
 }
 
 // creates div element, appends it to the document body and
@@ -251,6 +259,28 @@ function assert_matrix_equals(actual, expected, description) {
     `dimension of the matrix: ${description}`);
   for (let i = 0; i < actualMatrixArray.length; i++) {
     assert_approx_equals(actualMatrixArray[i], expectedMatrixArray[i], 0.0001,
+      `expected ${expected} but got ${actual}: ${description}`);
+  }
+}
+
+// Compare rotate3d vector like '0 1 0 45deg' with tolerances.
+function assert_rotate3d_equals(actual, expected, description) {
+  const rotationRegExp =/^((([+-]?\d+(\.+\d+)?\s){3})?\d+(\.+\d+)?)deg/;
+
+  assert_regexp_match(actual, rotationRegExp,
+    'Actual value is not a rotate3d vector')
+  assert_regexp_match(expected, rotationRegExp,
+    'Expected value is not a rotate3d vector');
+
+  const actualRotationVector =
+    actual.match(rotationRegExp)[1].split(' ').map(Number);
+  const expectedRotationVector =
+    expected.match(rotationRegExp)[1].split(' ').map(Number);
+
+  assert_equals(actualRotationVector.length, expectedRotationVector.length,
+    `dimension of the matrix: ${description}`);
+  for (let i = 0; i < actualRotationVector.length; i++) {
+    assert_approx_equals(actualRotationVector[i], expectedRotationVector[i], 0.0001,
       `expected ${expected} but got ${actual}: ${description}`);
   }
 }

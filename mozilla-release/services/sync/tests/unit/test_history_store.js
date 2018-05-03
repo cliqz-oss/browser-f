@@ -1,12 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/engines/history.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/engines/history.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 const TIMESTAMP1 = (Date.now() - 103406528) * 1000;
 const TIMESTAMP2 = (Date.now() - 6592903) * 1000;
@@ -43,14 +42,17 @@ function isDateApproximately(actual, expected, skewMillis = 1000) {
   return actual >= lowerBound && actual <= upperBound;
 }
 
-var engine = new HistoryEngine(Service);
-Async.promiseSpinningly(engine.initialize());
-var store = engine._store;
+let engine, store, fxuri, fxguid, tburi, tbguid;
+
 async function applyEnsureNoFailures(records) {
   Assert.equal((await store.applyIncomingBatch(records)).length, 0);
 }
 
-var fxuri, fxguid, tburi, tbguid;
+add_task(async function setup() {
+  engine = new HistoryEngine(Service);
+  await engine.initialize();
+  store = engine._store;
+});
 
 add_task(async function test_store() {
   _("Verify that we've got an empty store to work with.");
@@ -101,7 +103,7 @@ add_task(async function test_store() {
     date: new Date(TIMESTAMP1 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_LINK,
   }]);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_store_create() {
@@ -127,7 +129,7 @@ add_task(async function test_store_create() {
     date: new Date(TIMESTAMP3 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_TYPED,
   }]);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_null_title() {
@@ -151,7 +153,7 @@ add_task(async function test_null_title() {
     date: new Date(TIMESTAMP3 / 1000),
     transition: Ci.nsINavHistoryService.TRANSITION_TYPED,
   }]);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_invalid_records() {
@@ -434,7 +436,7 @@ add_task(async function test_getAllIDs_filters_file_uris() {
 
   do_check_attribute_count(await store.getAllIDs(), 0);
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_applyIncomingBatch_filters_file_uris() {
@@ -456,5 +458,5 @@ add_task(async function test_applyIncomingBatch_filters_file_uris() {
 
 add_task(async function cleanup() {
   _("Clean up.");
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });

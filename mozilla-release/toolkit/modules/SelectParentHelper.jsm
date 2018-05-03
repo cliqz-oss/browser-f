@@ -4,13 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "SelectParentHelper"
 ];
 
-const {utils: Cu} = Components;
-const {AppConstants} = Cu.import("resource://gre/modules/AppConstants.jsm", {});
-const {Services} = Cu.import("resource://gre/modules/Services.jsm", {});
+const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 // Maximum number of rows to display in the select dropdown.
 const MAX_ROWS = 20;
@@ -27,7 +26,7 @@ var currentZoom = 1;
 var closedWithEnter = false;
 var customStylingEnabled = Services.prefs.getBoolPref("dom.forms.select.customstyling");
 
-this.SelectParentHelper = {
+var SelectParentHelper = {
   /**
    * `populate` takes the `menulist` element and a list of `items` and generates
    * a popup list of options.

@@ -13,7 +13,7 @@ const { ConsoleMessage } =
 
 let stubPreparedMessages = new Map();
 let stubPackets = new Map();
-stubPreparedMessages.set("ReferenceError: asdf is not defined", new ConsoleMessage({
+stubPreparedMessages.set(`ReferenceError: asdf is not defined`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "javascript",
@@ -23,7 +23,7 @@ stubPreparedMessages.set("ReferenceError: asdf is not defined", new ConsoleMessa
   "level": "error",
   "messageText": "ReferenceError: asdf is not defined",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"ReferenceError: asdf is not defined\",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":3,\"column\":5},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"ReferenceError: asdf is not defined\",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null,\"private\":false}",
   "stacktrace": [
     {
       "filename": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -44,14 +44,14 @@ stubPreparedMessages.set("ReferenceError: asdf is not defined", new ConsoleMessa
       "functionName": null
     },
     {
-      "filename": "resource://testing-common/content-task.js line 52 > eval",
+      "filename": "resource://testing-common/content-task.js line 50 > eval",
       "lineNumber": 7,
       "columnNumber": 9,
       "functionName": null
     },
     {
       "filename": "resource://testing-common/content-task.js",
-      "lineNumber": 53,
+      "lineNumber": 51,
       "columnNumber": 20,
       "functionName": null
     }
@@ -65,10 +65,12 @@ stubPreparedMessages.set("ReferenceError: asdf is not defined", new ConsoleMessa
   "exceptionDocURL": "https://developer.mozilla.org/docs/Web/JavaScript/Reference/Errors/Not_defined?utm_source=mozilla&utm_medium=firefox-console-errors&utm_campaign=default",
   "userProvidedStyles": null,
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("SyntaxError: redeclaration of let a", new ConsoleMessage({
+stubPreparedMessages.set(`SyntaxError: redeclaration of let a`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "javascript",
@@ -78,17 +80,17 @@ stubPreparedMessages.set("SyntaxError: redeclaration of let a", new ConsoleMessa
   "level": "error",
   "messageText": "SyntaxError: redeclaration of let a",
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":9},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"SyntaxError: redeclaration of let a\",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":2,\"column\":9},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"SyntaxError: redeclaration of let a\",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null,\"private\":false}",
   "stacktrace": [
     {
-      "filename": "resource://testing-common/content-task.js line 52 > eval",
+      "filename": "resource://testing-common/content-task.js line 50 > eval",
       "lineNumber": 7,
       "columnNumber": 9,
       "functionName": null
     },
     {
       "filename": "resource://testing-common/content-task.js",
-      "lineNumber": 53,
+      "lineNumber": 51,
       "columnNumber": 20,
       "functionName": null
     }
@@ -110,10 +112,12 @@ stubPreparedMessages.set("SyntaxError: redeclaration of let a", new ConsoleMessa
       }
     }
   ],
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPreparedMessages.set("TypeError longString message", new ConsoleMessage({
+stubPreparedMessages.set(`TypeError longString message`, new ConsoleMessage({
   "id": "1",
   "allowRepeating": true,
   "source": "javascript",
@@ -128,7 +132,7 @@ stubPreparedMessages.set("TypeError longString message", new ConsoleMessage({
     "actor": "server1.conn0.child1/longString30"
   },
   "parameters": null,
-  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":7},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":{\"type\":\"longString\",\"initial\":\"Error: Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Lon\",\"length\":110007,\"actor\":\"server1.conn0.child1/longString30\"},\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null}",
+  "repeatId": "{\"frame\":{\"source\":\"http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html\",\"line\":1,\"column\":7},\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":{\"type\":\"longString\",\"initial\":\"Error: Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Long error Lon\",\"length\":110007,\"actor\":\"server1.conn0.child1/longString30\"},\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null,\"private\":false}",
   "stacktrace": [
     {
       "filename": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/test-console-api.html",
@@ -137,14 +141,14 @@ stubPreparedMessages.set("TypeError longString message", new ConsoleMessage({
       "functionName": null
     },
     {
-      "filename": "resource://testing-common/content-task.js line 52 > eval",
+      "filename": "resource://testing-common/content-task.js line 50 > eval",
       "lineNumber": 7,
       "columnNumber": 9,
       "functionName": null
     },
     {
       "filename": "resource://testing-common/content-task.js",
-      "lineNumber": 53,
+      "lineNumber": 51,
       "columnNumber": 20,
       "functionName": null
     }
@@ -157,10 +161,54 @@ stubPreparedMessages.set("TypeError longString message", new ConsoleMessage({
   "groupId": null,
   "userProvidedStyles": null,
   "notes": null,
-  "indent": 0
+  "indent": 0,
+  "prefix": "",
+  "private": false
 }));
 
-stubPackets.set("ReferenceError: asdf is not defined", {
+stubPreparedMessages.set(`throw ""`, new ConsoleMessage({
+  "id": "1",
+  "allowRepeating": true,
+  "source": "javascript",
+  "timeStamp": 1517942398629,
+  "type": "log",
+  "helperType": null,
+  "level": "error",
+  "messageText": "uncaught exception: ",
+  "parameters": null,
+  "repeatId": "{\"frame\":null,\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"uncaught exception: \",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null,\"private\":false}",
+  "stacktrace": null,
+  "frame": null,
+  "groupId": null,
+  "userProvidedStyles": null,
+  "notes": null,
+  "indent": 0,
+  "prefix": "",
+  "private": false
+}));
+
+stubPreparedMessages.set(`throw "tomato"`, new ConsoleMessage({
+  "id": "1",
+  "allowRepeating": true,
+  "source": "javascript",
+  "timeStamp": 1517942398637,
+  "type": "log",
+  "helperType": null,
+  "level": "error",
+  "messageText": "uncaught exception: tomato",
+  "parameters": null,
+  "repeatId": "{\"frame\":null,\"groupId\":null,\"indent\":0,\"level\":\"error\",\"messageText\":\"uncaught exception: tomato\",\"parameters\":null,\"source\":\"javascript\",\"type\":\"log\",\"userProvidedStyles\":null,\"private\":false}",
+  "stacktrace": null,
+  "frame": null,
+  "groupId": null,
+  "userProvidedStyles": null,
+  "notes": null,
+  "indent": 0,
+  "prefix": "",
+  "private": false
+}));
+
+stubPackets.set(`ReferenceError: asdf is not defined`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "pageError",
   "pageError": {
@@ -199,14 +247,14 @@ stubPackets.set("ReferenceError: asdf is not defined", {
         "functionName": null
       },
       {
-        "filename": "resource://testing-common/content-task.js line 52 > eval",
+        "filename": "resource://testing-common/content-task.js line 50 > eval",
         "lineNumber": 7,
         "columnNumber": 9,
         "functionName": null
       },
       {
         "filename": "resource://testing-common/content-task.js",
-        "lineNumber": 53,
+        "lineNumber": 51,
         "columnNumber": 20,
         "functionName": null
       }
@@ -215,7 +263,7 @@ stubPackets.set("ReferenceError: asdf is not defined", {
   }
 });
 
-stubPackets.set("SyntaxError: redeclaration of let a", {
+stubPackets.set(`SyntaxError: redeclaration of let a`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "pageError",
   "pageError": {
@@ -235,14 +283,14 @@ stubPackets.set("SyntaxError: redeclaration of let a", {
     "private": false,
     "stacktrace": [
       {
-        "filename": "resource://testing-common/content-task.js line 52 > eval",
+        "filename": "resource://testing-common/content-task.js line 50 > eval",
         "lineNumber": 7,
         "columnNumber": 9,
         "functionName": null
       },
       {
         "filename": "resource://testing-common/content-task.js",
-        "lineNumber": 53,
+        "lineNumber": 51,
         "columnNumber": 20,
         "functionName": null
       }
@@ -260,7 +308,7 @@ stubPackets.set("SyntaxError: redeclaration of let a", {
   }
 });
 
-stubPackets.set("TypeError longString message", {
+stubPackets.set(`TypeError longString message`, {
   "from": "server1.conn0.child1/consoleActor2",
   "type": "pageError",
   "pageError": {
@@ -291,18 +339,64 @@ stubPackets.set("TypeError longString message", {
         "functionName": null
       },
       {
-        "filename": "resource://testing-common/content-task.js line 52 > eval",
+        "filename": "resource://testing-common/content-task.js line 50 > eval",
         "lineNumber": 7,
         "columnNumber": 9,
         "functionName": null
       },
       {
         "filename": "resource://testing-common/content-task.js",
-        "lineNumber": 53,
+        "lineNumber": 51,
         "columnNumber": 20,
         "functionName": null
       }
     ],
+    "notes": null
+  }
+});
+
+stubPackets.set(`throw ""`, {
+  "from": "server1.conn0.child1/consoleActor2",
+  "type": "pageError",
+  "pageError": {
+    "errorMessage": "uncaught exception: ",
+    "errorMessageName": "JSMSG_UNCAUGHT_EXCEPTION",
+    "sourceName": "",
+    "lineText": "",
+    "lineNumber": 0,
+    "columnNumber": 0,
+    "category": "content javascript",
+    "timeStamp": 1517942398629,
+    "warning": false,
+    "error": false,
+    "exception": false,
+    "strict": false,
+    "info": false,
+    "private": false,
+    "stacktrace": null,
+    "notes": null
+  }
+});
+
+stubPackets.set(`throw "tomato"`, {
+  "from": "server1.conn0.child1/consoleActor2",
+  "type": "pageError",
+  "pageError": {
+    "errorMessage": "uncaught exception: tomato",
+    "errorMessageName": "JSMSG_UNCAUGHT_EXCEPTION",
+    "sourceName": "",
+    "lineText": "",
+    "lineNumber": 0,
+    "columnNumber": 0,
+    "category": "content javascript",
+    "timeStamp": 1517942398637,
+    "warning": false,
+    "error": false,
+    "exception": false,
+    "strict": false,
+    "info": false,
+    "private": false,
+    "stacktrace": null,
     "notes": null
   }
 });

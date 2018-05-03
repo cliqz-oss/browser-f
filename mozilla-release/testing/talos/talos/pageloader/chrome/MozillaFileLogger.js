@@ -2,17 +2,13 @@
  * MozillaFileLogger, a log listener that can write to a local file.
  */
 
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+
 // double logging to account for normal mode and ipc mode (mobile_profile only)
 // Ideally we would remove the dump() and just do ipc logging
 function dumpLog(msg) {
   dump(msg);
   MozillaFileLogger.log(msg);
-}
-
-
-if (Cc === undefined) {
-  var Cc = Components.classes;
-  var Ci = Components.interfaces;
 }
 
 const FOSTREAM_CID = "@mozilla.org/network/file-output-stream;1";
@@ -61,7 +57,7 @@ MozillaFileLogger.getLogCallback = function() {
     if (MozillaFileLogger._foStream)
       MozillaFileLogger._foStream.write(data, data.length);
 
-    if (data.indexOf("SimpleTest FINISH") >= 0) {
+    if (data.includes("SimpleTest FINISH")) {
       MozillaFileLogger.close();
     }
   };
@@ -84,8 +80,6 @@ MozillaFileLogger.close = function() {
 };
 
 try {
-  var prefs = Cc["@mozilla.org/preferences-service;1"]
-    .getService(Ci.nsIPrefBranch);
-  var filename = prefs.getCharPref("talos.logfile");
+  var filename = Services.prefs.getCharPref("talos.logfile");
   MozillaFileLogger.init(filename);
 } catch (ex) {} // pref does not exist, return empty string

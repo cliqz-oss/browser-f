@@ -64,7 +64,7 @@ user_pref("browser.search.countryCode", "US");
 user_pref("browser.search.geoSpecificDefaults", false);
 
 // Make sure Shield doesn't hit the network.
-user_pref("extensions.shield-recipe-client.api_url", "https://localhost/selfsupport-dummy/");
+user_pref("app.normandy.api_url", "https://localhost/selfsupport-dummy/");
 
 // Make sure Ping Centre doesn't hit the network.
 user_pref("browser.ping-centre.staging.endpoint", "https://localhost");
@@ -116,8 +116,6 @@ user_pref("browser.snippets.firstrunHomepage.enabled", false);
 user_pref("general.useragent.updates.enabled", false);
 // And for webapp updates.  Yes, it is supposed to be an integer.
 user_pref("browser.webapps.checkForUpdates", 0);
-// And for about:newtab content fetch.
-user_pref("browser.newtabpage.directory.source", "data:application/json,{\"reftest\":1}");
 // Only allow add-ons from the profile and app and allow foreign
 // injection
 user_pref("extensions.enabledScopes", 5);

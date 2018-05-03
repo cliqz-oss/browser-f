@@ -7,10 +7,10 @@
 #include "nsHtml5TreeOperation.h"
 #include "nsContentUtils.h"
 #include "nsDocElementCreatedNotificationRunner.h"
+#include "nsINode.h"
 #include "nsNodeUtils.h"
 #include "nsAttrName.h"
 #include "nsHtml5TreeBuilder.h"
-#include "nsIDOMMutationEvent.h"
 #include "mozAutoDocUpdate.h"
 #include "nsBindingManager.h"
 #include "nsXBLBinding.h"
@@ -134,12 +134,12 @@ nsHtml5TreeOperation::AppendTextToTextNode(const char16_t* aBuffer,
     oldLength,
     aLength
   };
-  nsNodeUtils::CharacterDataWillChange(aTextNode, &info);
+  nsNodeUtils::CharacterDataWillChange(aTextNode, info);
 
   nsresult rv = aTextNode->AppendText(aBuffer, aLength, false);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsNodeUtils::CharacterDataChanged(aTextNode, &info);
+  nsNodeUtils::CharacterDataChanged(aTextNode, info);
   return rv;
 }
 
@@ -221,7 +221,7 @@ IsElementOrTemplateContent(nsINode* aNode) {
   if (aNode) {
     if (aNode->IsElement()) {
       return true;
-    } else if (aNode->NodeType() == nsIDOMNode::DOCUMENT_FRAGMENT_NODE) {
+    } else if (aNode->NodeType() == nsINode::DOCUMENT_FRAGMENT_NODE) {
       // Check if the node is a template content.
       mozilla::dom::DocumentFragment* frag =
         static_cast<mozilla::dom::DocumentFragment*>(aNode);
@@ -285,8 +285,7 @@ nsHtml5TreeOperation::FosterParent(nsIContent* aNode,
     nsHtml5OtherDocUpdate update(foster->OwnerDoc(),
                                  aBuilder->GetDocument());
 
-    uint32_t pos = foster->IndexOf(aTable);
-    nsresult rv = foster->InsertChildAt(aNode, pos, false);
+    nsresult rv = foster->InsertChildBefore(aNode, aTable, false);
     NS_ENSURE_SUCCESS(rv, rv);
     nsNodeUtils::ContentInserted(foster, aNode);
     return rv;
@@ -383,7 +382,7 @@ nsHtml5TreeOperation::CreateHTMLElement(
   }
 
   RefPtr<dom::NodeInfo> nodeInfo = aNodeInfoManager->GetNodeInfo(
-    aName, nullptr, kNameSpaceID_XHTML, nsIDOMNode::ELEMENT_NODE);
+    aName, nullptr, kNameSpaceID_XHTML, nsINode::ELEMENT_NODE);
   NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
 
   dom::Element* newContent = nullptr;
@@ -410,8 +409,9 @@ nsHtml5TreeOperation::CreateHTMLElement(
       RefPtr<nsAtom> typeAtom =
         (aCreator == NS_NewCustomElement) ? tagAtom : isAtom;
 
+      MOZ_ASSERT(nodeInfo->NameAtom()->Equals(nodeInfo->LocalName()));
       definition = nsContentUtils::LookupCustomElementDefinition(document,
-        nodeInfo->LocalName(), nodeInfo->NamespaceID(), typeAtom);
+        nodeInfo->NameAtom(), nodeInfo->NamespaceID(), typeAtom);
 
       if (definition) {
         willExecuteScript = true;
@@ -495,7 +495,7 @@ nsHtml5TreeOperation::CreateHTMLElement(
                           false);
 
       RefPtr<dom::NodeInfo> optionNodeInfo = aNodeInfoManager->GetNodeInfo(
-        nsGkAtoms::option, nullptr, kNameSpaceID_XHTML, nsIDOMNode::ELEMENT_NODE);
+        nsGkAtoms::option, nullptr, kNameSpaceID_XHTML, nsINode::ELEMENT_NODE);
 
       for (uint32_t i = 0; i < theContent.Length(); ++i) {
         RefPtr<dom::NodeInfo> ni = optionNodeInfo;
@@ -531,7 +531,7 @@ nsHtml5TreeOperation::CreateSVGElement(
   nsCOMPtr<nsIContent> newElement;
   if (MOZ_LIKELY(aNodeInfoManager->SVGEnabled())) {
     RefPtr<dom::NodeInfo> nodeInfo = aNodeInfoManager->GetNodeInfo(
-      aName, nullptr, kNameSpaceID_SVG, nsIDOMNode::ELEMENT_NODE);
+      aName, nullptr, kNameSpaceID_SVG, nsINode::ELEMENT_NODE);
     MOZ_ASSERT(nodeInfo, "Got null nodeinfo.");
 
     mozilla::DebugOnly<nsresult> rv =
@@ -539,7 +539,7 @@ nsHtml5TreeOperation::CreateSVGElement(
     MOZ_ASSERT(NS_SUCCEEDED(rv) && newElement);
   } else {
     RefPtr<dom::NodeInfo> nodeInfo = aNodeInfoManager->GetNodeInfo(
-      aName, nullptr, kNameSpaceID_disabled_SVG, nsIDOMNode::ELEMENT_NODE);
+      aName, nullptr, kNameSpaceID_disabled_SVG, nsINode::ELEMENT_NODE);
     MOZ_ASSERT(nodeInfo, "Got null nodeinfo.");
 
     // The mismatch between NS_NewXMLElement and SVGContentCreatorFunction
@@ -597,7 +597,7 @@ nsHtml5TreeOperation::CreateMathMLElement(nsAtom* aName,
   nsCOMPtr<dom::Element> newElement;
   if (MOZ_LIKELY(aNodeInfoManager->MathMLEnabled())) {
     RefPtr<dom::NodeInfo> nodeInfo = aNodeInfoManager->GetNodeInfo(
-      aName, nullptr, kNameSpaceID_MathML, nsIDOMNode::ELEMENT_NODE);
+      aName, nullptr, kNameSpaceID_MathML, nsINode::ELEMENT_NODE);
     NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
 
     mozilla::DebugOnly<nsresult> rv =
@@ -605,7 +605,7 @@ nsHtml5TreeOperation::CreateMathMLElement(nsAtom* aName,
     MOZ_ASSERT(NS_SUCCEEDED(rv) && newElement);
   } else {
     RefPtr<dom::NodeInfo> nodeInfo = aNodeInfoManager->GetNodeInfo(
-      aName, nullptr, kNameSpaceID_disabled_MathML, nsIDOMNode::ELEMENT_NODE);
+      aName, nullptr, kNameSpaceID_disabled_MathML, nsINode::ELEMENT_NODE);
     NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
 
     mozilla::DebugOnly<nsresult> rv =
@@ -676,8 +676,6 @@ nsHtml5TreeOperation::FosterParentText(nsIContent* aStackParent,
     nsHtml5OtherDocUpdate update(foster->OwnerDoc(),
                                  aBuilder->GetDocument());
 
-    uint32_t pos = foster->IndexOf(aTable);
-
     nsIContent* previousSibling = aTable->GetPreviousSibling();
     if (previousSibling && previousSibling->IsNodeOfType(nsINode::eTEXT)) {
       return AppendTextToTextNode(aBuffer,
@@ -692,7 +690,7 @@ nsHtml5TreeOperation::FosterParentText(nsIContent* aStackParent,
     rv = text->SetText(aBuffer, aLength, false);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = foster->InsertChildAt(text, pos, false);
+    rv = foster->InsertChildBefore(text, aTable, false);
     NS_ENSURE_SUCCESS(rv, rv);
     nsNodeUtils::ContentInserted(foster, text);
     return rv;

@@ -106,8 +106,20 @@ consoleApi.set("console.log(%cfoobar)", {
   code: `
 console.log(
   "%cfoo%cbar",
-  "color:blue;font-size:1.3em;background:url('http://example.com/test');position:absolute;top:10px",
-  "color:red;background:\\165rl('http://example.com/test')");
+  "color:blue; font-size:1.3em; background:url('http://example.com/test'); position:absolute; top:10px; ",
+  "color:red; line-height: 1.5; background:\\165rl('http://example.com/test')"
+);
+`});
+
+consoleApi.set('console.log("%cHello%c|%cWorld")', {
+  keys: ['console.log("%cHello%c|%cWorld")'],
+  code: `
+  console.log(
+    "%cHello%c|%cWorld",
+    "color:red",
+    "",
+    "color: blue"
+  );
 `});
 
 consoleApi.set("console.group(%cfoo%cbar)", {
@@ -178,12 +190,16 @@ const evaluationResultCommands = [
   "asdf()",
   "1 + @",
   "inspect({a: 1})",
-  "cd(document)"
+  "cd(document)",
+  "undefined"
 ];
 
 let evaluationResult = new Map(evaluationResultCommands.map(cmd => [cmd, cmd]));
 evaluationResult.set("longString message Error",
   `throw new Error("Long error ".repeat(10000))`);
+
+evaluationResult.set(`eval throw ""`, `throw ""`);
+evaluationResult.set(`eval throw "tomato"`, `throw "tomato"`);
 
 // Network Event
 
@@ -233,6 +249,9 @@ pageError.set("SyntaxError: redeclaration of let a", `
 
 pageError.set("TypeError longString message",
   `throw new Error("Long error ".repeat(10000))`);
+
+pageError.set(`throw ""`, `throw ""`);
+pageError.set(`throw "tomato"`, `throw "tomato"`);
 
 module.exports = {
   consoleApi,

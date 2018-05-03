@@ -12,11 +12,15 @@ module.exports = {
     "BrowserFeedWriter": false,
     "CSSPrimitiveValue": false,
     "CSSValueList": false,
+    "Cc": false,
     "CheckerboardReportService": false,
     // Specific to Firefox (Chrome code only).
     "ChromeUtils": false,
     "ChromeWorker": false,
+    "Ci": false,
     "Components": false,
+    "Cr": false,
+    "Cu": false,
     "DOMRequest": false,
     "DedicatedWorkerGlobalScope": false,
     "IDBFileRequest": false,
@@ -46,6 +50,7 @@ module.exports = {
     "WebrtcGlobalInformation": false,
     // Non-standard, specific to Firefox.
     "XULElement": false,
+    "console": true,
     "dump": true,
     "openDialog": false,
     "sizeToContent": false,
@@ -70,20 +75,16 @@ module.exports = {
     },
     "files": "**/*.jsm",
     "rules": {
-      "mozilla/mark-exported-symbols-as-used": "error"
-      // "no-unused-vars": ["error", {
-      //   "args": "none",
-      //   "vars": "all",
-      //   "varsIgnorePattern": "^Cc|Ci|Cu|Cr|EXPORTED_SYMBOLS"
-      // }]
+      "mozilla/mark-exported-symbols-as-used": "error",
+      "no-unused-vars": ["error", {
+        "args": "none",
+        "vars": "all"
+      }]
     }
   }],
 
   "parserOptions": {
-    "ecmaFeatures": {
-      "experimentalObjectRestSpread": true
-    },
-    "ecmaVersion": 8
+    "ecmaVersion": 9
   },
 
   // When adding items to this file please check for effects on sub-directories.
@@ -115,7 +116,7 @@ module.exports = {
 
     // Warn about cyclomatic complexity in functions.
     // XXX Get this down to 20?
-    "complexity": ["error", 32],
+    "complexity": ["error", 34],
 
     // Don't require spaces around computed properties
     "computed-property-spacing": ["error", "never"],
@@ -166,10 +167,15 @@ module.exports = {
     "mozilla/avoid-removeChild": "error",
     "mozilla/import-browser-window-globals": "error",
     "mozilla/import-globals": "error",
+    "mozilla/no-compare-against-boolean-literals": "error",
+    "mozilla/no-define-cc-etc": "error",
     "mozilla/no-import-into-var-and-global": "error",
     "mozilla/no-useless-parameters": "error",
     "mozilla/no-useless-removeEventListener": "error",
+    "mozilla/use-cc-etc": "error",
+    "mozilla/use-chromeutils-import": "error",
     "mozilla/use-default-preference-values": "error",
+    "mozilla/use-includes-instead-of-indexOf": "error",
     "mozilla/use-ownerGlobal": "error",
     "mozilla/use-services": "error",
 
@@ -245,7 +251,7 @@ module.exports = {
     // Disallow eval and setInteral/setTimeout with strings
     "no-implied-eval": "error",
 
-    // No invalid regular expresions
+    // No invalid regular expressions
     "no-invalid-regexp": "error",
 
     // No odd whitespace characters
@@ -348,8 +354,7 @@ module.exports = {
     // No declaring variables that are never used
     "no-unused-vars": ["error", {
       "args": "none",
-      "vars": "local",
-      "varsIgnorePattern": "^Cc|Ci|Cu|Cr|EXPORTED_SYMBOLS"
+      "vars": "local"
     }],
 
     // No using variables before defined

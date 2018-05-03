@@ -6,12 +6,10 @@
 
 #include "jit/JitcodeMap.h"
 
-#include "mozilla/DebugOnly.h"
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Sprintf.h"
-
-#include "jsprf.h"
 
 #include "gc/Marking.h"
 #include "gc/Statistics.h"
@@ -20,9 +18,8 @@
 #include "js/Vector.h"
 #include "vm/GeckoProfiler.h"
 
-#include "jsscriptinlines.h"
-
 #include "vm/GeckoProfiler-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/TypeInference-inl.h"
 
 using mozilla::Maybe;
@@ -45,7 +42,7 @@ RegionAtAddr(const JitcodeGlobalEntry::IonEntry& entry, void* ptr,
 }
 
 void*
-JitcodeGlobalEntry::IonEntry::canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const
+JitcodeGlobalEntry::IonEntry::canonicalNativeAddrFor(void* ptr) const
 {
     uint32_t ptrOffset;
     JitcodeRegionEntry region = RegionAtAddr(*this, ptr, &ptrOffset);
@@ -53,7 +50,7 @@ JitcodeGlobalEntry::IonEntry::canonicalNativeAddrFor(JSRuntime* rt, void* ptr) c
 }
 
 bool
-JitcodeGlobalEntry::IonEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::IonEntry::callStackAtAddr(void* ptr,
                                               BytecodeLocationVector& results,
                                               uint32_t* depth) const
 {
@@ -83,7 +80,7 @@ JitcodeGlobalEntry::IonEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
 }
 
 uint32_t
-JitcodeGlobalEntry::IonEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::IonEntry::callStackAtAddr(void* ptr,
                                               const char** results,
                                               uint32_t maxResults) const
 {
@@ -110,7 +107,7 @@ JitcodeGlobalEntry::IonEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
 }
 
 void
-JitcodeGlobalEntry::IonEntry::youngestFrameLocationAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::IonEntry::youngestFrameLocationAtAddr(void* ptr,
                                                           JSScript** script, jsbytecode** pc) const
 {
     uint32_t ptrOffset;
@@ -163,15 +160,15 @@ JitcodeGlobalEntry::IonEntry::destroy()
 }
 
 void*
-JitcodeGlobalEntry::BaselineEntry::canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const
+JitcodeGlobalEntry::BaselineEntry::canonicalNativeAddrFor(void* ptr) const
 {
     // TODO: We can't yet normalize Baseline addresses until we unify
-    // BaselineScript's PCMappingEntries with JitcodeGlobalMap.
+    // BaselineScript's PCMappingEntries with JitcodeGlobalTable.
     return ptr;
 }
 
 bool
-JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(void* ptr,
                                                    BytecodeLocationVector& results,
                                                    uint32_t* depth) const
 {
@@ -189,7 +186,7 @@ JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
 }
 
 uint32_t
-JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(void* ptr,
                                                    const char** results,
                                                    uint32_t maxResults) const
 {
@@ -201,7 +198,7 @@ JitcodeGlobalEntry::BaselineEntry::callStackAtAddr(JSRuntime* rt, void* ptr,
 }
 
 void
-JitcodeGlobalEntry::BaselineEntry::youngestFrameLocationAtAddr(JSRuntime* rt, void* ptr,
+JitcodeGlobalEntry::BaselineEntry::youngestFrameLocationAtAddr(void* ptr,
                                                                JSScript** script,
                                                                jsbytecode** pc) const
 {
@@ -233,7 +230,7 @@ RejoinEntry(JSRuntime* rt, const JitcodeGlobalEntry::IonCacheEntry& cache, void*
 }
 
 void*
-JitcodeGlobalEntry::IonCacheEntry::canonicalNativeAddrFor(JSRuntime* rt, void* ptr) const
+JitcodeGlobalEntry::IonCacheEntry::canonicalNativeAddrFor() const
 {
     return nativeStartAddr_;
 }
@@ -434,17 +431,17 @@ JitcodeGlobalTable::Enum::removeFront()
 }
 
 const JitcodeGlobalEntry&
-JitcodeGlobalTable::lookupForSamplerInfallible(void* ptr, JSRuntime* rt, uint32_t sampleBufferGen)
+JitcodeGlobalTable::lookupForSamplerInfallible(void* ptr, JSRuntime* rt, uint64_t samplePosInBuffer)
 {
     JitcodeGlobalEntry* entry = lookupInternal(ptr);
     MOZ_ASSERT(entry);
 
-    entry->setGeneration(sampleBufferGen);
+    entry->setSamplePositionInBuffer(samplePosInBuffer);
 
     // IonCache entries must keep their corresponding Ion entries alive.
     if (entry->isIonCache()) {
         JitcodeGlobalEntry& rejoinEntry = RejoinEntry(rt, entry->ionCacheEntry(), ptr);
-        rejoinEntry.setGeneration(sampleBufferGen);
+        rejoinEntry.setSamplePositionInBuffer(samplePosInBuffer);
     }
 
     // JitcodeGlobalEntries are marked at the end of the mark phase. A read
@@ -487,7 +484,7 @@ JitcodeGlobalTable::lookupInternal(void* ptr)
 }
 
 bool
-JitcodeGlobalTable::addEntry(const JitcodeGlobalEntry& entry, JSRuntime* rt)
+JitcodeGlobalTable::addEntry(const JitcodeGlobalEntry& entry)
 {
     MOZ_ASSERT(entry.isIon() || entry.isBaseline() || entry.isIonCache() || entry.isDummy());
 
@@ -537,8 +534,7 @@ JitcodeGlobalTable::addEntry(const JitcodeGlobalEntry& entry, JSRuntime* rt)
 }
 
 void
-JitcodeGlobalTable::removeEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower,
-                                JSRuntime* rt)
+JitcodeGlobalTable::removeEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower)
 {
     MOZ_ASSERT(!TlsContext.get()->isProfilerSamplingEnabled());
 
@@ -570,10 +566,11 @@ void
 JitcodeGlobalTable::releaseEntry(JitcodeGlobalEntry& entry, JitcodeGlobalEntry** prevTower,
                                  JSRuntime* rt)
 {
-    mozilla::DebugOnly<uint32_t> gen = rt->profilerSampleBufferGen();
-    mozilla::DebugOnly<uint32_t> lapCount = rt->profilerSampleBufferLapCount();
-    MOZ_ASSERT_IF(gen != UINT32_MAX, !entry.isSampled(gen, lapCount));
-    removeEntry(entry, prevTower, rt);
+#ifdef DEBUG
+    Maybe<uint64_t> rangeStart = rt->profilerSampleBufferRangeStart();
+    MOZ_ASSERT_IF(rangeStart, !entry.isSampled(*rangeStart));
+#endif
+    removeEntry(entry, prevTower);
 }
 
 void
@@ -720,7 +717,7 @@ JitcodeGlobalTable::verifySkiplist()
 #endif // DEBUG
 
 void
-JitcodeGlobalTable::setAllEntriesAsExpired(JSRuntime* rt)
+JitcodeGlobalTable::setAllEntriesAsExpired()
 {
     AutoSuppressProfilerSampling suppressSampling(TlsContext.get());
     for (Range r(*this); !r.empty(); r.popFront()) {
@@ -795,25 +792,23 @@ JitcodeGlobalTable::markIteratively(GCMarker* marker)
     MOZ_ASSERT(!JS::CurrentThreadIsHeapMinorCollecting());
 
     AutoSuppressProfilerSampling suppressSampling(TlsContext.get());
-    uint32_t gen = marker->runtime()->profilerSampleBufferGen();
-    uint32_t lapCount = marker->runtime()->profilerSampleBufferLapCount();
 
-    // If the profiler is off, all entries are considered to be expired.
-    if (!marker->runtime()->geckoProfiler().enabled())
-        gen = UINT32_MAX;
+    // If the profiler is off, rangeStart will be Nothing() and all entries are
+    // considered to be expired.
+    Maybe<uint64_t> rangeStart = marker->runtime()->profilerSampleBufferRangeStart();
 
     bool markedAny = false;
     for (Range r(*this); !r.empty(); r.popFront()) {
         JitcodeGlobalEntry* entry = r.front();
 
-        // If an entry is not sampled, reset its generation to the invalid
-        // generation, and conditionally mark the rest of the entry if its
+        // If an entry is not sampled, reset its buffer position to the invalid
+        // position, and conditionally mark the rest of the entry if its
         // JitCode is not already marked. This conditional marking ensures
         // that so long as the JitCode *may* be sampled, we keep any
         // information that may be handed out to the sampler, like tracked
         // types used by optimizations and scripts used for pc to line number
         // mapping, alive as well.
-        if (!entry->isSampled(gen, lapCount)) {
+        if (!rangeStart || !entry->isSampled(*rangeStart)) {
             if (entry->canHoldNurseryPointers())
                 removeFromNurseryList(&entry->ionEntry());
             entry->setAsExpired();
@@ -1626,8 +1621,8 @@ JitcodeIonTable::WriteIonTable(CompactBufferWriter& writer,
 } // namespace jit
 } // namespace js
 
-JS::ForEachProfiledFrameOp::FrameHandle::FrameHandle(JSRuntime* rt, js::jit::JitcodeGlobalEntry& entry,
-                                                     void* addr, const char* label, uint32_t depth)
+JS::ProfiledFrameHandle::ProfiledFrameHandle(JSRuntime* rt, js::jit::JitcodeGlobalEntry& entry,
+                                             void* addr, const char* label, uint32_t depth)
   : rt_(rt),
     entry_(entry),
     addr_(addr),
@@ -1647,28 +1642,35 @@ JS::ForEachProfiledFrameOp::FrameHandle::FrameHandle(JSRuntime* rt, js::jit::Jit
 }
 
 JS_PUBLIC_API(JS::ProfilingFrameIterator::FrameKind)
-JS::ForEachProfiledFrameOp::FrameHandle::frameKind() const
+JS::ProfiledFrameHandle::frameKind() const
 {
     if (entry_.isBaseline())
         return JS::ProfilingFrameIterator::Frame_Baseline;
     return JS::ProfilingFrameIterator::Frame_Ion;
 }
 
-JS_PUBLIC_API(void)
-JS::ForEachProfiledFrame(JSContext* cx, void* addr, ForEachProfiledFrameOp& op)
+JS_PUBLIC_API(JS::ProfiledFrameRange)
+JS::GetProfiledFrames(JSContext* cx, void* addr)
 {
-    js::jit::JitcodeGlobalTable* table = cx->runtime()->jitRuntime()->getJitcodeGlobalTable();
+    JSRuntime* rt = cx->runtime();
+    js::jit::JitcodeGlobalTable* table = rt->jitRuntime()->getJitcodeGlobalTable();
     js::jit::JitcodeGlobalEntry* entry = table->lookup(addr);
 
-    if (!entry)
-        return;
+    ProfiledFrameRange result(rt, addr, entry);
 
-    // Extract the stack for the entry.  Assume maximum inlining depth is <64
-    const char* labels[64];
-    uint32_t depth = entry->callStackAtAddr(cx->runtime(), addr, labels, 64);
-    MOZ_ASSERT(depth < 64);
-    for (uint32_t i = depth; i != 0; i--) {
-        JS::ForEachProfiledFrameOp::FrameHandle handle(cx->runtime(), *entry, addr, labels[i - 1], i - 1);
-        op(handle);
+    if (entry) {
+        result.depth_ = entry->callStackAtAddr(rt, addr, result.labels_,
+                                               MOZ_ARRAY_LENGTH(result.labels_));
     }
+    return result;
+}
+
+JS::ProfiledFrameHandle
+JS::ProfiledFrameRange::Iter::operator*() const
+{
+    // The iterator iterates in high depth to low depth order. index_ goes up,
+    // and the depth we need to pass to ProfiledFrameHandle goes down.
+    uint32_t depth = range_.depth_ - 1 - index_;
+    return ProfiledFrameHandle(range_.rt_, *range_.entry_, range_.addr_,
+                               range_.labels_[depth], depth);
 }

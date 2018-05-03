@@ -2,27 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "EngineManager",
-  "Engine",
   "SyncEngine",
   "Tracker",
   "Store",
   "Changeset"
 ];
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/JSONFile.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/JSONFile.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   fxAccounts: "resource://gre/modules/FxAccounts.jsm",
@@ -46,7 +43,7 @@ function ensureDirectory(path) {
  * want to sync.
  *
  */
-this.Tracker = function Tracker(name, engine) {
+function Tracker(name, engine) {
   if (!engine) {
     throw new Error("Tracker must be associated with an Engine instance.");
   }
@@ -66,10 +63,8 @@ this.Tracker = function Tracker(name, engine) {
   });
   this.ignoreAll = false;
 
-  Svc.Obs.add("weave:engine:start-tracking", this);
-  Svc.Obs.add("weave:engine:stop-tracking", this);
-
-};
+  this.asyncObserver = Async.asyncObserver(this, this._log);
+}
 
 Tracker.prototype = {
   /*
@@ -96,11 +91,6 @@ Tracker.prototype = {
     return ensureDirectory(this._storage.path);
   },
 
-  get changedIDs() {
-    Async.promiseSpinningly(this._storage.load());
-    return this._storage.data;
-  },
-
   set score(value) {
     this._score = value;
     Observers.notify("weave:engine:score:updated", this.name);
@@ -112,6 +102,11 @@ Tracker.prototype = {
   },
 
   persistChangedIDs: true,
+
+  async getChangedIDs() {
+    await this._storage.load();
+    return this._storage.data;
+  },
 
   _saveChangedIDs() {
     if (!this.persistChangedIDs) {
@@ -136,13 +131,14 @@ Tracker.prototype = {
       this._ignored.splice(index, 1);
   },
 
-  _saveChangedID(id, when) {
+  async _saveChangedID(id, when) {
     this._log.trace(`Adding changed ID: ${id}, ${JSON.stringify(when)}`);
-    this.changedIDs[id] = when;
+    const changedIDs = await this.getChangedIDs();
+    changedIDs[id] = when;
     this._saveChangedIDs();
   },
 
-  addChangedID(id, when) {
+  async addChangedID(id, when) {
     if (!id) {
       this._log.warn("Attempted to add undefined ID to tracker");
       return false;
@@ -157,15 +153,16 @@ Tracker.prototype = {
       when = this._now();
     }
 
+    const changedIDs = await this.getChangedIDs();
     // Add/update the entry if we have a newer time.
-    if ((this.changedIDs[id] || -Infinity) < when) {
-      this._saveChangedID(id, when);
+    if ((changedIDs[id] || -Infinity) < when) {
+      await this._saveChangedID(id, when);
     }
 
     return true;
   },
 
-  removeChangedID(...ids) {
+  async removeChangedID(...ids) {
     if (!ids.length || this.ignoreAll) {
       return false;
     }
@@ -178,19 +175,20 @@ Tracker.prototype = {
         this._log.debug(`Not removing ignored ID ${id} from tracker`);
         continue;
       }
-      if (this.changedIDs[id] != null) {
+      const changedIDs = await this.getChangedIDs();
+      if (changedIDs[id] != null) {
         this._log.trace("Removing changed ID " + id);
-        delete this.changedIDs[id];
+        delete changedIDs[id];
       }
     }
-    this._saveChangedIDs();
+    await this._saveChangedIDs();
     return true;
   },
 
-  clearChangedIDs() {
+  async clearChangedIDs() {
     this._log.trace("Clearing changed ID list");
     this._storage.data = {};
-    this._saveChangedIDs();
+    await this._saveChangedIDs();
   },
 
   _now() {
@@ -199,12 +197,30 @@ Tracker.prototype = {
 
   _isTracking: false,
 
-  // Override these in your subclasses.
-  startTracking() {
+  start() {
+    if (!this.engineIsEnabled()) {
+      return;
+    }
+    this._log.trace("start().");
+    if (!this._isTracking) {
+      this.onStart();
+      this._isTracking = true;
+    }
   },
 
-  stopTracking() {
+  async stop() {
+    this._log.trace("stop().");
+    if (this._isTracking) {
+      await this.asyncObserver.promiseObserversComplete();
+      this.onStop();
+      this._isTracking = false;
+    }
   },
+
+  // Override these in your subclasses.
+  onStart() {},
+  onStop() {},
+  async observe(subject, topic, data) {},
 
   engineIsEnabled() {
     if (!this.engine) {
@@ -214,50 +230,23 @@ Tracker.prototype = {
     return this.engine.enabled;
   },
 
-  onEngineEnabledChanged(engineEnabled) {
+  async onEngineEnabledChanged(engineEnabled) {
     if (engineEnabled == this._isTracking) {
       return;
     }
 
     if (engineEnabled) {
-      this.startTracking();
-      this._isTracking = true;
+      this.start();
     } else {
-      this.stopTracking();
-      this._isTracking = false;
-      this.clearChangedIDs();
-    }
-  },
-
-  observe(subject, topic, data) {
-    switch (topic) {
-      case "weave:engine:start-tracking":
-        if (!this.engineIsEnabled()) {
-          return;
-        }
-        this._log.trace("Got start-tracking.");
-        if (!this._isTracking) {
-          this.startTracking();
-          this._isTracking = true;
-        }
-        return;
-      case "weave:engine:stop-tracking":
-        this._log.trace("Got stop-tracking.");
-        if (this._isTracking) {
-          this.stopTracking();
-          this._isTracking = false;
-        }
+      await this.stop();
+      await this.clearChangedIDs();
     }
   },
 
   async finalize() {
-    // Stop listening for tracking and engine enabled change notifications.
-    // Important for tests where we unregister the engine during cleanup.
-    Svc.Obs.remove("weave:engine:start-tracking", this);
-    Svc.Obs.remove("weave:engine:stop-tracking", this);
-
     // Persist all pending tracked changes to disk, and wait for the final write
     // to finish.
+    await this.stop();
     this._saveChangedIDs();
     await this._storage.finalize();
   },
@@ -285,7 +274,7 @@ Tracker.prototype = {
  * and/or applyIncoming function on top of the basic APIs.
  */
 
-this.Store = function Store(name, engine) {
+function Store(name, engine) {
   if (!engine) {
     throw new Error("Store must be associated with an Engine instance.");
   }
@@ -299,7 +288,7 @@ this.Store = function Store(name, engine) {
   XPCOMUtils.defineLazyGetter(this, "_timer", function() {
     return Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   });
-};
+}
 Store.prototype = {
 
   /**
@@ -325,7 +314,7 @@ Store.prototype = {
       try {
         await this.applyIncoming(record);
       } catch (ex) {
-        if (ex.code == Engine.prototype.eEngineAbortApplyIncoming) {
+        if (ex.code == SyncEngine.prototype.eEngineAbortApplyIncoming) {
           // This kind of exception should have a 'cause' attribute, which is an
           // originating exception.
           // ex.cause will carry its stack with it when rethrown.
@@ -473,7 +462,7 @@ Store.prototype = {
   }
 };
 
-this.EngineManager = function EngineManager(service) {
+function EngineManager(service) {
   this.service = service;
 
   this._engines = {};
@@ -485,7 +474,7 @@ this.EngineManager = function EngineManager(service) {
   // define the default level for all engine logs here (although each engine
   // allows its level to be controlled via a specific, non-default pref)
   Log.repository.getLogger(`Sync.Engine`).manageLevelFromPref("services.sync.log.logger.engine");
-};
+}
 EngineManager.prototype = {
   get(name) {
     // Return an array of engines if we have an array of names
@@ -619,30 +608,30 @@ EngineManager.prototype = {
     }
   },
 
-  unregister(val) {
+  async unregister(val) {
     let name = val;
-    if (val instanceof Engine) {
+    if (val instanceof SyncEngine) {
       name = val.name;
     }
     if (name in this._engines) {
       let engine = this._engines[name];
       delete this._engines[name];
-      Async.promiseSpinningly(engine.finalize());
+      await engine.finalize();
     }
   },
 
-  clear() {
+  async clear() {
     for (let name in this._engines) {
       let engine = this._engines[name];
       delete this._engines[name];
-      Async.promiseSpinningly(engine.finalize());
+      await engine.finalize();
     }
   },
 };
 
-this.Engine = function Engine(name, service) {
+function SyncEngine(name, service) {
   if (!service) {
-    throw new Error("Engine must be associated with a Service instance.");
+    throw new Error("SyncEngine must be associated with a Service instance.");
   }
 
   this.Name = name || "Unnamed";
@@ -657,114 +646,6 @@ this.Engine = function Engine(name, service) {
   this._tracker; // initialize tracker to load previously changed IDs
   this._log.debug("Engine constructed");
 
-  XPCOMUtils.defineLazyPreferenceGetter(this, "_enabled",
-    `services.sync.engine.${this.prefName}`, false,
-    (data, previous, latest) =>
-      this._tracker.onEngineEnabledChanged(latest));
-};
-Engine.prototype = {
-  // _storeObj, and _trackerObj should to be overridden in subclasses
-  _storeObj: Store,
-  _trackerObj: Tracker,
-
-  // Override this method to return a new changeset type.
-  emptyChangeset() {
-    return new Changeset();
-  },
-
-  // Local 'constant'.
-  // Signal to the engine that processing further records is pointless.
-  eEngineAbortApplyIncoming: "error.engine.abort.applyincoming",
-
-  // Should we keep syncing if we find a record that cannot be uploaded (ever)?
-  // If this is false, we'll throw, otherwise, we'll ignore the record and
-  // continue. This currently can only happen due to the record being larger
-  // than the record upload limit.
-  allowSkippedRecord: true,
-
-  get prefName() {
-    return this.name;
-  },
-
-  get enabled() {
-    return this._enabled;
-  },
-
-  set enabled(val) {
-    if (!!val != this._enabled) {
-      Svc.Prefs.set("engine." + this.prefName, !!val);
-    }
-  },
-
-  get score() {
-    return this._tracker.score;
-  },
-
-  get _store() {
-    let store = new this._storeObj(this.Name, this);
-    this.__defineGetter__("_store", () => store);
-    return store;
-  },
-
-  get _tracker() {
-    let tracker = new this._trackerObj(this.Name, this);
-    this.__defineGetter__("_tracker", () => tracker);
-    return tracker;
-  },
-
-  async sync() {
-    if (!this.enabled) {
-      return false;
-    }
-
-    if (!this._sync) {
-      throw new Error("engine does not implement _sync method");
-    }
-
-    return this._notify("sync", this.name, this._sync)();
-  },
-
-  /**
-   * Get rid of any local meta-data.
-   */
-  async resetClient() {
-    if (!this._resetClient) {
-      throw new Error("engine does not implement _resetClient method");
-    }
-
-    return this._notify("reset-client", this.name, this._resetClient)();
-  },
-
-  async _wipeClient() {
-    await this.resetClient();
-    this._log.debug("Deleting all local data");
-    this._tracker.ignoreAll = true;
-    await this._store.wipe();
-    this._tracker.ignoreAll = false;
-    this._tracker.clearChangedIDs();
-  },
-
-  async wipeClient() {
-    return this._notify("wipe-client", this.name, this._wipeClient)();
-  },
-
-  /**
-   * If one exists, initialize and return a validator for this engine (which
-   * must have a `validate(engine)` method that returns a promise to an object
-   * with a getSummary method). Otherwise return null.
-   */
-  getValidator() {
-    return null;
-  },
-
-  async finalize() {
-    await this._tracker.finalize();
-  },
-};
-
-this.SyncEngine = function SyncEngine(name, service) {
-  Engine.call(this, name || "SyncEngine", service);
-
   this._toFetchStorage = new JSONFile({
     path: Utils.jsonFilePath("toFetch/" + this.name),
     dataPostProcessor: json => this._metadataPostProcessor(json),
@@ -778,6 +659,11 @@ this.SyncEngine = function SyncEngine(name, service) {
   });
   Utils.defineLazyIDProperty(this, "syncID", `services.sync.${this.name}.syncID`);
 
+  XPCOMUtils.defineLazyPreferenceGetter(this, "_enabled",
+    `services.sync.engine.${this.prefName}`, false,
+    (data, previous, latest) =>
+      // We do not await on the promise onEngineEnabledChanged returns.
+      this._tracker.onEngineEnabledChanged(latest));
   XPCOMUtils.defineLazyPreferenceGetter(this, "_lastSync",
                                         `services.sync.${this.name}.lastSync`,
                                         "0", null,
@@ -815,7 +701,7 @@ this.SyncEngine = function SyncEngine(name, service) {
   // Additionally, we use this as the set of items to upload for bookmark
   // repair reponse, which has similar constraints.
   this._needWeakUpload = new Map();
-};
+}
 
 // Enumeration to define approaches to handling bad records.
 // Attached to the constructor to allow use as a kind of static enumeration.
@@ -826,9 +712,21 @@ SyncEngine.kRecoveryStrategy = {
 };
 
 SyncEngine.prototype = {
-  __proto__: Engine.prototype,
   _recordObj: CryptoWrapper,
+  // _storeObj, and _trackerObj should to be overridden in subclasses
+  _storeObj: Store,
+  _trackerObj: Tracker,
   version: 1,
+
+  // Local 'constant'.
+  // Signal to the engine that processing further records is pointless.
+  eEngineAbortApplyIncoming: "error.engine.abort.applyincoming",
+
+  // Should we keep syncing if we find a record that cannot be uploaded (ever)?
+  // If this is false, we'll throw, otherwise, we'll ignore the record and
+  // continue. This currently can only happen due to the record being larger
+  // than the record upload limit.
+  allowSkippedRecord: true,
 
   // Which sortindex to use when retrieving records for this engine.
   _defaultSort: undefined,
@@ -837,11 +735,14 @@ SyncEngine.prototype = {
     if (Array.isArray(json)) {
       // Pre-`JSONFile` storage stored an array, but `JSONFile` defaults to
       // an object, so we wrap the array for consistency.
-      return { ids: json };
+      json = { ids: json };
     }
     if (!json.ids) {
       json.ids = [];
     }
+    // The set serializes the same way as an array, but offers more efficient
+    // methods of manipulation.
+    json.ids = new SerializableSet(json.ids);
     return json;
   },
 
@@ -873,6 +774,36 @@ SyncEngine.prototype = {
     this._log.debug("SyncEngine initialized", this.name);
   },
 
+  get prefName() {
+    return this.name;
+  },
+
+  get enabled() {
+    return this._enabled;
+  },
+
+  set enabled(val) {
+    if (!!val != this._enabled) {
+      Svc.Prefs.set("engine." + this.prefName, !!val);
+    }
+  },
+
+  get score() {
+    return this._tracker.score;
+  },
+
+  get _store() {
+    let store = new this._storeObj(this.Name, this);
+    this.__defineGetter__("_store", () => store);
+    return store;
+  },
+
+  get _tracker() {
+    let tracker = new this._trackerObj(this.Name, this);
+    this.__defineGetter__("_tracker", () => tracker);
+    return tracker;
+  },
+
   get storageURL() {
     return this.service.storageURL;
   },
@@ -889,9 +820,41 @@ SyncEngine.prototype = {
     return this.storageURL + "meta/global";
   },
 
+  startTracking() {
+    this._tracker.start();
+  },
+
+  // Returns a promise
+  stopTracking() {
+    return this._tracker.stop();
+  },
+
+  async sync() {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (!this._sync) {
+      throw new Error("engine does not implement _sync method");
+    }
+
+    return this._notify("sync", this.name, this._sync)();
+  },
+
+  // Override this method to return a new changeset type.
+  emptyChangeset() {
+    return new Changeset();
+  },
+
   /*
    * lastSync is a timestamp in server time.
    */
+  async getLastSync() {
+    return this.lastSync;
+  },
+  async setLastSync(lastSync) {
+    this.lastSync = lastSync;
+  },
   get lastSync() {
     return this._lastSync;
   },
@@ -911,6 +874,9 @@ SyncEngine.prototype = {
   },
 
   set toFetch(ids) {
+    if (ids.constructor.name != "SerializableSet") {
+      throw new Error("Bug: Attempted to set toFetch to something that isn't a SerializableSet");
+    }
     this._toFetchStorage.data = { ids };
     this._toFetchStorage.saveSoon();
   },
@@ -919,7 +885,12 @@ SyncEngine.prototype = {
     this._previousFailedStorage.ensureDataReady();
     return this._previousFailedStorage.data.ids;
   },
+
   set previousFailed(ids) {
+    if (ids.constructor.name != "SerializableSet") {
+      throw new Error(
+        "Bug: Attempted to set previousFailed to something that isn't a SerializableSet");
+    }
     this._previousFailedStorage.data = { ids };
     this._previousFailedStorage.saveSoon();
   },
@@ -940,7 +911,7 @@ SyncEngine.prototype = {
    * method to bypass the tracker for certain or all changed items.
    */
   async getChangedIDs() {
-    return this._tracker.changedIDs;
+    return this._tracker.getChangedIDs();
   },
 
   // Create a new record using the store and add in metadata.
@@ -966,7 +937,6 @@ SyncEngine.prototype = {
 
   // Any setup that needs to happen at the beginning of each sync.
   async _syncStartup() {
-
     // Determine if we need to wipe on outdated versions
     let metaGlobal = await this.service.recordManager.get(this.metaURL);
     let engines = metaGlobal.payload.engines || {};
@@ -1018,17 +988,11 @@ SyncEngine.prototype = {
     // the end of a sync, or after an error, we add all objects remaining in
     // this._modified to the tracker.
     this.lastSyncLocal = Date.now();
-    let initialChanges;
-    if (this.lastSync) {
-      initialChanges = await this.pullNewChanges();
-    } else {
-      this._log.debug("First sync, uploading all items");
-      initialChanges = await this.pullAllChanges();
-    }
+    let initialChanges = await this.pullChanges();
     this._modified.replace(initialChanges);
     // Clear the tracker now. If the sync fails we'll add the ones we failed
     // to upload back.
-    this._tracker.clearChangedIDs();
+    await this._tracker.clearChangedIDs();
     this._tracker.resetScore();
 
     this._log.info(this._modified.count() +
@@ -1036,6 +1000,15 @@ SyncEngine.prototype = {
 
     // Keep track of what to delete at the end of sync
     this._delete = {};
+  },
+
+  async pullChanges() {
+    let lastSync = await this.getLastSync();
+    if (lastSync) {
+      return this.pullNewChanges();
+    }
+    this._log.debug("First sync, uploading all items");
+    return this.pullAllChanges();
   },
 
   /**
@@ -1069,8 +1042,9 @@ SyncEngine.prototype = {
     this._log.trace("Downloading & applying server changes");
 
     let newitems = this.itemSource();
+    let lastSync = await this.getLastSync();
 
-    newitems.newer = this.lastSync;
+    newitems.newer = lastSync;
     newitems.full  = true;
 
     let downloadLimit = Infinity;
@@ -1100,13 +1074,13 @@ SyncEngine.prototype = {
     // reconciled => number of items that were reconciled.
     let count = {applied: 0, failed: 0, newFailed: 0, reconciled: 0};
     let recordsToApply = [];
-    let failedInCurrentSync = [];
+    let failedInCurrentSync = new SerializableSet();
 
     let oldestModified = this.lastModified;
     let downloadedIDs = new Set();
 
     // Stage 1: Fetch new records from the server, up to the download limit.
-    if (this.lastModified == null || this.lastModified > this.lastSync) {
+    if (this.lastModified == null || this.lastModified > lastSync) {
       let { response, records } = await newitems.getBatched(this.downloadBatchSize);
       if (!response.success) {
         response.failureCode = ENGINE_DOWNLOAD_FAIL;
@@ -1124,7 +1098,7 @@ SyncEngine.prototype = {
 
         let { shouldApply, error } = await this._maybeReconcile(record);
         if (error) {
-          failedInCurrentSync.push(record.id);
+          failedInCurrentSync.add(record.id);
           count.failed++;
           continue;
         }
@@ -1136,7 +1110,7 @@ SyncEngine.prototype = {
       }
 
       let failedToApply = await this._applyRecords(recordsToApply);
-      failedInCurrentSync.push(...failedToApply);
+      Utils.setAddAll(failedInCurrentSync, failedToApply);
 
       // `applied` is a bit of a misnomer: it counts records that *should* be
       // applied, so it also includes records that we tried to apply and failed.
@@ -1153,7 +1127,7 @@ SyncEngine.prototype = {
     if (downloadedIDs.size == downloadLimit) {
       let guidColl = this.itemSource();
 
-      guidColl.newer = this.lastSync;
+      guidColl.newer = lastSync;
       guidColl.older = oldestModified;
       guidColl.sort  = "oldest";
 
@@ -1165,14 +1139,15 @@ SyncEngine.prototype = {
       // that in case the Sync server doesn't support `older` (bug 1316110).
       let remainingIDs = guids.obj.filter(id => !downloadedIDs.has(id));
       if (remainingIDs.length > 0) {
-        this.toFetch = Utils.arrayUnion(this.toFetch, remainingIDs);
+        this.toFetch = Utils.setAddAll(this.toFetch, remainingIDs);
       }
     }
 
     // Fast-foward the lastSync timestamp since we have backlogged the
     // remaining items.
-    if (this.lastSync < this.lastModified) {
-      this.lastSync = this.lastModified;
+    if (lastSync < this.lastModified) {
+      lastSync = this.lastModified;
+      await this.setLastSync(lastSync);
     }
 
     // Stage 3: Backfill records from the backlog, and those that failed to
@@ -1180,8 +1155,9 @@ SyncEngine.prototype = {
     // download limit, to prevent a large backlog for one engine from blocking
     // the others. We'll keep processing the backlog on subsequent engine syncs.
     let failedInPreviousSync = this.previousFailed;
-    let idsToBackfill = Utils.arrayUnion(this.toFetch.slice(0, downloadLimit),
-      failedInPreviousSync);
+    let idsToBackfill = Array.from(
+      Utils.setAddAll(Utils.subsetOfSize(this.toFetch, downloadLimit),
+                      failedInPreviousSync));
 
     // Note that we intentionally overwrite the previously failed list here.
     // Records that fail to decrypt or apply in two consecutive syncs are likely
@@ -1230,20 +1206,22 @@ SyncEngine.prototype = {
       count.failed += failedToApply.length;
       count.applied += backfilledRecordsToApply.length;
 
-      this.toFetch = Utils.arraySub(this.toFetch, ids);
-      this.previousFailed = Utils.arrayUnion(this.previousFailed, failedInBackfill);
+      this.toFetch = Utils.setDeleteAll(this.toFetch, ids);
+      this.previousFailed = Utils.setAddAll(this.previousFailed, failedInBackfill);
 
-      if (this.lastSync < this.lastModified) {
-        this.lastSync = this.lastModified;
+      if (lastSync < this.lastModified) {
+        lastSync = this.lastModified;
+        await this.setLastSync(lastSync);
       }
     }
 
-    count.newFailed = this.previousFailed.reduce((count, engine) => {
-      if (failedInPreviousSync.indexOf(engine) == -1) {
-        count++;
+    count.newFailed = 0;
+    for (let item of this.previousFailed) {
+      if (!failedInPreviousSync.has(item)) {
+        ++count.newFailed;
       }
-      return count;
-    }, 0);
+    }
+
     count.succeeded = Math.max(0, count.applied - count.failed);
     this._log.info(["Records:",
                     count.applied, "applied,",
@@ -1312,7 +1290,7 @@ SyncEngine.prototype = {
 
     if (this._shouldDeleteRemotely(item)) {
       this._log.trace("Deleting item from server without applying", item);
-      this._deleteId(item.id);
+      await this._deleteId(item.id);
       return { shouldApply: false, error: null };
     }
 
@@ -1320,7 +1298,7 @@ SyncEngine.prototype = {
     try {
       shouldApply = await this._reconcile(item);
     } catch (ex) {
-      if (ex.code == Engine.prototype.eEngineAbortApplyIncoming) {
+      if (ex.code == SyncEngine.prototype.eEngineAbortApplyIncoming) {
         this._log.warn("Reconciliation failed: aborting incoming processing.");
         throw ex.cause;
       } else if (!Async.isShutdownException(ex)) {
@@ -1387,8 +1365,8 @@ SyncEngine.prototype = {
     return true;
   },
 
-  _deleteId(id) {
-    this._tracker.removeChangedID(id);
+  async _deleteId(id) {
+    await this._tracker.removeChangedID(id);
     this._noteDeletedId(id);
   },
 
@@ -1402,7 +1380,7 @@ SyncEngine.prototype = {
 
   async _switchItemToDupe(localDupeGUID, incomingItem) {
     // The local, duplicate ID is always deleted on the server.
-    this._deleteId(localDupeGUID);
+    await this._deleteId(localDupeGUID);
 
     // We unconditionally change the item's ID in case the engine knows of
     // an item but doesn't expose it through itemExists. If the API
@@ -1611,6 +1589,7 @@ SyncEngine.prototype = {
 
       let failed = [];
       let successful = [];
+      let lastSync = await this.getLastSync();
       let handleResponse = async (resp, batchOngoing = false) => {
         // Note: We don't want to update this.lastSync, or this._modified until
         // the batch is complete, however we want to remember success/failure
@@ -1629,11 +1608,8 @@ SyncEngine.prototype = {
           // Nothing to do yet
           return;
         }
-        // Advance lastSync since we've finished the batch.
-        let modified = resp.headers["x-weave-timestamp"];
-        if (modified > this.lastSync) {
-          this.lastSync = modified;
-        }
+        let serverModifiedTime = parseFloat(resp.headers["x-weave-timestamp"]);
+
         if (failed.length && this._log.level <= Log.Level.Debug) {
           this._log.debug("Records that will be uploaded again because "
                           + "the server couldn't store them: "
@@ -1646,14 +1622,20 @@ SyncEngine.prototype = {
           this._modified.delete(id);
         }
 
-        await this._onRecordsWritten(successful, failed);
+        await this._onRecordsWritten(successful, failed, serverModifiedTime);
+
+        // Advance lastSync since we've finished the batch.
+        if (serverModifiedTime > lastSync) {
+          lastSync = serverModifiedTime;
+          await this.setLastSync(lastSync);
+        }
 
         // clear for next batch
         failed.length = 0;
         successful.length = 0;
       };
 
-      let postQueue = up.newPostQueue(this._log, this.lastSync, handleResponse);
+      let postQueue = up.newPostQueue(this._log, lastSync, handleResponse);
 
       for (let id of modifiedIDs) {
         let out;
@@ -1704,7 +1686,7 @@ SyncEngine.prototype = {
     }
   },
 
-  async _onRecordsWritten(succeeded, failed) {
+  async _onRecordsWritten(succeeded, failed, serverModifiedTime) {
     // Implement this method to take specific actions against successfully
     // uploaded records and failed records.
   },
@@ -1736,6 +1718,7 @@ SyncEngine.prototype = {
         }
       }
     }
+    await this._tracker.asyncObserver.promiseObserversComplete();
   },
 
   async _syncCleanup() {
@@ -1811,8 +1794,8 @@ SyncEngine.prototype = {
 
   async _resetClient() {
     this.resetLastSync();
-    this.previousFailed = [];
-    this.toFetch = [];
+    this.previousFailed = new SerializableSet();
+    this.toFetch = new SerializableSet();
     this._needWeakUpload.clear();
   },
 
@@ -1879,6 +1862,7 @@ SyncEngine.prototype = {
    * @return A `Changeset` object.
    */
   async pullNewChanges() {
+    await this._tracker.asyncObserver.promiseObserversComplete();
     return this.getChangedIDs();
   },
 
@@ -1889,12 +1873,45 @@ SyncEngine.prototype = {
    */
   async trackRemainingChanges() {
     for (let [id, change] of this._modified.entries()) {
-      this._tracker.addChangedID(id, change);
+      await this._tracker.addChangedID(id, change);
     }
   },
 
+  /**
+   * Get rid of any local meta-data.
+   */
+  async resetClient() {
+    if (!this._resetClient) {
+      throw new Error("engine does not implement _resetClient method");
+    }
+
+    return this._notify("reset-client", this.name, this._resetClient)();
+  },
+
+  async wipeClient() {
+    return this._notify("wipe-client", this.name, this._wipeClient)();
+  },
+
+  async _wipeClient() {
+    await this.resetClient();
+    this._log.debug("Deleting all local data");
+    this._tracker.ignoreAll = true;
+    await this._store.wipe();
+    this._tracker.ignoreAll = false;
+    await this._tracker.clearChangedIDs();
+  },
+
+  /**
+   * If one exists, initialize and return a validator for this engine (which
+   * must have a `validate(engine)` method that returns a promise to an object
+   * with a getSummary method). Otherwise return null.
+   */
+  getValidator() {
+    return null;
+  },
+
   async finalize() {
-    await super.finalize();
+    await this._tracker.finalize();
     await this._toFetchStorage.finalize();
     await this._previousFailedStorage.finalize();
   },

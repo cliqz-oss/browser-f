@@ -6,14 +6,18 @@
 
 use euclid::{Transform3D, Vector3D};
 use num_traits::Zero;
-use super::{CSSFloat, Either};
+use super::CSSFloat;
 use values::animated::ToAnimatedZero;
 use values::computed::{Angle, Integer, Length, LengthOrPercentage, Number, Percentage};
-use values::computed::{LengthOrNumber, LengthOrPercentageOrNumber};
 use values::generics::transform::{self, Matrix as GenericMatrix, Matrix3D as GenericMatrix3D};
 use values::generics::transform::{Transform as GenericTransform, TransformOperation as GenericTransformOperation};
+use values::generics::transform::Rotate as GenericRotate;
+use values::generics::transform::Scale as GenericScale;
 use values::generics::transform::TimingFunction as GenericTimingFunction;
 use values::generics::transform::TransformOrigin as GenericTransformOrigin;
+use values::generics::transform::Translate as GenericTranslate;
+
+pub use values::generics::transform::TransformStyle;
 
 /// A single operation in a computed CSS `transform`
 pub type TransformOperation = GenericTransformOperation<
@@ -21,9 +25,7 @@ pub type TransformOperation = GenericTransformOperation<
     Number,
     Length,
     Integer,
-    LengthOrNumber,
     LengthOrPercentage,
-    LengthOrPercentageOrNumber,
 >;
 /// A computed CSS `transform`
 pub type Transform = GenericTransform<TransformOperation>;
@@ -51,12 +53,8 @@ impl TransformOrigin {
 
 /// computed value of matrix3d()
 pub type Matrix3D = GenericMatrix3D<Number>;
-/// computed value of matrix3d() in -moz-transform
-pub type PrefixedMatrix3D = GenericMatrix3D<Number, LengthOrPercentageOrNumber, LengthOrNumber>;
 /// computed value of matrix()
 pub type Matrix = GenericMatrix<Number>;
-/// computed value of matrix() in -moz-transform
-pub type PrefixedMatrix = GenericMatrix<Number, LengthOrPercentageOrNumber>;
 
 // we rustfmt_skip here because we want the matrices to look like
 // matrices instead of being split across lines
@@ -91,21 +89,6 @@ impl Matrix3D {
 }
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
-impl PrefixedMatrix3D {
-    #[inline]
-    /// Get an identity matrix
-    pub fn identity() -> Self {
-        Self {
-            m11: 1.0, m12: 0.0, m13: 0.0, m14: 0.0,
-            m21: 0.0, m22: 1.0, m23: 0.0, m24: 0.0,
-            m31: 0.0, m32: 0.0, m33: 1.0, m34: 0.0,
-            m41: Either::First(0.), m42: Either::First(0.),
-            m43: Either::First(Length::new(0.)), m44: 1.0
-        }
-    }
-}
-
-#[cfg_attr(rustfmt, rustfmt_skip)]
 impl Matrix {
     #[inline]
     /// Get an identity matrix
@@ -127,20 +110,6 @@ impl From<Matrix> for Matrix3D {
             m21: m.c, m22: m.d, m23: 0.0, m24: 0.0,
             m31: 0.0, m32: 0.0, m33: 1.0, m34: 0.0,
             m41: m.e, m42: m.f, m43: 0.0, m44: 1.0
-        }
-    }
-}
-
-#[cfg_attr(rustfmt, rustfmt_skip)]
-impl PrefixedMatrix {
-    #[inline]
-    /// Get an identity matrix
-    pub fn identity() -> Self {
-        Self {
-            a: 1.,                    c: 0., /*            0      0 */
-            b: 0.,                    d: 1., /*            0      0 */
-            /* 0                      0                    1      0 */
-            e: Either::First(0.), f: Either::First(0.), /* 0      1 */
         }
     }
 }
@@ -208,17 +177,7 @@ impl ToAnimatedZero for TransformOperation {
     fn to_animated_zero(&self) -> Result<Self, ()> {
         match *self {
             GenericTransformOperation::Matrix3D(..) => Ok(GenericTransformOperation::Matrix3D(Matrix3D::identity())),
-            GenericTransformOperation::PrefixedMatrix3D(..) => {
-                Ok(GenericTransformOperation::PrefixedMatrix3D(
-                    PrefixedMatrix3D::identity(),
-                ))
-            },
             GenericTransformOperation::Matrix(..) => Ok(GenericTransformOperation::Matrix(Matrix::identity())),
-            GenericTransformOperation::PrefixedMatrix(..) => {
-                Ok(GenericTransformOperation::PrefixedMatrix(
-                    PrefixedMatrix::identity(),
-                ))
-            },
             GenericTransformOperation::Skew(sx, sy) => {
                 Ok(GenericTransformOperation::Skew(
                     sx.to_animated_zero()?,
@@ -291,5 +250,79 @@ impl ToAnimatedZero for Transform {
             .iter()
             .map(|op| op.to_animated_zero())
             .collect::<Result<Vec<_>, _>>()?))
+    }
+}
+
+/// A computed CSS `rotate`
+pub type Rotate = GenericRotate<Number, Angle>;
+
+impl Rotate {
+    /// Convert TransformOperation to Rotate.
+    pub fn to_transform_operation(&self) -> Option<TransformOperation> {
+        match *self {
+            GenericRotate::None => None,
+            GenericRotate::Rotate(angle) => Some(GenericTransformOperation::Rotate(angle)),
+            GenericRotate::Rotate3D(rx, ry, rz, angle) => Some(GenericTransformOperation::Rotate3D(rx, ry, rz, angle)),
+        }
+    }
+
+    /// Convert Rotate to TransformOperation.
+    pub fn from_transform_operation(operation: &TransformOperation) -> Rotate {
+        match *operation {
+            GenericTransformOperation::Rotate(angle) => GenericRotate::Rotate(angle),
+            GenericTransformOperation::Rotate3D(rx, ry, rz, angle) =>
+                GenericRotate::Rotate3D(rx, ry, rz, angle),
+            _ => unreachable!("Found unexpected value for rotate property"),
+        }
+    }
+}
+
+/// A computed CSS `translate`
+pub type Translate = GenericTranslate<LengthOrPercentage, Length>;
+
+impl Translate {
+    /// Convert TransformOperation to Translate.
+    pub fn to_transform_operation(&self) -> Option<TransformOperation> {
+        match *self {
+            GenericTranslate::None => None,
+            GenericTranslate::TranslateX(tx) => Some(GenericTransformOperation::TranslateX(tx)),
+            GenericTranslate::Translate(tx, ty) => Some(GenericTransformOperation::Translate(tx, Some(ty))),
+            GenericTranslate::Translate3D(tx, ty, tz) => Some(GenericTransformOperation::Translate3D(tx, ty, tz)),
+        }
+    }
+
+    /// Convert Translate to TransformOperation.
+    pub fn from_transform_operation(operation: &TransformOperation) -> Translate {
+        match *operation {
+            GenericTransformOperation::TranslateX(tx) => GenericTranslate::TranslateX(tx),
+            GenericTransformOperation::Translate(tx, Some(ty)) => GenericTranslate::Translate(tx, ty),
+            GenericTransformOperation::Translate3D(tx, ty, tz) => GenericTranslate::Translate3D(tx, ty, tz),
+            _ => unreachable!("Found unexpected value for translate"),
+        }
+    }
+}
+
+/// A computed CSS `scale`
+pub type Scale = GenericScale<Number>;
+
+impl Scale {
+    /// Convert TransformOperation to Scale.
+    pub fn to_transform_operation(&self) -> Option<TransformOperation> {
+        match *self {
+            GenericScale::None => None,
+            GenericScale::ScaleX(sx) => Some(GenericTransformOperation::ScaleX(sx)),
+            GenericScale::Scale(sx, sy) => Some(GenericTransformOperation::Scale(sx, Some(sy))),
+            GenericScale::Scale3D(sx, sy, sz) => Some(GenericTransformOperation::Scale3D(sx, sy, sz)),
+        }
+    }
+
+    /// Convert Scale to TransformOperation.
+    pub fn from_transform_operation(operation: &TransformOperation) -> Scale {
+        match *operation {
+            GenericTransformOperation::ScaleX(sx) => GenericScale::ScaleX(sx),
+            GenericTransformOperation::Scale(sx, Some(sy)) => GenericScale::Scale(sx, sy),
+            GenericTransformOperation::Scale3D(sx, sy, sz) => GenericScale::Scale3D(sx, sy, sz),
+            _ => unreachable!("Found unexpected value for scale"),
+        }
     }
 }

@@ -7,7 +7,7 @@ function repeat(limit, func) {
 async function promiseAutoComplete(inputText) {
   gURLBar.focus();
   gURLBar.value = inputText.slice(0, -1);
-  EventUtils.synthesizeKey(inputText.slice(-1), {});
+  EventUtils.sendString(inputText.slice(-1));
   await promiseSearchComplete();
 }
 
@@ -19,10 +19,10 @@ let gMaxResults;
 
 add_task(async function() {
   registerCleanupFunction(async function() {
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   gMaxResults = Services.prefs.getIntPref("browser.urlbar.maxRichResults");
 
@@ -45,7 +45,7 @@ add_task(async function() {
   let initiallySelected = gURLBar.popup.richlistbox.selectedIndex;
 
   info("Key Down to select the next item");
-  EventUtils.synthesizeKey("VK_DOWN", {});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   is_selected(initiallySelected + 1);
   let expectedURL = gURLBar.controller.getFinalCompleteValueAt(initiallySelected + 1);
 
@@ -62,7 +62,7 @@ add_task(async function() {
 
   let autocompletePopupHidden = promisePopupHidden(gURLBar.popup);
   let openedExpectedPage = waitForDocLoadAndStopIt(expectedURL);
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   await Promise.all([autocompletePopupHidden, openedExpectedPage]);
 
   gBrowser.removeCurrentTab();

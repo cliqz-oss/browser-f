@@ -2,12 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // This is the only implementation of nsIUrlListManager.
 // A class that manages lists, namely white and black lists for
@@ -288,7 +284,7 @@ PROT_ListManager.prototype.kickoffUpdate_ = function(onDiskTableData) {
         updateDelay = Math.min(maxDelayMs, Math.max(0, nextUpdate - Date.now()));
         log("Next update at " + nextUpdate);
       }
-      log("Next update " + updateDelay / 60000 + "min from now");
+      log("Next update " + Math.round(updateDelay / 60000) + "min from now");
 
       this.setUpdateCheckTimer(updateUrl, updateDelay);
     } else {
@@ -570,14 +566,14 @@ PROT_ListManager.prototype.updateSuccess_ = function(tableList, updateUrl,
   // timer since the delay is set differently at every callback.
   if (delay > maxDelayMs) {
     log("Ignoring delay from server (too long), waiting " +
-        maxDelayMs / 60000 + "min");
+        Math.round(maxDelayMs / 60000) + "min");
     delay = maxDelayMs;
   } else if (delay < minDelayMs) {
     log("Ignoring delay from server (too short), waiting " +
-        this.updateInterval / 60000 + "min");
+        Math.round(this.updateInterval / 60000) + "min");
     delay = this.updateInterval;
   } else {
-    log("Waiting " + delay / 60000 + "min");
+    log("Waiting " + Math.round(delay / 60000) + "min");
   }
 
   this.setUpdateCheckTimer(updateUrl, delay);
@@ -610,7 +606,7 @@ PROT_ListManager.prototype.updateSuccess_ = function(tableList, updateUrl,
   let nextUpdatePref = "browser.safebrowsing.provider." + provider + ".nextupdatetime";
   let targetTime = now + delay;
   log("Setting next update of " + provider + " to " + targetTime
-      + " (" + delay / 60000 + "min from now)");
+      + " (" + Math.round(delay / 60000) + "min from now)");
   Services.prefs.setCharPref(nextUpdatePref, targetTime.toString());
 
   Services.obs.notifyObservers(null, "safebrowsing-update-finished", "success");
@@ -685,7 +681,7 @@ PROT_ListManager.prototype.QueryInterface = function(iid) {
       iid.equals(Ci.nsITimerCallback))
     return this;
 
-  throw Components.results.NS_ERROR_NO_INTERFACE;
+  throw Cr.NS_ERROR_NO_INTERFACE;
 };
 
 var modScope = this;
@@ -708,7 +704,7 @@ RegistrationData.prototype = {
     _xpcom_factory: {
         createInstance(outer, iid) {
             if (outer != null)
-                throw Components.results.NS_ERROR_NO_AGGREGATION;
+                throw Cr.NS_ERROR_NO_AGGREGATION;
             Init();
             return (new PROT_ListManager()).QueryInterface(iid);
         }

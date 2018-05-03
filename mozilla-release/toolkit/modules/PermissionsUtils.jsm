@@ -2,12 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-this.EXPORTED_SYMBOLS = ["PermissionsUtils"];
+var EXPORTED_SYMBOLS = ["PermissionsUtils"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
 
 
 var gImportedPrefBranches = new Set();
@@ -54,7 +52,7 @@ function importPrefBranch(aPrefBranch, aPermission, aAction) {
 }
 
 
-this.PermissionsUtils = {
+var PermissionsUtils = {
   /**
    * Import permissions from perferences to the Permissions Manager. After being
    * imported, all processed permissions will be set to an empty string.

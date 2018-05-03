@@ -5,28 +5,26 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Log.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/Log.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
-                                  "resource://gre/modules/TelemetryController.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryController",
+                               "resource://gre/modules/TelemetryController.jsm");
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const PING_TYPE = "update";
 const UPDATE_DOWNLOADED_TOPIC = "update-downloaded";
 
-this.EXPORTED_SYMBOLS = ["UpdatePing"];
+var EXPORTED_SYMBOLS = ["UpdatePing"];
 
 /**
  * This module is responsible for listening to all the relevant update
  * signals, gathering the needed information and assembling the "update"
  * ping.
  */
-this.UpdatePing = {
+var UpdatePing = {
   earlyInit() {
     this._log = Log.repository.getLoggerWithMessagePrefix(LOGGER_NAME, "UpdatePing::");
     this._enabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.UpdatePing, false);

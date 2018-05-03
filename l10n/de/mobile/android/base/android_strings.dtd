@@ -314,7 +314,7 @@
 <!ENTITY tab_queue_prompt_tip_text2 "Sie können dies später in den Einstellungen ändern.">
 <!-- Localization note (tab_queue_prompt_permit_drawing_over_apps): This additional text is shown if the
      user needs to enable an Android setting in order to enable tab queues. -->
-<!ENTITY tab_queue_prompt_permit_drawing_over_apps "Erteilen Sie die Berechtigung \'Einblenden über anderen Apps zulassen\'.">
+<!ENTITY tab_queue_prompt_permit_drawing_over_apps "Erteilen Sie die Berechtigung \&apos;Einblenden über anderen Apps zulassen\&apos;.">
 <!ENTITY tab_queue_prompt_positive_action_button "Aktivieren">
 <!ENTITY tab_queue_prompt_negative_action_button "Nicht jetzt">
 <!-- Localization note (tab_queue_prompt_settings_button): This button is shown if the user needs to
@@ -332,7 +332,7 @@
 
 <!-- Localization note (tab_queue_notification_settings): This notification text is shown if a tab
      has been queued but we are missing the system permission to show an overlay. -->
-<!ENTITY tab_queue_notification_settings "Um \&quot;Öffnen mehrerer Links\&quot; zu aktivieren, erteilen Sie bitte &brandShortName; die Berechtigung \'Über anderen Apps einblenden\'.">
+<!ENTITY tab_queue_notification_settings "Um \&quot;Öffnen mehrerer Links\&quot; zu aktivieren, erteilen Sie bitte &brandShortName; die Berechtigung \&apos;Über anderen Apps einblenden\&apos;.">
 
 <!ENTITY pref_char_encoding "Zeichenkodierung">
 <!ENTITY pref_char_encoding_on "Im Menü anzeigen">
@@ -342,7 +342,7 @@
      The action is shown below a header saying "Clear private data"; See pref_clear_private_data -->
 <!ENTITY pref_clear_private_data_now_tablet "Jetzt löschen">
 <!ENTITY pref_clear_on_exit_title3 "Private Daten beim Beenden löschen">
-<!ENTITY pref_clear_on_exit_summary2 "&brandShortName; löscht die Daten automatisch beim Verwenden der Funktion \u0022Beenden\u0022 aus dem Hauptmenü.">
+<!ENTITY pref_clear_on_exit_summary2 "&brandShortName; löscht die Daten automatisch beim Verwenden der Funktion \&quot;Beenden\&quot; aus dem Hauptmenü.">
 <!ENTITY pref_clear_on_exit_dialog_title "Zu löschende Daten auswählen">
 <!ENTITY pref_restore_tabs "Tabs wiederherstellen">
 <!ENTITY pref_restore_always "Immer wiederherstellen">
@@ -379,7 +379,7 @@
 <!ENTITY pref_private_data_cookies2 "Cookies &amp; Aktive Logins">
 <!ENTITY pref_private_data_passwords2 "Gespeicherte Zugangsdaten">
 <!ENTITY pref_private_data_cache "Cache">
-<!ENTITY pref_private_data_offlineApps "Offline-Website-Daten">
+<!ENTITY pref_private_data_offlineApps "Offline-Websitedaten">
 <!ENTITY pref_private_data_siteSettings2 "Website-Einstellungen">
 <!ENTITY pref_private_data_downloadFiles2 "Downloads">
 <!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">
@@ -422,7 +422,6 @@
      crashReporterDesc.label). -->
 <!ENTITY datareporting_fhr_title "&brandShortName;-Statusbericht">
 <!ENTITY datareporting_fhr_summary2 "Sendet Daten über Ihren Browser-Status an &vendorShortName; und hilft Ihnen beim Verstehen der Leistung Ihres Browsers">
-<!ENTITY datareporting_abouthr_title "Meinen Statusbericht anzeigen">
 <!ENTITY datareporting_telemetry_title "Telemetrie">
 <!ENTITY datareporting_telemetry_summary "Übermittelt an &vendorShortName; Browser-Daten wie Performanz, Nutzung, Hardware und Benutzeranpassungen des Browsers, um &brandShortName; zu verbessern.">
 <!ENTITY datareporting_crashreporter_summary "&brandShortName; übermittelt Absturzberichte, um &vendorShortName; dabei zu helfen, den Browser stabiler und sicherer zu machen.">
@@ -454,6 +453,7 @@
 <!ENTITY share_image_failed "Grafik konnte auf Grund eines Fehlers nicht geteilt werden">
 <!ENTITY save_as_pdf "Als PDF speichern">
 <!ENTITY print "Drucken">
+<!ENTITY view_page_source "Seitenquelltext anzeigen">
 <!ENTITY find_in_page "In Seite suchen">
 <!ENTITY desktop_mode "Desktop-Seite">
 <!ENTITY page "Seite">
@@ -485,7 +485,6 @@
 <!ENTITY contextmenu_open_new_tab "In neuem Tab öffnen">
 <!ENTITY contextmenu_open_private_tab "In privatem Tab öffnen">
 <!ENTITY contextmenu_remove "Löschen">
-<!ENTITY contextmenu_add_to_launcher "Zu Startbildschirm hinzufügen">
 <!ENTITY contextmenu_add_page_shortcut "Seitenverknüpfung hinzufügen">
 <!ENTITY contextmenu_set_as_homepage "Als Startseite verwenden">
 <!ENTITY contextmenu_share "Teilen">
@@ -693,11 +692,11 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- Localization note (suggestion_for_engine): The placeholder &formatS1; will be
      replaced with the name of the search engine. The placeholder &formatS2; will be
      replaced with the search query. -->
-<!ENTITY suggestion_for_engine "&formatS1;-Suche nach \u0022&formatS2;\u0022">
+<!ENTITY suggestion_for_engine "&formatS1;-Suche nach \&quot;&formatS2;\&quot;">
 
 <!ENTITY searchable_description "Lesezeichen und Chronik">
 
-<!-- Updater notifications -->
+ <!-- Updater notifications -->
 <!ENTITY updater_start_title2 "Update für &brandShortName; verfügbar">
 <!ENTITY updater_start_select2 "Zum Herunterladen antippen">
 
@@ -716,7 +715,7 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- LOCALIZATION NOTE (updater_permission_allow): This action is shown in a snackbar along with updater_permission_text. -->
 <!ENTITY updater_permission_allow "Erlauben">
 
-<!-- Guest mode -->
+    <!-- Guest mode -->
 <!ENTITY new_guest_session "Neue Gastsitzung">
 <!ENTITY exit_guest_session "Gastsitzung beenden">
 <!ENTITY guest_session_dialog_continue "Weiter">
@@ -810,6 +809,9 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      replaced by the Android OS version (e.g., 14)-->
 <!ENTITY unsupported_sdk_version "Leider funktioniert &brandShortName; nicht auf diesem Gerät (&formatS1;, &formatS2;). Bitte laden Sie die passende Version herunter.">
 
+<!-- LOCALIZATION NOTE(corrupt_apk): This notification is shown if corruption has been detected on startup and the user has to reinstall Firefox -->
+<!ENTITY corrupt_apk "&brandShortName; kann nicht geöffnet werden. Bitte installieren Sie noch einmal und versuchen Sie es erneut.">
+
 <!ENTITY eol_notification_title2 "&brandShortName; wird sich nicht länger aktualisieren.">
 <!ENTITY eol_notification_summary "Hier tippen, um mehr zu erfahren.">
 
@@ -818,7 +820,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY whatsnew_notification_title "&brandShortName; ist aktuell">
 <!ENTITY whatsnew_notification_summary "Neue Funktionen und Änderungen">
 
-<!ENTITY promotion_add_to_homescreen "Zu Startbildschirm hinzufügen">
 <!ENTITY promotion_add_page_shortcut "Seitenverknüpfung hinzufügen">
 
 <!ENTITY helper_first_offline_bookmark_title "Offline lesen">

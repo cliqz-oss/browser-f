@@ -22,15 +22,27 @@ class SplitBox extends Component {
       // Initial size of controlled panel.
       initialSize: PropTypes.string,
       // Initial width of controlled panel.
-      initialWidth: PropTypes.string,
+      initialWidth: PropTypes.oneOfType([
+        PropTypes.number,
+        PropTypes.string
+      ]),
       // Initial height of controlled panel.
-      initialHeight: PropTypes.string,
+      initialHeight: PropTypes.oneOfType([
+        PropTypes.number,
+        PropTypes.string
+      ]),
       // Left/top panel
       startPanel: PropTypes.any,
       // Min panel size.
-      minSize: PropTypes.string,
+      minSize: PropTypes.oneOfType([
+        PropTypes.number,
+        PropTypes.string
+      ]),
       // Max panel size.
-      maxSize: PropTypes.string,
+      maxSize: PropTypes.oneOfType([
+        PropTypes.number,
+        PropTypes.string
+      ]),
       // Right/bottom panel
       endPanel: PropTypes.any,
       // True if the right/bottom panel should be controlled.
@@ -225,6 +237,7 @@ class SplitBox extends Component {
           dom.div({
             className: endPanelControl ? "uncontrolled" : "controlled",
             style: leftPanelStyle,
+            role: "presentation",
             ref: div => {
               this.startPanelContainer = div;
             }},
@@ -242,6 +255,7 @@ class SplitBox extends Component {
           dom.div({
             className: endPanelControl ? "controlled" : "uncontrolled",
             style: rightPanelStyle,
+            role: "presentation",
             ref: div => {
               this.endPanelContainer = div;
             }},

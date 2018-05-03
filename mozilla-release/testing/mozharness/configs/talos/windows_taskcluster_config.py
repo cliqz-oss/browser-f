@@ -11,7 +11,6 @@ config = {
     "buildbot_json_path": "buildprops.json",
     "installer_path": "installer.exe",
     "virtualenv_path": VENV_PATH,
-    "virtualenv_python_dll": PYTHON_DLL,
     "pip_index": False,
     "find_links": [
         "http://pypi.pub.build.mozilla.org/pub",
@@ -19,14 +18,9 @@ config = {
     "virtualenv_modules": ['pypiwin32', 'talos', 'mozinstall'],
     "exes": {
         'python': PYTHON,
-        'virtualenv': [
-            sys.executable,
-            os.path.join(os.path.dirname(sys.executable), 'Lib', 'site-packages', 'virtualenv.py')
-        ],
         'mozinstall': ['%s/scripts/python' % VENV_PATH,
                        '%s/scripts/mozinstall-script.py' % VENV_PATH],
         'hg': os.path.join(os.environ['PROGRAMFILES'], 'Mercurial', 'hg'),
-        'tooltool.py': [PYTHON, os.path.join(os.environ['MOZILLABUILD'], 'tooltool.py')],
     },
     "title": socket.gethostname().split('.')[0],
     "default_actions": [

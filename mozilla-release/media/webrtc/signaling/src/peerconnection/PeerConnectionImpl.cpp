@@ -33,7 +33,6 @@
 #include "nsProxyRelease.h"
 #include "nsQueryObject.h"
 #include "prtime.h"
-#include "MediaEngine.h"
 
 #include "AudioConduit.h"
 #include "VideoConduit.h"
@@ -91,7 +90,7 @@
 #include "mozilla/dom/RTCStatsReportBinding.h"
 #include "mozilla/dom/RTCPeerConnectionBinding.h"
 #include "mozilla/dom/PeerConnectionImplBinding.h"
-#include "mozilla/dom/DataChannelBinding.h"
+#include "mozilla/dom/RTCDataChannelBinding.h"
 #include "mozilla/dom/PerformanceTiming.h"
 #include "mozilla/dom/PluginCrashedEvent.h"
 #include "MediaStreamTrack.h"
@@ -1418,18 +1417,12 @@ PeerConnectionImpl::NotifyDataChannel(already_AddRefed<DataChannel> aChannel)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
-  // XXXkhuey this is completely fucked up.  We can't use RefPtr<DataChannel>
-  // here because DataChannel's AddRef/Release are non-virtual and not visible
-  // if !MOZILLA_INTERNAL_API, but this function leaks the DataChannel if
-  // !MOZILLA_INTERNAL_API because it never transfers the ref to
-  // NS_NewDOMDataChannel.
-  DataChannel* channel = aChannel.take();
+  RefPtr<DataChannel> channel(aChannel);
   MOZ_ASSERT(channel);
-
-  CSFLogDebug(LOGTAG, "%s: channel: %p", __FUNCTION__, channel);
+  CSFLogDebug(LOGTAG, "%s: channel: %p", __FUNCTION__, channel.get());
 
   nsCOMPtr<nsIDOMDataChannel> domchannel;
-  nsresult rv = NS_NewDOMDataChannel(already_AddRefed<DataChannel>(channel),
+  nsresult rv = NS_NewDOMDataChannel(channel.forget(),
                                      mWindow, getter_AddRefs(domchannel));
   NS_ENSURE_SUCCESS_VOID(rv);
 
@@ -1442,7 +1435,7 @@ PeerConnectionImpl::NotifyDataChannel(already_AddRefed<DataChannel> aChannel)
 
   RUN_ON_THREAD(mThread,
                 WrapRunnableNM(NotifyDataChannel_m,
-                               domchannel.get(),
+                               domchannel.forget(),
                                pco),
                 NS_DISPATCH_NORMAL);
 }
@@ -2091,7 +2084,7 @@ PeerConnectionImpl::CloseStreams() {
   return NS_OK;
 }
 
-nsresult
+NS_IMETHODIMP
 PeerConnectionImpl::SetPeerIdentity(const nsAString& aPeerIdentity)
 {
   PC_AUTO_ENTER_API_CALL(true);
@@ -2375,13 +2368,13 @@ PeerConnectionImpl::CreateReceiveTrack(SdpMediaSection::MediaType type)
   RefPtr<MediaStreamTrack> track;
   if (audio) {
     track = stream->CreateDOMTrack(
-        kAudioTrack,
+        333, // Use a constant TrackID. Dependents read this from the DOM track.
         MediaSegment::AUDIO,
         new RemoteTrackSource(principal,
                               NS_ConvertASCIItoUTF16("remote audio")));
   } else {
     track = stream->CreateDOMTrack(
-        kVideoTrack,
+        666, // Use a constant TrackID. Dependents read this from the DOM track.
         MediaSegment::VIDEO,
         new RemoteTrackSource(principal,
                               NS_ConvertASCIItoUTF16("remote video")));
@@ -2549,7 +2542,7 @@ PeerConnectionImpl::GetFingerprint(char** fingerprint)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetLocalDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
@@ -2557,33 +2550,27 @@ PeerConnectionImpl::GetLocalDescription(nsAString& aSDP)
   std::string localSdp = mJsepSession->GetLocalDescription(
       kJsepDescriptionPendingOrCurrent);
   aSDP = NS_ConvertASCIItoUTF16(localSdp.c_str());
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetCurrentLocalDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   std::string localSdp = mJsepSession->GetLocalDescription(kJsepDescriptionCurrent);
   aSDP = NS_ConvertASCIItoUTF16(localSdp.c_str());
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetPendingLocalDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   std::string localSdp = mJsepSession->GetLocalDescription(kJsepDescriptionPending);
   aSDP = NS_ConvertASCIItoUTF16(localSdp.c_str());
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetRemoteDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
@@ -2591,30 +2578,24 @@ PeerConnectionImpl::GetRemoteDescription(nsAString& aSDP)
   std::string remoteSdp = mJsepSession->GetRemoteDescription(
       kJsepDescriptionPendingOrCurrent);
   aSDP = NS_ConvertASCIItoUTF16(remoteSdp.c_str());
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetCurrentRemoteDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   std::string remoteSdp = mJsepSession->GetRemoteDescription(kJsepDescriptionCurrent);
   aSDP = NS_ConvertASCIItoUTF16(remoteSdp.c_str());
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PeerConnectionImpl::GetPendingRemoteDescription(nsAString& aSDP)
 {
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
   std::string remoteSdp = mJsepSession->GetRemoteDescription(kJsepDescriptionPending);
   aSDP = NS_ConvertASCIItoUTF16(remoteSdp.c_str());
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -3183,13 +3164,9 @@ void PeerConnectionImpl::IceConnectionStateChange(
   if (!pco) {
     return;
   }
+
   WrappableJSErrorResult rv;
-  RUN_ON_THREAD(mThread,
-                WrapRunnable(pco,
-                             &PeerConnectionObserver::OnStateChange,
-                             PCObserverStateType::IceConnectionState,
-                             rv, static_cast<JSCompartment*>(nullptr)),
-                NS_DISPATCH_NORMAL);
+  pco->OnStateChange(PCObserverStateType::IceConnectionState, rv);
 }
 
 void
@@ -3400,6 +3377,7 @@ static void RecordIceStats_s(
     s.mLastPacketSentTimestamp.Construct(candPair.ms_since_last_send);
     s.mLastPacketReceivedTimestamp.Construct(candPair.ms_since_last_recv);
     s.mState.Construct(RTCStatsIceCandidatePairState(candPair.state));
+    s.mComponentId.Construct(candPair.component_id);
     report->mIceCandidatePairStats.Value().AppendElement(s, fallible);
   }
 

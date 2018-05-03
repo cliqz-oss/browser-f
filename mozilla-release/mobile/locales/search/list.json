@@ -494,6 +494,13 @@
         ]
       }
     },
+    "meh": {
+      "default": {
+        "visibleDefaultEngines": [
+          "google", "bing", "amazondotcom", "twitter", "wikipedia-es"
+        ]
+      }
+    },
     "ml": {
       "default": {
         "visibleDefaultEngines": [
@@ -683,6 +690,13 @@
       "default": {
         "visibleDefaultEngines": [
           "google", "twitter", "wikipedia-th"
+        ]
+      }
+    },
+    "tl": {
+      "default": {
+        "visibleDefaultEngines": [
+          "google", "bing", "amazondotcom", "ddg", "twitter"
         ]
       }
     },

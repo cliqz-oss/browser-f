@@ -44,30 +44,6 @@
 
 namespace mozilla {
 
-// Bug 1229136: this is copied from ../SandboxUtil.cpp to avoid
-// complicated build issues; renamespaced to avoid the possibility of
-// symbol conflict.
-namespace {
-
-static bool
-IsSingleThreaded()
-{
-  // This detects the thread count indirectly.  /proc/<pid>/task has a
-  // subdirectory for each thread in <pid>'s thread group, and the
-  // link count on the "task" directory follows Unix expectations: the
-  // link from its parent, the "." link from itself, and the ".." link
-  // from each subdirectory; thus, 2+N links for N threads.
-  struct stat sb;
-  if (stat("/proc/self/task", &sb) < 0) {
-    MOZ_DIAGNOSTIC_ASSERT(false, "Couldn't access /proc/self/task!");
-    return false;
-  }
-  MOZ_DIAGNOSTIC_ASSERT(sb.st_nlink >= 3);
-  return sb.st_nlink == 3;
-}
-
-} // anonymous namespace
-
 static bool
 HasSeccompBPF()
 {
@@ -161,22 +137,11 @@ CanCreateUserNamespace()
     return cached[0] > '0';
   }
 
-  // Valgrind might allow the clone, but doesn't know what to do with
-  // unshare.  Check for that by unsharing nothing.  (Valgrind will
-  // probably need sandboxing disabled entirely, but no need to break
-  // things worse than strictly necessary.)
-  if (syscall(__NR_unshare, 0) != 0) {
-#ifdef MOZ_VALGRIND
-    MOZ_ASSERT(errno == ENOSYS);
-#else
-    // If something else can cause that call to fail, we's like to know
-    // about it; the right way to handle it might not be the same.
-    MOZ_ASSERT(false);
-#endif
-    return false;
-  }
-
-  pid_t pid = syscall(__NR_clone, SIGCHLD | CLONE_NEWUSER,
+  // Bug 1434528: In addition to CLONE_NEWUSER, do something that uses
+  // the new capabilities (in this case, cloning another namespace) to
+  // detect AppArmor policies that allow CLONE_NEWUSER but don't allow
+  // doing anything useful with it.
+  pid_t pid = syscall(__NR_clone, SIGCHLD | CLONE_NEWUSER | CLONE_NEWPID,
                       nullptr, nullptr, nullptr, nullptr);
   if (pid == 0) {
     // In the child.  Do as little as possible.
@@ -201,7 +166,7 @@ CanCreateUserNamespace()
 }
 
 /* static */
-SandboxInfo SandboxInfo::sSingleton = SandboxInfo();
+const SandboxInfo SandboxInfo::sSingleton = SandboxInfo();
 
 SandboxInfo::SandboxInfo() {
   int flags = 0;
@@ -214,15 +179,10 @@ SandboxInfo::SandboxInfo() {
     }
   }
 
-  // Detect the threading-problem signal from the parent process.
-  if (getenv("MOZ_SANDBOX_UNEXPECTED_THREADS")) {
-    flags |= kUnexpectedThreads;
-  } else {
-    if (HasUserNamespaceSupport()) {
-      flags |= kHasPrivilegedUserNamespaces;
-      if (CanCreateUserNamespace()) {
-        flags |= kHasUserNamespaces;
-      }
+  if (HasUserNamespaceSupport()) {
+    flags |= kHasPrivilegedUserNamespaces;
+    if (CanCreateUserNamespace()) {
+      flags |= kHasUserNamespaces;
     }
   }
 
@@ -247,30 +207,6 @@ SandboxInfo::SandboxInfo() {
   }
 
   mFlags = static_cast<Flags>(flags);
-}
-
-/* static */ void
-SandboxInfo::ThreadingCheck()
-{
-  // Allow MOZ_SANDBOX_UNEXPECTED_THREADS to be set manually for testing.
-  if (IsSingleThreaded() &&
-      !getenv("MOZ_SANDBOX_UNEXPECTED_THREADS")) {
-    return;
-  }
-  SANDBOX_LOG_ERROR("unexpected multithreading found; this prevents using"
-                    " namespace sandboxing.%s",
-                    // getenv isn't thread-safe, but see below.
-                    getenv("LD_PRELOAD") ? "  (If you're LD_PRELOAD'ing"
-                    " nVidia GL: that's not necessary for Gecko.)" : "");
-
-  // Propagate this information for use by child processes.  (setenv
-  // isn't thread-safe, but other threads are from non-Gecko code so
-  // they wouldn't be using NSPR; we have to hope for the best.)
-  setenv("MOZ_SANDBOX_UNEXPECTED_THREADS", "1", 0);
-  int flags = sSingleton.mFlags;
-  flags |= kUnexpectedThreads;
-  flags &= ~(kHasUserNamespaces | kHasPrivilegedUserNamespaces);
-  sSingleton.mFlags = static_cast<Flags>(flags);
 }
 
 } // namespace mozilla

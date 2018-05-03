@@ -2,16 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["Resource"];
+var EXPORTED_SYMBOLS = ["Resource"];
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/util.js");
-const {setTimeout, clearTimeout} = Cu.import("resource://gre/modules/Timer.jsm", {});
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/util.js");
+const {setTimeout, clearTimeout} = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 Cu.importGlobalProperties(["fetch"]);
 /* global AbortController */
 
@@ -29,12 +27,12 @@ Cu.importGlobalProperties(["fetch"]);
  *   post(data, callback)
  *   delete(callback)
  */
-this.Resource = function Resource(uri) {
+function Resource(uri) {
   this._log = Log.repository.getLogger(this._logName);
   this._log.manageLevelFromPref("services.sync.log.logger.network.resources");
   this.uri = uri;
   this._headers = {};
-};
+}
 // (static) Caches the latest server timestamp (X-Weave-Timestamp header).
 Resource.serverTime = null;
 
@@ -47,6 +45,7 @@ Resource.prototype = {
 
   /**
    * Callback to be invoked at request time to add authentication details.
+   * If the callback returns a promise, it will be awaited upon.
    *
    * By default, a global authenticator is provided. If this is set, it will
    * be used instead of the global one.
@@ -93,7 +92,7 @@ Resource.prototype = {
    * @param {string} method HTTP method
    * @returns {Headers}
    */
-  _buildHeaders(method) {
+  async _buildHeaders(method) {
     const headers = new Headers(this._headers);
 
     if (Resource.SEND_VERSION_INFO) {
@@ -101,7 +100,7 @@ Resource.prototype = {
     }
 
     if (this.authenticator) {
-      const result = this.authenticator(this, method);
+      const result = await this.authenticator(this, method);
       if (result && result.headers) {
         for (const [k, v] of Object.entries(result.headers)) {
           headers.append(k.toLowerCase(), v);
@@ -135,8 +134,8 @@ Resource.prototype = {
    * @param {object} signal AbortSignal instance
    * @returns {Request}
    */
-  _createRequest(method, data, signal) {
-    const headers = this._buildHeaders(method);
+  async _createRequest(method, data, signal) {
+    const headers = await this._buildHeaders(method);
     const init = {
       cache: "no-store", // No cache.
       headers,
@@ -164,7 +163,7 @@ Resource.prototype = {
    */
   async _doRequest(method, data = null) {
     const controller = new AbortController();
-    const request = this._createRequest(method, data, controller.signal);
+    const request = await this._createRequest(method, data, controller.signal);
     const responsePromise = fetch(request); // Rejects on network failure.
     let didTimeout = false;
     const timeoutId = setTimeout(() => {

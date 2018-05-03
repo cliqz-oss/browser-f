@@ -150,6 +150,7 @@ typedef void* nsNativeWidget;
 #define NS_PRESENTATION_SURFACE        102
 #endif
 
+// Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_IWIDGET_IID \
 { 0x06396bf6, 0x2dd8, 0x45e5, \
   { 0xac, 0x45, 0x75, 0x26, 0x53, 0xb1, 0xc9, 0x80 } }
@@ -1210,6 +1211,11 @@ class nsIWidget : public nsISupports
                                              uint16_t aDuration,
                                              nsISupports* aData,
                                              nsIRunnable* aCallback) = 0;
+
+    /**
+      * Perform any actions needed after the fullscreen transition has ended.
+      */
+    virtual void CleanupFullscreenTransition() = 0;
 
     /**
      * Return the screen the widget is in, or null if we don't know.

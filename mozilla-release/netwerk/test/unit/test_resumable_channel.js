@@ -1,7 +1,7 @@
 /* Tests various aspects of nsIResumableChannel in combination with HTTP */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpserver.identity.primaryPort;
@@ -26,10 +26,10 @@ AuthPrompt2.prototype = {
   pass: "guest",
 
   QueryInterface: function authprompt2_qi(iid) {
-    if (iid.equals(Components.interfaces.nsISupports) ||
-        iid.equals(Components.interfaces.nsIAuthPrompt2))
+    if (iid.equals(Ci.nsISupports) ||
+        iid.equals(Ci.nsIAuthPrompt2))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   promptAuth:
@@ -50,21 +50,21 @@ function Requestor() {
 
 Requestor.prototype = {
   QueryInterface: function requestor_qi(iid) {
-    if (iid.equals(Components.interfaces.nsISupports) ||
-        iid.equals(Components.interfaces.nsIInterfaceRequestor))
+    if (iid.equals(Ci.nsISupports) ||
+        iid.equals(Ci.nsIInterfaceRequestor))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   getInterface: function requestor_gi(iid) {
-    if (iid.equals(Components.interfaces.nsIAuthPrompt2)) {
+    if (iid.equals(Ci.nsIAuthPrompt2)) {
       // Allow the prompt to store state by caching it here
       if (!this.prompt2)
         this.prompt2 = new AuthPrompt2();
       return this.prompt2;
     }
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   prompt2: null

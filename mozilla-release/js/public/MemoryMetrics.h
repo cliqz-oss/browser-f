@@ -16,9 +16,9 @@
 
 #include <string.h>
 
-#include "jsalloc.h"
 #include "jspubtd.h"
 
+#include "js/AllocPolicy.h"
 #include "js/HashTable.h"
 #include "js/TracingAPI.h"
 #include "js/Utility.h"
@@ -774,9 +774,9 @@ struct CompartmentStats
     macro(Other,   MallocHeap, savedStacksSet) \
     macro(Other,   MallocHeap, varNamesSet) \
     macro(Other,   MallocHeap, nonSyntacticLexicalScopesTable) \
-    macro(Other,   MallocHeap, templateLiteralMap) \
     macro(Other,   MallocHeap, jitCompartment) \
-    macro(Other,   MallocHeap, privateData)
+    macro(Other,   MallocHeap, privateData) \
+    macro(Other,   MallocHeap, scriptCountsMap)
 
     CompartmentStats()
       : FOR_EACH_SIZE(ZERO_SIZE)

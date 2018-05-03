@@ -19,16 +19,14 @@ add_task(async function () {
   let { jsterm } = await openNewTabAndConsole(TEST_URI);
 
   const {
-    autocompletePopup: popup,
-    completeNode,
-    inputNode,
+    autocompletePopup: popup
   } = jsterm;
 
   let onPopUpOpen = popup.once("popup-opened");
 
   info("wait for popup to show");
   jsterm.setInputValue("foo");
-  EventUtils.synthesizeKey(".", {});
+  EventUtils.sendString(".");
 
   await onPopUpOpen;
 
@@ -37,7 +35,7 @@ add_task(async function () {
 
   info("press Escape to close the popup");
   const onPopupClose = popup.once("popup-closed");
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
 
   await onPopupClose;
 });

@@ -21,24 +21,20 @@ if platform.architecture()[0] == "64bit":
     TOOLTOOL_MANIFEST_PATH = "config/tooltool-manifests/linux64/releng.manifest"
     MINIDUMP_STACKWALK_PATH = "linux64-minidump_stackwalk"
     VALGRIND_SUPP_ARCH = os.path.join(VALGRIND_SUPP_DIR,
-                                      "x86_64-redhat-linux-gnu.sup")
+                                      "x86_64-pc-linux-gnu.sup")
     NODEJS_PATH = "node-linux-x64/bin/node"
     NODEJS_TOOLTOOL_MANIFEST_PATH = "config/tooltool-manifests/linux64/nodejs.manifest"
 else:
     TOOLTOOL_MANIFEST_PATH = "config/tooltool-manifests/linux32/releng.manifest"
     MINIDUMP_STACKWALK_PATH = "linux32-minidump_stackwalk"
     VALGRIND_SUPP_ARCH = os.path.join(VALGRIND_SUPP_DIR,
-                                      "i386-redhat-linux-gnu.sup")
+                                      "i386-pc-linux-gnu.sup")
     NODEJS_PATH = "node-linux-x86/bin/node"
     NODEJS_TOOLTOOL_MANIFEST_PATH = "config/tooltool-manifests/linux32/nodejs.manifest"
 
 #####
 config = {
     "buildbot_json_path": "buildprops.json",
-    "exes": {
-        "virtualenv": "/tools/virtualenv/bin/virtualenv",
-        "tooltool.py": "/tools/tooltool.py",
-    },
     "find_links": [
         "http://pypi.pvt.build.mozilla.org/pub",
         "http://pypi.pub.build.mozilla.org/pub",
@@ -68,17 +64,9 @@ config = {
         "modules/*",
         "mozbase/*",
         "tools/*",
+        "mozpack/*",
+        "mozbuild/*",
     ],
-    "specific_tests_zip_dirs": {
-        "mochitest": ["mochitest/*"],
-        "reftest": ["reftest/*", "jsreftest/*"],
-        "xpcshell": ["xpcshell/*"],
-        "cppunittest": ["cppunittest/*"],
-        "gtest": ["gtest/*"],
-        "jittest": ["jit-test/*"],
-        "mozbase": ["mozbase/*"],
-        "mozmill": ["mozmill/*"],
-    },
     "suite_definitions": {
         "cppunittest": {
             "options": [

@@ -11,7 +11,9 @@
 #include "nsGenericHTMLElement.h"
 #include "nsMappedAttributes.h"
 #include "nsAttrValueInlines.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsRuleData.h"
+#endif
 
 namespace mozilla {
 namespace dom {
@@ -22,7 +24,7 @@ public:
   explicit HTMLHRElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLHRElement, nsGenericHTMLElement)
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
                               nsAtom* aAttribute,

@@ -398,7 +398,7 @@ XRE_API(const char*,
 
 #if defined(MOZ_WIDGET_ANDROID)
 XRE_API(void,
-        XRE_SetAndroidChildFds, (JNIEnv* env, int crashFd, int ipcFd))
+        XRE_SetAndroidChildFds, (JNIEnv* env, int ipcFd, int crashFd, int crashAnnotationFd))
 #endif // defined(MOZ_WIDGET_ANDROID)
 
 XRE_API(void,
@@ -410,8 +410,16 @@ XRE_API(bool,
                                    uint32_t* aSequence))
 
 // Used in child processes.
+#if defined(XP_WIN)
+// Uses uintptr_t, even though it's really a HANDLE, because including
+// <windows.h> here caused compilation issues.
+XRE_API(bool,
+        XRE_SetRemoteExceptionHandler,
+        (const char* aPipe, uintptr_t aCrashTimeAnnotationFile))
+#else
 XRE_API(bool,
         XRE_SetRemoteExceptionHandler, (const char* aPipe))
+#endif
 
 namespace mozilla {
 namespace gmp {
@@ -446,6 +454,9 @@ XRE_API(bool,
 
 XRE_API(bool,
         XRE_IsGPUProcess, ())
+
+XRE_API(bool,
+        XRE_IsPluginProcess, ())
 
 /**
  * Returns true if the appshell should run its own native event loop. Returns
@@ -513,7 +524,7 @@ XRE_API(int,
                            const XREShellData* aShellData))
 
 #ifdef LIBFUZZER
-#include "LibFuzzerRegistry.h"
+#include "FuzzerRegistry.h"
 
 XRE_API(void,
         XRE_LibFuzzerSetDriver, (LibFuzzerDriver))

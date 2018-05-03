@@ -8,12 +8,8 @@
  * This file tests the methods on XPCOMUtils.jsm.
  */
 
-Components.utils.import("resource://gre/modules/Preferences.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
@@ -22,23 +18,23 @@ add_test(function test_generateQI_string_names()
 {
     var x = {
         QueryInterface: XPCOMUtils.generateQI([
-            Components.interfaces.nsIClassInfo,
+            Ci.nsIClassInfo,
             "nsIDOMNode"
         ])
     };
 
     try {
-        x.QueryInterface(Components.interfaces.nsIClassInfo);
+        x.QueryInterface(Ci.nsIClassInfo);
     } catch(e) {
         do_throw("Should QI to nsIClassInfo");
     }
     try {
-        x.QueryInterface(Components.interfaces.nsIDOMNode);
+        x.QueryInterface(Ci.nsIDOMNode);
     } catch(e) {
         do_throw("Should QI to nsIDOMNode");
     }
     try {
-        x.QueryInterface(Components.interfaces.nsIDOMDocument);
+        x.QueryInterface(Ci.nsIDOMDocument);
         do_throw("QI should not have succeeded!");
     } catch(e) {}
     run_next_test();
@@ -49,7 +45,7 @@ add_test(function test_generateCI()
 {
     const classID = Components.ID("562dae2e-7cff-432b-995b-3d4c03fa2b89");
     const classDescription = "generateCI test component";
-    const flags = Components.interfaces.nsIClassInfo.DOM_OBJECT;
+    const flags = Ci.nsIClassInfo.DOM_OBJECT;
     var x = {
         QueryInterface: XPCOMUtils.generateQI([]),
         classInfo: XPCOMUtils.generateCI({classID: classID,
@@ -59,9 +55,9 @@ add_test(function test_generateCI()
     };
 
     try {
-        var ci = x.QueryInterface(Components.interfaces.nsIClassInfo);
-        ci = ci.QueryInterface(Components.interfaces.nsISupports);
-        ci = ci.QueryInterface(Components.interfaces.nsIClassInfo);
+        var ci = x.QueryInterface(Ci.nsIClassInfo);
+        ci = ci.QueryInterface(Ci.nsISupports);
+        ci = ci.QueryInterface(Ci.nsIClassInfo);
         Assert.equal(ci.classID, classID);
         Assert.equal(ci.flags, flags);
         Assert.equal(ci.classDescription, classDescription);
@@ -175,7 +171,7 @@ add_test(function test_categoryRegistration()
 
   // Create a fake app entry for our category registration apps filter.
   let tmp = {};
-  Components.utils.import("resource://testing-common/AppInfo.jsm", tmp);
+  ChromeUtils.import("resource://testing-common/AppInfo.jsm", tmp);
   let XULAppInfo = tmp.newAppInfo({
     name: "catRegTest",
     ID: "{adb42a9a-0d19-4849-bf4d-627614ca19be}",

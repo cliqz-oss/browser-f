@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: File")
 
 DIRS += ['ipc']
 
@@ -31,6 +31,7 @@ EXPORTS.mozilla.dom += [
     'FileCreatorHelper.h',
     'FileList.h',
     'FileReader.h',
+    'FileReaderSync.h',
     'MemoryBlobImpl.h',
     'MultipartBlobImpl.h',
     'MutableBlobStorage.h',
@@ -49,6 +50,7 @@ UNIFIED_SOURCES += [
     'FileCreatorHelper.cpp',
     'FileList.cpp',
     'FileReader.cpp',
+    'FileReaderSync.cpp',
     'MemoryBlobImpl.cpp',
     'MultipartBlobImpl.cpp',
     'MutableBlobStorage.cpp',
@@ -62,7 +64,6 @@ UNIFIED_SOURCES += [
 
 LOCAL_INCLUDES += [
     '/dom/file/ipc',
-    '/dom/workers',
 ]
 
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']

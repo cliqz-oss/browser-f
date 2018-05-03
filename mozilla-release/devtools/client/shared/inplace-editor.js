@@ -27,6 +27,8 @@ const Services = require("Services");
 const focusManager = Services.focus;
 const {KeyCodes} = require("devtools/client/shared/keycodes");
 
+loader.lazyRequireGetter(this, "system", "devtools/shared/system");
+
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const CONTENT_TYPES = {
   PLAIN_TEXT: 0,
@@ -42,7 +44,7 @@ const MAX_POPUP_ENTRIES = 500;
 const FOCUS_FORWARD = focusManager.MOVEFOCUS_FORWARD;
 const FOCUS_BACKWARD = focusManager.MOVEFOCUS_BACKWARD;
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const { findMostRelevantCssPropertyIndex } = require("./suggestion-picker");
 
 /**
@@ -122,6 +124,7 @@ function isKeyIn(key, ...keys) {
  *              from `element` to the new input.
  *      defaults to false
  *    {Object} cssProperties: An instance of CSSProperties.
+ *    {Object} cssVariables: A Map object containing all CSS variables.
  *    {Number} defaultIncrement: The value by which the input is incremented
  *      or decremented by default (0.1 for properties like opacity and 1 by default)
  */
@@ -224,6 +227,7 @@ function InplaceEditor(options, event) {
   this.doc = doc;
   this.elt.inplaceEditor = this;
   this.cssProperties = options.cssProperties;
+  this.cssVariables = options.cssVariables || new Map();
   this.change = options.change;
   this.done = options.done;
   this.contextMenu = options.contextMenu;
@@ -1204,6 +1208,13 @@ InplaceEditor.prototype = {
    * Get the increment/decrement step to use for the provided key event.
    */
   _getIncrement: function (event) {
+    const getSmallIncrementKey = (evt) => {
+      if (system.constants.platform === "macosx") {
+        return evt.altKey;
+      }
+      return evt.ctrlKey;
+    };
+
     const largeIncrement = 100;
     const mediumIncrement = 10;
     const smallIncrement = 0.1;
@@ -1217,13 +1228,13 @@ InplaceEditor.prototype = {
       increment = -1 * this.defaultIncrement;
     }
 
-    if (event.shiftKey && !event.altKey) {
+    if (event.shiftKey && !getSmallIncrementKey(event)) {
       if (isKeyIn(key, "PAGE_UP", "PAGE_DOWN")) {
         increment *= largeIncrement;
       } else {
         increment *= mediumIncrement;
       }
-    } else if (event.altKey && !event.shiftKey) {
+    } else if (getSmallIncrementKey(event) && !event.shiftKey) {
       increment *= smallIncrement;
     }
 
@@ -1333,8 +1344,16 @@ InplaceEditor.prototype = {
           startCheckQuery = "";
         }
 
-        list = ["!important",
-                ...this._getCSSValuesForPropertyName(this.property.name)];
+        // Check if the query to be completed is a CSS variable.
+        let varMatch = /^var\(([^\s]+$)/.exec(startCheckQuery);
+
+        if (varMatch && varMatch.length == 2) {
+          startCheckQuery = varMatch[1];
+          list = this._getCSSVariableNames();
+        } else {
+          list = ["!important",
+                  ...this._getCSSValuesForPropertyName(this.property.name)];
+        }
 
         if (query == "") {
           // Do not suggest '!important' without any manually typed character.
@@ -1490,6 +1509,15 @@ InplaceEditor.prototype = {
   _getCSSValuesForPropertyName: function (propertyName) {
     return this.cssProperties.getValues(propertyName);
   },
+
+  /**
+   * Returns the list of all CSS variables to use for the autocompletion.
+   *
+   * @return {Array} array of CSS variable names (Strings)
+   */
+  _getCSSVariableNames: function () {
+    return Array.from(this.cssVariables.keys()).sort();
+  },
 };
 
 /**
@@ -1498,12 +1526,11 @@ InplaceEditor.prototype = {
 function copyTextStyles(from, to) {
   let win = from.ownerDocument.defaultView;
   let style = win.getComputedStyle(from);
-  let getCssText = name => style.getPropertyCSSValue(name).cssText;
 
-  to.style.fontFamily = getCssText("font-family");
-  to.style.fontSize = getCssText("font-size");
-  to.style.fontWeight = getCssText("font-weight");
-  to.style.fontStyle = getCssText("font-style");
+  to.style.fontFamily = style.fontFamily;
+  to.style.fontSize = style.fontSize;
+  to.style.fontWeight = style.fontWeight;
+  to.style.fontStyle = style.fontStyle;
 }
 
 /**
@@ -1512,14 +1539,13 @@ function copyTextStyles(from, to) {
 function copyAllStyles(from, to) {
   let win = from.ownerDocument.defaultView;
   let style = win.getComputedStyle(from);
-  let getCssText = name => style.getPropertyCSSValue(name).cssText;
 
   copyTextStyles(from, to);
-  to.style.lineHeight = getCssText("line-height");
+  to.style.lineHeight = style.lineHeight;
 
   // If box-sizing is set to border-box, box model styles also need to be
   // copied.
-  let boxSizing = getCssText("box-sizing");
+  let boxSizing = style.boxSizing;
   if (boxSizing === "border-box") {
     to.style.boxSizing = boxSizing;
     copyBoxModelStyles(from, to);
@@ -1536,27 +1562,29 @@ function copyAllStyles(from, to) {
  *        the element on which copied styles are applied
  */
 function copyBoxModelStyles(from, to) {
+  let properties = [
+    // Copy all paddings.
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    // Copy border styles.
+    "borderTopStyle",
+    "borderRightStyle",
+    "borderBottomStyle",
+    "borderLeftStyle",
+    // Copy border widths.
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth"
+  ];
+
   let win = from.ownerDocument.defaultView;
   let style = win.getComputedStyle(from);
-  let getCssText = name => style.getPropertyCSSValue(name).cssText;
-
-  // Copy all paddings.
-  to.style.paddingTop = getCssText("padding-top");
-  to.style.paddingRight = getCssText("padding-right");
-  to.style.paddingBottom = getCssText("padding-bottom");
-  to.style.paddingLeft = getCssText("padding-left");
-
-  // Copy border styles.
-  to.style.borderTopStyle = getCssText("border-top-style");
-  to.style.borderRightStyle = getCssText("border-right-style");
-  to.style.borderBottomStyle = getCssText("border-bottom-style");
-  to.style.borderLeftStyle = getCssText("border-left-style");
-
-  // Copy border widths.
-  to.style.borderTopWidth = getCssText("border-top-width");
-  to.style.borderRightWidth = getCssText("border-right-width");
-  to.style.borderBottomWidth = getCssText("border-bottom-width");
-  to.style.borderLeftWidth = getCssText("border-left-width");
+  for (let property of properties) {
+    to.style[property] = style[property];
+  }
 }
 
 /**

@@ -20,8 +20,8 @@
 #include "mozilla/dom/Element.h"
 #include "nsClassHashtable.h"
 #include "nsNodeUtils.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsWrapperCache.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/MutationObserverBinding.h"
 #include "nsIDocument.h"
 #include "mozilla/dom/Animation.h"
@@ -404,14 +404,13 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
   NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
 
-  virtual void AttributeSetToCurrentValue(nsIDocument* aDocument,
-                                          mozilla::dom::Element* aElement,
+  virtual void AttributeSetToCurrentValue(mozilla::dom::Element* aElement,
                                           int32_t aNameSpaceID,
                                           nsAtom* aAttribute) override
   {
     // We can reuse AttributeWillChange implementation.
-    AttributeWillChange(aDocument, aElement, aNameSpaceID, aAttribute,
-                        nsIDOMMutationEvent::MODIFICATION, nullptr);
+    AttributeWillChange(aElement, aNameSpaceID, aAttribute,
+                        mozilla::dom::MutationEventBinding::MODIFICATION, nullptr);
   }
 
 protected:

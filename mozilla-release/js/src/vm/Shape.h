@@ -16,7 +16,6 @@
 #include "mozilla/TemplateLib.h"
 
 #include "jsapi.h"
-#include "jsatom.h"
 #include "jsfriendapi.h"
 #include "jstypes.h"
 #include "NamespaceImports.h"
@@ -28,10 +27,11 @@
 #include "js/MemoryMetrics.h"
 #include "js/RootingAPI.h"
 #include "js/UbiNode.h"
+#include "vm/JSAtom.h"
 #include "vm/ObjectGroup.h"
 #include "vm/Printer.h"
-#include "vm/String.h"
-#include "vm/Symbol.h"
+#include "vm/StringType.h"
+#include "vm/SymbolType.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -1169,14 +1169,19 @@ class Shape : public gc::TenuredCell
     void fixupGetterSetterForBarrier(JSTracer* trc);
     void updateBaseShapeAfterMovingGC();
 
-    /* For JIT usage */
-    static inline size_t offsetOfBase() { return offsetof(Shape, base_); }
+#ifdef DEBUG
+    // For JIT usage.
     static inline size_t offsetOfSlotInfo() { return offsetof(Shape, slotInfo); }
     static inline uint32_t fixedSlotsMask() { return FIXED_SLOTS_MASK; }
+#endif
 
   private:
     void fixupDictionaryShapeAfterMovingGC();
     void fixupShapeTreeAfterMovingGC();
+
+    static Shape* fromParentFieldPointer(uintptr_t p) {
+        return reinterpret_cast<Shape*>(p - offsetof(Shape, parent));
+    }
 
     static void staticAsserts() {
         JS_STATIC_ASSERT(offsetof(Shape, base_) == offsetof(js::shadow::Shape, base));

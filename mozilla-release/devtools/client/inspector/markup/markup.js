@@ -560,7 +560,7 @@ MarkupView.prototype = {
       "test"
     ];
     let isHighlight = this._hoveredNode === this.inspector.selection.nodeFront;
-    return !isHighlight && reason && unwantedReasons.indexOf(reason) === -1;
+    return !isHighlight && reason && !unwantedReasons.includes(reason);
   },
 
   /**
@@ -628,6 +628,12 @@ MarkupView.prototype = {
       "node-inserted"
     ];
 
+    // If the user performed an action with a keyboard, move keyboard focus to
+    // the markup tree container.
+    if (reason && reason.endsWith("-keyboard")) {
+      this.getContainer(this._rootNode).elt.focus();
+    }
+
     if (reasonsToNavigate.includes(reason)) {
       this.getContainer(this._rootNode).elt.focus();
       this.navigate(this.getContainer(nodeFront));
@@ -684,13 +690,13 @@ MarkupView.prototype = {
      "markupView.edit.key",
      "markupView.scrollInto.key"].forEach(name => {
        let key = INSPECTOR_L10N.getStr(name);
-       shortcuts.on(key, (_, event) => this._onShortcut(name, event));
+       shortcuts.on(key, event => this._onShortcut(name, event));
      });
 
     // Process generic keys:
     ["Delete", "Backspace", "Home", "Left", "Right", "Up", "Down", "PageUp",
      "PageDown", "Esc", "Enter", "Space"].forEach(key => {
-       shortcuts.on(key, this._onShortcut);
+       shortcuts.on(key, event => this._onShortcut(key, event));
      });
   },
 
@@ -1015,9 +1021,6 @@ MarkupView.prototype = {
         continue;
       }
 
-      if (type === "attributes" && mutation.attributeName === "class") {
-        container.updateIsDisplayed();
-      }
       if (type === "attributes" || type === "characterData"
         || type === "events" || type === "pseudoClassLock") {
         container.update();
@@ -1062,7 +1065,7 @@ MarkupView.prototype = {
     for (let node of nodes) {
       let container = this.getContainer(node);
       if (container) {
-        container.updateIsDisplayed();
+        container.update();
       }
     }
   },

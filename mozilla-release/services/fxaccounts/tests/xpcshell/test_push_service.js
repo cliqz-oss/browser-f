@@ -5,8 +5,8 @@
 
 // Tests for the FxA push service.
 
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 let importScope = {};
 Services.scriptloader.loadSubScript("resource://gre/components/FxAccountsPush.js", importScope);
@@ -25,12 +25,12 @@ let mockPushService = {
   pushTopic: this.pushService.pushTopic,
   subscriptionChangeTopic: this.pushService.subscriptionChangeTopic,
   subscribe(scope, principal, cb) {
-    cb(Components.results.NS_OK, {
+    cb(Cr.NS_OK, {
       endpoint: MOCK_ENDPOINT
     });
   },
   unsubscribe(scope, principal, cb) {
-    cb(Components.results.NS_OK, true);
+    cb(Cr.NS_OK, true);
   }
 };
 
@@ -65,7 +65,7 @@ add_task(async function registerPushEndpointSuccess() {
 add_task(async function registerPushEndpointFailure() {
   let failPushService = Object.assign(mockPushService, {
     subscribe(scope, principal, cb) {
-      cb(Components.results.NS_ERROR_ABORT);
+      cb(Cr.NS_ERROR_ABORT);
     }
   });
 
@@ -91,7 +91,7 @@ add_task(async function unsubscribeSuccess() {
 add_task(async function unsubscribeFailure() {
   let failPushService = Object.assign(mockPushService, {
     unsubscribe(scope, principal, cb) {
-      cb(Components.results.NS_ERROR_ABORT);
+      cb(Cr.NS_ERROR_ABORT);
     }
   });
 
@@ -188,7 +188,7 @@ add_task(async function observePushTopicDeviceDisconnected_current_device() {
   };
 
   let signoutCalled = false;
-  let { FxAccounts } = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+  let { FxAccounts } = ChromeUtils.import("resource://gre/modules/FxAccounts.jsm", {});
   const fxAccountsMock = new FxAccounts({
     newAccountState() {
       return {
@@ -238,7 +238,7 @@ add_task(async function observePushTopicDeviceDisconnected_another_device() {
   };
 
   let signoutCalled = false;
-  let { FxAccounts } = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+  let { FxAccounts } = ChromeUtils.import("resource://gre/modules/FxAccounts.jsm", {});
   const fxAccountsMock = new FxAccounts({
     newAccountState() {
       return {

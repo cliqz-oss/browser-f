@@ -18,13 +18,11 @@ var gExceptionPaths = [
   "resource://app/defaults/preferences/",
   "resource://gre/modules/commonjs/",
   "resource://gre/defaults/pref/",
-  "resource://shield-recipe-client/node_modules/jexl/lib/",
 
   // These resources are referenced using relative paths from html files.
   "resource://payments/",
-
-  // https://github.com/mozilla/normandy/issues/577
-  "resource://shield-recipe-client/test/",
+  "resource://normandy-content/shield-content-frame.js",
+  "resource://normandy-content/shield-content-process.js",
 
   // https://github.com/mozilla/activity-stream/issues/3053
   "resource://activity-stream/data/content/tippytop/images/",
@@ -52,9 +50,6 @@ var whitelist = [
   // security/manager/pki/resources/content/device_manager.js
   {file: "chrome://pippki/content/load_device.xul"},
 
-  // Used by setting this url as a pref in about:config
-  {file: "chrome://browser/content/newtab/alternativeDefaultSites.json"},
-
   // Add-on compat
   {file: "chrome://global/content/XPCNativeWrapper.js"},
   {file: "chrome://global/locale/brand.dtd"},
@@ -63,7 +58,7 @@ var whitelist = [
   // See bug 1339424 for why this is hard to fix.
   {file: "chrome://global/locale/fallbackMenubar.properties",
    platforms: ["linux", "win"]},
-  {file: "chrome://global/locale/printPageSetup.dtd", platforms: ["macosx"]},
+  {file: "chrome://global/locale/printPageSetup.dtd", platforms: ["linux", "macosx"]},
   {file: "chrome://global/locale/printPreviewProgress.dtd",
    platforms: ["macosx"]},
   {file: "chrome://global/locale/printProgress.dtd", platforms: ["macosx"]},
@@ -74,9 +69,6 @@ var whitelist = [
   // devtools/client/inspector/bin/dev-server.js
   {file: "chrome://devtools/content/inspector/markup/markup.xhtml",
    isFromDevTools: true},
-
-  // Kept for add-on compatibility, should be removed in bug 851471.
-  {file: "chrome://mozapps/skin/downloads/downloadIcon.png"},
 
   // SpiderMonkey parser API, currently unused in browser/ and toolkit/
   {file: "resource://gre/modules/reflect.jsm"},
@@ -89,10 +81,6 @@ var whitelist = [
 
   // browser/extensions/pdfjs/content/web/viewer.js
   {file: "resource://pdf.js/build/pdf.worker.js"},
-
-  // browser/components/newtab bug 1355166
-  {file: "resource://app/modules/NewTabSearchProvider.jsm"},
-  {file: "resource://app/modules/NewTabWebChannel.jsm"},
 
   // layout/mathml/nsMathMLChar.cpp
   {file: "resource://gre/res/fonts/mathfontSTIXGeneral.properties"},
@@ -127,10 +115,6 @@ var whitelist = [
 
   // browser/extensions/pdfjs/content/web/viewer.js#7450
   {file: "resource://pdf.js/web/debugger.js"},
-
-  // These are used in content processes. They are actually referenced.
-  {file: "resource://shield-recipe-client-content/shield-content-frame.js"},
-  {file: "resource://shield-recipe-client-content/shield-content-process.js"},
 
   // Starting from here, files in the whitelist are bugs that need fixing.
   // Bug 1339424 (wontfix?)
@@ -480,8 +464,8 @@ function chromeFileExists(aURI) {
     available = sstream.available();
     sstream.close();
   } catch (e) {
-    if (e.result != Components.results.NS_ERROR_FILE_NOT_FOUND &&
-        e.result != Components.results.NS_ERROR_NOT_AVAILABLE) {
+    if (e.result != Cr.NS_ERROR_FILE_NOT_FOUND &&
+        e.result != Cr.NS_ERROR_NOT_AVAILABLE) {
       todo(false, "Failed to check if " + aURI + "exists: " + e);
     }
   }

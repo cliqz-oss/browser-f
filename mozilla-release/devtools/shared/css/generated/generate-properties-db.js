@@ -4,17 +4,14 @@
 
 "use strict";
 
-/* globals InspectorUtils */
-
 /*
  * This is an xpcshell script that runs to generate a static list of CSS properties
  * as known by the platform. It is run from ./mach_commands.py by running
  * `mach devtools-css-db`.
  */
-var {require} = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
+var {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var {generateCssProperties} = require("devtools/server/actors/css-properties");
-
-Components.utils.importGlobalProperties(["InspectorUtils"]);
+const InspectorUtils = require("InspectorUtils");
 
 // xpcshell can output extra information, so place some delimiter text between
 // the output of the css properties database.
@@ -42,7 +39,7 @@ function cssProperties() {
   const properties = generateCssProperties();
   for (let key in properties) {
     // Ignore OS-specific properties
-    if (key.indexOf("-moz-osx-") !== -1) {
+    if (key.includes("-moz-osx-")) {
       properties[key] = undefined;
     }
   }

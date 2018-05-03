@@ -30,34 +30,29 @@ SVGTests::SVGTests()
 already_AddRefed<DOMSVGStringList>
 SVGTests::RequiredFeatures()
 {
-  nsCOMPtr<nsIDOMSVGElement> elem = do_QueryInterface(this);
-  nsSVGElement* element = static_cast<nsSVGElement*>(elem.get());
   return DOMSVGStringList::GetDOMWrapper(
-           &mStringListAttributes[FEATURES], element, true, FEATURES);
+           &mStringListAttributes[FEATURES], AsSVGElement(), true, FEATURES);
 }
 
 already_AddRefed<DOMSVGStringList>
 SVGTests::RequiredExtensions()
 {
-  nsCOMPtr<nsIDOMSVGElement> elem = do_QueryInterface(this);
-  nsSVGElement* element = static_cast<nsSVGElement*>(elem.get());
   return DOMSVGStringList::GetDOMWrapper(
-           &mStringListAttributes[EXTENSIONS], element, true, EXTENSIONS);
+           &mStringListAttributes[EXTENSIONS], AsSVGElement(), true, EXTENSIONS);
 }
 
 already_AddRefed<DOMSVGStringList>
 SVGTests::SystemLanguage()
 {
-  nsCOMPtr<nsIDOMSVGElement> elem = do_QueryInterface(this);
-  nsSVGElement* element = static_cast<nsSVGElement*>(elem.get());
   return DOMSVGStringList::GetDOMWrapper(
-           &mStringListAttributes[LANGUAGE], element, true, LANGUAGE);
+           &mStringListAttributes[LANGUAGE], AsSVGElement(), true, LANGUAGE);
 }
 
 bool
 SVGTests::HasExtension(const nsAString& aExtension)
 {
-  return nsSVGFeatures::HasExtension(aExtension, IsInChromeDoc());
+  return nsSVGFeatures::HasExtension(aExtension,
+                                     AsSVGElement()->IsInChromeDocument());
 }
 
 bool
@@ -124,7 +119,8 @@ SVGTests::PassesConditionalProcessingTests(const nsString *aAcceptLangs) const
       return false;
     }
     for (uint32_t i = 0; i < mStringListAttributes[EXTENSIONS].Length(); i++) {
-      if (!nsSVGFeatures::HasExtension(mStringListAttributes[EXTENSIONS][i], IsInChromeDoc())) {
+      if (!nsSVGFeatures::HasExtension(mStringListAttributes[EXTENSIONS][i],
+                                       AsSVGElement()->IsInChromeDocument())) {
         return false;
       }
     }
@@ -224,10 +220,7 @@ SVGTests::GetAttrValue(uint8_t aAttrEnum, nsAttrValue& aValue) const
 void
 SVGTests::MaybeInvalidate()
 {
-  nsCOMPtr<nsIDOMSVGElement> elem = do_QueryInterface(this);
-  nsSVGElement* element = static_cast<nsSVGElement*>(elem.get());
-
-  nsIContent* parent = element->GetFlattenedTreeParent();
+  nsIContent* parent = AsSVGElement()->GetFlattenedTreeParent();
 
   if (parent &&
       parent->NodeInfo()->Equals(nsGkAtoms::svgSwitch, kNameSpaceID_SVG)) {

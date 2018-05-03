@@ -16,6 +16,7 @@ import os.path as path
 import re
 import subprocess
 import sys
+import traceback
 import urllib2
 import glob
 
@@ -189,7 +190,8 @@ class MachCommands(CommandBase):
         if os.environ.get("CARGO_HOME", ""):
             cargo_dir = os.environ.get("CARGO_HOME")
         else:
-            cargo_dir = path.join(self.context.topdir, ".cargo")
+            home_dir = os.path.expanduser("~")
+            cargo_dir = path.join(home_dir, ".cargo")
         if not os.path.isdir(cargo_dir):
             return
         cargo_file = open(path.join(self.context.topdir, "Cargo.lock"))
@@ -317,6 +319,7 @@ class MachCommands(CommandBase):
                                         try:
                                             delete(crate_path)
                                         except:
+                                            print(traceback.format_exc())
                                             print("Delete %s failed!" % crate_path)
                             else:
                                 print("Would remove `{}`{} package from {}".format(*print_msg))

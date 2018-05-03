@@ -4,24 +4,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LightweightThemeImageOptimizer"];
+var EXPORTED_SYMBOLS = ["LightweightThemeImageOptimizer"];
 
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
+ChromeUtils.defineModuleGetter(this, "FileUtils",
   "resource://gre/modules/FileUtils.jsm");
 
 const ORIGIN_TOP_RIGHT = 1;
 const ORIGIN_BOTTOM_LEFT = 2;
 
-this.LightweightThemeImageOptimizer = {
+var LightweightThemeImageOptimizer = {
   optimize(aThemeData, aScreen) {
     let data = Object.assign({}, aThemeData);
     if (!data.headerURL) {
@@ -77,7 +73,9 @@ var ImageCropper = {
       let fileURI = Services.io.newFileURI(croppedFile);
 
       // Copy the query part to avoid wrong caching.
-      fileURI.QueryInterface(Ci.nsIURL).query = uri.query;
+      fileURI = fileURI.mutate()
+                       .setQuery(uri.query)
+                       .finalize();
       return fileURI.spec;
     }
 

@@ -32,6 +32,7 @@ typedef struct {
   guint8 depressed;
   gint32 curpos; /* curpos and maxpos are used for scrollbars */
   gint32 maxpos;
+  gint32 scale;  /* actual widget scale */
 } GtkWidgetState;
 
 /**
@@ -51,6 +52,11 @@ struct MozGtkSize {
   {
     MozGtkSize result = *this;
     return result += aBorder;
+  }
+  bool operator<(const MozGtkSize &aOther) const
+  {
+    return (width < aOther.width && height <= aOther.height) ||
+           (width <= aOther.width && height < aOther.height);
   }
   void Include(MozGtkSize aOther)
   {
@@ -83,6 +89,22 @@ typedef struct {
   MozGtkSize minSizeWithBorder;
   GtkBorder borderAndPadding;
 } ToggleGTKMetrics;
+
+typedef struct {
+  MozGtkSize minSizeWithBorderMargin;
+  GtkBorder  buttonMargin;
+  gint iconXPosition;
+  gint iconYPosition;
+  bool visible;
+  bool firstButton;
+  bool lastButton;
+} ToolbarButtonGTKMetrics;
+
+#define TOOLBAR_BUTTONS 3
+typedef struct {
+  bool initialized;
+  ToolbarButtonGTKMetrics button[TOOLBAR_BUTTONS];
+} ToolbarGTKMetrics;
 
 typedef enum {
   MOZ_GTK_STEPPER_DOWN        = 1 << 0,
@@ -298,10 +320,19 @@ typedef enum {
   MOZ_GTK_HEADER_BAR,
   /* Paints a GtkHeaderBar in maximized state */
   MOZ_GTK_HEADER_BAR_MAXIMIZED,
-  /* Paints GtkHeaderBar title buttons */
+  /* Paints GtkHeaderBar title buttons.
+   * Keep the order here as MOZ_GTK_HEADER_BAR_BUTTON_* are processed
+   * as an array from MOZ_GTK_HEADER_BAR_BUTTON_CLOSE to the last one.
+   */
   MOZ_GTK_HEADER_BAR_BUTTON_CLOSE,
   MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE,
   MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE,
+
+  /* MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE_RESTORE is a state of
+   * MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE button and it's used as
+   * an icon placeholder only.
+   */
+  MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE_RESTORE,
 
   MOZ_GTK_WIDGET_NODE_COUNT
 } WidgetNodeType;
@@ -465,9 +496,12 @@ moz_gtk_get_scalethumb_metrics(GtkOrientation orient, gint* thumb_length, gint* 
 
 /**
  * Get the metrics in GTK pixels for a scrollbar.
+ * aOrientation:     [IN] the scrollbar orientation
+ * aActive:          [IN] Metricts for scrollbar with mouse pointer over it.
+ *
  */
 const ScrollbarGTKMetrics*
-GetScrollbarMetrics(GtkOrientation aOrientation);
+GetScrollbarMetrics(GtkOrientation aOrientation, bool aActive = false);
 
 /**
  * Get the desired size of a dropdown arrow button
@@ -551,5 +585,25 @@ gint moz_gtk_splitter_get_metrics(gint orientation, gint* size);
  */
 gint
 moz_gtk_get_tab_thickness(WidgetNodeType aNodeType);
+
+
+/**
+ * Get ToolbarButtonGTKMetrics for recent theme.
+ */
+const ToolbarButtonGTKMetrics*
+GetToolbarButtonMetrics(WidgetNodeType aWidgetType);
+
+/**
+ * Get toolbar button layout.
+ * aButtonLayout:  [IN][OUT] An array which will be filled by WidgetNodeType
+ *                           references to visible titlebar buttons.
+                             Must contains at least TOOLBAR_BUTTONS entries.
+ * aMaxButtonNums: [IN] Allocated aButtonLayout entries. Must be at least
+                        TOOLBAR_BUTTONS wide.
+ *
+ * returns:    Number of returned entries at aButtonLayout.
+ */
+int
+GetGtkHeaderBarButtonLayout(WidgetNodeType* aButtonLayout, int aMaxButtonNums);
 
 #endif

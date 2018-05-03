@@ -6,7 +6,7 @@
 
 /*
  * Base class for DOM Core's nsIDOMComment, nsIDOMDocumentType, nsIDOMText,
- * nsIDOMCDATASection, and nsIDOMProcessingInstruction nodes.
+ * CDATASection and nsIDOMProcessingInstruction nodes.
  */
 
 #include "mozilla/DebugOnly.h"
@@ -45,22 +45,22 @@ using namespace mozilla::dom;
 nsGenericDOMDataNode::nsGenericDOMDataNode(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
   : nsIContent(aNodeInfo)
 {
-  MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::TEXT_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::CDATA_SECTION_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::COMMENT_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::PROCESSING_INSTRUCTION_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::DOCUMENT_TYPE_NODE,
+  MOZ_ASSERT(mNodeInfo->NodeType() == TEXT_NODE ||
+             mNodeInfo->NodeType() == CDATA_SECTION_NODE ||
+             mNodeInfo->NodeType() == COMMENT_NODE ||
+             mNodeInfo->NodeType() == PROCESSING_INSTRUCTION_NODE ||
+             mNodeInfo->NodeType() == DOCUMENT_TYPE_NODE,
              "Bad NodeType in aNodeInfo");
 }
 
 nsGenericDOMDataNode::nsGenericDOMDataNode(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
   : nsIContent(aNodeInfo)
 {
-  MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::TEXT_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::CDATA_SECTION_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::COMMENT_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::PROCESSING_INSTRUCTION_NODE ||
-             mNodeInfo->NodeType() == nsIDOMNode::DOCUMENT_TYPE_NODE,
+  MOZ_ASSERT(mNodeInfo->NodeType() == TEXT_NODE ||
+             mNodeInfo->NodeType() == CDATA_SECTION_NODE ||
+             mNodeInfo->NodeType() == COMMENT_NODE ||
+             mNodeInfo->NodeType() == PROCESSING_INSTRUCTION_NODE ||
+             mNodeInfo->NodeType() == DOCUMENT_TYPE_NODE,
              "Bad NodeType in aNodeInfo");
 }
 
@@ -306,11 +306,11 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
       aLength,
       aDetails
     };
-    nsNodeUtils::CharacterDataWillChange(this, &info);
+    nsNodeUtils::CharacterDataWillChange(this, info);
   }
 
   Directionality oldDir = eDir_NotSet;
-  bool dirAffectsAncestor = (NodeType() == nsIDOMNode::TEXT_NODE &&
+  bool dirAffectsAncestor = (NodeType() == TEXT_NODE &&
                              TextNodeWillChangeDirection(this, &oldDir, aOffset));
 
   if (aOffset == 0 && endOffset == textLength) {
@@ -349,7 +349,7 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
     if (aLength) {
       to.Append(aBuffer, aLength);
       if (!bidi && (!document || !document->GetBidiEnabled())) {
-        bidi = HasRTLChars(aBuffer, aLength);
+        bidi = HasRTLChars(MakeSpan(aBuffer, aLength));
       }
     }
     if (endOffset != textLength) {
@@ -377,7 +377,7 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
   if (dirAffectsAncestor) {
     // dirAffectsAncestor being true implies that we have a text node, see
     // above.
-    MOZ_ASSERT(NodeType() == nsIDOMNode::TEXT_NODE);
+    MOZ_ASSERT(NodeType() == TEXT_NODE);
     TextNodeChangedDirection(static_cast<nsTextNode*>(this), oldDir, aNotify);
   }
 
@@ -390,7 +390,7 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
       aLength,
       aDetails
     };
-    nsNodeUtils::CharacterDataChanged(this, &info);
+    nsNodeUtils::CharacterDataChanged(this, info);
 
     if (haveMutationListeners) {
       InternalMutationEvent mutation(true, eLegacyCharacterDataModified);
@@ -646,14 +646,23 @@ nsGenericDOMDataNode::GetChildAt_Deprecated(uint32_t aIndex) const
 
 
 int32_t
-nsGenericDOMDataNode::IndexOf(const nsINode* aPossibleChild) const
+nsGenericDOMDataNode::ComputeIndexOf(const nsINode* aPossibleChild) const
 {
   return -1;
 }
 
 nsresult
-nsGenericDOMDataNode::InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                                    bool aNotify)
+nsGenericDOMDataNode::InsertChildBefore(nsIContent* aKid,
+                                        nsIContent* aBeforeThis,
+                                        bool aNotify)
+{
+  return NS_OK;
+}
+
+nsresult
+nsGenericDOMDataNode::InsertChildAt_Deprecated(nsIContent* aKid,
+                                               uint32_t aIndex,
+                                               bool aNotify)
 {
   return NS_OK;
 }
@@ -754,11 +763,11 @@ nsGenericDOMDataNode::SplitData(uint32_t aOffset, nsIContent** aReturn,
 
   nsCOMPtr<nsINode> parent = GetParentNode();
   if (parent) {
-    int32_t insertionIndex = parent->IndexOf(this);
+    nsCOMPtr<nsIContent> beforeNode = this;
     if (aCloneAfterOriginal) {
-      ++insertionIndex;
+      beforeNode = beforeNode->GetNextSibling();
     }
-    parent->InsertChildAt(newContent, insertionIndex, true);
+    parent->InsertChildBefore(newContent, beforeNode, true);
   }
 
   newContent.swap(*aReturn);
@@ -820,7 +829,7 @@ nsGenericDOMDataNode::GetWholeText(nsAString& aWholeText)
   if (!parent)
     return GetData(aWholeText);
 
-  int32_t index = parent->IndexOf(this);
+  int32_t index = parent->ComputeIndexOf(this);
   NS_WARNING_ASSERTION(index >= 0,
                        "Trying to use .wholeText with an anonymous"
                        "text node child of a binding parent?");
@@ -902,6 +911,10 @@ nsGenericDOMDataNode::ThreadSafeTextIsOnlyWhitespace() const
   if (mText.Is2b()) {
     // The fragment contains non-8bit characters and such characters
     // are never considered whitespace.
+    //
+    // FIXME(emilio): This is not quite true in presence of the
+    // NS_MAYBE_MODIFIED_FREQUENTLY flag... But looks like we only set that on
+    // anonymous nodes, so should be fine...
     return false;
   }
 
@@ -915,6 +928,8 @@ nsGenericDOMDataNode::ThreadSafeTextIsOnlyWhitespace() const
   while (cp < end) {
     char ch = *cp;
 
+    // NOTE(emilio): If you ever change the definition of "whitespace" here, you
+    // need to change it too in RestyleManager::CharacterDataChanged.
     if (!dom::IsSpaceCharacter(ch)) {
       return false;
     }
@@ -928,8 +943,8 @@ nsGenericDOMDataNode::ThreadSafeTextIsOnlyWhitespace() const
 bool
 nsGenericDOMDataNode::HasTextForTranslation()
 {
-  if (NodeType() != nsIDOMNode::TEXT_NODE &&
-      NodeType() != nsIDOMNode::CDATA_SECTION_NODE) {
+  if (NodeType() != TEXT_NODE &&
+      NodeType() != CDATA_SECTION_NODE) {
     return false;
   }
 

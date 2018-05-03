@@ -377,7 +377,7 @@ ObjectActor.prototype = {
         // avoid providing safeGetterValues from prototypes if property |name|
         // is already defined as an own property.
         if (name in safeGetterValues ||
-            (obj != this.obj && ownProperties.indexOf(name) !== -1)) {
+            (obj != this.obj && ownProperties.includes(name))) {
           continue;
         }
 
@@ -1212,7 +1212,7 @@ function SymbolIteratorActor(objectActor) {
       const symbol = symbols[index];
       return {
         name: symbol.toString(),
-        descriptor: objectActor._propertyDescriptor(symbol, true)
+        descriptor: objectActor._propertyDescriptor(symbol)
       };
     }
   };
@@ -1853,11 +1853,15 @@ DebuggerServer.ObjectActorPreviewers.Object = [
         }
       }
     } else if (rawObj instanceof Ci.nsIDOMElement) {
-      // Add preview for DOM element attributes.
-      if (rawObj instanceof Ci.nsIDOMHTMLElement) {
+      // For HTML elements (in an HTML document, at least), the nodeName is an
+      // uppercased version of the actual element name.  Check for HTML
+      // elements, that is elements in the HTML namespace, and lowercase the
+      // nodeName in that case.
+      if (rawObj.namespaceURI == "http://www.w3.org/1999/xhtml") {
         preview.nodeName = preview.nodeName.toLowerCase();
       }
 
+      // Add preview for DOM element attributes.
       preview.attributes = {};
       preview.attributesLength = rawObj.attributes.length;
       for (let attr of rawObj.attributes) {
@@ -1892,7 +1896,7 @@ DebuggerServer.ObjectActorPreviewers.Object = [
     let props = [];
     if (rawObj instanceof Ci.nsIDOMMouseEvent) {
       props.push("buttons", "clientX", "clientY", "layerX", "layerY");
-    } else if (rawObj instanceof Ci.nsIDOMKeyEvent) {
+    } else if (obj.class == "KeyboardEvent") {
       let modifiers = [];
       if (rawObj.altKey) {
         modifiers.push("Alt");
@@ -1910,9 +1914,9 @@ DebuggerServer.ObjectActorPreviewers.Object = [
       preview.modifiers = modifiers;
 
       props.push("key", "charCode", "keyCode");
-    } else if (rawObj instanceof Ci.nsIDOMTransitionEvent) {
+    } else if (obj.class == "TransitionEvent") {
       props.push("propertyName", "pseudoElement");
-    } else if (rawObj instanceof Ci.nsIDOMAnimationEvent) {
+    } else if (obj.class == "AnimationEvent") {
       props.push("animationName", "pseudoElement");
     } else if (rawObj instanceof Ci.nsIDOMClipboardEvent) {
       props.push("clipboardData");

@@ -5,11 +5,13 @@
 // This file is loaded into the browser window scope.
 /* eslint-env mozilla/browser-window */
 
-Cu.import("resource://services-sync/UIState.jsm");
+ChromeUtils.import("resource://services-sync/UIState.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "EnsureFxAccountsWebChannel",
+ChromeUtils.defineModuleGetter(this, "FxAccounts",
+  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(this, "EnsureFxAccountsWebChannel",
   "resource://gre/modules/FxAccountsWebChannel.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Weave",
+ChromeUtils.defineModuleGetter(this, "Weave",
   "resource://services-sync/main.js");
 
 const MIN_STATUS_ANIMATION_DURATION = 1600;
@@ -91,10 +93,10 @@ var gSync = {
             return null;
           }
         });
-    XPCOMUtils.defineLazyPreferenceGetter(this, "FXA_CONNECT_DEVICE_URI",
-        "identity.fxaccounts.remote.connectdevice.uri");
     XPCOMUtils.defineLazyPreferenceGetter(this, "PRODUCT_INFO_BASE_URL",
         "app.productInfo.baseURL");
+    XPCOMUtils.defineLazyPreferenceGetter(this, "SYNC_ENABLED",
+        "identity.fxaccounts.enabled");
   },
 
   _maybeUpdateUIState() {
@@ -114,20 +116,31 @@ var gSync = {
       return;
     }
 
-    for (let topic of this._obs) {
-      Services.obs.addObserver(this, topic, true);
-    }
-
-    this._generateNodeGetters();
     this._definePrefGetters();
+
+    if (!this.SYNC_ENABLED) {
+      this.onSyncDisabled();
+      return;
+    }
 
     // initial label for the sync buttons.
     let statusBroadcaster = document.getElementById("sync-status");
+    if (!statusBroadcaster) {
+      // We are in a window without our elements - just abort now, without
+      // setting this._initialized, so we don't attempt to remove observers.
+      return;
+    }
     statusBroadcaster.setAttribute("label", this.syncStrings.GetStringFromName("syncnow.label"));
     // We start with every broadcasters hidden, so that we don't need to init
     // the sync UI on windows like pageInfo.xul (see bug 1384856).
     let setupBroadcaster = document.getElementById("sync-setup-state");
     setupBroadcaster.hidden = false;
+
+    for (let topic of this._obs) {
+      Services.obs.addObserver(this, topic, true);
+    }
+
+    this._generateNodeGetters();
 
     this._maybeUpdateUIState();
 
@@ -180,11 +193,6 @@ var gSync = {
   },
 
   updatePanelPopup(state) {
-    // Some windows (e.g. places.xul) won't contain the panel UI, so we can
-    // abort immediately for those (bug 1384856).
-    if (!this.appMenuContainer) {
-      return;
-    }
     let defaultLabel = this.appMenuStatus.getAttribute("defaultlabel");
     // The localization string is for the signed in text, but it's the default text as well
     let defaultTooltiptext = this.appMenuStatus.getAttribute("signedinTooltiptext");
@@ -287,7 +295,7 @@ var gSync = {
   },
 
   async openSignInAgainPage(entryPoint) {
-    const url = await fxAccounts.promiseAccountsForceSigninURI(entryPoint);
+    const url = await FxAccounts.config.promiseForceSigninURI(entryPoint);
     switchToTabHavingURI(url, true, {
       replaceQueryString: true,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -295,17 +303,16 @@ var gSync = {
   },
 
   async openDevicesManagementPage(entryPoint) {
-    let url = await fxAccounts.promiseAccountsManageDevicesURI(entryPoint);
+    let url = await FxAccounts.config.promiseManageDevicesURI(entryPoint);
     switchToTabHavingURI(url, true, {
       replaceQueryString: true,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
   },
 
-  openConnectAnotherDevice(entryPoint) {
-    let url = new URL(this.FXA_CONNECT_DEVICE_URI);
-    url.searchParams.append("entrypoint", entryPoint);
-    openUILinkIn(url.href, "tab");
+  async openConnectAnotherDevice(entryPoint) {
+    const url = await FxAccounts.config.promiseConnectDeviceURI(entryPoint);
+    openUILinkIn(url, "tab");
   },
 
   openSendToDevicePromo() {
@@ -471,6 +478,10 @@ var gSync = {
 
   // "Send Tab to Device" menu item
   updateTabContextMenu(aPopupMenu, aTargetTab) {
+    if (!this.SYNC_ENABLED) {
+      // These items are hidden in onSyncDisabled(). No need to do anything.
+      return;
+    }
     const enabled = !this.syncConfiguredAndLoading &&
                     this.isSendableURI(aTargetTab.linkedBrowser.currentURI.spec);
 
@@ -479,6 +490,10 @@ var gSync = {
 
   // "Send Page to Device" and "Send Link to Device" menu items
   updateContentContextMenu(contextMenu) {
+    if (!this.SYNC_ENABLED) {
+      // These items are hidden by default. No need to do anything.
+      return;
+    }
     // showSendLink and showSendPage are mutually exclusive
     const showSendLink = contextMenu.onSaveableLink || contextMenu.onPlainTextLink;
     const showSendPage = !showSendLink
@@ -550,7 +565,7 @@ var gSync = {
     const state = UIState.get();
     if (state.status == UIState.STATUS_SIGNED_IN) {
       this.updateSyncStatus({ syncing: true });
-      setTimeout(() => Weave.Service.errorHandler.syncAndReportErrors(), 0);
+      Services.tm.dispatchToMainThread(() => Weave.Service.sync());
     }
   },
 
@@ -649,6 +664,13 @@ var gSync = {
       } else {
         broadcaster.setAttribute("devices-status", "single");
       }
+    }
+  },
+
+  onSyncDisabled() {
+    const toHide = [...document.querySelectorAll(".sync-ui-item")];
+    for (const item of toHide) {
+      item.hidden = true;
     }
   },
 

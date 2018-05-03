@@ -27,7 +27,8 @@ describe("EvaluationResult component:", () => {
 
     expect(wrapper.find(".message-body").text()).toBe("Date 1970-01-01T00:00:00.000Z");
 
-    expect(wrapper.find(".message.log").length).toBe(1);
+    expect(wrapper.hasClass("message")).toBe(true);
+    expect(wrapper.hasClass("log")).toBe(true);
   });
 
   it("renders an error", () => {
@@ -37,7 +38,8 @@ describe("EvaluationResult component:", () => {
     expect(wrapper.find(".message-body").text())
       .toBe("ReferenceError: asdf is not defined[Learn More]");
 
-    expect(wrapper.find(".message.error").length).toBe(1);
+    expect(wrapper.hasClass("message")).toBe(true);
+    expect(wrapper.hasClass("error")).toBe(true);
   });
 
   it("renders an error with a longString exception message", () => {
@@ -46,7 +48,24 @@ describe("EvaluationResult component:", () => {
 
     const text = wrapper.find(".message-body").text();
     expect(text.startsWith("Error: Long error Long error")).toBe(true);
-    expect(wrapper.find(".message.error").length).toBe(1);
+    expect(wrapper.hasClass("message")).toBe(true);
+    expect(wrapper.hasClass("error")).toBe(true);
+  });
+
+  it("renders thrown empty string", () => {
+    const message = stubPreparedMessages.get(`eval throw ""`);
+    const wrapper = render(EvaluationResult({ message, serviceContainer }));
+    const text = wrapper.find(".message-body").text();
+    expect(text).toBe("Error");
+    expect(wrapper.hasClass("error")).toBe(true);
+  });
+
+  it("renders thrown string", () => {
+    const message = stubPreparedMessages.get(`eval throw "tomato"`);
+    const wrapper = render(EvaluationResult({ message, serviceContainer }));
+    const text = wrapper.find(".message-body").text();
+    expect(text).toBe("Error: tomato");
+    expect(wrapper.hasClass("error")).toBe(true);
   });
 
   it("renders an inspect command result", () => {

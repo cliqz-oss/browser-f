@@ -7,18 +7,17 @@
 /* global ChromeWorker */
 
 (function (factory) {
-  if (this.module && module.id.indexOf("worker") >= 0) {
+  if (this.module && module.id.includes("worker")) {
     // require
     const { Cc, Ci, Cu, ChromeWorker } = require("chrome");
     const dumpn = require("devtools/shared/DevToolsUtils").dumpn;
     factory.call(this, require, exports, module, { Cc, Ci, Cu }, ChromeWorker, dumpn);
   } else {
     // Cu.import
-    const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-    const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     this.isWorker = false;
-    this.Promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
-    this.console = Cu.import("resource://gre/modules/Console.jsm", {}).console;
+    this.Promise = require("resource://gre/modules/Promise.jsm").Promise;
+    this.console = console;
     factory.call(
       this, require, this, { exports: this },
       { Cc, Ci, Cu }, ChromeWorker, null

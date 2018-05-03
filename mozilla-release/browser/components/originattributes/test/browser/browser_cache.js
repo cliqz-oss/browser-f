@@ -8,9 +8,8 @@
  *   resource would be one. Otherwise, it would be two.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
-let {LoadContextInfo} = Cu.import("resource://gre/modules/LoadContextInfo.jsm", {});
 let protocolProxyService = Cc["@mozilla.org/network/protocol-proxy-service;1"]
                              .getService(Ci.nsIProtocolProxyService);
 
@@ -52,7 +51,7 @@ function cacheDataForContext(loadContextInfo) {
         if (iid.equals(Ci.nsICacheStorageVisitor))
           return this;
 
-        throw Components.results.NS_ERROR_NO_INTERFACE;
+        throw Cr.NS_ERROR_NO_INTERFACE;
       }
     };
     // Visiting the disk cache also visits memory storage so we do not
@@ -73,11 +72,11 @@ function observeChannels(onChannel) {
   // We use a dummy proxy filter to catch all channels, even those that do not
   // generate an "http-on-modify-request" notification, such as link preconnects.
   let proxyFilter = {
-    applyFilter(aProxyService, aChannel, aProxy) {
+    applyFilter(aProxyService, aChannel, aProxy, aCallback) {
       // We have the channel; provide it to the callback.
       onChannel(aChannel);
       // Pass on aProxy unmodified.
-      return aProxy;
+      aCallback.onProxyFilterResult(aProxy);
     }
   };
   protocolProxyService.registerChannelFilter(proxyFilter, 0);
@@ -227,17 +226,17 @@ async function doTest(aBrowser) {
 async function doCheck(aShouldIsolate, aInputA, aInputB) {
   let expectedEntryCount = 1;
   let data = [];
-  data = data.concat(await cacheDataForContext(LoadContextInfo.default));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.private));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, {})));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { userContextId: 1 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { userContextId: 1 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { userContextId: 2 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { userContextId: 2 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { firstPartyDomain: "example.com" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { firstPartyDomain: "example.com" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { firstPartyDomain: "example.org" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { firstPartyDomain: "example.org" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.default));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.private));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, {})));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { userContextId: 1 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { userContextId: 1 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { userContextId: 2 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { userContextId: 2 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { firstPartyDomain: "example.com" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { firstPartyDomain: "example.com" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { firstPartyDomain: "example.org" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { firstPartyDomain: "example.org" })));
 
   if (aShouldIsolate) {
     expectedEntryCount = 2;

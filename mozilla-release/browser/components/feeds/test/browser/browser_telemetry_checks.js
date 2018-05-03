@@ -21,14 +21,11 @@ add_task(async function() {
 
   let scalarForContent = gMultiProcessBrowser ? "content" : "parent";
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, FEED_URI);
-
   // Ensure we get telemetry from the content process:
-  let previewCountGetter = () => {
+  let previewCount = await TestUtils.waitForCondition(() => {
     let snapshot = getSnapShot()[scalarForContent];
     return snapshot && snapshot[kPreviewLoaded];
-  };
-  await TestUtils.waitForCondition(previewCountGetter);
-  let previewCount = previewCountGetter();
+  });
   Assert.equal(previewCount, 1, "Should register the preview in telemetry.");
 
   // Now check subscription. We stub out the actual code for adding the live bookmark,
@@ -79,9 +76,8 @@ add_task(async function() {
 
   info("Waiting for livemark");
   // Check we count opening the livemark popup:
-  await TestUtils.waitForCondition(
+  let livemarkOnToolbar = await TestUtils.waitForCondition(
     () => document.querySelector("#PersonalToolbar .bookmark-item[livemark]"));
-  let livemarkOnToolbar = document.querySelector("#PersonalToolbar .bookmark-item[livemark]");
   let popup = livemarkOnToolbar.querySelector("menupopup");
   let popupShownPromise = BrowserTestUtils.waitForEvent(popup, "popupshown");
   info("Clicking on livemark");
@@ -91,8 +87,8 @@ add_task(async function() {
   Assert.equal(getSnapShot().parent[kLivemarkOpened], 1, "Should count livemark opening");
 
   // And opening an item in the popup:
-  await TestUtils.waitForCondition(() => popup.querySelector("menuitem.bookmark-item"));
-  let item = popup.querySelector("menuitem.bookmark-item");
+  let item = await TestUtils.waitForCondition(
+    () => popup.querySelector("menuitem.bookmark-item"));
   item.doCommand();
   Assert.equal(getSnapShot().parent[kLivemarkItemOpened], 1, "Should count livemark item opening");
   popup.hidePopup();

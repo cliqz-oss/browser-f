@@ -2,26 +2,26 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint-disable mozilla/no-arbitrary-setTimeout */
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu, manager: Cm} = Components;
+var Cm = Components.manager;
 const URL_HOST = "http://localhost";
 
-var GMPScope = Cu.import("resource://gre/modules/GMPInstallManager.jsm", {});
+var GMPScope = ChromeUtils.import("resource://gre/modules/GMPInstallManager.jsm", {});
 var GMPInstallManager = GMPScope.GMPInstallManager;
 
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/UpdateUtils.jsm");
 
-var ProductAddonCheckerScope = Cu.import("resource://gre/modules/addons/ProductAddonChecker.jsm", {});
+var ProductAddonCheckerScope = ChromeUtils.import("resource://gre/modules/addons/ProductAddonChecker.jsm", {});
 
 do_get_profile();
 
 function run_test() {
- Cu.import("resource://gre/modules/Preferences.jsm");
+ ChromeUtils.import("resource://gre/modules/Preferences.jsm");
   Preferences.set("media.gmp.log.dump", true);
   Preferences.set("media.gmp.log.level", 0);
   run_next_test();
@@ -735,27 +735,6 @@ xhr.prototype = {
     // eslint-disable-next-line no-eval
     eval("this._on" + aEvent + " = aValue");
   },
-  flags: Ci.nsIClassInfo.SINGLETON,
-  getScriptableHelper: () => null,
-  getInterfaces(aCount) {
-    let interfaces = [Ci.nsISupports];
-    aCount.value = interfaces.length;
-    return interfaces;
-  },
-  classDescription: "XMLHttpRequest",
-  contractID: "@mozilla.org/xmlextras/xmlhttprequest;1",
-  classID: Components.ID("{c9b37f43-4278-4304-a5e0-600991ab08cb}"),
-  createInstance(aOuter, aIID) {
-    if (aOuter == null)
-      return this.QueryInterface(aIID);
-    throw Cr.NS_ERROR_NO_AGGREGATION;
-  },
-  QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIClassInfo) ||
-        aIID.equals(Ci.nsISupports))
-      return this;
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  },
   get wrappedJSObject() { return this; }
 };
 
@@ -784,7 +763,7 @@ function createNewZipFile(zipName, data) {
                  createInstance(Ci.nsIStringInputStream);
     stream.setData(data, data.length);
     let zipWriter = Cc["@mozilla.org/zipwriter;1"].
-                    createInstance(Components.interfaces.nsIZipWriter);
+                    createInstance(Ci.nsIZipWriter);
     let zipFile = FileUtils.getFile("TmpD", [zipName]);
     if (zipFile.exists()) {
       zipFile.remove(false);

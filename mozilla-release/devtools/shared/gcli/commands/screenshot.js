@@ -397,9 +397,7 @@ function saveToClipboard(context, reply) {
             trans.addDataFlavor(channel.contentType);
             trans.setTransferData(channel.contentType, wrapped, -1);
 
-            const clip = Cc["@mozilla.org/widget/clipboard;1"]
-                            .getService(Ci.nsIClipboard);
-            clip.setData(trans, null, Ci.nsIClipboard.kGlobalClipboard);
+            Services.clipboard.setData(trans, null, Ci.nsIClipboard.kGlobalClipboard);
 
             reply.destinations.push(l10n.lookup("screenshotCopied"));
           } catch (ex) {
@@ -428,10 +426,8 @@ function saveToClipboard(context, reply) {
  */
 function uploadToImgur(reply) {
   return new Promise((resolve, reject) => {
-    const xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                  .createInstance(Ci.nsIXMLHttpRequest);
-    const fd = Cc["@mozilla.org/files/formdata;1"]
-                  .createInstance(Ci.nsIDOMFormData);
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
     fd.append("image", reply.data.split(",")[1]);
     fd.append("type", "base64");
     fd.append("title", reply.filename);

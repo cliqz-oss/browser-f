@@ -4,24 +4,22 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SchedulePressure"];
+var EXPORTED_SYMBOLS = ["SchedulePressure"];
 
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
   "resource://gre/modules/TelemetryStopwatch.jsm");
 XPCOMUtils.defineLazyPreferenceGetter(this, "SCHEDULE_PRESSURE_ENABLED",
   "browser.schedulePressure.enabled", true);
 XPCOMUtils.defineLazyPreferenceGetter(this, "TIMEOUT_AMOUNT",
-  "browser.schedulePressure.timeoutMs", 1000);
+  "browser.schedulePressure.timeoutMs", 300);
 
 /**
  * The SchedulePressure object provides the ability to alter
  * the behavior of a program based on the idle activity of the
  * host machine.
  */
-this.SchedulePressure = {
+var SchedulePressure = {
   _idleCallbackWeakMap: new WeakMap(),
   _setTimeoutWeakMap: new WeakMap(),
   _telemetryCallbackWeakMap: new WeakMap(),
@@ -119,6 +117,8 @@ this.SchedulePressure = {
         map.delete(window);
       }
     }
+
+    TelemetryStopwatch.cancel("FX_SCHEDULE_PRESSURE_IDLE_SAMPLE_MS", window);
     removeFromMapAndCancelTimeout(this._setTimeoutWeakMap, window.clearTimeout);
     removeFromMapAndCancelTimeout(this._idleCallbackWeakMap, window.cancelIdleCallback);
     removeFromMapAndCancelTimeout(this._telemetryCallbackWeakMap, window.cancelIdleCallback);

@@ -1113,33 +1113,6 @@ AC_CHECK_LIB(m, sin)
 AC_CHECK_LIB(m, sincos, AC_DEFINE(HAVE_SINCOS))
 AC_CHECK_LIB(m, __sincos, AC_DEFINE(HAVE___SINCOS))
 
-
-dnl check for wcrtomb/mbrtowc
-dnl =======================================================================
-if test -z "$MACOS_DEPLOYMENT_TARGET" || test "$MACOS_DEPLOYMENT_TARGET" -ge "100300"; then
-AC_LANG_SAVE
-AC_LANG_CPLUSPLUS
-AC_CACHE_CHECK(for wcrtomb,
-    ac_cv_have_wcrtomb,
-    [AC_TRY_LINK([#include <wchar.h>],
-                 [mbstate_t ps={0};wcrtomb(0,'f',&ps);],
-                 ac_cv_have_wcrtomb="yes",
-                 ac_cv_have_wcrtomb="no")])
-if test "$ac_cv_have_wcrtomb" = "yes"; then
-    AC_DEFINE(HAVE_WCRTOMB)
-fi
-AC_CACHE_CHECK(for mbrtowc,
-    ac_cv_have_mbrtowc,
-    [AC_TRY_LINK([#include <wchar.h>],
-                 [mbstate_t ps={0};mbrtowc(0,0,0,&ps);],
-                 ac_cv_have_mbrtowc="yes",
-                 ac_cv_have_mbrtowc="no")])
-if test "$ac_cv_have_mbrtowc" = "yes"; then
-    AC_DEFINE(HAVE_MBRTOWC)
-fi
-AC_LANG_RESTORE
-fi
-
 AC_CACHE_CHECK(
     [for res_ninit()],
     ac_cv_func_res_ninit,
@@ -1496,18 +1469,6 @@ if test -n "$MOZ_DEBUG"; then
 fi
 
 dnl ========================================================
-dnl Enable breakpoint for artificial OOMs
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(oom-breakpoint,
-[  --enable-oom-breakpoint
-                          Enable a breakpoint function for artificial OOMs],
-    JS_OOM_BREAKPOINT=1,
-    JS_OOM_BREAKPOINT= )
-if test -n "$JS_OOM_BREAKPOINT"; then
-    AC_DEFINE(JS_OOM_BREAKPOINT)
-fi
-
-dnl ========================================================
 dnl = Enable using the clang plugin to build
 dnl ========================================================
 
@@ -1590,6 +1551,7 @@ dnl ========================================================
 MOZ_ARG_HEADER(Misc. Options)
 
 if test -z "$SKIP_COMPILER_CHECKS"; then
+
 dnl ========================================================
 dnl =
 dnl = Compiler Options
@@ -1859,15 +1821,23 @@ AC_CHECK_FUNCS(posix_fadvise posix_fallocate)
 dnl Set various defines and substitutions
 dnl ========================================================
 
-if test "$MOZ_DEBUG"; then
-    AC_DEFINE(MOZ_REFLOW_PERF)
-    AC_DEFINE(MOZ_REFLOW_PERF_DSP)
-fi
-
 AC_SUBST(MOZ_DEV_EDITION)
 if test -n "$MOZ_DEV_EDITION"; then
     AC_DEFINE(MOZ_DEV_EDITION)
 fi
+
+# Allow influencing configure with a defines.sh script.
+. "${srcdir}/build/defines.sh"
+
+# If we're not building a release build, define EARLY_BETA_OR_EARLIER if it is
+# set in defines.sh
+if test "$BUILDING_RELEASE"; then
+  # Override value in defines.sh, if any
+  EARLY_BETA_OR_EARLIER=
+elif test "$EARLY_BETA_OR_EARLIER"; then
+  AC_DEFINE(EARLY_BETA_OR_EARLIER)
+fi
+AC_SUBST(EARLY_BETA_OR_EARLIER)
 
 dnl ========================================================
 dnl JavaScript shell
@@ -1875,7 +1845,7 @@ dnl ========================================================
 
 MOZ_CHECK_ALLOCATOR
 
-AC_CHECK_FUNCS(setlocale localeconv)
+AC_CHECK_FUNCS(localeconv)
 
 AC_SUBST(ac_configure_args)
 

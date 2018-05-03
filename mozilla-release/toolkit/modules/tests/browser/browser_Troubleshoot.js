@@ -6,9 +6,9 @@
 // that aren't initialized outside of a XUL app environment like AddonManager
 // and the "@mozilla.org/xre/app-info;1" component.
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Troubleshoot.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Troubleshoot.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -158,6 +158,9 @@ const SNAPSHOT_SCHEMA = {
         },
         styloChromeResult: {
           type: "boolean",
+        },
+        policiesStatus: {
+          type: "number",
         },
         keyGoogleFound: {
           type: "boolean",
@@ -357,8 +360,14 @@ const SNAPSHOT_SCHEMA = {
         directWriteVersion: {
           type: "string",
         },
+        usesTiling: {
+          type: "boolean",
+        },
         offMainThreadPaintEnabled: {
           type: "boolean",
+        },
+        offMainThreadPaintWorkerCount: {
+          type: "number",
         },
         clearTypeParameters: {
           type: "string",

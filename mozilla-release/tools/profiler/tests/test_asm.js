@@ -38,7 +38,7 @@ function run_test() {
 
             var lastSample = thread0.samples.data[thread0.samples.data.length - 1];
             stack = String(getInflatedStackLocations(thread0, lastSample));
-            if (stack.indexOf("trampoline") !== -1)
+            if (stack.includes("trampoline"))
                 return;
         }
     }
@@ -65,7 +65,7 @@ function run_test() {
     Assert.ok(i1 !== -1);
     var i2 = stack.indexOf("asmjs_function");
     Assert.ok(i2 !== -1);
-    var i3 = stack.indexOf("FFI trampoline");
+    var i3 = stack.indexOf("exit trampoline");
     Assert.ok(i3 !== -1);
     var i4 = stack.indexOf("ffi_function");
     Assert.ok(i4 !== -1);

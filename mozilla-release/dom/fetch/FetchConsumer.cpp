@@ -7,30 +7,29 @@
 #include "Fetch.h"
 #include "FetchConsumer.h"
 
+#include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
+#include "mozilla/dom/WorkerScope.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsIInputStreamPump.h"
+#include "nsIThreadRetargetableRequest.h"
 #include "nsProxyRelease.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
-#include "WorkerScope.h"
-#include "Workers.h"
 
 namespace mozilla {
 namespace dom {
 
-using namespace workers;
-
 namespace {
 
 template <class Derived>
-class FetchBodyWorkerHolder final : public workers::WorkerHolder
+class FetchBodyWorkerHolder final : public WorkerHolder
 {
   RefPtr<FetchBodyConsumer<Derived>> mConsumer;
   bool mWasNotified;
 
 public:
   explicit FetchBodyWorkerHolder(FetchBodyConsumer<Derived>* aConsumer)
-    : workers::WorkerHolder("FetchBodyWorkerHolder")
+    : WorkerHolder("FetchBodyWorkerHolder")
     , mConsumer(aConsumer)
     , mWasNotified(false)
   {
@@ -39,9 +38,9 @@ public:
 
   ~FetchBodyWorkerHolder() = default;
 
-  bool Notify(workers::Status aStatus) override
+  bool Notify(WorkerStatus aStatus) override
   {
-    MOZ_ASSERT(aStatus > workers::Running);
+    MOZ_ASSERT(aStatus > Running);
     if (!mWasNotified) {
       mWasNotified = true;
       mConsumer->ShutDownMainThreadConsuming();
@@ -110,13 +109,11 @@ class ContinueConsumeBodyControlRunnable final : public MainThreadWorkerControlR
   RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
 
 public:
-  ContinueConsumeBodyControlRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
-                                     uint8_t* aResult)
+  explicit ContinueConsumeBodyControlRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer)
     : MainThreadWorkerControlRunnable(aFetchBodyConsumer->GetWorkerPrivate())
     , mFetchBodyConsumer(aFetchBodyConsumer)
   {
     MOZ_ASSERT(NS_IsMainThread());
-    free(aResult);
   }
 
   bool
@@ -290,14 +287,12 @@ public:
     // shutting down procedure.
 
     RefPtr<ContinueConsumeBodyControlRunnable<Derived>> r =
-      new ContinueConsumeBodyControlRunnable<Derived>(mFetchBodyConsumer,
-                                                      nonconstResult);
+      new ContinueConsumeBodyControlRunnable<Derived>(mFetchBodyConsumer);
     if (NS_WARN_IF(!r->Dispatch())) {
       return NS_ERROR_FAILURE;
     }
 
-    // FetchBody is responsible for data.
-    return NS_SUCCESS_ADOPTED_DATA;
+    return NS_OK;
   }
 
   virtual void BlobStoreCompleted(MutableBlobStorage* aBlobStorage,
@@ -589,7 +584,7 @@ FetchBodyConsumer<Derived>::BeginConsumeBodyMainThread()
   if (rr) {
     nsCOMPtr<nsIEventTarget> sts = do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID);
     rv = rr->RetargetDeliveryTo(sts);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
+    if (NS_FAILED(rv)) {
       NS_WARNING("Retargeting failed");
     }
   }

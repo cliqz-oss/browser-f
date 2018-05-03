@@ -5,8 +5,7 @@
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
 
-const { utils: Cu } = Components;
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 const promise = require("promise");
 const Store = require("devtools/client/responsive.html/store");

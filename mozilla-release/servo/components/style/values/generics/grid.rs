@@ -140,12 +140,15 @@ impl Parse for GridLine<specified::Integer> {
     }
 }
 
-define_css_keyword_enum!{ TrackKeyword:
-    "auto" => Auto,
-    "max-content" => MaxContent,
-    "min-content" => MinContent
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum TrackKeyword {
+    Auto,
+    MaxContent,
+    MinContent,
 }
-add_impls_for_keyword_enum!(TrackKeyword);
 
 /// A track breadth for explicit grid track sizing. It's generic solely to
 /// avoid re-implementing it for the computed type.
@@ -385,7 +388,6 @@ pub struct TrackRepeat<L, I> {
     /// If there's no `<line-names>`, then it's represented by an empty vector.
     /// For N `<track-size>` values, there will be N+1 `<line-names>`, and so this vector's
     /// length is always one value more than that of the `<track-size>`.
-    #[compute(clone)]
     pub line_names: Box<[Box<[CustomIdent]>]>,
     /// `<track-size>` values.
     pub track_sizes: Vec<TrackSize<L>>,
@@ -563,15 +565,13 @@ impl<L: ToCss, I: ToCss> ToCss for TrackList<L, I> {
 ///
 /// `subgrid [ <line-names> | repeat(<positive-integer> | auto-fill, <line-names>+) ]+`
 /// Old spec: https://www.w3.org/TR/2015/WD-css-grid-1-20150917/#typedef-line-name-list
-#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq)]
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct LineNameList {
     /// The optional `<line-name-list>`
     pub names: Box<[Box<[CustomIdent]>]>,
     /// Indicates the line name that requires `auto-fill`
     pub fill_idx: Option<u32>,
 }
-
-trivial_to_computed_value!(LineNameList);
 
 impl Parse for LineNameList {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
@@ -666,7 +666,7 @@ pub enum GridTemplateComponent<L, I> {
     /// `none` value.
     None,
     /// The grid `<track-list>`
-    TrackList(TrackList<L, I>),
+    TrackList(#[compute(field_bound)] TrackList<L, I>),
     /// A `subgrid <line-name-list>?`
     Subgrid(LineNameList),
 }

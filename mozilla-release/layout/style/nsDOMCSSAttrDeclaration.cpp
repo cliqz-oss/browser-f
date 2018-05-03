@@ -8,16 +8,18 @@
 
 #include "nsDOMCSSAttrDeclaration.h"
 
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/css/Declaration.h"
 #include "mozilla/css/StyleRule.h"
+#endif
 #include "mozilla/DeclarationBlock.h"
 #include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/ServoDeclarationBlock.h"
 #include "nsContentUtils.h"
 #include "nsIDocument.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsIURI.h"
 #include "nsNodeUtils.h"
 #include "nsWrapperCacheInlines.h"
@@ -118,7 +120,7 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
        (aOperation == eOperation_RemoveProperty && declaration))) {
     nsNodeUtils::AttributeWillChange(mElement, kNameSpaceID_None,
                                      nsGkAtoms::style,
-                                     nsIDOMMutationEvent::MODIFICATION,
+                                     dom::MutationEventBinding::MODIFICATION,
                                      nullptr);
   }
 
@@ -144,8 +146,12 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
   if (mElement->IsStyledByServo()) {
     decl = new ServoDeclarationBlock();
   } else {
+#ifdef MOZ_OLD_STYLE
     decl = new css::Declaration();
     decl->AsGecko()->InitializeEmpty();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
 
   // this *can* fail (inside SetAttrAndNotify, at least).
@@ -200,13 +206,7 @@ nsDOMCSSAttributeDeclaration::GetParentObject()
   return mElement;
 }
 
-/* virtual */ DocGroup*
-nsDOMCSSAttributeDeclaration::GetDocGroup() const
-{
-  return mElement ? mElement->OwnerDoc()->GetDocGroup() : nullptr;
-}
-
-NS_IMETHODIMP
+nsresult
 nsDOMCSSAttributeDeclaration::SetPropertyValue(const nsCSSPropertyID aPropID,
                                                const nsAString& aValue,
                                                nsIPrincipal* aSubjectPrincipal)

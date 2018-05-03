@@ -32,6 +32,8 @@ namespace mozilla {
 
 MOZ_MTLOG_MODULE("transceiverimpl")
 
+using LocalDirection = MediaSessionConduitLocalDirection;
+
 TransceiverImpl::TransceiverImpl(
     const std::string& aPCHandle,
     JsepTransceiver* aJsepTransceiver,
@@ -61,8 +63,6 @@ TransceiverImpl::TransceiverImpl(
   }
 
   mConduit->SetPCHandle(mPCHandle);
-
-  StartReceiveStream();
 
   mTransmitPipeline = new MediaPipelineTransmit(
       mPCHandle,
@@ -729,21 +729,7 @@ TransceiverImpl::UpdateAudioConduit()
                           " ConfigureRecvMediaCodecs failed: " << error);
       return NS_ERROR_FAILURE;
     }
-
-    const SdpExtmapAttributeList::Extmap* audioLevelExt =
-        details.GetExt(webrtc::RtpExtension::kAudioLevelUri);
-    if (audioLevelExt) {
-      MOZ_MTLOG(ML_DEBUG, "Calling EnableAudioLevelExtension");
-      error = conduit->EnableAudioLevelExtension(true,
-                                                 audioLevelExt->entry,
-                                                 false);
-
-      if (error) {
-        MOZ_MTLOG(ML_ERROR, mPCHandle << "[" << mMid << "]: " << __FUNCTION__ <<
-                            " EnableAudioLevelExtension failed: " << error);
-        return NS_ERROR_FAILURE;
-      }
-    }
+    UpdateConduitRtpExtmap(details, LocalDirection::kRecv);
   }
 
   if (mJsepTransceiver->mSendTrack.GetNegotiatedDetails() &&
@@ -774,36 +760,7 @@ TransceiverImpl::UpdateAudioConduit()
                           " ConfigureSendMediaCodec failed: " << error);
       return NS_ERROR_FAILURE;
     }
-
-    // Should these be genericized like they are in the video conduit case?
-    const SdpExtmapAttributeList::Extmap* audioLevelExt =
-        details.GetExt(webrtc::RtpExtension::kAudioLevelUri);
-
-    if (audioLevelExt) {
-      MOZ_MTLOG(ML_DEBUG, "Calling EnableAudioLevelExtension");
-      error = conduit->EnableAudioLevelExtension(true,
-                                                 audioLevelExt->entry,
-                                                 true);
-
-      if (error) {
-        MOZ_MTLOG(ML_ERROR, mPCHandle << "[" << mMid << "]: " << __FUNCTION__ <<
-                            " EnableAudioLevelExtension failed: " << error);
-        return NS_ERROR_FAILURE;
-      }
-    }
-
-    const SdpExtmapAttributeList::Extmap* midExt =
-        details.GetExt(webrtc::RtpExtension::kMIdUri);
-
-    if (midExt) {
-      MOZ_MTLOG(ML_DEBUG, "Calling EnableMIDExtension");
-      error = conduit->EnableMIDExtension(true, midExt->entry);
-
-      if (error) {
-        MOZ_MTLOG(ML_ERROR, "EnableMIDExtension failed: " << error);
-        return NS_ERROR_FAILURE;
-      }
-    }
+    UpdateConduitRtpExtmap(details, LocalDirection::kSend);
   }
 
   return NS_OK;
@@ -910,7 +867,7 @@ TransceiverImpl::UpdateVideoConduit()
       mJsepTransceiver->mRecvTrack.GetActive()) {
     const auto& details(*mJsepTransceiver->mRecvTrack.GetNegotiatedDetails());
 
-    UpdateVideoExtmap(details, false);
+    UpdateConduitRtpExtmap(details, LocalDirection::kRecv);
 
     PtrVector<VideoCodecConfig> configs;
     nsresult rv = NegotiatedDetailsToVideoCodecConfigs(details, &configs);
@@ -939,7 +896,7 @@ TransceiverImpl::UpdateVideoConduit()
       mSendTrack) {
     const auto& details(*mJsepTransceiver->mSendTrack.GetNegotiatedDetails());
 
-    UpdateVideoExtmap(details, true);
+    UpdateConduitRtpExtmap(details, LocalDirection::kSend);
 
     nsresult rv = ConfigureVideoCodecMode(*conduit);
     if (NS_FAILED(rv)) {
@@ -1007,8 +964,8 @@ TransceiverImpl::ConfigureVideoCodecMode(VideoSessionConduit& aConduit)
 }
 
 void
-TransceiverImpl::UpdateVideoExtmap(const JsepTrackNegotiatedDetails& aDetails,
-                                   bool aSending)
+TransceiverImpl::UpdateConduitRtpExtmap(const JsepTrackNegotiatedDetails& aDetails,
+                                        const LocalDirection aDirection)
 {
   std::vector<webrtc::RtpExtension> extmaps;
   // @@NG read extmap from track
@@ -1022,75 +979,8 @@ TransceiverImpl::UpdateVideoExtmap(const JsepTrackNegotiatedDetails& aDetails,
       mConduit.get());
 
   if (!extmaps.empty()) {
-    conduit->SetLocalRTPExtensions(aSending, extmaps);
+    conduit->SetLocalRTPExtensions(aDirection, extmaps);
   }
-}
-
-static void StartTrack(MediaStream* aSource,
-                       nsAutoPtr<MediaSegment>&& aSegment)
-{
-  class Message : public ControlMessage {
-   public:
-    Message(MediaStream* aStream, nsAutoPtr<MediaSegment>&& aSegment)
-      : ControlMessage(aStream),
-        segment_(aSegment) {}
-
-    void Run() override {
-      TrackRate track_rate = mStream->GraphRate();
-      StreamTime current_end = mStream->GetTracksEnd();
-      MOZ_MTLOG(ML_DEBUG, "current_end = " << current_end);
-      TrackTicks current_ticks =
-        mStream->TimeToTicksRoundUp(track_rate, current_end);
-
-      // Add a track 'now' to avoid possible underrun, especially if we add
-      // a track "later".
-
-      if (current_end != 0L) {
-        MOZ_MTLOG(ML_DEBUG, "added track @ " << current_end << " -> "
-                  << mStream->StreamTimeToSeconds(current_end));
-      }
-
-      // To avoid assertions, we need to insert a dummy segment that covers up
-      // to the "start" time for the track
-      segment_->AppendNullData(current_ticks);
-      MOZ_MTLOG(ML_DEBUG, "segment_->GetDuration() = " << segment_->GetDuration());
-      if (segment_->GetType() == MediaSegment::AUDIO) {
-        MOZ_MTLOG(ML_DEBUG, "Calling AddAudioTrack");
-        mStream->AsSourceStream()->AddAudioTrack(
-            kAudioTrack,
-            track_rate,
-            0,
-            static_cast<AudioSegment*>(segment_.forget()));
-      } else {
-        mStream->AsSourceStream()->AddTrack(kVideoTrack, 0, segment_.forget());
-      }
-
-      mStream->AsSourceStream()->SetPullEnabled(true);
-      mStream->AsSourceStream()->AdvanceKnownTracksTime(STREAM_TIME_MAX);
-    }
-   private:
-    nsAutoPtr<MediaSegment> segment_;
-  };
-
-  aSource->GraphImpl()->AppendMessage(
-      MakeUnique<Message>(aSource, Move(aSegment)));
-  MOZ_MTLOG(ML_INFO, "Dispatched track-add on stream " << aSource);
-}
-
-void
-TransceiverImpl::StartReceiveStream()
-{
-  MOZ_MTLOG(ML_DEBUG, mPCHandle << "[" << mMid << "]: " << __FUNCTION__);
-  SourceMediaStream* source(mReceiveTrack->GetInputStream()->AsSourceStream());
-
-  nsAutoPtr<MediaSegment> segment;
-  if (IsVideo()) {
-    segment = new VideoSegment;
-  } else {
-    segment = new AudioSegment;
-  }
-
-  StartTrack(source, Move(segment));
 }
 
 void

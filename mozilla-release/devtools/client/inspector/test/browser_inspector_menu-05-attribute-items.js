@@ -13,6 +13,7 @@ add_task(function* () {
 
   yield testAddAttribute();
   yield testCopyAttributeValue();
+  yield testCopyLongAttributeValue();
   yield testEditAttribute();
   yield testRemoveAttribute();
 
@@ -21,9 +22,9 @@ add_task(function* () {
     let addAttribute = getMenuItem("node-menu-add-attribute");
     addAttribute.click();
 
-    EventUtils.synthesizeKey('class="u-hidden"', {});
+    EventUtils.sendString('class="u-hidden"');
     let onMutation = inspector.once("markupmutation");
-    EventUtils.synthesizeKey("VK_RETURN", {});
+    EventUtils.synthesizeKey("KEY_Enter");
     yield onMutation;
 
     let hasAttribute = testActor.hasNode("#attributes.u-hidden");
@@ -44,6 +45,23 @@ add_task(function* () {
     yield waitForClipboardPromise(() => copyAttributeValue.click(), "the");
   }
 
+  function* testCopyLongAttributeValue() {
+    info("Testing 'Copy Attribute Value' copies very long attribute values");
+    let copyAttributeValue = getMenuItem("node-menu-copy-attribute");
+    let longAttribute = "#01234567890123456789012345678901234567890123456789" +
+    "12345678901234567890123456789012345678901234567890123456789012345678901" +
+    "23456789012345678901234567890123456789012345678901234567890123456789012" +
+    "34567890123456789012345678901234567890123456789012345678901234567890123";
+
+    inspector.nodeMenuTriggerInfo = {
+      type: "attribute",
+      name: "data-edit",
+      value: longAttribute
+    };
+
+    yield waitForClipboardPromise(() => copyAttributeValue.click(), longAttribute);
+  }
+
   function* testEditAttribute() {
     info("Testing 'Edit Attribute' menu item");
     let editAttribute = getMenuItem("node-menu-edit-attribute");
@@ -54,9 +72,9 @@ add_task(function* () {
       name: "data-edit"
     };
     editAttribute.click();
-    EventUtils.synthesizeKey("data-edit='edited'", {});
+    EventUtils.sendString("data-edit='edited'");
     let onMutation = inspector.once("markupmutation");
-    EventUtils.synthesizeKey("VK_RETURN", {});
+    EventUtils.synthesizeKey("KEY_Enter");
     yield onMutation;
 
     let isAttributeChanged =
@@ -88,7 +106,7 @@ add_task(function* () {
     let menuItem = allMenuItems.find(i => i.id === id);
     ok(menuItem, "Menu item '" + id + "' found");
     // Close the menu so synthesizing future keys won't select menu items.
-    EventUtils.synthesizeKey("VK_ESCAPE", {});
+    EventUtils.synthesizeKey("KEY_Escape");
     return menuItem;
   }
 });

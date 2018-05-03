@@ -14,7 +14,6 @@
 
 a {
   -moz-user-focus: normal;
-  -moz-user-input: enabled;
   cursor: pointer;
   text-decoration: underline;
 }
@@ -291,9 +290,9 @@ a {
   border-radius: 3px;
   font-weight: bold;
   font-size: 10px;
-  padding: 2px;
+  padding: 1px 2px;
   line-height: 10px;
-  margin-inline-start: 3px;
+  margin-inline-start: 0;
   margin-inline-end: 1ex;
 }
 
@@ -611,10 +610,8 @@ textbox.jsterm-input-node[focused="true"] {
 }
 
 .message .theme-twisty {
-  display: inline-block;
-  vertical-align: middle;
-  margin: 3px 0 0 0;
-  flex-shrink: 0;
+  position: relative;
+  top: 0.1em;
 }
 
 /*Do not mirror the twisty because container force to ltr */
@@ -845,6 +842,16 @@ a.learn-more-link.webconsole-learn-more-link {
 
 .webconsole-filterbar-primary .devtools-plaininput {
   flex: 1 1 100%;
+  align-self: stretch;
+  margin-left: 1px;
+  padding-inline-start: 4px;
+  border: 1px solid transparent;
+}
+
+.devtools-plaininput:focus {
+  border: 1px solid var(--blue-50);
+  transition: all 0.2s ease-in-out;
+  outline: none;
 }
 
 .webconsole-filterbar-primary .filter-checkbox {
@@ -984,6 +991,11 @@ a.learn-more-link.webconsole-learn-more-link {
   font-size: 0.8em;
 }
 
+/* Prefix text that can be set by ConsoleAPI option */
+.webconsole-output-wrapper .console-message-prefix {
+  color: var(--theme-comment);
+}
+
 /* Network Messages */
 
 .webconsole-output-wrapper .message.network .method {
@@ -1019,6 +1031,25 @@ a.learn-more-link.webconsole-learn-more-link {
   color: var(--theme-body-background);
 }
 
+.status-code[data-code^="1"] {
+  background-color: var(--status-code-color-1xx);
+}
+
+.status-code[data-code^="2"] {
+  background-color: var(--status-code-color-2xx);
+}
+
+.status-code[data-code^="3"] {
+  background-color: var(--status-code-color-3xx);
+}
+
+.status-code[data-code^="4"] {
+  background-color: var(--status-code-color-4xx);
+}
+
+.status-code[data-code^="5"] {
+  background-color: var(--status-code-color-5xx);
+}
 
 .network.message .network-info {
   display: none;
@@ -1243,4 +1274,8 @@ body #output-container {
 
 .sidebar-contents .object-inspector {
   min-width: 100%;
+}
+
+.theme-twisty {
+  cursor: default;
 }

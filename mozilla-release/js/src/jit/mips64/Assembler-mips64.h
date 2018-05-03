@@ -44,6 +44,10 @@ static constexpr Register ABINonArgReg0 = t0;
 static constexpr Register ABINonArgReg1 = t1;
 static constexpr Register ABINonArgReg2 = t2;
 
+// This register may be volatile or nonvolatile. Avoid f23 which is the
+// ScratchDoubleReg.
+static constexpr FloatRegister ABINonArgDoubleReg { FloatRegisters::f21, FloatRegisters::Double };
+
 // These registers may be volatile or nonvolatile.
 // Note: these three registers are all guaranteed to be different
 static constexpr Register ABINonArgReturnReg0 = t0;
@@ -73,8 +77,20 @@ static constexpr FloatRegister ReturnFloat32Reg = { FloatRegisters::f0, FloatReg
 static constexpr FloatRegister ReturnDoubleReg = { FloatRegisters::f0, FloatRegisters::Double };
 static constexpr FloatRegister ScratchFloat32Reg = { FloatRegisters::f23, FloatRegisters::Single };
 static constexpr FloatRegister ScratchDoubleReg = { FloatRegisters::f23, FloatRegisters::Double };
-static constexpr FloatRegister SecondScratchFloat32Reg = { FloatRegisters::f21, FloatRegisters::Single };
-static constexpr FloatRegister SecondScratchDoubleReg = { FloatRegisters::f21, FloatRegisters::Double };
+
+struct ScratchFloat32Scope : public AutoFloatRegisterScope
+{
+    explicit ScratchFloat32Scope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchFloat32Reg)
+    { }
+};
+
+struct ScratchDoubleScope : public AutoFloatRegisterScope
+{
+    explicit ScratchDoubleScope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchDoubleReg)
+    { }
+};
 
 // Registers used in the GenerateFFIIonExit Disable Activation block.
 // None of these may be the second scratch register (t8).
@@ -156,7 +172,7 @@ class Assembler : public AssemblerMIPSShared
     using AssemblerMIPSShared::bind;
 
     void bind(RepatchLabel* label);
-    static void Bind(uint8_t* rawCode, CodeOffset label, CodeOffset target);
+    static void Bind(uint8_t* rawCode, const CodeLabel& label);
 
     void processCodeLabels(uint8_t* rawCode);
 

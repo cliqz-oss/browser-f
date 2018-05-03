@@ -7,10 +7,8 @@
  * Makes the current executable the "default browser".
  */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-Components.utils.import("resource:///modules/ShellService.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/ShellService.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function nsSetDefaultBrowser() {}
 

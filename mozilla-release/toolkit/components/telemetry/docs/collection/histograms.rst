@@ -139,7 +139,7 @@ Required. This field is a list of e-mail addresses that should be notified when 
 
 ``expires_in_version``
 ----------------------
-Required. The version number in which the histogram expires; e.g. a value of `"30"` will mean that the histogram stops recording from Firefox 30 on. A version number of type ``"N"`` and ``"N.0"`` is automatically converted to ``"N.0a1"`` in order to expire the histogram also in the development channels. For histograms that never expire the value ``"never"`` can be used as in the example above. Accumulating data into an expired histogram is effectively a non-op and will not record anything.
+Required. The version number in which the histogram expires; e.g. a value of `"30"` will mean that the histogram stops recording from Firefox 30 on. A version number of type ``"N"`` is automatically converted to ``"N.0a1"`` in order to expire the histogram also in the development channels. For histograms that never expire the value ``"never"`` can be used as in the example above. Accumulating data into an expired histogram is effectively a non-op and will not record anything.
 
 ``kind``
 --------
@@ -212,7 +212,7 @@ The one exception is categorical histograms which can only be changed by adding 
 Histogram values
 ================
 
-The values you can accumulate to Histograms are limited by their internal represenation.
+The values you can accumulate to Histograms are limited by their internal representation.
 
 Telemetry Histograms do not record negative values, instead clamping them to 0 before recording.
 
@@ -262,7 +262,15 @@ Probes in native code can also use the `nsITelemetry <https://dxr.mozilla.org/mo
    * @param id - histogram id
    * @param sample - value to record.
    */
-  void Accumulate(ID id, uint32_t sample);
+  void Accumulate(HistogramID id, uint32_t sample);
+
+  /**
+   * Adds samples to a histogram defined in Histograms.json
+   *
+   * @param id - histogram id
+   * @param samples - values to record.
+   */
+  void Accumulate(HistogramID id, const nsTArray<uint32_t>& samples);
 
   /**
    * Adds sample to a keyed histogram defined in Histograms.h
@@ -271,16 +279,35 @@ Probes in native code can also use the `nsITelemetry <https://dxr.mozilla.org/mo
    * @param key - the string key
    * @param sample - (optional) value to record, defaults to 1.
    */
-  void Accumulate(ID id, const nsCString& key, uint32_t sample = 1);
+  void Accumulate(HistogramID id, const nsCString& key, uint32_t sample = 1);
 
   /**
    * Adds time delta in milliseconds to a histogram defined in Histograms.json
    *
    * @param id - histogram id
    * @param start - start time
-   * @param end - end time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
    */
-  void AccumulateTimeDelta(ID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+  void AccumulateTimeDelta(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+
+  /**
+   * Adds time delta in milliseconds to a keyed histogram defined in Histograms.json
+   *
+   * @param id - histogram id
+   * @param key - the string key
+   * @param start - start time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
+   */
+  void AccumulateTimeDelta(HistogramID id, const cs TimeStamp start, TimeStamp end = TimeStamp::Now());
+
+  /** Adds time delta in milliseconds to a histogram defined in TelemetryHistogramEnums.h
+   *
+   * @param id - histogram id
+   * @param key - the string key
+   * @param start - start time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
+   */
+  void AccumulateTimeDelta(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now());
 
 The histogram names declared in ``Histograms.json`` are translated into constants in the ``mozilla::Telemetry`` namespace:
 

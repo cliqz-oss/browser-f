@@ -8,23 +8,21 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "FileTestUtils",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/AsyncShutdown.jsm", this);
-Cu.import("resource://gre/modules/DownloadPaths.jsm", this);
-Cu.import("resource://gre/modules/FileUtils.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://testing-common/Assert.jsm", this);
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", this);
+ChromeUtils.import("resource://gre/modules/DownloadPaths.jsm", this);
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/Assert.jsm", this);
 
 let gFileCounter = 1;
 let gPathsToRemove = [];
 
-this.FileTestUtils = {
+var FileTestUtils = {
   /**
    * Returns a reference to a temporary file that is guaranteed not to exist and
    * to have never been created before. If a file or a directory with this name

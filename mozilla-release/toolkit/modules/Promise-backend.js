@@ -44,9 +44,13 @@
 // This is allowed in workers.
 /* global setImmediate:false */
 
+/* eslint-disable mozilla/no-define-cc-etc */
+/* eslint-disable mozilla/use-cc-etc */
 var Cu = this.require ? require("chrome").Cu : Components.utils;
 var Cc = this.require ? require("chrome").Cc : Components.classes;
 var Ci = this.require ? require("chrome").Ci : Components.interfaces;
+/* eslint-enable mozilla/use-cc-etc */
+/* eslint-enable mozilla/no-define-cc-etc */
 // If we can access Components, then we use it to capture an async
 // parent stack trace; see scheduleWalkerLoop.  However, as it might
 // not be available (see above), users of this must check it first.
@@ -54,6 +58,8 @@ var Components_ = this.require ? require("chrome").components : Components;
 
 // If Cu is defined, use it to lazily define the FinalizationWitnessService.
 if (Cu) {
+  // If we're in a devtools module environment, ChromeUtils won't exist.
+  /* eslint "mozilla/use-chromeutils-import": ["error", {allowCu: true}] */
   Cu.import("resource://gre/modules/Services.jsm");
   Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -930,7 +936,7 @@ Handler.prototype = {
       // An exception has occurred in the handler.
 
       if (ex && typeof ex == "object" && "name" in ex &&
-          ERRORS_TO_REPORT.indexOf(ex.name) != -1) {
+          ERRORS_TO_REPORT.includes(ex.name)) {
 
         // We suspect that the exception is a programmer error, so we now
         // display it using dump().  Note that we do not use Cu.reportError as

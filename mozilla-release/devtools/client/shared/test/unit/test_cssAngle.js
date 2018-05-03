@@ -5,8 +5,7 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 const {angleUtils} = require("devtools/client/shared/css-angle");
 

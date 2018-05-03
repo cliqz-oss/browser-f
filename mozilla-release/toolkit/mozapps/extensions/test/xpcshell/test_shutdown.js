@@ -18,7 +18,7 @@ const IGNORE_PRIVATE = ["AddonAuthor", "AddonCompatibilityOverride",
                         "AddonScreenshot", "AddonType", "startup", "shutdown",
                         "addonIsActive", "registerProvider", "unregisterProvider",
                         "addStartupChange", "removeStartupChange",
-                        "getNewSideloads",
+                        "getNewSideloads", "getNewDistroAddons",
                         "recordTimestamp", "recordSimpleMeasure",
                         "recordException", "getSimpleMeasures", "simpleTimer",
                         "setTelemetryDetails", "getTelemetryDetails",
@@ -28,7 +28,7 @@ const IGNORE_PRIVATE = ["AddonAuthor", "AddonCompatibilityOverride",
 
 async function test_functions() {
   for (let prop in AddonManager) {
-    if (IGNORE.indexOf(prop) != -1)
+    if (IGNORE.includes(prop))
       continue;
     if (typeof AddonManager[prop] != "function")
       continue;
@@ -58,13 +58,13 @@ async function test_functions() {
       await AddonManager[prop](...args);
       do_throw(prop + " did not throw an exception");
     } catch (e) {
-      if (e.result != Components.results.NS_ERROR_NOT_INITIALIZED)
+      if (e.result != Cr.NS_ERROR_NOT_INITIALIZED)
         do_throw(prop + " threw an unexpected exception: " + e);
     }
   }
 
   for (let prop in AddonManagerPrivate) {
-    if (IGNORE_PRIVATE.indexOf(prop) != -1)
+    if (IGNORE_PRIVATE.includes(prop))
       continue;
     if (typeof AddonManagerPrivate[prop] != "function")
       continue;
@@ -74,7 +74,7 @@ async function test_functions() {
       AddonManagerPrivate[prop]();
       do_throw(prop + " did not throw an exception");
     } catch (e) {
-      if (e.result != Components.results.NS_ERROR_NOT_INITIALIZED)
+      if (e.result != Cr.NS_ERROR_NOT_INITIALIZED)
         do_throw(prop + " threw an unexpected exception: " + e);
     }
   }

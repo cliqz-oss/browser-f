@@ -4,9 +4,8 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LoginRecipesContent", "LoginRecipesParent"];
+var EXPORTED_SYMBOLS = ["LoginRecipesContent", "LoginRecipesParent"];
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
 const REQUIRED_KEYS = ["hosts"];
 const OPTIONAL_KEYS = [
   "description",
@@ -20,12 +19,12 @@ const SUPPORTED_KEYS = REQUIRED_KEYS.concat(OPTIONAL_KEYS);
 
 Cu.importGlobalProperties(["URL"]);
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "log", () => LoginHelper.createLogger("LoginRecipes"));
 
@@ -134,12 +133,12 @@ LoginRecipesParent.prototype = {
   add(recipe) {
     log.debug("Adding recipe:", recipe);
     let recipeKeys = Object.keys(recipe);
-    let unknownKeys = recipeKeys.filter(key => SUPPORTED_KEYS.indexOf(key) == -1);
+    let unknownKeys = recipeKeys.filter(key => !SUPPORTED_KEYS.includes(key));
     if (unknownKeys.length > 0) {
       throw new Error("The following recipe keys aren't supported: " + unknownKeys.join(", "));
     }
 
-    let missingRequiredKeys = REQUIRED_KEYS.filter(key => recipeKeys.indexOf(key) == -1);
+    let missingRequiredKeys = REQUIRED_KEYS.filter(key => !recipeKeys.includes(key));
     if (missingRequiredKeys.length > 0) {
       throw new Error("The following required recipe keys are missing: " + missingRequiredKeys.join(", "));
     }

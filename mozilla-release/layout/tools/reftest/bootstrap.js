@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { utils: Cu, interfaces: Ci, classes: Cc, manager: Cm } = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var WindowListener = {
   onOpenWindow: function(win) {
@@ -20,7 +20,7 @@ var WindowListener = {
         break;
       }
 
-      Cu.import("chrome://reftest/content/reftest.jsm");
+      ChromeUtils.import("chrome://reftest/content/reftest.jsm");
       win.addEventListener("pageshow", function() {
         // Add setTimeout here because windows.innerWidth/Height are not set yet.
         win.setTimeout(function() {OnRefTestLoad(win);}, 0);

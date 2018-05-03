@@ -31,7 +31,8 @@
 #include "nsHttpChannel.h"
 
 #include "mozilla/dom/File.h"
-#include "mozilla/dom/workers/Workers.h"
+#include "mozilla/dom/PerformanceStorage.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "mozilla/Unused.h"
@@ -197,7 +198,7 @@ NS_IMETHODIMP
 AlternativeDataStreamListener::OnStartRequest(nsIRequest* aRequest,
                                               nsISupports* aContext)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
   MOZ_ASSERT(!mAlternativeDataType.IsEmpty());
   // Checking the alternative data type is the same between we asked and the
   // saved in the channel.
@@ -273,7 +274,7 @@ AlternativeDataStreamListener::OnStopRequest(nsIRequest* aRequest,
                                              nsISupports* aContext,
                                              nsresult aStatusCode)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
 
   // Alternative data loading is going to finish, breaking the reference cycle
   // here by taking the ownership to a loacl variable.
@@ -325,13 +326,17 @@ NS_IMPL_ISUPPORTS(FetchDriver,
                   nsIStreamListener, nsIChannelEventSink, nsIInterfaceRequestor,
                   nsIThreadRetargetableStreamListener)
 
-FetchDriver::FetchDriver(InternalRequest* aRequest, nsIPrincipal* aPrincipal,
-                         nsILoadGroup* aLoadGroup, nsIEventTarget* aMainThreadEventTarget,
+FetchDriver::FetchDriver(InternalRequest* aRequest,
+                         nsIPrincipal* aPrincipal,
+                         nsILoadGroup* aLoadGroup,
+                         nsIEventTarget* aMainThreadEventTarget,
+                         PerformanceStorage* aPerformanceStorage,
                          bool aIsTrackingFetch)
   : mPrincipal(aPrincipal)
   , mLoadGroup(aLoadGroup)
   , mRequest(aRequest)
   , mMainThreadEventTarget(aMainThreadEventTarget)
+  , mPerformanceStorage(aPerformanceStorage)
   , mNeedToObserveOnDataAvailable(false)
   , mIsTrackingFetch(aIsTrackingFetch)
 #ifdef DEBUG
@@ -358,7 +363,7 @@ FetchDriver::~FetchDriver()
 nsresult
 FetchDriver::Fetch(AbortSignal* aSignal, FetchDriverObserver* aObserver)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
 #ifdef DEBUG
   MOZ_ASSERT(!mFetchCalled);
   mFetchCalled = true;
@@ -516,6 +521,20 @@ FetchDriver::HttpFetch(const nsACString& aPreferredAlternativeDataType)
                        mDocument,
                        secFlags,
                        mRequest->ContentPolicyType(),
+                       nullptr, /* aPerformanceStorage */
+                       mLoadGroup,
+                       nullptr, /* aCallbacks */
+                       loadFlags,
+                       ios);
+  } else if (mClientInfo.isSome()) {
+    rv = NS_NewChannel(getter_AddRefs(chan),
+                       uri,
+                       mPrincipal,
+                       mClientInfo.ref(),
+                       mController,
+                       secFlags,
+                       mRequest->ContentPolicyType(),
+                       mPerformanceStorage,
                        mLoadGroup,
                        nullptr, /* aCallbacks */
                        loadFlags,
@@ -526,6 +545,7 @@ FetchDriver::HttpFetch(const nsACString& aPreferredAlternativeDataType)
                        mPrincipal,
                        secFlags,
                        mRequest->ContentPolicyType(),
+                       mPerformanceStorage,
                        mLoadGroup,
                        nullptr, /* aCallbacks */
                        loadFlags,
@@ -610,6 +630,12 @@ FetchDriver::HttpFetch(const nsACString& aPreferredAlternativeDataType)
     MOZ_ASSERT(NS_SUCCEEDED(rv));
     rv = internalChan->SetIntegrityMetadata(mRequest->GetIntegrity());
     MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+    // Set the initiator type
+    nsCOMPtr<nsITimedChannel> timedChannel(do_QueryInterface(httpChan));
+    if (timedChannel) {
+      timedChannel->SetInitiatorType(NS_LITERAL_STRING("fetch"));
+    }
   }
 
   // Step 5. Proxy authentication will be handled by Necko.
@@ -692,7 +718,9 @@ FetchDriver::HttpFetch(const nsACString& aPreferredAlternativeDataType)
   } else {
     rv = chan->AsyncOpen2(this);
   }
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
   // Step 4 onwards of "HTTP Fetch" is handled internally by Necko.
 
@@ -745,7 +773,7 @@ FetchDriver::BeginAndGetFilteredResponse(InternalResponse* aResponse,
 void
 FetchDriver::FailWithNetworkError(nsresult rv)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
   RefPtr<InternalResponse> error = InternalResponse::NetworkError(rv);
   if (mObserver) {
     mObserver->OnResponseAvailable(error);
@@ -763,7 +791,7 @@ NS_IMETHODIMP
 FetchDriver::OnStartRequest(nsIRequest* aRequest,
                             nsISupports* aContext)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
 
   // Note, this can be called multiple times if we are doing an opaqueredirect.
   // In that case we will get a simulated OnStartRequest() and then the real
@@ -828,8 +856,9 @@ FetchDriver::OnStartRequest(nsIRequest* aRequest,
     ErrorResult result;
     if (response->Headers()->Has(NS_LITERAL_CSTRING("content-encoding"), result) ||
         response->Headers()->Has(NS_LITERAL_CSTRING("transfer-encoding"), result)) {
-      NS_WARNING("Cannot know response Content-Length due to presence of Content-Encoding "
-                 "or Transfer-Encoding headers.");
+      // We cannot trust the content-length when content-encoding or
+      // transfer-encoding are set.  There are many servers which just
+      // get this wrong.
       contentLength = InternalResponse::UNKNOWN_BODY_SIZE;
     }
     MOZ_ASSERT(!result.Failed());
@@ -1130,7 +1159,7 @@ FetchDriver::OnStopRequest(nsIRequest* aRequest,
                            nsISupports* aContext,
                            nsresult aStatusCode)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
 
   MOZ_DIAGNOSTIC_ASSERT(!mOnStopRequestCalled);
   mOnStopRequestCalled = true;
@@ -1196,7 +1225,7 @@ FetchDriver::OnStopRequest(nsIRequest* aRequest,
 nsresult
 FetchDriver::FinishOnStopRequest(AlternativeDataStreamListener* aAltDataListener)
 {
-  workers::AssertIsOnMainThread();
+  AssertIsOnMainThread();
   // OnStopRequest is not called from channel, that means the main data loading
   // does not finish yet. Reaching here since alternative data loading finishes.
   if (!mOnStopRequestCalled) {
@@ -1332,6 +1361,20 @@ FetchDriver::SetDocument(nsIDocument* aDocument)
   // Cannot set document after Fetch() has been called.
   MOZ_ASSERT(!mFetchCalled);
   mDocument = aDocument;
+}
+
+void
+FetchDriver::SetClientInfo(const ClientInfo& aClientInfo)
+{
+  MOZ_ASSERT(!mFetchCalled);
+  mClientInfo.emplace(aClientInfo);
+}
+
+void
+FetchDriver::SetController(const Maybe<ServiceWorkerDescriptor>& aController)
+{
+  MOZ_ASSERT(!mFetchCalled);
+  mController = aController;
 }
 
 void

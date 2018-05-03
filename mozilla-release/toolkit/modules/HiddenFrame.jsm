@@ -4,13 +4,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["HiddenFrame"];
+var EXPORTED_SYMBOLS = ["HiddenFrame"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const XUL_PAGE = "chrome://global/content/win.xul";
 

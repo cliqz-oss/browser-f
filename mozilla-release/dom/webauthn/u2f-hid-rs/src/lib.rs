@@ -27,11 +27,11 @@ pub mod platform;
 #[path = "stub/mod.rs"]
 pub mod platform;
 
+extern crate boxfnonce;
+extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate rand;
-extern crate libc;
-extern crate boxfnonce;
 extern crate runloop;
 
 #[macro_use]
@@ -73,6 +73,19 @@ bitflags! {
 pub struct KeyHandle {
     pub credential: Vec<u8>,
     pub transports: AuthenticatorTransports,
+}
+
+pub type AppId = Vec<u8>;
+pub type RegisterResult = Vec<u8>;
+pub type SignResult = (AppId, Vec<u8>, Vec<u8>);
+
+#[derive(Debug, Clone, Copy)]
+pub enum Error {
+    Unknown = 1,
+    NotSupported = 2,
+    InvalidState = 3,
+    ConstraintError = 4,
+    NotAllowed = 5,
 }
 
 #[cfg(fuzzing)]

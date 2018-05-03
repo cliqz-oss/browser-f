@@ -193,7 +193,7 @@ public:
                                                  int32_t aLineStart,
                                                  int8_t aOutSideLimit);
 
-  nsresult CharacterDataChanged(CharacterDataChangeInfo* aInfo) override;
+  nsresult CharacterDataChanged(const CharacterDataChangeInfo& aInfo) override;
   nsresult AttributeChanged(int32_t  aNameSpaceID,
                             nsAtom* aAttribute,
                             int32_t aModType) override;
@@ -473,11 +473,7 @@ public:
   /**
    * @return true if we should avoid a page/column break in this frame.
    */
-  bool ShouldAvoidBreakInside(const ReflowInput& aReflowInput) const {
-    return !aReflowInput.mFlags.mIsTopOfPage &&
-           NS_STYLE_PAGE_BREAK_AVOID == StyleDisplay()->mBreakInside &&
-           !GetPrevInFlow();
-  }
+  bool ShouldAvoidBreakInside(const ReflowInput& aReflowInput) const;
 
 #ifdef DEBUG
   /**
@@ -835,7 +831,7 @@ public:
 
   struct DR_init_offsets_cookie {
     DR_init_offsets_cookie(nsIFrame* aFrame, mozilla::SizeComputationInput* aState,
-                           const mozilla::LogicalSize& aPercentBasis,
+                           nscoord aPercentBasis,
                            mozilla::WritingMode aCBWritingMode,
                            const nsMargin* aBorder,
                            const nsMargin* aPadding);

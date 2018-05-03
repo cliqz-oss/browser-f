@@ -18,20 +18,17 @@
 
 #include "wasm/WasmBinaryToAST.h"
 
-#include "mozilla/CheckedInt.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Sprintf.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "wasm/WasmBinaryIterator.h"
 #include "wasm/WasmValidate.h"
 
 using namespace js;
 using namespace js::wasm;
 
-using mozilla::CheckedInt;
 using mozilla::FloorLog2;
 
 enum AstDecodeTerminationKind
@@ -395,11 +392,16 @@ AstDecodeGetBlockRef(AstDecodeContext& c, uint32_t depth, AstRef* ref)
 static bool
 AstDecodeBrTable(AstDecodeContext& c)
 {
+    bool unreachable = c.iter().currentBlockHasPolymorphicBase();
+
     Uint32Vector depths;
     uint32_t defaultDepth;
     ExprType type;
     if (!c.iter().readBrTable(&depths, &defaultDepth, &type, nullptr, nullptr))
         return false;
+
+    if (unreachable)
+        return true;
 
     AstRefVector table(c.lifo);
     if (!table.resize(depths.length()))
@@ -655,15 +657,19 @@ AstDecodeSelect(AstDecodeContext& c)
     if (!c.iter().readSelect(&type, nullptr, nullptr, nullptr))
         return false;
 
+    if (c.iter().currentBlockHasPolymorphicBase())
+        return true;
+
     AstDecodeStackItem selectFalse = c.popCopy();
     AstDecodeStackItem selectTrue = c.popCopy();
     AstDecodeStackItem cond = c.popCopy();
 
-    AstTernaryOperator* ternary = new(c.lifo) AstTernaryOperator(Op::Select, cond.expr, selectTrue.expr, selectFalse.expr);
-    if (!ternary)
+    auto* select = new(c.lifo) AstTernaryOperator(Op::Select, cond.expr, selectTrue.expr,
+                                                  selectFalse.expr);
+    if (!select)
         return false;
 
-    if (!c.push(AstDecodeStackItem(ternary)))
+    if (!c.push(AstDecodeStackItem(select)))
         return false;
 
     return true;
@@ -705,6 +711,27 @@ AstDecodeConversion(AstDecodeContext& c, ValType fromType, ValType toType, Op op
 
     return true;
 }
+
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+static bool
+AstDecodeExtraConversion(AstDecodeContext& c, ValType fromType, ValType toType, NumericOp op)
+{
+    if (!c.iter().readConversion(fromType, toType, nullptr))
+        return false;
+
+    AstDecodeStackItem operand = c.popCopy();
+
+    AstExtraConversionOperator* conversion =
+        new(c.lifo) AstExtraConversionOperator(op, operand.expr);
+    if (!conversion)
+        return false;
+
+    if (!c.push(AstDecodeStackItem(conversion)))
+        return false;
+
+    return true;
+}
+#endif
 
 static AstLoadStoreAddress
 AstDecodeLoadStoreAddress(const LinearMemoryAddress<Nothing>& addr, const AstDecodeStackItem& item)
@@ -1641,6 +1668,34 @@ AstDecodeExpr(AstDecodeContext& c)
         if (!c.push(AstDecodeStackItem(tmp)))
             return false;
         break;
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+      case uint16_t(Op::NumericPrefix):
+        switch (op.b1) {
+          case uint16_t(NumericOp::I32TruncSSatF32):
+          case uint16_t(NumericOp::I32TruncUSatF32):
+            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I32, NumericOp(op.b1)))
+                return false;
+            break;
+          case uint16_t(NumericOp::I32TruncSSatF64):
+          case uint16_t(NumericOp::I32TruncUSatF64):
+            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I32, NumericOp(op.b1)))
+                return false;
+            break;
+          case uint16_t(NumericOp::I64TruncSSatF32):
+          case uint16_t(NumericOp::I64TruncUSatF32):
+            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I64, NumericOp(op.b1)))
+                return false;
+            break;
+          case uint16_t(NumericOp::I64TruncSSatF64):
+          case uint16_t(NumericOp::I64TruncUSatF64):
+            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I64, NumericOp(op.b1)))
+                return false;
+            break;
+          default:
+            return c.iter().unrecognizedOpcode(&op);
+        }
+        break;
+#endif
       case uint16_t(Op::ThreadPrefix):
         switch (op.b1) {
           case uint16_t(ThreadOp::Wake):

@@ -3,12 +3,10 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://services-sync/UIState.jsm");
 
-Cu.import("resource://services-sync/UIState.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
-                                  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(this, "fxAccounts",
+                               "resource://gre/modules/FxAccounts.jsm");
 
 var gTestTab;
 var gContentAPI;
@@ -57,8 +55,10 @@ function setSignedInUser(data) {
       uid: "1234@lcip.org",
       assertion: "foobar",
       sessionToken: "dead",
-      kA: "beef",
-      kB: "cafe",
+      kSync: "beef",
+      kXCS: "cafe",
+      kExtSync: "bacon",
+      kExtKbHash: "cheese",
       verified: true
     };
   }

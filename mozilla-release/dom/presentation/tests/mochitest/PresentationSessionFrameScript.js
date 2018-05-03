@@ -52,7 +52,7 @@ function loadPrivilegedScriptTest() {
     };
   }
 
-  const { classes: Cc, interfaces: Ci, manager: Cm, utils: Cu, results: Cr } = Components;
+  const Cm = Components.manager;
 
   const mockedChannelDescription = {
     QueryInterface : function (iid) {
@@ -95,7 +95,7 @@ function loadPrivilegedScriptTest() {
     },
     createInstance: function(aOuter, aIID) {
       if (aOuter) {
-        throw Components.results.NS_ERROR_NO_AGGREGATION;
+        throw Cr.NS_ERROR_NO_AGGREGATION;
       }
       return this.QueryInterface(aIID);
     },

@@ -50,11 +50,11 @@ public:
 
     nsWindow();
 
-    NS_DECL_ISUPPORTS_INHERITED
+    NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, nsBaseWidget)
 
     static void InitNatives();
     void SetScreenId(uint32_t aScreenId) { mScreenId = aScreenId; }
-    void EnableEventDispatcher();
+    void OnGeckoViewReady();
 
 private:
     uint32_t mScreenId;
@@ -192,9 +192,6 @@ private:
     // Because other objects get destroyed in the mGeckOViewSupport destructor,
     // keep it last in the list, so its destructor is called first.
     mozilla::UniquePtr<GeckoViewSupport> mGeckoViewSupport;
-
-    // Class that implements native PresentationMediaPlayerManager calls.
-    class PMPMSupport;
 
     mozilla::Atomic<bool, mozilla::ReleaseAcquire> mContentDocumentDisplayed;
 

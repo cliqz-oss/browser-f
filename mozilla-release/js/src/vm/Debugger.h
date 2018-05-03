@@ -14,18 +14,17 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Vector.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsweakmap.h"
-#include "jswrapper.h"
-
 #include "builtin/Promise.h"
 #include "ds/TraceableFifo.h"
 #include "gc/Barrier.h"
+#include "gc/WeakMap.h"
 #include "js/Debug.h"
 #include "js/GCVariant.h"
 #include "js/HashTable.h"
+#include "js/Wrapper.h"
 #include "vm/GlobalObject.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/SavedStacks.h"
 #include "wasm/WasmJS.h"
 
@@ -374,6 +373,9 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
         InternalBarrierMethods<JSObject*>::readBarrier(dbg->object);
     }
     static void writeBarrierPost(Debugger** vp, Debugger* prev, Debugger* next) {}
+#ifdef DEBUG
+    static bool thingIsNotGray(Debugger* dbg) { return true; }
+#endif
 
   private:
     GCPtrNativeObject object; /* The Debugger object. Strong reference. */
@@ -1798,6 +1800,11 @@ Debugger::onNewScript(JSContext* cx, HandleScript script)
     MOZ_ASSERT_IF(!script->compartment()->creationOptions().invisibleToDebugger() &&
                   !script->selfHosted(),
                   script->compartment()->firedOnNewGlobalObject);
+
+    // The script may not be ready to be interrogated by the debugger.
+    if (script->hideScriptFromDebugger())
+        return;
+
     if (script->compartment()->isDebuggee())
         slowPathOnNewScript(cx, script);
 }

@@ -4,13 +4,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["UIDensities"];
+var EXPORTED_SYMBOLS = ["UIDensities"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-
-this.UIDensities = {
+var UIDensities = {
 
   init(libDir) {},
 

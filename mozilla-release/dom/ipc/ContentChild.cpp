@@ -39,11 +39,12 @@
 #include "mozilla/dom/PLoginReputationChild.h"
 #include "mozilla/dom/ProcessGlobal.h"
 #include "mozilla/dom/PushNotifier.h"
+#include "mozilla/dom/ServiceWorkerManager.h"
 #include "mozilla/dom/TabGroup.h"
-#include "mozilla/dom/workers/ServiceWorkerManager.h"
 #include "mozilla/dom/nsIContentChild.h"
 #include "mozilla/dom/URLClassifierChild.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/gfx/Logging.h"
 #include "mozilla/psm/PSMContentListener.h"
 #include "mozilla/hal_sandbox/PHalChild.h"
 #include "mozilla/ipc/BackgroundChild.h"
@@ -93,6 +94,7 @@
 #elif defined(XP_LINUX)
 #include "mozilla/Sandbox.h"
 #include "mozilla/SandboxInfo.h"
+#include "CubebUtils.h"
 #elif defined(XP_MACOSX)
 #include "mozilla/Sandbox.h"
 #endif
@@ -211,7 +213,6 @@
 #include "nsIPrincipal.h"
 #include "DomainPolicy.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
-#include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "mozilla/widget/PuppetBidiKeyboard.h"
@@ -235,7 +236,6 @@
 using namespace mozilla;
 using namespace mozilla::docshell;
 using namespace mozilla::dom::ipc;
-using namespace mozilla::dom::workers;
 using namespace mozilla::media;
 using namespace mozilla::embedding;
 using namespace mozilla::gmp;
@@ -452,6 +452,38 @@ ConsoleListener::Observe(nsIConsoleMessage* aMessage)
     NS_ENSURE_SUCCESS(rv, rv);
     rv = scriptError->GetFlags(&flags);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    {
+      AutoJSAPI jsapi;
+      jsapi.Init();
+      JSContext* cx = jsapi.cx();
+
+      JS::RootedValue stack(cx);
+      rv = scriptError->GetStack(&stack);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      if (stack.isObject()) {
+        JSAutoCompartment ac(cx, &stack.toObject());
+
+        StructuredCloneData data;
+        ErrorResult err;
+        data.Write(cx, stack, err);
+        if (err.Failed()) {
+          return err.StealNSResult();
+        }
+
+        ClonedMessageData cloned;
+        if (!data.BuildClonedMessageDataForChild(mChild, cloned)) {
+          return NS_ERROR_FAILURE;
+        }
+
+        mChild->SendScriptErrorWithStack(msg, sourceName, sourceLine,
+                                         lineNum, colNum, flags, category,
+                                         cloned);
+        return NS_OK;
+      }
+    }
+
 
     mChild->SendScriptError(msg, sourceName, sourceLine,
                             lineNum, colNum, flags, category);
@@ -1222,9 +1254,6 @@ ContentChild::InitXPCOM(const XPCOMInitData& aXPCOMInit,
   nsCOMPtr<nsIURI> ucsURL = DeserializeURI(aXPCOMInit.userContentSheetURL());
   nsLayoutStylesheetCache::SetUserContentCSSURL(ucsURL);
 
-  // This will register cross-process observer.
-  mozilla::dom::time::InitializeDateCacheCleaner();
-
   GfxInfoBase::SetFeatureStatus(aXPCOMInit.gfxFeatureStatus());
 
   DataStorage::SetCachedStorageEntries(aXPCOMInit.dataStorage());
@@ -1326,6 +1355,21 @@ ContentChild::RecvInitProcessHangMonitor(Endpoint<PProcessHangMonitorChild>&& aH
 }
 
 mozilla::ipc::IPCResult
+ContentChild::GetResultForRenderingInitFailure(base::ProcessId aOtherPid)
+{
+  if (aOtherPid == base::GetCurrentProcId() || aOtherPid == OtherPid()) {
+    // If we are talking to ourselves, or the UI process, then that is a fatal
+    // protocol error.
+    return IPC_FAIL_NO_REASON(this);
+  }
+
+  // If we are talking to the GPU process, then we should recover from this on
+  // the next ContentChild::RecvReinitRendering call.
+  gfxCriticalNote << "Could not initialize rendering with GPU process";
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 ContentChild::RecvInitRendering(Endpoint<PCompositorManagerChild>&& aCompositor,
                                 Endpoint<PImageBridgeChild>&& aImageBridge,
                                 Endpoint<PVRManagerChild>&& aVRBridge,
@@ -1334,17 +1378,24 @@ ContentChild::RecvInitRendering(Endpoint<PCompositorManagerChild>&& aCompositor,
 {
   MOZ_ASSERT(namespaces.Length() == 3);
 
+  // Note that for all of the methods below, if it can fail, it should only
+  // return false if the failure is an IPDL error. In such situations,
+  // ContentChild can reason about whether or not to wait for
+  // RecvReinitRendering (because we surmised the GPU process crashed), or if it
+  // should crash itself (because we are actually talking to the UI process). If
+  // there are localized failures (e.g. failed to spawn a thread), then it
+  // should MOZ_RELEASE_ASSERT or MOZ_CRASH as necessary instead.
   if (!CompositorManagerChild::Init(Move(aCompositor), namespaces[0])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aCompositor.OtherPid());
   }
   if (!CompositorManagerChild::CreateContentCompositorBridge(namespaces[1])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aCompositor.OtherPid());
   }
   if (!ImageBridgeChild::InitForContent(Move(aImageBridge), namespaces[2])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aImageBridge.OtherPid());
   }
   if (!gfx::VRManagerChild::InitForContent(Move(aVRBridge))) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aVRBridge.OtherPid());
   }
   VideoDecoderManagerChild::InitForContent(Move(aVideoManager));
   return IPC_OK();
@@ -1369,16 +1420,16 @@ ContentChild::RecvReinitRendering(Endpoint<PCompositorManagerChild>&& aComposito
 
   // Re-establish singleton bridges to the compositor.
   if (!CompositorManagerChild::Init(Move(aCompositor), namespaces[0])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aCompositor.OtherPid());
   }
   if (!CompositorManagerChild::CreateContentCompositorBridge(namespaces[1])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aCompositor.OtherPid());
   }
   if (!ImageBridgeChild::ReinitForContent(Move(aImageBridge), namespaces[2])) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aImageBridge.OtherPid());
   }
   if (!gfx::VRManagerChild::ReinitForContent(Move(aVRBridge))) {
-    return IPC_FAIL_NO_REASON(this);
+    return GetResultForRenderingInitFailure(aVRBridge.OtherPid());
   }
   gfxPlatform::GetPlatform()->CompositorUpdated();
 
@@ -1548,25 +1599,9 @@ StartMacOSContentSandbox()
     MOZ_CRASH("Error resolving child process path");
   }
 
-  // During sandboxed content process startup, before reaching
-  // this point, NS_OS_TEMP_DIR is modified to refer to a sandbox-
-  // writable temporary directory
-  nsCOMPtr<nsIFile> tempDir;
-  nsresult rv = nsDirectoryService::gService->Get(NS_OS_TEMP_DIR,
-      NS_GET_IID(nsIFile), getter_AddRefs(tempDir));
-  if (NS_FAILED(rv)) {
-    MOZ_CRASH("Failed to get NS_OS_TEMP_DIR");
-  }
-
-  nsAutoCString tempDirPath;
-  tempDir->Normalize();
-  rv = tempDir->GetNativePath(tempDirPath);
-  if (NS_FAILED(rv)) {
-    MOZ_CRASH("Failed to get NS_OS_TEMP_DIR path");
-  }
-
   ContentChild* cc = ContentChild::GetSingleton();
 
+  nsresult rv;
   nsCOMPtr<nsIFile> profileDir;
   cc->GetProfileDir(getter_AddRefs(profileDir));
   nsCString profileDirPath;
@@ -1589,7 +1624,7 @@ StartMacOSContentSandbox()
   info.appPath.assign(appPath.get());
   info.appBinaryPath.assign(appBinaryPath.get());
   info.appDir.assign(appDir.get());
-  info.appTempDir.assign(tempDirPath.get());
+  info.hasAudio = !Preferences::GetBool("media.cubeb.sandbox");
 
   // These paths are used to whitelist certain directories used by the testing
   // system. They should not be considered a public API, and are only intended
@@ -1666,39 +1701,19 @@ ContentChild::RecvSetProcessSandbox(const MaybeFileDesc& aBroker)
 #if defined(MOZ_CONTENT_SANDBOX)
   bool sandboxEnabled = true;
 #if defined(XP_LINUX)
-  // Otherwise, sandboxing is best-effort.
+  // On Linux, we have to support systems that can't use any sandboxing.
   if (!SandboxInfo::Get().CanSandboxContent()) {
     sandboxEnabled = false;
+  } else {
+    // Pre-start audio before sandboxing; see bug 1443612.
+    if (!Preferences::GetBool("media.cubeb.sandbox")) {
+      Unused << CubebUtils::GetCubebContext();
+    }
   }
 
   if (sandboxEnabled) {
-    int brokerFd = -1;
-    if (aBroker.type() == MaybeFileDesc::TFileDescriptor) {
-      auto fd = aBroker.get_FileDescriptor().ClonePlatformHandle();
-      brokerFd = fd.release();
-      // brokerFd < 0 means to allow direct filesystem access, so
-      // make absolutely sure that doesn't happen if the parent
-      // didn't intend it.
-      MOZ_RELEASE_ASSERT(brokerFd >= 0);
-    }
-    // Allow user overrides of seccomp-bpf syscall filtering
-    std::vector<int> syscallWhitelist;
-    nsAutoCString extraSyscalls;
-    nsresult rv =
-      Preferences::GetCString("security.sandbox.content.syscall_whitelist",
-                              extraSyscalls);
-    if (NS_SUCCEEDED(rv)) {
-      for (const nsACString& callNrString : extraSyscalls.Split(',')) {
-        int callNr = PromiseFlatCString(callNrString).ToInteger(&rv);
-        if (NS_SUCCEEDED(rv)) {
-          syscallWhitelist.push_back(callNr);
-        }
-      }
-    }
-    ContentChild* cc = ContentChild::GetSingleton();
-    bool isFileProcess = cc->GetRemoteType().EqualsLiteral(FILE_REMOTE_TYPE);
-    sandboxEnabled = SetContentProcessSandbox(brokerFd, isFileProcess,
-                                              syscallWhitelist);
+    sandboxEnabled =
+      SetContentProcessSandbox(ContentProcessSandboxParams::ForThisProcess(aBroker));
   }
 #elif defined(XP_WIN)
   mozilla::SandboxTarget::Instance()->StartSandbox();

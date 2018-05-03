@@ -3,14 +3,12 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var {CrashStore, CrashManager} = ChromeUtils.import("resource://gre/modules/CrashManager.jsm", {});
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
 
-var {CrashStore, CrashManager} = Cu.import("resource://gre/modules/CrashManager.jsm", {});
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
-
-Cu.import("resource://testing-common/CrashManagerTest.jsm", this);
-Cu.import("resource://testing-common/TelemetryArchiveTesting.jsm", this);
+ChromeUtils.import("resource://testing-common/CrashManagerTest.jsm", this);
+ChromeUtils.import("resource://testing-common/TelemetryArchiveTesting.jsm", this);
 
 const DUMMY_DATE = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 DUMMY_DATE.setMilliseconds(0);
@@ -603,7 +601,7 @@ add_task(async function test_setCrashClassifications() {
                    "main-crash", DUMMY_DATE);
   await m.setCrashClassifications("main-crash", ["a"]);
   let classifications = (await m.getCrashes())[0].classifications;
-  Assert.ok(classifications.indexOf("a") != -1);
+  Assert.ok(classifications.includes("a"));
 });
 
 add_task(async function test_setRemoteCrashID() {

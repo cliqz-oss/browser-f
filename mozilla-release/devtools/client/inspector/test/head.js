@@ -3,14 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 /* import-globals-from ../../shared/test/test-actor-registry.js */
 /* import-globals-from ../../inspector/test/shared-head.js */
 "use strict";
 
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 // Services.prefs.setBoolPref("devtools.debugger.log", true);
@@ -533,13 +533,13 @@ const getHighlighterHelperFor = (type) => Task.async(
 // The expand all operation of the markup-view calls itself recursively and
 // there's not one event we can wait for to know when it's done so use this
 // helper function to wait until all recursive children updates are done.
-function* waitForMultipleChildrenUpdates(inspector) {
+async function waitForMultipleChildrenUpdates(inspector) {
   // As long as child updates are queued up while we wait for an update already
   // wait again
   if (inspector.markup._queuedChildUpdates &&
         inspector.markup._queuedChildUpdates.size) {
-    yield waitForChildrenUpdated(inspector);
-    return yield waitForMultipleChildrenUpdates(inspector);
+    await waitForChildrenUpdated(inspector);
+    return waitForMultipleChildrenUpdates(inspector);
   }
   return null;
 }
@@ -829,7 +829,7 @@ function* getDisplayedNodeTextContent(selector, inspector) {
 function* toggleShapesHighlighter(view, highlighters, selector, property, show) {
   info("Toggle shapes highlighter");
   let container = getRuleViewProperty(view, selector, property).valueSpan;
-  let shapesToggle = container.querySelector(".ruleview-shape");
+  let shapesToggle = container.querySelector(".ruleview-shapeswatch");
   if (show) {
     let onHighlighterShown = highlighters.once("shapes-highlighter-shown");
     shapesToggle.click();

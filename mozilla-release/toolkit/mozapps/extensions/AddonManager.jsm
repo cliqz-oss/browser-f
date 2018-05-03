@@ -4,11 +4,6 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
 // Cannot use Services.appinfo here, or else xpcshell-tests will blow up, as
 // most tests later register different nsIAppInfo implementations, which
 // wouldn't be reflected in Services.appinfo anymore, as the lazy getter
@@ -22,7 +17,7 @@ if ("@mozilla.org/xre/app-info;1" in Cc) {
   }
 }
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const MOZ_COMPATIBILITY_NIGHTLY = !["aurora", "beta", "release", "esr"].includes(AppConstants.MOZ_UPDATE_CHANNEL);
 
@@ -34,14 +29,8 @@ const PREF_EM_LAST_PLATFORM_VERSION   = "extensions.lastPlatformVersion";
 const PREF_EM_AUTOUPDATE_DEFAULT      = "extensions.update.autoUpdateDefault";
 const PREF_EM_STRICT_COMPATIBILITY    = "extensions.strictCompatibility";
 const PREF_EM_CHECK_UPDATE_SECURITY   = "extensions.checkUpdateSecurity";
-const PREF_EM_UPDATE_BACKGROUND_URL   = "extensions.update.background.url";
 const PREF_APP_UPDATE_ENABLED         = "app.update.enabled";
 const PREF_APP_UPDATE_AUTO            = "app.update.auto";
-const PREF_EM_HOTFIX_ID               = "extensions.hotfix.id";
-const PREF_EM_HOTFIX_LASTVERSION      = "extensions.hotfix.lastVersion";
-const PREF_EM_HOTFIX_URL              = "extensions.hotfix.url";
-const PREF_EM_CERT_CHECKATTRIBUTES    = "extensions.hotfix.cert.checkAttributes";
-const PREF_EM_HOTFIX_CERTS            = "extensions.hotfix.certs.";
 const UNKNOWN_XPCOM_ABI               = "unknownABI";
 
 const PREF_MIN_WEBEXT_PLATFORM_VERSION = "extensions.webExtensionsMinPlatformVersion";
@@ -74,9 +63,9 @@ const WEBAPI_TEST_INSTALL_HOSTS = [
 
 const URI_XPINSTALL_DIALOG = "chrome://mozapps/content/xpinstall/xpinstallConfirm.xul";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
@@ -87,7 +76,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 
 XPCOMUtils.defineLazyGetter(this, "CertUtils", function() {
   let certUtils = {};
-  Components.utils.import("resource://gre/modules/CertUtils.jsm", certUtils);
+  ChromeUtils.import("resource://gre/modules/CertUtils.jsm", certUtils);
   return certUtils;
 });
 
@@ -103,7 +92,7 @@ Services.ppmm.loadProcessScript(
 
 const INTEGER = /^[1-9]\d*$/;
 
-this.EXPORTED_SYMBOLS = [ "AddonManager", "AddonManagerPrivate" ];
+var EXPORTED_SYMBOLS = [ "AddonManager", "AddonManagerPrivate" ];
 
 const CATEGORY_PROVIDER_MODULE = "addon-provider-module";
 
@@ -113,7 +102,7 @@ const DEFAULT_PROVIDERS = [
   "resource://gre/modules/LightweightThemeManager.jsm"
 ];
 
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 // Configure a logger at the parent 'addons' level to format
 // messages for all the modules under addons.*
 const PARENT_LOGGER_ID = "addons";
@@ -612,7 +601,6 @@ var gCheckUpdateSecurityDefault = true;
 var gCheckUpdateSecurity = gCheckUpdateSecurityDefault;
 var gUpdateEnabled = true;
 var gAutoUpdateDefault = true;
-var gHotfixID = "";
 var gWebExtensionsMinPlatformVersion = "";
 var gShutdownBarrier = null;
 var gRepoShutdownState = "";
@@ -843,9 +831,6 @@ var AddonManagerInternal = {
                                                       gAutoUpdateDefault);
       Services.prefs.addObserver(PREF_EM_AUTOUPDATE_DEFAULT, this);
 
-      gHotfixID = Services.prefs.getCharPref(PREF_EM_HOTFIX_ID, gHotfixID);
-      Services.prefs.addObserver(PREF_EM_HOTFIX_ID, this);
-
       gWebExtensionsMinPlatformVersion =
         Services.prefs.getCharPref(PREF_MIN_WEBEXT_PLATFORM_VERSION,
                                    gWebExtensionsMinPlatformVersion);
@@ -859,7 +844,7 @@ var AddonManagerInternal = {
         for (let url of DEFAULT_PROVIDERS) {
           try {
             let scope = {};
-            Components.utils.import(url, scope);
+            ChromeUtils.import(url, scope);
             // Sanity check - make sure the provider exports a symbol that
             // has a 'startup' method
             let syms = Object.keys(scope);
@@ -885,7 +870,7 @@ var AddonManagerInternal = {
         let url = catman.getCategoryEntry(CATEGORY_PROVIDER_MODULE, entry);
 
         try {
-          Components.utils.import(url, {});
+          ChromeUtils.import(url, {});
           logger.debug(`Loaded provider scope for ${url}`);
         } catch (e) {
           AddonManagerPrivate.recordException("AMI", "provider " + url + " load failed", e);
@@ -915,7 +900,7 @@ var AddonManagerInternal = {
 
       // Support for remote about:plugins. Note that this module isn't loaded
       // at the top because Services.appinfo is defined late in tests.
-      let { RemotePages } = Cu.import("resource://gre/modules/RemotePageManager.jsm", {});
+      let { RemotePages } = ChromeUtils.import("resource://gre/modules/RemotePageManager.jsm", {});
 
       gPluginPageListener = new RemotePages("about:plugins");
       gPluginPageListener.addMessageListener("RequestPlugins", this.requestPlugins);
@@ -1119,7 +1104,6 @@ var AddonManagerInternal = {
     Services.prefs.removeObserver(PREF_EM_CHECK_UPDATE_SECURITY, this);
     Services.prefs.removeObserver(PREF_EM_UPDATE_ENABLED, this);
     Services.prefs.removeObserver(PREF_EM_AUTOUPDATE_DEFAULT, this);
-    Services.prefs.removeObserver(PREF_EM_HOTFIX_ID, this);
     gPluginPageListener.destroy();
     gPluginPageListener = null;
 
@@ -1233,10 +1217,6 @@ var AddonManagerInternal = {
         this.callManagerListeners("onUpdateModeChanged");
         break;
       }
-      case PREF_EM_HOTFIX_ID: {
-        gHotfixID = Services.prefs.getCharPref(PREF_EM_HOTFIX_ID, "");
-        break;
-      }
       case PREF_MIN_WEBEXT_PLATFORM_VERSION: {
         gWebExtensionsMinPlatformVersion = Services.prefs.getCharPref(PREF_MIN_WEBEXT_PLATFORM_VERSION);
         break;
@@ -1345,6 +1325,18 @@ var AddonManagerInternal = {
     });
   },
 
+  // Returns true if System Addons should be updated
+  systemUpdateEnabled() {
+    if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED) ||
+        !Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO)) {
+      return false;
+    }
+    if (Services.policies && !Services.policies.isAllowed("SysAddonUpdate")) {
+      return false;
+    }
+    return true;
+  },
+
   /**
    * Performs a background update check by starting an update for all add-ons
    * that can be updated.
@@ -1357,19 +1349,13 @@ var AddonManagerInternal = {
                                  Cr.NS_ERROR_NOT_INITIALIZED);
 
     let buPromise = (async () => {
-      let hotfixID = this.hotfixID;
-
-      let appUpdateEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED) &&
-                             Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO);
-      let checkHotfix = hotfixID && appUpdateEnabled;
-
       logger.debug("Background update check beginning");
 
       Services.obs.notifyObservers(null, "addons-background-update-start");
 
       if (this.updateEnabled) {
         let scope = {};
-        Components.utils.import("resource://gre/modules/LightweightThemeManager.jsm", scope);
+        ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm", scope);
         scope.LightweightThemeManager.updateCurrentTheme();
 
         let allAddons = await this.getAllAddons();
@@ -1382,10 +1368,6 @@ var AddonManagerInternal = {
         let updates = [];
 
         for (let addon of allAddons) {
-          if (addon.id == hotfixID) {
-            continue;
-          }
-
           // Check all add-ons for updates so that any compatibility updates will
           // be applied
           updates.push(new Promise((resolve, reject) => {
@@ -1413,98 +1395,7 @@ var AddonManagerInternal = {
         await Promise.all(updates);
       }
 
-      if (checkHotfix) {
-        var hotfixVersion = Services.prefs.getCharPref(PREF_EM_HOTFIX_LASTVERSION, "");
-
-        let url = null;
-        if (Services.prefs.getPrefType(PREF_EM_HOTFIX_URL) == Ci.nsIPrefBranch.PREF_STRING)
-          url = Services.prefs.getCharPref(PREF_EM_HOTFIX_URL);
-        else
-          url = Services.prefs.getCharPref(PREF_EM_UPDATE_BACKGROUND_URL);
-
-        // Build the URI from a fake add-on data.
-        url = AddonManager.escapeAddonURI({
-          id: hotfixID,
-          version: hotfixVersion,
-          userDisabled: false,
-          appDisabled: false
-        }, url);
-
-        Components.utils.import("resource://gre/modules/addons/AddonUpdateChecker.jsm");
-        let update = null;
-        try {
-          let foundUpdates = await new Promise((resolve, reject) => {
-            AddonUpdateChecker.checkForUpdates(hotfixID, null, url, {
-              onUpdateCheckComplete: resolve,
-              onUpdateCheckError: reject
-            });
-          });
-          update = AddonUpdateChecker.getNewestCompatibleUpdate(foundUpdates);
-        } catch (e) {
-          // AUC.checkForUpdates already logged the error
-        }
-
-        // Check that we have a hotfix update, and it's newer than the one we already
-        // have installed (if any)
-        if (update) {
-          if (Services.vc.compare(hotfixVersion, update.version) < 0) {
-            logger.debug("Downloading hotfix version " + update.version);
-            let aInstall = await AddonManagerInternal.getInstallForURL(
-                update.updateURL, "application/x-xpinstall", update.updateHash,
-                null, null, update.version);
-
-            aInstall.addListener({
-              onDownloadEnded(aInstall) {
-                if (aInstall.addon.id != hotfixID) {
-                  logger.warn("The downloaded hotfix add-on did not have the " +
-                              "expected ID and so will not be installed.");
-                  aInstall.cancel();
-                  return;
-                }
-
-                // If XPIProvider has reported the hotfix as properly signed then
-                // there is nothing more to do here
-                if (aInstall.addon.signedState == AddonManager.SIGNEDSTATE_SIGNED)
-                  return;
-
-                try {
-                  if (!Services.prefs.getBoolPref(PREF_EM_CERT_CHECKATTRIBUTES))
-                    return;
-                } catch (e) {
-                  // By default don't do certificate checks.
-                  return;
-                }
-
-                try {
-                  CertUtils.validateCert(aInstall.certificate,
-                                         CertUtils.readCertPrefs(PREF_EM_HOTFIX_CERTS));
-                } catch (e) {
-                  logger.warn("The hotfix add-on was not signed by the expected " +
-                       "certificate and so will not be installed.", e);
-                  aInstall.cancel();
-                }
-              },
-
-              onInstallEnded(aInstall) {
-                // Remember the last successfully installed version.
-                Services.prefs.setCharPref(PREF_EM_HOTFIX_LASTVERSION,
-                                           aInstall.version);
-              },
-
-              onInstallCancelled(aInstall) {
-                // Revert to the previous version if the installation was
-                // cancelled.
-                Services.prefs.setCharPref(PREF_EM_HOTFIX_LASTVERSION,
-                                           hotfixVersion);
-              }
-            });
-
-            aInstall.install();
-          }
-        }
-      }
-
-      if (appUpdateEnabled) {
+      if (AddonManagerInternal.systemUpdateEnabled()) {
         try {
           await AddonManagerInternal._getProviderByName("XPIProvider").updateSystemAddons();
         } catch (e) {
@@ -2049,8 +1940,8 @@ var AddonManagerInternal = {
         // If installing a theme that is disabled and can be enabled
         // then enable it
         if (install.addon.type == "theme" &&
-            install.addon.userDisabled == true &&
-            install.addon.appDisabled == false) {
+            !!install.addon.userDisabled &&
+            !install.addon.appDisabled) {
               install.addon.userDisabled = false;
         }
 
@@ -2780,10 +2671,6 @@ var AddonManagerInternal = {
     return aValue;
   },
 
-  get hotfixID() {
-    return gHotfixID;
-  },
-
   setupPromptHandler(browser, url, install, requireConfirm, source) {
     install.promptHandler = info => new Promise((resolve, _reject) => {
       let reject = () => {
@@ -3084,7 +2971,7 @@ var AddonManagerInternal = {
  * AddonManagerInternal for documentation however note that these methods are
  * subject to change at any time.
  */
-this.AddonManagerPrivate = {
+var AddonManagerPrivate = {
   startup() {
     AddonManagerInternal.startup();
   },
@@ -3103,6 +2990,17 @@ this.AddonManagerPrivate = {
   getNewSideloads() {
     return AddonManagerInternal._getProviderByName("XPIProvider")
                                .getNewSideloads();
+  },
+
+  /**
+   * Gets a set of (ids of) distribution addons which were installed into the
+   * current profile at browser startup, or null if none were installed.
+   *
+   * @return {Set<String> | null}
+   */
+  getNewDistroAddons() {
+    return AddonManagerInternal._getProviderByName("XPIProvider")
+                               .getNewDistroAddons();
   },
 
   get browserUpdated() {
@@ -3126,15 +3024,6 @@ this.AddonManagerPrivate = {
   },
 
   backgroundUpdateTimerHandler() {
-    // Don't call through to the real update check if no checks are enabled.
-    let checkHotfix = AddonManagerInternal.hotfixID &&
-                      Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED) &&
-                      Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO);
-
-    if (!AddonManagerInternal.updateEnabled && !checkHotfix) {
-      logger.info("Skipping background update check");
-      return;
-    }
     // Don't return the promise here, since the caller doesn't care.
     AddonManagerInternal.backgroundUpdateCheck();
   },
@@ -3290,7 +3179,7 @@ this.AddonManagerPrivate = {
  * just forward to AddonManagerInternal.
  * @class
  */
-this.AddonManager = {
+var AddonManager = {
   // Constants for the AddonInstall.state property
   // These will show up as AddonManager.STATE_* (eg, STATE_AVAILABLE)
   _states: new Map([
@@ -3778,10 +3667,6 @@ this.AddonManager = {
     AddonManagerInternal.autoUpdateDefault = aValue;
   },
 
-  get hotfixID() {
-    return AddonManagerInternal.hotfixID;
-  },
-
   escapeAddonURI(aAddon, aUri, aAppVersion) {
     return AddonManagerInternal.escapeAddonURI(aAddon, aUri, aAppVersion);
   },
@@ -3802,7 +3687,7 @@ this.AddonManager = {
 this.AddonManager.init();
 
 // load the timestamps module into AddonManagerInternal
-Cu.import("resource://gre/modules/TelemetryTimestamps.jsm", AddonManagerInternal);
+ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", AddonManagerInternal);
 Object.freeze(AddonManagerInternal);
 Object.freeze(AddonManagerPrivate);
 Object.freeze(AddonManager);

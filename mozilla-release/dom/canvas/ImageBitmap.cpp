@@ -7,6 +7,7 @@
 #include "mozilla/dom/ImageBitmap.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/HTMLMediaElementBinding.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/StructuredCloneTags.h"
@@ -22,11 +23,11 @@
 
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
+using mozilla::dom::HTMLMediaElementBinding::NETWORK_EMPTY;
+using mozilla::dom::HTMLMediaElementBinding::HAVE_METADATA;
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(ImageBitmap, mParent)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(ImageBitmap)
@@ -35,6 +36,119 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ImageBitmap)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
+
+/* This class observes shutdown notifications and sends that notification
+ * to the worker thread if the image bitmap is on a worker thread.
+ */
+class ImageBitmapShutdownObserver final : public nsIObserver
+{
+public:
+  explicit ImageBitmapShutdownObserver(ImageBitmap* aImageBitmap)
+  : mImageBitmap(nullptr)
+  {
+    if (NS_IsMainThread()) {
+      mImageBitmap = aImageBitmap;
+    } else {
+      WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+      MOZ_ASSERT(workerPrivate);
+      mMainThreadEventTarget = workerPrivate->MainThreadEventTarget();
+      mSendToWorkerTask = new SendShutdownToWorkerThread(aImageBitmap);
+    }
+  }
+
+  void RegisterObserver() {
+    if (NS_IsMainThread()) {
+      nsContentUtils::RegisterShutdownObserver(this);
+      return;
+    }
+
+    MOZ_ASSERT(mMainThreadEventTarget);
+    RefPtr<ImageBitmapShutdownObserver> self = this;
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "ImageBitmapShutdownObserver::RegisterObserver",
+      [self]() {
+        self->RegisterObserver();
+      });
+
+    mMainThreadEventTarget->Dispatch(r.forget());
+  }
+
+  void UnregisterObserver() {
+    if (NS_IsMainThread()) {
+      nsContentUtils::UnregisterShutdownObserver(this);
+      return;
+    }
+
+    MOZ_ASSERT(mMainThreadEventTarget);
+    RefPtr<ImageBitmapShutdownObserver> self = this;
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "ImageBitmapShutdownObserver::RegisterObserver",
+      [self]() {
+        self->UnregisterObserver();
+      });
+
+    mMainThreadEventTarget->Dispatch(r.forget());
+  }
+
+  void Clear() {
+    mImageBitmap = nullptr;
+    if (mSendToWorkerTask) {
+      mSendToWorkerTask->mImageBitmap = nullptr;
+    }
+  }
+
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+private:
+  ~ImageBitmapShutdownObserver() {}
+
+  class SendShutdownToWorkerThread : public MainThreadWorkerControlRunnable
+  {
+  public:
+    explicit SendShutdownToWorkerThread(ImageBitmap* aImageBitmap)
+    : MainThreadWorkerControlRunnable(GetCurrentThreadWorkerPrivate())
+    , mImageBitmap(aImageBitmap)
+    {}
+
+    bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
+    {
+      if (mImageBitmap) {
+        mImageBitmap->OnShutdown();
+        mImageBitmap = nullptr;
+      }
+      return true;
+    }
+
+    ImageBitmap* mImageBitmap;
+  };
+
+  ImageBitmap* mImageBitmap;
+  nsCOMPtr<nsIEventTarget> mMainThreadEventTarget;
+  RefPtr<SendShutdownToWorkerThread> mSendToWorkerTask;
+};
+
+NS_IMPL_ISUPPORTS(ImageBitmapShutdownObserver, nsIObserver)
+
+NS_IMETHODIMP
+ImageBitmapShutdownObserver::Observe(nsISupports* aSubject,
+                                     const char* aTopic,
+                                     const char16_t* aData)
+{
+  if (strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0) {
+    if (mSendToWorkerTask) {
+      mSendToWorkerTask->Dispatch();
+    } else {
+      if (mImageBitmap) {
+        mImageBitmap->OnShutdown();
+        mImageBitmap = nullptr;
+      }
+    }
+    nsContentUtils::UnregisterShutdownObserver(this);
+  }
+
+  return NS_OK;
+}
+
 
 /*
  * If either aRect.width or aRect.height are negative, then return a new IntRect
@@ -412,10 +526,18 @@ ImageBitmap::ImageBitmap(nsIGlobalObject* aGlobal, layers::Image* aData,
   , mAllocatedImageData(false)
 {
   MOZ_ASSERT(aData, "aData is null in ImageBitmap constructor.");
+
+  mShutdownObserver = new ImageBitmapShutdownObserver(this);
+  mShutdownObserver->RegisterObserver();
 }
 
 ImageBitmap::~ImageBitmap()
 {
+  if (mShutdownObserver) {
+    mShutdownObserver->Clear();
+    mShutdownObserver->UnregisterObserver();
+    mShutdownObserver = nullptr;
+  }
 }
 
 JSObject*
@@ -429,7 +551,16 @@ ImageBitmap::Close()
 {
   mData = nullptr;
   mSurface = nullptr;
+  mDataWrapper = nullptr;
   mPictureRect.SetEmpty();
+}
+
+void
+ImageBitmap::OnShutdown()
+{
+  mShutdownObserver = nullptr;
+
+  Close();
 }
 
 void
@@ -774,14 +905,14 @@ ImageBitmap::CreateInternal(nsIGlobalObject* aGlobal, HTMLVideoElement& aVideoEl
   aVideoEl.MarkAsContentSource(mozilla::dom::HTMLVideoElement::CallerAPI::CREATE_IMAGEBITMAP);
 
   // Check network state.
-  if (aVideoEl.NetworkState() == HTMLMediaElement::NETWORK_EMPTY) {
+  if (aVideoEl.NetworkState() == NETWORK_EMPTY) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
 
   // Check ready state.
   // Cannot be HTMLMediaElement::HAVE_NOTHING or HTMLMediaElement::HAVE_METADATA.
-  if (aVideoEl.ReadyState() <= HTMLMediaElement::HAVE_METADATA) {
+  if (aVideoEl.ReadyState() <= HAVE_METADATA) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
@@ -1226,7 +1357,7 @@ public:
     , mNotified(false)
   {}
 
-  bool Notify(Status aStatus) override
+  bool Notify(WorkerStatus aStatus) override
   {
     if (!mNotified) {
       mNotified = true;
@@ -1367,6 +1498,11 @@ ImageBitmap::ReadStructuredClone(JSContext* aCx,
   // while destructors are running.
   JS::Rooted<JS::Value> value(aCx);
   {
+#ifdef FUZZING
+    if (aIndex >= aClonedSurfaces.Length()) {
+      return nullptr;
+    }
+#endif
     RefPtr<layers::Image> img = CreateImageFromSurface(aClonedSurfaces[aIndex]);
     RefPtr<ImageBitmap> imageBitmap = new ImageBitmap(aParent, img, alphaType);
 
@@ -1445,7 +1581,10 @@ ImageBitmapFormat
 ImageBitmap::FindOptimalFormat(const Optional<Sequence<ImageBitmapFormat>>& aPossibleFormats,
                                ErrorResult& aRv)
 {
-  MOZ_ASSERT(mDataWrapper, "No ImageBitmapFormatUtils functionalities.");
+  if (!mDataWrapper) {
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return ImageBitmapFormat::EndGuard_;
+  }
 
   ImageBitmapFormat platformFormat = mDataWrapper->GetFormat();
 
@@ -1469,7 +1608,10 @@ ImageBitmap::FindOptimalFormat(const Optional<Sequence<ImageBitmapFormat>>& aPos
 int32_t
 ImageBitmap::MappedDataLength(ImageBitmapFormat aFormat, ErrorResult& aRv)
 {
-  MOZ_ASSERT(mDataWrapper, "No ImageBitmapFormatUtils functionalities.");
+  if (!mDataWrapper) {
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return 0;
+  }
 
   if (aFormat == mDataWrapper->GetFormat()) {
     return mDataWrapper->GetBufferLength();
@@ -1504,6 +1646,12 @@ protected:
   void DoMapDataIntoBufferSource()
   {
     ErrorResult error;
+
+    if (!mImageBitmap->mDataWrapper) {
+      error.ThrowWithCustomCleanup(NS_ERROR_NOT_AVAILABLE);
+      mPromise->MaybeReject(error);
+      return;
+    }
 
     // Prepare destination buffer.
     uint8_t* bufferData = nullptr;
@@ -1657,13 +1805,18 @@ ImageBitmap::MapDataInto(JSContext* aCx,
                          const ArrayBufferViewOrArrayBuffer& aBuffer,
                          int32_t aOffset, ErrorResult& aRv)
 {
-  MOZ_ASSERT(mDataWrapper, "No ImageBitmapFormatUtils functionalities.");
   MOZ_ASSERT(aCx, "No JSContext while calling ImageBitmap::MapDataInto().");
 
   RefPtr<Promise> promise = Promise::Create(mParent, aRv);
 
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
+  }
+
+  if (!mDataWrapper) {
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return promise.forget();
+
   }
 
   // Check for cases that should throws.

@@ -16,6 +16,7 @@
 #include "vtune/VTuneWrapper.h"
 
 #include "jit/MacroAssembler-inl.h"
+#include "jit/SharedICHelpers-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -187,7 +188,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
         masm.movq(numStackValuesAddr, numStackValues);
 
         // Push return address
-        masm.mov(returnLabel.patchAt(), scratch);
+        masm.mov(&returnLabel, scratch);
         masm.push(scratch);
 
         // Push previous frame pointer.
@@ -277,7 +278,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
         masm.mov(framePtr, rsp);
         masm.addPtr(Imm32(2 * sizeof(uintptr_t)), rsp);
         masm.moveValue(MagicValue(JS_ION_ERROR), JSReturnOperand);
-        masm.mov(oomReturnLabel.patchAt(), scratch);
+        masm.mov(&oomReturnLabel, scratch);
         masm.jump(scratch);
 
         masm.bind(&notOsr);
@@ -293,9 +294,9 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
 
     {
         // Interpreter -> Baseline OSR will return here.
-        masm.use(returnLabel.target());
+        masm.bind(&returnLabel);
         masm.addCodeLabel(returnLabel);
-        masm.use(oomReturnLabel.target());
+        masm.bind(&oomReturnLabel);
         masm.addCodeLabel(oomReturnLabel);
     }
 
@@ -675,7 +676,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
         break;
     }
 
-    if (!generateTLEnterVM(cx, masm, f))
+    if (!generateTLEnterVM(masm, f))
         return false;
 
     masm.setupUnalignedABICall(regs.getAny());
@@ -711,7 +712,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
 
     masm.callWithABI(f.wrapped, MoveOp::GENERAL, CheckUnsafeCallWithABI::DontCheckHasExitFrame);
 
-    if (!generateTLExitVM(cx, masm, f))
+    if (!generateTLExitVM(masm, f))
         return false;
 
     // Test for failure.
@@ -765,6 +766,12 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
         MOZ_ASSERT(f.outParam == Type_Void);
         break;
     }
+
+    // Until C++ code is instrumented against Spectre, prevent speculative
+    // execution from returning any private data.
+    if (f.returnsData() && JitOptions.spectreJitToCxxCalls)
+        masm.speculationBarrier();
+
     masm.leaveExitFrame();
     masm.retn(Imm32(sizeof(ExitFrameLayout) +
                     f.explicitStackSlots() * sizeof(void*) +
@@ -882,7 +889,7 @@ JitRuntime::generateDebugTrapHandler(JSContext* cx)
     masm.ret();
 
     Linker linker(masm);
-    JitCode* codeDbg = linker.newCode<NoGC>(cx, OTHER_CODE);
+    JitCode* codeDbg = linker.newCode(cx, CodeKind::Other);
 
 #ifdef JS_ION_PERF
     writePerfSpewerJitCodeProfile(codeDbg, "DebugTrapHandler");

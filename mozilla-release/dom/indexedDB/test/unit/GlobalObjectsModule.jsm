@@ -3,14 +3,14 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Components.utils.importGlobalProperties(["indexedDB"]);
+Cu.importGlobalProperties(["indexedDB"]);
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "GlobalObjectsModule"
 ];
 
-this.GlobalObjectsModule = function GlobalObjectsModule() {
-};
+function GlobalObjectsModule() {
+}
 
 GlobalObjectsModule.prototype = {
   runTest() {

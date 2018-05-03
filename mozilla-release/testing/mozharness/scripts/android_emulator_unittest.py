@@ -23,15 +23,13 @@ from mozprocess import ProcessHandler
 
 from mozharness.base.log import FATAL
 from mozharness.base.script import BaseScript, PreScriptAction, PostScriptAction
-from mozharness.mozilla.blob_upload import BlobUploadMixin, blobupload_config_options
 from mozharness.mozilla.buildbot import TBPL_RETRY, EXIT_STATUS_DICT
 from mozharness.mozilla.mozbase import MozbaseMixin
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.unittest import EmulatorMixin
 
 
-class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScript,
-                          MozbaseMixin):
+class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin):
     config_options = [[
         ["--test-suite"],
         {"action": "store",
@@ -52,8 +50,7 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
          "default": None,
          "help": "Number of this chunk",
          }
-    ]] + copy.deepcopy(testing_config_options) + \
-        copy.deepcopy(blobupload_config_options)
+    ]] + copy.deepcopy(testing_config_options)
 
     app_name = None
 
@@ -108,7 +105,7 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
         dirs = self.query_abs_dirs()
         try:
             test_dir = self.config["suite_definitions"][self.test_suite]["testsdir"]
-        except:
+        except Exception:
             test_dir = self.test_suite
         return os.path.join(dirs['abs_test_install_dir'], test_dir)
 
@@ -182,7 +179,7 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
             try:
                 os.remove(AUTH_FILE)
                 self.info("deleted %s" % AUTH_FILE)
-            except:
+            except Exception:
                 self.warning("failed to remove %s" % AUTH_FILE)
 
         avd_path = os.path.join(avd_home_dir, 'avd')
@@ -380,6 +377,11 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
 
     def _query_package_name(self):
         if self.app_name is None:
+            # For convenience, assume geckoview_example when install target
+            # looks like geckoview.
+            if 'geckoview' in self.installer_path:
+                self.app_name = 'org.mozilla.geckoview_example'
+        if self.app_name is None:
             # Find appname from package-name.txt - assumes download-and-extract
             # has completed successfully.
             # The app/package name will typically be org.mozilla.fennec,
@@ -435,7 +437,6 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
             'error_summary_file': error_summary_file,
             # marionette options
             'address': c.get('marionette_address'),
-            'gecko_log': os.path.join(dirs["abs_blob_upload_dir"], 'gecko.log'),
             'test_manifest': os.path.join(
                 dirs['abs_marionette_tests_dir'],
                 self.config.get('marionette_test_manifest', '')
@@ -774,7 +775,7 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
 
             try:
                 cwd = self._query_tests_dir()
-            except:
+            except Exception:
                 self.fatal("Don't know how to run --test-suite '%s'!" % self.test_suite)
             env = self.query_env()
             if minidump:
@@ -836,19 +837,6 @@ class AndroidEmulatorTest(BlobUploadMixin, TestingMixin, EmulatorMixin, BaseScri
         Make sure that the emulator has been stopped
         '''
         self._kill_processes(self.config["emulator_process_name"])
-
-    def upload_blobber_files(self):
-        '''
-        Override BlobUploadMixin.upload_blobber_files to ensure emulator is killed
-        first (if the emulator is still running, logcat may still be running, which
-        may lock the blob upload directory, causing a hang).
-        '''
-        if self.config.get('blob_upload_branch'):
-            # Except on interactive workers, we want the emulator to keep running
-            # after the script is finished. So only kill it if blobber would otherwise
-            # have run anyway (it doesn't get run on interactive workers).
-            self._kill_processes(self.config["emulator_process_name"])
-        super(AndroidEmulatorTest, self).upload_blobber_files()
 
 
 if __name__ == '__main__':

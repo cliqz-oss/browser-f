@@ -2,21 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 // Modules and services.
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
-XPCOMUtils.defineLazyGetter(this, "asyncHistory", function() {
+XPCOMUtils.defineLazyGetter(this, "history", function() {
   // Lazily add an history observer when it's actually needed.
   PlacesUtils.history.addObserver(PlacesUtils.livemarks, true);
-  return PlacesUtils.asyncHistory;
+  return PlacesUtils.history;
 });
 
 // Constants
@@ -601,9 +599,9 @@ Livemark.prototype = {
 
     // Update visited status for each entry.
     for (let child of this._children) {
-      asyncHistory.isURIVisited(child.uri, (aURI, aIsVisited) => {
-        this.updateURIVisitedStatus(aURI, aIsVisited);
-      });
+      history.hasVisits(child.uri).then(isVisited => {
+        this.updateURIVisitedStatus(child.uri, isVisited);
+      }).catch(Cu.reportError);
     }
 
     return this._children;
@@ -848,7 +846,7 @@ LivemarkLoadListener.prototype = {
       this._processor.parseAsync(null, channel.URI);
       this._processor.onStartRequest(aRequest, aContext);
     } catch (ex) {
-      Components.utils.reportError("Livemark Service: feed processor received an invalid channel for " + channel.URI.spec);
+      Cu.reportError("Livemark Service: feed processor received an invalid channel for " + channel.URI.spec);
       this.abort(ex);
     }
   },

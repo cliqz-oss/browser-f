@@ -41,7 +41,6 @@ nsSVGElement::StringInfo SVGAElement::sStringInfo[3] =
 NS_INTERFACE_MAP_BEGIN(SVGAElement)
   NS_INTERFACE_MAP_ENTRY(nsIDOMNode)
   NS_INTERFACE_MAP_ENTRY(nsIDOMElement)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMSVGElement)
   NS_INTERFACE_MAP_ENTRY(Link)
 NS_INTERFACE_MAP_END_INHERITING(SVGAElementBase)
 
@@ -207,13 +206,10 @@ SVGAElement::IsSVGFocusable(bool* aIsFocusable, int32_t* aTabIndex)
   // cannot focus links if there is no link handler
   nsIDocument* doc = GetComposedDoc();
   if (doc) {
-    nsIPresShell* presShell = doc->GetShell();
-    if (presShell) {
-      nsPresContext* presContext = presShell->GetPresContext();
-      if (presContext && !presContext->GetLinkHandler()) {
-        *aIsFocusable = false;
-        return false;
-      }
+    nsPresContext* presContext = doc->GetPresContext();
+    if (presContext && !presContext->GetLinkHandler()) {
+      *aIsFocusable = false;
+      return false;
     }
   }
 

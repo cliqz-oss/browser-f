@@ -133,7 +133,7 @@ static constexpr Register RegExpTesterRegExpReg = CallTempReg0;
 static constexpr Register RegExpTesterStringReg = CallTempReg1;
 static constexpr Register RegExpTesterLastIndexReg = CallTempReg2;
 
-static constexpr uint32_t CodeAlignment = 4;
+static constexpr uint32_t CodeAlignment = 8;
 
 // This boolean indicates whether we support SIMD instructions flavoured for
 // this architecture or not. Rather than a method in the LIRGenerator, it is
@@ -211,6 +211,7 @@ static const uint32_t RegMask = Registers::Total - 1;
 
 static const uint32_t BREAK_STACK_UNALIGNED = 1;
 static const uint32_t MAX_BREAK_CODE = 1024 - 1;
+static const uint32_t WASM_TRAP = 6; // BRK_OVERFLOW
 
 class Instruction;
 class InstReg;
@@ -290,6 +291,7 @@ enum Opcode {
     op_ll       = 48 << OpcodeShift,
     op_lwc1     = 49 << OpcodeShift,
     op_lwc2     = 50 << OpcodeShift,
+    op_lld      = 52 << OpcodeShift,
     op_ldc1     = 53 << OpcodeShift,
     op_ldc2     = 54 << OpcodeShift,
     op_ld       = 55 << OpcodeShift,
@@ -297,6 +299,7 @@ enum Opcode {
     op_sc       = 56 << OpcodeShift,
     op_swc1     = 57 << OpcodeShift,
     op_swc2     = 58 << OpcodeShift,
+    op_scd      = 60 << OpcodeShift,
     op_sdc1     = 61 << OpcodeShift,
     op_sdc2     = 62 << OpcodeShift,
     op_sd       = 63 << OpcodeShift,
@@ -394,6 +397,8 @@ enum FunctionField {
     ff_dsra32      = 63,
 
     // special2 encoding of function field.
+    ff_madd        = 0,
+    ff_maddu       = 1,
     ff_mul         = 2,
     ff_clz         = 32,
     ff_clo         = 33,
@@ -762,9 +767,6 @@ class MIPSBufferWithExecutableCopy : public MIPSBuffer
 
 class AssemblerMIPSShared : public AssemblerShared
 {
-#ifdef JS_JITSPEW
-   Sprinter* printer;
-#endif
   public:
 
     enum Condition {
@@ -828,6 +830,14 @@ class AssemblerMIPSShared : public AssemblerShared
         FCSR = 31
     };
 
+    enum FCSRBit {
+        CauseI = 12,
+        CauseU,
+        CauseO,
+        CauseZ,
+        CauseV
+    };
+
     enum FloatFormat {
         SingleFloat,
         DoubleFloat
@@ -881,6 +891,10 @@ class AssemblerMIPSShared : public AssemblerShared
     CompactBufferWriter dataRelocations_;
 
     MIPSBufferWithExecutableCopy m_buffer;
+
+#ifdef JS_JITSPEW
+   Sprinter* printer;
+#endif
 
   public:
     AssemblerMIPSShared()
@@ -1016,6 +1030,8 @@ class AssemblerMIPSShared : public AssemblerShared
     BufferOffset as_div(Register rs, Register rt);
     BufferOffset as_divu(Register rs, Register rt);
     BufferOffset as_mul(Register rd, Register rs, Register rt);
+    BufferOffset as_madd(Register rs, Register rt);
+    BufferOffset as_maddu(Register rs, Register rt);
     BufferOffset as_ddiv(Register rs, Register rt);
     BufferOffset as_ddivu(Register rs, Register rt);
 
@@ -1063,6 +1079,7 @@ class AssemblerMIPSShared : public AssemblerShared
     BufferOffset as_lwl(Register rd, Register rs, int16_t off);
     BufferOffset as_lwr(Register rd, Register rs, int16_t off);
     BufferOffset as_ll(Register rd, Register rs, int16_t off);
+    BufferOffset as_lld(Register rd, Register rs, int16_t off);
     BufferOffset as_ld(Register rd, Register rs, int16_t off);
     BufferOffset as_ldl(Register rd, Register rs, int16_t off);
     BufferOffset as_ldr(Register rd, Register rs, int16_t off);
@@ -1072,6 +1089,7 @@ class AssemblerMIPSShared : public AssemblerShared
     BufferOffset as_swl(Register rd, Register rs, int16_t off);
     BufferOffset as_swr(Register rd, Register rs, int16_t off);
     BufferOffset as_sc(Register rd, Register rs, int16_t off);
+    BufferOffset as_scd(Register rd, Register rs, int16_t off);
     BufferOffset as_sd(Register rd, Register rs, int16_t off);
     BufferOffset as_sdl(Register rd, Register rs, int16_t off);
     BufferOffset as_sdr(Register rd, Register rs, int16_t off);
@@ -1122,13 +1140,11 @@ class AssemblerMIPSShared : public AssemblerShared
 
     // FP instructions
 
-    // Use these two functions only when you are sure address is aligned.
-    // Otherwise, use ma_ld and ma_sd.
-    BufferOffset as_ld(FloatRegister fd, Register base, int32_t off);
-    BufferOffset as_sd(FloatRegister fd, Register base, int32_t off);
+    BufferOffset as_ldc1(FloatRegister ft, Register base, int32_t off);
+    BufferOffset as_sdc1(FloatRegister ft, Register base, int32_t off);
 
-    BufferOffset as_ls(FloatRegister fd, Register base, int32_t off);
-    BufferOffset as_ss(FloatRegister fd, Register base, int32_t off);
+    BufferOffset as_lwc1(FloatRegister ft, Register base, int32_t off);
+    BufferOffset as_swc1(FloatRegister ft, Register base, int32_t off);
 
     // Loongson-specific FP load and store instructions
     BufferOffset as_gsldl(FloatRegister fd, Register base, int32_t off);
@@ -1229,15 +1245,20 @@ class AssemblerMIPSShared : public AssemblerShared
     BufferOffset as_movz(FloatFormat fmt, FloatRegister fd, FloatRegister fs, Register rt);
     BufferOffset as_movn(FloatFormat fmt, FloatRegister fd, FloatRegister fs, Register rt);
 
+    // Conditional trap operations
+    BufferOffset as_tge(Register rs, Register rt, uint32_t code = 0);
+    BufferOffset as_tgeu(Register rs, Register rt, uint32_t code = 0);
+    BufferOffset as_tlt(Register rs, Register rt, uint32_t code = 0);
+    BufferOffset as_tltu(Register rs, Register rt, uint32_t code = 0);
+    BufferOffset as_teq(Register rs, Register rt, uint32_t code = 0);
+    BufferOffset as_tne(Register rs, Register rt, uint32_t code = 0);
+
     // label operations
     void bind(Label* label, BufferOffset boff = BufferOffset());
     void bindLater(Label* label, wasm::OldTrapDesc target);
     virtual void bind(InstImm* inst, uintptr_t branch, uintptr_t target) = 0;
-    void bind(CodeOffset* label) {
-        label->bind(currentOffset());
-    }
-    void use(CodeOffset* label) {
-        label->bind(currentOffset());
+    void bind(CodeLabel* label) {
+        label->target()->bind(currentOffset());
     }
     uint32_t currentOffset() {
         return nextOffset().getOffset();
@@ -1279,9 +1300,11 @@ class AssemblerMIPSShared : public AssemblerShared
     }
 
     void addLongJump(BufferOffset src, BufferOffset dst) {
-        CodeOffset patchAt(src.getOffset());
-        CodeOffset target(dst.getOffset());
-        addCodeLabel(CodeLabel(patchAt, target));
+        CodeLabel cl;
+        cl.patchAt()->bind(src.getOffset());
+        cl.target()->bind(dst.getOffset());
+        cl.setLinkMode(CodeLabel::JumpImmediate);
+        addCodeLabel(mozilla::Move(cl));
     }
 
   public:

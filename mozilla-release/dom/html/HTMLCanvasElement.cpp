@@ -720,6 +720,14 @@ public:
     mCaptureStream->StopCapture();
   }
 
+  void Disable() override
+  {
+  }
+
+  void Enable() override
+  {
+  }
+
 private:
   virtual ~CanvasCaptureTrackSource() {}
 
@@ -912,9 +920,13 @@ HTMLCanvasElement::TransferControlToOffscreen(ErrorResult& aRv)
     renderer->SetWidth(sz.width);
     renderer->SetHeight(sz.height);
 
-    nsCOMPtr<nsIGlobalObject> global =
-      do_QueryInterface(OwnerDoc()->GetInnerWindow());
-    mOffscreenCanvas = new OffscreenCanvas(global,
+    nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow();
+    if (!win) {
+      aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+      return nullptr;
+    }
+
+    mOffscreenCanvas = new OffscreenCanvas(win->AsGlobal(),
                                            sz.width,
                                            sz.height,
                                            GetCompositorBackendType(),
@@ -1121,11 +1133,10 @@ HTMLCanvasElement::InvalidateCanvasContent(const gfx::Rect* damageRect)
    * invalidating a canvas will feed into heuristics and cause JIT code to be
    * kept around longer, for smoother animations.
    */
-  nsCOMPtr<nsIGlobalObject> global =
-    do_QueryInterface(OwnerDoc()->GetInnerWindow());
+  nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow();
 
-  if (global) {
-    if (JSObject *obj = global->GetGlobalJSObject()) {
+  if (win) {
+    if (JSObject *obj = win->AsGlobal()->GetGlobalJSObject()) {
       js::NotifyAnimationActivity(obj);
     }
   }
@@ -1330,12 +1341,7 @@ HTMLCanvasElement::RegisterFrameCaptureListener(FrameCaptureListener* aListener,
       doc = doc->GetParentDocument();
     }
 
-    nsIPresShell* shell = doc->GetShell();
-    if (!shell) {
-      return NS_ERROR_FAILURE;
-    }
-
-    nsPresContext* context = shell->GetPresContext();
+    nsPresContext* context = doc->GetPresContext();
     if (!context) {
       return NS_ERROR_FAILURE;
     }

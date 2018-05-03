@@ -803,7 +803,7 @@
     "zh-TW": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "ddg", "wikipedia-zh-TW"
+          "google", "ddg", "readmoo", "wikipedia-zh-TW"
         ]
       }
     }

@@ -26,10 +26,7 @@ protected:
   virtual ~AboutRedirector() {}
 
 private:
-  static bool sActivityStreamEnabled;
-  static bool sActivityStreamAboutHomeEnabled;
-
-  static void LoadActivityStreamPrefs();
+  static bool sNewTabPageEnabled;
 };
 
 } // namespace browser

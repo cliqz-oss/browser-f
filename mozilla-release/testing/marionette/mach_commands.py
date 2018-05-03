@@ -51,13 +51,13 @@ def run_marionette(tests, binary=None, topsrcdir=None, **kwargs):
     args = argparse.Namespace(tests=tests)
 
     args.binary = binary
+    args.logger = kwargs.pop('log', None)
 
     for k, v in kwargs.iteritems():
         setattr(args, k, v)
 
     parser.verify_usage(args)
 
-    args.logger = kwargs.get('log')
     if not args.logger:
         args.logger = commandline.setup_logging("Marionette Unit Tests",
                                                 args,
@@ -70,20 +70,14 @@ def run_marionette(tests, binary=None, topsrcdir=None, **kwargs):
 
 
 @CommandProvider
-class MachCommands(MachCommandBase):
-
-    """Deprecated in favour of ./mach marionette <subcommand>."""
-
+class MarionetteTest(MachCommandBase):
     @Command("marionette-test",
              category="testing",
              description="Remote control protocol to Gecko, used for functional UI tests and browser automation.",
              conditions=[is_firefox_or_android],
              parser=create_parser_tests,
              )
-    def run_marionette_test(self, tests, **kwargs):
-        print("warning: ./mach marionette-test is deprecated; "
-              "please use ./mach marionette test", file=sys.stderr)
-
+    def marionette_test(self, tests, **kwargs):
         if "test_objects" in kwargs:
             tests = []
             for obj in kwargs["test_objects"]:
@@ -125,41 +119,3 @@ class Marionette(MachCommandBase):
         if not kwargs.get("binary") and conditions.is_firefox(self):
             kwargs["binary"] = self.get_binary_path("app")
         return run_marionette(tests, topsrcdir=self.topsrcdir, **kwargs)
-
-    @SubCommand("marionette", "doc",
-                description="Generate Marionette server API documentation in testing/marionette/doc.")
-    @CommandArgument("--http",
-                     help='HTTP service address (e.g. "127.0.0.1:6060" or just ":6060".'
-                     )
-    def marionette_doc(self, http, **kwargs):
-        import subprocess
-
-        def is_marionette_source_file(filename):
-            path = os.path.join(self.srcdir, filename)
-            return (os.path.isfile(path)
-                    and filename.endswith(".js")
-                    and not filename.startswith("test_"))
-
-        srcs = [f for f in os.listdir(
-            self.srcdir) if is_marionette_source_file(f)]
-
-        proc = subprocess.Popen(
-            ["jsdoc", "-c", ".jsdoc.js"] + srcs, cwd=self.srcdir)
-        proc.wait()
-
-        if http and proc.returncode == 0:
-            import SimpleHTTPServer
-            import SocketServer
-
-            host, port = http.split(":")
-            host = host or "127.0.0.1"
-            port = int(port)
-
-            handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-            httpd = SocketServer.TCPServer((host, int(port)), handler)
-
-            print("serving at %s:%s" % (host, port))
-            os.chdir(os.path.join(self.srcdir, "doc"))
-            httpd.serve_forever()
-
-        return proc.returncode

@@ -12,8 +12,7 @@
 #include <algorithm>
 #include <type_traits>
 
-#include "jscntxt.h"
-#include "jsprf.h"
+#include "vm/JSContext.h"
 
 using namespace js;
 

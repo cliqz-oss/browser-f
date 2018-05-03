@@ -1,15 +1,16 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/policies.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/policies.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function CatapultEngine() {
   SyncEngine.call(this, "Catapult", Service);
@@ -75,7 +76,7 @@ add_task(async function setup() {
   // that lets us add clients directly to the store, without losing them on
   // the next sync.
   clientsEngine._removeRemoteClient = async (id) => {};
-  Service.engineManager.clear();
+  await Service.engineManager.clear();
 
   validate_all_future_pings();
 
@@ -526,8 +527,15 @@ add_task(async function test_autoconnect_mp_locked() {
     _("Faking Master Password entry cancelation.");
     return false;
   };
-  let origCanFetchKeys = Service.identity._canFetchKeys;
-  Service.identity._canFetchKeys = () => false;
+  let origFxA = Service.identity._fxaService;
+  Service.identity._fxaService = new FxAccounts({
+    canGetKeys() {
+      return false;
+    },
+    getSignedInUser() {
+      return origFxA.getSignedInUser();
+    }
+  });
 
   // A locked master password will still trigger a sync, but then we'll hit
   // MASTER_PASSWORD_LOCKED and hence MASTER_PASSWORD_LOCKED_RETRY_INTERVAL.
@@ -542,7 +550,7 @@ add_task(async function test_autoconnect_mp_locked() {
 
   Utils.mpLocked = origLocked;
   Utils.ensureMPUnlocked = origEnsureMPUnlocked;
-  Service.identity._canFetchKeys = origCanFetchKeys;
+  Service.identity._fxaService = origFxA;
 
   await cleanUpAndGo(server);
 });
@@ -711,8 +719,8 @@ add_task(async function test_no_sync_node() {
   let server = sync_httpd_setup();
   await setUp(server);
 
-  let oldfc = Service._clusterManager._findCluster;
-  Service._clusterManager._findCluster = () => null;
+  let oldfc = Service.identity._findCluster;
+  Service.identity._findCluster = () => null;
   Service.clusterURL = "";
   try {
     await Service.sync();
@@ -721,7 +729,7 @@ add_task(async function test_no_sync_node() {
 
     await cleanUpAndGo(server);
   } finally {
-    Service._clusterManager._findCluster = oldfc;
+    Service.identity._findCluster = oldfc;
   }
 });
 
@@ -1034,4 +1042,26 @@ add_task(async function test_proper_interval_on_only_failing() {
   scheduler.adjustSyncInterval();
   Assert.ok(!scheduler.hasIncomingItems);
   Assert.equal(scheduler.syncInterval, scheduler.singleDeviceInterval);
+});
+
+add_task(async function test_link_status_change() {
+  _("Check that we only attempt to sync when link status is up");
+  try {
+    sinon.spy(scheduler, "scheduleNextSync");
+
+    Svc.Obs.notify("network:link-status-changed", null, "down");
+    equal(scheduler.scheduleNextSync.callCount, 0);
+
+    Svc.Obs.notify("network:link-status-changed", null, "change");
+    equal(scheduler.scheduleNextSync.callCount, 0);
+
+    Svc.Obs.notify("network:link-status-changed", null, "up");
+    equal(scheduler.scheduleNextSync.callCount, 1);
+
+    Svc.Obs.notify("network:link-status-changed", null, "change");
+    equal(scheduler.scheduleNextSync.callCount, 1);
+
+  } finally {
+    scheduler.scheduleNextSync.restore();
+  }
 });

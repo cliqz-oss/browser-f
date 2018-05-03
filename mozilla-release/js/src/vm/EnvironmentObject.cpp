@@ -6,38 +6,27 @@
 
 #include "vm/EnvironmentObject-inl.h"
 
-#include "mozilla/PodOperations.h"
-#include "mozilla/ScopeExit.h"
-
-#include "jscompartment.h"
-#include "jsiter.h"
-
 #include "builtin/ModuleObject.h"
 #include "gc/Policy.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/AsyncFunction.h"
 #include "vm/GlobalObject.h"
+#include "vm/Iteration.h"
+#include "vm/JSCompartment.h"
 #include "vm/ProxyObject.h"
 #include "vm/Shape.h"
 #include "vm/Xdr.h"
 #include "wasm/WasmInstance.h"
 
-#include "jsatominlines.h"
-#include "jsscriptinlines.h"
-
 #include "gc/Marking-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Stack-inl.h"
 #include "vm/TypeInference-inl.h"
 
 using namespace js;
 using namespace js::gc;
-
-using mozilla::PodZero;
-using mozilla::Maybe;
-using mozilla::Some;
-using mozilla::Nothing;
-using mozilla::MakeScopeExit;
 
 typedef Rooted<ArgumentsObject*> RootedArgumentsObject;
 typedef MutableHandle<ArgumentsObject*> MutableHandleArgumentsObject;
@@ -1038,7 +1027,7 @@ LexicalEnvironmentObject::clone(JSContext* cx, Handle<LexicalEnvironmentObject*>
         return nullptr;
 
     // We can't assert that the clone has the same shape, because it could
-    // have been reshaped by PurgeEnvironmentChain.
+    // have been reshaped by ReshapeForShadowedProp.
     MOZ_ASSERT(env->slotSpan() == copy->slotSpan());
     for (uint32_t i = JSSLOT_FREE(&class_); i < copy->slotSpan(); i++)
         copy->setSlot(i, env->getSlot(i));
@@ -1827,7 +1816,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler
      * In this case we don't know we need to recover a missing arguments
      * object until after we've performed the property get.
      */
-    static bool isMagicMissingArgumentsValue(JSContext* cx, EnvironmentObject& env, HandleValue v)
+    static bool isMagicMissingArgumentsValue(EnvironmentObject& env, HandleValue v)
     {
         bool isMagic = v.isMagic() && v.whyMagic() == JS_OPTIMIZED_ARGUMENTS;
 
@@ -2021,7 +2010,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
-            if (isMagicMissingArgumentsValue(cx, *env, v))
+            if (isMagicMissingArgumentsValue(*env, v))
                 return getMissingArgumentsPropertyDescriptor(cx, debugEnv, *env, desc);
             desc.object().set(debugEnv);
             desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
@@ -2090,7 +2079,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
-            if (isMagicMissingArgumentsValue(cx, *env, vp))
+            if (isMagicMissingArgumentsValue(*env, vp))
                 return getMissingArguments(cx, *env, vp);
             if (isMaybeUninitializedThisValue(cx, id, vp))
                 return getMissingThis(cx, *env, vp);
@@ -2150,7 +2139,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
-            if (isMagicMissingArgumentsValue(cx, *env, vp))
+            if (isMagicMissingArgumentsValue(*env, vp))
                 return getMissingArgumentsMaybeSentinelValue(cx, *env, vp);
             if (isMaybeUninitializedThisValue(cx, id, vp))
                 return getMissingThisMaybeSentinelValue(cx, *env, vp);
@@ -2492,7 +2481,7 @@ DebugEnvironments::finish()
 
 #ifdef JSGC_HASH_TABLE_CHECKS
 void
-DebugEnvironments::checkHashTablesAfterMovingGC(JSRuntime* runtime)
+DebugEnvironments::checkHashTablesAfterMovingGC()
 {
     /*
      * This is called at the end of StoreBuffer::mark() to check that our
@@ -2715,7 +2704,8 @@ DebugEnvironments::takeFrameSnapshot(JSContext* cx, Handle<DebugEnvironmentProxy
      */
     RootedArrayObject snapshot(cx, NewDenseCopiedArray(cx, vec.length(), vec.begin()));
     if (!snapshot) {
-        cx->recoverFromOutOfMemory();
+        MOZ_ASSERT(cx->isThrowingOutOfMemory() || cx->isThrowingOverRecursed());
+        cx->clearPendingException();
         return;
     }
 

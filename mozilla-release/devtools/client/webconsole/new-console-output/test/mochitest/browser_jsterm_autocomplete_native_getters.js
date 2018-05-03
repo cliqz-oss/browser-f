@@ -3,6 +3,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Tests that native getters (e.g. document.body) autocompletes in the web console.
 // See Bug 651501.
 
@@ -22,7 +24,7 @@ add_task(async function () {
   let onPopupOpen = popup.once("popup-opened");
 
   jsterm.setInputValue("document.body");
-  EventUtils.synthesizeKey(".", {});
+  EventUtils.sendString(".");
 
   await onPopupOpen;
 
@@ -36,7 +38,7 @@ add_task(async function () {
     "ATTRIBUTE_NODE is in the list of suggestions");
 
   let onPopupClose = popup.once("popup-closed");
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
 
   await onPopupClose;
 
@@ -44,7 +46,7 @@ add_task(async function () {
   let onAutoCompleteUpdated = jsterm.once("autocomplete-updated");
   let inputStr = "document.b";
   jsterm.setInputValue(inputStr);
-  EventUtils.synthesizeKey("o", {});
+  EventUtils.sendString("o");
 
   await onAutoCompleteUpdated;
 

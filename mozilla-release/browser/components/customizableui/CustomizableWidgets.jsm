@@ -3,23 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-this.EXPORTED_SYMBOLS = ["CustomizableWidgets"];
+var EXPORTED_SYMBOLS = ["CustomizableWidgets"];
 
-Cu.import("resource:///modules/CustomizableUI.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource:///modules/CustomizableUI.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
+  PanelView: "resource:///modules/PanelMultiView.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.jsm",
   RecentlyClosedTabsAndWindowsMenuUtils: "resource:///modules/sessionstore/RecentlyClosedTabsAndWindowsMenuUtils.jsm",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.jsm",
   CharsetMenu: "resource://gre/modules/CharsetMenu.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+  Sanitizer: "resource:///modules/Sanitizer.jsm",
   SyncedTabs: "resource://services-sync/SyncedTabs.jsm",
 });
 
@@ -37,7 +38,7 @@ const kPrefCustomizationDebug = "browser.uiCustomization.debug";
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let scope = {};
-  Cu.import("resource://gre/modules/Console.jsm", scope);
+  ChromeUtils.import("resource://gre/modules/Console.jsm", scope);
   let debug = Services.prefs.getBoolPref(kPrefCustomizationDebug, false);
   let consoleOptions = {
     maxLogLevel: debug ? "all" : "log",
@@ -72,77 +73,6 @@ function setAttributes(aNode, aAttrs) {
       aNode.setAttribute(name, value);
     }
   }
-}
-
-function fillSubviewFromMenuItems(aMenuItems, aSubview) {
-  let attrs = ["oncommand", "onclick", "label", "key", "disabled",
-               "command", "observes", "hidden", "class", "origin",
-               "image", "checked", "style"];
-
-  let doc = aSubview.ownerDocument;
-  let fragment = doc.createDocumentFragment();
-  for (let menuChild of aMenuItems) {
-    if (menuChild.hidden)
-      continue;
-
-    let subviewItem;
-    if (menuChild.localName == "menuseparator") {
-      // Don't insert duplicate or leading separators. This can happen if there are
-      // menus (which we don't copy) above the separator.
-      if (!fragment.lastChild || fragment.lastChild.localName == "menuseparator") {
-        continue;
-      }
-      subviewItem = doc.createElementNS(kNSXUL, "menuseparator");
-    } else if (menuChild.localName == "menuitem") {
-      subviewItem = doc.createElementNS(kNSXUL, "toolbarbutton");
-      CustomizableUI.addShortcut(menuChild, subviewItem);
-
-      let item = menuChild;
-      if (!item.hasAttribute("onclick")) {
-        subviewItem.addEventListener("click", event => {
-          let newEvent = new doc.defaultView.MouseEvent(event.type, event);
-          item.dispatchEvent(newEvent);
-        });
-      }
-
-      if (!item.hasAttribute("oncommand")) {
-        subviewItem.addEventListener("command", event => {
-          let newEvent = doc.createEvent("XULCommandEvent");
-          newEvent.initCommandEvent(
-            event.type, event.bubbles, event.cancelable, event.view,
-            event.detail, event.ctrlKey, event.altKey, event.shiftKey,
-            event.metaKey, event.sourceEvent, 0);
-          item.dispatchEvent(newEvent);
-        });
-      }
-    } else {
-      continue;
-    }
-    for (let attr of attrs) {
-      let attrVal = menuChild.getAttribute(attr);
-      if (attrVal)
-        subviewItem.setAttribute(attr, attrVal);
-    }
-    // We do this after so the .subviewbutton class doesn't get overriden.
-    if (menuChild.localName == "menuitem") {
-      subviewItem.classList.add("subviewbutton");
-    }
-    fragment.appendChild(subviewItem);
-  }
-  aSubview.appendChild(fragment);
-}
-
-function clearSubview(aSubview) {
-  let parent = aSubview.parentNode;
-  // We'll take the container out of the document before cleaning it out
-  // to avoid reflowing each time we remove something.
-  parent.removeChild(aSubview);
-
-  while (aSubview.firstChild) {
-    aSubview.firstChild.remove();
-  }
-
-  parent.appendChild(aSubview);
 }
 
 const CustomizableWidgets = [
@@ -237,9 +167,419 @@ const CustomizableWidgets = [
       panelview.appendChild(body);
       panelview.appendChild(footer);
     }
+<<<<<<< HEAD
   },
 #ifdef MOZ_SERVICES_SYNC
   {
+    id: "sync-button",
+    label: "remotetabs-panelmenu.label",
+    tooltiptext: "remotetabs-panelmenu.tooltiptext2",
+    type: "view",
+    viewId: "PanelUI-remotetabs",
+    deckIndices: {
+      DECKINDEX_TABS: 0,
+      DECKINDEX_TABSDISABLED: 1,
+      DECKINDEX_FETCHING: 2,
+      DECKINDEX_NOCLIENTS: 3,
+||||||| merged common ancestors
+  }, {
+    id: "sync-button",
+    label: "remotetabs-panelmenu.label",
+    tooltiptext: "remotetabs-panelmenu.tooltiptext2",
+    type: "view",
+    viewId: "PanelUI-remotetabs",
+    deckIndices: {
+      DECKINDEX_TABS: 0,
+      DECKINDEX_TABSDISABLED: 1,
+      DECKINDEX_FETCHING: 2,
+      DECKINDEX_NOCLIENTS: 3,
+=======
+  }, {
+    id: "save-page-button",
+    shortcutId: "key_savePage",
+    tooltiptext: "save-page-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.saveBrowser(win.gBrowser.selectedBrowser);
+    }
+  }, {
+    id: "find-button",
+    shortcutId: "key_find",
+    tooltiptext: "find-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      if (win.gFindBar) {
+        win.gFindBar.onFindCommand();
+      }
+    }
+  }, {
+    id: "open-file-button",
+    shortcutId: "openFileKb",
+    tooltiptext: "open-file-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.BrowserOpenFileWindow();
+    }
+  }, {
+    id: "sidebar-button",
+    tooltiptext: "sidebar-button.tooltiptext2",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.SidebarUI.toggle();
+>>>>>>> origin/upstream-releases
+    },
+    onCreated(aNode) {
+      // Add an observer so the button is checked while the sidebar is open
+      let doc = aNode.ownerDocument;
+      let obChecked = doc.createElementNS(kNSXUL, "observes");
+      obChecked.setAttribute("element", "sidebar-box");
+      obChecked.setAttribute("attribute", "checked");
+      let obPosition = doc.createElementNS(kNSXUL, "observes");
+      obPosition.setAttribute("element", "sidebar-box");
+      obPosition.setAttribute("attribute", "positionend");
+
+      aNode.appendChild(obChecked);
+      aNode.appendChild(obPosition);
+    }
+  }, {
+    id: "add-ons-button",
+    shortcutId: "key_openAddons",
+    tooltiptext: "add-ons-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.BrowserOpenAddonsMgr();
+    }
+  }, {
+    id: "zoom-controls",
+    type: "custom",
+    tooltiptext: "zoom-controls.tooltiptext2",
+    onBuild(aDocument) {
+      let buttons = [{
+        id: "zoom-out-button",
+        command: "cmd_fullZoomReduce",
+        label: true,
+        closemenu: "none",
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReduce",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "zoom-reset-button",
+        command: "cmd_fullZoomReset",
+        closemenu: "none",
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReset",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "zoom-in-button",
+        command: "cmd_fullZoomEnlarge",
+        closemenu: "none",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomEnlarge",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }];
+
+      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      node.setAttribute("id", "zoom-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
+      node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+      // Set this as an attribute in addition to the property to make sure we can style correctly.
+      node.setAttribute("removable", "true");
+      node.classList.add("chromeclass-toolbar-additional");
+      node.classList.add("toolbaritem-combined-buttons");
+
+      buttons.forEach(function(aButton, aIndex) {
+        if (aIndex != 0)
+          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
+        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        setAttributes(btnNode, aButton);
+        node.appendChild(btnNode);
+      });
+      return node;
+    }
+  }, {
+    id: "edit-controls",
+    type: "custom",
+    tooltiptext: "edit-controls.tooltiptext2",
+    onBuild(aDocument) {
+      let buttons = [{
+        id: "cut-button",
+        command: "cmd_cut",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_cut",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "copy-button",
+        command: "cmd_copy",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_copy",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "paste-button",
+        command: "cmd_paste",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_paste",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }];
+
+      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      node.setAttribute("id", "edit-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
+      node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+      // Set this as an attribute in addition to the property to make sure we can style correctly.
+      node.setAttribute("removable", "true");
+      node.classList.add("chromeclass-toolbar-additional");
+      node.classList.add("toolbaritem-combined-buttons");
+
+      buttons.forEach(function(aButton, aIndex) {
+        if (aIndex != 0)
+          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
+        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        setAttributes(btnNode, aButton);
+        node.appendChild(btnNode);
+      });
+
+      let listener = {
+        onWidgetInstanceRemoved: (aWidgetId, aDoc) => {
+          if (aWidgetId != this.id || aDoc != aDocument)
+            return;
+          CustomizableUI.removeListener(listener);
+        },
+        onWidgetOverflow(aWidgetNode) {
+          if (aWidgetNode == node) {
+            node.ownerGlobal.updateEditUIVisibility();
+          }
+        },
+        onWidgetUnderflow(aWidgetNode) {
+          if (aWidgetNode == node) {
+            node.ownerGlobal.updateEditUIVisibility();
+          }
+        },
+      };
+      CustomizableUI.addListener(listener);
+
+      return node;
+    }
+  },
+  {
+    id: "feed-button",
+    type: "view",
+    viewId: "PanelUI-feeds",
+    tooltiptext: "feed-button.tooltiptext2",
+    onClick(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      let feeds = win.gBrowser.selectedBrowser.feeds;
+
+      // Here, we only care about the case where we have exactly 1 feed and the
+      // user clicked...
+      let isClick = (aEvent.button == 0 || aEvent.button == 1);
+      if (feeds && feeds.length == 1 && isClick) {
+        aEvent.preventDefault();
+        aEvent.stopPropagation();
+        win.FeedHandler.subscribeToFeed(feeds[0].href, aEvent);
+        CustomizableUI.hidePanelForNode(aEvent.target);
+      }
+    },
+    onViewShowing(aEvent) {
+      let doc = aEvent.target.ownerDocument;
+      let container = doc.getElementById("PanelUI-feeds");
+      let gotView = doc.defaultView.FeedHandler.buildFeedList(container, true);
+
+      // For no feeds or only a single one, don't show the panel.
+      if (!gotView) {
+        aEvent.preventDefault();
+        aEvent.stopPropagation();
+      }
+    },
+    onCreated(node) {
+      let win = node.ownerGlobal;
+      let selectedBrowser = win.gBrowser.selectedBrowser;
+      let feeds = selectedBrowser && selectedBrowser.feeds;
+      if (!feeds || !feeds.length) {
+        node.setAttribute("disabled", "true");
+      }
+    }
+  }, {
+    id: "characterencoding-button",
+    label: "characterencoding-button2.label",
+    type: "view",
+    viewId: "PanelUI-characterEncodingView",
+    tooltiptext: "characterencoding-button2.tooltiptext",
+    maybeDisableMenu(aDocument) {
+      let window = aDocument.defaultView;
+      return !(window.gBrowser &&
+               window.gBrowser.selectedBrowser.mayEnableCharacterEncodingMenu);
+    },
+    populateList(aDocument, aContainerId, aSection) {
+      let containerElem = aDocument.getElementById(aContainerId);
+
+      containerElem.addEventListener("command", this.onCommand);
+
+      let list = this.charsetInfo[aSection];
+
+      for (let item of list) {
+        let elem = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        elem.setAttribute("label", item.label);
+        elem.setAttribute("type", "checkbox");
+        elem.section = aSection;
+        elem.value = item.value;
+        elem.setAttribute("class", "subviewbutton");
+        containerElem.appendChild(elem);
+      }
+    },
+    updateCurrentCharset(aDocument) {
+      let currentCharset = aDocument.defaultView.gBrowser.selectedBrowser.characterSet;
+      currentCharset = CharsetMenu.foldCharset(currentCharset);
+
+      let pinnedContainer = aDocument.getElementById("PanelUI-characterEncodingView-pinned");
+      let charsetContainer = aDocument.getElementById("PanelUI-characterEncodingView-charsets");
+      let elements = [...(pinnedContainer.childNodes), ...(charsetContainer.childNodes)];
+
+      this._updateElements(elements, currentCharset);
+    },
+    updateCurrentDetector(aDocument) {
+      let detectorContainer = aDocument.getElementById("PanelUI-characterEncodingView-autodetect");
+      let currentDetector;
+      try {
+        currentDetector = Services.prefs.getComplexValue(
+          "intl.charset.detector", Ci.nsIPrefLocalizedString).data;
+      } catch (e) {}
+
+      this._updateElements(detectorContainer.childNodes, currentDetector);
+    },
+    _updateElements(aElements, aCurrentItem) {
+      if (!aElements.length) {
+        return;
+      }
+      let disabled = this.maybeDisableMenu(aElements[0].ownerDocument);
+      for (let elem of aElements) {
+        if (disabled) {
+          elem.setAttribute("disabled", "true");
+        } else {
+          elem.removeAttribute("disabled");
+        }
+        if (elem.value.toLowerCase() == aCurrentItem.toLowerCase()) {
+          elem.setAttribute("checked", "true");
+        } else {
+          elem.removeAttribute("checked");
+        }
+      }
+    },
+    onViewShowing(aEvent) {
+      if (!this._inited) {
+        this.onInit();
+      }
+      let document = aEvent.target.ownerDocument;
+
+      let autoDetectLabelId = "PanelUI-characterEncodingView-autodetect-label";
+      let autoDetectLabel = document.getElementById(autoDetectLabelId);
+      if (!autoDetectLabel.hasAttribute("value")) {
+        let label = CharsetBundle.GetStringFromName("charsetMenuAutodet");
+        autoDetectLabel.setAttribute("value", label);
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-pinned",
+                          "pinnedCharsets");
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-charsets",
+                          "otherCharsets");
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-autodetect",
+                          "detectors");
+      }
+      this.updateCurrentDetector(document);
+      this.updateCurrentCharset(document);
+    },
+    onCommand(aEvent) {
+      let node = aEvent.target;
+      if (!node.hasAttribute || !node.section) {
+        return;
+      }
+
+      let window = node.ownerGlobal;
+      let section = node.section;
+      let value = node.value;
+
+      // The behavior as implemented here is directly based off of the
+      // `MultiplexHandler()` method in browser.js.
+      if (section != "detectors") {
+        window.BrowserSetForcedCharacterSet(value);
+      } else {
+        // Set the detector pref.
+        try {
+          Services.prefs.setStringPref("intl.charset.detector", value);
+        } catch (e) {
+          Cu.reportError("Failed to set the intl.charset.detector preference.");
+        }
+        // Prepare a browser page reload with a changed charset.
+        window.BrowserCharsetReload();
+      }
+    },
+    onCreated(aNode) {
+      let document = aNode.ownerDocument;
+
+      let updateButton = () => {
+        if (this.maybeDisableMenu(document))
+          aNode.setAttribute("disabled", "true");
+        else
+          aNode.removeAttribute("disabled");
+      };
+
+      let getPanel = () => {
+        let {PanelUI} = document.ownerGlobal;
+        return PanelUI.overflowPanel;
+      };
+
+      if (CustomizableUI.getAreaType(this.currentArea) == CustomizableUI.TYPE_MENU_PANEL) {
+        getPanel().addEventListener("popupshowing", updateButton);
+      }
+
+      let listener = {
+        onWidgetAdded: (aWidgetId, aArea) => {
+          if (aWidgetId != this.id)
+            return;
+          if (CustomizableUI.getAreaType(aArea) == CustomizableUI.TYPE_MENU_PANEL) {
+            getPanel().addEventListener("popupshowing", updateButton);
+          }
+        },
+        onWidgetRemoved: (aWidgetId, aPrevArea) => {
+          if (aWidgetId != this.id)
+            return;
+          aNode.removeAttribute("disabled");
+          if (CustomizableUI.getAreaType(aPrevArea) == CustomizableUI.TYPE_MENU_PANEL) {
+            getPanel().removeEventListener("popupshowing", updateButton);
+          }
+        },
+        onWidgetInstanceRemoved: (aWidgetId, aDoc) => {
+          if (aWidgetId != this.id || aDoc != document)
+            return;
+
+          CustomizableUI.removeListener(listener);
+          getPanel().removeEventListener("popupshowing", updateButton);
+        }
+      };
+      CustomizableUI.addListener(listener);
+      this.onInit();
+    },
+    onInit() {
+      this._inited = true;
+      if (!this.charsetInfo) {
+        this.charsetInfo = CharsetMenu.getData();
+      }
+    }
+  }, {
+    id: "email-link-button",
+    tooltiptext: "email-link-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.view;
+      win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser);
+    }
+  }];
+
+if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+  CustomizableWidgets.push({
     id: "sync-button",
     label: "remotetabs-panelmenu.label",
     tooltiptext: "remotetabs-panelmenu.tooltiptext2",
@@ -368,8 +708,8 @@ const CustomizableWidgets = [
           }
         }
         this._tabsList.appendChild(fragment);
-        let panelView = this._tabsList.closest("panelview");
-        panelView.panelMultiView.descriptionHeightWorkaround(panelView);
+        PanelView.forNode(this._tabsList.closest("panelview"))
+                 .descriptionHeightWorkaround();
       }).catch(err => {
         Cu.reportError(err);
       }).then(() => {
@@ -485,6 +825,7 @@ const CustomizableWidgets = [
       });
       return showAllItem;
     }
+<<<<<<< HEAD
   },
 #endif  // MOZ_SERVICES_SYNC
   {
@@ -876,6 +1217,400 @@ const CustomizableWidgets = [
       win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser);
     }
   }];
+||||||| merged common ancestors
+  }, {
+    id: "privatebrowsing-button",
+    shortcutId: "key_privatebrowsing",
+    onCommand(e) {
+      let win = e.target.ownerGlobal;
+      win.OpenBrowserWindow({private: true});
+    }
+  }, {
+    id: "save-page-button",
+    shortcutId: "key_savePage",
+    tooltiptext: "save-page-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.saveBrowser(win.gBrowser.selectedBrowser);
+    }
+  }, {
+    id: "find-button",
+    shortcutId: "key_find",
+    tooltiptext: "find-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      if (win.gFindBar) {
+        win.gFindBar.onFindCommand();
+      }
+    }
+  }, {
+    id: "open-file-button",
+    shortcutId: "openFileKb",
+    tooltiptext: "open-file-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.BrowserOpenFileWindow();
+    }
+  }, {
+    id: "sidebar-button",
+    tooltiptext: "sidebar-button.tooltiptext2",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.SidebarUI.toggle();
+    },
+    onCreated(aNode) {
+      // Add an observer so the button is checked while the sidebar is open
+      let doc = aNode.ownerDocument;
+      let obChecked = doc.createElementNS(kNSXUL, "observes");
+      obChecked.setAttribute("element", "sidebar-box");
+      obChecked.setAttribute("attribute", "checked");
+      let obPosition = doc.createElementNS(kNSXUL, "observes");
+      obPosition.setAttribute("element", "sidebar-box");
+      obPosition.setAttribute("attribute", "positionend");
+
+      aNode.appendChild(obChecked);
+      aNode.appendChild(obPosition);
+    }
+  }, {
+    id: "add-ons-button",
+    shortcutId: "key_openAddons",
+    tooltiptext: "add-ons-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      win.BrowserOpenAddonsMgr();
+    }
+  }, {
+    id: "zoom-controls",
+    type: "custom",
+    tooltiptext: "zoom-controls.tooltiptext2",
+    onBuild(aDocument) {
+      let buttons = [{
+        id: "zoom-out-button",
+        command: "cmd_fullZoomReduce",
+        label: true,
+        closemenu: "none",
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReduce",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "zoom-reset-button",
+        command: "cmd_fullZoomReset",
+        closemenu: "none",
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReset",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "zoom-in-button",
+        command: "cmd_fullZoomEnlarge",
+        closemenu: "none",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomEnlarge",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }];
+
+      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      node.setAttribute("id", "zoom-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
+      node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+      // Set this as an attribute in addition to the property to make sure we can style correctly.
+      node.setAttribute("removable", "true");
+      node.classList.add("chromeclass-toolbar-additional");
+      node.classList.add("toolbaritem-combined-buttons");
+
+      buttons.forEach(function(aButton, aIndex) {
+        if (aIndex != 0)
+          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
+        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        setAttributes(btnNode, aButton);
+        node.appendChild(btnNode);
+      });
+      return node;
+    }
+  }, {
+    id: "edit-controls",
+    type: "custom",
+    tooltiptext: "edit-controls.tooltiptext2",
+    onBuild(aDocument) {
+      let buttons = [{
+        id: "cut-button",
+        command: "cmd_cut",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_cut",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "copy-button",
+        command: "cmd_copy",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_copy",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }, {
+        id: "paste-button",
+        command: "cmd_paste",
+        label: true,
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_paste",
+        "class": "toolbarbutton-1 toolbarbutton-combined",
+      }];
+
+      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      node.setAttribute("id", "edit-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
+      node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+      // Set this as an attribute in addition to the property to make sure we can style correctly.
+      node.setAttribute("removable", "true");
+      node.classList.add("chromeclass-toolbar-additional");
+      node.classList.add("toolbaritem-combined-buttons");
+
+      buttons.forEach(function(aButton, aIndex) {
+        if (aIndex != 0)
+          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
+        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        setAttributes(btnNode, aButton);
+        node.appendChild(btnNode);
+      });
+
+      let listener = {
+        onWidgetInstanceRemoved: (aWidgetId, aDoc) => {
+          if (aWidgetId != this.id || aDoc != aDocument)
+            return;
+          CustomizableUI.removeListener(listener);
+        },
+        onWidgetOverflow(aWidgetNode) {
+          if (aWidgetNode == node) {
+            node.ownerGlobal.updateEditUIVisibility();
+          }
+        },
+        onWidgetUnderflow(aWidgetNode) {
+          if (aWidgetNode == node) {
+            node.ownerGlobal.updateEditUIVisibility();
+          }
+        },
+      };
+      CustomizableUI.addListener(listener);
+
+      return node;
+    }
+  },
+  {
+    id: "feed-button",
+    type: "view",
+    viewId: "PanelUI-feeds",
+    tooltiptext: "feed-button.tooltiptext2",
+    onClick(aEvent) {
+      let win = aEvent.target.ownerGlobal;
+      let feeds = win.gBrowser.selectedBrowser.feeds;
+
+      // Here, we only care about the case where we have exactly 1 feed and the
+      // user clicked...
+      let isClick = (aEvent.button == 0 || aEvent.button == 1);
+      if (feeds && feeds.length == 1 && isClick) {
+        aEvent.preventDefault();
+        aEvent.stopPropagation();
+        win.FeedHandler.subscribeToFeed(feeds[0].href, aEvent);
+        CustomizableUI.hidePanelForNode(aEvent.target);
+      }
+    },
+    onViewShowing(aEvent) {
+      let doc = aEvent.target.ownerDocument;
+      let container = doc.getElementById("PanelUI-feeds");
+      let gotView = doc.defaultView.FeedHandler.buildFeedList(container, true);
+
+      // For no feeds or only a single one, don't show the panel.
+      if (!gotView) {
+        aEvent.preventDefault();
+        aEvent.stopPropagation();
+      }
+    },
+    onCreated(node) {
+      let win = node.ownerGlobal;
+      let selectedBrowser = win.gBrowser.selectedBrowser;
+      let feeds = selectedBrowser && selectedBrowser.feeds;
+      if (!feeds || !feeds.length) {
+        node.setAttribute("disabled", "true");
+      }
+    }
+  }, {
+    id: "characterencoding-button",
+    label: "characterencoding-button2.label",
+    type: "view",
+    viewId: "PanelUI-characterEncodingView",
+    tooltiptext: "characterencoding-button2.tooltiptext",
+    maybeDisableMenu(aDocument) {
+      let window = aDocument.defaultView;
+      return !(window.gBrowser &&
+               window.gBrowser.selectedBrowser.mayEnableCharacterEncodingMenu);
+    },
+    populateList(aDocument, aContainerId, aSection) {
+      let containerElem = aDocument.getElementById(aContainerId);
+
+      containerElem.addEventListener("command", this.onCommand);
+
+      let list = this.charsetInfo[aSection];
+
+      for (let item of list) {
+        let elem = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        elem.setAttribute("label", item.label);
+        elem.setAttribute("type", "checkbox");
+        elem.section = aSection;
+        elem.value = item.value;
+        elem.setAttribute("class", "subviewbutton");
+        containerElem.appendChild(elem);
+      }
+    },
+    updateCurrentCharset(aDocument) {
+      let currentCharset = aDocument.defaultView.gBrowser.selectedBrowser.characterSet;
+      currentCharset = CharsetMenu.foldCharset(currentCharset);
+
+      let pinnedContainer = aDocument.getElementById("PanelUI-characterEncodingView-pinned");
+      let charsetContainer = aDocument.getElementById("PanelUI-characterEncodingView-charsets");
+      let elements = [...(pinnedContainer.childNodes), ...(charsetContainer.childNodes)];
+
+      this._updateElements(elements, currentCharset);
+    },
+    updateCurrentDetector(aDocument) {
+      let detectorContainer = aDocument.getElementById("PanelUI-characterEncodingView-autodetect");
+      let currentDetector;
+      try {
+        currentDetector = Services.prefs.getComplexValue(
+          "intl.charset.detector", Ci.nsIPrefLocalizedString).data;
+      } catch (e) {}
+
+      this._updateElements(detectorContainer.childNodes, currentDetector);
+    },
+    _updateElements(aElements, aCurrentItem) {
+      if (!aElements.length) {
+        return;
+      }
+      let disabled = this.maybeDisableMenu(aElements[0].ownerDocument);
+      for (let elem of aElements) {
+        if (disabled) {
+          elem.setAttribute("disabled", "true");
+        } else {
+          elem.removeAttribute("disabled");
+        }
+        if (elem.value.toLowerCase() == aCurrentItem.toLowerCase()) {
+          elem.setAttribute("checked", "true");
+        } else {
+          elem.removeAttribute("checked");
+        }
+      }
+    },
+    onViewShowing(aEvent) {
+      if (!this._inited) {
+        this.onInit();
+      }
+      let document = aEvent.target.ownerDocument;
+
+      let autoDetectLabelId = "PanelUI-characterEncodingView-autodetect-label";
+      let autoDetectLabel = document.getElementById(autoDetectLabelId);
+      if (!autoDetectLabel.hasAttribute("value")) {
+        let label = CharsetBundle.GetStringFromName("charsetMenuAutodet");
+        autoDetectLabel.setAttribute("value", label);
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-pinned",
+                          "pinnedCharsets");
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-charsets",
+                          "otherCharsets");
+        this.populateList(document,
+                          "PanelUI-characterEncodingView-autodetect",
+                          "detectors");
+      }
+      this.updateCurrentDetector(document);
+      this.updateCurrentCharset(document);
+    },
+    onCommand(aEvent) {
+      let node = aEvent.target;
+      if (!node.hasAttribute || !node.section) {
+        return;
+      }
+
+      let window = node.ownerGlobal;
+      let section = node.section;
+      let value = node.value;
+
+      // The behavior as implemented here is directly based off of the
+      // `MultiplexHandler()` method in browser.js.
+      if (section != "detectors") {
+        window.BrowserSetForcedCharacterSet(value);
+      } else {
+        // Set the detector pref.
+        try {
+          Services.prefs.setStringPref("intl.charset.detector", value);
+        } catch (e) {
+          Cu.reportError("Failed to set the intl.charset.detector preference.");
+        }
+        // Prepare a browser page reload with a changed charset.
+        window.BrowserCharsetReload();
+      }
+    },
+    onCreated(aNode) {
+      let document = aNode.ownerDocument;
+
+      let updateButton = () => {
+        if (this.maybeDisableMenu(document))
+          aNode.setAttribute("disabled", "true");
+        else
+          aNode.removeAttribute("disabled");
+      };
+
+      let getPanel = () => {
+        let {PanelUI} = document.ownerGlobal;
+        return PanelUI.overflowPanel;
+      };
+
+      if (CustomizableUI.getAreaType(this.currentArea) == CustomizableUI.TYPE_MENU_PANEL) {
+        getPanel().addEventListener("popupshowing", updateButton);
+      }
+
+      let listener = {
+        onWidgetAdded: (aWidgetId, aArea) => {
+          if (aWidgetId != this.id)
+            return;
+          if (CustomizableUI.getAreaType(aArea) == CustomizableUI.TYPE_MENU_PANEL) {
+            getPanel().addEventListener("popupshowing", updateButton);
+          }
+        },
+        onWidgetRemoved: (aWidgetId, aPrevArea) => {
+          if (aWidgetId != this.id)
+            return;
+          aNode.removeAttribute("disabled");
+          if (CustomizableUI.getAreaType(aPrevArea) == CustomizableUI.TYPE_MENU_PANEL) {
+            getPanel().removeEventListener("popupshowing", updateButton);
+          }
+        },
+        onWidgetInstanceRemoved: (aWidgetId, aDoc) => {
+          if (aWidgetId != this.id || aDoc != document)
+            return;
+
+          CustomizableUI.removeListener(listener);
+          getPanel().removeEventListener("popupshowing", updateButton);
+        }
+      };
+      CustomizableUI.addListener(listener);
+      this.onInit();
+    },
+    onInit() {
+      this._inited = true;
+      if (!this.charsetInfo) {
+        this.charsetInfo = CharsetMenu.getData();
+      }
+    }
+  }, {
+    id: "email-link-button",
+    tooltiptext: "email-link-button.tooltiptext3",
+    onCommand(aEvent) {
+      let win = aEvent.view;
+      win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser);
+    }
+  }];
+=======
+  });
+}
+>>>>>>> origin/upstream-releases
 
 let preferencesButton = {
   id: "preferences-button",
@@ -900,35 +1635,21 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
     id: "panic-button",
     type: "view",
     viewId: "PanelUI-panicView",
-    _sanitizer: null,
-    _ensureSanitizer() {
-      if (!this.sanitizer) {
-        let scope = {};
-        Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js",
-                                            scope);
-        this._Sanitizer = scope.Sanitizer;
-        this._sanitizer = new scope.Sanitizer();
-        this._sanitizer.ignoreTimespan = false;
-      }
-    },
-    _getSanitizeRange(aDocument) {
-      let group = aDocument.getElementById("PanelUI-panic-timeSpan");
-      return this._Sanitizer.getClearRange(+group.value);
-    },
+
     forgetButtonCalled(aEvent) {
       let doc = aEvent.target.ownerDocument;
-      this._ensureSanitizer();
-      this._sanitizer.range = this._getSanitizeRange(doc);
       let group = doc.getElementById("PanelUI-panic-timeSpan");
       BrowserUITelemetry.countPanicEvent(group.selectedItem.id);
-      group.selectedItem = doc.getElementById("PanelUI-panic-5min");
       let itemsToClear = [
         "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads"
       ];
       let newWindowPrivateState = PrivateBrowsingUtils.isWindowPrivate(doc.defaultView) ?
                                   "private" : "non-private";
-      this._sanitizer.items.openWindows.privateStateForNewWindow = newWindowPrivateState;
-      let promise = this._sanitizer.sanitize(itemsToClear);
+      let promise = Sanitizer.sanitize(itemsToClear, {
+        ignoreTimespan: false,
+        range: Sanitizer.getClearRange(+group.value),
+        privateStateForNewWindow: newWindowPrivateState,
+      });
       promise.then(function() {
         let otherWindow = Services.wm.getMostRecentWindow("navigator:browser");
         if (otherWindow.closed) {
@@ -950,11 +1671,25 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
     },
     onViewShowing(aEvent) {
       let forgetButton = aEvent.target.querySelector("#PanelUI-panic-view-button");
+      let doc = aEvent.target.ownerDocument;
+      let group = doc.getElementById("PanelUI-panic-timeSpan");
+      group.selectedItem = doc.getElementById("PanelUI-panic-5min");
       forgetButton.addEventListener("command", this);
     },
     onViewHiding(aEvent) {
       let forgetButton = aEvent.target.querySelector("#PanelUI-panic-view-button");
       forgetButton.removeEventListener("command", this);
     },
+  });
+}
+
+if (PrivateBrowsingUtils.enabled) {
+  CustomizableWidgets.push({
+    id: "privatebrowsing-button",
+    shortcutId: "key_privatebrowsing",
+    onCommand(e) {
+      let win = e.target.ownerGlobal;
+      win.OpenBrowserWindow({private: true});
+    }
   });
 }

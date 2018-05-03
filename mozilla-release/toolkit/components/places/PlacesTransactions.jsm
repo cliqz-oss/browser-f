@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PlacesTransactions"];
+var EXPORTED_SYMBOLS = ["PlacesTransactions"];
 
 /**
  * Overview
@@ -174,16 +174,12 @@ this.EXPORTED_SYMBOLS = ["PlacesTransactions"];
  * Note that when a new entry is created, all redo entries are removed.
  */
 
-const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
-
 const TRANSACTIONS_QUEUE_TIMEOUT_MS = 240000; // 4 Mins.
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-                                  "resource://gre/modules/Console.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -741,8 +737,11 @@ DefineTransaction.annotationObjectValidate = function(obj) {
       checkProperty(obj, "value", false, isPrimitive) ) {
     // Nothing else should be set
     let validKeys = ["name", "value", "flags", "expires"];
-    if (Object.keys(obj).every(k => validKeys.includes(k)))
-      return obj;
+    if (Object.keys(obj).every(k => validKeys.includes(k))) {
+      // Annotations objects are passed through to the backend, to avoid memory
+      // leaks, we must clone the object.
+      return {...obj};
+    }
   }
   throw new Error("Invalid annotation object");
 };
@@ -907,9 +906,9 @@ DefineTransaction.defineInputProps(["url", "feedUrl", "siteUrl"],
                                    DefineTransaction.urlValidate, null);
 DefineTransaction.defineInputProps(["guid", "parentGuid", "newParentGuid"],
                                    DefineTransaction.guidValidate);
-DefineTransaction.defineInputProps(["title"],
+DefineTransaction.defineInputProps(["title", "postData"],
                                    DefineTransaction.strOrNullValidate, null);
-DefineTransaction.defineInputProps(["keyword", "oldKeyword", "postData", "tag",
+DefineTransaction.defineInputProps(["keyword", "oldKeyword", "tag",
                                     "excludingAnnotation"],
                                    DefineTransaction.strValidate, "");
 DefineTransaction.defineInputProps(["index", "newIndex"],

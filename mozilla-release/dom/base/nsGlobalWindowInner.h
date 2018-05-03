@@ -9,7 +9,6 @@
 
 #include "nsPIDOMWindow.h"
 
-#include "nsTHashtable.h"
 #include "nsHashKeys.h"
 #include "nsRefPtrHashtable.h"
 #include "nsInterfaceHashtable.h"
@@ -31,7 +30,6 @@
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsITimer.h"
-#include "nsIDOMModalContentWindow.h"
 #include "mozilla/EventListenerManager.h"
 #include "nsIPrincipal.h"
 #include "nsSize.h"
@@ -59,6 +57,7 @@
 #include "nsCheapSets.h"
 #include "mozilla/dom/ImageBitmapSource.h"
 #include "mozilla/UniquePtr.h"
+#include "nsRefreshDriver.h"
 
 class nsIArray;
 class nsIBaseWindow;
@@ -91,9 +90,10 @@ class IdleRequestExecutor;
 
 class DialogValueHolder;
 
+class PromiseDocumentFlushedResolver;
+
 namespace mozilla {
 class AbstractThread;
-class DOMEventTargetHelper;
 class ThrottledEventQueue;
 namespace dom {
 class BarProp;
@@ -113,7 +113,6 @@ class IncrementalRunnable;
 class IntlUtils;
 class Location;
 class MediaQueryList;
-class Navigator;
 class OwningExternalOrWindowProxy;
 class Promise;
 class PostMessageEvent;
@@ -205,17 +204,19 @@ ImplCycleCollectionTraverse(nsCycleCollectionTraversalCallback& aCallback,
 // inner windows belonging to the same outer window, but that's an unimportant
 // side effect of inheriting PRCList).
 
-class nsGlobalWindowInner : public mozilla::dom::EventTarget,
-                            public nsPIDOMWindowInner,
-                            private nsIDOMWindow,
-                            // NOTE: This interface is private, as it's only
-                            // implemented on chrome windows.
-                            private nsIDOMChromeWindow,
-                            public nsIScriptGlobalObject,
-                            public nsIScriptObjectPrincipal,
-                            public nsSupportsWeakReference,
-                            public nsIInterfaceRequestor,
-                            public PRCListStr
+class nsGlobalWindowInner final
+  : public mozilla::dom::EventTarget
+  , public nsPIDOMWindowInner
+  , private nsIDOMWindow
+  // NOTE: This interface is private, as it's only
+  // implemented on chrome windows.
+  , private nsIDOMChromeWindow
+  , public nsIScriptGlobalObject
+  , public nsIScriptObjectPrincipal
+  , public nsSupportsWeakReference
+  , public nsIInterfaceRequestor
+  , public PRCListStr
+  , public nsAPostRefreshObserver
 {
 public:
   typedef mozilla::TimeStamp TimeStamp;
@@ -352,6 +353,12 @@ public:
   mozilla::Maybe<mozilla::dom::ClientState> GetClientState() const;
   mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor> GetController() const override;
 
+  virtual RefPtr<mozilla::dom::ServiceWorker>
+  GetOrCreateServiceWorker(const mozilla::dom::ServiceWorkerDescriptor& aDescriptor) override;
+
+  RefPtr<mozilla::dom::ServiceWorkerRegistration>
+  GetOrCreateServiceWorkerRegistration(const mozilla::dom::ServiceWorkerRegistrationDescriptor& aDescriptor) override;
+
   void NoteCalledRegisterForServiceWorkerScope(const nsACString& aScope);
 
   virtual nsresult FireDelayedDOMEvents() override;
@@ -391,9 +398,15 @@ public:
 
   static bool IsPrivilegedChromeWindow(JSContext* /* unused */, JSObject* aObj);
 
+  static bool OfflineCacheAllowedForContext(JSContext* /* unused */, JSObject* aObj);
+
   static bool IsRequestIdleCallbackEnabled(JSContext* aCx, JSObject* /* unused */);
 
   static bool IsWindowPrintEnabled(JSContext* /* unused */, JSObject* /* unused */);
+
+  static bool RegisterProtocolHandlerAllowedForContext(JSContext* /* unused */, JSObject* aObj);
+
+  static bool DeviceSensorsEnabled(JSContext* /* unused */, JSObject* aObj);
 
   bool DoResolve(JSContext* aCx, JS::Handle<JSObject*> aObj,
                  JS::Handle<jsid> aId,
@@ -490,9 +503,6 @@ public:
   virtual void DisableOrientationChangeListener() override;
 #endif
 
-  virtual void EnableTimeChangeNotifications() override;
-  virtual void DisableTimeChangeNotifications() override;
-
   bool IsClosedOrClosing() {
     return mCleanedUp;
   }
@@ -508,10 +518,6 @@ public:
   }
 
   void AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const;
-
-  // Inner windows only.
-  void AddEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
-  void RemoveEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
 
   void NotifyIdleObserver(IdleObserverHolder* aIdleObserverHolder,
                           bool aCallOnidle);
@@ -676,8 +682,6 @@ public:
        const nsAString& aName,
        const nsAString& aOptions,
        mozilla::ErrorResult& aError);
-  mozilla::dom::Navigator* Navigator();
-  nsIDOMNavigator* GetNavigator() override;
   nsIDOMOfflineResourceList* GetApplicationCache(mozilla::ErrorResult& aError);
   already_AddRefed<nsIDOMOfflineResourceList> GetApplicationCache() override;
 
@@ -685,7 +689,8 @@ public:
   int16_t Orientation(mozilla::dom::CallerType aCallerType) const;
 #endif
 
-  already_AddRefed<mozilla::dom::Console> GetConsole(mozilla::ErrorResult& aRv);
+  already_AddRefed<mozilla::dom::Console>
+  GetConsole(JSContext* aCx, mozilla::ErrorResult& aRv);
 
   // https://w3c.github.io/webappsec-secure-contexts/#dom-window-issecurecontext
   bool IsSecureContext() const;
@@ -899,7 +904,7 @@ public:
              const nsAString& aOptions,
              const mozilla::dom::Sequence<JS::Value>& aExtraArgument,
              mozilla::ErrorResult& aError);
-  nsresult UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason) override;
+  void UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason);
 
   void GetContent(JSContext* aCx,
                   JS::MutableHandle<JSObject*> aRetval,
@@ -948,6 +953,12 @@ public:
   void BeginWindowMove(mozilla::dom::Event& aMouseDownEvent,
                        mozilla::dom::Element* aPanel,
                        mozilla::ErrorResult& aError);
+
+  already_AddRefed<mozilla::dom::Promise>
+  PromiseDocumentFlushed(mozilla::dom::PromiseDocumentFlushedCallback& aCallback,
+                         mozilla::ErrorResult& aError);
+
+  void DidRefresh() override;
 
   void GetDialogArgumentsOuter(JSContext* aCx, JS::MutableHandle<JS::Value> aRetval,
                                nsIPrincipal& aSubjectPrincipal,
@@ -1253,8 +1264,6 @@ private:
   // Fire the JS engine's onNewGlobalObject hook.  Only used on inner windows.
   void FireOnNewGlobalObject();
 
-  void DisconnectEventTargetObjects();
-
   // nsPIDOMWindow{Inner,Outer} should be able to see these helper methods.
   friend class nsPIDOMWindowInner;
   friend class nsPIDOMWindowOuter;
@@ -1275,6 +1284,15 @@ private:
     }
     mChromeFields.mGroupMessageManagers.Clear();
   }
+
+  // Call or Cancel mDocumentFlushedResolvers items, and perform MicroTask
+  // checkpoint after that, and adds observer if new mDocumentFlushedResolvers
+  // items are added while Promise callbacks inside the checkpoint.
+  template<bool call>
+  void CallOrCancelDocumentFlushedResolvers();
+
+  void CallDocumentFlushedResolvers();
+  void CancelDocumentFlushedResolvers();
 
 public:
   // Dispatch a runnable related to the global.
@@ -1346,7 +1364,6 @@ protected:
   nsRefPtrHashtable<nsUint32HashKey, mozilla::dom::Gamepad> mGamepads;
   bool mHasSeenGamepadInput;
 
-  RefPtr<mozilla::dom::Navigator> mNavigator;
   RefPtr<nsScreen>            mScreen;
 
   RefPtr<mozilla::dom::BarProp> mMenubar;
@@ -1423,7 +1440,13 @@ protected:
   // currently enabled on this window.
   bool                          mAreDialogsEnabled;
 
-  nsTHashtable<nsPtrHashKey<mozilla::DOMEventTargetHelper> > mEventTargetObjects;
+  // This flag keeps track of whether this window is currently
+  // observing DidRefresh notifications from the refresh driver.
+  bool                          mObservingDidRefresh;
+  // This flag keeps track of whether or not we're going through
+  // promiseDocumentFlushed resolvers. When true, promiseDocumentFlushed
+  // cannot be called.
+  bool                          mIteratingDocumentFlushedResolvers;
 
   nsTArray<uint32_t> mEnabledSensors;
 
@@ -1450,6 +1473,8 @@ protected:
   mozilla::UniquePtr<mozilla::dom::ClientSource> mClientSource;
 
   nsTArray<RefPtr<mozilla::dom::Promise>> mPendingPromises;
+
+  nsTArray<mozilla::UniquePtr<PromiseDocumentFlushedResolver>> mDocumentFlushedResolvers;
 
   static InnerWindowByIdTable* sInnerWindowsById;
 

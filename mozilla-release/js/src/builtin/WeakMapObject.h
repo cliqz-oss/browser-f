@@ -7,8 +7,8 @@
 #ifndef builtin_WeakMapObject_h
 #define builtin_WeakMapObject_h
 
-#include "jsobj.h"
-#include "jsweakmap.h"
+#include "gc/WeakMap.h"
+#include "vm/JSObject.h"
 
 namespace js {
 

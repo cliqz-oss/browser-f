@@ -158,8 +158,7 @@ gfxSVGGlyphsDocument::SetupPresentation()
     rv = viewer->GetPresShell(getter_AddRefs(presShell));
     NS_ENSURE_SUCCESS(rv, rv);
     if (!presShell->DidInitialize()) {
-        nsRect rect = presShell->GetPresContext()->GetVisibleArea();
-        rv = presShell->Initialize(rect.Width(), rect.Height());
+        rv = presShell->Initialize();
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
@@ -354,14 +353,12 @@ gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer, uint32_t aBufLen)
     nsHostObjectProtocolHandler::GenerateURIString(NS_LITERAL_CSTRING(FONTTABLEURI_SCHEME),
                                                    nullptr,
                                                    mSVGGlyphsDocumentURI);
- 
+
     rv = NS_NewURI(getter_AddRefs(uri), mSVGGlyphsDocumentURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIPrincipal> principal = NullPrincipal::Create();
 
-    auto styleBackend = nsLayoutUtils::StyloEnabled() ? StyleBackendType::Servo
-                                                      : StyleBackendType::Gecko;
     nsCOMPtr<nsIDOMDocument> domDoc;
     rv = NS_NewDOMDocument(getter_AddRefs(domDoc),
                            EmptyString(),   // aNamespaceURI
@@ -370,8 +367,7 @@ gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer, uint32_t aBufLen)
                            uri, uri, principal,
                            false,           // aLoadedAsData
                            nullptr,          // aEventObject
-                           DocumentFlavorSVG,
-                           styleBackend);
+                           DocumentFlavorSVG);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIDocument> document(do_QueryInterface(domDoc));

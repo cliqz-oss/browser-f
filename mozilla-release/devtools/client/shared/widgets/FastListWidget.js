@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
 
 /**
@@ -32,7 +32,7 @@ const FastListWidget = module.exports = function FastListWidget(node) {
   this._list.setAttribute("flex", "1");
   this._list.setAttribute("orient", "vertical");
   this._list.setAttribute("tabindex", "0");
-  this._list.addEventListener("keypress", e => this.emit("keyPress", e));
+  this._list.addEventListener("keydown", e => this.emit("keyDown", e));
   this._list.addEventListener("mousedown", e => this.emit("mousePress", e));
   this._parent.appendChild(this._list);
 

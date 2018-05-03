@@ -26,10 +26,17 @@ use std::fmt::{self, Write};
 ///   serialised like unit variants and its fields are surrounded by parentheses;
 /// * if `#[css(iterable)]` is found on a function variant, that variant needs
 ///   to have a single member, and that member needs to be iterable. The
-///   iterable will be serialized as the arguments for the function.
+///   iterable will be serialized as the arguments for the function;
+/// * an iterable field can also be annotated with `#[css(if_empty = "foo")]`
+///   to print `"foo"` if the iterator is empty;
 /// * if `#[css(dimension)]` is found on a variant, that variant needs
 ///   to have a single member. The variant would be serialized as a CSS
-///   dimension token, like: <member><identifier>.
+///   dimension token, like: <member><identifier>;
+/// * if `#[css(skip)]` is found on a field, the `ToCss` call for that field
+///   is skipped;
+/// * if `#[css(skip_if = "function")]` is found on a field, the `ToCss` call
+///   for that field is skipped if `function` returns true. This function is
+///   provided the field as an argument;
 /// * finally, one can put `#[css(derive_debug)]` on the whole type, to
 ///   implement `Debug` by a single call to `ToCss::to_css`.
 pub trait ToCss {
@@ -205,6 +212,21 @@ where
             }
         }
         Ok(())
+    }
+}
+
+/// A wrapper type that implements `ToCss` by printing its inner field.
+pub struct Verbatim<'a, T>(pub &'a T)
+where
+    T: ?Sized + 'a;
+
+impl<'a, T> ToCss for Verbatim<'a, T>
+where
+    T: AsRef<str> + ?Sized + 'a,
+{
+    #[inline]
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: Write {
+        dest.write_str(self.0.as_ref())
     }
 }
 
@@ -384,69 +406,12 @@ impl_to_css_for_predefined_type!(::cssparser::UnicodeRange);
 
 #[macro_export]
 macro_rules! define_css_keyword_enum {
-    ($name: ident: values { $( $css: expr => $variant: ident),+, }
-                   aliases { $( $alias: expr => $alias_variant: ident ),+, }) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ]
-                                                              [ $( $alias => $alias_variant ),+ ]);
-    };
-    ($name: ident: values { $( $css: expr => $variant: ident),+, }
-                   aliases { $( $alias: expr => $alias_variant: ident ),* }) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ]
-                                                              [ $( $alias => $alias_variant ),* ]);
-    };
-    ($name: ident: values { $( $css: expr => $variant: ident),+ }
-                   aliases { $( $alias: expr => $alias_variant: ident ),+, }) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ]
-                                                              [ $( $alias => $alias_variant ),+ ]);
-    };
-    ($name: ident: values { $( $css: expr => $variant: ident),+ }
-                   aliases { $( $alias: expr => $alias_variant: ident ),* }) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ]
-                                                              [ $( $alias => $alias_variant ),* ]);
-    };
-    ($name: ident: $( $css: expr => $variant: ident ),+,) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ] []);
-    };
-    ($name: ident: $( $css: expr => $variant: ident ),+) => {
-        __define_css_keyword_enum__add_optional_traits!($name [ $( $css => $variant ),+ ] []);
-    };
-}
-
-#[cfg(feature = "servo")]
-#[macro_export]
-macro_rules! __define_css_keyword_enum__add_optional_traits {
-    ($name: ident [ $( $css: expr => $variant: ident ),+ ]
-                  [ $( $alias: expr => $alias_variant: ident),* ]) => {
-        __define_css_keyword_enum__actual! {
-            $name [ Deserialize, Serialize, MallocSizeOf ]
-                  [ $( $css => $variant ),+ ]
-                  [ $( $alias => $alias_variant ),* ]
-        }
-    };
-}
-
-#[cfg(not(feature = "servo"))]
-#[macro_export]
-macro_rules! __define_css_keyword_enum__add_optional_traits {
-    ($name: ident [ $( $css: expr => $variant: ident ),+ ]
-                  [ $( $alias: expr => $alias_variant: ident),* ]) => {
-        __define_css_keyword_enum__actual! {
-            $name [ MallocSizeOf ]
-                  [ $( $css => $variant ),+ ]
-                  [ $( $alias => $alias_variant ),* ]
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! __define_css_keyword_enum__actual {
-    ($name: ident [ $( $derived_trait: ident),* ]
-                  [ $( $css: expr => $variant: ident ),+ ]
-                  [ $( $alias: expr => $alias_variant: ident ),* ]) => {
-        #[allow(non_camel_case_types, missing_docs)]
-        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq$(, $derived_trait )* )]
+    (pub enum $name:ident { $($variant:ident = $css:expr,)+ }) => {
+        #[allow(missing_docs)]
+        #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+        #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
         pub enum $name {
-            $( $variant ),+
+            $($variant),+
         }
 
         impl $name {
@@ -458,33 +423,40 @@ macro_rules! __define_css_keyword_enum__actual {
                 match *input.next()? {
                     Token::Ident(ref ident) => {
                         Self::from_ident(ident).map_err(|()| {
-                            location.new_unexpected_token_error(Token::Ident(ident.clone()))
+                            location.new_unexpected_token_error(
+                                Token::Ident(ident.clone()),
+                            )
                         })
                     }
-                    ref token => Err(location.new_unexpected_token_error(token.clone()))
+                    ref token => {
+                        Err(location.new_unexpected_token_error(token.clone()))
+                    }
                 }
             }
 
             /// Parse this property from an already-tokenized identifier.
             pub fn from_ident(ident: &str) -> Result<$name, ()> {
                 match_ignore_ascii_case! { ident,
-                                           $( $css => Ok($name::$variant), )+
-                                           $( $alias => Ok($name::$alias_variant), )*
-                                           _ => Err(())
+                    $($css => Ok($name::$variant),)+
+                    _ => Err(())
                 }
             }
         }
 
         impl $crate::ToCss for $name {
-            fn to_css<W>(&self, dest: &mut $crate::CssWriter<W>) -> ::std::fmt::Result
-                where W: ::std::fmt::Write
+            fn to_css<W>(
+                &self,
+                dest: &mut $crate::CssWriter<W>,
+            ) -> ::std::fmt::Result
+            where
+                W: ::std::fmt::Write,
             {
                 match *self {
                     $( $name::$variant => ::std::fmt::Write::write_str(dest, $css) ),+
                 }
             }
         }
-    }
+    };
 }
 
 /// Helper types for the handling of specified values.

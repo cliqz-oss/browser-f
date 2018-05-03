@@ -9,6 +9,7 @@
 
 #include "mozilla/dom/InspectorUtilsBinding.h"
 #include "mozilla/dom/NonRefcountedDOMObject.h"
+#include "nsRange.h"
 
 class gfxFontEntry;
 class gfxFontGroup;
@@ -42,6 +43,11 @@ public:
   gfxFontEntry* GetFontEntry() const { return mFontEntry; }
   void AddMatchType(uint8_t aMatchType) { mMatchType |= aMatchType; }
 
+  void AddRange(nsRange* aRange);
+  size_t RangeCount() const {
+    return mRanges.Length();
+  }
+
   // Web IDL
   bool FromFontGroup();
   bool FromLanguagePrefs();
@@ -55,6 +61,15 @@ public:
   void GetFormat(nsAString& aFormat);
   void GetMetadata(nsAString& aMetadata);
 
+  void GetVariationAxes(nsTArray<InspectorVariationAxis>& aResult,
+                        ErrorResult& aRV);
+  void GetVariationInstances(nsTArray<InspectorVariationInstance>& aResult,
+                             ErrorResult& aRV);
+  void GetFeatures(nsTArray<InspectorFontFeature>& aResult,
+                   ErrorResult& aRV);
+
+  void GetRanges(nsTArray<RefPtr<nsRange>>& aResult);
+
   bool WrapObject(JSContext* aCx,
                   JS::Handle<JSObject*> aGivenProto,
                   JS::MutableHandle<JSObject*> aReflector)
@@ -66,6 +81,8 @@ protected:
   RefPtr<gfxFontEntry> mFontEntry;
   RefPtr<gfxFontGroup> mFontGroup;
   uint8_t mMatchType;
+
+  nsTArray<RefPtr<nsRange>> mRanges;
 };
 
 } // namespace dom

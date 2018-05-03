@@ -41,7 +41,7 @@ class FloatRegisters : public FloatRegistersMIPSShared
     static Encoding FromName(const char* name);
 
     static const uint32_t Total = 32 * NumTypes;
-    static const uint32_t Allocatable = 60;
+    static const uint32_t Allocatable = 62;
     // When saving all registers we only need to do is save double registers.
     static const uint32_t TotalPhys = 32;
 
@@ -79,13 +79,7 @@ class FloatRegisters : public FloatRegistersMIPSShared
     static const SetType WrapperMask = VolatileMask;
 
     static const SetType NonAllocatableMask =
-        ( // f21 and f23 are MIPS scratch float registers.
-          (1U << FloatRegisters::f21) |
-          (1U << FloatRegisters::f23)
-        ) * Spread;
-
-    // Registers that can be allocated without being saved, generally.
-    static const SetType TempMask = VolatileMask & ~NonAllocatableMask;
+        (1U << FloatRegisters::f23) * Spread;
 
     static const SetType AllocatableMask = AllMask & ~NonAllocatableMask;
 };
@@ -128,6 +122,8 @@ class FloatRegister : public FloatRegisterMIPSShared
     }
     bool equiv(const FloatRegister& other) const { return other.kind_ == kind_; }
     size_t size() const { return (kind_ == Codes::Double) ? sizeof(double) : sizeof (float); }
+    // Always push doubles to maintain 8-byte stack alignment.
+    size_t pushSize() const { return sizeof(double); }
     bool isInvalid() const {
         return reg_ == FloatRegisters::invalid_freg;
     }

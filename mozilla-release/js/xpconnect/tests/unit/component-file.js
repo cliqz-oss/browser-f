@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.importGlobalProperties(['File']);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(['File']);
 
-
-const Ci = Components.interfaces;
 
 const Assert = {
   ok(cond, text) {
@@ -27,7 +25,7 @@ FileComponent.prototype =
     // throw if anything goes wrong
 
     // find the current directory path
-    var file = Components.classes["@mozilla.org/file/directory_service;1"]
+    var file = Cc["@mozilla.org/file/directory_service;1"]
                .getService(Ci.nsIProperties)
                .get("CurWorkD", Ci.nsIFile);
     file.append("xpcshell.ini");
@@ -69,9 +67,9 @@ FileComponent.prototype =
       Assert.ok(threw, "Passing a random object should fail");
 
       // Directories fail
-      var dir = Components.classes["@mozilla.org/file/directory_service;1"]
-                          .getService(Ci.nsIProperties)
-                          .get("CurWorkD", Ci.nsIFile);
+      var dir = Cc["@mozilla.org/file/directory_service;1"]
+                  .getService(Ci.nsIProperties)
+                  .get("CurWorkD", Ci.nsIFile);
       return File.createFromNsIFile(dir)
     })
     .then(() => {
@@ -93,7 +91,7 @@ FileComponent.prototype =
   flags: 0,
 
   getInterfaces: function getInterfaces(aCount) {
-    var interfaces = [Components.interfaces.nsIClassInfo];
+    var interfaces = [Ci.nsIClassInfo];
     aCount.value = interfaces.length;
     return interfaces;
   },
@@ -103,7 +101,7 @@ FileComponent.prototype =
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIClassInfo])
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIClassInfo])
 };
 
 var gComponentsArray = [FileComponent];

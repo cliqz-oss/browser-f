@@ -24,6 +24,7 @@ class nsPIDOMWindowOuter;
 namespace mozilla {
 
 namespace dom {
+class PerformanceStorage;
 class XMLHttpRequestMainThread;
 }
 
@@ -56,7 +57,11 @@ public:
            nsIPrincipal* aTriggeringPrincipal,
            nsINode* aLoadingContext,
            nsSecurityFlags aSecurityFlags,
-           nsContentPolicyType aContentPolicyType);
+           nsContentPolicyType aContentPolicyType,
+           const Maybe<mozilla::dom::ClientInfo>& aLoadingClientInfo
+              = Maybe<mozilla::dom::ClientInfo>(),
+           const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController
+              = Maybe<mozilla::dom::ServiceWorkerDescriptor>());
 
   // Constructor used for TYPE_DOCUMENT loads which have a different
   // loadingContext than other loads. This ContextForTopLevelLoad is
@@ -88,6 +93,7 @@ public:
 
   void SetIsPreflight();
   void SetUpgradeInsecureRequests();
+  void SetBrowserUpgradeInsecureRequests();
 
 private:
   // private constructor that is only allowed to be called from within
@@ -99,13 +105,20 @@ private:
            nsIPrincipal* aPrincipalToInherit,
            nsIPrincipal* aSandboxedLoadingPrincipal,
            nsIURI* aResultPrincipalURI,
+           const Maybe<mozilla::dom::ClientInfo>& aClientInfo,
+           const Maybe<mozilla::dom::ClientInfo>& aReservedClientInfo,
+           const Maybe<mozilla::dom::ClientInfo>& aInitialClientInfo,
+           const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController,
            nsSecurityFlags aSecurityFlags,
            nsContentPolicyType aContentPolicyType,
            LoadTainting aTainting,
            bool aUpgradeInsecureRequests,
+           bool aBrowserUpgradeInsecureRequests,
            bool aVerifySignedContent,
            bool aEnforceSRI,
+           bool aAllowDocumentToBeAgnosticToCSP,
            bool aForceAllowDataURI,
+           bool aAllowInsecureRedirectToDataURI,
            bool aForceInheritPrincipalDropped,
            uint64_t aInnerWindowID,
            uint64_t aOuterWindowID,
@@ -115,6 +128,7 @@ private:
            bool aEnforceSecurity,
            bool aInitialSecurityCheckDone,
            bool aIsThirdPartyRequest,
+           bool aIsDocshellReload,
            const OriginAttributes& aOriginAttributes,
            RedirectHistoryArray& aRedirectChainIncludingInternalRedirects,
            RedirectHistoryArray& aRedirectChain,
@@ -145,7 +159,8 @@ private:
   void SetIncludeCookiesSecFlag();
   friend class mozilla::dom::XMLHttpRequestMainThread;
 
-  // if you add a member, please also update the copy constructor
+  // if you add a member, please also update the copy constructor and consider if
+  // it should be merged from parent channel through ParentLoadInfoForwarderArgs.
   nsCOMPtr<nsIPrincipal>           mLoadingPrincipal;
   nsCOMPtr<nsIPrincipal>           mTriggeringPrincipal;
   nsCOMPtr<nsIPrincipal>           mPrincipalToInherit;
@@ -157,6 +172,7 @@ private:
   Maybe<mozilla::dom::ClientInfo>               mReservedClientInfo;
   Maybe<mozilla::dom::ClientInfo>               mInitialClientInfo;
   Maybe<mozilla::dom::ServiceWorkerDescriptor>  mController;
+  RefPtr<mozilla::dom::PerformanceStorage>      mPerformanceStorage;
 
   nsWeakPtr                        mLoadingContext;
   nsWeakPtr                        mContextForTopLevelLoad;
@@ -164,9 +180,12 @@ private:
   nsContentPolicyType              mInternalContentPolicyType;
   LoadTainting                     mTainting;
   bool                             mUpgradeInsecureRequests;
+  bool                             mBrowserUpgradeInsecureRequests;
   bool                             mVerifySignedContent;
   bool                             mEnforceSRI;
+  bool                             mAllowDocumentToBeAgnosticToCSP;
   bool                             mForceAllowDataURI;
+  bool                             mAllowInsecureRedirectToDataURI;
   bool                             mOriginalFrameSrcLoad;
   bool                             mForceInheritPrincipalDropped;
   uint64_t                         mInnerWindowID;
@@ -177,6 +196,7 @@ private:
   bool                             mEnforceSecurity;
   bool                             mInitialSecurityCheckDone;
   bool                             mIsThirdPartyContext;
+  bool                             mIsDocshellReload;
   OriginAttributes                 mOriginAttributes;
   RedirectHistoryArray             mRedirectChainIncludingInternalRedirects;
   RedirectHistoryArray             mRedirectChain;

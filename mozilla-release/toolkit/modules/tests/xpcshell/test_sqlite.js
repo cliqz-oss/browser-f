@@ -1,19 +1,15 @@
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 do_get_profile();
 
-Cu.import("resource://gre/modules/Promise.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Sqlite.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-// To spin the event loop in test.
-Cu.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/Promise.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 function sleep(ms) {
   return new Promise(resolve => {
@@ -82,13 +78,31 @@ async function getDummyTempDatabase(name, extraOptions = {}) {
 }
 
 add_task(async function test_setup() {
-  Cu.import("resource://testing-common/services/common/logging.js");
+  ChromeUtils.import("resource://testing-common/services/common/logging.js");
   initTestLogging("Trace");
 });
 
 add_task(async function test_open_normal() {
   let c = await Sqlite.openConnection({path: "test_open_normal.sqlite"});
   await c.close();
+});
+
+add_task(async function test_open_normal_error() {
+  let currentDir = await OS.File.getCurrentDirectory();
+
+  let src = OS.Path.join(currentDir, "corrupt.sqlite");
+  Assert.ok((await OS.File.exists(src)), "Database file found");
+
+  // Ensure that our database doesn't already exist.
+  let path = OS.Path.join(OS.Constants.Path.profileDir, "corrupt.sqlite");
+  Assert.ok(!(await OS.File.exists(path)), "Database file should not exist yet");
+
+  await OS.File.copy(src, path);
+
+  let openPromise = Sqlite.openConnection({path});
+  await Assert.rejects(openPromise, reason => {
+    return reason.status == Cr.NS_ERROR_FILE_CORRUPTED;
+  }, "Check error status");
 });
 
 add_task(async function test_open_unshared() {
@@ -109,11 +123,11 @@ add_task(async function test_schema_version() {
   let db = await getDummyDatabase("schema_version");
 
   let version = await db.getSchemaVersion();
-  Assert.equal(version, 0);
+  Assert.strictEqual(version, 0);
 
   db.setSchemaVersion(14);
   version = await db.getSchemaVersion();
-  Assert.equal(version, 14);
+  Assert.strictEqual(version, 14);
 
   for (let v of [0.5, "foobar", NaN]) {
     let success;
@@ -129,7 +143,7 @@ add_task(async function test_schema_version() {
     Assert.ok(success);
 
     version = await db.getSchemaVersion();
-    Assert.equal(version, 14);
+    Assert.strictEqual(version, 14);
   }
 
   await db.execute("ATTACH :memory AS attached");
@@ -627,9 +641,6 @@ add_task(async function test_in_progress_counts() {
   let expectOne;
   let expectTwo;
 
-  // Please forgive me.
-  let inner = Async.makeSpinningCallback();
-  let outer = Async.makeSpinningCallback();
 
   // We want to make sure that two queries executing simultaneously
   // result in `_pendingStatements.size` reaching 2, then dropping back to 0.
@@ -637,6 +648,7 @@ add_task(async function test_in_progress_counts() {
   // To do so, we kick off a second statement within the row handler
   // of the first, then wait for both to finish.
 
+  let inner = PromiseUtils.defer();
   await c.executeCached("SELECT * from dirs", null, function onRow() {
     // In the onRow handler, we're still an outstanding query.
     // Expect a single in-progress entry.
@@ -644,22 +656,11 @@ add_task(async function test_in_progress_counts() {
 
     // Start another query, checking that after its statement has been created
     // there are two statements in progress.
-    let p = c.executeCached("SELECT 10, path from dirs");
+    c.executeCached("SELECT 10, path from dirs").then(inner.resolve);
     expectTwo = c._connectionData._pendingStatements.size;
-
-    // Now wait for it to be done before we return from the row handler …
-    p.then(function onInner() {
-      inner();
-    });
-  }).then(function onOuter() {
-    // … and wait for the inner to be done before we finish …
-    inner.wait();
-    outer();
   });
 
-  // … and wait for both queries to have finished before we go on and
-  // test postconditions.
-  outer.wait();
+  await inner.promise;
 
   Assert.equal(expectOne, 1);
   Assert.equal(expectTwo, 2);
@@ -1019,7 +1020,7 @@ add_task(async function test_warning_message_on_finalization() {
       let messageText = msg.message;
       // Make sure the message starts with a warning containing the
       // connection identifier
-      if (messageText.indexOf("Warning: Sqlite connection '" + identifier + "'") !== -1) {
+      if (messageText.includes("Warning: Sqlite connection '" + identifier + "'")) {
         deferred.resolve();
       }
     }
@@ -1043,8 +1044,8 @@ add_task(async function test_error_message_on_unknown_finalization() {
   let listener = {
     observe(msg) {
       let messageText = msg.message;
-      if (messageText.indexOf("Error: Attempt to finalize unknown " +
-                              "Sqlite connection: foo") !== -1) {
+      if (messageText.includes("Error: Attempt to finalize unknown " +
+                              "Sqlite connection: foo")) {
         deferred.resolve();
       }
     }
@@ -1097,9 +1098,9 @@ add_task(async function test_close_database_on_gc() {
   let last = await getDummyDatabase("gc_last");
   await last.close();
 
-  Components.utils.forceGC();
-  Components.utils.forceCC();
-  Components.utils.forceShrinkingGC();
+  Cu.forceGC();
+  Cu.forceCC();
+  Cu.forceShrinkingGC();
 
   await finalPromise;
   failTestsOnAutoClose(true);

@@ -1,8 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://services-sync/bookmark_validator.js");
-Components.utils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/bookmark_validator.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function run_test() {
   do_get_profile();
@@ -42,8 +42,8 @@ add_task(async function test_isr_cycles() {
   ])).problemData;
 
   equal(c.cycles.length, 1);
-  ok(c.cycles[0].indexOf("A") >= 0);
-  ok(c.cycles[0].indexOf("B") >= 0);
+  ok(c.cycles[0].includes("A"));
+  ok(c.cycles[0].includes("B"));
 });
 
 add_task(async function test_isr_orphansMultiParents() {
@@ -55,8 +55,8 @@ add_task(async function test_isr_orphansMultiParents() {
   ])).problemData;
   deepEqual(c.orphans, [{ id: "A", parent: "D" }]);
   equal(c.multipleParents.length, 1);
-  ok(c.multipleParents[0].parents.indexOf("B") >= 0);
-  ok(c.multipleParents[0].parents.indexOf("C") >= 0);
+  ok(c.multipleParents[0].parents.includes("B"));
+  ok(c.multipleParents[0].parents.includes("C"));
 });
 
 add_task(async function test_isr_orphansMultiParents2() {
@@ -72,7 +72,7 @@ add_task(async function test_isr_orphansMultiParents2() {
 add_task(async function test_isr_deletedParents() {
   let c = (await inspectServerRecords([
     { id: "A", type: "bookmark", parentid: "B" },
-    { id: "B", type: "folder", parentid: "places", children: ["A"]},
+    { id: "C", type: "folder", parentid: "places", children: ["A"]},
     { id: "B", type: "item", deleted: true},
   ])).problemData;
   deepEqual(c.deletedParents, ["A"]);

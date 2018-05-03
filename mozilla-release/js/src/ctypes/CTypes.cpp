@@ -14,39 +14,34 @@
 #include <limits>
 #include <math.h>
 #include <stdint.h>
-
 #if defined(XP_WIN)
-#include <float.h>
+# include <float.h>
 #endif
-
 #if defined(SOLARIS)
-#include <ieeefp.h>
+# include <ieeefp.h>
 #endif
-
 #ifdef HAVE_SSIZE_T
-#include <sys/types.h>
+# include <sys/types.h>
 #endif
-
 #if defined(XP_UNIX)
-#include <errno.h>
+# include <errno.h>
 #endif
 
-#include "jscntxt.h"
 #include "jsexn.h"
-#include "jsfun.h"
 #include "jsnum.h"
-#include "jsprf.h"
-#include "jswin.h"
 
 #include "builtin/TypedObject.h"
 #include "ctypes/Library.h"
+#include "gc/FreeOp.h"
 #include "gc/Policy.h"
 #include "gc/Zone.h"
 #include "jit/AtomicOperations.h"
 #include "js/Vector.h"
+#include "util/Windows.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
 
-#include "jsatominlines.h"
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 
 using namespace std;
 
@@ -3208,9 +3203,10 @@ template<class CharType>
 static size_t
 strnlen(const CharType* begin, size_t max)
 {
-  for (const CharType* s = begin; s != begin + max; ++s)
-    if (*s == 0)
-      return s - begin;
+  for (size_t i = 0; i < max; i++) {
+    if (begin[i] == '\0')
+      return i;
+  }
 
   return max;
 }

@@ -3,14 +3,14 @@
 
 "use strict";
 
-var { FileUtils } = Cu.import("resource://gre/modules/FileUtils.jsm", {});
+var { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
 
 function run_test() {
   initTestDebuggerServer();
 
-  add_task(function* () {
-    yield test_bulk_transfer_transport(socket_transport);
-    yield test_bulk_transfer_transport(local_transport);
+  add_task(async function () {
+    await test_bulk_transfer_transport(socket_transport);
+    await test_bulk_transfer_transport(local_transport);
     DebuggerServer.destroy();
   });
 
@@ -22,7 +22,7 @@ function run_test() {
 /**
  * This tests a one-way bulk transfer at the transport layer.
  */
-var test_bulk_transfer_transport = Task.async(function* (transportFactory) {
+var test_bulk_transfer_transport = async function (transportFactory) {
   info("Starting bulk transfer test at " + new Date().toTimeString());
 
   let clientDeferred = defer();
@@ -35,7 +35,7 @@ var test_bulk_transfer_transport = Task.async(function* (transportFactory) {
 
   Assert.equal(Object.keys(DebuggerServer._connections).length, 0);
 
-  let transport = yield transportFactory();
+  let transport = await transportFactory();
 
   // Sending from client to server
   function write_data({copyFrom}) {
@@ -85,7 +85,7 @@ var test_bulk_transfer_transport = Task.async(function* (transportFactory) {
         DebuggerServer._connections[connId].onBulkPacket = on_bulk_packet;
       }
 
-      DebuggerServer.on("connectionchange", (event, type) => {
+      DebuggerServer.on("connectionchange", type => {
         if (type === "closed") {
           serverDeferred.resolve();
         }
@@ -106,7 +106,7 @@ var test_bulk_transfer_transport = Task.async(function* (transportFactory) {
   transport.ready();
 
   return promise.all([clientDeferred.promise, serverDeferred.promise]);
-});
+};
 
 /** * Test Utils ***/
 

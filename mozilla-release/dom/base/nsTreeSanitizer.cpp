@@ -7,11 +7,14 @@
 #include "nsTreeSanitizer.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/BindingStyleRule.h"
 #include "mozilla/DeclarationBlock.h"
 #include "mozilla/ServoDeclarationBlock.h"
 #include "mozilla/StyleSheetInlines.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/css/Declaration.h"
 #include "mozilla/css/StyleRule.h"
+#endif
 #include "mozilla/css/Rule.h"
 #include "mozilla/dom/CSSRuleList.h"
 #include "mozilla/dom/SRIMetadata.h"
@@ -19,6 +22,7 @@
 #include "nsCSSPropertyID.h"
 #include "nsUnicharInputStream.h"
 #include "nsAttrName.h"
+#include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsNetUtil.h"
 #include "nsComponentManagerUtils.h"
@@ -949,6 +953,7 @@ nsTreeSanitizer::nsTreeSanitizer(uint32_t aFlags)
      nsIParserUtils::SanitizerCidEmbedsOnly)
  , mDropMedia(aFlags & nsIParserUtils::SanitizerDropMedia)
  , mFullDocument(false)
+ , mLogRemovals(aFlags & nsIParserUtils::SanitizerLogRemovals)
 {
   if (mCidEmbedsOnly) {
     // Sanitizing styles for external references is not supported.
@@ -1082,7 +1087,7 @@ nsTreeSanitizer::SanitizeStyleSheet(const nsAString& aOriginal,
                                     nsIDocument* aDocument,
                                     nsIURI* aBaseURI)
 {
-  nsresult rv;
+  nsresult rv = NS_OK;
   aSanitized.Truncate();
   // aSanitized will hold the permitted CSS text.
   // -moz-binding is blacklisted.
@@ -1094,21 +1099,30 @@ nsTreeSanitizer::SanitizeStyleSheet(const nsAString& aOriginal,
                                 CORS_NONE, aDocument->GetReferrerPolicy(),
                                 SRIMetadata());
   } else {
+#ifdef MOZ_OLD_STYLE
     sheet = new CSSStyleSheet(mozilla::css::eAuthorSheetFeatures,
                               CORS_NONE, aDocument->GetReferrerPolicy());
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
   sheet->SetURIs(aDocument->GetDocumentURI(), nullptr, aBaseURI);
   sheet->SetPrincipal(aDocument->NodePrincipal());
   if (aDocument->IsStyledByServo()) {
-    rv = sheet->AsServo()->ParseSheet(
-        aDocument->CSSLoader(), NS_ConvertUTF16toUTF8(aOriginal),
-        aDocument->GetDocumentURI(), aBaseURI, aDocument->NodePrincipal(),
-        0, aDocument->GetCompatibilityMode());
+    sheet->AsServo()->ParseSheetSync(
+      aDocument->CSSLoader(), NS_ConvertUTF16toUTF8(aOriginal),
+      aDocument->GetDocumentURI(), aBaseURI, aDocument->NodePrincipal(),
+      /* aLoadData = */ nullptr, 0, aDocument->GetCompatibilityMode());
   } else {
+#ifdef MOZ_OLD_STYLE
     // Create the CSS parser, and parse the CSS text.
     nsCSSParser parser(nullptr, sheet->AsGecko());
-    rv = parser.ParseSheet(aOriginal, aDocument->GetDocumentURI(), aBaseURI,
-                           aDocument->NodePrincipal(), 0);
+    rv = parser.ParseSheet(aOriginal, aDocument->GetDocumentURI(),
+                           aBaseURI, aDocument->NodePrincipal(),
+                           /* aLoadData = */ nullptr, 0);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
   NS_ENSURE_SUCCESS(rv, true);
   // Mark the sheet as complete.
@@ -1156,6 +1170,9 @@ nsTreeSanitizer::SanitizeStyleSheet(const nsAString& aOriginal,
       }
     }
   }
+  if (didSanitize && mLogRemovals) {
+    LogMessage("Removed some rules and/or properties from stylesheet.", aDocument);
+  }
   return didSanitize;
 }
 
@@ -1188,12 +1205,16 @@ nsTreeSanitizer::SanitizeAttributes(mozilla::dom::Element* aElement,
               document->GetCompatibilityMode(),
               document->CSSLoader());
         } else {
+#ifdef MOZ_OLD_STYLE
           // Pass the CSS Loader object to the parser, to allow parser error
           // reports to include the outer window ID.
           nsCSSParser parser(document->CSSLoader());
           decl = parser.ParseStyleAttribute(value, document->GetDocumentURI(),
                                             aElement->GetBaseURIForStyleAttr(),
                                             document->NodePrincipal());
+#else
+          MOZ_CRASH("old style system disabled");
+#endif
         }
         if (decl) {
           if (SanitizeStyleDeclaration(decl)) {
@@ -1203,6 +1224,10 @@ nsTreeSanitizer::SanitizeAttributes(mozilla::dom::Element* aElement,
                               nsGkAtoms::style,
                               cleanValue,
                               false);
+            if (mLogRemovals) {
+              LogMessage("Removed -moz-binding styling from element style attribute.",
+                         aElement->OwnerDoc(), aElement);
+            }
           }
         }
         continue;
@@ -1280,6 +1305,10 @@ nsTreeSanitizer::SanitizeAttributes(mozilla::dom::Element* aElement,
       // else not allowed
     }
     aElement->UnsetAttr(kNameSpaceID_None, attrLocal, false);
+    if (mLogRemovals) {
+      LogMessage("Removed unsafe attribute.", aElement->OwnerDoc(),
+                 aElement, attrLocal);
+    }
     // in case the attribute removal shuffled the attribute order, start the
     // loop again.
     --ac;
@@ -1348,6 +1377,10 @@ nsTreeSanitizer::SanitizeURL(mozilla::dom::Element* aElement,
   }
   if (NS_FAILED(rv)) {
     aElement->UnsetAttr(aNamespace, aLocalName, false);
+    if (mLogRemovals) {
+      LogMessage("Removed unsafe URI from element attribute.",
+                 aElement->OwnerDoc(), aElement, aLocalName);
+    }
     return true;
   }
   return false;
@@ -1395,6 +1428,9 @@ nsTreeSanitizer::SanitizeChildren(nsINode* aRoot)
       int32_t ns = nodeInfo->NamespaceID();
 
       if (MustPrune(ns, localName, elt)) {
+        if (mLogRemovals) {
+          LogMessage("Removing unsafe node.", elt->OwnerDoc(), elt);
+        }
         RemoveAllAttributes(elt);
         nsIContent* descendant = node;
         while ((descendant = descendant->GetNextNode(node))) {
@@ -1425,6 +1461,10 @@ nsTreeSanitizer::SanitizeChildren(nsINode* aRoot)
           nsContentUtils::SetNodeTextContent(node, sanitizedStyle, true);
         } else {
           // If the node had non-text child nodes, this operation zaps those.
+          //XXXgijs: if we're logging, we should theoretically report about
+          // this, but this way of removing those items doesn't allow for that
+          // to happen. Seems less likely to be a problem for actual chrome
+          // consumers though.
           nsContentUtils::SetNodeTextContent(node, styleText, true);
         }
         if (ns == kNameSpaceID_XHTML) {
@@ -1446,6 +1486,10 @@ nsTreeSanitizer::SanitizeChildren(nsINode* aRoot)
         continue;
       }
       if (MustFlatten(ns, localName)) {
+        if (mLogRemovals) {
+          LogMessage("Flattening unsafe node (descendants are preserved).",
+                     elt->OwnerDoc(), elt);
+        }
         RemoveAllAttributes(elt);
         nsCOMPtr<nsIContent> next = node->GetNextNode(aRoot);
         nsCOMPtr<nsIContent> parent = node->GetParent();
@@ -1508,6 +1552,27 @@ nsTreeSanitizer::RemoveAllAttributes(Element* aElement)
     int32_t attrNs = attrName->NamespaceID();
     RefPtr<nsAtom> attrLocal = attrName->LocalName();
     aElement->UnsetAttr(attrNs, attrLocal, false);
+  }
+}
+
+void
+nsTreeSanitizer::LogMessage(const char* aMessage, nsIDocument* aDoc,
+                            Element* aElement, nsAtom* aAttr)
+{
+  if (mLogRemovals) {
+    nsAutoString msg;
+    msg.Assign(NS_ConvertASCIItoUTF16(aMessage));
+    if (aElement) {
+      msg.Append(NS_LITERAL_STRING(" Element: ") + aElement->LocalName() +
+                 NS_LITERAL_STRING("."));
+    }
+    if (aAttr) {
+      msg.Append(NS_LITERAL_STRING(" Attribute: ") +
+                 nsDependentAtomString(aAttr) + NS_LITERAL_STRING("."));
+    }
+
+    nsContentUtils::ReportToConsoleNonLocalized(
+        msg, nsIScriptError::warningFlag, NS_LITERAL_CSTRING("DOM"), aDoc);
   }
 }
 

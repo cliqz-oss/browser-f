@@ -3,16 +3,12 @@
  */
 
 // This verifies that add-ons can be installed from XPI files
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
 // install.rdf size, icon.png, icon64.png size
 const ADDON1_SIZE = 705 + 16 + 16;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 var testserver;
 var gInstallDate;
@@ -213,7 +209,7 @@ function run_test_2(aAddon) {
       install.addListener({
         onDownloadProgress() {
           executeSoon(function() {
-            Components.utils.forceGC();
+            Cu.forceGC();
           });
         }
       });
@@ -966,7 +962,9 @@ function run_test_18_1() {
 
   Services.prefs.setBoolPref("extensions.getAddons.cache.enabled", true);
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS,
-                             "http://localhost:4444/data/test_install.xml");
+                             "http://localhost:4444/data/test_install_addons.json");
+  Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES,
+                             "http://localhost:4444/data/test_install_compat.json");
 
   Services.prefs.setBoolPref("extensions.addon2@tests.mozilla.org.getAddons.cache.enabled", false);
 
@@ -1303,7 +1301,7 @@ function run_test_26() {
         return;
 
       // Request should have been cancelled
-      Assert.equal(aChannel.status, Components.results.NS_BINDING_ABORTED);
+      Assert.equal(aChannel.status, Cr.NS_BINDING_ABORTED);
 
       observerService.removeObserver(this);
 

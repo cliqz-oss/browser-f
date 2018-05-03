@@ -90,10 +90,78 @@ let allowedImageReferences = [
    isFromDevTools: true},
 ];
 
+let propNameWhitelist = [
+  // These are CSS custom properties that we found a definition of but
+  // no reference to.
+  // Bug 1441837
+  {propName: "--in-content-category-text-active",
+   isFromDevTools: false},
+  // Bug 1441844
+  {propName: "--chrome-nav-bar-separator-color",
+   isFromDevTools: false},
+  // Bug 1441855
+  {propName: "--chrome-nav-buttons-background",
+   isFromDevTools: false},
+  // Bug 1441855
+  {propName: "--chrome-nav-buttons-hover-background",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--muteButton-width",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--closedCaptionButton-width",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--fullscreenButton-width",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--durationSpan-width",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--durationSpan-width-long",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--positionDurationBox-width",
+   isFromDevTools: false},
+  // Bug 1441857
+  {propName: "--positionDurationBox-width-long",
+   isFromDevTools: false},
+  // Bug 1441929
+  {propName: "--theme-search-overlays-semitransparent",
+   isFromDevTools: true},
+  // Bug 1441878
+  {propName: "--theme-codemirror-gutter-background",
+   isFromDevTools: true},
+  // Bug 1441879
+  {propName: "--arrow-width",
+   isFromDevTools: true},
+  // Bug 1442300
+  {propName: "--in-content-category-background",
+   isFromDevTools: false},
+
+  // Used on Linux
+  {propName: "--in-content-box-background-odd",
+   platforms: ["win", "macosx"],
+   isFromDevTools: false},
+
+  // These properties *are* actually referenced. Need to find why
+  // their reference isn't getting counted.
+  {propName: "--bezier-diagonal-color",
+   isFromDevTools: true},
+  {propName: "--bezier-grid-color",
+   isFromDevTools: true},
+];
+
 // Add suffix to stylesheets' URI so that we always load them here and
 // have them parsed. Add a random number so that even if we run this
 // test multiple times, it would be unlikely to affect each other.
 const kPathSuffix = "?always-parse-css-" + Math.random();
+
+function dumpWhitelistItem(item) {
+  return JSON.stringify(item, (key, value) => {
+    return value instanceof RegExp ? value.toString() : value;
+  });
+}
 
 /**
  * Check if an error should be ignored due to matching one of the whitelist
@@ -105,15 +173,26 @@ const kPathSuffix = "?always-parse-css-" + Math.random();
 function ignoredError(aErrorObject) {
   for (let whitelistItem of whitelist) {
     let matches = true;
+    let catchAll = true;
     for (let prop of ["sourceName", "errorMessage"]) {
-      if (whitelistItem.hasOwnProperty(prop) &&
-          !whitelistItem[prop].test(aErrorObject[prop] || "")) {
-        matches = false;
-        break;
+      if (whitelistItem.hasOwnProperty(prop)) {
+        catchAll = false;
+        if (!whitelistItem[prop].test(aErrorObject[prop] || "")) {
+          matches = false;
+          break;
+        }
       }
+    }
+    if (catchAll) {
+      ok(false, "A whitelist item is catching all errors. " +
+         dumpWhitelistItem(whitelistItem));
+      continue;
     }
     if (matches) {
       whitelistItem.used = true;
+      let {sourceName, errorMessage} = aErrorObject;
+      info(`Ignored error "${errorMessage}" on ${sourceName} ` +
+           "because of whitelist item " + dumpWhitelistItem(whitelistItem));
       return true;
     }
   }
@@ -188,12 +267,12 @@ function messageIsCSSError(msg) {
       ok(false, `Got error message for ${sourceName}: ${msg.errorMessage}`);
       return true;
     }
-    info(`Ignored error for ${sourceName} because of filter.`);
   }
   return false;
 }
 
 let imageURIsToReferencesMap = new Map();
+let customPropsToReferencesMap = new Map();
 
 function processCSSRules(sheet) {
   for (let rule of sheet.cssRules) {
@@ -208,10 +287,11 @@ function processCSSRules(sheet) {
     // Note: CSSStyleRule.cssText always has double quotes around URLs even
     //       when the original CSS file didn't.
     let urls = rule.cssText.match(/url\("[^"]*"\)/g);
-    if (!urls)
+    let props = rule.cssText.match(/(var\()?(--[\w\-]+)/g);
+    if (!urls && !props)
       continue;
 
-    for (let url of urls) {
+    for (let url of (urls || [])) {
       // Remove the url(" prefix and the ") suffix.
       url = url.replace(/url\("(.*)"\)/, "$1");
       if (url.startsWith("data:"))
@@ -229,6 +309,16 @@ function processCSSRules(sheet) {
         imageURIsToReferencesMap.get(url).add(baseUrl);
       }
     }
+
+    for (let prop of (props || [])) {
+      if (prop.startsWith("var(")) {
+        prop = prop.substring(4);
+        let prevValue = customPropsToReferencesMap.get(prop) || 0;
+        customPropsToReferencesMap.set(prop, prevValue + 1);
+      } else if (!customPropsToReferencesMap.has(prop)) {
+        customPropsToReferencesMap.set(prop, undefined);
+      }
+    }
   }
 }
 
@@ -243,7 +333,7 @@ function chromeFileExists(aURI) {
     available = sstream.available();
     sstream.close();
   } catch (e) {
-    if (e.result != Components.results.NS_ERROR_FILE_NOT_FOUND) {
+    if (e.result != Cr.NS_ERROR_FILE_NOT_FOUND) {
       dump("Checking " + aURI + ": " + e + "\n");
       Cu.reportError(e);
     }
@@ -265,7 +355,7 @@ add_task(async function checkAllTheCSS() {
   // Create a clean iframe to load all the files into. This needs to live at a
   // chrome URI so that it's allowed to load and parse any styles.
   let testFile = getRootDirectory(gTestPath) + "dummy_page.html";
-  let HiddenFrame = Cu.import("resource://testing-common/HiddenFrame.jsm", {}).HiddenFrame;
+  let HiddenFrame = ChromeUtils.import("resource://testing-common/HiddenFrame.jsm", {}).HiddenFrame;
   let hiddenFrame = new HiddenFrame();
   let win = await hiddenFrame.get();
   let iframe = win.document.createElementNS("http://www.w3.org/1999/xhtml", "html:iframe");
@@ -354,6 +444,26 @@ add_task(async function checkAllTheCSS() {
     }
   }
 
+  // Check if all the properties that are defined are referenced.
+  for (let [prop, refCount] of customPropsToReferencesMap) {
+    if (!refCount) {
+      let ignored = false;
+      for (let item of propNameWhitelist) {
+        if (item.propName == prop &&
+            isDevtools == item.isFromDevTools) {
+          item.used = true;
+          if (!item.platforms || item.platforms.includes(AppConstants.platform)) {
+            ignored = true;
+          }
+          break;
+        }
+      }
+      if (!ignored) {
+        ok(false, "custom property `" + prop + "` is not referenced");
+      }
+    }
+  }
+
   let messages = Services.console.getMessageArray();
   // Count errors (the test output will list actual issues for us, as well
   // as the ok(false) in messageIsCSSError.
@@ -361,23 +471,18 @@ add_task(async function checkAllTheCSS() {
   is(errors.length, 0, "All the styles (" + allPromises.length + ") loaded without errors.");
 
   // Confirm that all whitelist rules have been used.
-  for (let item of whitelist) {
-    if (!item.used && isDevtools == item.isFromDevTools && !item.intermittent) {
-      ok(false, "Unused whitelist item. " +
-                (item.sourceName ? " sourceName: " + item.sourceName : "") +
-                (item.errorMessage ? " errorMessage: " + item.errorMessage : ""));
+  function checkWhitelist(list) {
+    for (let item of list) {
+      if (!item.used && isDevtools == item.isFromDevTools &&
+          (!item.platforms || item.platforms.includes(AppConstants.platform)) &&
+          !item.intermittent) {
+        ok(false, "Unused whitelist item: " + dumpWhitelistItem(item));
+      }
     }
   }
-
-  // Confirm that all file whitelist rules have been used.
-  for (let item of allowedImageReferences) {
-    if (!item.used && isDevtools == item.isFromDevTools &&
-        (!item.platforms || item.platforms.includes(AppConstants.platform))) {
-      ok(false, "Unused file whitelist item. " +
-                " file: " + item.file +
-                " from: " + item.from);
-    }
-  }
+  checkWhitelist(whitelist);
+  checkWhitelist(allowedImageReferences);
+  checkWhitelist(propNameWhitelist);
 
   // Clean up to avoid leaks:
   iframe.remove();
@@ -388,4 +493,5 @@ add_task(async function checkAllTheCSS() {
   hiddenFrame.destroy();
   hiddenFrame = null;
   imageURIsToReferencesMap = null;
+  customPropsToReferencesMap = null;
 });

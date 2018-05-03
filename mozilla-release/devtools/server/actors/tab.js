@@ -15,7 +15,6 @@
 var { Ci, Cu, Cr, Cc } = require("chrome");
 var Services = require("Services");
 var { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-var promise = require("promise");
 var {
   ActorPool, createExtraActors, appendExtraActors
 } = require("devtools/server/actors/common");
@@ -28,8 +27,8 @@ const EventEmitter = require("devtools/shared/event-emitter");
 
 const EXTENSION_CONTENT_JSM = "resource://gre/modules/ExtensionContent.jsm";
 
-loader.lazyRequireGetter(this, "ThreadActor", "devtools/server/actors/script", true);
-loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/script", true);
+loader.lazyRequireGetter(this, "ThreadActor", "devtools/server/actors/thread", true);
+loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/thread", true);
 loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker-list", true);
 loader.lazyImporter(this, "ExtensionContent", EXTENSION_CONTENT_JSM);
 
@@ -229,17 +228,14 @@ function TabActor(connection) {
     // Do not require to send reconfigure request to reset the document state
     // to what it was before using the TabActor
     noTabReconfigureOnClose: true,
-    // Supports the logErrorInPage request.
-    logErrorInPage: true,
+    // Supports the logInPage request.
+    logInPage: true,
   };
 
   this._workerActorList = null;
   this._workerActorPool = null;
   this._onWorkerActorListChanged = this._onWorkerActorListChanged.bind(this);
 }
-
-// XXX (bug 710213): TabActor attach/detach/exit/destroy is a
-// *complete* mess, needs to be rethought asap.
 
 TabActor.prototype = {
   traits: null,
@@ -441,15 +437,6 @@ TabActor.prototype = {
       this._sources = new TabSources(this.threadActor, this._allowSource);
     }
     return this._sources;
-  },
-
-  /**
-   * This is called by BrowserTabList.getList for existing tab actors prior to
-   * calling |form| below.  It can be used to do any async work that may be
-   * needed to assemble the form.
-   */
-  update() {
-    return promise.resolve(this);
   },
 
   form() {
@@ -669,14 +656,13 @@ TabActor.prototype = {
     });
   },
 
-  onLogErrorInPage(request) {
-    let {text, category} = request;
+  onLogInPage(request) {
+    let {text, category, flags} = request;
     let scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
     let scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
-    scriptError.initWithWindowID(text, null, null, 0, 0, 1,
+    scriptError.initWithWindowID(text, null, null, 0, 0, flags,
                                  category, getInnerId(this.window));
-    let console = Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
-    console.logMessage(scriptError);
+    Services.console.logMessage(scriptError);
     return {};
   },
 
@@ -1447,7 +1433,7 @@ TabActor.prototype.requestTypes = {
   "switchToFrame": TabActor.prototype.onSwitchToFrame,
   "listFrames": TabActor.prototype.onListFrames,
   "listWorkers": TabActor.prototype.onListWorkers,
-  "logErrorInPage": TabActor.prototype.onLogErrorInPage,
+  "logInPage": TabActor.prototype.onLogInPage,
 };
 
 exports.TabActor = TabActor;
@@ -1555,6 +1541,12 @@ DebuggerProgressListener.prototype = {
       return;
     }
 
+    // If we're in a frame swap (which occurs when toggling RDM, for example), then we can
+    // ignore this event, as the window never really went anywhere for our purposes.
+    if (evt.inFrameSwap) {
+      return;
+    }
+
     let window = evt.target.defaultView;
     let innerID = getWindowID(window);
 
@@ -1576,6 +1568,12 @@ DebuggerProgressListener.prototype = {
 
   onWindowHidden: DevToolsUtils.makeInfallible(function (evt) {
     if (!this._tabActor.attached) {
+      return;
+    }
+
+    // If we're in a frame swap (which occurs when toggling RDM, for example), then we can
+    // ignore this event, as the window isn't really going anywhere for our purposes.
+    if (evt.inFrameSwap) {
       return;
     }
 

@@ -5,7 +5,7 @@ var { Constructor: CC } = Components;
 const UDPSocket = CC("@mozilla.org/network/udp-socket;1",
                      "nsIUDPSocket",
                      "init");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const ADDRESS_TEST1 = "224.0.0.200";
 const ADDRESS_TEST2 = "224.0.0.201";
@@ -16,7 +16,7 @@ const TIMEOUT = 2000;
 
 const ua = Cc["@mozilla.org/network/protocol;1?name=http"]
            .getService(Ci.nsIHttpProtocolHandler).userAgent;
-const isWinXP = ua.indexOf("Windows NT 5.1") != -1;
+const isWinXP = ua.includes("Windows NT 5.1");
 
 var gConverter;
 

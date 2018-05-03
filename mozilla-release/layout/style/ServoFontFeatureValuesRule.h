@@ -23,19 +23,19 @@ public:
   RawServoFontFeatureValuesRule* Raw() const { return mRawRule; }
 
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const override;
-  void GetFontFamily(nsAString& aFamily) final override;
-  void SetFontFamily(const nsAString& aFamily, mozilla::ErrorResult& aRv) final override;
-  void GetValueText(nsAString& aValueText) final override;
-  void SetValueText(const nsAString& aValueText, mozilla::ErrorResult& aRv) final override;
+  void GetCssText(nsAString& aCssText) const override;
+  void GetFontFamily(nsAString& aFamily) final;
+  void SetFontFamily(const nsAString& aFamily, mozilla::ErrorResult& aRv) final;
+  void GetValueText(nsAString& aValueText) final;
+  void SetValueText(const nsAString& aValueText, mozilla::ErrorResult& aRv) final;
 
   // Methods of mozilla::css::Rule
-  already_AddRefed<css::Rule> Clone() const final override;
+  already_AddRefed<css::Rule> Clone() const final;
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const final override;
+    const final;
 
   #ifdef DEBUG
-    void List(FILE* out = stdout, int32_t aIndent = 0) const final override;
+    void List(FILE* out = stdout, int32_t aIndent = 0) const final;
   #endif
 
 private:

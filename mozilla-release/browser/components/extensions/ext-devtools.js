@@ -13,10 +13,10 @@
  * and the implementation of the `devtools_page`.
  */
 
-XPCOMUtils.defineLazyModuleGetter(this, "DevToolsShim",
-                                  "chrome://devtools-shim/content/DevToolsShim.jsm");
+ChromeUtils.defineModuleGetter(this, "DevToolsShim",
+                               "chrome://devtools-shim/content/DevToolsShim.jsm");
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 
 var {
   HiddenExtensionPage,
@@ -176,7 +176,9 @@ class DevToolsPage extends HiddenExtensionPage {
       },
     });
 
-    this.browser.loadURI(this.url);
+    this.browser.loadURIWithFlags(this.url, {
+      triggeringPrincipal: this.extension.principal,
+    });
 
     await this.waitForTopLevelContext;
   }

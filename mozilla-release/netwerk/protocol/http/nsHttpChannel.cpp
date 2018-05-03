@@ -36,6 +36,7 @@
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsIURL.h"
+#include "nsIURIMutator.h"
 #include "nsIStreamTransportService.h"
 #include "prnetdb.h"
 #include "nsEscape.h"
@@ -85,7 +86,7 @@
 #include "nsString.h"
 #include "nsCRT.h"
 #include "CacheObserver.h"
-#include "mozilla/dom/Performance.h"
+#include "mozilla/dom/PerformanceStorage.h"
 #include "mozilla/Telemetry.h"
 #include "AlternateServices.h"
 #include "InterceptedChannel.h"
@@ -1010,6 +1011,9 @@ nsHttpChannel::SetupTransaction()
 
     mUsedNetwork = 1;
 
+    if (mTRR) {
+        mCaps |= NS_HTTP_LARGE_KEEPALIVE;
+    }
     if (!mAllowSpdy) {
         mCaps |= NS_HTTP_DISALLOW_SPDY;
     }
@@ -1054,9 +1058,9 @@ nsHttpChannel::SetupTransaction()
         if (!buf.IsEmpty() && ((strncmp(mSpec.get(), "http:", 5) == 0) ||
                                 strncmp(mSpec.get(), "https:", 6) == 0)) {
             nsCOMPtr<nsIURI> tempURI;
-            rv = mURI->Clone(getter_AddRefs(tempURI));
-            if (NS_FAILED(rv)) return rv;
-            rv = tempURI->SetUserPass(EmptyCString());
+            rv = NS_MutateURI(mURI)
+                   .SetUserPass(EmptyCString())
+                   .Finalize(tempURI);
             if (NS_FAILED(rv)) return rv;
             rv = tempURI->GetAsciiSpec(path);
             if (NS_FAILED(rv)) return rv;
@@ -1295,30 +1299,8 @@ ProcessXCTO(nsIURI* aURI, nsHttpResponseHead* aResponseHead, nsILoadInfo* aLoadI
         return NS_ERROR_CORRUPTED_CONTENT;
     }
 
-    if (aLoadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_IMAGE) {
-        if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("image/"))) {
-            Accumulate(Telemetry::XCTO_NOSNIFF_BLOCK_IMAGE, 0);
-            return NS_OK;
-        }
-        Accumulate(Telemetry::XCTO_NOSNIFF_BLOCK_IMAGE, 1);
-        // Instead of consulting Preferences::GetBool() all the time we
-        // can cache the result to speed things up.
-        static bool sXCTONosniffBlockImages = false;
-        static bool sIsInited = false;
-        if (!sIsInited) {
-            sIsInited = true;
-            Preferences::AddBoolVarCache(&sXCTONosniffBlockImages,
-            "security.xcto_nosniff_block_images");
-        }
-        if (!sXCTONosniffBlockImages) {
-            return NS_OK;
-        }
-        ReportTypeBlocking(aURI, aLoadInfo, "MimeTypeMismatch");
-        return NS_ERROR_CORRUPTED_CONTENT;
-    }
-
     if (aLoadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_SCRIPT) {
-        if (nsContentUtils::IsScriptType(contentType)) {
+        if (nsContentUtils::IsJavascriptMIMEType(NS_ConvertUTF8toUTF16(contentType))) {
             return NS_OK;
         }
         ReportTypeBlocking(aURI, aLoadInfo, "MimeTypeMismatch");
@@ -1347,26 +1329,61 @@ EnsureMIMEOfScript(nsIURI* aURI, nsHttpResponseHead* aResponseHead, nsILoadInfo*
 
     if (nsContentUtils::IsJavascriptMIMEType(typeString)) {
         // script load has type script
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 1);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::javaScript);
         return NS_OK;
+    }
+
+    nsCOMPtr<nsIURI> requestURI;
+    aLoadInfo->LoadingPrincipal()->GetURI(getter_AddRefs(requestURI));
+
+    nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+    nsresult rv = ssm->CheckSameOriginURI(requestURI, aURI, false);
+    if (NS_SUCCEEDED(rv)) {
+        //same origin
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::same_origin);
+    } else {
+        bool cors = false;
+        nsAutoCString corsOrigin;
+        rv = aResponseHead->GetHeader(nsHttp::ResolveAtom("Access-Control-Allow-Origin"), corsOrigin);
+        if (NS_SUCCEEDED(rv)) {
+            if (corsOrigin.Equals("*")) {
+                cors = true;
+            } else {
+                nsCOMPtr<nsIURI> corsOriginURI;
+                rv = NS_NewURI(getter_AddRefs(corsOriginURI), corsOrigin);
+                if (NS_SUCCEEDED(rv)) {
+                    rv = ssm->CheckSameOriginURI(requestURI, corsOriginURI, false);
+                    if (NS_SUCCEEDED(rv)) {
+                        cors = true;
+                    }
+                }
+            }
+        }
+        if (cors) {
+            //cors origin
+            AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::CORS_origin);
+        } else {
+            //cross origin
+            AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::cross_origin);
+        }
     }
 
     bool block = false;
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("image/"))) {
         // script load has type image
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 2);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::image);
         block = true;
     } else if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("audio/"))) {
         // script load has type audio
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 3);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::audio);
         block = true;
     } else if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("video/"))) {
         // script load has type video
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 4);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::video);
         block = true;
     } else if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("text/csv"))) {
         // script load has type text/csv
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 6);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::text_csv);
         block = true;
     }
 
@@ -1392,42 +1409,42 @@ EnsureMIMEOfScript(nsIURI* aURI, nsHttpResponseHead* aResponseHead, nsILoadInfo*
 
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("text/plain"))) {
         // script load has type text/plain
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 5);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::text_plain);
         return NS_OK;
     }
 
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("text/xml"))) {
         // script load has type text/xml
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 7);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::text_xml);
         return NS_OK;
     }
 
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("application/octet-stream"))) {
         // script load has type application/octet-stream
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 8);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::app_octet_stream);
         return NS_OK;
     }
 
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("application/xml"))) {
         // script load has type application/xml
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 9);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::app_xml);
         return NS_OK;
     }
 
     if (StringBeginsWith(contentType, NS_LITERAL_CSTRING("text/html"))) {
         // script load has type text/html
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 10);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::text_html);
         return NS_OK;
     }
 
     if (contentType.IsEmpty()) {
         // script load has no type
-        Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 11);
+        AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::empty);
         return NS_OK;
     }
 
     // script load has unknown type
-    Telemetry::Accumulate(Telemetry::SCRIPT_BLOCK_INCORRECT_MIME, 0);
+    AccumulateCategorical(Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_2::unknown);
     return NS_OK;
 }
 
@@ -2839,6 +2856,7 @@ nsHttpChannel::StartRedirectChannelToURI(nsIURI *upgradedURI, uint32_t flags)
     rv = NS_NewChannelInternal(getter_AddRefs(newChannel),
                                upgradedURI,
                                redirectLoadInfo,
+                               nullptr, // PerformanceStorage
                                nullptr, // aLoadGroup
                                nullptr, // aCallbacks
                                nsIRequest::LOAD_NORMAL,
@@ -3759,7 +3777,7 @@ nsHttpChannel::OpenCacheEntryInternal(bool isHttps,
                               MOZ_LIKELY(allowApplicationCache);
         // Try to race only if we use disk cache storage and we don't lookup
         // app cache first
-        maybeRCWN = !lookupAppCache;
+        maybeRCWN = (!lookupAppCache) && mRequestHead.IsSafeMethod();
         rv = cacheStorageService->DiskCacheStorage(
             info, lookupAppCache, getter_AddRefs(cacheStorage));
     }
@@ -3776,6 +3794,9 @@ nsHttpChannel::OpenCacheEntryInternal(bool isHttps,
 
     if (mPostID) {
         extension.Append(nsPrintfCString("%d", mPostID));
+    }
+    if (mTRR) {
+        extension.Append("TRR");
     }
 
     mCacheOpenWithPriority = cacheEntryOpenFlags & nsICacheStorage::OPEN_PRIORITY;
@@ -4756,7 +4777,16 @@ nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry, bool startBufferi
 
     // If an alternate representation was requested, try to open the alt
     // input stream.
-    if (!mPreferredCachedAltDataType.IsEmpty()) {
+    // If the entry has a "is-from-child" metadata, then only open the altdata stream if the consumer is also from child.
+    bool altDataFromChild = false;
+    {
+        nsCString value;
+        rv = cacheEntry->GetMetaDataElement("alt-data-from-child",
+                                            getter_Copies(value));
+        altDataFromChild = !value.IsEmpty();
+    }
+
+    if (!mPreferredCachedAltDataType.IsEmpty() && (altDataFromChild == mAltDataForChild)) {
         rv = cacheEntry->OpenAlternativeInputStream(mPreferredCachedAltDataType,
                                                     getter_AddRefs(stream));
         if (NS_SUCCEEDED(rv)) {
@@ -5592,6 +5622,7 @@ nsHttpChannel::ContinueProcessRedirectionAfterFallback(nsresult rv)
     rv = NS_NewChannelInternal(getter_AddRefs(newChannel),
                                mRedirectURI,
                                redirectLoadInfo,
+                               nullptr, // PerformanceStorage
                                nullptr, // aLoadGroup
                                nullptr, // aCallbacks
                                nsIRequest::LOAD_NORMAL,
@@ -7330,10 +7361,10 @@ nsHttpChannel::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult st
 
     ReportRcwnStats(isFromNet);
 
-    // Register entry to the Performance resource timing
-    mozilla::dom::Performance* documentPerformance = GetPerformance();
-    if (documentPerformance) {
-        documentPerformance->AddEntry(this, this);
+    // Register entry to the PerformanceStorage resource timing
+    mozilla::dom::PerformanceStorage* performanceStorage = GetPerformanceStorage();
+    if (performanceStorage) {
+        performanceStorage->AddEntry(this, this);
     }
 
     if (mListener) {
@@ -7811,7 +7842,13 @@ nsHttpChannel::OpenAlternativeOutputStream(const nsACString & type, nsIOutputStr
     if (!cacheEntry) {
         return NS_ERROR_NOT_AVAILABLE;
     }
-    return cacheEntry->OpenAlternativeOutputStream(type, _retval);
+    nsresult rv = cacheEntry->OpenAlternativeOutputStream(type, _retval);
+    if (NS_SUCCEEDED(rv)) {
+        // Clear this metadata flag in case it exists.
+        // The caller of this method may set it again.
+        cacheEntry->SetMetaDataElement("alt-data-from-child", nullptr);
+    }
+    return rv;
 }
 
 //-----------------------------------------------------------------------------
@@ -8507,6 +8544,7 @@ nsHttpChannel::OnPush(const nsACString &url, Http2PushedStream *pushedStream)
     rv = NS_NewChannelInternal(getter_AddRefs(pushChannel),
                                pushResource,
                                mLoadInfo,
+                               nullptr, // PerformanceStorage
                                nullptr, // aLoadGroup
                                nullptr, // aCallbacks
                                nsIRequest::LOAD_NORMAL,
@@ -8701,6 +8739,12 @@ nsHttpChannel::MaybeWarnAboutAppCache()
     GetCallback(warner);
     if (warner) {
         warner->IssueWarning(nsIDocument::eAppCache, false);
+        // When the page is insecure and the API is still enabled
+        // provide an additional warning for developers of removal
+        if (!IsHTTPS() &&
+            Preferences::GetBool("browser.cache.offline.insecure.enable")) {
+            warner->IssueWarning(nsIDocument::eAppCacheInsecure, true);
+        }
     }
 }
 

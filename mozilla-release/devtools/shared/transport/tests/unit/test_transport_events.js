@@ -6,21 +6,21 @@
 function run_test() {
   initTestDebuggerServer();
 
-  add_task(function* () {
-    yield test_transport_events("socket", socket_transport);
-    yield test_transport_events("local", local_transport);
+  add_task(async function () {
+    await test_transport_events("socket", socket_transport);
+    await test_transport_events("local", local_transport);
     DebuggerServer.destroy();
   });
 
   run_next_test();
 }
 
-function* test_transport_events(name, transportFactory) {
+async function test_transport_events(name, transportFactory) {
   info(`Started testing of transport: ${name}`);
 
   Assert.equal(Object.keys(DebuggerServer._connections).length, 0);
 
-  let transport = yield transportFactory();
+  let transport = await transportFactory();
 
   // Transport expects the hooks to be not null
   transport.hooks = {
@@ -28,48 +28,43 @@ function* test_transport_events(name, transportFactory) {
     onClosed: () => {},
   };
 
-  let rootReceived = transport.once("packet", (event, packet) => {
-    info(`Packet event: ${event} ${JSON.stringify(packet)}`);
-    Assert.equal(event, "packet");
+  let rootReceived = transport.once("packet", packet => {
+    info(`Packet event: ${JSON.stringify(packet)}`);
     Assert.equal(packet.from, "root");
   });
 
   transport.ready();
-  yield rootReceived;
+  await rootReceived;
 
-  let echoSent = transport.once("send", (event, packet) => {
-    info(`Send event: ${event} ${JSON.stringify(packet)}`);
-    Assert.equal(event, "send");
+  let echoSent = transport.once("send", packet => {
+    info(`Send event: ${JSON.stringify(packet)}`);
     Assert.equal(packet.to, "root");
     Assert.equal(packet.type, "echo");
   });
 
-  let echoReceived = transport.once("packet", (event, packet) => {
-    info(`Packet event: ${event} ${JSON.stringify(packet)}`);
-    Assert.equal(event, "packet");
+  let echoReceived = transport.once("packet", packet => {
+    info(`Packet event: ${JSON.stringify(packet)}`);
     Assert.equal(packet.from, "root");
     Assert.equal(packet.type, "echo");
   });
 
   transport.send({ to: "root", type: "echo" });
-  yield echoSent;
-  yield echoReceived;
+  await echoSent;
+  await echoReceived;
 
-  let clientClosed = transport.once("close", (event) => {
-    info(`Close event: ${event}`);
-    Assert.equal(event, "close");
+  let clientClosed = transport.once("close", () => {
+    info(`Close event`);
   });
 
-  let serverClosed = DebuggerServer.once("connectionchange", (event, type) => {
+  let serverClosed = DebuggerServer.once("connectionchange", type => {
     info(`Server closed`);
-    Assert.equal(event, "connectionchange");
     Assert.equal(type, "closed");
   });
 
   transport.close();
 
-  yield clientClosed;
-  yield serverClosed;
+  await clientClosed;
+  await serverClosed;
 
   info(`Finished testing of transport: ${name}`);
 }

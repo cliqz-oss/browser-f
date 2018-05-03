@@ -8,32 +8,30 @@
 
 #include "vm/Shape-inl.h"
 
-#include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/PodOperations.h"
 
-#include "jsatom.h"
-#include "jscntxt.h"
-#include "jshashutil.h"
-#include "jsobj.h"
-
+#include "gc/FreeOp.h"
+#include "gc/HashUtil.h"
 #include "gc/Policy.h"
+#include "gc/PublicIterators.h"
 #include "js/HashTable.h"
-
-#include "jscntxtinlines.h"
-#include "jscompartmentinlines.h"
-#include "jsobjinlines.h"
+#include "util/Text.h"
+#include "vm/JSAtom.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 
 #include "vm/Caches-inl.h"
+#include "vm/JSCompartment-inl.h"
+#include "vm/JSContext-inl.h"
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
 using namespace js::gc;
 
 using mozilla::CeilingLog2Size;
-using mozilla::DebugOnly;
 using mozilla::PodZero;
-using mozilla::RotateLeft;
 
 using JS::AutoCheckCannotGC;
 
@@ -82,22 +80,22 @@ Shape::removeFromDictionary(NativeObject* obj)
     MOZ_ASSERT(obj->inDictionaryMode());
     MOZ_ASSERT(listp);
 
-    MOZ_ASSERT(obj->shape_->inDictionary());
-    MOZ_ASSERT(obj->shape_->listp == &obj->shape_);
+    MOZ_ASSERT(obj->shape()->inDictionary());
+    MOZ_ASSERT(obj->shape()->listp == obj->shapePtr());
 
     if (parent)
         parent->listp = listp;
     *listp = parent;
     listp = nullptr;
 
-    obj->shape_->clearCachedBigEnoughForShapeTable();
+    obj->shape()->clearCachedBigEnoughForShapeTable();
 }
 
 void
 Shape::insertIntoDictionary(GCPtrShape* dictp)
 {
     // Don't assert inDictionaryMode() here because we may be called from
-    // JSObject::toDictionaryMode via JSObject::newDictionaryShape.
+    // NativeObject::toDictionaryMode via Shape::initDictionaryShape.
     MOZ_ASSERT(inDictionary());
     MOZ_ASSERT(!listp);
 
@@ -340,7 +338,7 @@ NativeObject::getChildDataProperty(JSContext* cx,
                 return nullptr;
             }
         }
-        shape->initDictionaryShape(child, obj->numFixedSlots(), &obj->shape_);
+        shape->initDictionaryShape(child, obj->numFixedSlots(), obj->shapePtr());
         return shape;
     }
 
@@ -371,7 +369,7 @@ NativeObject::getChildAccessorProperty(JSContext* cx,
         Shape* shape = Allocate<AccessorShape>(cx);
         if (!shape)
             return nullptr;
-        shape->initDictionaryShape(child, obj->numFixedSlots(), &obj->shape_);
+        shape->initDictionaryShape(child, obj->numFixedSlots(), obj->shapePtr());
         return shape;
     }
 
@@ -436,8 +434,8 @@ js::NativeObject::toDictionaryMode(JSContext* cx, HandleNativeObject obj)
     }
 
     MOZ_ASSERT(root->listp == nullptr);
-    root->listp = &obj->shape_;
-    obj->shape_ = root;
+    root->listp = obj->shapePtr();
+    obj->setShape(root);
 
     MOZ_ASSERT(obj->inDictionaryMode());
     root->base()->setSlotSpan(span);
@@ -738,7 +736,7 @@ NativeObject::addEnumerableDataProperty(JSContext* cx, HandleNativeObject obj, H
                 return nullptr;
             }
         }
-        shape->initDictionaryShape(child, obj->numFixedSlots(), &obj->shape_);
+        shape->initDictionaryShape(child, obj->numFixedSlots(), obj->shapePtr());
     } else {
         uint32_t slot = obj->slotSpan();
         MOZ_ASSERT(slot >= JSSLOT_FREE(obj->getClass()));
@@ -1230,7 +1228,7 @@ NativeObject::clear(JSContext* cx, HandleNativeObject obj)
     MOZ_ASSERT(shape->isEmptyShape());
 
     if (obj->inDictionaryMode())
-        shape->listp = &obj->shape_;
+        shape->listp = obj->shapePtr();
 
     JS_ALWAYS_TRUE(obj->setLastProperty(cx, shape));
 
@@ -1317,12 +1315,6 @@ NativeObject::replaceWithNewEquivalentShape(JSContext* cx, HandleNativeObject ob
 }
 
 /* static */ bool
-NativeObject::shadowingShapeChange(JSContext* cx, HandleNativeObject obj, const Shape& shape)
-{
-    return generateOwnShape(cx, obj);
-}
-
-/* static */ bool
 JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
                    GenerateShape generateShape)
 {
@@ -1362,9 +1354,12 @@ JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
 /* static */ bool
 NativeObject::clearFlag(JSContext* cx, HandleNativeObject obj, BaseShape::Flag flag)
 {
-    MOZ_ASSERT(obj->inDictionaryMode());
-
     MOZ_ASSERT(obj->lastProperty()->getObjectFlags() & flag);
+
+    if (!obj->inDictionaryMode()) {
+        if (!toDictionaryMode(cx, obj))
+            return false;
+    }
 
     StackBaseShape base(obj->lastProperty());
     base.flags &= ~flag;
@@ -1806,14 +1801,14 @@ Shape::fixupDictionaryShapeAfterMovingGC()
 
     if (listpPointsIntoShape) {
         // listp points to the parent field of the next shape.
-        Shape* next = reinterpret_cast<Shape*>(uintptr_t(listp) - offsetof(Shape, parent));
+        Shape* next = Shape::fromParentFieldPointer(uintptr_t(listp));
         if (gc::IsForwarded(next))
             listp = &gc::Forwarded(next)->parent;
     } else {
         // listp points to the shape_ field of an object.
-        JSObject* last = reinterpret_cast<JSObject*>(uintptr_t(listp) - ShapedObject::offsetOfShape());
+        JSObject* last = ShapedObject::fromShapeFieldPointer(uintptr_t(listp));
         if (gc::IsForwarded(last))
-            listp = &gc::Forwarded(last)->as<NativeObject>().shape_;
+            listp = gc::Forwarded(last)->as<NativeObject>().shapePtr();
     }
 }
 

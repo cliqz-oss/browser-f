@@ -9,7 +9,7 @@ const { Component, createFactory } = require("devtools/client/shared/vendor/reac
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { div } = dom;
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/vendor/react-redux");
+const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
 const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
 const Actions = require("../actions/index");
 const { updateFormDataSections } = require("../utils/request-utils");
@@ -40,8 +40,9 @@ class MonitorPanel extends Component {
       isEmpty: PropTypes.bool.isRequired,
       networkDetailsOpen: PropTypes.bool.isRequired,
       openNetworkDetails: PropTypes.func.isRequired,
+      onNetworkDetailsResized: PropTypes.func.isRequired,
       request: PropTypes.object,
-      selectedRequestVisible: PropTypes.func.isRequired,
+      selectedRequestVisible: PropTypes.bool.isRequired,
       sourceMapService: PropTypes.object,
       openLink: PropTypes.func,
       updateRequest: PropTypes.func.isRequired,
@@ -56,6 +57,7 @@ class MonitorPanel extends Component {
     };
 
     this.onLayoutChange = this.onLayoutChange.bind(this);
+    this.onNetworkDetailsResized = this.onNetworkDetailsResized.bind(this);
   }
 
   componentDidMount() {
@@ -94,6 +96,16 @@ class MonitorPanel extends Component {
     });
   }
 
+  onNetworkDetailsResized(width, height) {
+   // Cleaning width and height parameters, because SplitBox passes ALWAYS two values,
+   // while depending on orientation ONLY ONE dimension is managed by it at a time.
+    let { isVerticalSpliter }  = this.state;
+    return this.props.onNetworkDetailsResized(
+      isVerticalSpliter ? width : null,
+      isVerticalSpliter ? null : height
+    );
+  }
+
   render() {
     let {
       connector,
@@ -113,8 +125,8 @@ class MonitorPanel extends Component {
         Toolbar({ connector }),
         SplitBox({
           className: "devtools-responsive-container",
-          initialWidth: `${initialWidth}px`,
-          initialHeight: `${initialHeight}px`,
+          initialWidth: initialWidth,
+          initialHeight: initialHeight,
           minSize: "50px",
           maxSize: "80%",
           splitterSize: 1,
@@ -128,6 +140,7 @@ class MonitorPanel extends Component {
           endPanelCollapsed: !networkDetailsOpen,
           endPanelControl: true,
           vert: this.state.isVerticalSpliter,
+          onControlledPanelResized: this.onNetworkDetailsResized,
         }),
       )
     );
@@ -136,13 +149,16 @@ class MonitorPanel extends Component {
 
 module.exports = connect(
   (state) => ({
-    isEmpty: state.requests.requests.isEmpty(),
+    isEmpty: state.requests.requests.size == 0,
     networkDetailsOpen: state.ui.networkDetailsOpen,
     request: getSelectedRequest(state),
     selectedRequestVisible: isSelectedRequestVisible(state),
   }),
   (dispatch) => ({
     openNetworkDetails: (open) => dispatch(Actions.openNetworkDetails(open)),
+    onNetworkDetailsResized: (width, height) => dispatch(
+      Actions.resizeNetworkDetails(width, height)
+    ),
     updateRequest: (id, data, batch) => dispatch(Actions.updateRequest(id, data, batch)),
   }),
 )(MonitorPanel);

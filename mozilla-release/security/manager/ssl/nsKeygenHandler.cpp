@@ -11,9 +11,29 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Base64.h"
 #include "mozilla/Casting.h"
+
+/* Disable the "base class should be explicitly initialized in the
+   copy constructor" warning that some bindings structs trigger while
+   including Element.h.  Looks like it's an inherent part of -Wextra,
+   so we can't just disable it in a targeted way in moz.build. */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wextra"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wextra"
+#endif // __clang__ || __GNUC__
+
+#include "mozilla/dom/Element.h"
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif // __clang__ || __GNUC__
+
 #include "nsDependentString.h"
 #include "nsIContent.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsIGenKeypairInfoDlg.h"
 #include "nsIServiceManager.h"
 #include "nsITokenDialogs.h"
@@ -29,6 +49,8 @@
 #include "secasn1.h"
 #include "secder.h"
 #include "secdert.h"
+
+using mozilla::dom::Element;
 
 //These defines are taken from the PKCS#11 spec
 #define CKM_RSA_PKCS_KEY_PAIR_GEN     0x00000000
@@ -198,16 +220,6 @@ nsKeygenFormProcessor::nsKeygenFormProcessor()
    m_ctx = new PipUIContext();
 }
 
-nsKeygenFormProcessor::~nsKeygenFormProcessor()
-{
-  nsNSSShutDownPreventionLock locker;
-  if (isAlreadyShutDown()) {
-    return;
-  }
-
-  shutdown(ShutdownCalledFrom::Object);
-}
-
 nsresult
 nsKeygenFormProcessor::Create(nsISupports* aOuter, const nsIID& aIID, void* *aResult)
 {
@@ -253,12 +265,7 @@ nsKeygenFormProcessor::Init()
 nsresult
 nsKeygenFormProcessor::GetSlot(uint32_t aMechanism, PK11SlotInfo** aSlot)
 {
-  nsNSSShutDownPreventionLock locker;
-  if (isAlreadyShutDown()) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  return GetSlotWithMechanism(aMechanism, m_ctx, aSlot, locker);
+  return GetSlotWithMechanism(aMechanism, m_ctx, aSlot);
 }
 
 uint32_t MapGenMechToAlgoMech(uint32_t mechanism)
@@ -296,7 +303,7 @@ uint32_t MapGenMechToAlgoMech(uint32_t mechanism)
 
 nsresult
 GetSlotWithMechanism(uint32_t aMechanism, nsIInterfaceRequestor* m_ctx,
-                     PK11SlotInfo** aSlot, nsNSSShutDownPreventionLock& /*proofOfLock*/)
+                     PK11SlotInfo** aSlot)
 {
     PK11SlotList * slotList = nullptr;
     char16_t** tokenNameList = nullptr;
@@ -404,11 +411,6 @@ nsKeygenFormProcessor::GetPublicKey(const nsAString& aValue,
                                     nsAString& aOutPublicKey,
                                     const nsAString& aKeyParams)
 {
-    nsNSSShutDownPreventionLock locker;
-    if (isAlreadyShutDown()) {
-      return NS_ERROR_NOT_AVAILABLE;
-    }
-
     nsresult rv = NS_ERROR_FAILURE;
     nsAutoCString keystring;
     char *keyparamsString = nullptr;
@@ -530,7 +532,7 @@ nsKeygenFormProcessor::GetPublicKey(const nsAString& aValue,
       }
 
     /* Make sure token is initialized. */
-    rv = setPassword(slot, m_ctx, locker);
+    rv = setPassword(slot, m_ctx);
     if (NS_FAILED(rv))
         goto loser;
 
@@ -672,7 +674,7 @@ loser:
 
 // static
 void
-nsKeygenFormProcessor::ExtractParams(nsIDOMHTMLElement* aElement,
+nsKeygenFormProcessor::ExtractParams(Element* aElement,
                                      nsAString& challengeValue,
                                      nsAString& keyTypeValue,
                                      nsAString& keyParamsValue)
@@ -698,7 +700,7 @@ nsKeygenFormProcessor::ExtractParams(nsIDOMHTMLElement* aElement,
 }
 
 nsresult
-nsKeygenFormProcessor::ProcessValue(nsIDOMHTMLElement* aElement,
+nsKeygenFormProcessor::ProcessValue(Element* aElement,
                                     const nsAString& aName,
                                     nsAString& aValue)
 {

@@ -6,13 +6,13 @@
  */
 
 const { UnsubmittedCrashHandler } =
-  Cu.import("resource:///modules/ContentCrashHandlers.jsm", {});
+  ChromeUtils.import("resource:///modules/ContentCrashHandlers.jsm", {});
 const { FileUtils } =
-  Cu.import("resource://gre/modules/FileUtils.jsm", {});
+  ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
 const { makeFakeAppDir }  =
-  Cu.import("resource://testing-common/AppData.jsm", {});
+  ChromeUtils.import("resource://testing-common/AppData.jsm", {});
 const { OS } =
-  Cu.import("resource://gre/modules/osfile.jsm", {});
+  ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
 const DAY = 24 * 60 * 60 * 1000; // milliseconds
 const SERVER_URL = "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs";
@@ -194,7 +194,7 @@ add_task(async function setup() {
   }
 
   let env = Cc["@mozilla.org/process/environment;1"]
-              .getService(Components.interfaces.nsIEnvironment);
+              .getService(Ci.nsIEnvironment);
   let oldServerURL = env.get("MOZ_CRASHREPORTER_URL");
   env.set("MOZ_CRASHREPORTER_URL", SERVER_URL);
 

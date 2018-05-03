@@ -38,7 +38,6 @@
 #include "nsCycleCollectionNoteRootCallback.h"
 #include "nsCycleCollector.h"
 #include "jsapi.h"
-#include "jsprf.h"
 #include "js/MemoryMetrics.h"
 #include "mozilla/dom/GeneratedAtomList.h"
 #include "mozilla/dom/BindingUtils.h"
@@ -809,6 +808,14 @@ ReloadPrefsCallback(const char* pref, void* data)
     bool streams = Preferences::GetBool(JS_OPTIONS_DOT_STR "streams");
 
     bool spectreIndexMasking = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.index_masking");
+    bool spectreObjectMitigationsBarriers =
+        Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.object_mitigations.barriers");
+    bool spectreObjectMitigationsMisc =
+        Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.object_mitigations.misc");
+    bool spectreStringMitigations =
+        Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.string_mitigations");
+    bool spectreValueMasking = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.value_masking");
+    bool spectreJitToCxxCalls = Preferences::GetBool(JS_OPTIONS_DOT_STR "spectre.jit_to_C++_calls");
 
     sSharedMemoryEnabled = Preferences::GetBool(JS_OPTIONS_DOT_STR "shared_memory");
 
@@ -830,6 +837,8 @@ ReloadPrefsCallback(const char* pref, void* data)
     bool fuzzingEnabled = Preferences::GetBool("fuzzing.enabled");
 #endif
 
+    bool arrayProtoValues = Preferences::GetBool(JS_OPTIONS_DOT_STR "array_prototype_values");
+
     JS::ContextOptionsRef(cx).setBaseline(useBaseline)
                              .setIon(useIon)
                              .setAsmJS(useAsmJS)
@@ -846,7 +855,8 @@ ReloadPrefsCallback(const char* pref, void* data)
                              .setFuzzing(fuzzingEnabled)
 #endif
                              .setStreams(streams)
-                             .setExtraWarnings(extraWarnings);
+                             .setExtraWarnings(extraWarnings)
+                             .setArrayProtoValues(arrayProtoValues);
 
     nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
     if (xr) {
@@ -868,6 +878,15 @@ ReloadPrefsCallback(const char* pref, void* data)
 #endif
 
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_INDEX_MASKING, spectreIndexMasking);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_OBJECT_MITIGATIONS_BARRIERS,
+                                  spectreObjectMitigationsBarriers);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_OBJECT_MITIGATIONS_MISC,
+                                  spectreObjectMitigationsMisc);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_STRING_MITIGATIONS,
+                                  spectreStringMitigations);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_VALUE_MASKING, spectreValueMasking);
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_SPECTRE_JIT_TO_CXX_CALLS,
+                                  spectreJitToCxxCalls);
 }
 
 XPCJSContext::~XPCJSContext()
@@ -1206,21 +1225,6 @@ void
 XPCJSContext::BeforeProcessTask(bool aMightBlock)
 {
     MOZ_ASSERT(NS_IsMainThread());
-
-    // If ProcessNextEvent was called during a Promise "then" callback, we
-    // must process any pending microtasks before blocking in the event loop,
-    // otherwise we may deadlock until an event enters the queue later.
-    if (aMightBlock) {
-        if (Promise::PerformMicroTaskCheckpoint()) {
-            // If any microtask was processed, we post a dummy event in order to
-            // force the ProcessNextEvent call not to block.  This is required
-            // to support nested event loops implemented using a pattern like
-            // "while (condition) thread.processNextEvent(true)", in case the
-            // condition is triggered here by a Promise "then" callback.
-
-            NS_DispatchToMainThread(new Runnable("Empty_microtask_runnable"));
-        }
-    }
 
     // Start the slow script timer.
     mSlowScriptCheckpoint = mozilla::TimeStamp::NowLoRes();

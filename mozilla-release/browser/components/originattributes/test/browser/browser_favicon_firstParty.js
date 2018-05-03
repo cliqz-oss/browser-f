@@ -2,9 +2,9 @@
  * Bug 1277803 - A test case for testing favicon loading across different first party domains.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
 
 let EventUtils = {};
 Services.scriptloader.loadSubScript(
@@ -27,7 +27,7 @@ const FAVICON_URI = TEST_DIRECTORY + "file_favicon.png";
 const TEST_FAVICON_CACHE_URI = TEST_DIRECTORY + "file_favicon_cache.png";
 
 let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-let makeURI = Cu.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
+let makeURI = ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
 
 function clearAllImageCaches() {
   let tools = SpecialPowers.Cc["@mozilla.org/image/tools;1"]

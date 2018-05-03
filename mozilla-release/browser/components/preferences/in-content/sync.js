@@ -4,17 +4,15 @@
 
 /* import-globals-from preferences.js */
 
-Components.utils.import("resource://services-sync/main.js");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "FxAccountsCommon", function() {
-  return Components.utils.import("resource://gre/modules/FxAccountsCommon.js", {});
+  return ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js", {});
 });
 
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
-  "resource://gre/modules/FxAccounts.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "UIState",
+ChromeUtils.defineModuleGetter(this, "UIState",
   "resource://services-sync/UIState.jsm");
 
 const FXA_PAGE_LOGGED_OUT = 0;
@@ -53,8 +51,8 @@ var gSyncPane = {
     this._adjustForPrefs();
 
     // If the Service hasn't finished initializing, wait for it.
-    let xps = Components.classes["@mozilla.org/weave/service;1"]
-      .getService(Components.interfaces.nsISupports)
+    let xps = Cc["@mozilla.org/weave/service;1"]
+      .getService(Ci.nsISupports)
       .wrappedJSObject;
 
     if (xps.ready) {
@@ -139,17 +137,25 @@ var gSyncPane = {
       return Services.strings.createBundle("chrome://browser/locale/accounts.properties");
     });
 
+    // Links for mobile devices before the user is logged in.
     let url = Services.prefs.getCharPref("identity.mobilepromo.android") + "sync-preferences";
     document.getElementById("fxaMobilePromo-android").setAttribute("href", url);
-    document.getElementById("fxaMobilePromo-android-hasFxaAccount").setAttribute("href", url);
     url = Services.prefs.getCharPref("identity.mobilepromo.ios") + "sync-preferences";
     document.getElementById("fxaMobilePromo-ios").setAttribute("href", url);
-    document.getElementById("fxaMobilePromo-ios-hasFxaAccount").setAttribute("href", url);
+
+    // Links for mobile devices shown after the user is logged in.
+    FxAccounts.config.promiseConnectDeviceURI(this._getEntryPoint()).then(connectURI => {
+      document.getElementById("mobilePromo-singledevice").setAttribute("href", connectURI);
+    });
+
+    FxAccounts.config.promiseManageDevicesURI(this._getEntryPoint()).then(manageURI => {
+      document.getElementById("mobilePromo-multidevice").setAttribute("href", manageURI);
+    });
 
     document.getElementById("tosPP-small-ToS").setAttribute("href", Weave.Svc.Prefs.get("fxa.termsURL"));
     document.getElementById("tosPP-small-PP").setAttribute("href", Weave.Svc.Prefs.get("fxa.privacyURL"));
 
-    fxAccounts.promiseAccountsSignUpURI(this._getEntryPoint()).then(signUpURI => {
+    FxAccounts.config.promiseSignUpURI(this._getEntryPoint()).then(signUpURI => {
       document.getElementById("noFxaSignUp").setAttribute("href", signUpURI);
     });
 
@@ -248,8 +254,8 @@ var gSyncPane = {
   },
 
   updateWeavePrefs() {
-    let service = Components.classes["@mozilla.org/weave/service;1"]
-      .getService(Components.interfaces.nsISupports)
+    let service = Cc["@mozilla.org/weave/service;1"]
+      .getService(Ci.nsISupports)
       .wrappedJSObject;
 
     let displayNameLabel = document.getElementById("fxaDisplayName");
@@ -318,9 +324,14 @@ var gSyncPane = {
     }
     // The "manage account" link embeds the uid, so we need to update this
     // if the account state changes.
-    fxAccounts.promiseAccountsManageURI(this._getEntryPoint()).then(accountsManageURI => {
+    FxAccounts.config.promiseManageURI(this._getEntryPoint()).then(accountsManageURI => {
       document.getElementById("verifiedManage").setAttribute("href", accountsManageURI);
     });
+    let isUnverified = state.status == UIState.STATUS_NOT_VERIFIED;
+    // The mobile promo links - which one is shown depends on the number of devices.
+    let isMultiDevice = Weave.Service.clientsEngine.stats.numClients > 1;
+    document.getElementById("mobilePromo-singledevice").hidden = isUnverified || isMultiDevice;
+    document.getElementById("mobilePromo-multidevice").hidden = isUnverified || !isMultiDevice;
   },
 
   _getEntryPoint() {
@@ -349,7 +360,7 @@ var gSyncPane = {
   },
 
   async signIn() {
-    const url = await fxAccounts.promiseAccountsSignInURI(this._getEntryPoint());
+    const url = await FxAccounts.config.promiseSignInURI(this._getEntryPoint());
     this.replaceTabWithUrl(url);
   },
 
@@ -359,8 +370,8 @@ var gSyncPane = {
     // URL embeds account info and the server endpoint complains if we don't
     // supply it - So we just use the regular "sign in" URL in that case.
     let entryPoint = this._getEntryPoint();
-    const url = (await fxAccounts.promiseAccountsForceSigninURI(entryPoint)) ||
-                (await fxAccounts.promiseAccountsSignInURI(entryPoint));
+    const url = (await FxAccounts.config.promiseForceSigninURI(entryPoint)) ||
+                (await FxAccounts.config.promiseSignInURI(entryPoint));
     this.replaceTabWithUrl(url);
   },
 
@@ -375,7 +386,7 @@ var gSyncPane = {
 
   openChangeProfileImage(event) {
     if (this.clickOrSpaceOrEnterPressed(event)) {
-      fxAccounts.promiseAccountsChangeProfileURI(this._getEntryPoint(), "avatar")
+      FxAccounts.config.promiseChangeAvatarURI(this._getEntryPoint())
         .then(url => {
           this.openContentInBrowser(url, {
             replaceQueryString: true,
@@ -396,7 +407,7 @@ var gSyncPane = {
   },
 
   manageFirefoxAccount() {
-    fxAccounts.promiseAccountsManageURI(this._getEntryPoint())
+    FxAccounts.config.promiseManageURI(this._getEntryPoint())
       .then(url => {
         this.openContentInBrowser(url, {
           replaceQueryString: true,

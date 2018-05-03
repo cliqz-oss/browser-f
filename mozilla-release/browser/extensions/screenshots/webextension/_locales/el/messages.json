@@ -29,6 +29,15 @@
   "downloadScreenshot": {
     "message": "Λήψη"
   },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Τα cookies τρίτων είναι απενεργοποιημένα."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Χρησιμοποιείτε το Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Οι μεταφορτώσεις έχουν απενεργοποιηθεί."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Ο σύνδεσμος αντιγράφηκε"
   },
@@ -39,6 +48,12 @@
         "content": "$1"
       }
     }
+  },
+  "copyScreenshot": {
+    "message": "Αντιγραφή"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Το στιγμιότυπο αντιγράφηκε"
   },
   "imageCroppedWarning": {
     "message": "Αυτή η εικόνα έχει περικοπεί σε $PIXELS$px.",

@@ -1,29 +1,88 @@
 use mozprofile::prefreader::PrefReaderError;
 use mozprofile::profile::Profile;
-use std::ascii::AsciiExt;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
 use std::error::Error;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::io::{Result as IoResult, Error as IoError, ErrorKind};
+use std::io;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time;
 
 pub trait Runner {
-    fn args(&mut self) -> &mut Vec<String>;
-    fn build_command(&self, &mut Command);
-    fn envs(&mut self) -> &mut HashMap<String, String>;
-    fn is_running(&mut self) -> bool;
-    fn start(&mut self) -> Result<(), RunnerError>;
-    fn status(&mut self) -> IoResult<Option<process::ExitStatus>>;
-    fn stop(&mut self) -> IoResult<Option<process::ExitStatus>>;
+    type Process;
+
+    fn arg<'a, S>(&'a mut self, arg: S) -> &'a mut Self
+    where
+        S: AsRef<OsStr>;
+
+    fn args<'a, I, S>(&'a mut self, args: I) -> &'a mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>;
+
+    fn env<'a, K, V>(&'a mut self, key: K, value: V) -> &'a mut Self
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>;
+
+    fn envs<'a, I, K, V>(&'a mut self, envs: I) -> &'a mut Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>;
+
+    fn stdout<'a, T>(&'a mut self, stdout: T) -> &'a mut Self
+    where
+        T: Into<Stdio>;
+
+    fn stderr<'a, T>(&'a mut self, stderr: T) -> &'a mut Self
+    where
+        T: Into<Stdio>;
+
+    fn start(self) -> Result<Self::Process, RunnerError>;
+}
+
+pub trait RunnerProcess {
+    /// Attempts to collect the exit status of the process if it has already exited.
+    ///
+    /// This function will not block the calling thread and will only advisorily check to see if
+    /// the child process has exited or not.  If the process has exited then on Unix the process ID
+    /// is reaped.  This function is guaranteed to repeatedly return a successful exit status so
+    /// long as the child has already exited.
+    ///
+    /// If the process has exited, then `Ok(Some(status))` is returned.  If the exit status is not
+    /// available at this time then `Ok(None)` is returned.  If an error occurs, then that error is
+    /// returned.
+    fn try_wait(&mut self) -> io::Result<Option<process::ExitStatus>>;
+
+    /// Waits for the process to exit completely, killing it if it does not stop within `timeout`,
+    /// and returns the status that it exited with.
+    ///
+    /// Firefox' integrated background monitor observes long running threads during shutdown and
+    /// kills these after 63 seconds.  If the process fails to exit within the duration of
+    /// `timeout`, it is forcefully killed.
+    ///
+    /// This function will continue to have the same return value after it has been called at least
+    /// once.
+    fn wait(&mut self, timeout: time::Duration) -> io::Result<process::ExitStatus>;
+
+    /// Determine if the process is still running.
+    fn running(&mut self) -> bool;
+
+    /// Forces the process to exit and returns the exit status.  This is
+    /// equivalent to sending a SIGKILL on Unix platforms.
+    fn kill(&mut self) -> io::Result<process::ExitStatus>;
 }
 
 #[derive(Debug)]
 pub enum RunnerError {
-    Io(IoError),
+    Io(io::Error),
     PrefReader(PrefReaderError),
 }
 
@@ -54,8 +113,8 @@ impl Error for RunnerError {
     }
 }
 
-impl From<IoError> for RunnerError {
-    fn from(value: IoError) -> RunnerError {
+impl From<io::Error> for RunnerError {
+    fn from(value: io::Error) -> RunnerError {
         RunnerError::Io(value)
     }
 }
@@ -67,93 +126,160 @@ impl From<PrefReaderError> for RunnerError {
 }
 
 #[derive(Debug)]
+pub struct FirefoxProcess {
+    process: Child,
+    profile: Profile,
+}
+
+impl RunnerProcess for FirefoxProcess {
+    fn try_wait(&mut self) -> io::Result<Option<process::ExitStatus>> {
+        self.process.try_wait()
+    }
+
+    fn wait(&mut self, timeout: time::Duration) -> io::Result<process::ExitStatus> {
+        let now = time::Instant::now();
+        while self.running() {
+            if now.elapsed() >= timeout {
+                break;
+            }
+            thread::sleep(time::Duration::from_millis(100));
+        }
+        self.kill()
+    }
+
+    fn running(&mut self) -> bool {
+        self.try_wait().unwrap().is_none()
+    }
+
+    fn kill(&mut self) -> io::Result<process::ExitStatus> {
+        self.process.kill()?;
+        self.process.wait()
+    }
+}
+
+#[derive(Debug)]
 pub struct FirefoxRunner {
-    pub binary: PathBuf,
-    args: Vec<String>,
-    envs: HashMap<String, String>,
-    process: Option<process::Child>,
-    pub profile: Profile
+    binary: PathBuf,
+    profile: Profile,
+    args: Vec<OsString>,
+    envs: HashMap<OsString, OsString>,
+    stdout: Option<Stdio>,
+    stderr: Option<Stdio>,
 }
 
 impl FirefoxRunner {
-    pub fn new(binary: &Path, profile: Option<Profile>) -> IoResult<FirefoxRunner> {
-        let prof = match profile {
-            Some(p) => p,
-            None => try!(Profile::new(None))
-        };
+    pub fn new(binary: &Path, profile: Profile) -> FirefoxRunner {
+        let mut envs: HashMap<OsString, OsString> = HashMap::new();
+        envs.insert("MOZ_NO_REMOTE".into(), "1".into());
+        envs.insert("NO_EM_RESTART".into(), "1".into());
 
-        let mut envs = HashMap::new();
-        envs.insert("MOZ_NO_REMOTE".to_string(), "1".to_string());
-        envs.insert("NO_EM_RESTART".to_string(), "1".to_string());
-
-        Ok(FirefoxRunner {
+        FirefoxRunner {
             binary: binary.to_path_buf(),
-            process: None,
-            args: Vec::new(),
             envs: envs,
-            profile: prof
-        })
+            profile: profile,
+            args: vec![],
+            stdout: None,
+            stderr: None,
+        }
     }
 }
 
 impl Runner for FirefoxRunner {
-    fn args(&mut self) -> &mut Vec<String> {
-        &mut self.args
+    type Process = FirefoxProcess;
+
+    fn arg<'a, S>(&'a mut self, arg: S) -> &'a mut FirefoxRunner
+    where
+        S: AsRef<OsStr>,
+    {
+        self.args.push((&arg).into());
+        self
     }
 
-    fn build_command(&self, command: &mut Command) {
-        command
-            .args(&self.args[..])
-            .envs(&self.envs);
+    fn args<'a, I, S>(&'a mut self, args: I) -> &'a mut FirefoxRunner
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        for arg in args {
+            self.args.push((&arg).into());
+        }
+        self
+    }
+
+    fn env<'a, K, V>(&'a mut self, key: K, value: V) -> &'a mut FirefoxRunner
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        self.envs.insert((&key).into(), (&value).into());
+        self
+    }
+
+    fn envs<'a, I, K, V>(&'a mut self, envs: I) -> &'a mut FirefoxRunner
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        for (key, value) in envs {
+            self.envs.insert((&key).into(), (&value).into());
+        }
+        self
+    }
+
+    fn stdout<'a, T>(&'a mut self, stdout: T) -> &'a mut Self
+    where
+        T: Into<Stdio>,
+    {
+        self.stdout = Some(stdout.into());
+        self
+    }
+
+    fn stderr<'a, T>(&'a mut self, stderr: T) -> &'a mut Self
+    where
+        T: Into<Stdio>,
+    {
+        self.stderr = Some(stderr.into());
+        self
+    }
+
+    fn start(mut self) -> Result<FirefoxProcess, RunnerError> {
+        let stdout = self.stdout.unwrap_or_else(|| Stdio::inherit());
+        let stderr = self.stderr.unwrap_or_else(|| Stdio::inherit());
+
+        let mut cmd = Command::new(&self.binary);
+        cmd.args(&self.args[..])
+            .envs(&self.envs)
+            .stdout(stdout)
+            .stderr(stderr);
 
         if !self.args.iter().any(|x| is_profile_arg(x)) {
-            command.arg("-profile").arg(&self.profile.path);
+            cmd.arg("-profile").arg(&self.profile.path);
         }
-        command.stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
-    }
+        cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
 
-    fn envs(&mut self) -> &mut HashMap<String, String> {
-        &mut self.envs
-    }
-
-    fn is_running(&mut self) -> bool {
-        self.process.is_some() && self.status().unwrap().is_none()
-    }
-
-    fn start(&mut self) -> Result<(), RunnerError> {
-        let mut cmd = Command::new(&self.binary);
-        self.build_command(&mut cmd);
-
-        let prefs = try!(self.profile.user_prefs());
-        try!(prefs.write());
+        self.profile.user_prefs()?.write()?;
 
         info!("Running command: {:?}", cmd);
-        let process = try!(cmd.spawn());
-        self.process = Some(process);
-        Ok(())
-    }
-
-    fn status(&mut self) -> IoResult<Option<process::ExitStatus>> {
-        self.process.as_mut().map(|p| p.try_wait()).unwrap_or(Ok(None))
-    }
-
-    fn stop(&mut self) -> IoResult<Option<process::ExitStatus>> {
-        let mut retval = None;
-
-        if let Some(ref mut p) = self.process {
-            try!(p.kill());
-            retval = Some(try!(p.wait()));
-        };
-        Ok(retval)
+        let process = cmd.spawn()?;
+        Ok(FirefoxProcess {
+            process: process,
+            profile: self.profile
+        })
     }
 }
 
-fn parse_arg_name(arg: &str) -> Option<&str> {
+fn parse_arg_name<T>(arg: T) -> Option<String>
+where
+    T: AsRef<OsStr>,
+{
+    let arg_os_str: &OsStr = arg.as_ref();
+    let arg_str = arg_os_str.to_string_lossy();
+
     let mut start = 0;
     let mut end = 0;
 
-    for (i, c) in arg.chars().enumerate() {
+    for (i, c) in arg_str.chars().enumerate() {
         if i == 0 {
             if !platform::arg_prefix_char(c) {
                 break;
@@ -178,7 +304,7 @@ fn parse_arg_name(arg: &str) -> Option<&str> {
     }
 
     if start > 0 && end > start {
-        Some(&arg[start..end])
+        Some(arg_str[start..end].into())
     } else {
         None
     }
@@ -193,28 +319,28 @@ fn name_end_char(c: char) -> bool {
 /// Returns a boolean indicating whether a given string
 /// contains one of the `-P`, `-Profile` or `-ProfileManager`
 /// arguments, respecting the various platform-specific conventions.
-pub fn is_profile_arg(arg: &str) -> bool {
+pub fn is_profile_arg<T>(arg: T) -> bool
+where
+    T: AsRef<OsStr>,
+{
     if let Some(name) = parse_arg_name(arg) {
-        name.eq_ignore_ascii_case("profile") ||
-            name.eq_ignore_ascii_case("p") ||
-            name.eq_ignore_ascii_case("profilemanager")
+        name.eq_ignore_ascii_case("profile") || name.eq_ignore_ascii_case("p")
+            || name.eq_ignore_ascii_case("profilemanager")
     } else {
         false
     }
 }
 
 fn find_binary(name: &str) -> Option<PathBuf> {
-    env::var("PATH")
-        .ok()
-        .and_then(|path_env| {
-            for mut path in env::split_paths(&*path_env) {
-                path.push(name);
-                if path.exists() {
-                    return Some(path)
-                }
+    env::var("PATH").ok().and_then(|path_env| {
+        for mut path in env::split_paths(&*path_env) {
+            path.push(name);
+            if path.exists() {
+                return Some(path);
             }
-            None
-        })
+        }
+        None
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -239,19 +365,24 @@ pub mod platform {
 
     pub fn firefox_default_path() -> Option<PathBuf> {
         if let Some(path) = find_binary("firefox-bin") {
-            return Some(path)
+            return Some(path);
         }
         let home = env::home_dir();
         for &(prefix_home, trial_path) in [
-            (false, "/Applications/Firefox.app/Contents/MacOS/firefox-bin"),
-            (true, "Applications/Firefox.app/Contents/MacOS/firefox-bin")].iter() {
+            (
+                false,
+                "/Applications/Firefox.app/Contents/MacOS/firefox-bin",
+            ),
+            (true, "Applications/Firefox.app/Contents/MacOS/firefox-bin"),
+        ].iter()
+        {
             let path = match (home.as_ref(), prefix_home) {
                 (Some(ref home_dir), true) => home_dir.join(trial_path),
                 (None, true) => continue,
-                (_, false) => PathBuf::from(trial_path)
+                (_, false) => PathBuf::from(trial_path),
             };
             if path.exists() {
-                return Some(path)
+                return Some(path);
             }
         }
         None
@@ -274,7 +405,7 @@ pub mod platform {
         let opt_path = firefox_registry_path().unwrap_or(None);
         if let Some(path) = opt_path {
             if path.exists() {
-                return Some(path)
+                return Some(path);
             }
         };
         find_binary("firefox.exe")
@@ -301,7 +432,7 @@ pub mod platform {
                         if let Ok(bin_subtree) = mozilla.open_subkey_with_flags(bin_key, KEY_READ) {
                             let path: Result<String, _> = bin_subtree.get_value("PathToExe");
                             if let Ok(path) = path {
-                                return Ok(Some(PathBuf::from(path)))
+                                return Ok(Some(PathBuf::from(path)));
                             }
                         }
                     }
@@ -331,11 +462,11 @@ pub mod platform {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_arg_name, is_profile_arg};
+    use super::{is_profile_arg, parse_arg_name};
 
     fn parse(arg: &str, name: Option<&str>) {
         let result = parse_arg_name(arg);
-        assert_eq!(result, name);
+        assert_eq!(result, name.map(|x| x.to_string()));
     }
 
     #[test]

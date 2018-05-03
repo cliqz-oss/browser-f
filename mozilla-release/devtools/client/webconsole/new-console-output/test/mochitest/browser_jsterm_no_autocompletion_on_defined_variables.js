@@ -3,12 +3,14 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Tests for bug 704295
 
 "use strict";
 
 const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
-                 "test/test-console.html";
+                 "new-console-output/test/mochitest/test-console.html";
 
 add_task(async function () {
   let hud = await openNewTabAndConsole(TEST_URI);
@@ -21,18 +23,17 @@ function testCompletion(hud) {
 
   // Test typing 'var d = 5;' and press RETURN
   jsterm.setInputValue("var d = ");
-  EventUtils.synthesizeKey("5", {});
-  EventUtils.synthesizeKey(";", {});
+  EventUtils.sendString("5;");
   is(input.value, "var d = 5;", "var d = 5;");
   is(jsterm.completeNode.value, "", "no completion");
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   is(jsterm.completeNode.value, "", "clear completion on execute()");
 
   // Test typing 'var a = d' and press RETURN
   jsterm.setInputValue("var a = ");
-  EventUtils.synthesizeKey("d", {});
+  EventUtils.sendString("d");
   is(input.value, "var a = d", "var a = d");
   is(jsterm.completeNode.value, "", "no completion");
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   is(jsterm.completeNode.value, "", "clear completion on execute()");
 }

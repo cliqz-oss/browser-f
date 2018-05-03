@@ -10,11 +10,10 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Result.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-
 #include "jit/CompileWrappers.h"
 #include "jit/JitOptions.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
 namespace js {
 namespace jit {
@@ -93,7 +92,8 @@ JitContext* MaybeGetJitContext();
 
 void SetJitContext(JitContext* ctx);
 
-bool CanIonCompileScript(JSContext* cx, JSScript* script, bool osr);
+bool CanIonCompileScript(JSContext* cx, JSScript* script);
+bool CanIonInlineScript(JSScript* script);
 
 MOZ_MUST_USE bool IonCompileScriptForBaseline(JSContext* cx, BaselineFrame* frame, jsbytecode* pc);
 

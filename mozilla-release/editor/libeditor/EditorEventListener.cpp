@@ -299,15 +299,15 @@ EditorEventListener::UninstallFromEditor()
                                   TrustedEventsAtSystemGroupBubble());
 }
 
-already_AddRefed<nsIPresShell>
-EditorEventListener::GetPresShell()
+nsIPresShell*
+EditorEventListener::GetPresShell() const
 {
   MOZ_ASSERT(!DetachedFromEditor());
   return mEditorBase->GetPresShell();
 }
 
 nsPresContext*
-EditorEventListener::GetPresContext()
+EditorEventListener::GetPresContext() const
 {
   nsCOMPtr<nsIPresShell> presShell = GetPresShell();
   return presShell ? presShell->GetPresContext() : nullptr;
@@ -975,8 +975,7 @@ EditorEventListener::CanDrop(nsIDOMDragEvent* aEvent)
   // If there is no source node, this is probably an external drag and the
   // drop is allowed. The later checks rely on checking if the drag target
   // is the same as the drag source.
-  nsCOMPtr<nsIDOMNode> sourceNode;
-  dataTransfer->GetMozSourceNode(getter_AddRefs(sourceNode));
+  nsCOMPtr<nsINode> sourceNode = dataTransfer->GetMozSourceNode();
   if (!sourceNode) {
     return true;
   }
@@ -984,12 +983,10 @@ EditorEventListener::CanDrop(nsIDOMDragEvent* aEvent)
   // There is a source node, so compare the source documents and this document.
   // Disallow drops on the same document.
 
-  nsCOMPtr<nsIDOMDocument> domdoc = editorBase->GetDOMDocument();
+  nsCOMPtr<nsIDocument> domdoc = editorBase->GetDocument();
   NS_ENSURE_TRUE(domdoc, false);
 
-  nsCOMPtr<nsIDOMDocument> sourceDoc;
-  nsresult rv = sourceNode->GetOwnerDocument(getter_AddRefs(sourceDoc));
-  NS_ENSURE_SUCCESS(rv, false);
+  nsCOMPtr<nsIDocument> sourceDoc = sourceNode->OwnerDoc();
 
   // If the source and the dest are not same document, allow to drop it always.
   if (domdoc != sourceDoc) {
@@ -1015,7 +1012,7 @@ EditorEventListener::CanDrop(nsIDOMDragEvent* aEvent)
   }
 
   nsCOMPtr<nsIDOMNode> parent;
-  rv = aEvent->GetRangeParent(getter_AddRefs(parent));
+  nsresult rv = aEvent->GetRangeParent(getter_AddRefs(parent));
   if (NS_FAILED(rv) || !parent) {
     return false;
   }
@@ -1093,7 +1090,7 @@ EditorEventListener::Focus(InternalFocusEvent* aFocusEvent)
     return NS_OK;
   }
 
-  nsIDOMEventTarget* target = aFocusEvent->GetDOMEventTarget();
+  nsIDOMEventTarget* target = aFocusEvent->GetOriginalDOMEventTarget();
   nsCOMPtr<nsINode> node = do_QueryInterface(target);
   NS_ENSURE_TRUE(node, NS_ERROR_UNEXPECTED);
 
@@ -1105,13 +1102,15 @@ EditorEventListener::Focus(InternalFocusEvent* aFocusEvent)
   }
 
   if (node->IsContent()) {
+    nsIContent* content =
+      node->AsContent()->FindFirstNonChromeOnlyAccessContent();
     // XXX If the focus event target is a form control in contenteditable
     // element, perhaps, the parent HTML editor should do nothing by this
     // handler.  However, FindSelectionRoot() returns the root element of the
     // contenteditable editor.  So, the editableRoot value is invalid for
     // the plain text editor, and it will be set to the wrong limiter of
     // the selection.  However, fortunately, actual bugs are not found yet.
-    nsCOMPtr<nsIContent> editableRoot = editorBase->FindSelectionRoot(node);
+    nsCOMPtr<nsIContent> editableRoot = editorBase->FindSelectionRoot(content);
 
     // make sure that the element is really focused in case an earlier
     // listener in the chain changed the focus.

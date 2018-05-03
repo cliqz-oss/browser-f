@@ -10,6 +10,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MemoryReporting.h"
 
+#include "gc/FreeOp.h"
 #include "jit/BaselineCompiler.h"
 #include "jit/BaselineIC.h"
 #include "jit/CompileInfo.h"
@@ -21,13 +22,12 @@
 #include "vm/TraceLogging.h"
 #include "wasm/WasmInstance.h"
 
-#include "jsobjinlines.h"
-#include "jsopcodeinlines.h"
-#include "jsscriptinlines.h"
-
-#include "gc/Iteration-inl.h"
+#include "gc/PrivateIterators-inl.h"
 #include "jit/JitFrames-inl.h"
 #include "jit/MacroAssembler-inl.h"
+#include "vm/BytecodeUtil-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/Stack-inl.h"
 
 using mozilla::BinarySearchIf;
@@ -300,7 +300,7 @@ CanEnterBaselineJIT(JSContext* cx, HandleScript script, InterpreterFrame* osrFra
 }
 
 MethodStatus
-jit::CanEnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, bool newType)
+jit::CanEnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp)
 {
    if (!CheckFrame(fp))
        return Method_CantCompile;
@@ -744,7 +744,7 @@ BaselineScript::copyYieldAndAwaitEntries(JSScript* script, Vector<uint32_t>& yie
 }
 
 void
-BaselineScript::copyICEntries(JSScript* script, const BaselineICEntry* entries, MacroAssembler& masm)
+BaselineScript::copyICEntries(JSScript* script, const BaselineICEntry* entries)
 {
     // Fix up the return offset in the IC entries and copy them in.
     // Also write out the IC entry ptrs in any fallback stubs that were added.
@@ -949,8 +949,7 @@ BaselineScript::toggleDebugTraps(JSScript* script, jsbytecode* pc)
 
 #ifdef JS_TRACE_LOGGING
 void
-BaselineScript::initTraceLogger(JSRuntime* runtime, JSScript* script,
-                                const Vector<CodeOffset>& offsets)
+BaselineScript::initTraceLogger(JSScript* script, const Vector<CodeOffset>& offsets)
 {
 #ifdef DEBUG
     traceLoggerScriptsEnabled_ = TraceLogTextIdEnabled(TraceLogger_Scripts);
@@ -971,7 +970,7 @@ BaselineScript::initTraceLogger(JSRuntime* runtime, JSScript* script,
 }
 
 void
-BaselineScript::toggleTraceLoggerScripts(JSRuntime* runtime, JSScript* script, bool enable)
+BaselineScript::toggleTraceLoggerScripts(JSScript* script, bool enable)
 {
     DebugOnly<bool> engineEnabled = TraceLogTextIdEnabled(TraceLogger_Engine);
     MOZ_ASSERT(enable == !traceLoggerScriptsEnabled_);
@@ -1165,7 +1164,7 @@ jit::ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable)
         for (auto script = zone->cellIter<JSScript>(); !script.done(); script.next()) {
             if (!script->hasBaselineScript())
                 continue;
-            script->baselineScript()->toggleTraceLoggerScripts(runtime, script, enable);
+            script->baselineScript()->toggleTraceLoggerScripts(script, enable);
         }
     }
 }

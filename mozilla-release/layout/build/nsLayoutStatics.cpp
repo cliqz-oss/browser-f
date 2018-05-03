@@ -33,15 +33,18 @@
 #include "nsGkAtoms.h"
 #include "nsImageFrame.h"
 #include "nsLayoutStylesheetCache.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/RuleProcessorCache.h"
-#include "ContentPrincipal.h"
+#endif
 #include "nsRange.h"
 #include "nsRegion.h"
 #include "nsRepeatService.h"
 #include "nsFloatManager.h"
 #include "nsSprocketLayout.h"
 #include "nsStackLayout.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "nsTextControlFrame.h"
 #include "nsXBLService.h"
 #include "txMozillaXSLTProcessor.h"
@@ -99,7 +102,6 @@
 #include "nsFrameMessageManager.h"
 #include "nsDOMMutationObserver.h"
 #include "nsHyphenationManager.h"
-#include "nsEditorSpellCheck.h"
 #include "nsWindowMemoryReporter.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/ProcessPriorityManager.h"
@@ -107,7 +109,6 @@
 #include "nsCookieService.h"
 #include "nsApplicationCacheService.h"
 #include "mozilla/dom/CustomElementRegistry.h"
-#include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/dom/HTMLVideoElement.h"
@@ -157,14 +158,9 @@ nsLayoutStatics::Initialize()
   nsHTMLTags::RegisterAtoms();
   nsRDFAtoms::RegisterAtoms();
 
-  NS_SealStaticAtomTable();
+  NS_SetStaticAtomsDone();
 
   StartupJSEnvironment();
-  rv = nsRegion::InitStatic();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize nsRegion");
-    return rv;
-  }
 
   nsGlobalWindowInner::Init();
   nsGlobalWindowOuter::Init();
@@ -262,7 +258,6 @@ nsLayoutStatics::Initialize()
   nsLayoutUtils::Initialize();
   PointerEventHandler::InitializeStatics();
   TouchManager::InitializeStatics();
-  ContentPrincipal::InitializeStatics();
 
   nsCORSListenerProxy::Startup();
 
@@ -291,7 +286,9 @@ nsLayoutStatics::Initialize()
   ServiceWorkerRegistrar::Initialize();
 
 #ifdef DEBUG
+#ifdef MOZ_OLD_STYLE
   GeckoStyleContext::Initialize();
+#endif
   mozilla::LayerAnimationInfo::Initialize();
 #endif
 
@@ -351,7 +348,9 @@ nsLayoutStatics::Shutdown()
   Attr::Shutdown();
   EventListenerManager::Shutdown();
   IMEStateManager::Shutdown();
+#ifdef MOZ_OLD_STYLE
   nsCSSParser::Shutdown();
+#endif
   nsMediaFeatures::Shutdown();
   nsHTMLDNSPrefetch::Shutdown();
   nsCSSRendering::Shutdown();
@@ -389,7 +388,9 @@ nsLayoutStatics::Shutdown()
   nsAttrValue::Shutdown();
   nsContentUtils::Shutdown();
   nsLayoutStylesheetCache::Shutdown();
+#ifdef MOZ_OLD_STYLE
   RuleProcessorCache::Shutdown();
+#endif
 
   ShutdownJSEnvironment();
   nsGlobalWindowInner::ShutDown();
@@ -416,8 +417,6 @@ nsLayoutStatics::Shutdown()
   nsHtml5Module::ReleaseStatics();
 
   mozilla::dom::FallbackEncoding::Shutdown();
-
-  nsRegion::ShutdownStatic();
 
   mozilla::EventDispatcher::Shutdown();
 

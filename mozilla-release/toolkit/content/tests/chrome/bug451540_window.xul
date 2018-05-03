@@ -14,9 +14,8 @@
         title="451540 test">
 
   <script type="application/javascript"><![CDATA[
-    const {interfaces: Ci, classes: Cc, results: Cr, utils: Cu} = Components;
-    Cu.import("resource://testing-common/BrowserTestUtils.jsm");
-    Cu.import("resource://testing-common/ContentTask.jsm");
+    ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    ChromeUtils.import("resource://testing-common/ContentTask.jsm");
     ContentTask.setTestScope(window.opener.wrappedJSObject);
     const SEARCH_TEXT = "minefield";
 
@@ -26,7 +25,7 @@
 
     let sendCtrl = true;
     let sendMeta = false;
-    if (navigator.platform.indexOf("Mac") >= 0) {
+    if (navigator.platform.includes("Mac")) {
       sendCtrl = false;
       sendMeta = true;
     }
@@ -94,7 +93,7 @@
         element.focus();
       });
       info(`focused element`);
-      if (navigator.platform.indexOf("Mac") >= 0) {
+      if (navigator.platform.includes("Mac")) {
         await BrowserTestUtils.synthesizeKey("VK_LEFT", { metaKey: true }, gBrowser);
       } else {
         await BrowserTestUtils.synthesizeKey("VK_HOME", {}, gBrowser);

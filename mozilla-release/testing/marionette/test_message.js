@@ -2,10 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {utils: Cu} = Components;
-
-Cu.import("chrome://marionette/content/error.js");
-Cu.import("chrome://marionette/content/message.js");
+ChromeUtils.import("chrome://marionette/content/error.js");
+ChromeUtils.import("chrome://marionette/content/message.js");
 
 add_test(function test_Message_Origin() {
   equal(0, Message.Origin.Client);

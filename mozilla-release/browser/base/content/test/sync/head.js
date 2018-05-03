@@ -1,7 +1,7 @@
 /* global sinon */
 Services.scriptloader.loadSubScript("resource://testing-common/sinon-2.3.2.js");
 
-Cu.import("resource://services-sync/UIState.jsm", this);
+ChromeUtils.import("resource://services-sync/UIState.jsm", this);
 
 registerCleanupFunction(function() {
   delete window.sinon;
@@ -9,7 +9,7 @@ registerCleanupFunction(function() {
 
 function promiseSyncReady() {
   let service = Cc["@mozilla.org/weave/service;1"]
-                  .getService(Components.interfaces.nsISupports)
+                  .getService(Ci.nsISupports)
                   .wrappedJSObject;
   return service.whenLoaded();
 }

@@ -4,30 +4,30 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Experiments",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManagerPrivate",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryEnvironment",
-                                  "resource://gre/modules/TelemetryEnvironment.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryLog",
-                                  "resource://gre/modules/TelemetryLog.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils",
-                                  "resource://services-common/utils.js");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManagerPrivate",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryEnvironment",
+                               "resource://gre/modules/TelemetryEnvironment.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryLog",
+                               "resource://gre/modules/TelemetryLog.jsm");
+ChromeUtils.defineModuleGetter(this, "CommonUtils",
+                               "resource://services-common/utils.js");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gCrashReporter",
                                    "@mozilla.org/xre/app-info;1",
@@ -939,7 +939,7 @@ Experiments.Experiments.prototype = {
    */
   _httpGetRequest(url) {
     this._log.trace("httpGetRequest(" + url + ")");
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
 
     this._networkRequest = xhr;
     return new Promise((resolve, reject) => {
@@ -1234,7 +1234,7 @@ Experiments.Experiments.prototype = {
         let expireReasons = ["endTime", "maxActiveSeconds"];
         let kind, reason;
 
-        if (expireReasons.indexOf(shouldStopResult.reason[0]) != -1) {
+        if (expireReasons.includes(shouldStopResult.reason[0])) {
           kind = TELEMETRY_LOG.TERMINATION.EXPIRED;
           reason = null;
         } else {
@@ -1664,23 +1664,23 @@ Experiments.ExperimentEntry.prototype = {
       { name: "maxActiveSeconds",
         condition: () => !this._startDate || now <= (startSec + maxActive) },
       { name: "appName",
-        condition: () => !data.appName || data.appName.indexOf(Services.appinfo.name) != -1 },
+        condition: () => !data.appName || data.appName.includes(Services.appinfo.name) },
       { name: "minBuildID",
         condition: () => !data.minBuildID || Services.appinfo.platformBuildID >= data.minBuildID },
       { name: "maxBuildID",
         condition: () => !data.maxBuildID || Services.appinfo.platformBuildID <= data.maxBuildID },
       { name: "buildIDs",
-        condition: () => !data.buildIDs || data.buildIDs.indexOf(Services.appinfo.platformBuildID) != -1 },
+        condition: () => !data.buildIDs || data.buildIDs.includes(Services.appinfo.platformBuildID) },
       { name: "os",
-        condition: () => !data.os || data.os.indexOf(Services.appinfo.OS) != -1 },
+        condition: () => !data.os || data.os.includes(Services.appinfo.OS) },
       { name: "channel",
-        condition: () => !data.channel || data.channel.indexOf(channel) != -1 },
+        condition: () => !data.channel || data.channel.includes(channel) },
       { name: "locale",
-        condition: () => !data.locale || data.locale.indexOf(locale) != -1 },
+        condition: () => !data.locale || data.locale.includes(locale) },
       { name: "sample",
         condition: () => data.sample === undefined || this._randomValue <= data.sample },
       { name: "version",
-        condition: () => !data.version || data.version.indexOf(Services.appinfo.version) != -1 },
+        condition: () => !data.version || data.version.includes(Services.appinfo.version) },
       { name: "minVersion",
         condition: () => !data.minVersion || Services.vc.compare(Services.appinfo.version, data.minVersion) >= 0 },
       { name: "maxVersion",
@@ -2176,7 +2176,7 @@ this.Experiments.PreviousExperimentProvider.prototype = Object.freeze({
   },
 
   getAddonsByTypes(types, cb) {
-    if (types && types.length > 0 && types.indexOf("experiment") == -1) {
+    if (types && types.length > 0 && !types.includes("experiment")) {
       cb([]);
       return;
     }

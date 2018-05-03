@@ -9,15 +9,15 @@
 
 // Globals
 
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadsCommon",
-                                  "resource:///modules/DownloadsCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "HttpServer",
+ChromeUtils.defineModuleGetter(this, "Downloads",
+                               "resource://gre/modules/Downloads.jsm");
+ChromeUtils.defineModuleGetter(this, "DownloadsCommon",
+                               "resource:///modules/DownloadsCommon.jsm");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "HttpServer",
     "resource://testing-common/httpd.js");
 
 var gTestTargetFile = FileUtils.getFile("TmpD", ["dm-ui-test.file"]);
@@ -170,32 +170,6 @@ function openLibrary(aLeftPaneRoot) {
 
   return new Promise(resolve => {
     waitForFocus(resolve, library);
-  });
-}
-
-function promiseAlertDialogOpen(buttonAction) {
-  return new Promise(resolve => {
-    Services.ww.registerNotification(function onOpen(subj, topic, data) {
-      if (topic == "domwindowopened" && subj instanceof Ci.nsIDOMWindow) {
-        // The test listens for the "load" event which guarantees that the alert
-        // class has already been added (it is added when "DOMContentLoaded" is
-        // fired).
-        subj.addEventListener("load", function() {
-          if (subj.document.documentURI ==
-              "chrome://global/content/commonDialog.xul") {
-            Services.ww.unregisterNotification(onOpen);
-
-            let dialog = subj.document.getElementById("commonDialog");
-            ok(dialog.classList.contains("alert-dialog"),
-               "The dialog element should contain an alert class.");
-
-            let doc = subj.document.documentElement;
-            doc.getButton(buttonAction).click();
-            resolve();
-          }
-        }, {once: true});
-      }
-    });
   });
 }
 

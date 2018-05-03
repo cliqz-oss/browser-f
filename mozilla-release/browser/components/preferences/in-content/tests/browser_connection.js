@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -27,7 +27,7 @@ function test() {
   open_preferences(async function tabOpened(aContentWindow) {
     is(gBrowser.currentURI.spec, "about:preferences", "about:preferences loaded");
     let dialog = await openAndLoadSubDialog(connectionURL);
-    let dialogClosingPromise = waitForEvent(dialog.document.documentElement, "dialogclosing");
+    let dialogClosingPromise = BrowserTestUtils.waitForEvent(dialog.document.documentElement, "dialogclosing");
 
     ok(dialog, "connection window opened");
     runConnectionTests(dialog);
@@ -56,6 +56,10 @@ function runConnectionTests(win) {
      "networkProxyNone textbox is multiline");
   is(networkProxyNone.getAttribute("rows"), "2",
      "networkProxyNone textbox has two rows");
+
+  // make sure manual proxy controls are disabled when the window is opened
+  let networkProxyHTTP = doc.getElementById("networkProxyHTTP");
+  is(networkProxyHTTP.disabled, true, "networkProxyHTTP textbox is disabled");
 
   // check if sanitizing the given input for the no_proxies_on pref results in
   // expected string

@@ -25,7 +25,6 @@ from mozharness.base.script import (
 )
 from mozharness.base.errors import VirtualenvErrorList
 from mozharness.base.log import WARNING, FATAL
-from mozharness.mozilla.proxxy import Proxxy
 
 external_tools_path = os.path.join(
     os.path.abspath(os.path.dirname(os.path.dirname(mozharness.__file__))),
@@ -249,12 +248,8 @@ class VirtualenvMixin(object):
         else:
             self.fatal("install_module() doesn't understand an install_method of %s!" % install_method)
 
-        # Add --find-links pages to look at. Add --trusted-host automatically if
-        # the host isn't secure. This allows modern versions of pip to connect
-        # without requiring an override.
-        proxxy = Proxxy(self.config, self.log_obj)
         trusted_hosts = set()
-        for link in proxxy.get_proxies_and_urls(c.get('find_links', [])):
+        for link in c.get('find_links', []):
             parsed = urlparse.urlparse(link)
 
             try:
@@ -313,12 +308,7 @@ class VirtualenvMixin(object):
         """
         Create a python virtualenv.
 
-        The virtualenv exe can be defined in c['virtualenv'] or
-        c['exes']['virtualenv'], as a string (path) or list (path +
-        arguments).
-
-        c['virtualenv_python_dll'] is an optional config item that works
-        around an old windows virtualenv bug.
+        This uses the copy of virtualenv that is vendored in mozharness.
 
         virtualenv_modules can be a list of module names to install, e.g.
 
@@ -789,12 +779,17 @@ class Python3Virtualenv(object):
                 env=self.query_env())
 
     @py3_venv_initialized
-    def py3_install_modules(self, modules):
+    def py3_install_modules(self, modules,
+                            use_mozharness_pip_config=True):
         if not os.path.exists(self.py3_venv_path):
             raise Exception('You need to call py3_create_venv() first.')
 
         for m in modules:
-            self.run_command('%s install %s' % (self.py3_pip_path, m), env=self.query_env())
+            cmd = [self.py3_pip_path, 'install']
+            if use_mozharness_pip_config:
+                cmd += self._mozharness_pip_args()
+            cmd += [m]
+            self.run_command(cmd, env=self.query_env())
 
     def _mozharness_pip_args(self):
         '''We have information in Mozharness configs that apply to pip'''

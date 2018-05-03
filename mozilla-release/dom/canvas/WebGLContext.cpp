@@ -232,6 +232,10 @@ WebGLContext::DestroyResourcesAndContext()
 
     mIndexedUniformBufferBindings.clear();
 
+    if (mAvailabilityRunnable) {
+        mAvailabilityRunnable->Run();
+    }
+
     //////
 
     ClearLinkedList(mBuffers);
@@ -1409,33 +1413,6 @@ WebGLContext::GetContextAttributes(dom::Nullable<dom::WebGLContextAttributes>& r
     result.mFailIfMajorPerformanceCaveat = mOptions.failIfMajorPerformanceCaveat;
 }
 
-NS_IMETHODIMP
-WebGLContext::MozGetUnderlyingParamString(uint32_t pname, nsAString& retval)
-{
-    if (IsContextLost())
-        return NS_OK;
-
-    retval.SetIsVoid(true);
-
-    switch (pname) {
-    case LOCAL_GL_VENDOR:
-    case LOCAL_GL_RENDERER:
-    case LOCAL_GL_VERSION:
-    case LOCAL_GL_SHADING_LANGUAGE_VERSION:
-    case LOCAL_GL_EXTENSIONS:
-        {
-            const char* s = (const char*)gl->fGetString(pname);
-            retval.Assign(NS_ConvertASCIItoUTF16(nsDependentCString(s)));
-            break;
-        }
-
-    default:
-        return NS_ERROR_INVALID_ARG;
-    }
-
-    return NS_OK;
-}
-
 void
 WebGLContext::ForceClearFramebufferWithDefaultValues(const GLbitfield clearBits,
                                                      const bool fakeNoAlpha) const
@@ -2478,6 +2455,54 @@ WebGLContext::UpdateMaxDrawBuffers()
     mGLMaxDrawBuffers = std::min(mGLMaxDrawBuffers, mGLMaxColorAttachments);
 }
 
+// --
+
+webgl::AvailabilityRunnable*
+WebGLContext::EnsureAvailabilityRunnable()
+{
+    if (!mAvailabilityRunnable) {
+        RefPtr<webgl::AvailabilityRunnable> runnable = new webgl::AvailabilityRunnable(this);
+
+        nsIDocument* document = GetOwnerDoc();
+        if (document) {
+            document->Dispatch(TaskCategory::Other, runnable.forget());
+        } else {
+            NS_DispatchToCurrentThread(runnable.forget());
+        }
+    }
+    return mAvailabilityRunnable;
+}
+
+webgl::AvailabilityRunnable::AvailabilityRunnable(WebGLContext* const webgl)
+    : Runnable("webgl::AvailabilityRunnable")
+    , mWebGL(webgl)
+{
+    mWebGL->mAvailabilityRunnable = this;
+}
+
+webgl::AvailabilityRunnable::~AvailabilityRunnable()
+{
+    MOZ_ASSERT(mQueries.empty());
+    MOZ_ASSERT(mSyncs.empty());
+}
+
+nsresult
+webgl::AvailabilityRunnable::Run()
+{
+    for (const auto& cur : mQueries) {
+        cur->mCanBeAvailable = true;
+    }
+    mQueries.clear();
+
+    for (const auto& cur : mSyncs) {
+        cur->mCanBeAvailable = true;
+    }
+    mSyncs.clear();
+
+    mWebGL->mAvailabilityRunnable = nullptr;
+    return NS_OK;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // XPCOM goop
 
@@ -2530,12 +2555,11 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WebGLContext,
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WebGLContext)
     NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-    NS_INTERFACE_MAP_ENTRY(nsIDOMWebGLRenderingContext)
     NS_INTERFACE_MAP_ENTRY(nsICanvasRenderingContextInternal)
     NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
     // If the exact way we cast to nsISupports here ever changes, fix our
     // ToSupports() method.
-    NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMWebGLRenderingContext)
+    NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsICanvasRenderingContextInternal)
 NS_INTERFACE_MAP_END
 
 } // namespace mozilla

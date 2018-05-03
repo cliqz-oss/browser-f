@@ -15,7 +15,7 @@ const ID1 = "bootstrap1@tests.mozilla.org";
 const ID2 = "bootstrap2@tests.mozilla.org";
 
 // This verifies that bootstrappable add-ons can be used without restarts.
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Enable loading extensions from the user scopes
 Services.prefs.setIntPref("extensions.enabledScopes",
@@ -32,7 +32,7 @@ userExtDir.append("extensions2");
 userExtDir.append(gAppInfo.ID);
 registerDirectory("XREUSysExt", userExtDir.parent);
 
-Components.utils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 var testserver = new HttpServer();
 testserver.start(undefined);
 gPort = testserver.identity.primaryPort;
@@ -102,7 +102,7 @@ function do_check_bootstrappedPref(aCallback) {
 
       Assert.equal(addonData.version, addon.version);
       Assert.equal(addonData.type, addon.type);
-      let file = addon.getResourceURI().QueryInterface(Components.interfaces.nsIFileURL).file;
+      let file = addon.getResourceURI().QueryInterface(Ci.nsIFileURL).file;
       Assert.equal(addonData.path, file.path);
     }
     Assert.equal(Object.keys(data).length, 0);

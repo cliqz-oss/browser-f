@@ -9,7 +9,7 @@ module.exports = {
     "block-scoped-var": "error",
     "comma-dangle": ["error", "always-multiline"],
     complexity: ["error", {
-      max: 20,
+      max: 23,
     }],
     curly: ["error", "all"],
     "dot-location": ["error", "property"],
@@ -42,7 +42,7 @@ module.exports = {
     "no-unused-expressions": "error",
     "no-unused-vars": ["error", {
       args: "none",
-      varsIgnorePattern: "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$",
+      vars: "all",
     }],
     "no-use-before-define": ["error", {
       functions: false,

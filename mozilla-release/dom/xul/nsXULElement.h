@@ -381,7 +381,7 @@ public:
                                   bool aIsTrustedEvent) override;
     void ClickWithInputSource(uint16_t aInputSource, bool aIsTrustedEvent);
 
-    nsIContent* GetBindingParent() const final override
+    nsIContent* GetBindingParent() const final
     {
       return mBindingParent;
     }
@@ -389,19 +389,12 @@ public:
     virtual bool IsNodeOfType(uint32_t aFlags) const override;
     virtual bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
 
+#ifdef MOZ_OLD_STYLE
     NS_IMETHOD WalkContentStyleRules(nsRuleWalker* aRuleWalker) override;
+#endif
     virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                                 int32_t aModType) const override;
     NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
-
-    // nsIDOMNode
-    NS_FORWARD_NSIDOMNODE_TO_NSINODE
-    // And since that shadowed GetParentElement with the XPCOM
-    // signature, pull in the one we care about.
-    using nsStyledElement::GetParentElement;
-
-    // nsIDOMElement
-    NS_FORWARD_NSIDOMELEMENT_TO_GENERIC
 
     // nsIDOMXULElement
     NS_DECL_NSIDOMXULELEMENT
@@ -761,6 +754,9 @@ protected:
     void RemoveBroadcaster(const nsAString & broadcasterId);
 
 protected:
+    void AddTooltipSupport();
+    void RemoveTooltipSupport();
+
     // Internal accessor. This shadows the 'Slots', and returns
     // appropriate value.
     nsIControllers *Controllers() {

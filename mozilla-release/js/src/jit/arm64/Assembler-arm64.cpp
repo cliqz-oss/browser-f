@@ -9,15 +9,15 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 
-#include "jscompartment.h"
 #include "jsutil.h"
 
 #include "gc/Marking.h"
-
 #include "jit/arm64/Architecture-arm64.h"
 #include "jit/arm64/MacroAssembler-arm64.h"
+#include "jit/arm64/vixl/Disasm-vixl.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/JitCompartment.h"
+#include "vm/JSCompartment.h"
 
 #include "gc/StoreBuffer-inl.h"
 
@@ -35,6 +35,7 @@ ABIArgGenerator::next(MIRType type)
 {
     switch (type) {
       case MIRType::Int32:
+      case MIRType::Int64:
       case MIRType::Pointer:
         if (intRegIndex_ == NumIntArgRegs) {
             current_ = ABIArg(stackOffset_);
@@ -85,6 +86,34 @@ Assembler::finish()
         MOZ_ASSERT(jumpRelocations_.length() >= sizeof(uint32_t));
         *(uint32_t*)jumpRelocations_.buffer() = ExtendedJumpTable_.getOffset();
     }
+}
+
+bool
+Assembler::appendRawCode(const uint8_t* code, size_t numBytes)
+{
+    flush();
+    return armbuffer_.appendRawCode(code, numBytes);
+}
+
+bool
+Assembler::reserve(size_t size)
+{
+    // This buffer uses fixed-size chunks so there's no point in reserving
+    // now vs. on-demand.
+    return !oom();
+}
+
+bool
+Assembler::swapBuffer(wasm::Bytes& bytes)
+{
+    // For now, specialize to the one use case. As long as wasm::Bytes is a
+    // Vector, not a linked-list of chunks, there's not much we can do other
+    // than copy.
+    MOZ_ASSERT(bytes.empty());
+    if (!bytes.resize(bytesNeeded()))
+        return false;
+    armbuffer_.executableCopy(bytes.begin());
+    return true;
 }
 
 BufferOffset
@@ -167,19 +196,20 @@ Assembler::executableCopy(uint8_t* buffer, bool flushICache)
 }
 
 BufferOffset
-Assembler::immPool(ARMRegister dest, uint8_t* value, vixl::LoadLiteralOp op, ARMBuffer::PoolEntry* pe)
+Assembler::immPool(ARMRegister dest, uint8_t* value, vixl::LoadLiteralOp op,
+                   const LiteralDoc& doc, ARMBuffer::PoolEntry* pe)
 {
     uint32_t inst = op | Rt(dest);
     const size_t numInst = 1;
     const unsigned sizeOfPoolEntryInBytes = 4;
     const unsigned numPoolEntries = sizeof(value) / sizeOfPoolEntryInBytes;
-    return allocEntry(numInst, numPoolEntries, (uint8_t*)&inst, value, pe);
+    return allocLiteralLoadEntry(numInst, numPoolEntries, (uint8_t*)&inst, value, doc, pe);
 }
 
 BufferOffset
 Assembler::immPool64(ARMRegister dest, uint64_t value, ARMBuffer::PoolEntry* pe)
 {
-    return immPool(dest, (uint8_t*)&value, vixl::LDR_x_lit, pe);
+    return immPool(dest, (uint8_t*)&value, vixl::LDR_x_lit, LiteralDoc(value), pe);
 }
 
 BufferOffset
@@ -189,29 +219,34 @@ Assembler::immPool64Branch(RepatchLabel* label, ARMBuffer::PoolEntry* pe, Condit
 }
 
 BufferOffset
-Assembler::fImmPool(ARMFPRegister dest, uint8_t* value, vixl::LoadLiteralOp op)
+Assembler::fImmPool(ARMFPRegister dest, uint8_t* value, vixl::LoadLiteralOp op,
+                    const LiteralDoc& doc)
 {
     uint32_t inst = op | Rt(dest);
     const size_t numInst = 1;
     const unsigned sizeOfPoolEntryInBits = 32;
     const unsigned numPoolEntries = dest.size() / sizeOfPoolEntryInBits;
-    return allocEntry(numInst, numPoolEntries, (uint8_t*)&inst, value);
+    return allocLiteralLoadEntry(numInst, numPoolEntries, (uint8_t*)&inst, value, doc);
 }
 
 BufferOffset
 Assembler::fImmPool64(ARMFPRegister dest, double value)
 {
-    return fImmPool(dest, (uint8_t*)&value, vixl::LDR_d_lit);
+    return fImmPool(dest, (uint8_t*)&value, vixl::LDR_d_lit, LiteralDoc(value));
 }
+
 BufferOffset
 Assembler::fImmPool32(ARMFPRegister dest, float value)
 {
-    return fImmPool(dest, (uint8_t*)&value, vixl::LDR_s_lit);
+    return fImmPool(dest, (uint8_t*)&value, vixl::LDR_s_lit, LiteralDoc(value));
 }
 
 void
 Assembler::bind(Label* label, BufferOffset targetOffset)
 {
+#ifdef JS_DISASM_ARM64
+    spew_.spewBind(label);
+#endif
     // Nothing has seen the label yet: just mark the location.
     // If we've run out of memory, don't attempt to modify the buffer which may
     // not be there. Just mark the label as bound to the (possibly bogus)
@@ -277,6 +312,19 @@ Assembler::bind(RepatchLabel* label)
     int branchOffset = label->offset();
     Instruction* inst = getInstructionAt(BufferOffset(branchOffset));
     inst->SetImmPCOffsetTarget(inst + nextOffset().getOffset() - branchOffset);
+}
+
+void
+Assembler::bindLater(Label* label, wasm::OldTrapDesc target)
+{
+    if (label->used()) {
+        BufferOffset b(label);
+        do {
+            append(wasm::OldTrapSite(target, b.getOffset()));
+            b = NextLink(b);
+        } while (b.assigned());
+    }
+    label->reset();
 }
 
 void
@@ -375,6 +423,8 @@ Assembler::ToggleToJmp(CodeLocationLabel inst_)
     MOZ_ASSERT(vixl::is_int19(imm19));
 
     b(i, imm19, Always);
+
+    AutoFlushICache::flush(uintptr_t(i), 4);
 }
 
 void
@@ -399,6 +449,8 @@ Assembler::ToggleToCmp(CodeLocationLabel inst_)
     // From the above, there is a safe 19-bit contiguous region from 5:23.
     Emit(i, vixl::ThirtyTwoBits | vixl::AddSubImmediateFixed | vixl::SUB | Flags(vixl::SetFlags) |
             Rd(vixl::xzr) | (imm19 << vixl::Rn_offset));
+
+    AutoFlushICache::flush(uintptr_t(i), 4);
 }
 
 void
@@ -425,7 +477,7 @@ Assembler::ToggleCall(CodeLocationLabel inst_, bool enabled)
         return;
 
     if (call->IsBLR()) {
-        // If the second instruction is blr(), then wehave:
+        // If the second instruction is blr(), then we have:
         //   ldr x17, [pc, offset]
         //   blr x17
         MOZ_ASSERT(load->IsLDR());
@@ -449,6 +501,9 @@ Assembler::ToggleCall(CodeLocationLabel inst_, bool enabled)
         ldr(load, ScratchReg2_64, int32_t(offset));
         blr(call, ScratchReg2_64);
     }
+
+    AutoFlushICache::flush(uintptr_t(first), 4);
+    AutoFlushICache::flush(uintptr_t(call), 8);
 }
 
 class RelocationIterator
@@ -634,6 +689,9 @@ Assembler::FixupNurseryObjects(JSContext* cx, JitCode* code, CompactBufferReader
 void
 Assembler::retarget(Label* label, Label* target)
 {
+#ifdef JS_DISASM_ARM64
+    spew_.spewRetarget(label, target);
+#endif
     if (label->used()) {
         if (target->bound()) {
             bind(label, BufferOffset(target));

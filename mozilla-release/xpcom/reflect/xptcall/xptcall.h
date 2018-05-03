@@ -39,7 +39,7 @@ struct nsXPTCMiniVariant
         // Types below here are unknown to the assembly implementations, and
         // therefore _must_ be passed with indirect semantics. We put them in
         // the union here for type safety, so that we can avoid void* tricks.
-        JS::Value j;
+        JS::UninitializedValue j;
     } val;
 };
 
@@ -144,7 +144,7 @@ class nsIXPTCProxy : public nsISupports
 {
 public:
     NS_IMETHOD CallMethod(uint16_t aMethodIndex,
-                          const XPTMethodDescriptor *aInfo,
+                          const nsXPTMethodInfo *aInfo,
                           nsXPTCMiniVariant *aParams) = 0;
 };
 

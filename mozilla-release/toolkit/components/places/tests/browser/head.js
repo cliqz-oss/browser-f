@@ -1,10 +1,10 @@
-Components.utils.import("resource://gre/modules/PlacesUtils.jsm");
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
-                                  "resource://testing-common/PlacesTestUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserTestUtils",
-                                  "resource://testing-common/BrowserTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
+                               "resource://testing-common/PlacesTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserTestUtils",
+                               "resource://testing-common/BrowserTestUtils.jsm");
 
 const TRANSITION_LINK = PlacesUtils.history.TRANSITION_LINK;
 const TRANSITION_TYPED = PlacesUtils.history.TRANSITION_TYPED;
@@ -293,23 +293,6 @@ function DBConn(aForceNewConnection) {
 function whenNewWindowLoaded(aOptions, aCallback) {
   BrowserTestUtils.waitForNewWindow().then(aCallback);
   OpenBrowserWindow(aOptions);
-}
-
-/**
- * Asynchronously check a url is visited.
- *
- * @param aURI The URI.
- * @param aExpectedValue The expected value.
- * @return {Promise}
- * @resolves When the check has been added successfully.
- * @rejects JavaScript exception.
- */
-function promiseIsURIVisited(aURI, aExpectedValue) {
-  return new Promise(resolve => {
-    PlacesUtils.asyncHistory.isURIVisited(aURI, function(unused, aIsVisited) {
-      resolve(aIsVisited);
-    });
-  });
 }
 
 function waitForCondition(condition, nextTest, errorMsg) {

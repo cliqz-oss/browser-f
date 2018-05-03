@@ -2,6 +2,7 @@
 
 "use strict";
 
+// eslint-disable-next-line no-var
 var global = this;
 
 this.selectorLoader = (function() {
@@ -62,7 +63,7 @@ this.selectorLoader = (function() {
     });
   };
 
-  let loadingTabs = new Set();
+  const loadingTabs = new Set();
 
   exports.loadModules = function(tabId, hasSeenOnboarding) {
     loadingTabs.add(tabId);
@@ -88,15 +89,17 @@ this.selectorLoader = (function() {
   // TODO: since bootstrap communication is now required, would this function
   // make more sense inside background/main?
   function downloadOnlyCheck(tabId) {
-    return communication.sendToBootstrap("getHistoryPref").then((historyEnabled) => {
-      return browser.tabs.get(tabId).then(tab => {
-        let downloadOnly = !historyEnabled || tab.incognito;
-        return browser.tabs.executeScript(tabId, {
-          // Note: `window` here refers to a global accessible to content
-          // scripts, but not the scripts in the underlying page. For more
-          // details, see https://mdn.io/WebExtensions/Content_scripts#Content_script_environment
-          code: `window.downloadOnly = ${downloadOnly}`,
-          runAt: "document_start"
+    return communication.sendToBootstrap("isHistoryEnabled").then((historyEnabled) => {
+      return communication.sendToBootstrap("isUploadDisabled").then((uploadDisabled) => {
+        return browser.tabs.get(tabId).then(tab => {
+          const downloadOnly = !historyEnabled || uploadDisabled || tab.incognito;
+          return browser.tabs.executeScript(tabId, {
+            // Note: `window` here refers to a global accessible to content
+            // scripts, but not the scripts in the underlying page. For more
+            // details, see https://mdn.io/WebExtensions/Content_scripts#Content_script_environment
+            code: `window.downloadOnly = ${downloadOnly}`,
+            runAt: "document_start"
+          });
         });
       });
     });
@@ -128,12 +131,12 @@ this.selectorLoader = (function() {
 
   exports.unloadModules = function() {
     const watchFunction = catcher.watchFunction;
-    let allScripts = standardScripts.concat(onboardingScripts).concat(selectorScripts);
+    const allScripts = standardScripts.concat(onboardingScripts).concat(selectorScripts);
     const moduleNames = allScripts.map((filename) =>
       filename.replace(/^.*\//, "").replace(/\.js$/, ""));
     moduleNames.reverse();
-    for (let moduleName of moduleNames) {
-      let moduleObj = global[moduleName];
+    for (const moduleName of moduleNames) {
+      const moduleObj = global[moduleName];
       if (moduleObj && moduleObj.unload) {
         try {
           watchFunction(moduleObj.unload)();

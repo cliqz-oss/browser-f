@@ -3,30 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const {actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+const {actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 
-const {shortURL} = Cu.import("resource://activity-stream/lib/ShortURL.jsm", {});
-const {SectionsManager} = Cu.import("resource://activity-stream/lib/SectionsManager.jsm", {});
-const {TOP_SITES_SHOWMORE_LENGTH} = Cu.import("resource://activity-stream/common/Reducers.jsm", {});
-const {Dedupe} = Cu.import("resource://activity-stream/common/Dedupe.jsm", {});
+const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm", {});
+const {SectionsManager} = ChromeUtils.import("resource://activity-stream/lib/SectionsManager.jsm", {});
+const {TOP_SITES_DEFAULT_ROWS, TOP_SITES_MAX_SITES_PER_ROW} = ChromeUtils.import("resource://activity-stream/common/Reducers.jsm", {});
+const {Dedupe} = ChromeUtils.import("resource://activity-stream/common/Dedupe.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "filterAdult",
+ChromeUtils.defineModuleGetter(this, "filterAdult",
   "resource://activity-stream/lib/FilterAdult.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LinksCache",
+ChromeUtils.defineModuleGetter(this, "LinksCache",
   "resource://activity-stream/lib/LinksCache.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
+ChromeUtils.defineModuleGetter(this, "NewTabUtils",
   "resource://gre/modules/NewTabUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Screenshots",
+ChromeUtils.defineModuleGetter(this, "Screenshots",
   "resource://activity-stream/lib/Screenshots.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
+ChromeUtils.defineModuleGetter(this, "PageThumbs",
   "resource://gre/modules/PageThumbs.jsm");
 
 const HIGHLIGHTS_MAX_LENGTH = 9;
-const MANY_EXTRA_LENGTH = HIGHLIGHTS_MAX_LENGTH * 5 + TOP_SITES_SHOWMORE_LENGTH;
+const MANY_EXTRA_LENGTH = HIGHLIGHTS_MAX_LENGTH * 5 + TOP_SITES_DEFAULT_ROWS * TOP_SITES_MAX_SITES_PER_ROW;
 const SECTION_ID = "highlights";
+const SYNC_BOOKMARKS_FINISHED_EVENT = "weave:engine:sync:applied";
+const BOOKMARKS_RESTORE_SUCCESS_EVENT = "bookmarks-restore-success";
+const BOOKMARKS_RESTORE_FAILED_EVENT = "bookmarks-restore-failed";
 
 this.HighlightsFeed = class HighlightsFeed {
   constructor() {
@@ -37,11 +39,14 @@ this.HighlightsFeed = class HighlightsFeed {
   }
 
   _dedupeKey(site) {
-    // Treat bookmarks as un-dedupable, otherwise show one of a url
-    return site && (site.type === "bookmark" ? {} : site.url);
+    // Treat bookmarks and pocket items as un-dedupable, otherwise show one of a url
+    return site && ((site.pocket_id || site.type === "bookmark") ? {} : site.url);
   }
 
   init() {
+    Services.obs.addObserver(this, SYNC_BOOKMARKS_FINISHED_EVENT);
+    Services.obs.addObserver(this, BOOKMARKS_RESTORE_SUCCESS_EVENT);
+    Services.obs.addObserver(this, BOOKMARKS_RESTORE_FAILED_EVENT);
     SectionsManager.onceInitialized(this.postInit.bind(this));
   }
 
@@ -53,11 +58,25 @@ this.HighlightsFeed = class HighlightsFeed {
   uninit() {
     SectionsManager.disableSection(SECTION_ID);
     PageThumbs.removeExpirationFilter(this);
+    Services.obs.removeObserver(this, SYNC_BOOKMARKS_FINISHED_EVENT);
+    Services.obs.removeObserver(this, BOOKMARKS_RESTORE_SUCCESS_EVENT);
+    Services.obs.removeObserver(this, BOOKMARKS_RESTORE_FAILED_EVENT);
+  }
+
+  observe(subject, topic, data) {
+    // When we receive a notification that a sync has happened for bookmarks,
+    // or Places finished importing or restoring bookmarks, refresh highlights
+    const manyBookmarksChanged =
+      (topic === SYNC_BOOKMARKS_FINISHED_EVENT && data === "bookmarks") ||
+      topic === BOOKMARKS_RESTORE_SUCCESS_EVENT ||
+      topic === BOOKMARKS_RESTORE_FAILED_EVENT;
+    if (manyBookmarksChanged) {
+      this.fetchHighlights({broadcast: true});
+    }
   }
 
   filterForThumbnailExpiration(callback) {
-    const sectionIndex = SectionsManager.sections.get(SECTION_ID).order;
-    const state = this.store.getState().Sections[sectionIndex];
+    const state = this.store.getState().Sections.find(section => section.id === SECTION_ID);
 
     callback(state && state.initialized ? state.rows.reduce((acc, site) => {
       // Screenshots call in `fetchImage` will search for preview_image_url or
@@ -87,7 +106,10 @@ this.HighlightsFeed = class HighlightsFeed {
 
     // Request more than the expected length to allow for items being removed by
     // deduping against Top Sites or multiple history from the same domain, etc.
-    const manyPages = await this.linksCache.request({numItems: MANY_EXTRA_LENGTH});
+    const manyPages = await this.linksCache.request({
+      numItems: MANY_EXTRA_LENGTH,
+      excludePocket: !this.store.getState().Prefs.values["section.highlights.includePocket"]
+    });
 
     // Remove adult highlights if we need to
     const checkedAdult = this.store.getState().Prefs.values.filterAdult ?
@@ -112,14 +134,20 @@ this.HighlightsFeed = class HighlightsFeed {
         this.fetchImage(page);
       }
 
+      // Adjust the type for 'history' items that are also 'bookmarked'
+      if (page.type === "history" && page.bookmarkGuid) {
+        page.type = "bookmark";
+      }
+
       // We want the page, so update various fields for UI
       Object.assign(page, {
         hasImage: true, // We always have an image - fall back to a screenshot
         hostname,
-        type: page.bookmarkGuid ? "bookmark" : page.type
+        type: page.type,
+        pocket_id: page.pocket_id
       });
 
-      // Add the "bookmark" or not-skipped "history"
+      // Add the "bookmark", "pocket", or not-skipped "history"
       highlights.push(page);
       hosts.add(hostname);
 
@@ -132,8 +160,7 @@ this.HighlightsFeed = class HighlightsFeed {
       }
     }
 
-    const sectionIndex = SectionsManager.sections.get(SECTION_ID).order;
-    const {initialized} = this.store.getState().Sections[sectionIndex];
+    const {initialized} = this.store.getState().Sections.find(section => section.id === SECTION_ID);
     // Broadcast when required or if it is the first update.
     const shouldBroadcast = options.broadcast || !initialized;
 
@@ -144,12 +171,40 @@ this.HighlightsFeed = class HighlightsFeed {
    * Fetch an image for a given highlight and update the card with it. If no
    * image is available then fallback to fetching a screenshot.
    */
-  async fetchImage(page) {
+  fetchImage(page) {
     // Request a screenshot if we don't already have one pending
     const {preview_image_url: imageUrl, url} = page;
     Screenshots.maybeCacheScreenshot(page, imageUrl || url, "image", image => {
       SectionsManager.updateSectionCard(SECTION_ID, url, {image}, true);
     });
+  }
+
+  /**
+   * Deletes an item from a user's saved to Pocket feed and then refreshes highlights
+   * @param {int} itemID
+   *  The unique ID given by Pocket for that item; used to look the item up when deleting
+   */
+  async deleteFromPocket(itemID) {
+    try {
+      await NewTabUtils.activityStreamLinks.deletePocketEntry(itemID);
+      this.fetchHighlights({broadcast: true});
+    } catch (err) {
+      Cu.reportError(err);
+    }
+  }
+
+  /**
+   * Archives an item from a user's saved to Pocket feed and then refreshes highlights
+   * @param {int} itemID
+   *  The unique ID given by Pocket for that item; used to look the item up when archiving
+   */
+  async archiveFromPocket(itemID) {
+    try {
+      await NewTabUtils.activityStreamLinks.archivePocketEntry(itemID);
+      this.fetchHighlights({broadcast: true});
+    } catch (err) {
+      Cu.reportError(err);
+    }
   }
 
   onAction(action) {
@@ -166,8 +221,15 @@ this.HighlightsFeed = class HighlightsFeed {
       case at.PLACES_LINK_BLOCKED:
         this.fetchHighlights({broadcast: true});
         break;
+      case at.DELETE_FROM_POCKET:
+        this.deleteFromPocket(action.data.pocket_id);
+        break;
+      case at.ARCHIVE_FROM_POCKET:
+        this.archiveFromPocket(action.data.pocket_id);
+        break;
       case at.PLACES_BOOKMARK_ADDED:
       case at.PLACES_BOOKMARK_REMOVED:
+      case at.PLACES_SAVED_TO_POCKET:
         this.linksCache.expire();
         this.fetchHighlights({broadcast: false});
         break;
@@ -181,4 +243,4 @@ this.HighlightsFeed = class HighlightsFeed {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["HighlightsFeed", "SECTION_ID"];
+const EXPORTED_SYMBOLS = ["HighlightsFeed", "SECTION_ID", "MANY_EXTRA_LENGTH", "SYNC_BOOKMARKS_FINISHED_EVENT", "BOOKMARKS_RESTORE_SUCCESS_EVENT", "BOOKMARKS_RESTORE_FAILED_EVENT"];

@@ -41,14 +41,13 @@ module.exports = {
     "no-unused-expressions": "error",
     "no-unused-vars": ["error", {
       args: "none",
-      varsIgnorePattern: "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$",
+      vars: "all"
     }],
     "no-use-before-define": ["error", {
       functions: false,
     }],
     "padded-blocks": ["error", "never"],
     radix: "error",
-    semi: ["error", "always"],
     "semi-spacing": ["error", {"before": false, "after": true}],
     "space-in-parens": ["error", "never"],
     "valid-jsdoc": ["error", {

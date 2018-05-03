@@ -114,7 +114,8 @@ public:
   mozilla::ipc::IPCResult RecvSetLayerObserverEpoch(const uint64_t& aLayerObserverEpoch) override;
 
   mozilla::ipc::IPCResult RecvClearCachedResources() override;
-  mozilla::ipc::IPCResult RecvForceComposite() override;
+  mozilla::ipc::IPCResult RecvScheduleComposite() override;
+  mozilla::ipc::IPCResult RecvCapture() override;
 
   mozilla::ipc::IPCResult RecvSetConfirmedTargetAPZC(const uint64_t& aBlockId,
                                                      nsTArray<ScrollableLayerGuid>&& aTargets) override;
@@ -154,7 +155,10 @@ public:
   void SendPendingAsyncMessages() override;
   void SetAboutToSendAsyncMessages() override;
 
-  void HoldPendingTransactionId(uint32_t aWrEpoch, uint64_t aTransactionId, const TimeStamp& aTxnStartTime, const TimeStamp& aFwdTime);
+  void HoldPendingTransactionId(uint32_t aWrEpoch,
+                                uint64_t aTransactionId,
+                                const TimeStamp& aTxnStartTime,
+                                const TimeStamp& aFwdTime);
   uint64_t LastPendingTransactionId();
   uint64_t FlushPendingTransactionIds();
   uint64_t FlushTransactionIdsForEpoch(const wr::Epoch& aEpoch, const TimeStamp& aEndTime);
@@ -171,7 +175,8 @@ public:
   void UpdateAPZ(bool aUpdateHitTestingTree);
   const WebRenderScrollData& GetScrollData() const;
 
-  void FlushRendering(bool aIsSync);
+  void FlushRendering();
+  void FlushRenderingAsync();
 
   /**
    * Schedule generating WebRender frame definitely at next composite timing.
@@ -198,9 +203,9 @@ private:
   bool UpdateResources(const nsTArray<OpUpdateResource>& aResourceUpdates,
                        const nsTArray<RefCountedShmem>& aSmallShmems,
                        const nsTArray<ipc::Shmem>& aLargeShmems,
-                       wr::ResourceUpdateQueue& aUpdates);
+                       wr::TransactionBuilder& aUpdates);
   bool AddExternalImage(wr::ExternalImageId aExtId, wr::ImageKey aKey,
-                        wr::ResourceUpdateQueue& aResources);
+                        wr::TransactionBuilder& aResources);
 
   uint64_t GetLayersId() const;
   void ProcessWebRenderParentCommands(const InfallibleTArray<WebRenderParentCommand>& aCommands);
@@ -222,10 +227,6 @@ private:
   // is populated with the property update details.
   bool PushAPZStateToWR(wr::TransactionBuilder& aTxn,
                         nsTArray<wr::WrTransformProperty>& aTransformArray);
-
-  // Helper method to get an APZC reference from a scroll id. Uses the layers
-  // id of this bridge, and may return null if the APZC wasn't found.
-  already_AddRefed<AsyncPanZoomController> GetTargetAPZC(const FrameMetrics::ViewID& aId);
 
   uint32_t GetNextWrEpoch();
 
@@ -271,6 +272,7 @@ private:
   bool mPaused;
   bool mDestroyed;
   bool mForceRendering;
+  bool mReceivedDisplayList;
 
   // Can only be accessed on the compositor thread.
   WebRenderScrollData mScrollData;

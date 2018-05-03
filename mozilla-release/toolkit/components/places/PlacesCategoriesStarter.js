@@ -4,20 +4,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {utils: Cu, classes: Cc, interfaces: Ci} = Components;
-
 // Fired by TelemetryController when async telemetry data should be collected.
 const TOPIC_GATHER_TELEMETRY = "gather-telemetry";
 
 // Seconds between maintenance runs.
 const MAINTENANCE_INTERVAL_SECONDS = 7 * 86400;
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesDBUtils",
-                                  "resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesDBUtils",
+                               "resource://gre/modules/PlacesDBUtils.jsm");
 
 /**
  * This component can be used as a starter for modules that have to run when
@@ -40,10 +38,6 @@ PlacesCategoriesStarter.prototype = {
         break;
       case TOPIC_GATHER_TELEMETRY:
         PlacesDBUtils.telemetry();
-        break;
-      case PlacesUtils.TOPIC_INIT_COMPLETE:
-        // Init keywords so it starts listening to bookmarks notifications.
-        PlacesUtils.keywords;
         break;
       case "idle-daily":
         // Once a week run places.sqlite maintenance tasks.

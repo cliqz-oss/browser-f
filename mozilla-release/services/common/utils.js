@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["CommonUtils"];
 
-this.EXPORTED_SYMBOLS = ["CommonUtils"];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-
-this.CommonUtils = {
+var CommonUtils = {
   /*
    * Set manipulation methods. These should be lifted into toolkit, or added to
    * `Set` itself.
@@ -133,19 +131,6 @@ this.CommonUtils = {
       callback = callback.bind(thisObj);
     }
     Services.tm.dispatchToMainThread(callback);
-  },
-
-  /**
-   * Return a promise resolving on some later tick.
-   *
-   * This a wrapper around Promise.resolve() that prevents stack
-   * accumulation and prevents callers from accidentally relying on
-   * same-tick promise resolution.
-   */
-  laterTickResolvingPromise(value) {
-    return new Promise(resolve => {
-      this.nextTick(() => resolve(value));
-    });
   },
 
   /**

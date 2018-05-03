@@ -7,6 +7,9 @@
 <!ENTITY doNotDownloadImap.label "Um Speicherplatz zu sparen, kann das Herunterladen der Nachrichten vom IMAP-Server und das Bereithalten lokaler Kopien zum Offline-Lesen nach Alter und Größe begrenzt werden.">
 <!ENTITY allFoldersOffline.label "Nachrichten dieses Kontos auf diesem Computer bereithalten">
 <!ENTITY allFoldersOffline.accesskey "d">
+<!ENTITY allFoldersOffline2.label "Nachrichten für alle Ordner dieses Kontos auf diesem Computer bereithalten">
+<!ENTITY allFoldersOffline2.accesskey "b">
+<!ENTITY allFoldersOfflineNote.label "Hinweis: Eine Änderung dieser Einstellung betrifft alle Ordner dieses Kontos. Verwendet Sie die Schaltfläche Erweitert…, um einzelne Ordner zu konfigurieren.">
 <!ENTITY offlineNotDownload.label "Nachrichten, die größer sind als">
 <!ENTITY offlineNotDownload.accesskey "N">
 <!ENTITY autosyncNotDownload.label "Nachrichten nicht herunterladen, die größer sind als">

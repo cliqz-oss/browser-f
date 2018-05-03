@@ -32,10 +32,8 @@ use dom::cssstyledeclaration::{CSSModificationAccess, CSSStyleDeclaration, CSSSt
 use dom::customelementregistry::CustomElementRegistry;
 use dom::document::{AnimationFrameCallback, Document};
 use dom::element::Element;
-use dom::event::Event;
 use dom::globalscope::GlobalScope;
 use dom::history::History;
-use dom::htmliframeelement::build_mozbrowser_custom_event;
 use dom::location::Location;
 use dom::mediaquerylist::{MediaQueryList, WeakMediaQueryListVec};
 use dom::messageevent::MessageEvent;
@@ -54,36 +52,34 @@ use euclid::{Point2D, Vector2D, Rect, Size2D};
 use fetch;
 use ipc_channel::ipc::{self, IpcSender};
 use ipc_channel::router::ROUTER;
-use js::jsapi::{HandleObject, HandleValue, JSAutoCompartment, JSContext};
+use js::jsapi::{HandleValue, JSAutoCompartment, JSContext};
 use js::jsapi::{JS_GC, JS_GetRuntime};
 use js::jsval::UndefinedValue;
 use layout_image::fetch_image_for_layout;
 use microtask::MicrotaskQueue;
-use msg::constellation_msg::{FrameType, PipelineId};
+use msg::constellation_msg::PipelineId;
 use net_traits::{ResourceThreads, ReferrerPolicy};
 use net_traits::image_cache::{ImageCache, ImageResponder, ImageResponse};
 use net_traits::image_cache::{PendingImageId, PendingImageResponse};
 use net_traits::storage_thread::StorageType;
 use num_traits::ToPrimitive;
-use open;
 use profile_traits::mem::ProfilerChan as MemProfilerChan;
 use profile_traits::time::ProfilerChan as TimeProfilerChan;
 use script_layout_interface::{TrustedNodeAddress, PendingImageState};
 use script_layout_interface::message::{Msg, Reflow, ReflowGoal, ScriptReflow};
 use script_layout_interface::reporter::CSSErrorReporter;
 use script_layout_interface::rpc::{ContentBoxResponse, ContentBoxesResponse, LayoutRPC};
-use script_layout_interface::rpc::{MarginStyleResponse, NodeScrollRootIdResponse};
-use script_layout_interface::rpc::{ResolvedStyleResponse, TextIndexResponse};
+use script_layout_interface::rpc::{NodeScrollIdResponse, ResolvedStyleResponse, TextIndexResponse};
 use script_runtime::{CommonScriptMsg, ScriptChan, ScriptPort, ScriptThreadEventCategory, Runtime};
 use script_thread::{ImageCacheMsg, MainThreadScriptChan, MainThreadScriptMsg};
 use script_thread::{ScriptThread, SendableMainThreadScriptChan};
-use script_traits::{ConstellationControlMsg, DocumentState, LoadData, MozBrowserEvent};
+use script_traits::{ConstellationControlMsg, DocumentState, LoadData};
 use script_traits::{ScriptToConstellationChan, ScriptMsg, ScrollState, TimerEvent, TimerEventId};
 use script_traits::{TimerSchedulerMsg, UntrustedNodeAddress, WindowSizeData, WindowSizeType};
 use script_traits::webdriver_msg::{WebDriverJSError, WebDriverJSResult};
 use selectors::attr::CaseSensitivity;
+use servo_arc;
 use servo_config::opts;
-use servo_config::prefs::PREFS;
 use servo_geometry::{f32_rect_to_au_rect, MaxRect};
 use servo_url::{Host, MutableOrigin, ImmutableOrigin, ServoUrl};
 use std::borrow::ToOwned;
@@ -102,8 +98,7 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::mpsc::TryRecvError::{Disconnected, Empty};
 use style::media_queries;
 use style::parser::ParserContext as CssParserContext;
-use style::properties::PropertyId;
-use style::properties::longhands::overflow_x;
+use style::properties::{ComputedValues, PropertyId};
 use style::selector_parser::PseudoElement;
 use style::str::HTML_SPACE_CHARACTERS;
 use style::stylesheets::CssRuleType;
@@ -121,7 +116,7 @@ use timers::{IsInterval, TimerCallback};
 use tinyfiledialogs::{self, MessageBoxIcon};
 use url::Position;
 use webdriver_handlers::jsval_to_webdriver;
-use webrender_api::{ClipId, DocumentId};
+use webrender_api::{ExternalScrollId, DocumentId};
 use webvr_traits::WebVRMsg;
 
 /// Current state of the window object
@@ -201,7 +196,7 @@ pub struct Window {
     resize_event: Cell<Option<(WindowSizeData, WindowSizeType)>>,
 
     /// Parent id associated with this page, if any.
-    parent_info: Option<(PipelineId, FrameType)>,
+    parent_info: Option<PipelineId>,
 
     /// Global static data related to the DOM.
     dom_static: GlobalStaticData,
@@ -262,9 +257,9 @@ pub struct Window {
 
     test_runner: MutNullableDom<TestRunner>,
 
-    /// A handle for communicating messages to the webvr thread, if available.
+    /// A handle for communicating messages to the WebGL thread, if available.
     #[ignore_malloc_size_of = "channels are hard"]
-    webgl_chan: WebGLChan,
+    webgl_chan: Option<WebGLChan>,
 
     /// A handle for communicating messages to the webvr thread, if available.
     #[ignore_malloc_size_of = "channels are hard"]
@@ -290,9 +285,20 @@ pub struct Window {
     /// The Webrender Document id associated with this window.
     #[ignore_malloc_size_of = "defined in webrender_api"]
     webrender_document: DocumentId,
+
+    /// Flag to identify whether mutation observers are present(true)/absent(false)
+    exists_mut_observer: Cell<bool>,
 }
 
 impl Window {
+    pub fn get_exists_mut_observer(&self) -> bool {
+        self.exists_mut_observer.get()
+    }
+
+    pub fn set_exists_mut_observer(&self) {
+        self.exists_mut_observer.set(true);
+    }
+
     #[allow(unsafe_code)]
     pub fn clear_js_runtime_for_script_deallocation(&self) {
         unsafe {
@@ -344,7 +350,7 @@ impl Window {
         &self.script_chan.0
     }
 
-    pub fn parent_info(&self) -> Option<(PipelineId, FrameType)> {
+    pub fn parent_info(&self) -> Option<PipelineId> {
         self.parent_info
     }
 
@@ -396,7 +402,7 @@ impl Window {
         self.current_viewport.clone().get()
     }
 
-    pub fn webgl_chan(&self) -> WebGLChan {
+    pub fn webgl_chan(&self) -> Option<WebGLChan> {
         self.webgl_chan.clone()
     }
 
@@ -521,7 +527,7 @@ impl WindowMethods for Window {
 
     // https://html.spec.whatwg.org/multipage/#dom-alert
     fn Alert(&self, s: DOMString) {
-        // Right now, just print to the console
+        // Print to the console.
         // Ensure that stderr doesn't trample through the alert() we use to
         // communicate test results (see executorservo.py in wptrunner).
         {
@@ -993,17 +999,6 @@ impl WindowMethods for Window {
         *self.status.borrow_mut() = status
     }
 
-    // check-tidy: no specs after this line
-    fn OpenURLInDefaultBrowser(&self, href: DOMString) -> ErrorResult {
-        let url = ServoUrl::parse(&href).map_err(|e| {
-            Error::Type(format!("Couldn't parse URL: {}", e))
-        })?;
-        match open::that(url.as_str()) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Error::Type(format!("Couldn't open URL: {}", e))),
-        }
-    }
-
     // https://drafts.csswg.org/cssom-view/#dom-window-matchmedia
     fn MatchMedia(&self, query: DOMString) -> DomRoot<MediaQueryList> {
         let mut input = ParserInput::new(&query);
@@ -1027,17 +1022,27 @@ impl WindowMethods for Window {
         fetch::Fetch(&self.upcast(), input, init)
     }
 
-    // https://drafts.css-houdini.org/css-paint-api-1/#paint-worklet
-    fn PaintWorklet(&self) -> DomRoot<Worklet> {
-        self.paint_worklet.or_init(|| self.new_paint_worklet())
-    }
-
     fn TestRunner(&self) -> DomRoot<TestRunner> {
         self.test_runner.or_init(|| TestRunner::new(self.upcast()))
+    }
+
+    // https://html.spec.whatwg.org/multipage/#dom-name
+    fn SetName(&self, name: DOMString) {
+        self.window_proxy().set_name(name);
+    }
+
+    // https://html.spec.whatwg.org/multipage/#dom-name
+    fn Name(&self) -> DOMString {
+        self.window_proxy().get_name()
     }
 }
 
 impl Window {
+    // https://drafts.css-houdini.org/css-paint-api-1/#paint-worklet
+    pub fn paint_worklet(&self) -> DomRoot<Worklet> {
+        self.paint_worklet.or_init(|| self.new_paint_worklet())
+    }
+
     pub fn task_canceller(&self) -> TaskCanceller {
         TaskCanceller {
             cancelled: Some(self.ignore_further_async_events.borrow().clone()),
@@ -1142,7 +1147,7 @@ impl Window {
         self.update_viewport_for_scroll(x, y);
         self.perform_a_scroll(x,
                               y,
-                              global_scope.pipeline_id().root_scroll_node(),
+                              global_scope.pipeline_id().root_scroll_id(),
                               behavior,
                               None);
     }
@@ -1151,14 +1156,14 @@ impl Window {
     pub fn perform_a_scroll(&self,
                             x: f32,
                             y: f32,
-                            scroll_root_id: ClipId,
+                            scroll_id: ExternalScrollId,
                             _behavior: ScrollBehavior,
                             _element: Option<&Element>) {
         // TODO Step 1
         // TODO(mrobinson, #18709): Add smooth scrolling support to WebRender so that we can
         // properly process ScrollBehavior here.
         self.layout_chan.send(Msg::UpdateScrollStateFromScript(ScrollState {
-            scroll_root_id: scroll_root_id,
+            scroll_id,
             scroll_offset: Vector2D::new(-x, -y),
         })).unwrap();
     }
@@ -1403,16 +1408,6 @@ impl Window {
         self.layout_rpc.node_scroll_area().client_rect
     }
 
-    pub fn overflow_query(&self,
-                          node: TrustedNodeAddress) -> Point2D<overflow_x::computed_value::T> {
-        // NB: This is only called if the document is fully active, and the only
-        // reason to bail out from a query is if there's no viewport, so this
-        // *must* issue a reflow.
-        assert!(self.reflow(ReflowGoal::NodeOverflowQuery(node), ReflowReason::Query));
-
-        self.layout_rpc.node_overflow().0.unwrap()
-    }
-
     pub fn scroll_offset_query(&self, node: &Node) -> Vector2D<f32> {
         if let Some(scroll_offset) = self.scroll_offsets
                                          .borrow()
@@ -1423,13 +1418,17 @@ impl Window {
     }
 
     // https://drafts.csswg.org/cssom-view/#element-scrolling-members
-    pub fn scroll_node(&self,
-                       node: &Node,
-                       x_: f64,
-                       y_: f64,
-                       behavior: ScrollBehavior) {
-        if !self.reflow(ReflowGoal::NodeScrollRootIdQuery(node.to_trusted_node_address()),
-                        ReflowReason::Query) {
+    pub fn scroll_node(
+        &self,
+        node: &Node,
+        x_: f64,
+        y_: f64,
+        behavior: ScrollBehavior
+    ) {
+        if !self.reflow(
+            ReflowGoal::NodeScrollIdQuery(node.to_trusted_node_address()),
+            ReflowReason::Query
+        ) {
             return;
         }
 
@@ -1439,12 +1438,12 @@ impl Window {
         self.scroll_offsets.borrow_mut().insert(node.to_untrusted_node_address(),
                                                 Vector2D::new(x_ as f32, y_ as f32));
 
-        let NodeScrollRootIdResponse(scroll_root_id) = self.layout_rpc.node_scroll_root_id();
+        let NodeScrollIdResponse(scroll_id) = self.layout_rpc.node_scroll_id();
 
         // Step 12
         self.perform_a_scroll(x_.to_f32().unwrap_or(0.0f32),
                               y_.to_f32().unwrap_or(0.0f32),
-                              scroll_root_id,
+                              scroll_id,
                               behavior,
                               None);
     }
@@ -1477,11 +1476,11 @@ impl Window {
         (element, response.rect)
     }
 
-    pub fn margin_style_query(&self, node: TrustedNodeAddress) -> MarginStyleResponse {
-        if !self.reflow(ReflowGoal::MarginStyleQuery(node), ReflowReason::Query) {
-            return MarginStyleResponse::empty();
+    pub fn style_query(&self, node: TrustedNodeAddress) -> Option<servo_arc::Arc<ComputedValues>> {
+        if !self.reflow(ReflowGoal::StyleQuery(node), ReflowReason::Query) {
+            return None
         }
-        self.layout_rpc.margin_style()
+        self.layout_rpc.style().0
     }
 
     pub fn text_index_query(
@@ -1689,31 +1688,7 @@ impl Window {
 
     // https://html.spec.whatwg.org/multipage/#top-level-browsing-context
     pub fn is_top_level(&self) -> bool {
-        match self.parent_info {
-            Some((_, FrameType::IFrame)) => false,
-            _ => true,
-        }
-    }
-
-    /// Returns whether this window is mozbrowser.
-    pub fn is_mozbrowser(&self) -> bool {
-        PREFS.is_mozbrowser_enabled() && self.parent_info().is_none()
-    }
-
-    /// Returns whether mozbrowser is enabled and `obj` has been created
-    /// in a top-level `Window` global.
-    #[allow(unsafe_code)]
-    pub unsafe fn global_is_mozbrowser(_: *mut JSContext, obj: HandleObject) -> bool {
-        GlobalScope::from_object(obj.get())
-            .downcast::<Window>()
-            .map_or(false, |window| window.is_mozbrowser())
-    }
-
-    #[allow(unsafe_code)]
-    pub fn dispatch_mozbrowser_event(&self, event: MozBrowserEvent) {
-        assert!(PREFS.is_mozbrowser_enabled());
-        let custom_event = build_mozbrowser_custom_event(&self, event);
-        custom_event.upcast::<Event>().fire(self.upcast());
+        self.parent_info.is_none()
     }
 
     pub fn evaluate_media_queries_and_report_changes(&self) {
@@ -1776,12 +1751,12 @@ impl Window {
         timer_event_chan: IpcSender<TimerEvent>,
         layout_chan: Sender<Msg>,
         pipelineid: PipelineId,
-        parent_info: Option<(PipelineId, FrameType)>,
+        parent_info: Option<PipelineId>,
         window_size: Option<WindowSizeData>,
         origin: MutableOrigin,
         navigation_start: u64,
         navigation_start_precise: u64,
-        webgl_chan: WebGLChan,
+        webgl_chan: Option<WebGLChan>,
         webvr_chan: Option<IpcSender<WebVRMsg>>,
         microtask_queue: Rc<MicrotaskQueue>,
         webrender_document: DocumentId,
@@ -1860,6 +1835,7 @@ impl Window {
             test_worklet: Default::default(),
             paint_worklet: Default::default(),
             webrender_document,
+            exists_mut_observer: Cell::new(false),
         });
 
         unsafe {
@@ -1898,14 +1874,14 @@ fn debug_reflow_events(id: PipelineId, reflow_goal: &ReflowGoal, reason: &Reflow
         ReflowGoal::ContentBoxesQuery(_n) => "\tContentBoxesQuery",
         ReflowGoal::NodesFromPointQuery(..) => "\tNodesFromPointQuery",
         ReflowGoal::NodeGeometryQuery(_n) => "\tNodeGeometryQuery",
-        ReflowGoal::NodeOverflowQuery(_n) => "\tNodeOverFlowQuery",
         ReflowGoal::NodeScrollGeometryQuery(_n) => "\tNodeScrollGeometryQuery",
-        ReflowGoal::NodeScrollRootIdQuery(_n) => "\tNodeScrollRootIdQuery",
+        ReflowGoal::NodeScrollIdQuery(_n) => "\tNodeScrollIdQuery",
         ReflowGoal::ResolvedStyleQuery(_, _, _) => "\tResolvedStyleQuery",
         ReflowGoal::OffsetParentQuery(_n) => "\tOffsetParentQuery",
-        ReflowGoal::MarginStyleQuery(_n) => "\tMarginStyleQuery",
+        ReflowGoal::StyleQuery(_n) => "\tStyleQuery",
         ReflowGoal::TextIndexQuery(..) => "\tTextIndexQuery",
         ReflowGoal::TickAnimations => "\tTickAnimations",
+        ReflowGoal::ElementInnerTextQuery(_) => "\tElementInnerTextQuery",
     });
 
     debug_msg.push_str(match *reason {

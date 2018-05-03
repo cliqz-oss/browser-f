@@ -7,13 +7,8 @@
 
 // Globals
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function checkService(service, interface) {
   info("Checking that Services." + service + " is an " + interface);
@@ -38,7 +33,6 @@ function run_test() {
   checkService("dirsvc", Ci.nsIProperties);
   checkService("DOMRequest", Ci.nsIDOMRequestService);
   checkService("domStorageManager", Ci.nsIDOMStorageManager);
-  checkService("downloads", Ci.nsIDownloadManager);
   checkService("droppedLinkHandler", Ci.nsIDroppedLinkHandler);
   checkService("eTLD", Ci.nsIEffectiveTLDService);
   checkService("focus", Ci.nsIFocusManager);
@@ -70,17 +64,21 @@ function run_test() {
   if ("nsIAndroidBridge" in Ci) {
     checkService("androidBridge", Ci.nsIAndroidBridge);
   }
+  if ("@mozilla.org/browser/enterprisepolicies;1" in Cc) {
+    checkService("policies", Ci.nsIEnterprisePolicies);
+  }
+
 
   // In xpcshell tests, the "@mozilla.org/xre/app-info;1" component implements
   // only the nsIXULRuntime interface, but not nsIXULAppInfo.  To test the
   // service getter for the latter interface, load mock app-info.
   let tmp = {};
-  Cu.import("resource://testing-common/AppInfo.jsm", tmp);
+  ChromeUtils.import("resource://testing-common/AppInfo.jsm", tmp);
   tmp.updateAppInfo();
 
   // We need to reload the module to update the lazy getter.
   Cu.unload("resource://gre/modules/Services.jsm");
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   checkService("appinfo", Ci.nsIXULAppInfo);
 

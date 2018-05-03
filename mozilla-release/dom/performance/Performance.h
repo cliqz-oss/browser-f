@@ -9,11 +9,11 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "nsCOMPtr.h"
 #include "nsDOMNavigationTiming.h"
 
 class nsITimedChannel;
-class nsIHttpChannel;
 
 namespace mozilla {
 
@@ -25,11 +25,9 @@ class PerformanceEntry;
 class PerformanceNavigation;
 class PerformanceObserver;
 class PerformanceService;
+class PerformanceStorage;
 class PerformanceTiming;
-
-namespace workers {
 class WorkerPrivate;
-}
 
 // Base class for main-thread and worker Performance API
 class Performance : public DOMEventTargetHelper
@@ -43,11 +41,12 @@ public:
 
   static already_AddRefed<Performance>
   CreateForMainThread(nsPIDOMWindowInner* aWindow,
+                      nsIPrincipal* aPrincipal,
                       nsDOMNavigationTiming* aDOMTiming,
                       nsITimedChannel* aChannel);
 
   static already_AddRefed<Performance>
-  CreateForWorker(workers::WorkerPrivate* aWorkerPrivate);
+  CreateForWorker(WorkerPrivate* aWorkerPrivate);
 
   JSObject* WrapObject(JSContext *cx,
                        JS::Handle<JSObject*> aGivenProto) override;
@@ -61,12 +60,13 @@ public:
                                 const Optional<nsAString>& aEntryType,
                                 nsTArray<RefPtr<PerformanceEntry>>& aRetval);
 
-  virtual void AddEntry(nsIHttpChannel* channel,
-                        nsITimedChannel* timedChannel) = 0;
+  virtual PerformanceStorage* AsPerformanceStorage() = 0;
 
   void ClearResourceTimings();
 
-  DOMHighResTimeStamp Now() const;
+  DOMHighResTimeStamp Now();
+
+  DOMHighResTimeStamp NowUnclamped() const;
 
   DOMHighResTimeStamp TimeOrigin();
 
@@ -101,10 +101,21 @@ public:
 
   virtual nsITimedChannel* GetChannel() const = 0;
 
+  virtual TimeStamp CreationTimeStamp() const = 0;
+
+  uint64_t IsSystemPrincipal()
+  {
+    return mSystemPrincipal;
+  }
+
+  virtual uint64_t GetRandomTimelineSeed() = 0;
+
   void MemoryPressure();
 
   size_t SizeOfUserEntries(mozilla::MallocSizeOf aMallocSizeOf) const;
   size_t SizeOfResourceEntries(mozilla::MallocSizeOf aMallocSizeOf) const;
+
+  void InsertResourceEntry(PerformanceEntry* aEntry);
 
 protected:
   Performance();
@@ -113,7 +124,6 @@ protected:
   virtual ~Performance();
 
   virtual void InsertUserEntry(PerformanceEntry* aEntry);
-  void InsertResourceEntry(PerformanceEntry* aEntry);
 
   void ClearUserEntries(const Optional<nsAString>& aEntryName,
                         const nsAString& aEntryType);
@@ -122,8 +132,6 @@ protected:
                                                ErrorResult& aRv);
 
   virtual void DispatchBufferFullEvent() = 0;
-
-  virtual TimeStamp CreationTimeStamp() const = 0;
 
   virtual DOMHighResTimeStamp CreationTime() const = 0;
 
@@ -138,19 +146,12 @@ protected:
     return 0;
   }
 
-  bool IsResourceEntryLimitReached() const
-  {
-    return mResourceEntries.Length() >= mResourceTimingBufferSize;
-  }
-
   void LogEntry(PerformanceEntry* aEntry, const nsACString& aOwner) const;
   void TimingNotification(PerformanceEntry* aEntry, const nsACString& aOwner,
                           uint64_t epoch);
 
   void RunNotificationObserversTask();
   void QueueEntry(PerformanceEntry* aEntry);
-
-  DOMHighResTimeStamp RoundTime(double aTime) const;
 
   nsTObserverArray<PerformanceObserver*> mObservers;
 
@@ -166,6 +167,8 @@ protected:
   bool mPendingNotificationObserversTask;
 
   RefPtr<PerformanceService> mPerformanceService;
+
+  bool mSystemPrincipal;
 };
 
 } // namespace dom

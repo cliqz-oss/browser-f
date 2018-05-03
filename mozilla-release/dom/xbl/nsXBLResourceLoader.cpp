@@ -4,9 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsCSSFrameConstructor.h"
 #include "nsTArray.h"
 #include "nsString.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsIStyleRuleProcessor.h"
+#endif
 #include "nsIDocument.h"
 #include "nsIContent.h"
 #include "nsIPresShell.h"
@@ -23,12 +26,15 @@
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsGkAtoms.h"
-#include "nsFrameManager.h"
 #include "nsStyleContext.h"
 #include "nsXBLPrototypeBinding.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRuleProcessor.h"
+#endif
 #include "nsContentUtils.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "nsIScriptSecurityManager.h"
 
 using namespace mozilla;
@@ -186,10 +192,14 @@ nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
   if (mPendingSheets == 0) {
     // All stylesheets are loaded.
     if (aSheet->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
       mResources->GatherRuleProcessor();
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     } else {
-      mResources->ComputeServoStyleSet(
-        mBoundDocument->GetShell()->GetPresContext());
+      mResources->ComputeServoStyles(
+        *mBoundDocument->GetShell()->StyleSet()->AsServo());
     }
 
     // XXX Check for mPendingScripts when scripts also come online.
@@ -216,6 +226,7 @@ nsXBLResourceLoader::AddResourceListener(nsIContent* aBoundElement)
 {
   if (aBoundElement) {
     mBoundElements.AppendObject(aBoundElement);
+    aBoundElement->OwnerDoc()->BlockOnload();
   }
 }
 
@@ -232,6 +243,7 @@ nsXBLResourceLoader::NotifyBoundElements()
   for (uint32_t j = 0; j < eltCount; j++) {
     nsCOMPtr<nsIContent> content = mBoundElements.ObjectAt(j);
     MOZ_ASSERT(content->IsElement());
+    content->OwnerDoc()->UnblockOnload(/* aFireSync = */ false);
 
     bool ready = false;
     xblService->BindingReady(content, bindingURI, &ready);
@@ -260,10 +272,10 @@ nsXBLResourceLoader::NotifyBoundElements()
           if (!childFrame) {
             // Check if it's in the display:none or display:contents maps.
             nsStyleContext* sc =
-              shell->FrameManager()->GetDisplayNoneStyleFor(content);
+              shell->FrameConstructor()->GetDisplayNoneStyleFor(content);
 
             if (!sc) {
-              sc = shell->FrameManager()->GetDisplayContentsStyleFor(content);
+              sc = shell->FrameConstructor()->GetDisplayContentsStyleFor(content);
             }
 
             if (!sc) {

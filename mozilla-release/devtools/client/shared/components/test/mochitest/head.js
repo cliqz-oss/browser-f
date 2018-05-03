@@ -5,12 +5,10 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var { Assert } = require("resource://testing-common/Assert.jsm");
 var { gDevTools } = require("devtools/client/framework/devtools");
-var { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+var { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 var promise = require("promise");
 var defer = require("devtools/shared/defer");
 var Services = require("Services");
@@ -28,10 +26,13 @@ var { require: browserRequire } = BrowserLoader({
   window
 });
 
-let React = browserRequire("devtools/client/shared/vendor/react");
-let ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
-let dom = browserRequire("devtools/client/shared/vendor/react-dom-factories");
-let TestUtils = ReactDOM.TestUtils;
+const React = browserRequire("devtools/client/shared/vendor/react");
+const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
+const dom = browserRequire("devtools/client/shared/vendor/react-dom-factories");
+const TestUtils = browserRequire("devtools/client/shared/vendor/react-dom-test-utils");
+
+const ShallowRenderer =
+  browserRequire("devtools/client/shared/vendor/react-test-renderer-shallow");
 
 var EXAMPLE_URL = "http://example.com/browser/browser/devtools/shared/test/";
 
@@ -95,7 +96,9 @@ function isAccessibleTree(tree, options = {}) {
   for (let node of treeNodes) {
     ok(node.id, "TreeNode has an id");
     is(node.getAttribute("role"), "treeitem", "Tree item semantics is present");
-    ok(node.hasAttribute("aria-level"), "Aria level attribute is set");
+    is(parseInt(node.getAttribute("aria-level"), 10),
+       parseInt(node.getAttribute("data-depth"), 10) + 1,
+       "Aria level attribute is set correctly");
   }
 }
 
@@ -208,7 +211,7 @@ function renderComponent(component, props) {
 
 function shallowRenderComponent(component, props) {
   const el = React.createElement(component, props);
-  const renderer = TestUtils.createRenderer();
+  const renderer = new ShallowRenderer();
   renderer.render(el, {});
   return renderer.getRenderOutput();
 }

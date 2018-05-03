@@ -6,11 +6,10 @@
 // It is expected that the test files importing this file define Cu etc.
 /* global Cu, Ci, Cc, Cr */
 
-const CURRENT_SCHEMA_VERSION = 41;
+const CURRENT_SCHEMA_VERSION = 43;
 const FIRST_UPGRADABLE_SCHEMA_VERSION = 30;
 
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
-const NS_APP_PROFILE_DIR_STARTUP = "ProfDS";
 
 // Shortcuts to transitions type.
 const TRANSITION_LINK = Ci.nsINavHistoryService.TRANSITION_LINK;
@@ -27,7 +26,7 @@ const TITLE_LENGTH_MAX = 4096;
 
 Cu.importGlobalProperties(["URL"]);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
@@ -43,9 +42,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Sqlite: "resource://gre/modules/Sqlite.jsm",
   TestUtils: "resource://testing-common/TestUtils.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
 });
-// This imports various other objects in addition to PlacesUtils.
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "SMALLPNG_DATA_URI", function() {
   return NetUtil.newURI(
@@ -791,24 +789,6 @@ NavHistoryResultObserver.prototype = {
     Ci.nsINavHistoryResultObserver,
   ])
 };
-
-/**
- * Asynchronously check a url is visited.
- *
- * @param aURI The URI.
- * @return {Promise}
- * @resolves When the check has been added successfully.
- * @rejects JavaScript exception.
- */
-function promiseIsURIVisited(aURI) {
-  return new Promise(resolve => {
-
-    PlacesUtils.asyncHistory.isURIVisited(aURI, function(unused, aIsVisited) {
-      resolve(aIsVisited);
-    });
-
-  });
-}
 
 function checkBookmarkObject(info) {
   do_check_valid_places_guid(info.guid);

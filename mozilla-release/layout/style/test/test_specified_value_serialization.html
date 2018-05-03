@@ -277,6 +277,15 @@
   p.remove();
 })();
 
+SimpleTest.waitForExplicitFinish();
+SpecialPowers.pushPrefEnv(
+  {
+    set: [['layout.css.individual-transform.enabled', true]],
+  },
+  () =>
+    window.open('file_specified_value_serialization_individual_transforms.html')
+);
+
 </script>
 </pre>
 </body>

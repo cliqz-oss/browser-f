@@ -11,6 +11,7 @@
 #include <math.h>
 
 #include "AudioSegment.h"
+#include "AudioConverter.h"
 #include "AutoTaskQueue.h"
 #include "CSFLog.h"
 #include "DOMMediaStream.h"
@@ -51,7 +52,9 @@
 #include "transportlayerice.h"
 
 #include "webrtc/base/bind.h"
+#include "webrtc/base/keep_ref_until_done.h"
 #include "webrtc/common_types.h"
+#include "webrtc/common_video/include/i420_buffer_pool.h"
 #include "webrtc/common_video/include/video_frame_buffer.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 
@@ -61,6 +64,14 @@
 static_assert((WEBRTC_MAX_SAMPLE_RATE / 100) * sizeof(uint16_t) * 2
                <= AUDIO_SAMPLE_BUFFER_MAX_BYTES,
                "AUDIO_SAMPLE_BUFFER_MAX_BYTES is not large enough");
+
+// The number of frame buffers VideoFrameConverter may create before returning
+// errors.
+// Sometimes these are released synchronously but they can be forwarded all the
+// way to the encoder for asynchronous encoding. With a pool size of 5,
+// we allow 1 buffer for the current conversion, and 4 buffers to be queued at
+// the encoder.
+#define CONVERTER_BUFFER_POOL_SIZE 5
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -82,23 +93,11 @@ class VideoConverterListener
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VideoConverterListener)
 
-  virtual void OnVideoFrameConverted(const unsigned char* aVideoFrame,
-                                     unsigned int aVideoFrameLength,
-                                     unsigned short aWidth,
-                                     unsigned short aHeight,
-                                     VideoType aVideoType,
-                                     uint64_t aCaptureTime) = 0;
-
   virtual void OnVideoFrameConverted(const webrtc::VideoFrame& aVideoFrame) = 0;
 
 protected:
   virtual ~VideoConverterListener() {}
 };
-
-// I420 buffer size macros
-#define YSIZE(x, y) (CheckedInt<int>(x) * (y))
-#define CRSIZE(x, y) ((((x) + 1) >> 1) * (((y) + 1) >> 1))
-#define I420SIZE(x, y) (YSIZE((x), (y)) + 2 * CRSIZE((x), (y)))
 
 // An async video frame format converter.
 //
@@ -119,6 +118,7 @@ public:
     , mTaskQueue(
         new AutoTaskQueue(GetMediaThreadPool(MediaThreadType::WEBRTC_DECODER),
                           "VideoFrameConverter"))
+    , mBufferPool(false, CONVERTER_BUFFER_POOL_SIZE)
     , mLastImage(-1) // -1 is not a guaranteed invalid serial. See bug 1262134.
 #ifdef DEBUG
     , mThrottleCount(0)
@@ -131,15 +131,43 @@ public:
 
   void QueueVideoChunk(const VideoChunk& aChunk, bool aForceBlack)
   {
-    if (aChunk.IsNull()) {
+    IntSize size = aChunk.mFrame.GetIntrinsicSize();
+    if (size.width == 0 || size.width == 0) {
       return;
     }
 
-    // We get passed duplicate frames every ~10ms even with no frame change.
-    int32_t serial = aChunk.mFrame.GetImage()->GetSerial();
-    if (serial == mLastImage) {
+    if (aChunk.IsNull()) {
+      aForceBlack = true;
+    } else {
+      aForceBlack = aChunk.mFrame.GetForceBlack();
+    }
+
+    int32_t serial;
+    if (aForceBlack) {
+      // Reset the last-img check.
+      // -1 is not a guaranteed invalid serial. See bug 1262134.
+      serial = -1;
+    } else {
+      serial = aChunk.mFrame.GetImage()->GetSerial();
+    }
+
+    const double duplicateMinFps = 1.0;
+    TimeStamp t = aChunk.mTimeStamp;
+    MOZ_ASSERT(!t.IsNull());
+    if (!t.IsNull() &&
+        serial == mLastImage &&
+        !mLastFrameSent.IsNull() &&
+        (t - mLastFrameSent).ToSeconds() < (1.0 / duplicateMinFps)) {
+      // We get passed duplicate frames every ~10ms even with no frame change.
+
+      // After disabling, or when the source is not producing many frames,
+      // we still want *some* frames to flow to the other side.
+      // It could happen that we drop the packet that carried the first disabled
+      // frame, for instance. Note that this still requires the application to
+      // send a frame, or it doesn't trigger at all.
       return;
     }
+    mLastFrameSent = t;
     mLastImage = serial;
 
     // A throttling limit of 1 allows us to convert 2 frames concurrently.
@@ -180,39 +208,16 @@ public:
     }
 #endif
 
-    bool forceBlack = aForceBlack || aChunk.mFrame.GetForceBlack();
-
-    if (forceBlack) {
-      // Reset the last-img check.
-      // -1 is not a guaranteed invalid serial. See bug 1262134.
-      mLastImage = -1;
-
-      // After disabling, we still want *some* frames to flow to the other side.
-      // It could happen that we drop the packet that carried the first disabled
-      // frame, for instance. Note that this still requires the application to
-      // send a frame, or it doesn't trigger at all.
-      const double disabledMinFps = 1.0;
-      TimeStamp t = aChunk.mTimeStamp;
-      MOZ_ASSERT(!t.IsNull());
-      if (!mDisabledFrameSent.IsNull() &&
-          (t - mDisabledFrameSent).ToSeconds() < (1.0 / disabledMinFps)) {
-        return;
-      }
-      mDisabledFrameSent = t;
-    } else {
-      // This sets it to the Null time.
-      mDisabledFrameSent = TimeStamp();
-    }
-
     ++mLength; // Atomic
 
     nsCOMPtr<nsIRunnable> runnable =
-      NewRunnableMethod<StoreRefPtrPassByPtr<Image>, bool>(
+      NewRunnableMethod<StoreRefPtrPassByPtr<Image>, IntSize, bool>(
         "VideoFrameConverter::ProcessVideoFrame",
         this,
         &VideoFrameConverter::ProcessVideoFrame,
         aChunk.mFrame.GetImage(),
-        forceBlack);
+        size,
+        aForceBlack);
     nsresult rv = mTaskQueue->Dispatch(runnable.forget());
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     Unused << rv;
@@ -295,38 +300,33 @@ protected:
     }
   }
 
-  void ProcessVideoFrame(Image* aImage, bool aForceBlack)
+  void ProcessVideoFrame(Image* aImage, IntSize aSize, bool aForceBlack)
   {
     --mLength; // Atomic
     MOZ_ASSERT(mLength >= 0);
 
     if (aForceBlack) {
-      IntSize size = aImage->GetSize();
-      CheckedInt<int> yPlaneLen = YSIZE(size.width, size.height);
-      // doesn't need to be CheckedInt, any overflow will be caught by YSIZE
-      int cbcrPlaneLen = 2 * CRSIZE(size.width, size.height);
-      CheckedInt<int> length = yPlaneLen + cbcrPlaneLen;
-
-      if (!yPlaneLen.isValid() || !length.isValid()) {
+      // Send a black image.
+      rtc::scoped_refptr<webrtc::I420Buffer> buffer =
+        mBufferPool.CreateBuffer(aSize.width, aSize.height);
+      if (!buffer) {
+        MOZ_DIAGNOSTIC_ASSERT(false, "Buffers not leaving scope except for "
+                                     "reconfig, should never leak");
+        CSFLogWarn(LOGTAG, "Creating a buffer for a black video frame failed");
         return;
       }
 
-      // Send a black image.
-      auto pixelData = MakeUniqueFallible<uint8_t[]>(length.value());
-      if (pixelData) {
-        // YCrCb black = 0x10 0x80 0x80
-        memset(pixelData.get(), 0x10, yPlaneLen.value());
-        // Fill Cb/Cr planes
-        memset(pixelData.get() + yPlaneLen.value(), 0x80, cbcrPlaneLen);
+      CSFLogDebug(LOGTAG, "Sending a black video frame");
+      webrtc::I420Buffer::SetBlack(buffer);
+      webrtc::VideoFrame frame(buffer,
+                               0, 0, // not setting timestamps
+                               webrtc::kVideoRotation_0);
+      VideoFrameConverted(frame);
+      return;
+    }
 
-        CSFLogDebug(LOGTAG, "Sending a black video frame");
-        VideoFrameConverted(Move(pixelData),
-                            length.value(),
-                            size.width,
-                            size.height,
-                            mozilla::kVideoI420,
-                            0);
-      }
+    if (!aImage) {
+      MOZ_ASSERT_UNREACHABLE("Must have image if not forcing black");
       return;
     }
 
@@ -344,7 +344,6 @@ protected:
         uint32_t width = aImage->GetSize().width;
         uint32_t height = aImage->GetSize().height;
 
-        rtc::Callback0<void> callback_unused;
         rtc::scoped_refptr<webrtc::WrappedI420Buffer> video_frame_buffer(
           new rtc::RefCountedObject<webrtc::WrappedI420Buffer>(
             width,
@@ -355,7 +354,7 @@ protected:
             cbCrStride,
             cr,
             cbCrStride,
-            callback_unused));
+            rtc::KeepRefUntilDone(aImage)));
 
         webrtc::VideoFrame i420_frame(video_frame_buffer,
                                       0,
@@ -386,22 +385,17 @@ protected:
       return;
     }
 
-    IntSize size = aImage->GetSize();
-    // these don't need to be CheckedInt, any overflow will be caught by YSIZE
-    int half_width = (size.width + 1) >> 1;
-    int half_height = (size.height + 1) >> 1;
-    int c_size = half_width * half_height;
-    CheckedInt<int> buffer_size = YSIZE(size.width, size.height) + 2 * c_size;
-
-    if (!buffer_size.isValid()) {
+    if (aImage->GetSize() != aSize) {
+      MOZ_DIAGNOSTIC_ASSERT(false, "Unexpected intended size");
       return;
     }
 
-    auto yuv_scoped = MakeUniqueFallible<uint8[]>(buffer_size.value());
-    if (!yuv_scoped) {
+    rtc::scoped_refptr<webrtc::I420Buffer> buffer =
+      mBufferPool.CreateBuffer(aSize.width, aSize.height);
+    if (!buffer) {
+      CSFLogWarn(LOGTAG, "Creating a buffer for a black video frame failed");
       return;
     }
-    uint8* yuv = yuv_scoped.get();
 
     DataSourceSurface::ScopedMap map(data, DataSourceSurface::READ);
     if (!map.IsMapped()) {
@@ -415,33 +409,31 @@ protected:
     }
 
     int rv;
-    int cb_offset = YSIZE(size.width, size.height).value();
-    int cr_offset = cb_offset + c_size;
     switch (surf->GetFormat()) {
       case SurfaceFormat::B8G8R8A8:
       case SurfaceFormat::B8G8R8X8:
         rv = libyuv::ARGBToI420(static_cast<uint8*>(map.GetData()),
                                 map.GetStride(),
-                                yuv,
-                                size.width,
-                                yuv + cb_offset,
-                                half_width,
-                                yuv + cr_offset,
-                                half_width,
-                                size.width,
-                                size.height);
+                                buffer->MutableDataY(),
+                                buffer->StrideY(),
+                                buffer->MutableDataU(),
+                                buffer->StrideU(),
+                                buffer->MutableDataV(),
+                                buffer->StrideV(),
+                                aSize.width,
+                                aSize.height);
         break;
       case SurfaceFormat::R5G6B5_UINT16:
         rv = libyuv::RGB565ToI420(static_cast<uint8*>(map.GetData()),
                                   map.GetStride(),
-                                  yuv,
-                                  size.width,
-                                  yuv + cb_offset,
-                                  half_width,
-                                  yuv + cr_offset,
-                                  half_width,
-                                  size.width,
-                                  size.height);
+                                  buffer->MutableDataY(),
+                                  buffer->StrideY(),
+                                  buffer->MutableDataU(),
+                                  buffer->StrideU(),
+                                  buffer->MutableDataV(),
+                                  buffer->StrideV(),
+                                  aSize.width,
+                                  aSize.height);
         break;
       default:
         CSFLogError(LOGTAG,
@@ -459,20 +451,19 @@ protected:
     CSFLogDebug(LOGTAG,
                 "Sending an I420 video frame converted from %s",
                 Stringify(surf->GetFormat()).c_str());
-    VideoFrameConverted(Move(yuv_scoped),
-                        buffer_size.value(),
-                        size.width,
-                        size.height,
-                        mozilla::kVideoI420,
-                        0);
+    webrtc::VideoFrame frame(buffer,
+                             0, 0, // not setting timestamps
+                             webrtc::kVideoRotation_0);
+    VideoFrameConverted(frame);
   }
 
   Atomic<int32_t, Relaxed> mLength;
   const RefPtr<AutoTaskQueue> mTaskQueue;
+  webrtc::I420BufferPool mBufferPool;
 
   // Written and read from the queueing thread (normally MSG).
-  int32_t mLastImage;           // serial number of last Image
-  TimeStamp mDisabledFrameSent; // The time we sent the last disabled frame.
+  int32_t mLastImage;       // serial number of last Image
+  TimeStamp mLastFrameSent; // The time we sent the last frame.
 #ifdef DEBUG
   uint32_t mThrottleCount;
   uint32_t mThrottleRecord;
@@ -497,76 +488,156 @@ public:
     , mTaskQueue(
         new AutoTaskQueue(GetMediaThreadPool(MediaThreadType::WEBRTC_DECODER),
                           "AudioProxy"))
+    , mAudioConverter(nullptr)
   {
     MOZ_ASSERT(mConduit);
     MOZ_COUNT_CTOR(AudioProxyThread);
   }
 
-  void InternalProcessAudioChunk(TrackRate rate,
-                                 const AudioChunk& chunk,
-                                 bool enabled)
+  // This function is the identity if aInputRate is supported.
+  // Else, it returns a rate that is supported, that ensure no loss in audio
+  // quality: the sampling rate returned is always greater to the inputed
+  // sampling-rate, if they differ..
+  uint32_t AppropriateSendingRateForInputRate(uint32_t aInputRate)
+  {
+    AudioSessionConduit* conduit =
+      static_cast<AudioSessionConduit*>(mConduit.get());
+    if (conduit->IsSamplingFreqSupported(aInputRate)) {
+      return aInputRate;
+    }
+    if (aInputRate < 16000) {
+      return 16000;
+    } else if (aInputRate < 32000) {
+      return 32000;
+    } else if (aInputRate < 44100) {
+      return 44100;
+    } else {
+      return 48000;
+    }
+  }
+
+  // From an arbitrary AudioChunk at sampling-rate aRate, process the audio into
+  // something the conduit can work with (or send silence if the track is not
+  // enabled), and send the audio in 10ms chunks to the conduit.
+  void InternalProcessAudioChunk(TrackRate aRate,
+                                 const AudioChunk& aChunk,
+                                 bool aEnabled)
   {
     MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
 
-    // Convert to interleaved, 16-bits integer audio, with a maximum of two
+    // Convert to interleaved 16-bits integer audio, with a maximum of two
     // channels (since the WebRTC.org code below makes the assumption that the
-    // input audio is either mono or stereo).
-    uint32_t outputChannels = chunk.ChannelCount() == 1 ? 1 : 2;
-    const int16_t* samples = nullptr;
-    UniquePtr<int16_t[]> convertedSamples;
+    // input audio is either mono or stereo), with a sample-rate rate that is
+    // 16, 32, 44.1, or 48kHz.
+    uint32_t outputChannels = aChunk.ChannelCount() == 1 ? 1 : 2;
+    int32_t transmissionRate = AppropriateSendingRateForInputRate(aRate);
 
     // We take advantage of the fact that the common case (microphone directly
     // to PeerConnection, that is, a normal call), the samples are already
     // 16-bits mono, so the representation in interleaved and planar is the
     // same, and we can just use that.
-    if (enabled && outputChannels == 1 &&
-        chunk.mBufferFormat == AUDIO_FORMAT_S16) {
-      samples = chunk.ChannelData<int16_t>().Elements()[0];
-    } else {
-      convertedSamples =
-        MakeUnique<int16_t[]>(chunk.mDuration * outputChannels);
-
-      if (!enabled || chunk.mBufferFormat == AUDIO_FORMAT_SILENCE) {
-        PodZero(convertedSamples.get(), chunk.mDuration * outputChannels);
-      } else if (chunk.mBufferFormat == AUDIO_FORMAT_FLOAT32) {
-        DownmixAndInterleave(chunk.ChannelData<float>(),
-                             chunk.mDuration,
-                             chunk.mVolume,
-                             outputChannels,
-                             convertedSamples.get());
-      } else if (chunk.mBufferFormat == AUDIO_FORMAT_S16) {
-        DownmixAndInterleave(chunk.ChannelData<int16_t>(),
-                             chunk.mDuration,
-                             chunk.mVolume,
-                             outputChannels,
-                             convertedSamples.get());
-      }
-      samples = convertedSamples.get();
+    if (aEnabled &&
+        outputChannels == 1 &&
+        aChunk.mBufferFormat == AUDIO_FORMAT_S16 &&
+        transmissionRate == aRate) {
+      const int16_t* samples = aChunk.ChannelData<int16_t>().Elements()[0];
+      PacketizeAndSend(samples,
+                       transmissionRate,
+                       outputChannels,
+                       aChunk.mDuration);
+      return;
     }
 
-    MOZ_ASSERT(!(rate % 100)); // rate should be a multiple of 100
+    uint32_t sampleCount = aChunk.mDuration * outputChannels;
+    if (mInterleavedAudio.Length() < sampleCount) {
+      mInterleavedAudio.SetLength(sampleCount);
+    }
 
-    // Check if the rate or the number of channels has changed since the last
-    // time we came through. I realize it may be overkill to check if the rate
-    // has changed, but I believe it is possible (e.g. if we change sources) and
-    // it costs us very little to handle this case.
+    if (!aEnabled || aChunk.mBufferFormat == AUDIO_FORMAT_SILENCE) {
+      PodZero(mInterleavedAudio.Elements(), sampleCount);
+    } else if (aChunk.mBufferFormat == AUDIO_FORMAT_FLOAT32) {
+      DownmixAndInterleave(aChunk.ChannelData<float>(),
+                           aChunk.mDuration,
+                           aChunk.mVolume,
+                           outputChannels,
+                           mInterleavedAudio.Elements());
+    } else if (aChunk.mBufferFormat == AUDIO_FORMAT_S16) {
+      DownmixAndInterleave(aChunk.ChannelData<int16_t>(),
+                           aChunk.mDuration,
+                           aChunk.mVolume,
+                           outputChannels,
+                           mInterleavedAudio.Elements());
+    }
+    int16_t* inputAudio = mInterleavedAudio.Elements();
+    size_t inputAudioFrameCount = aChunk.mDuration;
 
-    uint32_t audio_10ms = rate / 100;
+    AudioConfig inputConfig(AudioConfig::ChannelLayout(outputChannels),
+                            aRate,
+                            AudioConfig::FORMAT_S16);
+    AudioConfig outputConfig(AudioConfig::ChannelLayout(outputChannels),
+                             transmissionRate,
+                             AudioConfig::FORMAT_S16);
+    // Resample to an acceptable sample-rate for the sending side
+    if (!mAudioConverter ||
+        mAudioConverter->InputConfig() != inputConfig ||
+        mAudioConverter->OutputConfig() != outputConfig) {
+      mAudioConverter = MakeUnique<AudioConverter>(inputConfig, outputConfig);
+    }
+
+    int16_t* processedAudio = nullptr;
+    size_t framesProcessed =
+      mAudioConverter->Process(inputAudio, inputAudioFrameCount);
+
+    if (framesProcessed == 0) {
+      // In place conversion not possible, use a buffer.
+      framesProcessed =
+        mAudioConverter->Process(mOutputAudio,
+                                 inputAudio,
+                                 inputAudioFrameCount);
+      processedAudio = mOutputAudio.Data();
+    } else {
+      processedAudio = inputAudio;
+    }
+
+    PacketizeAndSend(processedAudio,
+                     transmissionRate,
+                     outputChannels,
+                     framesProcessed);
+  }
+
+  // This packetizes aAudioData in 10ms chunks and sends it.
+  // aAudioData is interleaved audio data at a rate and with a channel count
+  // that is appropriate to send with the conduit.
+  void PacketizeAndSend(const int16_t* aAudioData,
+                        uint32_t aRate,
+                        uint32_t aChannels,
+                        uint32_t aFrameCount)
+  {
+    MOZ_ASSERT(AppropriateSendingRateForInputRate(aRate) == aRate);
+    MOZ_ASSERT(aChannels == 1 || aChannels == 2);
+    MOZ_ASSERT(aAudioData);
+
+    uint32_t audio_10ms = aRate / 100;
 
     if (!mPacketizer || mPacketizer->PacketSize() != audio_10ms ||
-        mPacketizer->Channels() != outputChannels) {
-      // It's ok to drop the audio still in the packetizer here.
+        mPacketizer->Channels() != aChannels) {
+      // It's the right thing to drop the bit of audio still in the packetizer:
+      // we don't want to send to the conduit audio that has two different
+      // rates while telling it that it has a constante rate.
       mPacketizer = MakeUnique<AudioPacketizer<int16_t, int16_t>>(
-        audio_10ms, outputChannels);
-      mPacket = MakeUnique<int16_t[]>(audio_10ms * outputChannels);
+        audio_10ms, aChannels);
+      mPacket = MakeUnique<int16_t[]>(audio_10ms * aChannels);
     }
 
-    mPacketizer->Input(samples, chunk.mDuration);
+    mPacketizer->Input(aAudioData, aFrameCount);
 
     while (mPacketizer->PacketsAvailable()) {
       mPacketizer->Output(mPacket.get());
-      mConduit->SendAudioFrame(
-        mPacket.get(), mPacketizer->PacketSize(), rate, mPacketizer->Channels(), 0);
+      mConduit->SendAudioFrame(mPacket.get(),
+                               mPacketizer->PacketSize(),
+                               aRate,
+                               mPacketizer->Channels(),
+                               0);
     }
   }
 
@@ -598,6 +669,9 @@ protected:
   UniquePtr<AudioPacketizer<int16_t, int16_t>> mPacketizer;
   // A buffer to hold a single packet of audio.
   UniquePtr<int16_t[]> mPacket;
+  nsTArray<int16_t> mInterleavedAudio;
+  AlignedShortBuffer mOutputAudio;
+  UniquePtr<AudioConverter> mAudioConverter;
 };
 
 static char kDTLSExporterLabel[] = "EXTRACTOR-dtls_srtp";
@@ -1114,7 +1188,7 @@ MediaPipeline::RtpPacketReceived(TransportLayer* aLayer,
   }
 
   webrtc::RTPHeader header;
-  if (!mRtpParser->Parse(aData, aLen, &header)) {
+  if (!mRtpParser->Parse(aData, aLen, &header, true)) {
     return;
   }
 
@@ -1356,22 +1430,6 @@ public:
     mConverter = aConverter;
   }
 
-  void OnVideoFrameConverted(const unsigned char* aVideoFrame,
-                             unsigned int aVideoFrameLength,
-                             unsigned short aWidth,
-                             unsigned short aHeight,
-                             VideoType aVideoType,
-                             uint64_t aCaptureTime)
-  {
-    MOZ_RELEASE_ASSERT(mConduit->type() == MediaSessionConduit::VIDEO);
-    static_cast<VideoSessionConduit*>(mConduit.get())
-      ->SendVideoFrame(aVideoFrame,
-                       aVideoFrameLength,
-                       aWidth,
-                       aHeight,
-                       aVideoType,
-                       aCaptureTime);
-  }
 
   void OnVideoFrameConverted(const webrtc::VideoFrame& aVideoFrame)
   {
@@ -1436,26 +1494,6 @@ public:
     mListener = nullptr;
   }
 
-  void OnVideoFrameConverted(const unsigned char* aVideoFrame,
-                             unsigned int aVideoFrameLength,
-                             unsigned short aWidth,
-                             unsigned short aHeight,
-                             VideoType aVideoType,
-                             uint64_t aCaptureTime) override
-  {
-    MutexAutoLock lock(mMutex);
-
-    if (!mListener) {
-      return;
-    }
-
-    mListener->OnVideoFrameConverted(aVideoFrame,
-                                     aVideoFrameLength,
-                                     aWidth,
-                                     aHeight,
-                                     aVideoType,
-                                     aCaptureTime);
-  }
 
   void OnVideoFrameConverted(const webrtc::VideoFrame& aVideoFrame) override
   {
@@ -2019,11 +2057,34 @@ public:
       "GenericReceiveListener::track_", mTrack.forget());
   }
 
+  void AddTrackToSource(uint32_t aRate = 0)
+  {
+    MOZ_ASSERT((aRate != 0 && mTrack->AsAudioStreamTrack()) ||
+               mTrack->AsVideoStreamTrack());
+
+    if (mTrack->AsAudioStreamTrack()) {
+      mSource->AddAudioTrack(
+          mTrackId, aRate, 0, new AudioSegment());
+    } else if (mTrack->AsVideoStreamTrack()) {
+      mSource->AddTrack(mTrackId, 0, new VideoSegment());
+    }
+    CSFLogDebug(
+      LOGTAG,
+      "GenericReceiveListener added %s track %d (%p) to stream %p",
+      mTrack->AsAudioStreamTrack() ? "audio" : "video",
+      mTrackId,
+      mTrack.get(),
+      mSource.get());
+
+    mSource->AdvanceKnownTracksTime(STREAM_TIME_MAX);
+    mSource->AddListener(this);
+  }
+
   void AddSelf()
   {
     if (!mListening) {
       mListening = true;
-      mSource->AddListener(this);
+      mSource->SetPullEnabled(true);
       mMaybeTrackNeedsUnmute = true;
     }
   }
@@ -2032,7 +2093,7 @@ public:
   {
     if (mListening) {
       mListening = false;
-      mSource->RemoveListener(this);
+      mSource->SetPullEnabled(false);
     }
   }
 
@@ -2058,25 +2119,10 @@ public:
   {
     CSFLogDebug(LOGTAG, "GenericReceiveListener ending track");
 
-    // We do this on MSG to avoid it racing against StartTrack.
-    class Message : public ControlMessage
-    {
-    public:
-      explicit Message(SourceMediaStream* aStream, TrackID aTrackId)
-        : ControlMessage(aStream)
-        , mTrackId(aTrackId)
-      {
-      }
 
-      void Run() override { mStream->AsSourceStream()->EndTrack(mTrackId); }
-
-
-      const TrackID mTrackId;
-    };
-
-    mTrack->GraphImpl()->AppendMessage(MakeUnique<Message>(mSource, mTrackId));
     // This breaks the cycle with the SourceMediaStream
     mSource->RemoveListener(this);
+    mSource->EndTrack(mTrackId);
   }
 
   // Must be called on the main thread
@@ -2157,6 +2203,7 @@ public:
                           "AudioPipelineListener"))
     , mLastLog(0)
   {
+    AddTrackToSource(mRate);
   }
 
   // Implement MediaStreamListener
@@ -2188,10 +2235,13 @@ private:
   void NotifyPullImpl(StreamTime aDesiredTime)
   {
     uint32_t samplesPer10ms = mRate / 100;
-    // Determine how many frames we need.
-    // As we get frames from conduit_ at the same rate as the graph's rate,
-    // the number of frames needed straightfully determined.
-    TrackTicks framesNeeded = aDesiredTime - mPlayedTicks;
+
+    // mSource's rate is not necessarily the same as the graph rate, since there
+    // are sample-rate constraints on the inbound audio: only 16, 32, 44.1 and
+    // 48kHz are supported. The audio frames we get here is going to be
+    // resampled when inserted into the graph.
+    TrackTicks desired = mSource->TimeToTicksRoundUp(mRate, aDesiredTime);
+    TrackTicks framesNeeded = desired - mPlayedTicks;
 
     while (framesNeeded >= 0) {
       const int scratchBufferLength =
@@ -2355,6 +2405,7 @@ public:
         LayerManager::CreateImageContainer(ImageContainer::ASYNCHRONOUS))
     , mMutex("Video PipelineListener")
   {
+    AddTrackToSource();
   }
 
   // Implement MediaStreamListener
@@ -2373,7 +2424,7 @@ public:
       IntSize size = image ? image->GetSize() : IntSize(mWidth, mHeight);
       segment.AppendFrame(image.forget(), delta, size, mPrincipalHandle);
       // Handle track not actually added yet or removed/finished
-      if (!mSource->AppendToTrack(mTrack->GetInputTrackId(), &segment)) {
+      if (!mSource->AppendToTrack(mTrackId, &segment)) {
         CSFLogError(LOGTAG, "AppendToTrack failed");
         return;
       }

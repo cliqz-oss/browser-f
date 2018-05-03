@@ -9,13 +9,19 @@ use std::{ptr, slice};
 
 use U2FManager;
 
+type U2FAppIds = Vec<::AppId>;
 type U2FKeyHandles = Vec<::KeyHandle>;
-type U2FResult = HashMap<u8, Vec<u8>>;
 type U2FCallback = extern "C" fn(u64, *mut U2FResult);
+
+pub enum U2FResult {
+    Success(HashMap<u8, Vec<u8>>),
+    Error(::Error),
+}
 
 const RESBUF_ID_REGISTRATION: u8 = 0;
 const RESBUF_ID_KEYHANDLE: u8 = 1;
 const RESBUF_ID_SIGNATURE: u8 = 2;
+const RESBUF_ID_APPID: u8 = 3;
 
 // Generates a new 64-bit transaction id with collision probability 2^-32.
 fn new_tid() -> u64 {
@@ -39,6 +45,27 @@ pub extern "C" fn rust_u2f_mgr_new() -> *mut U2FManager {
 pub unsafe extern "C" fn rust_u2f_mgr_free(mgr: *mut U2FManager) {
     if !mgr.is_null() {
         Box::from_raw(mgr);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_u2f_app_ids_new() -> *mut U2FAppIds {
+    Box::into_raw(Box::new(vec![]))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_u2f_app_ids_add(
+    ids: *mut U2FAppIds,
+    id_ptr: *const u8,
+    id_len: usize,
+) {
+    (*ids).push(from_raw(id_ptr, id_len));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_u2f_app_ids_free(ids: *mut U2FAppIds) {
+    if !ids.is_null() {
+        Box::from_raw(ids);
     }
 }
 
@@ -68,6 +95,19 @@ pub unsafe extern "C" fn rust_u2f_khs_free(khs: *mut U2FKeyHandles) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn rust_u2f_result_error(res: *const U2FResult) -> u8 {
+    if res.is_null() {
+        return ::Error::Unknown as u8;
+    }
+
+    if let U2FResult::Error(ref err) = *res {
+        return *err as u8;
+    }
+
+    return 0; /* No error, the request succeeded. */
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn rust_u2f_resbuf_length(
     res: *const U2FResult,
     bid: u8,
@@ -77,9 +117,11 @@ pub unsafe extern "C" fn rust_u2f_resbuf_length(
         return false;
     }
 
-    if let Some(buf) = (*res).get(&bid) {
-        *len = buf.len();
-        return true;
+    if let U2FResult::Success(ref bufs) = *res {
+        if let Some(buf) = bufs.get(&bid) {
+            *len = buf.len();
+            return true;
+        }
     }
 
     false
@@ -95,9 +137,11 @@ pub unsafe extern "C" fn rust_u2f_resbuf_copy(
         return false;
     }
 
-    if let Some(buf) = (*res).get(&bid) {
-        ptr::copy_nonoverlapping(buf.as_ptr(), dst, buf.len());
-        return true;
+    if let U2FResult::Success(ref bufs) = *res {
+        if let Some(buf) = bufs.get(&bid) {
+            ptr::copy_nonoverlapping(buf.as_ptr(), dst, buf.len());
+            return true;
+        }
     }
 
     false
@@ -144,17 +188,24 @@ pub unsafe extern "C" fn rust_u2f_mgr_register(
         application,
         key_handles,
         move |rv| {
-            if let Ok(registration) = rv {
-                let mut result = U2FResult::new();
-                result.insert(RESBUF_ID_REGISTRATION, registration);
-                callback(tid, Box::into_raw(Box::new(result)));
-            } else {
-                callback(tid, ptr::null_mut());
+            let result = match rv {
+                Ok(registration) => {
+                    let mut bufs = HashMap::new();
+                    bufs.insert(RESBUF_ID_REGISTRATION, registration);
+                    U2FResult::Success(bufs)
+                }
+                Err(e) => U2FResult::Error(e),
             };
+
+            callback(tid, Box::into_raw(Box::new(result)));
         },
     );
 
-    if res.is_ok() { tid } else { 0 }
+    if res.is_ok() {
+        tid
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -165,8 +216,7 @@ pub unsafe extern "C" fn rust_u2f_mgr_sign(
     callback: U2FCallback,
     challenge_ptr: *const u8,
     challenge_len: usize,
-    application_ptr: *const u8,
-    application_len: usize,
+    app_ids: *const U2FAppIds,
     khs: *const U2FKeyHandles,
 ) -> u64 {
     if mgr.is_null() || khs.is_null() {
@@ -174,40 +224,41 @@ pub unsafe extern "C" fn rust_u2f_mgr_sign(
     }
 
     // Check buffers.
-    if challenge_ptr.is_null() || application_ptr.is_null() {
+    if challenge_ptr.is_null() {
         return 0;
     }
 
-    // Need at least one key handle.
-    if (*khs).len() < 1 {
+    // Need at least one app_id.
+    if (*app_ids).len() < 1 {
         return 0;
     }
 
     let flags = ::SignFlags::from_bits_truncate(flags);
     let challenge = from_raw(challenge_ptr, challenge_len);
-    let application = from_raw(application_ptr, application_len);
+    let app_ids = (*app_ids).clone();
     let key_handles = (*khs).clone();
 
     let tid = new_tid();
-    let res = (*mgr).sign(
-        flags,
-        timeout,
-        challenge,
-        application,
-        key_handles,
-        move |rv| {
-            if let Ok((key_handle, signature)) = rv {
-                let mut result = U2FResult::new();
-                result.insert(RESBUF_ID_KEYHANDLE, key_handle);
-                result.insert(RESBUF_ID_SIGNATURE, signature);
-                callback(tid, Box::into_raw(Box::new(result)));
-            } else {
-                callback(tid, ptr::null_mut());
-            };
-        },
-    );
+    let res = (*mgr).sign(flags, timeout, challenge, app_ids, key_handles, move |rv| {
+        let result = match rv {
+            Ok((app_id, key_handle, signature)) => {
+                let mut bufs = HashMap::new();
+                bufs.insert(RESBUF_ID_KEYHANDLE, key_handle);
+                bufs.insert(RESBUF_ID_SIGNATURE, signature);
+                bufs.insert(RESBUF_ID_APPID, app_id);
+                U2FResult::Success(bufs)
+            }
+            Err(e) => U2FResult::Error(e),
+        };
 
-    if res.is_ok() { tid } else { 0 }
+        callback(tid, Box::into_raw(Box::new(result)));
+    });
+
+    if res.is_ok() {
+        tid
+    } else {
+        0
+    }
 }
 
 #[no_mangle]

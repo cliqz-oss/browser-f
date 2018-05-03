@@ -15,7 +15,7 @@
 #include "jstypes.h"
 
 #include "js/Value.h"
-#include "vm/String.h"
+#include "vm/StringType.h"
 
 namespace js {
 namespace jit {
@@ -389,6 +389,22 @@ class SimdConstant {
     static bool match(const SimdConstant& lhs, const SimdConstant& rhs) {
         return lhs == rhs;
     }
+};
+
+enum class IntConversionBehavior {
+    // These two try to convert the input to an int32 using ToNumber and
+    // will fail if the resulting int32 isn't strictly equal to the input.
+    Normal,
+    NegativeZeroCheck,
+    // These two will convert the input to an int32 with loss of precision.
+    Truncate,
+    ClampToUint8,
+};
+
+enum class IntConversionInputKind {
+    NumbersOnly,
+    NumbersOrBoolsOnly,
+    Any
 };
 
 // The ordering of this enumeration is important: Anything < Value is a
@@ -905,6 +921,16 @@ enum class RoundingMode {
     NearestTiesToEven,
     TowardsZero
 };
+
+// If a function contains no calls, we can assume the caller has checked the
+// stack limit up to this maximum frame size. This works because the jit stack
+// limit has a generous buffer before the real end of the native stack.
+static const uint32_t MAX_UNCHECKED_LEAF_FRAME_SIZE = 64;
+
+// Truncating conversion modifiers.
+typedef uint32_t TruncFlags;
+static const TruncFlags TRUNC_UNSIGNED   = TruncFlags(1) << 0;
+static const TruncFlags TRUNC_SATURATING = TruncFlags(1) << 1;
 
 } // namespace jit
 } // namespace js

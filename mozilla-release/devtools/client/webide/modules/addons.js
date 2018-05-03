@@ -7,19 +7,19 @@
 const {AddonManager} = require("resource://gre/modules/AddonManager.jsm");
 const Services = require("Services");
 const {getJSON} = require("devtools/client/shared/getjson");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 
 var ADB_LINK = Services.prefs.getCharPref("devtools.webide.adbAddonURL");
 var ADB_ADDON_ID = Services.prefs.getCharPref("devtools.webide.adbAddonID");
 
 var platform = Services.appShell.hiddenDOMWindow.navigator.platform;
 var OS = "";
-if (platform.indexOf("Win") != -1) {
+if (platform.includes("Win")) {
   OS = "win32";
-} else if (platform.indexOf("Mac") != -1) {
+} else if (platform.includes("Mac")) {
   OS = "mac64";
-} else if (platform.indexOf("Linux") != -1) {
-  if (platform.indexOf("x86_64") != -1) {
+} else if (platform.includes("Linux")) {
+  if (platform.includes("x86_64")) {
     OS = "linux64";
   } else {
     OS = "linux32";

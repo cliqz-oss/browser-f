@@ -4,30 +4,25 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-const TEXT_NODE = 3;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Logger",
+ChromeUtils.defineModuleGetter(this, "Logger",
   "resource://gre/modules/accessibility/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Presentation",
+ChromeUtils.defineModuleGetter(this, "Presentation",
   "resource://gre/modules/accessibility/Presentation.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Roles",
+ChromeUtils.defineModuleGetter(this, "Roles",
   "resource://gre/modules/accessibility/Constants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Events",
+ChromeUtils.defineModuleGetter(this, "Events",
   "resource://gre/modules/accessibility/Constants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "States",
+ChromeUtils.defineModuleGetter(this, "States",
   "resource://gre/modules/accessibility/Constants.jsm");
 
-this.EXPORTED_SYMBOLS = ["EventManager"];
+var EXPORTED_SYMBOLS = ["EventManager"];
 
-this.EventManager = function EventManager(aContentScope, aContentControl) {
+function EventManager(aContentScope, aContentControl) {
   this.contentScope = aContentScope;
   this.contentControl = aContentControl;
   this.addEventListener = this.contentScope.addEventListener.bind(
@@ -39,7 +34,7 @@ this.EventManager = function EventManager(aContentScope, aContentControl) {
   this.webProgress = this.contentScope.docShell.
     QueryInterface(Ci.nsIInterfaceRequestor).
     getInterface(Ci.nsIWebProgress);
-};
+}
 
 this.EventManager.prototype = {
   editState: { editing: false },
@@ -271,9 +266,9 @@ this.EventManager.prototype = {
         // Put vc where the focus is at
         let acc = aEvent.accessible;
         this._setEditingMode(aEvent);
-        if ([Roles.CHROME_WINDOW,
+        if (![Roles.CHROME_WINDOW,
              Roles.DOCUMENT,
-             Roles.APPLICATION].indexOf(acc.role) < 0) {
+             Roles.APPLICATION].includes(acc.role)) {
           this.contentControl.autoMove(acc);
        }
 

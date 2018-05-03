@@ -188,6 +188,10 @@ class LIRGeneratorShared : public MDefinitionVisitor
                                  uint32_t operand);
 
     template <size_t Ops, size_t Temps>
+    inline void defineBoxReuseInput(LInstructionHelper<BOX_PIECES, Ops, Temps>* lir,
+                                    MDefinition* mir, uint32_t operand);
+
+    template <size_t Ops, size_t Temps>
     inline void defineInt64ReuseInput(LInstructionHelper<INT64_PIECES, Ops, Temps>* lir,
                                       MDefinition* mir, uint32_t operand);
 
@@ -226,6 +230,9 @@ class LIRGeneratorShared : public MDefinitionVisitor
 
     // Redefine a sin/cos call to sincos.
     inline void redefine(MDefinition* def, MDefinition* as, MMathFunction::Function func);
+
+    template <typename LClass, typename... Args>
+    inline LClass* allocateVariadic(uint32_t numOperands, Args&&... args);
 
     TempAllocator& alloc() const {
         return graph.alloc();
@@ -285,11 +292,6 @@ class LIRGeneratorShared : public MDefinitionVisitor
 
     // Whether to generate typed reads for element accesses with hole checks.
     static bool allowTypedElementHoleCheck() {
-        return false;
-    }
-
-    // Whether to generate typed array accesses on statically known objects.
-    static bool allowStaticTypedArrayAccesses() {
         return false;
     }
 
