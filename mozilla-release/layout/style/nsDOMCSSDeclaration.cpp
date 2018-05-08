@@ -37,7 +37,7 @@ nsDOMCSSDeclaration::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProt
 NS_IMPL_QUERY_INTERFACE(nsDOMCSSDeclaration,
                         nsICSSDeclaration)
 
-NS_IMETHODIMP
+nsresult
 nsDOMCSSDeclaration::GetPropertyValue(const nsCSSPropertyID aPropID,
                                       nsAString& aValue)
 {
@@ -51,7 +51,7 @@ nsDOMCSSDeclaration::GetPropertyValue(const nsCSSPropertyID aPropID,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsDOMCSSDeclaration::SetPropertyValue(const nsCSSPropertyID aPropID,
                                       const nsAString& aValue,
                                       nsIPrincipal* aSubjectPrincipal)
@@ -90,7 +90,7 @@ nsDOMCSSDeclaration::SetPropertyValue(const nsCSSPropertyID aPropID,
 }
 
 
-NS_IMETHODIMP
+void
 nsDOMCSSDeclaration::GetCssText(nsAString& aCssText)
 {
   DeclarationBlock* decl = GetCSSDeclaration(eOperation_Read);
@@ -99,19 +99,19 @@ nsDOMCSSDeclaration::GetCssText(nsAString& aCssText)
   if (decl) {
     decl->ToString(aCssText);
   }
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 nsDOMCSSDeclaration::SetCssText(const nsAString& aCssText,
-                                nsIPrincipal* aSubjectPrincipal)
+                                nsIPrincipal* aSubjectPrincipal,
+                                ErrorResult& aRv)
 {
   // We don't need to *do* anything with the old declaration, but we need
   // to ensure that it exists, or else SetCSSDeclaration may crash.
   DeclarationBlock* olddecl = GetCSSDeclaration(eOperation_Modify);
   if (!olddecl) {
-    return NS_ERROR_NOT_AVAILABLE;
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return;
   }
 
   // For nsDOMCSSAttributeDeclaration, SetCSSDeclaration will lead to
@@ -126,16 +126,19 @@ nsDOMCSSDeclaration::SetCssText(const nsAString& aCssText,
     ServoCSSParsingEnvironment servoEnv = GetServoCSSParsingEnvironment(
         aSubjectPrincipal);
     if (!servoEnv.mUrlExtraData) {
-      return NS_ERROR_NOT_AVAILABLE;
+      aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+      return;
     }
 
     newdecl = ServoDeclarationBlock::FromCssText(aCssText, servoEnv.mUrlExtraData,
                                                  servoEnv.mCompatMode, servoEnv.mLoader);
   } else {
+#ifdef MOZ_OLD_STYLE
     CSSParsingEnvironment geckoEnv;
     GetCSSParsingEnvironment(geckoEnv, aSubjectPrincipal);
     if (!geckoEnv.mPrincipal) {
-      return NS_ERROR_NOT_AVAILABLE;
+      aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+      return;
     }
 
     RefPtr<css::Declaration> decl(new css::Declaration());
@@ -145,27 +148,33 @@ nsDOMCSSDeclaration::SetCssText(const nsAString& aCssText,
     nsresult result = cssParser.ParseDeclarations(aCssText, geckoEnv.mSheetURI,
                                                   geckoEnv.mBaseURI, geckoEnv.mPrincipal,
                                                   decl, &changed);
-    if (NS_FAILED(result) || !changed) {
-      return result;
+    if (NS_FAILED(result)) {
+      aRv.Throw(result);
+      return;
+    }
+
+    if (!changed) {
+      return;
     }
     newdecl = decl.forget();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
 
-  return SetCSSDeclaration(newdecl);
+  aRv = SetCSSDeclaration(newdecl);
 }
 
-NS_IMETHODIMP
-nsDOMCSSDeclaration::GetLength(uint32_t* aLength)
+uint32_t
+nsDOMCSSDeclaration::Length()
 {
   DeclarationBlock* decl = GetCSSDeclaration(eOperation_Read);
 
   if (decl) {
-    *aLength = decl->Count();
-  } else {
-    *aLength = 0;
+    return decl->Count();
   }
 
-  return NS_OK;
+  return 0;
 }
 
 already_AddRefed<dom::CSSValue>
@@ -194,18 +203,16 @@ nsDOMCSSDeclaration::GetPropertyValue(const nsAString& aPropertyName,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 nsDOMCSSDeclaration::GetPropertyPriority(const nsAString& aPropertyName,
-                                         nsAString& aReturn)
+                                         nsAString& aPriority)
 {
   DeclarationBlock* decl = GetCSSDeclaration(eOperation_Read);
 
-  aReturn.Truncate();
+  aPriority.Truncate();
   if (decl && decl->GetPropertyIsImportant(aPropertyName)) {
-    aReturn.AssignLiteral("important");
+    aPriority.AssignLiteral("important");
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -315,6 +322,7 @@ nsDOMCSSDeclaration::ModifyDeclaration(nsIPrincipal* aSubjectPrincipal,
 
   bool changed;
   if (decl->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     CSSParsingEnvironment geckoEnv;
     GetCSSParsingEnvironment(geckoEnv, aSubjectPrincipal);
     if (!geckoEnv.mPrincipal) {
@@ -322,6 +330,9 @@ nsDOMCSSDeclaration::ModifyDeclaration(nsIPrincipal* aSubjectPrincipal,
     }
 
     aGeckoFunc(decl->AsGecko(), geckoEnv, &changed);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     ServoCSSParsingEnvironment servoEnv = GetServoCSSParsingEnvironment(
         aSubjectPrincipal);
@@ -348,10 +359,14 @@ nsDOMCSSDeclaration::ParsePropertyValue(const nsCSSPropertyID aPropID,
   return ModifyDeclaration(
     aSubjectPrincipal,
     [&](css::Declaration* decl, CSSParsingEnvironment& env, bool* changed) {
+#ifdef MOZ_OLD_STYLE
       nsCSSParser cssParser(env.mCSSLoader);
       cssParser.ParseProperty(aPropID, aPropValue,
                               env.mSheetURI, env.mBaseURI, env.mPrincipal,
                               decl, changed, aIsImportant);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     },
     [&](ServoDeclarationBlock* decl, ServoCSSParsingEnvironment& env) {
       NS_ConvertUTF16toUTF8 value(aPropValue);
@@ -371,11 +386,15 @@ nsDOMCSSDeclaration::ParseCustomPropertyValue(const nsAString& aPropertyName,
   return ModifyDeclaration(
     aSubjectPrincipal,
     [&](css::Declaration* decl, CSSParsingEnvironment& env, bool* changed) {
+#ifdef MOZ_OLD_STYLE
       nsCSSParser cssParser(env.mCSSLoader);
       auto propName = Substring(aPropertyName, CSS_CUSTOM_NAME_PREFIX_LENGTH);
       cssParser.ParseVariable(propName, aPropValue, env.mSheetURI,
                               env.mBaseURI, env.mPrincipal, decl,
                               changed, aIsImportant);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
     },
     [&](ServoDeclarationBlock* decl, ServoCSSParsingEnvironment& env) {
       NS_ConvertUTF16toUTF8 property(aPropertyName);
@@ -402,7 +421,9 @@ nsDOMCSSDeclaration::RemovePropertyInternal(nsCSSPropertyID aPropID)
   mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
 
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
-  decl->RemovePropertyByID(aPropID);
+  if (!decl->RemovePropertyByID(aPropID)) {
+    return NS_OK;
+  }
   return SetCSSDeclaration(decl);
 }
 
@@ -422,6 +443,8 @@ nsDOMCSSDeclaration::RemovePropertyInternal(const nsAString& aPropertyName)
   mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
 
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
-  decl->RemoveProperty(aPropertyName);
+  if (!decl->RemoveProperty(aPropertyName)) {
+    return NS_OK;
+  }
   return SetCSSDeclaration(decl);
 }

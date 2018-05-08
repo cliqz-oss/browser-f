@@ -5,33 +5,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
     "OnRefTestLoad",
     "OnRefTestUnload",
     "getTestPlugin"
 ];
 
-var CC = Components.classes;
-const CI = Components.interfaces;
-const CR = Components.results;
-const CU = Components.utils;
-
-CU.import("resource://gre/modules/FileUtils.jsm");
-CU.import("chrome://reftest/content/globals.jsm", this);
-CU.import("chrome://reftest/content/httpd.jsm", this);
-CU.import("chrome://reftest/content/manifest.jsm", this);
-CU.import("chrome://reftest/content/StructuredLog.jsm", this);
-CU.import("resource://gre/modules/Services.jsm");
-CU.import("resource://gre/modules/NetUtil.jsm");
-CU.import('resource://gre/modules/XPCOMUtils.jsm');
+Cu.import("resource://gre/modules/FileUtils.jsm");
+Cu.import("chrome://reftest/content/globals.jsm", this);
+Cu.import("chrome://reftest/content/httpd.jsm", this);
+Cu.import("chrome://reftest/content/manifest.jsm", this);
+Cu.import("chrome://reftest/content/StructuredLog.jsm", this);
+Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
+Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 
 XPCOMUtils.defineLazyGetter(this, "OS", function() {
-    const { OS } = CU.import("resource://gre/modules/osfile.jsm");
+    const { OS } = Cu.import("resource://gre/modules/osfile.jsm");
     return OS;
 });
 
 XPCOMUtils.defineLazyGetter(this, "PDFJS", function() {
-    const { require } = CU.import("resource://gre/modules/commonjs/toolkit/require.js", {});
+    const { require } = Cu.import("resource://gre/modules/commonjs/toolkit/require.js", {});
     return {
         main: require('resource://pdf.js/build/pdf.js'),
         worker: require('resource://pdf.js/build/pdf.worker.js')
@@ -133,7 +128,7 @@ function IDForEventTarget(event)
 }
 
 function getTestPlugin(aName) {
-  var ph = CC["@mozilla.org/plugin/host;1"].getService(CI.nsIPluginHost);
+  var ph = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
   var tags = ph.getPluginTags();
 
   // Find the test plugin
@@ -148,22 +143,22 @@ function getTestPlugin(aName) {
 
 function OnRefTestLoad(win)
 {
-    g.crashDumpDir = CC[NS_DIRECTORY_SERVICE_CONTRACTID]
-                    .getService(CI.nsIProperties)
-                    .get("ProfD", CI.nsIFile);
+    g.crashDumpDir = Cc[NS_DIRECTORY_SERVICE_CONTRACTID]
+                    .getService(Ci.nsIProperties)
+                    .get("ProfD", Ci.nsIFile);
     g.crashDumpDir.append("minidumps");
 
-    g.pendingCrashDumpDir = CC[NS_DIRECTORY_SERVICE_CONTRACTID]
-                    .getService(CI.nsIProperties)
-                    .get("UAppData", CI.nsIFile);
+    g.pendingCrashDumpDir = Cc[NS_DIRECTORY_SERVICE_CONTRACTID]
+                    .getService(Ci.nsIProperties)
+                    .get("UAppData", Ci.nsIFile);
     g.pendingCrashDumpDir.append("Crash Reports");
     g.pendingCrashDumpDir.append("pending");
 
-    var env = CC["@mozilla.org/process/environment;1"].
-              getService(CI.nsIEnvironment);
+    var env = Cc["@mozilla.org/process/environment;1"].
+              getService(Ci.nsIEnvironment);
 
-    var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-                getService(Components.interfaces.nsIPrefBranch);
+    var prefs = Cc["@mozilla.org/preferences-service;1"].
+                getService(Ci.nsIPrefBranch);
     g.browserIsRemote = prefs.getBoolPref("browser.tabs.remote.autostart", false);
 
     g.browserIsIframe = prefs.getBoolPref("reftest.browser.iframe.enabled", false);
@@ -207,8 +202,8 @@ function OnRefTestLoad(win)
     let plugin2 = getTestPlugin("Second Test Plug-in");
     if (plugin1 && plugin2) {
       g.testPluginEnabledStates = [plugin1.enabledState, plugin2.enabledState];
-      plugin1.enabledState = CI.nsIPluginTag.STATE_ENABLED;
-      plugin2.enabledState = CI.nsIPluginTag.STATE_ENABLED;
+      plugin1.enabledState = Ci.nsIPluginTag.STATE_ENABLED;
+      plugin2.enabledState = Ci.nsIPluginTag.STATE_ENABLED;
     } else {
       logger.warning("Could not get test plugin tags.");
     }
@@ -223,8 +218,8 @@ function InitAndStartRefTests()
 {
     /* These prefs are optional, so we don't need to spit an error to the log */
     try {
-        var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-                    getService(Components.interfaces.nsIPrefBranch);
+        var prefs = Cc["@mozilla.org/preferences-service;1"].
+                    getService(Ci.nsIPrefBranch);
     } catch(e) {
         logger.error("EXCEPTION: " + e);
     }
@@ -268,12 +263,6 @@ function InitAndStartRefTests()
     } catch(e) {}
 
     try {
-        g.startAfter = prefs.getCharPref("reftest.startAfter");
-    } catch(e) {
-        g.startAfter = undefined;
-    }
-
-    try {
         g.compareRetainedDisplayLists = prefs.getBoolPref("reftest.compareRetainedDisplayLists");
     } catch (e) {}
 #ifdef MOZ_STYLO
@@ -295,12 +284,12 @@ function InitAndStartRefTests()
     }
 #endif
 
-    g.windowUtils = g.containingWindow.QueryInterface(CI.nsIInterfaceRequestor).getInterface(CI.nsIDOMWindowUtils);
+    g.windowUtils = g.containingWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
     if (!g.windowUtils || !g.windowUtils.compareCanvases)
         throw "nsIDOMWindowUtils inteface missing";
 
-    g.ioService = CC[IO_SERVICE_CONTRACTID].getService(CI.nsIIOService);
-    g.debug = CC[DEBUG_CONTRACTID].getService(CI.nsIDebug2);
+    g.ioService = Cc[IO_SERVICE_CONTRACTID].getService(Ci.nsIIOService);
+    g.debug = Cc[DEBUG_CONTRACTID].getService(Ci.nsIDebug2);
 
     RegisterProcessCrashObservers();
 
@@ -321,10 +310,10 @@ function InitAndStartRefTests()
 
     // Focus the content browser.
     if (g.focusFilterMode != FOCUS_FILTER_NON_NEEDS_FOCUS_TESTS) {
-        g.browser.addEventListener("focus", StartTests, true);
+        g.browser.addEventListener("focus", ReadTests, true);
         g.browser.focus();
     } else {
-        StartTests();
+        ReadTests();
     }
 }
 
@@ -346,17 +335,101 @@ function Shuffle(array)
     }
 }
 
+function ReadTests() {
+    try {
+        if (g.focusFilterMode != FOCUS_FILTER_NON_NEEDS_FOCUS_TESTS) {
+            g.browser.removeEventListener("focus", ReadTests, true);
+        }
+
+        g.urls = [];
+        var prefs = Cc["@mozilla.org/preferences-service;1"].
+                    getService(Ci.nsIPrefBranch);
+
+        /* There are three modes implemented here:
+         * 1) reftest.manifests
+         * 2) reftest.manifests and reftest.manifests.dumpTests
+         * 3) reftest.tests
+         *
+         * The first will parse the specified manifests, then immediately
+         * run the tests. The second will parse the manifests, save the test
+         * objects to a file and exit. The third will load a file of test
+         * objects and run them.
+         *
+         * The latter two modes are used to pass test data back and forth
+         * with python harness.
+        */
+        let manifests = prefs.getCharPref("reftest.manifests", null);
+        let dumpTests = prefs.getCharPref("reftest.manifests.dumpTests", null);
+        let testList = prefs.getCharPref("reftest.tests", null);
+
+        if ((testList && manifests) || !(testList || manifests)) {
+            logger.error("Exactly one of reftest.manifests or reftest.tests must be specified.");
+            DoneTests();
+        }
+
+        if (testList) {
+            logger.debug("Reading test objects from: " + testList);
+            let promise = OS.File.read(testList).then(function onSuccess(array) {
+                let decoder = new TextDecoder();
+                g.urls = JSON.parse(decoder.decode(array)).map(CreateUrls);
+                StartTests();
+            }).catch(function onFailure(e) {
+                logger.error("Failed to load test objects: " + e);
+                DoneTests();
+            });
+        } else if (manifests) {
+            // Parse reftest manifests
+            // XXX There is a race condition in the manifest parsing code which
+            // sometimes shows up on Android jsreftests (bug 1416125). It seems
+            // adding/removing log statements can change its frequency.
+            logger.debug("Reading " + manifests.length + " manifests");
+            manifests = JSON.parse(manifests);
+            g.urlsFilterRegex = manifests[null];
+
+            var globalFilter = manifests.hasOwnProperty("") ? new RegExp(manifests[""]) : null;
+            var manifestURLs = Object.keys(manifests);
+
+            // Ensure we read manifests from higher up the directory tree first so that we
+            // process includes before reading the included manifest again
+            manifestURLs.sort(function(a,b) {return a.length - b.length})
+            manifestURLs.forEach(function(manifestURL) {
+                logger.info("Reading manifest " + manifestURL);
+                var filter = manifests[manifestURL] ? new RegExp(manifests[manifestURL]) : null;
+                ReadTopManifest(manifestURL, [globalFilter, filter, false]);
+            });
+
+            if (dumpTests) {
+                logger.debug("Dumping test objects to file: " + dumpTests);
+                let encoder = new TextEncoder();
+                let tests = encoder.encode(JSON.stringify(g.urls));
+                OS.File.writeAtomic(dumpTests, tests, {flush: true}).then(
+                  function onSuccess() {
+                    DoneTests();
+                  },
+                  function onFailure(reason) {
+                    logger.error("failed to write test data: " + reason);
+                    DoneTests();
+                  }
+                )
+            } else {
+                logger.debug("Running " + g.urls.length + " test objects");
+                g.manageSuite = true;
+                g.urls = g.urls.map(CreateUrls);
+                StartTests();
+            }
+        }
+    } catch(e) {
+        ++g.testResults.Exception;
+        logger.error("EXCEPTION: " + e);
+    }
+}
+
 function StartTests()
 {
-    if (g.focusFilterMode != FOCUS_FILTER_NON_NEEDS_FOCUS_TESTS) {
-        g.browser.removeEventListener("focus", StartTests, true);
-    }
-
-    var manifests;
     /* These prefs are optional, so we don't need to spit an error to the log */
     try {
-        var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-                    getService(Components.interfaces.nsIPrefBranch);
+        var prefs = Cc["@mozilla.org/preferences-service;1"].
+                    getService(Ci.nsIPrefBranch);
     } catch(e) {
         logger.error("EXCEPTION: " + e);
     }
@@ -388,28 +461,7 @@ function StartTests()
         g.noCanvasCache = true;
     }
 
-    g.urls = [];
-
     try {
-        var manifests = JSON.parse(prefs.getCharPref("reftest.manifests"));
-        g.urlsFilterRegex = manifests[null];
-    } catch(e) {
-        logger.error("Unable to find reftest.manifests pref.  Please ensure your profile is setup properly");
-        DoneTests();
-    }
-
-    try {
-        var globalFilter = manifests.hasOwnProperty("") ? new RegExp(manifests[""]) : null;
-        var manifestURLs = Object.keys(manifests);
-
-        // Ensure we read manifests from higher up the directory tree first so that we
-        // process includes before reading the included manifest again
-        manifestURLs.sort(function(a,b) {return a.length - b.length})
-        manifestURLs.forEach(function(manifestURL) {
-            logger.info("Reading manifest " + manifestURL);
-            var filter = manifests[manifestURL] ? new RegExp(manifests[manifestURL]) : null;
-            ReadTopManifest(manifestURL, [globalFilter, filter, false]);
-        });
         BuildUseCounts();
 
         // Filter tests which will be skipped to get a more even distribution when chunking
@@ -449,7 +501,7 @@ function StartTests()
             g.urls = g.urls.slice(start, end);
         }
 
-        if (g.startAfter === undefined && !g.suiteStarted) {
+        if (g.manageSuite && !g.suiteStarted) {
             var ids = g.urls.map(function(obj) {
                 return obj.identifier;
             });
@@ -459,28 +511,10 @@ function StartTests()
         }
 
         if (g.shuffle) {
-            if (g.startAfter !== undefined) {
-                logger.error("Can't resume from a crashed test when " +
-                             "--shuffle is enabled, continue by shuffling " +
-                             "all the tests");
-                DoneTests();
-                return;
-            }
             Shuffle(g.urls);
-        } else if (g.startAfter !== undefined) {
-            // Skip through previously crashed test
-            // We have to do this after chunking so we don't break the numbers
-            var crash_idx = g.urls.map(function(url) {
-                return url['url1']['spec'];
-            }).indexOf(g.startAfter);
-            if (crash_idx == -1) {
-                throw "Can't find the previously crashed test";
-            }
-            g.urls = g.urls.slice(crash_idx + 1);
         }
 
         g.totalTests = g.urls.length;
-
         if (!g.totalTests && !g.verify)
             throw "No tests to run";
 
@@ -544,11 +578,11 @@ function BuildUseCounts()
 // Return true iff this window is focused when this function returns.
 function Focus()
 {
-    var fm = CC["@mozilla.org/focus-manager;1"].getService(CI.nsIFocusManager);
+    var fm = Cc["@mozilla.org/focus-manager;1"].getService(Ci.nsIFocusManager);
     fm.focusedWindow = g.containingWindow;
 #ifdef XP_MACOSX
     try {
-        var dock = CC["@mozilla.org/widget/macdocksupport;1"].getService(CI.nsIMacDockSupport);
+        var dock = Cc["@mozilla.org/widget/macdocksupport;1"].getService(Ci.nsIMacDockSupport);
         dock.activateApplication(true);
     } catch(ex) {
     }
@@ -623,8 +657,8 @@ function StartCurrentURI(aURLTargetType)
 
     RestoreChangedPreferences();
 
-    var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-        getService(Components.interfaces.nsIPrefBranch);
+    var prefs = Cc["@mozilla.org/preferences-service;1"].
+        getService(Ci.nsIPrefBranch);
 
     const prefSettings =
       g.urls[0][isStartingRef ? "prefSettings2" : "prefSettings1"];
@@ -725,8 +759,12 @@ function StartCurrentURI(aURLTargetType)
 
 function DoneTests()
 {
-    logger.suiteEnd({'results': g.testResults});
-    g.suiteStarted = false
+    if (g.manageSuite) {
+        g.suiteStarted = false
+        logger.suiteEnd({'results': g.testResults});
+    } else {
+        logger._logData('results', {results: g.testResults});
+    }
     logger.info("Slowest test took " + g.slowestTestTime + "ms (" + g.slowestTestURL + ")");
     logger.info("Total canvas count = " + g.recycledCanvases.length);
     if (g.failedUseWidgetLayers) {
@@ -734,8 +772,8 @@ function DoneTests()
     }
 
     function onStopped() {
-        let appStartup = CC["@mozilla.org/toolkit/app-startup;1"].getService(CI.nsIAppStartup);
-        appStartup.quit(CI.nsIAppStartup.eForceQuit);
+        let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
+        appStartup.quit(Ci.nsIAppStartup.eForceQuit);
     }
     if (g.server) {
         g.server.stop(onStopped);
@@ -1223,7 +1261,7 @@ function FindUnexpectedCrashDumpFiles()
 
     let foundCrashDumpFile = false;
     while (entries.hasMoreElements()) {
-        let file = entries.getNext().QueryInterface(CI.nsIFile);
+        let file = entries.getNext().QueryInterface(Ci.nsIFile);
         let path = String(file.path);
         if (path.match(/\.(dmp|extra)$/) && !g.unexpectedCrashDumpFiles[path]) {
             if (!foundCrashDumpFile) {
@@ -1249,7 +1287,7 @@ function RemovePendingCrashDumpFiles()
 
     let entries = g.pendingCrashDumpDir.directoryEntries;
     while (entries.hasMoreElements()) {
-        let file = entries.getNext().QueryInterface(CI.nsIFile);
+        let file = entries.getNext().QueryInterface(Ci.nsIFile);
         if (file.isFile()) {
           file.remove(false);
           logger.info("This test left pending crash dumps; deleted "+file.path);
@@ -1323,8 +1361,8 @@ function ResetRenderingState()
 function RestoreChangedPreferences()
 {
     if (g.prefsToRestore.length > 0) {
-        var prefs = Components.classes["@mozilla.org/preferences-service;1"].
-                    getService(Components.interfaces.nsIPrefBranch);
+        var prefs = Cc["@mozilla.org/preferences-service;1"].
+                    getService(Ci.nsIPrefBranch);
         g.prefsToRestore.reverse();
         g.prefsToRestore.forEach(function(ps) {
             var value = ps.value;
@@ -1515,7 +1553,7 @@ function RecvUpdateWholeCanvasForInvalidation()
 function OnProcessCrashed(subject, topic, data)
 {
     var id;
-    subject = subject.QueryInterface(CI.nsIPropertyBag2);
+    subject = subject.QueryInterface(Ci.nsIPropertyBag2);
     if (topic == "plugin-crashed") {
         id = subject.getPropertyAsAString("pluginDumpID");
     } else if (topic == "ipc:content-shutdown") {
@@ -1529,8 +1567,8 @@ function OnProcessCrashed(subject, topic, data)
 
 function RegisterProcessCrashObservers()
 {
-    var os = CC[NS_OBSERVER_SERVICE_CONTRACTID]
-             .getService(CI.nsIObserverService);
+    var os = Cc[NS_OBSERVER_SERVICE_CONTRACTID]
+             .getService(Ci.nsIObserverService);
     os.addObserver(OnProcessCrashed, "plugin-crashed");
     os.addObserver(OnProcessCrashed, "ipc:content-shutdown");
 }

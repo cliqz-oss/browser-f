@@ -14,7 +14,8 @@
   <label class="header-name" flex="1">&paneSync1.title;</label>
 </hbox>
 
-<deck id="weavePrefsDeck" data-category="paneSync" hidden="true">
+<deck id="weavePrefsDeck" data-category="paneSync" hidden="true"
+      data-hidden-from-search="true">
   <groupbox id="noFxaAccount">
     <hbox>
       <vbox flex="1">
@@ -205,15 +206,12 @@
                 hidden="true"/>
       </hbox>
     </groupbox>
-    <label class="fxaMobilePromo">
-        &mobilePromo3.start;<!-- We put these comments to avoid inserting white spaces
-        --><image class="androidLink"></image><label class="text-link" id="fxaMobilePromo-android-hasFxaAccount"><!--
-        -->&mobilePromo3.androidLink;</label><!--
-        -->&mobilePromo3.iOSBefore;<!--
-        --><image class="iOSLink"></image><label class="text-link" id="fxaMobilePromo-ios-hasFxaAccount"><!--
-        -->&mobilePromo3.iOSLink;</label><!--
-        -->&mobilePromo3.end;
-    </label>
+    <vbox align="start">
+      <label id="mobilePromo-singledevice"
+             class="text-link fxaMobilePromo">&mobilepromo.singledevice;</label>
+      <label id="mobilePromo-multidevice"
+             class="text-link fxaMobilePromo">&mobilepromo.multidevice;</label>
+    </vbox>
     <vbox id="tosPP-small" align="start">
       <label id="tosPP-small-ToS" class="text-link">
         &prefs.tosLink.label;

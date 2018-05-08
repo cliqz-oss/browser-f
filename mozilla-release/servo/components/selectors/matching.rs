@@ -249,23 +249,52 @@ where
         matches_hover_and_active_quirk: MatchesHoverAndActiveQuirk::No,
     };
 
+    // Find the end of the selector or the next combinator, then match
+    // backwards, so that we match in the same order as
+    // matches_complex_selector, which is usually faster.
+    let start_offset = from_offset;
     for component in selector.iter_raw_parse_order_from(from_offset) {
         if matches!(*component, Component::Combinator(..)) {
             debug_assert_ne!(from_offset, 0, "Selector started with a combinator?");
-            return CompoundSelectorMatchingResult::Matched {
-                next_combinator_offset: from_offset,
-            }
+            break;
         }
 
+        from_offset += 1;
+    }
+
+    debug_assert!(from_offset >= 1);
+    debug_assert!(from_offset <= selector.len());
+
+    let iter = selector.iter_from(selector.len() - from_offset);
+    debug_assert!(
+        iter.clone().next().is_some() || (
+            from_offset != selector.len() && matches!(
+                selector.combinator_at_parse_order(from_offset),
+                Combinator::SlotAssignment | Combinator::PseudoElement
+            )
+        ),
+        "Got the math wrong: {:?} | {:?} | {} {}",
+        selector,
+        selector.iter_raw_match_order().as_slice(),
+        from_offset,
+        start_offset
+    );
+
+    for component in iter {
         if !matches_simple_selector(
             component,
             element,
             &mut local_context,
-            &mut |_, _| {}) {
+            &mut |_, _| {}
+        ) {
             return CompoundSelectorMatchingResult::NotMatched;
         }
+    }
 
-        from_offset += 1;
+    if from_offset != selector.len() {
+        return CompoundSelectorMatchingResult::Matched {
+            next_combinator_offset: from_offset,
+        }
     }
 
     CompoundSelectorMatchingResult::FullyMatched
@@ -416,6 +445,7 @@ where
             element.parent_element()
         }
         Combinator::SlotAssignment => {
+            debug_assert!(element.assigned_slot().map_or(true, |s| s.is_html_slot_element()));
             element.assigned_slot()
         }
         Combinator::PseudoElement => {
@@ -552,7 +582,7 @@ where
         &local_name.name,
         &local_name.lower_name
     ).borrow();
-    element.get_local_name() == name
+    element.local_name() == name
 }
 
 /// Determines whether the given element matches the given compound selector.
@@ -631,6 +661,8 @@ where
         Component::Combinator(_) => unreachable!(),
         Component::Slotted(ref selector) => {
             context.shared.nest(|context| {
+                // <slots> are never flattened tree slottables.
+                !element.is_html_slot_element() &&
                 element.assigned_slot().is_some() &&
                 matches_complex_selector(
                     selector.iter(),
@@ -652,11 +684,11 @@ where
         }
         Component::Namespace(_, ref url) |
         Component::DefaultNamespace(ref url) => {
-            element.get_namespace() == url.borrow()
+            element.namespace() == url.borrow()
         }
         Component::ExplicitNoNamespace => {
             let ns = ::parser::namespace_empty_string::<E::Impl>();
-            element.get_namespace() == ns.borrow()
+            element.namespace() == ns.borrow()
         }
         Component::ID(ref id) => {
             element.has_id(id, context.shared.classes_and_ids_case_sensitivity())
@@ -857,8 +889,8 @@ where
 
 #[inline]
 fn same_type<E: Element>(a: &E, b: &E) -> bool {
-    a.get_local_name() == b.get_local_name() &&
-    a.get_namespace() == b.get_namespace()
+    a.local_name() == b.local_name() &&
+    a.namespace() == b.namespace()
 }
 
 #[inline]

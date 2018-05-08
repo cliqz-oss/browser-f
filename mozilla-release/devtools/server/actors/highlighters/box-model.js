@@ -18,7 +18,7 @@ const {
   setIgnoreLayoutChanges,
   getCurrentZoom,
  } = require("devtools/shared/layout/utils");
-const inspector = require("devtools/server/actors/inspector");
+const { getNodeDisplayName } = require("devtools/server/actors/inspector/utils");
 const nodeConstants = require("devtools/shared/dom-node-constants");
 
 // Note that the order of items in this array is important because it is used
@@ -295,7 +295,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
    * Show the highlighter on a given node
    */
   _show() {
-    if (BOX_MODEL_REGIONS.indexOf(this.options.region) == -1) {
+    if (!BOX_MODEL_REGIONS.includes(this.options.region)) {
       this.options.region = "content";
     }
 
@@ -676,7 +676,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         getBindingElementAndPseudo(this.currentNode);
 
     // Update the tag, id, classes, pseudo-classes and dimensions
-    let displayName = inspector.getNodeDisplayName(node);
+    let displayName = getNodeDisplayName(node);
 
     let id = node.id ? "#" + node.id : "";
 

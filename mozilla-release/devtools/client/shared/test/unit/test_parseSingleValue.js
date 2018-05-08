@@ -5,8 +5,7 @@
 
 "use strict";
 
-var Cu = Components.utils;
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const {parseSingleValue} = require("devtools/shared/css/parsing-utils");
 const {isCssPropertyKnown} = require("devtools/server/actors/css-properties");
 

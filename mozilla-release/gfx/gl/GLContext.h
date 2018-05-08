@@ -202,7 +202,7 @@ public:
     bool mUseTLSIsCurrent;
 
     class TlsScope final {
-        GLContext* const mGL;
+        const WeakPtr<GLContext> mGL;
         const bool mWasTlsOk;
     public:
         explicit TlsScope(GLContext* const gl)
@@ -213,7 +213,9 @@ public:
         }
 
         ~TlsScope() {
-            mGL->mUseTLSIsCurrent = mWasTlsOk;
+            if (mGL) {
+                mGL->mUseTLSIsCurrent = mWasTlsOk;
+            }
         }
     };
 
@@ -1370,7 +1372,7 @@ public:
         AFTER_GL_CALL;
     }
 
-    GLint fGetUniformLocation (GLint programObj, const GLchar* name) {
+    GLint fGetUniformLocation (GLuint programObj, const GLchar* name) {
         GLint retval = 0;
         BEFORE_GL_CALL;
         retval = mSymbols.fGetUniformLocation(programObj, name);

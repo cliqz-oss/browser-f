@@ -9,10 +9,7 @@
  * UTF16 character and mid-surrogate pair
  */
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const test = [
 // 0: Valid surrogate pair

@@ -6,10 +6,11 @@
 
 #include "js/UbiNodeCensus.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsobjinlines.h"
+#include "util/Text.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -146,7 +147,7 @@ class BucketCount : public CountType {
     }
 
     CountBasePtr makeCount() override { return CountBasePtr(js_new<Count>(*this)); }
-    void traceCount(CountBase& countBase, JSTracer* trc) final override { }
+    void traceCount(CountBase& countBase, JSTracer* trc) final { }
     bool count(CountBase& countBase, mozilla::MallocSizeOf mallocSizeOf, const Node& node) override;
     bool report(JSContext* cx, CountBase& countBase, MutableHandleValue report) override;
 };

@@ -4,19 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Translation",
   "TranslationTelemetry",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 const TRANSLATION_PREF_SHOWUI = "browser.translation.ui.show";
 const TRANSLATION_PREF_DETECT_LANG = "browser.translation.detectLanguage";
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-this.Translation = {
+var Translation = {
   STATE_OFFER: 0,
   STATE_TRANSLATING: 1,
   STATE_TRANSLATED: 2,
@@ -44,7 +42,7 @@ this.Translation = {
         return;
       }
 
-      if (this.supportedSourceLanguages.indexOf(aData.detectedLanguage) == -1) {
+      if (!this.supportedSourceLanguages.includes(aData.detectedLanguage)) {
         // Detected language is not part of the supported languages.
         TranslationTelemetry.recordMissedTranslationOpportunity(aData.detectedLanguage);
         return;
@@ -76,7 +74,7 @@ this.Translation = {
 
   openProviderAttribution() {
     let attribution = this.supportedEngines[this.translationEngine];
-    Cu.import("resource:///modules/RecentWindow.jsm");
+    ChromeUtils.import("resource:///modules/RecentWindow.jsm");
     RecentWindow.getMostRecentBrowserWindow().openUILinkIn(attribution, "tab");
   },
 
@@ -101,7 +99,7 @@ this.Translation = {
    */
   get translationEngine() {
     let engine = Services.prefs.getCharPref("browser.translation.engine");
-    return Object.keys(this.supportedEngines).indexOf(engine) == -1 ? this.defaultEngine : engine;
+    return !Object.keys(this.supportedEngines).includes(engine) ? this.defaultEngine : engine;
   },
 };
 
@@ -244,7 +242,7 @@ TranslationUI.prototype = {
     // Check if we should never show the infobar for this language.
     let neverForLangs =
       Services.prefs.getCharPref("browser.translation.neverForLanguages");
-    if (neverForLangs.split(",").indexOf(this.detectedLanguage) != -1) {
+    if (neverForLangs.split(",").includes(this.detectedLanguage)) {
       TranslationTelemetry.recordAutoRejectedTranslationOffer();
       return false;
     }
@@ -292,7 +290,7 @@ TranslationUI.prototype = {
  *
  * NOTE: Metrics are only recorded if the user enabled the telemetry option.
  */
-this.TranslationTelemetry = {
+var TranslationTelemetry = {
 
   init() {
     // Constructing histograms.

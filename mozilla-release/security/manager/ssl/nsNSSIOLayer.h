@@ -55,8 +55,7 @@ public:
   void SetTLSVersionRange(SSLVersionRange range) { mTLSVersionRange = range; }
   SSLVersionRange GetTLSVersionRange() const { return mTLSVersionRange; };
 
-  PRStatus CloseSocketAndDestroy(
-                const nsNSSShutDownPreventionLock& proofOfLock);
+  PRStatus CloseSocketAndDestroy();
 
   void SetNegotiatedNPN(const char* value, uint32_t length);
   void SetEarlyDataAccepted(bool aAccepted);
@@ -74,6 +73,7 @@ public:
   bool IsFullHandshake() const { return mIsFullHandshake; }
 
   bool GetJoined() { return mJoined; }
+  bool GetDenyClientCert() { return mDenyClientCert; }
   void SetSentClientCert() { mSentClientCert = true; }
 
   uint32_t GetProviderFlags() const { return mProviderFlags; }
@@ -186,6 +186,7 @@ private:
   nsCString mNegotiatedNPN;
   bool      mNPNCompleted;
   bool      mEarlyDataAccepted;
+  bool      mDenyClientCert;
   bool      mFalseStartCallbackCalled;
   bool      mFalseStarted;
   bool      mIsFullHandshake;

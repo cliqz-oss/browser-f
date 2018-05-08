@@ -14,6 +14,7 @@
 #include "mozilla/SandboxSettings.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/SandboxLaunch.h"
 #include "mozilla/dom/ContentChild.h"
 #include "nsPrintfCString.h"
 #include "nsString.h"
@@ -51,6 +52,7 @@ static const int rdonly = SandboxBroker::MAY_READ;
 static const int wronly = SandboxBroker::MAY_WRITE;
 static const int rdwr = rdonly | wronly;
 static const int rdwrcr = rdwr | SandboxBroker::MAY_CREATE;
+static const int access = SandboxBroker::MAY_ACCESS;
 }
 #endif
 
@@ -188,52 +190,11 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
   policy->AddDir(rdwrcr, "/dev/shm");
   // Write permssions
   //
-  // Add write permissions on the temporary directory. This can come
-  // from various environment variables (TMPDIR,TMP,TEMP,...) so
-  // make sure to use the full logic.
-  nsCOMPtr<nsIFile> tmpDir;
-  nsresult rv = GetSpecialSystemDirectory(OS_TemporaryDirectory,
-                                          getter_AddRefs(tmpDir));
-
-  if (NS_SUCCEEDED(rv)) {
-    nsAutoCString tmpPath;
-    rv = tmpDir->GetNativePath(tmpPath);
-    if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdwrcr, tmpPath.get());
-    }
-  }
-  // If the above fails at any point, fall back to a very good guess.
-  if (NS_FAILED(rv)) {
-    policy->AddDir(rdwrcr, "/tmp");
-  }
-
   // Bug 1308851: NVIDIA proprietary driver when using WebGL
   policy->AddFilePrefix(rdwr, "/dev", "nvidia");
 
   // Bug 1312678: radeonsi/Intel with DRI when using WebGL
   policy->AddDir(rdwr, "/dev/dri");
-
-#ifdef MOZ_ALSA
-  // Bug 1309098: ALSA support
-  policy->AddDir(rdwr, "/dev/snd");
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-  if (const auto userDir = g_get_user_runtime_dir()) {
-    // Bug 1321134: DConf's single bit of shared memory
-    // The leaf filename is "user" by default, but is configurable.
-    nsPrintfCString shmPath("%s/dconf/", userDir);
-    policy->AddPrefix(rdwrcr, shmPath.get());
-    policy->AddAncestors(shmPath.get());
-#ifdef MOZ_PULSEAUDIO
-    // PulseAudio, if it can't get server info from X11, will break
-    // unless it can open this directory (or create it, but in our use
-    // case we know it already exists).  See bug 1335329.
-    nsPrintfCString pulsePath("%s/pulse", userDir);
-    policy->AddPath(rdonly, pulsePath.get());
-#endif // MOZ_PULSEAUDIO
-  }
-#endif // MOZ_WIDGET_GTK
 
   // Read permissions
   policy->AddPath(rdonly, "/dev/urandom");
@@ -247,13 +208,8 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
   policy->AddDir(rdonly, "/usr/lib32");
   policy->AddDir(rdonly, "/usr/lib64");
   policy->AddDir(rdonly, "/etc");
-#ifdef MOZ_PULSEAUDIO
-  policy->AddPath(rdonly, "/var/lib/dbus/machine-id");
-#endif
   policy->AddDir(rdonly, "/usr/share");
   policy->AddDir(rdonly, "/usr/local/share");
-  policy->AddDir(rdonly, "/usr/tmp");
-  policy->AddDir(rdonly, "/var/tmp");
   // Various places where fonts reside
   policy->AddDir(rdonly, "/usr/X11R6/lib/X11/fonts");
   policy->AddDir(rdonly, "/nix/store");
@@ -265,13 +221,6 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
 
   // Bug 1385715: NVIDIA PRIME support
   policy->AddPath(rdonly, "/proc/modules");
-
-#ifdef MOZ_PULSEAUDIO
-  // See bug 1384986 comment #1.
-  if (const auto xauth = PR_GetEnv("XAUTHORITY")) {
-    policy->AddPath(rdonly, xauth);
-  }
-#endif
 
   // Allow access to XDG_CONFIG_PATH and XDG_CONFIG_DIRS
   if (const auto xdgConfigPath = PR_GetEnv("XDG_CONFIG_PATH")) {
@@ -308,7 +257,8 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
   };
 
   nsCOMPtr<nsIFile> homeDir;
-  rv = GetSpecialSystemDirectory(Unix_HomeDirectory, getter_AddRefs(homeDir));
+  nsresult rv = GetSpecialSystemDirectory(Unix_HomeDirectory,
+                                          getter_AddRefs(homeDir));
   if (NS_SUCCEEDED(rv)) {
     nsCOMPtr<nsIFile> confDir;
 
@@ -406,6 +356,37 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
     }
   }
 
+#ifdef DEBUG
+  char *bloatLog = PR_GetEnv("XPCOM_MEM_BLOAT_LOG");
+  // XPCOM_MEM_BLOAT_LOG has the format
+  // /tmp/tmpd0YzFZ.mozrunner/runtests_leaks.log
+  // but stores into /tmp/tmpd0YzFZ.mozrunner/runtests_leaks_tab_pid3411.log
+  // So cut the .log part and whitelist the prefix.
+  if (bloatLog != nullptr) {
+    size_t bloatLen = strlen(bloatLog);
+    if (bloatLen >= 4) {
+      nsAutoCString bloatStr(bloatLog);
+      bloatStr.Truncate(bloatLen - 4);
+      policy->AddPrefix(rdwrcr, bloatStr.get());
+    }
+  }
+#endif
+
+  // Allow Primus to contact the Bumblebee daemon to manage GPU
+  // switching on NVIDIA Optimus systems.
+  const char* bumblebeeSocket = PR_GetEnv("BUMBLEBEE_SOCKET");
+  if (bumblebeeSocket == nullptr) {
+    bumblebeeSocket = "/var/run/bumblebee.socket";
+  }
+  policy->AddPath(SandboxBroker::MAY_CONNECT, bumblebeeSocket);
+
+  // Allow local X11 connections, for Primus and VirtualGL to contact
+  // the secondary X server.
+  policy->AddPrefix(SandboxBroker::MAY_CONNECT, "/tmp/.X11-unix/X");
+  if (const auto xauth = PR_GetEnv("XAUTHORITY")) {
+    policy->AddPath(rdonly, xauth);
+  }
+
   mCommonContentPolicy.reset(policy);
 #endif
 }
@@ -429,6 +410,8 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
   UniquePtr<SandboxBroker::Policy>
     policy(new SandboxBroker::Policy(*mCommonContentPolicy));
 
+  const int level = GetEffectiveContentSandboxLevel();
+
   // Read any extra paths that will get write permissions,
   // configured by the user or distro
   AddDynamicPathList(policy.get(),
@@ -444,7 +427,7 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
   // file:// processes also get global read permissions
   // This requires accessing user preferences so we can only do it now.
   // Our constructor is initialized before user preferences are read in.
-  if (GetEffectiveContentSandboxLevel() <= 2 || aFileProcess) {
+  if (level <= 2 || aFileProcess) {
     policy->AddDir(rdonly, "/");
     // Any other read-only rules will be removed as redundant by
     // Policy::FixRecursivePermissions, so there's no need to
@@ -463,25 +446,34 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
   // to get_mempolicy if this fails
   policy->AddPath(rdonly, nsPrintfCString("/proc/%d/status", aPid).get());
 
+  // Add write permissions on the content process specific temporary dir.
+  nsCOMPtr<nsIFile> tmpDir;
+  nsresult rv = NS_GetSpecialDirectory(NS_APP_CONTENT_PROCESS_TEMP_DIR,
+                                       getter_AddRefs(tmpDir));
+  if (NS_SUCCEEDED(rv)) {
+    nsAutoCString tmpPath;
+    rv = tmpDir->GetNativePath(tmpPath);
+    if (NS_SUCCEEDED(rv)) {
+      policy->AddDir(rdwrcr, tmpPath.get());
+    }
+  }
+
   // userContent.css and the extensions dir sit in the profile, which is
   // normally blocked and we can't get the profile dir earlier in startup,
   // so this must happen here.
   nsCOMPtr<nsIFile> profileDir;
-  nsresult rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
-                                       getter_AddRefs(profileDir));
+  rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
+                              getter_AddRefs(profileDir));
   if (NS_SUCCEEDED(rv)) {
       nsCOMPtr<nsIFile> workDir;
       rv = profileDir->Clone(getter_AddRefs(workDir));
       if (NS_SUCCEEDED(rv)) {
         rv = workDir->AppendNative(NS_LITERAL_CSTRING("chrome"));
         if (NS_SUCCEEDED(rv)) {
-          rv = workDir->AppendNative(NS_LITERAL_CSTRING("userContent.css"));
+          nsAutoCString tmpPath;
+          rv = workDir->GetNativePath(tmpPath);
           if (NS_SUCCEEDED(rv)) {
-            nsAutoCString tmpPath;
-            rv = workDir->GetNativePath(tmpPath);
-            if (NS_SUCCEEDED(rv)) {
-              policy->AddPath(rdonly, tmpPath.get());
-            }
+            policy->AddDir(rdonly, tmpPath.get());
           }
         }
       }
@@ -496,6 +488,55 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
           }
         }
       }
+  }
+
+  bool allowPulse = false;
+  bool allowAlsa = false;
+  if (level < 4) {
+#ifdef MOZ_PULSEAUDIO
+    allowPulse = true;
+#endif
+#ifdef MOZ_ALSA
+    allowAlsa = true;
+#endif
+  }
+
+  if (allowAlsa) {
+    // Bug 1309098: ALSA support
+    policy->AddDir(rdwr, "/dev/snd");
+  }
+
+#ifdef MOZ_WIDGET_GTK
+  if (const auto userDir = g_get_user_runtime_dir()) {
+    // Bug 1321134: DConf's single bit of shared memory
+    // The leaf filename is "user" by default, but is configurable.
+    nsPrintfCString shmPath("%s/dconf/", userDir);
+    policy->AddPrefix(rdwrcr, shmPath.get());
+    policy->AddAncestors(shmPath.get());
+    if (allowPulse) {
+      // PulseAudio, if it can't get server info from X11, will break
+      // unless it can open this directory (or create it, but in our use
+      // case we know it already exists).  See bug 1335329.
+      nsPrintfCString pulsePath("%s/pulse", userDir);
+      policy->AddPath(rdonly, pulsePath.get());
+    }
+  }
+#endif // MOZ_WIDGET_GTK
+
+  if (allowPulse) {
+    // PulseAudio also needs access to read the $XAUTHORITY file (see
+    // bug 1384986 comment #1), but that's already allowed for hybrid
+    // GPU drivers (see above).
+    policy->AddPath(rdonly, "/var/lib/dbus/machine-id");
+  }
+
+  // Bug 1434711 - AMDGPU-PRO crashes if it can't read it's marketing ids
+  // and various other things
+  if (HasAtiDrivers()) {
+    policy->AddDir(rdonly, "/opt/amdgpu/share");
+    policy->AddPath(rdonly, "/sys/module/amdgpu");
+    // AMDGPU-PRO's MESA version likes to readlink a lot of things here
+    policy->AddDir(access, "/sys");
   }
 
   // Return the common policy.

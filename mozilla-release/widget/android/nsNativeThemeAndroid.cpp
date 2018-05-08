@@ -4,7 +4,6 @@
 
 #include "nsNativeThemeAndroid.h"
 
-#include "nsIDOMHTMLInputElement.h"
 #include "nsIFrame.h"
 #include "nsThemeConstants.h"
 #include "AndroidColors.h"
@@ -179,8 +178,8 @@ nsNativeThemeAndroid::DrawWidgetBackground(gfxContext* aContext,
 {
   EventStates eventState = GetContentState(aFrame, aWidgetType);
   nsRect rect(aRect);
-  rect.Deflate(aFrame->GetUsedBorderAndPadding());
   ClampRectAndMoveToCenter(rect);
+
   switch (aWidgetType) {
     case NS_THEME_RADIO:
       PaintRadioControl(aFrame, aContext->GetDrawTarget(), rect, eventState);
@@ -218,6 +217,15 @@ nsNativeThemeAndroid::GetWidgetPadding(nsDeviceContext* aContext,
                                        nsIFrame* aFrame, uint8_t aWidgetType,
                                        nsIntMargin* aResult)
 {
+  switch (aWidgetType) {
+    // Radios and checkboxes return a fixed size in GetMinimumWidgetSize
+    // and have a meaningful baseline, so they can't have
+    // author-specified padding.
+    case NS_THEME_CHECKBOX:
+    case NS_THEME_RADIO:
+      aResult->SizeTo(0, 0, 0, 0);
+      return true;
+  }
   return false;
 }
 

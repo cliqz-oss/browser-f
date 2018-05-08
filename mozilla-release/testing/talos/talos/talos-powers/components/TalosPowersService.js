@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { interfaces: Ci, utils: Cu, classes: Cc } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
+ChromeUtils.defineModuleGetter(this, "OS",
   "resource://gre/modules/osfile.jsm");
 
 const FRAME_SCRIPT = "chrome://talos-powers/content/talos-powers-content.js";
@@ -216,7 +214,7 @@ TalosPowersService.prototype = {
 
   forceQuit(messageData) {
     if (messageData && messageData.waitForSafeBrowsing) {
-      let SafeBrowsing = Cu.import("resource://gre/modules/SafeBrowsing.jsm", {}).SafeBrowsing;
+      let SafeBrowsing = ChromeUtils.import("resource://gre/modules/SafeBrowsing.jsm", {}).SafeBrowsing;
 
       let whenDone = () => {
         this.forceQuit();

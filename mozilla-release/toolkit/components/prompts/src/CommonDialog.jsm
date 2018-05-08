@@ -2,23 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["CommonDialog"];
+var EXPORTED_SYMBOLS = ["CommonDialog"];
 
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cc = Components.classes;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "EnableDelayHelper",
-                                  "resource://gre/modules/SharedPromptUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "EnableDelayHelper",
+                               "resource://gre/modules/SharedPromptUtils.jsm");
 
 
-this.CommonDialog = function CommonDialog(args, ui) {
+function CommonDialog(args, ui) {
     this.args = args;
     this.ui   = ui;
-};
+}
 
 CommonDialog.prototype = {
     args: null,
@@ -243,7 +238,7 @@ CommonDialog.prototype = {
         let button = this.ui["button" + b];
 
         if (!this.hasInputField) {
-            let isOSX = ("nsILocalFileMac" in Components.interfaces);
+            let isOSX = ("nsILocalFileMac" in Ci);
             if (isOSX)
                 this.ui.infoBody.focus();
             else

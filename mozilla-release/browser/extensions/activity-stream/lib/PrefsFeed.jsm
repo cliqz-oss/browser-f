@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
+const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {PrerenderData} = ChromeUtils.import("resource://activity-stream/common/PrerenderData.jsm", {});
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
-const {PrerenderData} = Cu.import("resource://activity-stream/common/PrerenderData.jsm", {});
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 const ONBOARDING_FINISHED_PREF = "browser.onboarding.notification.finished";
 
@@ -65,15 +66,20 @@ this.PrefsFeed = class PrefsFeed {
       values[name] = this._prefs.get(name);
     }
 
+    // Not a pref, but we need this to determine whether to show private-browsing-related stuff
+    values.isPrivateBrowsingEnabled = PrivateBrowsingUtils.enabled;
+
     // Set the initial state of all prefs in redux
     this.store.dispatch(ac.BroadcastToContent({type: at.PREFS_INITIAL_VALUES, data: values}));
 
     this._setPrerenderPref();
     this._initOnboardingPref();
   }
+
   removeListeners() {
     this._prefs.ignoreBranch(this);
   }
+
   onAction(action) {
     switch (action.type) {
       case at.INIT:
@@ -93,4 +99,4 @@ this.PrefsFeed = class PrefsFeed {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["PrefsFeed"];
+const EXPORTED_SYMBOLS = ["PrefsFeed"];

@@ -28,6 +28,7 @@ UNIFIED_SOURCES += [
     'TestMoveString.cpp',
     'TestMozPromise.cpp',
     'TestMultiplexInputStream.cpp',
+    'TestNonBlockingAsyncInputStream.cpp',
     'TestNsDeque.cpp',
     'TestNSPRLogModulesParser.cpp',
     'TestObserverArray.cpp',
@@ -93,6 +94,13 @@ GENERATED_FILES = [
 dafsa_data = GENERATED_FILES['dafsa_test_1.inc']
 dafsa_data.script = '../../ds/make_dafsa.py'
 dafsa_data.inputs = ['dafsa_test_1.dat']
+
+TEST_HARNESS_FILES.gtest += [
+    'wikipedia/de.txt',
+    'wikipedia/ja.txt',
+    'wikipedia/ru.txt',
+    'wikipedia/th.txt',
+]
 
 FINAL_LIBRARY = 'xul-gtest'
 

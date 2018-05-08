@@ -13,9 +13,6 @@
 %include ../shared/browser.inc.css
 
 :root {
-  --tabs-border-color: rgba(0,0,0,.3);
-  --tab-line-color: #0a84ff;
-
   --toolbar-non-lwt-bgcolor: #f9f9fa;
   --toolbar-non-lwt-textcolor: #0c0c0d;
   --toolbar-non-lwt-bgimage: none;
@@ -27,9 +24,9 @@
   --toolbarbutton-icon-fill-opacity: .7;
 
   --panel-separator-color: hsla(210,4%,10%,.14);
-  --arrowpanel-dimmed: hsla(210,4%,10%,.07);
-  --arrowpanel-dimmed-further: hsla(210,4%,10%,.12);
-  --arrowpanel-dimmed-even-further: hsla(210,4%,10%,.17);
+  --arrowpanel-dimmed: hsla(0,0%,80%,.3);
+  --arrowpanel-dimmed-further: hsla(0,0%,80%,.45);
+  --arrowpanel-dimmed-even-further: hsla(0,0%,80%,.8);
 
   --urlbar-separator-color: hsla(0,0%,16%,.2);
 
@@ -41,6 +38,14 @@
   --toolbar-bgimage: none;
 
   --toolbox-border-bottom-color: rgba(0,0,0,.3);
+}
+
+#navigator-toolbox {
+  --tabs-border-color: rgba(0,0,0,.3);
+}
+
+#tabbrowser-tabs {
+  --tab-line-color: #0a84ff;
 }
 
 #navigator-toolbox toolbarbutton:-moz-lwtheme {
@@ -132,10 +137,10 @@
 /* Always draw a border on Yosemite to ensure the border is well-defined there
  * (the default border is too light). */
 @media (-moz-mac-yosemite-theme) {
-  :root:not(:-moz-lwtheme) {
+  #navigator-toolbox:not(:-moz-lwtheme) {
     --tabs-border-color: rgba(0,0,0,.2);
   }
-  :root:not(:-moz-lwtheme):-moz-window-inactive {
+  #navigator-toolbox:not(:-moz-lwtheme):-moz-window-inactive {
     --tabs-border-color: rgba(0,0,0,.05);
   }
 
@@ -331,6 +336,11 @@ html|input.urlbar-input {
 %include ../shared/autocomplete.inc.css
 %include ../shared/urlbar-autocomplete.inc.css
 
+:root {
+  --urlbar-popup-url-color: hsl(210, 77%, 47%);
+  --urlbar-popup-action-color: hsl(178, 100%, 28%);
+}
+
 /* Give an extra margin top to align the top of the awesomebar with the
  * bottom of the nav bar, OSX calculates the panel position with an missing
  * 1px - https://bugzilla.mozilla.org/show_bug.cgi?id=1406353
@@ -354,86 +364,6 @@ html|input.urlbar-input {
   font-size: 12px;
 }
 
-html|span.ac-tag {
-  background-color: hsl(216, 0%, 88%);
-  color: hsl(0, 0%, 0%);
-  border-radius: 2px;
-  border: 1px solid transparent;
-  padding: 0 1px;
-}
-
-.ac-separator:not([selected=true]) {
-  color: hsl(0, 0%, 50%);
-}
-
-.ac-url:not([selected=true]) {
-  color: hsl(210, 77%, 47%);
-}
-
-.ac-action:not([selected=true]) {
-  color: hsl(178, 100%, 28%);
-}
-
-.ac-tags-text[selected] > html|span.ac-tag {
-  background-color: hsl(0, 0%, 100%);
-  color: hsl(210, 80%, 40%);
-}
-
-html|span.ac-emphasize-text-title,
-html|span.ac-emphasize-text-tag,
-html|span.ac-emphasize-text-url {
-  font-weight: 600;
-}
-
-.ac-type-icon[type=bookmark] {
-  list-style-image: url("chrome://browser/skin/bookmark.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=bookmark][selected][current] {
-  fill: white;
-}
-
-.ac-type-icon[type=keyword],
-.ac-site-icon[type=searchengine] {
-  list-style-image: url(chrome://browser/skin/search-glass.svg);
-  -moz-context-properties: fill;
-  fill: GrayText;
-}
-
-.ac-type-icon[type=keyword][selected],
-.ac-site-icon[type=searchengine][selected] {
-  fill: highlighttext;
-}
-
-.ac-type-icon[type=switchtab],
-.ac-type-icon[type=remotetab] {
-  list-style-image: url("chrome://browser/skin/urlbar-tab.svg");
-  -moz-context-properties: fill;
-  fill: #b2b2b2;
-}
-
-.ac-type-icon[type=switchtab][selected],
-.ac-type-icon[type=remotetab][selected] {
-  fill: white;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(treecolAutoCompleteComment) {
-  color: GrayText;
-}
-
-.autocomplete-treebody::-moz-tree-cell-text(suggesthint, treecolAutoCompleteComment),
-.autocomplete-treebody::-moz-tree-cell-text(suggestfirst, treecolAutoCompleteComment)
-{
-  color: GrayText;
-  font-size: smaller;
-}
-
-.autocomplete-treebody::-moz-tree-cell(suggesthint) {
-  border-top: 1px solid GrayText;
-}
-
 #BMB_bookmarksPopup[side="top"],
 #BMB_bookmarksPopup[side="bottom"] {
   margin-left: -26px;
@@ -448,16 +378,12 @@ html|span.ac-emphasize-text-url {
 
 /* BOOKMARKING PANEL */
 #editBookmarkPanelStarIcon {
-  list-style-image: url("chrome://browser/skin/places/starred48.png");
-  width: 48px;
-  height: 48px;
-}
-
-@media (min-resolution: 2dppx) {
-  #editBookmarkPanelStarIcon {
-    list-style-image: url("chrome://browser/skin/places/starred48@2x.png");
-    -moz-image-region: rect(0px 96px 96px 0px);
-  }
+  list-style-image: url("chrome://browser/skin/bookmark.svg");
+  -moz-context-properties: fill;
+  fill: var(--toolbarbutton-icon-fill-attention);
+  width: 40px;
+  height: 40px;
+  margin: 4px;
 }
 
 #editBookmarkPanelTitle {
@@ -747,7 +673,7 @@ html|span.ac-emphasize-text-url {
 
 /* ::::: tabbrowser ::::: */
 
-.tabbrowser-tabbox {
+#tabbrowser-tabbox {
   margin: 0;
 }
 

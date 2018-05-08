@@ -453,6 +453,7 @@
 <!ENTITY share_image_failed "Unable to share this image">
 <!ENTITY save_as_pdf "Save as PDF">
 <!ENTITY print "Print">
+<!ENTITY view_page_source "View Page Source">
 <!ENTITY find_in_page "Find in page">
 <!ENTITY desktop_mode "Request desktop site">
 <!ENTITY page "Page">
@@ -810,6 +811,9 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      the Android version of this device. the formatS1 is replaced by the CPU ABI (e.g., ARMv7); the formatS2 is
      replaced by the Android OS version (e.g., 14)-->
 <!ENTITY unsupported_sdk_version "Sorry! This &brandShortName; won\'t work on this device (&formatS1;, &formatS2;). Please download the correct version.">
+
+<!-- LOCALIZATION NOTE(corrupt_apk): This notification is shown if corruption has been detected on startup and the user has to reinstall Firefox -->
+<!ENTITY corrupt_apk "Unable to open &brandShortName;. Please reinstall and try again.">
 
 <!ENTITY eol_notification_title2 "&brandShortName; will no longer update">
 <!ENTITY eol_notification_summary "Tap to learn more">

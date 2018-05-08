@@ -92,12 +92,17 @@ public:
    * be conditional based on either DOM or frame processing should occur in
    * PostHandleEvent.  Any centralized event processing which must occur before
    * DOM or frame event handling should occur here as well.
+   *
+   * aOverrideClickTarget can be used to indicate which element should be
+   * used as the *up target when deciding whether to send click event.
+   * This is used when releasing pointer capture. Otherwise null.
    */
   nsresult PreHandleEvent(nsPresContext* aPresContext,
                           WidgetEvent* aEvent,
                           nsIFrame* aTargetFrame,
                           nsIContent* aTargetContent,
-                          nsEventStatus* aStatus);
+                          nsEventStatus* aStatus,
+                          nsIContent* aOverrideClickTarget);
 
   /* The PostHandleEvent method should contain all system processing which
    * should occur conditionally based on DOM or frame processing.  It should
@@ -107,7 +112,8 @@ public:
   nsresult PostHandleEvent(nsPresContext* aPresContext,
                            WidgetEvent* aEvent,
                            nsIFrame* aTargetFrame,
-                           nsEventStatus* aStatus);
+                           nsEventStatus* aStatus,
+                           nsIContent* aOverrideClickTarget);
 
   void PostHandleKeyboardEvent(WidgetKeyboardEvent* aKeyboardEvent,
                                nsIFrame* aTargetFrame, nsEventStatus& aStatus);
@@ -311,10 +317,6 @@ public:
                                         double* aOutMultiplierX,
                                         double* aOutMultiplierY);
 
-  // Returns whether or not a frame can be vertically scrolled with a mouse
-  // wheel (as opposed to, say, a selection or touch scroll).
-  static bool CanVerticallyScrollFrameWithWheel(nsIFrame* aFrame);
-
   // Holds the point in screen coords that a mouse event was dispatched to,
   // before we went into pointer lock mode. This is constantly updated while
   // the pointer is not locked, but we don't update it while the pointer is
@@ -446,10 +448,13 @@ protected:
                                             nsIPresShell* aPresShell,
                                             nsIContent* aMouseTarget,
                                             AutoWeakFrame aCurrentTarget,
-                                            bool aNoContentDispatch);
-  nsresult SetClickCount(WidgetMouseEvent* aEvent, nsEventStatus* aStatus);
+                                            bool aNoContentDispatch,
+                                            nsIContent* aOverrideClickTarget);
+  nsresult SetClickCount(WidgetMouseEvent* aEvent, nsEventStatus* aStatus,
+                         nsIContent* aOverrideClickTarget = nullptr);
   nsresult CheckForAndDispatchClick(WidgetMouseEvent* aEvent,
-                                    nsEventStatus* aStatus);
+                                    nsEventStatus* aStatus,
+                                    nsIContent* aOverrideClickTarget);
   void EnsureDocument(nsPresContext* aPresContext);
   void FlushPendingEvents(nsPresContext* aPresContext);
 
@@ -925,12 +930,16 @@ protected:
    * aDataTransfer - data transfer object that will contain the data to drag
    * aSelection - [out] set to the selection to be dragged
    * aTargetNode - [out] the draggable node, or null if there isn't one
+   * aPrincipalURISpec - [out] set to the URI of the triggering principal of
+   *                           the drag, or an empty string if it's from
+   *                           browser chrome or OS
    */
   void DetermineDragTargetAndDefaultData(nsPIDOMWindowOuter* aWindow,
                                          nsIContent* aSelectionTarget,
                                          dom::DataTransfer* aDataTransfer,
                                          nsISelection** aSelection,
-                                         nsIContent** aTargetNode);
+                                         nsIContent** aTargetNode,
+                                         nsACString& aPrincipalURISpec);
 
   /*
    * Perform the default handling for the dragstart event and set up a
@@ -941,12 +950,15 @@ protected:
    * aDataTransfer - the data transfer that holds the data to be dragged
    * aDragTarget - the target of the drag
    * aSelection - the selection to be dragged
+   * aPrincipalURISpec - the URI of the triggering principal of the drag,
+   *                     or an empty string if it's from browser chrome or OS
    */
   bool DoDefaultDragStart(nsPresContext* aPresContext,
                           WidgetDragEvent* aDragEvent,
                           dom::DataTransfer* aDataTransfer,
                           nsIContent* aDragTarget,
-                          nsISelection* aSelection);
+                          nsISelection* aSelection,
+                          const nsACString& aPrincipalURISpec);
 
   bool IsTrackingDragGesture ( ) const { return mGestureDownContent != nullptr; }
   /**
@@ -1019,6 +1031,8 @@ private:
    */
   void NotifyTargetUserActivation(WidgetEvent* aEvent,
                                   nsIContent* aTargetContent);
+
+  already_AddRefed<EventStateManager> ESMFromContentOrThis(nsIContent* aContent);
 
   int32_t     mLockCursor;
   bool mLastFrameConsumedSetCursor;

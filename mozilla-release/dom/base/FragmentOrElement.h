@@ -32,6 +32,7 @@ class nsDOMAttributeMap;
 class nsDOMTokenList;
 class nsIControllers;
 class nsICSSDeclaration;
+class nsDOMCSSAttributeDeclaration;
 class nsIDocument;
 class nsDOMStringMap;
 class nsIURI;
@@ -119,9 +120,11 @@ public:
   // nsINode interface methods
   virtual uint32_t GetChildCount() const override;
   virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
-  virtual int32_t IndexOf(const nsINode* aPossibleChild) const override;
-  virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                                 bool aNotify) override;
+  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const override;
+  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                                     bool aNotify) override;
+  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
+                                            bool aNotify) override;
   virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
   virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
   virtual void GetTextContentInternal(nsAString& aTextContent,
@@ -244,14 +247,14 @@ public:
     nsExtendedDOMSlots();
     ~nsExtendedDOMSlots() final;
 
-    void Traverse(nsCycleCollectionTraversalCallback&) final override;
-    void Unlink() final override;
+    void Traverse(nsCycleCollectionTraversalCallback&) final;
+    void Unlink() final;
 
     /**
      * SMIL Overridde style rules (for SMIL animation of CSS properties)
      * @see Element::GetSMILOverrideStyle
      */
-    nsCOMPtr<nsICSSDeclaration> mSMILOverrideStyle;
+    RefPtr<nsDOMCSSAttributeDeclaration> mSMILOverrideStyle;
 
     /**
      * Holds any SMIL override style declaration for this element.
@@ -296,8 +299,8 @@ public:
     nsDOMSlots();
     ~nsDOMSlots() final;
 
-    void Traverse(nsCycleCollectionTraversalCallback&) final override;
-    void Unlink() final override;
+    void Traverse(nsCycleCollectionTraversalCallback&) final;
+    void Unlink() final;
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
@@ -341,7 +344,7 @@ protected:
     return new nsDOMSlots();
   }
 
-  nsIContent::nsExtendedContentSlots* CreateExtendedSlots() final override
+  nsIContent::nsExtendedContentSlots* CreateExtendedSlots() final
   {
     return new nsExtendedDOMSlots();
   }

@@ -197,14 +197,23 @@ public:
         FLAG_FORMAT_WOFF           = 1 << 6,
         FLAG_FORMAT_WOFF2          = 1 << 7,
 
+        FLAG_FORMAT_OPENTYPE_VARIATIONS = 1 << 8,
+        FLAG_FORMAT_TRUETYPE_VARIATIONS = 1 << 9,
+        FLAG_FORMAT_WOFF_VARIATIONS     = 1 << 10,
+        FLAG_FORMAT_WOFF2_VARIATIONS    = 1 << 11,
+
         // the common formats that we support everywhere
         FLAG_FORMATS_COMMON        = FLAG_FORMAT_OPENTYPE |
                                      FLAG_FORMAT_TRUETYPE |
                                      FLAG_FORMAT_WOFF     |
-                                     FLAG_FORMAT_WOFF2,
+                                     FLAG_FORMAT_WOFF2    |
+                                     FLAG_FORMAT_OPENTYPE_VARIATIONS |
+                                     FLAG_FORMAT_TRUETYPE_VARIATIONS |
+                                     FLAG_FORMAT_WOFF_VARIATIONS     |
+                                     FLAG_FORMAT_WOFF2_VARIATIONS,
 
         // mask of all unused bits, update when adding new formats
-        FLAG_FORMAT_NOT_USED       = ~((1 << 8)-1)
+        FLAG_FORMAT_NOT_USED       = ~((1 << 12)-1)
     };
 
 
@@ -220,6 +229,7 @@ public:
                               int32_t aStretch,
                               uint8_t aStyle,
                               const nsTArray<gfxFontFeature>& aFeatureSettings,
+                              const nsTArray<gfxFontVariation>& aVariationSettings,
                               uint32_t aLanguageOverride,
                               gfxCharacterMap* aUnicodeRanges,
                               uint8_t aFontDisplay) = 0;
@@ -233,6 +243,7 @@ public:
                                int32_t aStretch,
                                uint8_t aStyle,
                                const nsTArray<gfxFontFeature>& aFeatureSettings,
+                               const nsTArray<gfxFontVariation>& aVariationSettings,
                                uint32_t aLanguageOverride,
                                gfxCharacterMap* aUnicodeRanges,
                                uint8_t aFontDisplay);
@@ -423,6 +434,7 @@ public:
                 return mozilla::HashGeneric(principalHash + int(aKey->mPrivate),
                                             aKey->mURI->Hash(),
                                             HashFeatures(aKey->mFontEntry->mFeatureSettings),
+                                            HashVariations(aKey->mFontEntry->mVariationSettings),
                                             mozilla::HashString(aKey->mFontEntry->mFamilyName),
                                             (aKey->mFontEntry->mStyle |
                                              (aKey->mFontEntry->mWeight << 2) |
@@ -457,6 +469,12 @@ public:
             HashFeatures(const nsTArray<gfxFontFeature>& aFeatures) {
                 return mozilla::HashBytes(aFeatures.Elements(),
                                           aFeatures.Length() * sizeof(gfxFontFeature));
+            }
+
+            static uint32_t
+            HashVariations(const nsTArray<gfxFontVariation>& aVariations) {
+                return mozilla::HashBytes(aVariations.Elements(),
+                                          aVariations.Length() * sizeof(gfxFontVariation));
             }
 
             // An entry in mAllowedFontSets.
@@ -566,6 +584,7 @@ protected:
                                    int32_t aStretch,
                                    uint8_t aStyle,
                                    const nsTArray<gfxFontFeature>& aFeatureSettings,
+                                   const nsTArray<gfxFontVariation>& aVariationSettings,
                                    uint32_t aLanguageOverride,
                                    gfxCharacterMap* aUnicodeRanges,
                                    uint8_t aFontDisplay);
@@ -615,6 +634,7 @@ public:
                      int32_t aStretch,
                      uint8_t aStyle,
                      const nsTArray<gfxFontFeature>& aFeatureSettings,
+                     const nsTArray<gfxFontVariation>& aVariationSettings,
                      uint32_t aLanguageOverride,
                      gfxCharacterMap* aUnicodeRanges,
                      uint8_t aFontDisplay);
@@ -627,6 +647,7 @@ public:
                  int32_t aStretch,
                  uint8_t aStyle,
                  const nsTArray<gfxFontFeature>& aFeatureSettings,
+                 const nsTArray<gfxFontVariation>& aVariationSettings,
                  uint32_t aLanguageOverride,
                  gfxCharacterMap* aUnicodeRanges,
                  uint8_t aFontDisplay);

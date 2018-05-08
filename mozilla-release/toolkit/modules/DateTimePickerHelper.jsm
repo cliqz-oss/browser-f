@@ -4,10 +4,6 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
 const DEBUG = false;
 function debug(aStr) {
   if (DEBUG) {
@@ -15,12 +11,12 @@ function debug(aStr) {
   }
 }
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "DateTimePickerHelper"
 ];
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /*
  * DateTimePickerHelper receives message from content side (input box) and
@@ -28,7 +24,7 @@ Cu.import("resource://gre/modules/Services.jsm");
  * DateTimePickerHelper listens for picker's events and notifies the content
  * side (input box) about them.
  */
-this.DateTimePickerHelper = {
+var DateTimePickerHelper = {
   picker: null,
   weakBrowser: null,
 

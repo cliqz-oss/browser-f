@@ -11,21 +11,17 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cc = Components.classes;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const { ManifestObtainer } =
-  Cu.import("resource://gre/modules/ManifestObtainer.jsm", {});
+  ChromeUtils.import("resource://gre/modules/ManifestObtainer.jsm", {});
 const { ManifestIcons } =
-  Cu.import("resource://gre/modules/ManifestIcons.jsm", {});
+  ChromeUtils.import("resource://gre/modules/ManifestIcons.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "JSONFile",
-                                  "resource://gre/modules/JSONFile.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "JSONFile",
+                               "resource://gre/modules/JSONFile.jsm");
 
 /**
  * Generates an hash for the given string.
@@ -227,4 +223,4 @@ var Manifests = {
 
 };
 
-this.EXPORTED_SYMBOLS = ["Manifests"]; // jshint ignore:line
+var EXPORTED_SYMBOLS = ["Manifests"]; // jshint ignore:line

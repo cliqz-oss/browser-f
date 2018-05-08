@@ -6,7 +6,9 @@
 
 #include "InspectorFontFace.h"
 
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRules.h"
+#endif
 #include "gfxTextRun.h"
 #include "gfxUserFontSet.h"
 #include "nsFontFaceLoader.h"
@@ -14,6 +16,7 @@
 #include "brotli/decode.h"
 #include "zlib.h"
 #include "mozilla/dom/FontFaceSet.h"
+#include "mozilla/Unused.h"
 
 namespace mozilla {
 namespace dom {
@@ -145,6 +148,18 @@ InspectorFontFace::GetFormat(nsAString& aFormat)
     if (formatFlags & gfxUserFontSet::FLAG_FORMAT_WOFF2) {
       AppendToFormat(aFormat, "woff2");
     }
+    if (formatFlags & gfxUserFontSet::FLAG_FORMAT_OPENTYPE_VARIATIONS) {
+      AppendToFormat(aFormat, "opentype-variations");
+    }
+    if (formatFlags & gfxUserFontSet::FLAG_FORMAT_TRUETYPE_VARIATIONS) {
+      AppendToFormat(aFormat, "truetype-variations");
+    }
+    if (formatFlags & gfxUserFontSet::FLAG_FORMAT_WOFF_VARIATIONS) {
+      AppendToFormat(aFormat, "woff-variations");
+    }
+    if (formatFlags & gfxUserFontSet::FLAG_FORMAT_WOFF2_VARIATIONS) {
+      AppendToFormat(aFormat, "woff2-variations");
+    }
   }
 }
 
@@ -187,6 +202,108 @@ InspectorFontFace::GetMetadata(nsAString& aMetadata)
       }
     }
   }
+}
+
+// Append an OpenType tag to a string as a 4-ASCII-character code.
+static void
+AppendTagAsASCII(nsAString& aString, uint32_t aTag)
+{
+  aString.AppendPrintf("%c%c%c%c", (aTag >> 24) & 0xff,
+                                   (aTag >> 16) & 0xff,
+                                   (aTag >> 8) & 0xff,
+                                   aTag & 0xff);
+}
+
+void
+InspectorFontFace::GetVariationAxes(nsTArray<InspectorVariationAxis>& aResult,
+                                    ErrorResult& aRV)
+{
+  if (!mFontEntry->HasVariations()) {
+    return;
+  }
+  AutoTArray<gfxFontVariationAxis,4> axes;
+  mFontEntry->GetVariationAxes(axes);
+  MOZ_ASSERT(!axes.IsEmpty());
+  if (!aResult.SetCapacity(axes.Length(), mozilla::fallible)) {
+    aRV.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return;
+  }
+  for (auto a : axes) {
+    InspectorVariationAxis& axis = *aResult.AppendElement();
+    AppendTagAsASCII(axis.mTag, a.mTag);
+    axis.mName = a.mName;
+    axis.mMinValue = a.mMinValue;
+    axis.mMaxValue = a.mMaxValue;
+    axis.mDefaultValue = a.mDefaultValue;
+  }
+}
+
+void
+InspectorFontFace::GetVariationInstances(
+  nsTArray<InspectorVariationInstance>& aResult,
+  ErrorResult& aRV)
+{
+  if (!mFontEntry->HasVariations()) {
+    return;
+  }
+  AutoTArray<gfxFontVariationInstance,16> instances;
+  mFontEntry->GetVariationInstances(instances);
+  if (!aResult.SetCapacity(instances.Length(), mozilla::fallible)) {
+    aRV.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return;
+  }
+  for (auto i : instances) {
+    InspectorVariationInstance& inst = *aResult.AppendElement();
+    inst.mName = i.mName;
+    // inst.mValues is a webidl sequence<>, which is a fallible array,
+    // so we are required to use fallible SetCapacity and AppendElement calls,
+    // and check the result. In practice we don't expect failure here; the
+    // list of values cannot get huge because of limits in the font format.
+    if (!inst.mValues.SetCapacity(i.mValues.Length(), mozilla::fallible)) {
+      aRV.Throw(NS_ERROR_OUT_OF_MEMORY);
+      return;
+    }
+    for (auto v : i.mValues) {
+      InspectorVariationValue value;
+      AppendTagAsASCII(value.mAxis, v.mAxis);
+      value.mValue = v.mValue;
+      // This won't fail, because of SetCapacity above.
+      Unused << inst.mValues.AppendElement(value, mozilla::fallible);
+    }
+  }
+}
+
+void
+InspectorFontFace::GetFeatures(nsTArray<InspectorFontFeature>& aResult,
+                               ErrorResult& aRV)
+{
+  AutoTArray<gfxFontFeatureInfo,64> features;
+  mFontEntry->GetFeatureInfo(features);
+  if (features.IsEmpty()) {
+    return;
+  }
+  if (!aResult.SetCapacity(features.Length(), mozilla::fallible)) {
+    aRV.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return;
+  }
+  for (auto& f : features) {
+    InspectorFontFeature& feat = *aResult.AppendElement();
+    AppendTagAsASCII(feat.mTag, f.mTag);
+    AppendTagAsASCII(feat.mScript, f.mScript);
+    AppendTagAsASCII(feat.mLanguageSystem, f.mLangSys);
+  }
+}
+
+void
+InspectorFontFace::GetRanges(nsTArray<RefPtr<nsRange>>& aResult)
+{
+  aResult = mRanges;
+}
+
+void
+InspectorFontFace::AddRange(nsRange* aRange)
+{
+  mRanges.AppendElement(aRange);
 }
 
 } // namespace dom

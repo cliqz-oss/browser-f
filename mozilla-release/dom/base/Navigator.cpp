@@ -36,6 +36,8 @@
 #include "mozilla/dom/GamepadServiceTest.h"
 #include "mozilla/dom/WakeLock.h"
 #include "mozilla/dom/power/PowerManagerService.h"
+#include "mozilla/dom/MIDIAccessManager.h"
+#include "mozilla/dom/MIDIOptionsBinding.h"
 #include "mozilla/dom/Permissions.h"
 #include "mozilla/dom/Presentation.h"
 #include "mozilla/dom/ServiceWorkerContainer.h"
@@ -45,7 +47,7 @@
 #include "mozilla/dom/VRDisplay.h"
 #include "mozilla/dom/VRDisplayEvent.h"
 #include "mozilla/dom/VRServiceTest.h"
-#include "mozilla/dom/workers/RuntimeService.h"
+#include "mozilla/dom/workerinternals/RuntimeService.h"
 #include "mozilla/Hal.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/StaticPtr.h"
@@ -62,7 +64,6 @@
 #include "nsIStringStream.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
-#include "TimeManager.h"
 #include "nsStreamUtils.h"
 #include "WidgetUtils.h"
 #include "nsIPresentationService.h"
@@ -83,8 +84,8 @@
 #include "mozilla/dom/FormData.h"
 #include "nsIDocShell.h"
 
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 
 #if defined(XP_LINUX)
 #include "mozilla/Hal.h"
@@ -173,9 +174,7 @@ Navigator::~Navigator()
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Navigator)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMNavigator)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNavigator)
-  NS_INTERFACE_MAP_ENTRY(nsIMozNavigatorNetwork)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(Navigator)
@@ -200,7 +199,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mStorageManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCredentials)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaDevices)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTimeManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mServiceWorkerContainer)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
@@ -250,10 +248,6 @@ Navigator::Invalidate()
 
   mMediaDevices = nullptr;
 
-  if (mTimeManager) {
-    mTimeManager = nullptr;
-  }
-
   if (mPresentation) {
     mPresentation = nullptr;
   }
@@ -277,10 +271,6 @@ Navigator::Invalidate()
     mVRServiceTest = nullptr;
   }
 }
-
-//*****************************************************************************
-//    Navigator::nsIDOMNavigator
-//*****************************************************************************
 
 void
 Navigator::GetUserAgent(nsAString& aUserAgent, CallerType aCallerType,
@@ -310,20 +300,26 @@ Navigator::GetUserAgent(nsAString& aUserAgent, CallerType aCallerType,
   }
 }
 
-NS_IMETHODIMP
-Navigator::GetAppCodeName(nsAString& aAppCodeName)
+void
+Navigator::GetAppCodeName(nsAString& aAppCodeName, ErrorResult& aRv)
 {
   nsresult rv;
 
   nsCOMPtr<nsIHttpProtocolHandler>
     service(do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "http", &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aRv.Throw(rv);
+    return;
+  }
 
   nsAutoCString appName;
   rv = service->GetAppName(appName);
-  CopyASCIItoUTF16(appName, aAppCodeName);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aRv.Throw(rv);
+    return;
+  }
 
-  return rv;
+  CopyASCIItoUTF16(appName, aAppCodeName);
 }
 
 void
@@ -407,7 +403,7 @@ Navigator::GetAcceptLanguages(nsTArray<nsString>& aLanguages)
  * See RFC 2616, Section 15.1.4 "Privacy Issues Connected to Accept Headers" for
  * the reasons why.
  */
-NS_IMETHODIMP
+void
 Navigator::GetLanguage(nsAString& aLanguage)
 {
   nsTArray<nsString> languages;
@@ -417,8 +413,6 @@ Navigator::GetLanguage(nsAString& aLanguage)
   } else {
     aLanguage.Truncate();
   }
-
-  return NS_OK;
 }
 
 void
@@ -481,33 +475,29 @@ Navigator::GetOscpu(nsAString& aOSCPU, CallerType aCallerType,
   CopyASCIItoUTF16(oscpu, aOSCPU);
 }
 
-NS_IMETHODIMP
+void
 Navigator::GetVendor(nsAString& aVendor)
 {
   aVendor.Truncate();
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 Navigator::GetVendorSub(nsAString& aVendorSub)
 {
   aVendorSub.Truncate();
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 Navigator::GetProduct(nsAString& aProduct)
 {
   aProduct.AssignLiteral("Gecko");
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 Navigator::GetProductSub(nsAString& aProductSub)
 {
   // Legacy build ID hardcoded for backward compatibility (bug 776376)
   aProductSub.AssignLiteral(LEGACY_BUILD_ID);
-  return NS_OK;
 }
 
 nsMimeTypeArray*
@@ -560,10 +550,7 @@ Navigator::Storage()
   MOZ_ASSERT(mWindow);
 
   if(!mStorageManager) {
-    nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
-    MOZ_ASSERT(global);
-
-    mStorageManager = new StorageManager(global);
+    mStorageManager = new StorageManager(mWindow->AsGlobal());
   }
 
   return mStorageManager;
@@ -660,7 +647,7 @@ Navigator::GetBuildID(nsAString& aBuildID, CallerType aCallerType,
   AppendASCIItoUTF16(buildID, aBuildID);
 }
 
-NS_IMETHODIMP
+void
 Navigator::GetDoNotTrack(nsAString &aResult)
 {
   bool doNotTrack = nsContentUtils::DoNotTrackEnabled();
@@ -674,8 +661,6 @@ Navigator::GetDoNotTrack(nsAString &aResult)
   } else {
     aResult.AssignLiteral("unspecified");
   }
-
-  return NS_OK;
 }
 
 bool
@@ -706,7 +691,8 @@ Navigator::JavaEnabled(CallerType aCallerType, ErrorResult& aRv)
 uint64_t
 Navigator::HardwareConcurrency()
 {
-  workers::RuntimeService* rts = workers::RuntimeService::GetOrCreateService();
+  workerinternals::RuntimeService* rts =
+    workerinternals::RuntimeService::GetOrCreateService();
   if (!rts) {
     return 1;
   }
@@ -978,6 +964,10 @@ Navigator::RegisterProtocolHandler(const nsAString& aProtocol,
     return;
   }
 
+  if (!mWindow->IsSecureContext() && mWindow->GetDoc()) {
+    mWindow->GetDoc()->WarnOnceAbout(nsIDocument::eRegisterProtocolHandlerInsecure);
+  }
+
   nsCOMPtr<nsIWebContentHandlerRegistrar> registrar =
     do_GetService(NS_WEBCONTENTHANDLERREGISTRAR_CONTRACTID);
   if (!registrar) {
@@ -1084,12 +1074,12 @@ Navigator::SendBeacon(const nsAString& aUrl,
   }
 
   if (aData.Value().IsBlob()) {
-    BodyExtractor<nsIXHRSendable> body(&aData.Value().GetAsBlob());
+    BodyExtractor<const Blob> body(&aData.Value().GetAsBlob());
     return SendBeaconInternal(aUrl, &body, eBeaconTypeBlob, aRv);
   }
 
   if (aData.Value().IsFormData()) {
-    BodyExtractor<nsIXHRSendable> body(&aData.Value().GetAsFormData());
+    BodyExtractor<const FormData> body(&aData.Value().GetAsFormData());
     return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, aRv);
   }
 
@@ -1099,7 +1089,7 @@ Navigator::SendBeacon(const nsAString& aUrl,
   }
 
   if (aData.Value().IsURLSearchParams()) {
-    BodyExtractor<nsIXHRSendable> body(&aData.Value().GetAsURLSearchParams());
+    BodyExtractor<const URLSearchParams> body(&aData.Value().GetAsURLSearchParams());
     return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, aRv);
   }
 
@@ -1164,6 +1154,7 @@ Navigator::SendBeaconInternal(const nsAString& aUrl,
                      doc,
                      securityFlags,
                      nsIContentPolicy::TYPE_BEACON,
+                     nullptr, // aPerformanceStorage
                      nullptr, // aLoadGroup
                      nullptr, // aCallbacks
                      loadFlags);
@@ -1325,8 +1316,7 @@ Navigator::GetBattery(ErrorResult& aRv)
     return nullptr;
   }
 
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(mWindow);
-  RefPtr<Promise> batteryPromise = Promise::Create(go, aRv);
+  RefPtr<Promise> batteryPromise = Promise::Create(mWindow->AsGlobal(), aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -1383,8 +1373,7 @@ Navigator::GetVRDisplays(ErrorResult& aRv)
   nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
   win->NotifyVREventListenerAdded();
 
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(mWindow);
-  RefPtr<Promise> p = Promise::Create(go, aRv);
+  RefPtr<Promise> p = Promise::Create(mWindow->AsGlobal(), aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
@@ -1488,16 +1477,22 @@ Navigator::RequestVRPresentation(VRDisplay& aDisplay)
   win->DispatchVRDisplayActivate(aDisplay.DisplayId(), VRDisplayEventReason::Requested);
 }
 
-//*****************************************************************************
-//    Navigator::nsIMozNavigatorNetwork
-//*****************************************************************************
-
-NS_IMETHODIMP
-Navigator::GetProperties(nsINetworkProperties** aProperties)
+already_AddRefed<Promise>
+Navigator::RequestMIDIAccess(const MIDIOptions& aOptions,
+                             ErrorResult& aRv)
 {
-  ErrorResult rv;
-  NS_IF_ADDREF(*aProperties = GetConnection(rv));
-  return NS_OK;
+  if (!mWindow) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+  MIDIAccessManager* accessMgr = MIDIAccessManager::Get();
+  return accessMgr->RequestMIDIAccess(mWindow, aOptions, aRv);
+}
+
+nsINetworkProperties*
+Navigator::GetNetworkProperties()
+{
+  return GetConnection(IgnoreErrors());
 }
 
 network::Connection*
@@ -1513,23 +1508,6 @@ Navigator::GetConnection(ErrorResult& aRv)
 
   return mConnection;
 }
-
-#ifdef MOZ_TIME_MANAGER
-time::TimeManager*
-Navigator::GetMozTime(ErrorResult& aRv)
-{
-  if (!mWindow) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return nullptr;
-  }
-
-  if (!mTimeManager) {
-    mTimeManager = new time::TimeManager(mWindow);
-  }
-
-  return mTimeManager;
-}
-#endif
 
 already_AddRefed<ServiceWorkerContainer>
 Navigator::ServiceWorker()
@@ -1881,9 +1859,8 @@ Navigator::RequestMediaKeySystemAccess(const nsAString& aKeySystem,
                                     ArrayLength(params));
   }
 
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(mWindow);
   RefPtr<DetailedPromise> promise =
-    DetailedPromise::Create(go, aRv,
+    DetailedPromise::Create(mWindow->AsGlobal(), aRv,
       NS_LITERAL_CSTRING("navigator.requestMediaKeySystemAccess"),
       Telemetry::VIDEO_EME_REQUEST_SUCCESS_LATENCY_MS,
       Telemetry::VIDEO_EME_REQUEST_FAILURE_LATENCY_MS);
@@ -1920,6 +1897,13 @@ Navigator::Credentials()
     mCredentials = new CredentialsContainer(GetWindow());
   }
   return mCredentials;
+}
+
+/* static */
+bool
+Navigator::Webdriver()
+{
+  return Preferences::GetBool("marionette.enabled", false);
 }
 
 } // namespace dom

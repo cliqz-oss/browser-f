@@ -27,7 +27,7 @@ def gecko_profiler(target):
     if target.os == 'Android':
         return target.cpu in ('aarch64', 'arm', 'x86')
     elif target.kernel == 'Linux':
-        return target.cpu in ('x86', 'x86_64', 'mips64')
+        return target.cpu in ('x86', 'x86_64', 'mips64', 'arm')
     return target.os in ('OSX', 'WINNT')
 
 @depends(gecko_profiler)
@@ -214,10 +214,12 @@ def gl_provider_define(provider):
 
 set_define('MOZ_GL_PROVIDER', gl_provider_define)
 
-@depends(gl_provider, x11)
-def gl_default_provider(value, x11):
+@depends(gl_provider, wayland, x11)
+def gl_default_provider(value, wayland, x11):
     if value:
         return value
+    elif wayland:
+        return 'EGL'
     elif x11:
         return 'GLX'
 
@@ -550,27 +552,30 @@ simple_keyfile('Pocket API')
 
 # Servo integration
 # ==============================================================
-option('--enable-stylo', nargs='?', choices=('build',),
-       help='Include Stylo in the build and/or enable it at runtime')
+option('--enable-stylo', nargs='?', choices=('build', 'only'),
+       help='Include Stylo in the build.  "build" means to disable Stylo at ' +
+            'runtime, and "only" means to exclude the old style system from ' +
+            'the build.')
 
-@depends('--enable-stylo', '--help', target, milestone)
-def stylo_config(value, _, target, milestone):
+@depends('--enable-stylo', '--help')
+def stylo_config(value, _):
     build_stylo = None
     enable_stylo = None
+    old_style = True
 
-    # If nothing is specified, default to building and enabling Stylo where it
-    # is known to work.
+    # If nothing is specified, default to building and enabling Stylo,
+    # and building the old style system.
     if value.origin == 'default':
-        # Turn stylo on Android beta/release (bug 1432354)
-        if target.os == 'Android' and not milestone.is_nightly:
-            build_stylo = None
-            enable_stylo = None
-        else:
-            build_stylo = True
-            enable_stylo = True
+        build_stylo = True
+        enable_stylo = True
     elif len(value) and value[0] == 'build':
         # Build but disable by request.
         build_stylo = True
+    elif len(value) and value[0] == 'only':
+        # Disable the old style system.
+        build_stylo = True
+        enable_stylo = True
+        old_style = None
     elif bool(value):
         # Build and enable.
         build_stylo = True
@@ -579,6 +584,7 @@ def stylo_config(value, _, target, milestone):
     return namespace(
         build = build_stylo,
         enable = enable_stylo,
+        old_style = old_style,
     )
 
 option('--disable-stylo-build-bindgen',
@@ -794,6 +800,8 @@ set_config('MOZ_STYLO', stylo_config.build)
 set_define('MOZ_STYLO', stylo_config.build)
 set_config('MOZ_STYLO_ENABLE', stylo_config.enable)
 set_define('MOZ_STYLO_ENABLE', stylo_config.enable)
+set_config('MOZ_OLD_STYLE', stylo_config.old_style)
+set_define('MOZ_OLD_STYLE', stylo_config.old_style)
 
 option('--with-servo', env='SERVO_TARGET_DIR', nargs=1,
        help='Absolute path of the target directory where libgeckoservo can '
@@ -944,13 +952,10 @@ set_define('SK_BUILD_FOR_ANDROID_NDK', skia_android)
 
 option('--disable-skia-gpu', help='Disable use of Skia-GPU')
 
-@depends('--disable-skia-gpu', skia, target)
-def skia_gpu(value, skia, target):
+@depends('--disable-skia-gpu', skia)
+def skia_gpu(value, skia):
     if value.origin == 'default':
         if not skia:
-            return None
-        # Skia GPU support may not reliably build on certain *BSDs (see bug 1234494)
-        if target.os in ('NetBSD', 'OpenBSD'):
             return None
     elif value and not skia:
         die('Cannot enable Skia-GPU without enabling Skia')
@@ -1002,22 +1007,17 @@ def sfntly_includes(skia_pdf_sfntly):
 
 set_config('SFNTLY_INCLUDES', sfntly_includes)
 
-@depends(skia, skia_gpu)
-def skia_includes(skia, skia_gpu):
+@depends(skia)
+def skia_includes(skia):
     includes = []
     if skia:
         includes += [
             '/gfx/skia',
             '/gfx/skia/skia/include/config',
             '/gfx/skia/skia/include/core',
-        ]
-
-    if skia_gpu:
-        includes += [
             '/gfx/skia/skia/include/gpu',
             '/gfx/skia/skia/include/utils',
         ]
-
     return includes
 
 set_config('SKIA_INCLUDES', skia_includes)
@@ -1193,3 +1193,26 @@ with only_when(has_elfhack):
 
     set_config('USE_ELF_HACK',
                depends_if('--enable-elf-hack')(lambda _: True))
+
+
+@depends(check_build_environment)
+def idl_roots(build_env):
+    return namespace(ipdl_root=os.path.join(build_env.topobjdir, 'ipc', 'ipdl'),
+                     webidl_root=os.path.join(build_env.topobjdir,
+                                              'dom', 'bindings'))
+
+set_config('WEBIDL_ROOT', idl_roots.webidl_root)
+set_config('IPDL_ROOT', idl_roots.ipdl_root)
+
+# Proxy bypass protection
+# ==============================================================
+
+option('--enable-proxy-bypass-protection',
+       help='Prevent suspected or confirmed proxy bypasses')
+
+@depends_if('--enable-proxy-bypass-protection')
+def proxy_bypass_protection(_):
+    return True
+
+set_config('MOZ_PROXY_BYPASS_PROTECTION', proxy_bypass_protection)
+set_define('MOZ_PROXY_BYPASS_PROTECTION', proxy_bypass_protection)

@@ -5,18 +5,13 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/DeferredTask.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/DeferredTask.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   TelemetrySend: "resource://gre/modules/TelemetrySend.jsm",
@@ -25,7 +20,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   TelemetryController: "resource://gre/modules/TelemetryController.jsm",
   TelemetryStorage: "resource://gre/modules/TelemetryStorage.jsm",
   TelemetryLog: "resource://gre/modules/TelemetryLog.jsm",
-  ThirdPartyCookieProbe: "resource://gre/modules/ThirdPartyCookieProbe.jsm",
   UITelemetry: "resource://gre/modules/UITelemetry.jsm",
   GCTelemetry: "resource://gre/modules/GCTelemetry.jsm",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
@@ -52,7 +46,6 @@ const REASON_SHUTDOWN = "shutdown";
 
 const ENVIRONMENT_CHANGE_LISTENER = "TelemetrySession::onEnvironmentChange";
 
-const MS_IN_ONE_HOUR  = 60 * 60 * 1000;
 const MIN_SUBSESSION_LENGTH_MS = Services.prefs.getIntPref("toolkit.telemetry.minSubsessionLength", 5 * 60) * 1000;
 
 const LOGGER_NAME = "Toolkit.Telemetry";
@@ -61,9 +54,6 @@ const LOGGER_PREFIX = "TelemetrySession" + (Utils.isContentProcess ? "#content::
 const MESSAGE_TELEMETRY_PAYLOAD = "Telemetry:Payload";
 const MESSAGE_TELEMETRY_USS = "Telemetry:USS";
 const MESSAGE_TELEMETRY_GET_CHILD_USS = "Telemetry:GetChildUSS";
-
-const DATAREPORTING_DIRECTORY = "datareporting";
-const ABORTED_SESSION_FILE_NAME = "aborted-session-ping";
 
 // Whether the FHR/Telemetry unification features are enabled.
 // Changing this pref requires a restart.
@@ -184,14 +174,14 @@ var processInfo = {
   _GetProcessIoCounters: null,
   _GetCurrentProcess: null,
   getCounters() {
-    let isWindows = ("@mozilla.org/windows-registry-key;1" in Components.classes);
+    let isWindows = ("@mozilla.org/windows-registry-key;1" in Cc);
     if (isWindows)
       return this.getCounters_Windows();
     return null;
   },
   getCounters_Windows() {
     if (!this._initialized) {
-      Cu.import("resource://gre/modules/ctypes.jsm");
+      ChromeUtils.import("resource://gre/modules/ctypes.jsm");
       this._IO_COUNTERS = new ctypes.StructType("IO_COUNTERS", [
         {"readOps": ctypes.unsigned_long_long},
         {"writeOps": ctypes.unsigned_long_long},
@@ -537,9 +527,9 @@ var TelemetryScheduler = {
   },
 };
 
-this.EXPORTED_SYMBOLS = ["TelemetrySession"];
+var EXPORTED_SYMBOLS = ["TelemetrySession"];
 
-this.TelemetrySession = Object.freeze({
+var TelemetrySession = Object.freeze({
   /**
    * Send a ping to a test server. Used only for testing.
    */
@@ -667,7 +657,6 @@ this.TelemetrySession = Object.freeze({
 });
 
 var Impl = {
-  _histograms: {},
   _initialized: false,
   _logger: null,
   _prevValues: {},
@@ -765,7 +754,7 @@ var Impl = {
     var appTimestamps = {};
     try {
       let o = {};
-      Cu.import("resource://gre/modules/TelemetryTimestamps.jsm", o);
+      ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", o);
       appTimestamps = o.TelemetryTimestamps.get();
     } catch (ex) {}
 
@@ -964,7 +953,7 @@ var Impl = {
     let ret = {};
     for (let processName in scalarsSnapshot) {
       for (let name in scalarsSnapshot[processName]) {
-        if (name.startsWith("telemetry.test") && this._testing == false) {
+        if (name.startsWith("telemetry.test") && !this._testing) {
           continue;
         }
         // Finally arrange the data in the returned object.
@@ -1111,7 +1100,9 @@ var Impl = {
     }
 
     b("MEMORY_VSIZE", "vsize");
-    b("MEMORY_VSIZE_MAX_CONTIGUOUS", "vsizeMaxContiguous");
+    if (!Services.appinfo.is64Bit || AppConstants.platform !== "win") {
+      b("MEMORY_VSIZE_MAX_CONTIGUOUS", "vsizeMaxContiguous");
+    }
     b("MEMORY_RESIDENT_FAST", "residentFast");
     b("MEMORY_UNIQUE", "residentUnique");
     p("MEMORY_HEAP_OVERHEAD_FRACTION", "heapOverheadFraction");
@@ -1198,21 +1189,12 @@ var Impl = {
       return;
     }
 
-    let h = this._histograms[id];
-    if (!h) {
-      if (key) {
-        h = Telemetry.getKeyedHistogramById(id);
-      } else {
-        h = Telemetry.getHistogramById(id);
-      }
-      this._histograms[id] = h;
+    if (key) {
+      Telemetry.getKeyedHistogramById(id).add(key, val);
+      return;
     }
 
-    if (key) {
-      h.add(key, val);
-    } else {
-      h.add(val);
-    }
+    Telemetry.getHistogramById(id).add(val);
   },
 
   getChildPayloads: function getChildPayloads() {
@@ -1464,10 +1446,6 @@ var Impl = {
     this._sessionStartDate = this._subsessionStartDate;
 
     annotateCrashReport(this._sessionId);
-
-    // Initialize some probes that are kept in their own modules
-    this._thirdPartyCookies = new ThirdPartyCookieProbe();
-    this._thirdPartyCookies.init();
 
     // Record old value and update build ID preference if this is the first
     // run with a new build ID.

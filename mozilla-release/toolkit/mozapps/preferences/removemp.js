@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var gRemovePasswordDialog = {
   _token: null,
@@ -19,8 +19,8 @@ var gRemovePasswordDialog = {
 
     this._password = document.getElementById("password");
 
-    var pk11db = Components.classes["@mozilla.org/security/pk11tokendb;1"]
-                           .getService(Components.interfaces.nsIPK11TokenDB);
+    var pk11db = Cc["@mozilla.org/security/pk11tokendb;1"]
+                   .getService(Ci.nsIPK11TokenDB);
     this._token = pk11db.getInternalKeyToken();
 
     // Initialize the enabled state of the Remove button by checking the

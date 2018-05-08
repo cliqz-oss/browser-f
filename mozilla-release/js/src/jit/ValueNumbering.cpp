@@ -582,7 +582,7 @@ ValueNumberer::removePredecessorAndCleanUp(MBasicBlock* block, MBasicBlock* pred
             MOZ_ASSERT(nextDef_ == nullptr);
             for (MInstructionIterator iter(block->begin()), end(block->end()); iter != end; ) {
                 MInstruction* ins = *iter++;
-                nextDef_ = *iter;
+                nextDef_ = iter != end ? *iter : nullptr;
                 if (MResumePoint* resume = ins->resumePoint()) {
                     if (!releaseResumePointOperands(resume) || !processDeadDefs())
                         return false;
@@ -867,7 +867,7 @@ ValueNumberer::visitDefinition(MDefinition* def)
 
 // Visit the control instruction at the end of |block|.
 bool
-ValueNumberer::visitControlInstruction(MBasicBlock* block, const MBasicBlock* dominatorRoot)
+ValueNumberer::visitControlInstruction(MBasicBlock* block)
 {
     // Look for a simplified form of the control instruction.
     MControlInstruction* control = block->lastIns();
@@ -958,7 +958,7 @@ ValueNumberer::visitUnreachableBlock(MBasicBlock* block)
         MDefinition* def = *iter++;
         if (def->hasUses())
             continue;
-        nextDef_ = *iter;
+        nextDef_ = iter ? *iter : nullptr;
         if (!discardDefsRecursively(def))
             return false;
     }
@@ -970,7 +970,7 @@ ValueNumberer::visitUnreachableBlock(MBasicBlock* block)
 
 // Visit all the phis and instructions |block|.
 bool
-ValueNumberer::visitBlock(MBasicBlock* block, const MBasicBlock* dominatorRoot)
+ValueNumberer::visitBlock(MBasicBlock* block)
 {
     MOZ_ASSERT(!block->isMarked(), "Blocks marked unreachable during GVN");
     MOZ_ASSERT(!block->isDead(), "Block to visit is already dead");
@@ -985,7 +985,7 @@ ValueNumberer::visitBlock(MBasicBlock* block, const MBasicBlock* dominatorRoot)
         MDefinition* def = *iter++;
 
         // Remember where our iterator is so that we don't invalidate it.
-        nextDef_ = *iter;
+        nextDef_ = iter ? *iter : nullptr;
 
         // If the definition is dead, discard it.
         if (IsDiscardable(def)) {
@@ -1002,7 +1002,7 @@ ValueNumberer::visitBlock(MBasicBlock* block, const MBasicBlock* dominatorRoot)
     if (!graph_.alloc().ensureBallast())
         return false;
 
-    return visitControlInstruction(block, dominatorRoot);
+    return visitControlInstruction(block);
 }
 
 // Visit all the blocks dominated by dominatorRoot.
@@ -1042,7 +1042,7 @@ ValueNumberer::visitDominatorTree(MBasicBlock* dominatorRoot)
             ++numDiscarded;
         } else {
             // Visit the block!
-            if (!visitBlock(block, dominatorRoot))
+            if (!visitBlock(block))
                 return false;
             ++numVisited;
         }

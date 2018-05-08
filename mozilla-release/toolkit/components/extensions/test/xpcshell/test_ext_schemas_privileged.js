@@ -1,9 +1,9 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 const {ExtensionAPI} = ExtensionCommon;
 
-Components.utils.importGlobalProperties(["Blob", "URL"]);
+Cu.importGlobalProperties(["Blob", "URL"]);
 
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();

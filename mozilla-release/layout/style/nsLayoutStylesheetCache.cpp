@@ -157,6 +157,17 @@ nsLayoutStylesheetCache::XULSheet()
 }
 
 StyleSheet*
+nsLayoutStylesheetCache::XULComponentsSheet()
+{
+  if (!mXULComponentsSheet) {
+    LoadSheetURL("chrome://global/content/components.css",
+                 &mXULComponentsSheet, eAgentSheetFeatures, eCrash);
+  }
+
+  return mXULComponentsSheet;
+}
+
+StyleSheet*
 nsLayoutStylesheetCache::QuirkSheet()
 {
   return mQuirkSheet;
@@ -313,6 +324,7 @@ nsLayoutStylesheetCache::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf
   MEASURE(mUserChromeSheet);
   MEASURE(mUserContentSheet);
   MEASURE(mXULSheet);
+  MEASURE(mXULComponentsSheet);
 
   // Measurement of the following members may be added later if DMD finds it is
   // worthwhile:
@@ -353,6 +365,7 @@ nsLayoutStylesheetCache::nsLayoutStylesheetCache(StyleBackendType aType)
   if (XRE_IsParentProcess()) {
     // We know we need xul.css for the UI, so load that now too:
     XULSheet();
+    XULComponentsSheet();
   }
 
   auto& userContentSheetURL = aType == StyleBackendType::Gecko ?
@@ -886,8 +899,12 @@ nsLayoutStylesheetCache::BuildPreferenceSheet(RefPtr<StyleSheet>* aSheet,
                                               nsPresContext* aPresContext)
 {
   if (mBackendType == StyleBackendType::Gecko) {
+#ifdef MOZ_OLD_STYLE
     *aSheet = new CSSStyleSheet(eAgentSheetFeatures, CORS_NONE,
                                 mozilla::net::RP_Unset);
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     *aSheet = new ServoStyleSheet(eAgentSheetFeatures, CORS_NONE,
                                   mozilla::net::RP_Unset, dom::SRIMetadata());
@@ -987,15 +1004,16 @@ nsLayoutStylesheetCache::BuildPreferenceSheet(RefPtr<StyleSheet>* aSheet,
                "sheet without reallocation");
 
   if (sheet->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
     sheet->AsGecko()->ReparseSheet(NS_ConvertUTF8toUTF16(sheetText));
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     ServoStyleSheet* servoSheet = sheet->AsServo();
     // NB: The pref sheet never has @import rules.
-    nsresult rv = servoSheet->ParseSheet(
-      nullptr, sheetText, uri, uri, nullptr, 0, eCompatibility_FullStandards);
-    // Parsing the about:PreferenceStyleSheet URI can only fail on OOM. If we
-    // are OOM before we parsed any documents we might as well abort.
-    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+    servoSheet->ParseSheetSync(
+      nullptr, sheetText, uri, uri, nullptr, /* aLoadData = */ nullptr, 0, eCompatibility_FullStandards);
   }
 
 #undef NS_GET_R_G_B

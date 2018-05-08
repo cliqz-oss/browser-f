@@ -68,30 +68,6 @@ U2FSoftTokenManager::U2FSoftTokenManager(uint32_t aCounter)
     mCounter(aCounter)
 {}
 
-U2FSoftTokenManager::~U2FSoftTokenManager()
-{
-  nsNSSShutDownPreventionLock locker;
-
-  if (isAlreadyShutDown()) {
-    return;
-  }
-
-  destructorSafeDestroyNSSReference();
-  shutdown(ShutdownCalledFrom::Object);
-}
-
-void
-U2FSoftTokenManager::virtualDestroyNSSReference()
-{
-  destructorSafeDestroyNSSReference();
-}
-
-void
-U2FSoftTokenManager::destructorSafeDestroyNSSReference()
-{
-  mWrappingKey = nullptr;
-}
-
 /**
  * Gets the first key with the given nickname from the given slot. Any other
  * keys found are not returned.
@@ -102,9 +78,7 @@ U2FSoftTokenManager::destructorSafeDestroyNSSReference()
  * @return The first key found. nullptr if no key could be found.
  */
 static UniquePK11SymKey
-GetSymKeyByNickname(const UniquePK11SlotInfo& aSlot,
-                    const nsCString& aNickname,
-                    const nsNSSShutDownPreventionLock&)
+GetSymKeyByNickname(const UniquePK11SlotInfo& aSlot, const nsCString& aNickname)
 {
   MOZ_ASSERT(aSlot);
   if (NS_WARN_IF(!aSlot)) {
@@ -140,8 +114,7 @@ GetSymKeyByNickname(const UniquePK11SlotInfo& aSlot,
 static nsresult
 GenEcKeypair(const UniquePK11SlotInfo& aSlot,
              /*out*/ UniqueSECKEYPrivateKey& aPrivKey,
-             /*out*/ UniqueSECKEYPublicKey& aPubKey,
-             const nsNSSShutDownPreventionLock&)
+             /*out*/ UniqueSECKEYPublicKey& aPubKey)
 {
   MOZ_ASSERT(aSlot);
   if (NS_WARN_IF(!aSlot)) {
@@ -182,8 +155,7 @@ GenEcKeypair(const UniquePK11SlotInfo& aSlot,
 }
 
 nsresult
-U2FSoftTokenManager::GetOrCreateWrappingKey(const UniquePK11SlotInfo& aSlot,
-                                            const nsNSSShutDownPreventionLock& locker)
+U2FSoftTokenManager::GetOrCreateWrappingKey(const UniquePK11SlotInfo& aSlot)
 {
   MOZ_ASSERT(aSlot);
   if (NS_WARN_IF(!aSlot)) {
@@ -192,7 +164,7 @@ U2FSoftTokenManager::GetOrCreateWrappingKey(const UniquePK11SlotInfo& aSlot,
 
   // Search for an existing wrapping key. If we find it,
   // store it for later and mark ourselves initialized.
-  mWrappingKey = GetSymKeyByNickname(aSlot, mSecretNickname, locker);
+  mWrappingKey = GetSymKeyByNickname(aSlot, mSecretNickname);
   if (mWrappingKey) {
     MOZ_LOG(gNSSTokenLog, LogLevel::Debug, ("U2F Soft Token Key found."));
     mInitialized = true;
@@ -244,8 +216,7 @@ U2FSoftTokenManager::GetOrCreateWrappingKey(const UniquePK11SlotInfo& aSlot,
 static nsresult
 GetAttestationCertificate(const UniquePK11SlotInfo& aSlot,
                           /*out*/ UniqueSECKEYPrivateKey& aAttestPrivKey,
-                          /*out*/ UniqueCERTCertificate& aAttestCert,
-                          const nsNSSShutDownPreventionLock& locker)
+                          /*out*/ UniqueCERTCertificate& aAttestCert)
 {
   MOZ_ASSERT(aSlot);
   if (NS_WARN_IF(!aSlot)) {
@@ -255,7 +226,7 @@ GetAttestationCertificate(const UniquePK11SlotInfo& aSlot,
   UniqueSECKEYPublicKey pubKey;
 
   // Construct an ephemeral keypair for this Attestation Certificate
-  nsresult rv = GenEcKeypair(aSlot, aAttestPrivKey, pubKey, locker);
+  nsresult rv = GenEcKeypair(aSlot, aAttestPrivKey, pubKey);
   if (NS_WARN_IF(NS_FAILED(rv) || !aAttestPrivKey || !pubKey)) {
     MOZ_LOG(gNSSTokenLog, LogLevel::Warning,
             ("Failed to gen keypair, NSS error #%d", PORT_GetError()));
@@ -372,16 +343,11 @@ U2FSoftTokenManager::Init()
     return NS_OK;
   }
 
-  nsNSSShutDownPreventionLock locker;
-  if (NS_WARN_IF(isAlreadyShutDown())) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
   UniquePK11SlotInfo slot(PK11_GetInternalKeySlot());
   MOZ_ASSERT(slot.get());
 
   // Search for an existing wrapping key, or create one.
-  nsresult rv = GetOrCreateWrappingKey(slot, locker);
+  nsresult rv = GetOrCreateWrappingKey(slot);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -398,8 +364,7 @@ static UniqueSECItem
 KeyHandleFromPrivateKey(const UniquePK11SlotInfo& aSlot,
                         const UniquePK11SymKey& aPersistentKey,
                         uint8_t* aAppParam, uint32_t aAppParamLen,
-                        const UniqueSECKEYPrivateKey& aPrivKey,
-                        const nsNSSShutDownPreventionLock&)
+                        const UniqueSECKEYPrivateKey& aPrivKey)
 {
   MOZ_ASSERT(aSlot);
   MOZ_ASSERT(aPersistentKey);
@@ -492,8 +457,7 @@ static UniqueSECKEYPrivateKey
 PrivateKeyFromKeyHandle(const UniquePK11SlotInfo& aSlot,
                         const UniquePK11SymKey& aPersistentKey,
                         uint8_t* aKeyHandle, uint32_t aKeyHandleLen,
-                        uint8_t* aAppParam, uint32_t aAppParamLen,
-                        const nsNSSShutDownPreventionLock&)
+                        uint8_t* aAppParam, uint32_t aAppParamLen)
 {
   MOZ_ASSERT(aSlot);
   MOZ_ASSERT(aPersistentKey);
@@ -579,11 +543,6 @@ U2FSoftTokenManager::IsRegistered(const nsTArray<uint8_t>& aKeyHandle,
                                   const nsTArray<uint8_t>& aAppParam,
                                   bool& aResult)
 {
-  nsNSSShutDownPreventionLock locker;
-  if (NS_WARN_IF(isAlreadyShutDown())) {
-    return NS_ERROR_FAILURE;
-  }
-
   if (!mInitialized) {
     nsresult rv = Init();
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -599,8 +558,7 @@ U2FSoftTokenManager::IsRegistered(const nsTArray<uint8_t>& aKeyHandle,
                                                            const_cast<uint8_t*>(aKeyHandle.Elements()),
                                                            aKeyHandle.Length(),
                                                            const_cast<uint8_t*>(aAppParam.Elements()),
-                                                           aAppParam.Length(),
-                                                           locker);
+                                                           aAppParam.Length());
   aResult = privKey.get() != nullptr;
   return NS_OK;
 }
@@ -625,17 +583,8 @@ U2FSoftTokenManager::IsRegistered(const nsTArray<uint8_t>& aKeyHandle,
 // *      attestation signature
 //
 RefPtr<U2FRegisterPromise>
-U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-                              const WebAuthnAuthenticatorSelection &aAuthenticatorSelection,
-                              const nsTArray<uint8_t>& aApplication,
-                              const nsTArray<uint8_t>& aChallenge,
-                              uint32_t aTimeoutMS)
+U2FSoftTokenManager::Register(const WebAuthnMakeCredentialInfo& aInfo)
 {
-  nsNSSShutDownPreventionLock locker;
-  if (NS_WARN_IF(isAlreadyShutDown())) {
-    return U2FRegisterPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
-  }
-
   if (!mInitialized) {
     nsresult rv = Init();
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -643,18 +592,20 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
     }
   }
 
+  const WebAuthnAuthenticatorSelection& sel = aInfo.AuthenticatorSelection();
+
   // The U2F softtoken neither supports resident keys or
   // user verification, nor is it a platform authenticator.
-  if (aAuthenticatorSelection.requireResidentKey() ||
-      aAuthenticatorSelection.requireUserVerification() ||
-      aAuthenticatorSelection.requirePlatformAttachment()) {
+  if (sel.requireResidentKey() ||
+      sel.requireUserVerification() ||
+      sel.requirePlatformAttachment()) {
     return U2FRegisterPromise::CreateAndReject(NS_ERROR_DOM_NOT_ALLOWED_ERR, __func__);
   }
 
   // Optional exclusion list.
-  for (auto cred: aCredentials) {
+  for (const WebAuthnScopedCredential& cred: aInfo.ExcludeList()) {
     bool isRegistered = false;
-    nsresult rv = IsRegistered(cred.id(), aApplication, isRegistered);
+    nsresult rv = IsRegistered(cred.id(), aInfo.RpIdHash(), isRegistered);
     if (NS_FAILED(rv)) {
       return U2FRegisterPromise::CreateAndReject(rv, __func__);
     }
@@ -672,8 +623,7 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
   // Construct a one-time-use Attestation Certificate
   UniqueSECKEYPrivateKey attestPrivKey;
   UniqueCERTCertificate attestCert;
-  nsresult rv = GetAttestationCertificate(slot, attestPrivKey, attestCert,
-                                          locker);
+  nsresult rv = GetAttestationCertificate(slot, attestPrivKey, attestCert);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return U2FRegisterPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
@@ -683,23 +633,24 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
   // Generate a new keypair; the private will be wrapped into a Key Handle
   UniqueSECKEYPrivateKey privKey;
   UniqueSECKEYPublicKey pubKey;
-  rv = GenEcKeypair(slot, privKey, pubKey, locker);
+  rv = GenEcKeypair(slot, privKey, pubKey);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return U2FRegisterPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   // The key handle will be the result of keywrap(privKey, key=mWrappingKey)
-  UniqueSECItem keyHandleItem = KeyHandleFromPrivateKey(slot, mWrappingKey,
-                                                        const_cast<uint8_t*>(aApplication.Elements()),
-                                                        aApplication.Length(),
-                                                        privKey, locker);
+  UniqueSECItem keyHandleItem =
+    KeyHandleFromPrivateKey(slot, mWrappingKey,
+                            const_cast<uint8_t*>(aInfo.RpIdHash().Elements()),
+                            aInfo.RpIdHash().Length(), privKey);
   if (NS_WARN_IF(!keyHandleItem.get())) {
     return U2FRegisterPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   // Sign the challenge using the Attestation privkey (from attestCert)
   mozilla::dom::CryptoBuffer signedDataBuf;
-  if (NS_WARN_IF(!signedDataBuf.SetCapacity(1 + aApplication.Length() + aChallenge.Length() +
+  if (NS_WARN_IF(!signedDataBuf.SetCapacity(1 + aInfo.RpIdHash().Length() +
+                                            aInfo.ClientDataHash().Length() +
                                             keyHandleItem->len + kPublicKeyLen,
                                             mozilla::fallible))) {
     return U2FRegisterPromise::CreateAndReject(NS_ERROR_OUT_OF_MEMORY, __func__);
@@ -708,8 +659,8 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
   // // It's OK to ignore the return values here because we're writing into
   // // pre-allocated space
   signedDataBuf.AppendElement(0x00, mozilla::fallible);
-  signedDataBuf.AppendElements(aApplication, mozilla::fallible);
-  signedDataBuf.AppendElements(aChallenge, mozilla::fallible);
+  signedDataBuf.AppendElements(aInfo.RpIdHash(), mozilla::fallible);
+  signedDataBuf.AppendElements(aInfo.ClientDataHash(), mozilla::fallible);
   signedDataBuf.AppendSECItem(keyHandleItem.get());
   signedDataBuf.AppendSECItem(pubKey->u.ec.publicValue);
 
@@ -737,8 +688,32 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
   registrationBuf.AppendSECItem(attestCert.get()->derCert);
   registrationBuf.AppendSECItem(signatureItem);
 
-  U2FRegisterResult result((nsTArray<uint8_t>(registrationBuf)));
+  // Will be set by the U2FTokenManager.
+  bool directAttestationPermitted = false;
+  WebAuthnMakeCredentialResult result((nsTArray<uint8_t>(registrationBuf)),
+                                      directAttestationPermitted);
   return U2FRegisterPromise::CreateAndResolve(Move(result), __func__);
+}
+
+bool
+U2FSoftTokenManager::FindRegisteredKeyHandle(const nsTArray<nsTArray<uint8_t>>& aAppIds,
+                                             const nsTArray<WebAuthnScopedCredential>& aCredentials,
+                                             /*out*/ nsTArray<uint8_t>& aKeyHandle,
+                                             /*out*/ nsTArray<uint8_t>& aAppId)
+{
+  for (const nsTArray<uint8_t>& app_id: aAppIds) {
+    for (const WebAuthnScopedCredential& cred: aCredentials) {
+      bool isRegistered = false;
+      nsresult rv = IsRegistered(cred.id(), app_id, isRegistered);
+      if (NS_SUCCEEDED(rv) && isRegistered) {
+        aKeyHandle.Assign(cred.id());
+        aAppId.Assign(app_id);
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 // A U2F Sign operation creates a signature over the "param" arguments (plus
@@ -758,34 +733,35 @@ U2FSoftTokenManager::Register(const nsTArray<WebAuthnScopedCredential>& aCredent
 //  *     Signature
 //
 RefPtr<U2FSignPromise>
-U2FSoftTokenManager::Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-                          const nsTArray<uint8_t>& aApplication,
-                          const nsTArray<uint8_t>& aChallenge,
-                          bool aRequireUserVerification,
-                          uint32_t aTimeoutMS)
+U2FSoftTokenManager::Sign(const WebAuthnGetAssertionInfo& aInfo)
 {
-  nsNSSShutDownPreventionLock locker;
-  if (NS_WARN_IF(isAlreadyShutDown())) {
-    return U2FSignPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
-  }
-
-  // The U2F softtoken doesn't support user verification.
-  if (aRequireUserVerification) {
-    return U2FSignPromise::CreateAndReject(NS_ERROR_DOM_NOT_ALLOWED_ERR, __func__);
-  }
-
-  nsTArray<uint8_t> keyHandle;
-  for (auto cred: aCredentials) {
-    bool isRegistered = false;
-    nsresult rv = IsRegistered(cred.id(), aApplication, isRegistered);
-    if (NS_SUCCEEDED(rv) && isRegistered) {
-      keyHandle.Assign(cred.id());
-      break;
+  if (!mInitialized) {
+    nsresult rv = Init();
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return U2FSignPromise::CreateAndReject(rv, __func__);
     }
   }
 
-  // Fail if we didn't recognize a key id.
-  if (keyHandle.IsEmpty()) {
+  // The U2F softtoken doesn't support user verification.
+  if (aInfo.RequireUserVerification()) {
+    return U2FSignPromise::CreateAndReject(NS_ERROR_DOM_NOT_ALLOWED_ERR, __func__);
+  }
+
+  nsTArray<nsTArray<uint8_t>> appIds;
+  appIds.AppendElement(aInfo.RpIdHash());
+
+  // Process extensions.
+  for (const WebAuthnExtension& ext: aInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionAppId) {
+      appIds.AppendElement(ext.get_WebAuthnExtensionAppId().AppId());
+    }
+  }
+
+  nsTArray<uint8_t> chosenAppId;
+  nsTArray<uint8_t> keyHandle;
+
+  // Fail if we can't find a valid key handle.
+  if (!FindRegisteredKeyHandle(appIds, aInfo.AllowList(), keyHandle, chosenAppId)) {
     return U2FSignPromise::CreateAndReject(NS_ERROR_DOM_NOT_ALLOWED_ERR, __func__);
   }
 
@@ -794,21 +770,23 @@ U2FSoftTokenManager::Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials
   UniquePK11SlotInfo slot(PK11_GetInternalSlot());
   MOZ_ASSERT(slot.get());
 
-  if (NS_WARN_IF((aChallenge.Length() != kParamLen) || (aApplication.Length() != kParamLen))) {
+  if (NS_WARN_IF((aInfo.ClientDataHash().Length() != kParamLen) ||
+                 (chosenAppId.Length() != kParamLen))) {
     MOZ_LOG(gNSSTokenLog, LogLevel::Warning,
             ("Parameter lengths are wrong! challenge=%d app=%d expected=%d",
-             (uint32_t)aChallenge.Length(), (uint32_t)aApplication.Length(), kParamLen));
+             (uint32_t)aInfo.ClientDataHash().Length(),
+             (uint32_t)chosenAppId.Length(), kParamLen));
 
     return U2FSignPromise::CreateAndReject(NS_ERROR_ILLEGAL_VALUE, __func__);
   }
 
   // Decode the key handle
-  UniqueSECKEYPrivateKey privKey = PrivateKeyFromKeyHandle(slot, mWrappingKey,
-                                                           const_cast<uint8_t*>(keyHandle.Elements()),
-                                                           keyHandle.Length(),
-                                                           const_cast<uint8_t*>(aApplication.Elements()),
-                                                           aApplication.Length(),
-                                                           locker);
+  UniqueSECKEYPrivateKey privKey =
+    PrivateKeyFromKeyHandle(slot, mWrappingKey,
+                            const_cast<uint8_t*>(keyHandle.Elements()),
+                            keyHandle.Length(),
+                            const_cast<uint8_t*>(chosenAppId.Elements()),
+                            chosenAppId.Length());
   if (NS_WARN_IF(!privKey.get())) {
     MOZ_LOG(gNSSTokenLog, LogLevel::Warning, ("Couldn't get the priv key!"));
     return U2FSignPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
@@ -837,11 +815,13 @@ U2FSoftTokenManager::Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials
 
   // It's OK to ignore the return values here because we're writing into
   // pre-allocated space
-  signedDataBuf.AppendElements(aApplication.Elements(), aApplication.Length(),
+  signedDataBuf.AppendElements(chosenAppId.Elements(),
+                               chosenAppId.Length(),
                                mozilla::fallible);
   signedDataBuf.AppendElement(0x01, mozilla::fallible);
   signedDataBuf.AppendSECItem(counterItem);
-  signedDataBuf.AppendElements(aChallenge.Elements(), aChallenge.Length(),
+  signedDataBuf.AppendElements(aInfo.ClientDataHash().Elements(),
+                               aInfo.ClientDataHash().Length(),
                                mozilla::fallible);
 
   if (MOZ_LOG_TEST(gNSSTokenLog, LogLevel::Debug)) {
@@ -879,7 +859,15 @@ U2FSoftTokenManager::Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials
   signatureBuf.AppendSECItem(counterItem);
   signatureBuf.AppendSECItem(signatureItem);
 
-  U2FSignResult result(Move(keyHandle), nsTArray<uint8_t>(signatureBuf));
+  nsTArray<uint8_t> signature(signatureBuf);
+  nsTArray<WebAuthnExtensionResult> extensions;
+
+  if (chosenAppId != aInfo.RpIdHash()) {
+    // Indicate to the RP that we used the FIDO appId.
+    extensions.AppendElement(WebAuthnExtensionResultAppId(true));
+  }
+
+  WebAuthnGetAssertionResult result(chosenAppId, keyHandle, signature, extensions);
   return U2FSignPromise::CreateAndResolve(Move(result), __func__);
 }
 

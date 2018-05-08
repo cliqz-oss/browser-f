@@ -63,7 +63,7 @@ use js::jsapi::{GCTraceKindToAscii, Heap, JSObject, JSTracer, TraceKind};
 use js::jsval::JSVal;
 use js::rust::Runtime;
 use metrics::{InteractiveMetrics, InteractiveWindow};
-use msg::constellation_msg::{BrowsingContextId, FrameType, PipelineId, TopLevelBrowsingContextId};
+use msg::constellation_msg::{BrowsingContextId, PipelineId, TopLevelBrowsingContextId};
 use net_traits::{Metadata, NetworkError, ReferrerPolicy, ResourceThreads};
 use net_traits::filemanager_thread::RelativePos;
 use net_traits::image::base::{Image, ImageMetadata};
@@ -79,7 +79,7 @@ use profile_traits::time::ProfilerChan as TimeProfilerChan;
 use script_layout_interface::OpaqueStyleAndLayoutData;
 use script_layout_interface::reporter::CSSErrorReporter;
 use script_layout_interface::rpc::LayoutRPC;
-use script_traits::{DocumentActivity, ScriptToConstellationChan, TimerEventId, TimerSource, TouchpadPressurePhase};
+use script_traits::{DocumentActivity, ScriptToConstellationChan, TimerEventId, TimerSource};
 use script_traits::{UntrustedNodeAddress, WindowSizeData, WindowSizeType};
 use script_traits::DrawAPaintImageResult;
 use selectors::matching::ElementSelectorFlags;
@@ -105,7 +105,7 @@ use style::media_queries::MediaList;
 use style::properties::PropertyDeclarationBlock;
 use style::selector_parser::{PseudoElement, Snapshot};
 use style::shared_lock::{SharedRwLock as StyleSharedRwLock, Locked as StyleLocked};
-use style::stylesheet_set::StylesheetSet;
+use style::stylesheet_set::DocumentStylesheetSet;
 use style::stylesheets::{CssRules, FontFaceRule, KeyframesRule, MediaRule, Stylesheet};
 use style::stylesheets::{NamespaceRule, StyleRule, ImportRule, SupportsRule, ViewportRule};
 use style::stylesheets::keyframes_rule::Keyframe;
@@ -206,7 +206,7 @@ unsafe impl<T: JSTraceable> JSTraceable for UnsafeCell<T> {
 
 unsafe impl<T: JSTraceable> JSTraceable for DomRefCell<T> {
     unsafe fn trace(&self, trc: *mut JSTracer) {
-        (*self).borrow_for_gc_trace().trace(trc)
+        (*self).borrow().trace(trc)
     }
 }
 
@@ -351,7 +351,7 @@ unsafe_no_jsmanaged_fields!(PropertyDeclarationBlock);
 // These three are interdependent, if you plan to put jsmanaged data
 // in one of these make sure it is propagated properly to containing structs
 unsafe_no_jsmanaged_fields!(DocumentActivity, WindowSizeData, WindowSizeType);
-unsafe_no_jsmanaged_fields!(BrowsingContextId, FrameType, PipelineId, TopLevelBrowsingContextId);
+unsafe_no_jsmanaged_fields!(BrowsingContextId, PipelineId, TopLevelBrowsingContextId);
 unsafe_no_jsmanaged_fields!(TimerEventId, TimerSource);
 unsafe_no_jsmanaged_fields!(TimelineMarkerType);
 unsafe_no_jsmanaged_fields!(WorkerId);
@@ -385,7 +385,6 @@ unsafe_no_jsmanaged_fields!(Request);
 unsafe_no_jsmanaged_fields!(RequestInit);
 unsafe_no_jsmanaged_fields!(SharedRt);
 unsafe_no_jsmanaged_fields!(StyleSharedRwLock);
-unsafe_no_jsmanaged_fields!(TouchpadPressurePhase);
 unsafe_no_jsmanaged_fields!(USVString);
 unsafe_no_jsmanaged_fields!(ReferrerPolicy);
 unsafe_no_jsmanaged_fields!(Response);
@@ -659,7 +658,7 @@ unsafe impl JSTraceable for StyleLocked<MediaList> {
     }
 }
 
-unsafe impl<S> JSTraceable for StylesheetSet<S>
+unsafe impl<S> JSTraceable for DocumentStylesheetSet<S>
 where
     S: JSTraceable + ::style::stylesheets::StylesheetInDocument + PartialEq + 'static,
 {

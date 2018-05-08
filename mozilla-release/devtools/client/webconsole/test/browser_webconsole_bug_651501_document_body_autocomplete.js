@@ -48,11 +48,11 @@ function consoleOpened() {
     popup.once("popup-closed", () => {
       deferred.resolve();
     });
-    EventUtils.synthesizeKey("VK_ESCAPE", {});
+    EventUtils.synthesizeKey("KEY_Escape");
   });
 
   jsterm.setInputValue("document.body");
-  EventUtils.synthesizeKey(".", {});
+  EventUtils.sendString(".");
 
   return deferred.promise;
 }
@@ -73,7 +73,7 @@ function autocompletePopupHidden() {
 
   let inputStr = "document.b";
   jsterm.setInputValue(inputStr);
-  EventUtils.synthesizeKey("o", {});
+  EventUtils.sendString("o");
   let testStr = inputStr.replace(/./g, " ") + " ";
 
   return deferred.promise;
@@ -85,7 +85,7 @@ function testPropertyPanel() {
   let jsterm = gHUD.jsterm;
   jsterm.clearOutput();
   jsterm.execute("document", (msg) => {
-    jsterm.once("variablesview-fetched", (evt, view) => {
+    jsterm.once("variablesview-fetched", (view) => {
       deferred.resolve(view);
     });
     let anchor = msg.querySelector(".message-body a");

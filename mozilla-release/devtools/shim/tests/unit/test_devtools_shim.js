@@ -5,8 +5,8 @@
 "use strict";
 
 const { DevToolsShim } =
-    Components.utils.import("chrome://devtools-shim/content/DevToolsShim.jsm", {});
-const { Services } = Components.utils.import("resource://gre/modules/Services.jsm", {});
+    ChromeUtils.import("chrome://devtools-shim/content/DevToolsShim.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 // Test the DevToolsShim
 
@@ -141,15 +141,28 @@ function test_restore_session_apis() {
     browserConsole: true,
   };
 
-  Services.prefs.setBoolPref("devtools.enabled", false);
-  ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
-  ok(!DevToolsShim.isEnabled(), "DevTools are not enabled");
+  function checkRestoreSessionNotApplied(policyDisabled, enabled) {
+    Services.prefs.setBoolPref("devtools.enabled", enabled);
+    Services.prefs.setBoolPref("devtools.policy.disabled", policyDisabled);
+    ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
+    ok(!DevToolsShim.isEnabled(), "DevTools are not enabled");
 
-  // Check that save & restore DevToolsSession don't initialize the tools and don't crash.
-  DevToolsShim.saveDevToolsSession({});
-  DevToolsShim.restoreDevToolsSession(sessionWithDevTools);
+    // Check that save & restore DevToolsSession don't initialize the tools and don't
+    // crash.
+    DevToolsShim.saveDevToolsSession({});
+    DevToolsShim.restoreDevToolsSession(sessionWithDevTools);
+    ok(!DevToolsShim.isInitialized(), "DevTools are still not initialized");
+  }
+
+  // Tools are disabled by policy and not enabled
+  checkRestoreSessionNotApplied(true, false);
+  // Tools are not disabled by policy, but not enabled
+  checkRestoreSessionNotApplied(false, false);
+  // Tools are disabled by policy and "considered" as enabled (see Bug 1440675)
+  checkRestoreSessionNotApplied(true, true);
 
   Services.prefs.setBoolPref("devtools.enabled", true);
+  Services.prefs.setBoolPref("devtools.policy.disabled", false);
   ok(DevToolsShim.isEnabled(), "DevTools are enabled");
   ok(!DevToolsShim.isInitialized(), "DevTools are not initialized");
 

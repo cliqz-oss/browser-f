@@ -26,6 +26,13 @@ var TIME_PRECISION = 0.0005; // ms
  * times based on their precision requirements.
  */
 function assert_times_equal(actual, expected, description) {
+  assert_approx_equals(actual, expected, TIME_PRECISION * 2, description);
+}
+
+/*
+ * Compare a time value based on its precision requirements with a fixed value.
+ */
+function assert_time_equals_literal(actual, expected, description) {
   assert_approx_equals(actual, expected, TIME_PRECISION, description);
 }
 
@@ -412,3 +419,14 @@ function waitForPaints() {
   // (bug 1341294).
   return waitForAnimationFrames(2);
 }
+
+// Returns true if |aAnimation| begins at the current timeline time.  We
+// sometimes need to detect this case because if we started an animation
+// asynchronously (e.g. using play()) and then ended up running the next frame
+// at precisely the time the animation started (due to aligning with vsync
+// refresh rate) then we won't end up restyling in that frame.
+function animationStartsRightNow(aAnimation) {
+  return aAnimation.startTime === aAnimation.timeline.currentTime &&
+         aAnimation.currentTime === 0;
+}
+

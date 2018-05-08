@@ -6,8 +6,6 @@
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/" +
     "security/sandbox/test/browser_content_sandbox_utils.js", this);
 
-const FONT_EXTENSIONS = [ "otf", "ttf", "ttc", "otc", "dfont" ];
-
 /*
  * This test exercises file I/O from web and file content processes using
  * OS.File methods to validate that calls that are meant to be blocked by
@@ -18,7 +16,7 @@ const FONT_EXTENSIONS = [ "otf", "ttf", "ttc", "otc", "dfont" ];
 // if the file was successfully created, otherwise false. Include imports
 // so this can be safely serialized and run remotely by ContentTask.spawn.
 function createFile(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   let encoder = new TextEncoder();
   let array = encoder.encode("TEST FILE DUMMY DATA");
   return OS.File.writeAtomic(path, array).then(function(value) {
@@ -32,7 +30,7 @@ function createFile(path) {
 // if the symlink was successfully created, otherwise false. Include imports
 // so this can be safely serialized and run remotely by ContentTask.spawn.
 function createSymlink(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   // source location for the symlink can be anything
   return OS.File.unixSymLink("/Users", path).then(function(value) {
     return true;
@@ -45,7 +43,7 @@ function createSymlink(path) {
 // if the file was successfully deleted, otherwise false. Include imports
 // so this can be safely serialized and run remotely by ContentTask.spawn.
 function deleteFile(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   return OS.File.remove(path, {ignoreAbsent: false}).then(function(value) {
     return true;
   }).catch(function(err) {
@@ -58,7 +56,7 @@ function deleteFile(path) {
 // resolves with an object where .ok indicates success or failure and
 // .numEntries is the number of directory entries found.
 function readDir(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   let numEntries = 0;
   let iterator = new OS.File.DirectoryIterator(path);
   let promise = iterator.forEach(function (dirEntry) {
@@ -76,7 +74,7 @@ function readDir(path) {
 // reading is completed. Returned object has boolean .ok to indicate
 // success or failure.
 function readFile(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   let promise = OS.File.read(path).then(function (binaryData) {
     return {ok: true};
   }).catch(function (error) {
@@ -89,7 +87,7 @@ function readFile(path) {
 // stat is successful. Returned object has boolean .ok to indicate
 // success or failure.
 function statPath(path) {
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   let promise = OS.File.stat(path).then(function (stat) {
     return {ok: true};
   }).catch(function (error) {
@@ -163,9 +161,7 @@ function minHomeReadSandboxLevel(level) {
 // content process--expected to fail.
 //
 // Tests attempting to write to a file in the content temp directory
-// from the content process--expected to succeed. On Mac and Windows,
-// use "ContentTmpD", but on Linux use "TmpD" until Linux uses the
-// content temp dir key.
+// from the content process--expected to succeed. Uses "ContentTmpD".
 //
 // Tests reading various files and directories from file and web
 // content processes.
@@ -182,9 +178,6 @@ add_task(async function() {
   let prefExists = true;
 
   // Read the security.sandbox.content.level pref.
-  // If the pref isn't set and we're running on Linux on !isNightly(),
-  // exit without failing. The Linux content sandbox is only enabled
-  // on Nightly at this time.
   // eslint-disable-next-line mozilla/use-default-preference-values
   try {
     level = Services.prefs.getIntPref("security.sandbox.content.level");
@@ -225,76 +218,41 @@ async function createFileInHome() {
   let homeFile = fileInHomeDir();
   let path = homeFile.path;
   let fileCreated = await ContentTask.spawn(browser, path, createFile);
-  ok(fileCreated == false, "creating a file in home dir is not permitted");
-  if (fileCreated == true) {
+  ok(!fileCreated, "creating a file in home dir is not permitted");
+  if (fileCreated) {
     // content process successfully created the file, now remove it
     homeFile.remove(false);
   }
 }
 
-// Test if the content process can create a temp file, should pass. Also test
-// that the content process cannot create symlinks or delete files.
+// Test if the content process can create a temp file, this is disallowed on
+// macOS but allowed everywhere else. Also test that the content process cannot
+// create symlinks or delete files.
 async function createTempFile() {
   let browser = gBrowser.selectedBrowser;
   let path = fileInTempDir().path;
   let fileCreated = await ContentTask.spawn(browser, path, createFile);
-  ok(fileCreated == true, "creating a file in content temp is permitted");
+  if (isMac()) {
+    ok(!fileCreated, "creating a file in content temp is not permitted");
+  } else {
+    ok(!!fileCreated, "creating a file in content temp is permitted");
+  }
   // now delete the file
   let fileDeleted = await ContentTask.spawn(browser, path, deleteFile);
   if (isMac()) {
     // On macOS we do not allow file deletion - it is not needed by the content
     // process itself, and macOS uses a different permission to control access
     // so revoking it is easy.
-    ok(fileDeleted == false,
+    ok(!fileDeleted,
        "deleting a file in content temp is not permitted");
 
     let path = fileInTempDir().path;
     let symlinkCreated = await ContentTask.spawn(browser, path, createSymlink);
-    ok(symlinkCreated == false,
+    ok(!symlinkCreated,
        "created a symlink in content temp is not permitted");
   } else {
-    ok(fileDeleted == true, "deleting a file in content temp is permitted");
+    ok(!!fileDeleted, "deleting a file in content temp is permitted");
   }
-}
-
-// Build a list of nonexistent font file paths (lower and upper case) with
-// all the font extensions we want the sandbox to allow read access to.
-// Generate paths within base directory |baseDir|.
-function getFontTestPaths(baseDir) {
-  baseDir = baseDir + "/";
-
-  let basename = uuid();
-  let testPaths = [];
-
-  for (let ext of FONT_EXTENSIONS) {
-    // lower case filename
-    let lcFilename = baseDir + (basename + "lc." + ext).toLowerCase();
-    testPaths.push(lcFilename);
-    // upper case filename
-    let ucFilename = baseDir + (basename + "UC." + ext).toUpperCase();
-    testPaths.push(ucFilename);
-  }
-  return testPaths;
-}
-
-// Build a list of nonexistent invalid font file paths. Specifically,
-// paths that include the valid font extensions but should fail to load.
-// For example, if a font extension happens to be a substring of the filename
-// but isn't the extension. Generate paths within base directory |baseDir|.
-function getBadFontTestPaths(baseDir) {
-  baseDir = baseDir + "/";
-
-  let basename = uuid();
-  let testPaths = [];
-
-  for (let ext of FONT_EXTENSIONS) {
-    let filename = baseDir + basename + "." + ext + ".txt";
-    testPaths.push(filename);
-
-    filename = baseDir + basename + "." + ext + ext + ".txt";
-    testPaths.push(filename);
-  }
-  return testPaths;
 }
 
 // Test reading files and dirs from web and file content processes.
@@ -327,69 +285,15 @@ async function testFileAccess() {
   // that will be read from either a web or file process.
   let tests = [];
 
-  // Test that Mac content processes can read files with font extensions
-  // and fail to read files that include the font extension as a
-  // non-extension substring.
-  if (isMac()) {
-    // Use the same directory for valid/invalid font path tests to ensure
-    // the font isn't allowed because the directory is already allowed.
-    let fontTestDir = "/private/tmp";
-    let fontTestPaths = getFontTestPaths(fontTestDir);
-    let badFontTestPaths = getBadFontTestPaths(fontTestDir);
-
-    // before we start creating dummy font files,
-    // register a cleanup func to remove them
-    registerCleanupFunction(async function() {
-      for (let fontPath of fontTestPaths.concat(badFontTestPaths)) {
-        await OS.File.remove(fontPath, {ignoreAbsent: true});
-      }
-    });
-
-    // create each dummy font file and add a test for it
-    for (let fontPath of fontTestPaths) {
-      let result = await createFile(fontPath);
-      Assert.ok(result, `${fontPath} created`);
-
-      let fontFile = GetFile(fontPath);
-      tests.push({
-        desc:     "font file",                  // description
-        ok:       true,                         // expected to succeed?
-        browser:  webBrowser,                   // browser to run test in
-        file:     fontFile,                     // nsIFile object
-        minLevel: minHomeReadSandboxLevel(),    // min level to enable test
-        func:     readFile,                     // the test function to use
-      });
-    }
-    for (let fontPath of badFontTestPaths) {
-      let result = await createFile(fontPath);
-      Assert.ok(result, `${fontPath} created`);
-
-      let fontFile = GetFile(fontPath);
-      tests.push({
-        desc:     "invalid font file",          // description
-        ok:       false,                        // expected to succeed?
-        browser:  webBrowser,                   // browser to run test in
-        file:     fontFile,                     // nsIFile object
-        minLevel: minHomeReadSandboxLevel(),    // min level to enable test
-        func:     readFile,                     // the test function to use
-      });
-    }
-  }
-
-  // The Linux test runners create the temporary profile in the same
-  // system temp dir we give write access to, so this gives a false
-  // positive.
   let profileDir = GetProfileDir();
-  if (!isLinux()) {
-    tests.push({
-      desc:     "profile dir",                // description
-      ok:       false,                        // expected to succeed?
-      browser:  webBrowser,                   // browser to run test in
-      file:     profileDir,                   // nsIFile object
-      minLevel: minProfileReadSandboxLevel(), // min level to enable test
-      func:     readDir,
-    });
-  }
+  tests.push({
+    desc:     "profile dir",                // description
+    ok:       false,                        // expected to succeed?
+    browser:  webBrowser,                   // browser to run test in
+    file:     profileDir,                   // nsIFile object
+    minLevel: minProfileReadSandboxLevel(), // min level to enable test
+    func:     readDir,
+  });
   if (fileContentProcessEnabled) {
     tests.push({
       desc:     "profile dir",
@@ -651,18 +555,14 @@ async function testFileAccess() {
 
   let cookiesFile = GetProfileEntry("cookies.sqlite");
   if (cookiesFile.exists() && !cookiesFile.isDirectory()) {
-    // On Linux, the temporary profile used for tests is in the system
-    // temp dir which content has read access to, so this test fails.
-    if (!isLinux()) {
-      tests.push({
-        desc:     "cookies file",
-        ok:       false,
-        browser:  webBrowser,
-        file:     cookiesFile,
-        minLevel: minProfileReadSandboxLevel(),
-        func:     readFile,
-      });
-    }
+    tests.push({
+      desc:     "cookies file",
+      ok:       false,
+      browser:  webBrowser,
+      file:     cookiesFile,
+      minLevel: minProfileReadSandboxLevel(),
+      func:     readFile,
+    });
     if (fileContentProcessEnabled) {
       tests.push({
         desc:     "cookies file",

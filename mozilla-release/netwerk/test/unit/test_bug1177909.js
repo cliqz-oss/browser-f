@@ -1,9 +1,9 @@
 "use strict";
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gProxyService",
                                    "@mozilla.org/network/protocol-proxy-service;1",
@@ -12,10 +12,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "gProxyService",
 XPCOMUtils.defineLazyGetter(this, "systemSettings", function() {
   return {
     QueryInterface: function (iid) {
-      if (iid.equals(Components.interfaces.nsISupports) ||
-          iid.equals(Components.interfaces.nsISystemProxySettings))
+      if (iid.equals(Ci.nsISupports) ||
+          iid.equals(Ci.nsISystemProxySettings))
         return this;
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     },
 
     mainThreadOnly: true,
@@ -54,7 +54,7 @@ async function TestProxyType(chan, flags) {
                    .getService(Ci.nsIPrefBranch);
   prefs.setIntPref(
     "network.proxy.type",
-    Components.interfaces.nsIProtocolProxyService.PROXYCONFIG_SYSTEM);
+    Ci.nsIProtocolProxyService.PROXYCONFIG_SYSTEM);
 
   return await new Promise((resolve, reject) => {
     gProxyService.asyncResolve(chan, flags, {

@@ -4,13 +4,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Toolbars"];
+var EXPORTED_SYMBOLS = ["Toolbars"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-
-this.Toolbars = {
+var Toolbars = {
   init(libDir) {},
 
   configurations: {

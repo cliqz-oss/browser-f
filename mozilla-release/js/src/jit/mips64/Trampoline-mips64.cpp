@@ -6,8 +6,6 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jscompartment.h"
-
 #include "jit/Bailouts.h"
 #include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
@@ -19,8 +17,10 @@
 # include "jit/PerfSpewer.h"
 #endif
 #include "jit/VMFunctions.h"
+#include "vm/JSCompartment.h"
 
 #include "jit/MacroAssembler-inl.h"
+#include "jit/SharedICHelpers-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -94,14 +94,14 @@ GenerateReturn(MacroAssembler& masm, int returnCode)
         masm.as_ld(ra, StackPointer, offsetof(EnterJITRegs, ra));
 
         // Restore non-volatile floating point registers
-        masm.as_ld(f24, StackPointer, offsetof(EnterJITRegs, f24));
-        masm.as_ld(f25, StackPointer, offsetof(EnterJITRegs, f25));
-        masm.as_ld(f26, StackPointer, offsetof(EnterJITRegs, f26));
-        masm.as_ld(f27, StackPointer, offsetof(EnterJITRegs, f27));
-        masm.as_ld(f28, StackPointer, offsetof(EnterJITRegs, f28));
-        masm.as_ld(f29, StackPointer, offsetof(EnterJITRegs, f29));
-        masm.as_ld(f30, StackPointer, offsetof(EnterJITRegs, f30));
-        masm.as_ld(f31, StackPointer, offsetof(EnterJITRegs, f31));
+        masm.as_ldc1(f24, StackPointer, offsetof(EnterJITRegs, f24));
+        masm.as_ldc1(f25, StackPointer, offsetof(EnterJITRegs, f25));
+        masm.as_ldc1(f26, StackPointer, offsetof(EnterJITRegs, f26));
+        masm.as_ldc1(f27, StackPointer, offsetof(EnterJITRegs, f27));
+        masm.as_ldc1(f28, StackPointer, offsetof(EnterJITRegs, f28));
+        masm.as_ldc1(f29, StackPointer, offsetof(EnterJITRegs, f29));
+        masm.as_ldc1(f30, StackPointer, offsetof(EnterJITRegs, f30));
+        masm.as_ldc1(f31, StackPointer, offsetof(EnterJITRegs, f31));
     }
 
     masm.freeStack(sizeof(EnterJITRegs));
@@ -141,14 +141,14 @@ GeneratePrologue(MacroAssembler& masm)
     masm.as_sd(ra, StackPointer, offsetof(EnterJITRegs, ra));
     masm.as_sd(a7, StackPointer, offsetof(EnterJITRegs, a7));
 
-    masm.as_sd(f24, StackPointer, offsetof(EnterJITRegs, f24));
-    masm.as_sd(f25, StackPointer, offsetof(EnterJITRegs, f25));
-    masm.as_sd(f26, StackPointer, offsetof(EnterJITRegs, f26));
-    masm.as_sd(f27, StackPointer, offsetof(EnterJITRegs, f27));
-    masm.as_sd(f28, StackPointer, offsetof(EnterJITRegs, f28));
-    masm.as_sd(f29, StackPointer, offsetof(EnterJITRegs, f29));
-    masm.as_sd(f30, StackPointer, offsetof(EnterJITRegs, f30));
-    masm.as_sd(f31, StackPointer, offsetof(EnterJITRegs, f31));
+    masm.as_sdc1(f24, StackPointer, offsetof(EnterJITRegs, f24));
+    masm.as_sdc1(f25, StackPointer, offsetof(EnterJITRegs, f25));
+    masm.as_sdc1(f26, StackPointer, offsetof(EnterJITRegs, f26));
+    masm.as_sdc1(f27, StackPointer, offsetof(EnterJITRegs, f27));
+    masm.as_sdc1(f28, StackPointer, offsetof(EnterJITRegs, f28));
+    masm.as_sdc1(f29, StackPointer, offsetof(EnterJITRegs, f29));
+    masm.as_sdc1(f30, StackPointer, offsetof(EnterJITRegs, f30));
+    masm.as_sdc1(f31, StackPointer, offsetof(EnterJITRegs, f31));
 }
 
 
@@ -252,7 +252,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
 
         // Push return address.
         masm.subPtr(Imm32(sizeof(uintptr_t)), StackPointer);
-        masm.ma_li(scratch, returnLabel.patchAt());
+        masm.ma_li(scratch, &returnLabel);
         masm.storePtr(scratch, Address(StackPointer, 0));
 
         // Push previous frame pointer.
@@ -324,7 +324,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
         masm.movePtr(framePtr, StackPointer);
         masm.addPtr(Imm32(2 * sizeof(uintptr_t)), StackPointer);
         masm.moveValue(MagicValue(JS_ION_ERROR), JSReturnOperand);
-        masm.ma_li(scratch, oomReturnLabel.patchAt());
+        masm.ma_li(scratch, &oomReturnLabel);
         masm.jump(scratch);
 
         masm.bind(&notOsr);
@@ -342,9 +342,9 @@ JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm)
 
     {
         // Interpreter -> Baseline OSR will return here.
-        masm.bind(returnLabel.target());
+        masm.bind(&returnLabel);
         masm.addCodeLabel(returnLabel);
-        masm.bind(oomReturnLabel.target());
+        masm.bind(&oomReturnLabel);
         masm.addCodeLabel(oomReturnLabel);
     }
 
@@ -715,7 +715,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
         break;
     }
 
-    if (!generateTLEnterVM(cx, masm, f))
+    if (!generateTLEnterVM(masm, f))
         return false;
 
     masm.setupUnalignedABICall(regs.getAny());
@@ -752,7 +752,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
 
     masm.callWithABI(f.wrapped, MoveOp::GENERAL, CheckUnsafeCallWithABI::DontCheckHasExitFrame);
 
-    if (!generateTLExitVM(cx, masm, f))
+    if (!generateTLExitVM(masm, f))
         return false;
 
     // Test for failure.
@@ -798,7 +798,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
 
       case Type_Double:
         if (cx->runtime()->jitSupportsFloatingPoint) {
-            masm.as_ld(ReturnDoubleReg, StackPointer, 0);
+            masm.as_ldc1(ReturnDoubleReg, StackPointer, 0);
         } else {
             masm.assumeUnreachable("Unable to load into float reg, with no FP support.");
         }
@@ -931,7 +931,7 @@ JitRuntime::generateDebugTrapHandler(JSContext* cx)
 
     Linker linker(masm);
     AutoFlushICache afc("DebugTrapHandler");
-    JitCode* codeDbg = linker.newCode<NoGC>(cx, OTHER_CODE);
+    JitCode* codeDbg = linker.newCode(cx, CodeKind::Other);
 
 #ifdef JS_ION_PERF
     writePerfSpewerJitCodeProfile(codeDbg, "DebugTrapHandler");

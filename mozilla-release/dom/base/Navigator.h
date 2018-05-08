@@ -12,8 +12,6 @@
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/ErrorResult.h"
-#include "nsIDOMNavigator.h"
-#include "nsIMozNavigatorNetwork.h"
 #include "nsWrapperCache.h"
 #include "nsHashKeys.h"
 #include "nsInterfaceHashtable.h"
@@ -26,6 +24,7 @@ class nsPluginArray;
 class nsMimeTypeArray;
 class nsPIDOMWindowInner;
 class nsIDOMNavigatorSystemMessages;
+class nsINetworkProperties;
 class nsIPrincipal;
 class nsIURI;
 
@@ -66,6 +65,8 @@ class NavigatorUserMediaSuccessCallback;
 class NavigatorUserMediaErrorCallback;
 class MozGetUserMediaDevicesSuccessCallback;
 
+struct MIDIOptions;
+
 namespace network {
 class Connection;
 } // namespace network
@@ -76,22 +77,14 @@ class VRDisplay;
 class VRServiceTest;
 class StorageManager;
 
-namespace time {
-class TimeManager;
-} // namespace time
-
-class Navigator final : public nsIDOMNavigator
-                      , public nsIMozNavigatorNetwork
+class Navigator final : public nsISupports
                       , public nsWrapperCache
 {
 public:
   explicit Navigator(nsPIDOMWindowInner* aInnerWindow);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Navigator,
-                                                         nsIDOMNavigator)
-  NS_DECL_NSIDOMNAVIGATOR
-  NS_DECL_NSIMOZNAVIGATORNETWORK
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Navigator)
 
   static void Init();
 
@@ -115,8 +108,8 @@ public:
    */
   void OnNavigation();
 
-  // The XPCOM GetProduct is OK
-  // The XPCOM GetLanguage is OK
+  void GetProduct(nsAString& aProduct);
+  void GetLanguage(nsAString& aLanguage);
   void GetAppName(nsAString& aAppName, CallerType aCallerType) const;
   void GetAppVersion(nsAString& aAppName, CallerType aCallerType,
                      ErrorResult& aRv) const;
@@ -132,7 +125,7 @@ public:
   nsMimeTypeArray* GetMimeTypes(ErrorResult& aRv);
   nsPluginArray* GetPlugins(ErrorResult& aRv);
   Permissions* GetPermissions(ErrorResult& aRv);
-  // The XPCOM GetDoNotTrack is ok
+  void GetDoNotTrack(nsAString& aResult);
   Geolocation* GetGeolocation(ErrorResult& aRv);
   Promise* GetBattery(ErrorResult& aRv);
 
@@ -156,15 +149,12 @@ public:
   bool Vibrate(const nsTArray<uint32_t>& aDuration);
   void SetVibrationPermission(bool aPermitted, bool aPersistent);
   uint32_t MaxTouchPoints();
-  void GetAppCodeName(nsString& aAppCodeName, ErrorResult& aRv)
-  {
-    aRv = GetAppCodeName(aAppCodeName);
-  }
+  void GetAppCodeName(nsAString& aAppCodeName, ErrorResult& aRv);
   void GetOscpu(nsAString& aOscpu, CallerType aCallerType,
                 ErrorResult& aRv) const;
-  // The XPCOM GetVendor is OK
-  // The XPCOM GetVendorSub is OK
-  // The XPCOM GetProductSub is OK
+  void GetVendorSub(nsAString& aVendorSub);
+  void GetVendor(nsAString& aVendor);
+  void GetProductSub(nsAString& aProductSub);
   bool CookieEnabled();
   void GetBuildID(nsAString& aBuildID, CallerType aCallerType,
                   ErrorResult& aRv) const;
@@ -189,9 +179,8 @@ public:
   bool IsWebVRContentDetected() const;
   bool IsWebVRContentPresenting() const;
   void RequestVRPresentation(VRDisplay& aDisplay);
-#ifdef MOZ_TIME_MANAGER
-  time::TimeManager* GetMozTime(ErrorResult& aRv);
-#endif // MOZ_TIME_MANAGER
+  nsINetworkProperties* GetNetworkProperties();
+  already_AddRefed<Promise> RequestMIDIAccess(const MIDIOptions& aOptions, ErrorResult& aRv);
 
   Presentation* GetPresentation(ErrorResult& aRv);
 
@@ -214,6 +203,8 @@ public:
   already_AddRefed<ServiceWorkerContainer> ServiceWorker();
 
   mozilla::dom::CredentialsContainer* Credentials();
+
+  static bool Webdriver();
 
   void GetLanguages(nsTArray<nsString>& aLanguages);
 
@@ -278,7 +269,6 @@ private:
   RefPtr<network::Connection> mConnection;
   RefPtr<CredentialsContainer> mCredentials;
   RefPtr<MediaDevices> mMediaDevices;
-  RefPtr<time::TimeManager> mTimeManager;
   RefPtr<ServiceWorkerContainer> mServiceWorkerContainer;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   RefPtr<Presentation> mPresentation;

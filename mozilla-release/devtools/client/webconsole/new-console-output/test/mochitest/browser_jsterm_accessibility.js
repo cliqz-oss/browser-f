@@ -3,6 +3,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Tests that the autocomplete input is being blurred and focused when selecting a value.
 // This will help screen-readers notify users of the value that was set in the input.
 
@@ -37,7 +39,7 @@ add_task(async function () {
 
   info("Close the autocomplete popup by simulating a TAB key event");
   let onPopupClosed = jsterm.autocompletePopup.once("popup-closed");
-  EventUtils.synthesizeKey("VK_TAB", {});
+  EventUtils.synthesizeKey("KEY_Tab");
 
   info("Wait for the autocomplete popup to be closed");
   await onPopupClosed;

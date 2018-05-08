@@ -14,7 +14,5 @@
 <!ENTITY makeUrlRelative.tooltip "Wechsel zwischen relativer und absoluter URL. Sie müssen die Seite speichern, bevor Sie dies ändern können.">
 
 <!-- Shared by Link and Image dialogs -->
-<!ENTITY LinkURLEditField.label "Geben Sie eine Webseiten-Adresse oder eine lokale Datei ein, oder wählen Sie einen Anker oder eine Überschrift aus der Pop-up-Liste:">
-<!ENTITY LinkURLEditField.accessKey "A">
 <!ENTITY LinkURLEditField2.label "Geben Sie eine Webseiten-Adresse oder eine lokale Datei ein, oder wählen Sie einen Anker oder eine Überschrift aus dem Kontextmenü des Feldes:">
 <!ENTITY LinkURLEditField2.accessKey "A">

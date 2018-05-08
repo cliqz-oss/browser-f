@@ -5,8 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
 const DBG_STRINGS_URI = "devtools/client/locales/debugger.properties";
 const NEW_SOURCE_IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const NEW_SOURCE_DISPLAY_DELAY = 200; // ms
@@ -96,7 +94,7 @@ const FRAME_TYPE = {
   PUBLIC_CLIENT_EVAL: 3
 };
 
-const { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+const { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 const { require } = BrowserLoader({
   baseURI: "resource://devtools/client/debugger/",
   window,
@@ -157,10 +155,10 @@ var {Task} = require("devtools/shared/task");
 
 XPCOMUtils.defineConstant(this, "EVENTS", EVENTS);
 
-XPCOMUtils.defineLazyModuleGetter(this, "Parser",
+ChromeUtils.defineModuleGetter(this, "Parser",
   "resource://devtools/shared/Parser.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
+ChromeUtils.defineModuleGetter(this, "ShortcutUtils",
   "resource://gre/modules/ShortcutUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
@@ -211,7 +209,7 @@ var DebuggerController = {
     let store = createStore((state, action) => {
       if (action.seqId &&
          (action.status === "done" || action.status === "error") &&
-         state && state.asyncRequests.indexOf(action.seqId) === -1) {
+         state && !state.asyncRequests.includes(action.seqId)) {
         return state;
       }
       return reducer(state, action);
@@ -1173,7 +1171,28 @@ StackFrames.prototype = {
         Parser.reflectionAPI.parse(aString);
         return aString; // Watch expression can be executed safely.
       } catch (e) {
-        return "\"" + e.name + ": " + e.message + "\""; // Syntax error.
+        function safelyEscape(aString) {
+          // Convert `str`, a string, to JSON -- that is, to a string beginning
+          // and ending with double-quotes, followed by string contents escaped
+          // such that the overall string contents are a JSON string literal.
+          let str = JSON.stringify(aString);
+
+          // Remove the leading and trailing double-quotes.
+          str = str.substring(1, str.length - 1);
+
+          // JSON string literals are not a subset of JS string literals in this
+          // one weird case: JSON string literals can directly contain U+2028
+          // LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR.  Replace these code
+          // points with escaped forms.
+          str = str.replace(/\u2028/g, "\\u2028");
+          str = str.replace(/\u2029/g, "\\u2029");
+
+          return str;
+        }
+        return "\"" +
+               safelyEscape(e.name) + ": " +
+               safelyEscape(e.message) +
+               "\""; // Syntax error.
       }
     });
 

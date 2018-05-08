@@ -4,14 +4,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "UserAgentOverrides" ];
+var EXPORTED_SYMBOLS = [ "UserAgentOverrides" ];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/UserAgentUpdates.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/UserAgentUpdates.jsm");
 
 const PREF_OVERRIDES_ENABLED = "general.useragent.site_specific_overrides";
 const MAX_OVERRIDE_FOR_HOST_CACHE_SIZE = 250;
@@ -33,7 +30,7 @@ var gOverrideFunctions = [
 ];
 var gBuiltUAs = new Map;
 
-this.UserAgentOverrides = {
+var UserAgentOverrides = {
   init: function uao_init() {
     if (gInitialized)
       return;

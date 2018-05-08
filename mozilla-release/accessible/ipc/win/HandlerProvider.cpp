@@ -219,12 +219,6 @@ HandlerProvider::BuildStaticIA2Data(
 
   // Some of these interfaces aren't present on all accessibles,
   // so it's not a failure if these interfaces can't be fetched.
-  hr = aInterceptor->GetInterceptorForIID(IID_IEnumVARIANT,
-                                          (void**)&aOutData->mIEnumVARIANT);
-  if (FAILED(hr)) {
-    aOutData->mIEnumVARIANT = nullptr;
-  }
-
   hr = aInterceptor->GetInterceptorForIID(IID_IAccessibleHypertext2,
                                           (void**)&aOutData->mIAHypertext);
   if (FAILED(hr)) {
@@ -261,8 +255,11 @@ HandlerProvider::BuildDynamicIA2Data(DynamicIA2Data* aOutIA2Data)
 {
   MOZ_ASSERT(aOutIA2Data);
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mTargetUnk);
   MOZ_ASSERT(IsTargetInterfaceCacheable());
+
+  if (!mTargetUnk) {
+    return;
+  }
 
   RefPtr<NEWEST_IA2_INTERFACE> target;
   HRESULT hr = mTargetUnk.get()->QueryInterface(NEWEST_IA2_IID,
@@ -464,6 +461,18 @@ HandlerProvider::MarshalAs(REFIID aIid)
   return aIid;
 }
 
+HRESULT
+HandlerProvider::DisconnectHandlerRemotes()
+{
+  // If a handlerProvider call is pending on another thread,
+  // CoDisconnectObject won't release this HandlerProvider immediately.
+  // However, the interceptor and its target (mTargetUnk) might be destroyed.
+  mTargetUnk = nullptr;
+
+  IUnknown* unk = static_cast<IGeckoBackChannel*>(this);
+  return ::CoDisconnectObject(unk, 0);
+}
+
 REFIID
 HandlerProvider::GetEffectiveOutParamIid(REFIID aCallIid,
                                          ULONG aCallMethod)
@@ -537,9 +546,23 @@ HandlerProvider::Refresh(DynamicIA2Data* aOutData)
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
+  if (!mTargetUnk) {
+    return CO_E_OBJNOTCONNECTED;
+  }
+
   if (!mscom::InvokeOnMainThread("HandlerProvider::BuildDynamicIA2Data",
                                  this, &HandlerProvider::BuildDynamicIA2Data,
                                  aOutData)) {
+    return E_FAIL;
+  }
+
+  if (!aOutData->mUniqueId) {
+    // BuildDynamicIA2Data failed.
+    if (!mTargetUnk) {
+      // Even though we checked this before, the accessible can be shut down
+      // before BuildDynamicIA2Data executes on the main thread.
+      return CO_E_OBJNOTCONNECTED;
+    }
     return E_FAIL;
   }
 
@@ -574,7 +597,11 @@ HandlerProvider::GetAllTextInfoMainThread(BSTR* aText,
   MOZ_ASSERT(aAttribRuns);
   MOZ_ASSERT(aNAttribRuns);
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mTargetUnk);
+
+  if (!mTargetUnk) {
+    *result = CO_E_OBJNOTCONNECTED;
+    return;
+  }
 
   RefPtr<IAccessibleHypertext2> ht;
   HRESULT hr = mTargetUnk->QueryInterface(IID_IAccessibleHypertext2,
@@ -650,6 +677,10 @@ HandlerProvider::get_AllTextInfo(BSTR* aText,
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
+  if (!mTargetUnk) {
+    return CO_E_OBJNOTCONNECTED;
+  }
+
   HRESULT hr;
   if (!mscom::InvokeOnMainThread("HandlerProvider::GetAllTextInfoMainThread",
                                  this,
@@ -670,7 +701,11 @@ HandlerProvider::GetRelationsInfoMainThread(IARelationData** aRelations,
   MOZ_ASSERT(aRelations);
   MOZ_ASSERT(aNRelations);
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mTargetUnk);
+
+  if (!mTargetUnk) {
+    *hr = CO_E_OBJNOTCONNECTED;
+    return;
+  }
 
   RefPtr<NEWEST_IA2_INTERFACE> acc;
   *hr = mTargetUnk.get()->QueryInterface(NEWEST_IA2_IID,
@@ -715,11 +750,163 @@ HandlerProvider::get_RelationsInfo(IARelationData** aRelations,
 {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
 
+  if (!mTargetUnk) {
+    return CO_E_OBJNOTCONNECTED;
+  }
+
   HRESULT hr;
   if (!mscom::InvokeOnMainThread("HandlerProvider::GetRelationsInfoMainThread",
                                  this,
                                  &HandlerProvider::GetRelationsInfoMainThread,
                                  aRelations, aNRelations, &hr)) {
+    return E_FAIL;
+  }
+
+  return hr;
+}
+
+// Helper function for GetAllChildrenMainThread.
+static bool
+SetChildDataForTextLeaf(NEWEST_IA2_INTERFACE* acc, AccChildData& data)
+{
+  const VARIANT kChildIdSelf = {VT_I4};
+  VARIANT varVal;
+
+  // 1. Check whether this is a text leaf.
+
+  // 1.1. A text leaf always has ROLE_SYSTEM_TEXT or ROLE_SYSTEM_WHITESPACE.
+  HRESULT hr = acc->get_accRole(kChildIdSelf, &varVal);
+  if (FAILED(hr)) {
+    return false;
+  }
+  if (varVal.vt != VT_I4) {
+    return false;
+  }
+  long role = varVal.lVal;
+  if (role != ROLE_SYSTEM_TEXT && role != ROLE_SYSTEM_WHITESPACE) {
+    return false;
+  }
+
+  // 1.2. A text leaf doesn't support IAccessibleText.
+  RefPtr<IAccessibleText> iaText;
+  hr = acc->QueryInterface(IID_IAccessibleText, getter_AddRefs(iaText));
+  if (SUCCEEDED(hr)) {
+    return false;
+  }
+
+  // 1.3. A text leaf doesn't have children.
+  long count;
+  hr = acc->get_accChildCount(&count);
+  if (FAILED(hr) || count != 0) {
+    return false;
+  }
+
+  // 2. Update |data| with the data for this text leaf.
+  // Because marshaling objects is more expensive than marshaling other data,
+  // we just marshal the data we need for text leaf children, rather than
+  // marshaling the full accessible object.
+
+  // |data| has already been zeroed, so we don't need to do anything if these
+  // calls fail.
+  acc->get_accName(kChildIdSelf, &data.mText);
+  data.mTextRole = role;
+  acc->get_uniqueID(&data.mTextId);
+  acc->get_accState(kChildIdSelf, &varVal);
+  data.mTextState = varVal.lVal;
+  acc->accLocation(&data.mTextLeft, &data.mTextTop, &data.mTextWidth,
+                   &data.mTextHeight, kChildIdSelf);
+
+  return true;
+}
+
+void
+HandlerProvider::GetAllChildrenMainThread(AccChildData** aChildren,
+                                          ULONG* aNChildren,
+                                          HRESULT* hr)
+{
+  MOZ_ASSERT(aChildren);
+  MOZ_ASSERT(aNChildren);
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!mTargetUnk) {
+    *hr = CO_E_OBJNOTCONNECTED;
+    return;
+  }
+
+  RefPtr<NEWEST_IA2_INTERFACE> acc;
+  *hr = mTargetUnk.get()->QueryInterface(NEWEST_IA2_IID,
+    getter_AddRefs(acc));
+  if (FAILED(*hr)) {
+    return;
+  }
+
+  long count;
+  *hr = acc->get_accChildCount(&count);
+  if (FAILED(*hr)) {
+    return;
+  }
+  MOZ_ASSERT(count >= 0);
+
+  if (count == 0) {
+    *aChildren = nullptr;
+    *aNChildren = 0;
+    return;
+  }
+
+  RefPtr<IEnumVARIANT> enumVar;
+  *hr = mTargetUnk.get()->QueryInterface(IID_IEnumVARIANT,
+    getter_AddRefs(enumVar));
+  if (FAILED(*hr)) {
+    return;
+  }
+
+  auto rawChildren = MakeUnique<VARIANT[]>(count);
+  *hr = enumVar->Next((ULONG)count, rawChildren.get(), aNChildren);
+  if (FAILED(*hr)) {
+    *aChildren = nullptr;
+    *aNChildren = 0;
+    return;
+  }
+
+  *aChildren = static_cast<AccChildData*>(::CoTaskMemAlloc(
+    sizeof(AccChildData) * *aNChildren));
+  for (ULONG index = 0; index < *aNChildren; ++index) {
+    (*aChildren)[index] = {};
+    AccChildData& child = (*aChildren)[index];
+
+    MOZ_ASSERT(rawChildren[index].vt == VT_DISPATCH);
+    MOZ_ASSERT(rawChildren[index].pdispVal);
+    RefPtr<NEWEST_IA2_INTERFACE> childAcc;
+    *hr = rawChildren[index].pdispVal->QueryInterface(NEWEST_IA2_IID,
+      getter_AddRefs(childAcc));
+    rawChildren[index].pdispVal->Release();
+    MOZ_ASSERT(SUCCEEDED(*hr));
+    if (FAILED(*hr)) {
+      continue;
+    }
+
+    if (!SetChildDataForTextLeaf(childAcc, child)) {
+      // This isn't a text leaf. Marshal the accessible.
+      childAcc.forget(&child.mAccessible);
+      // We must wrap this accessible in an Interceptor.
+      ToWrappedObject(&child.mAccessible);
+    }
+  }
+
+  *hr = S_OK;
+}
+
+HRESULT
+HandlerProvider::get_AllChildren(AccChildData** aChildren,
+                                 ULONG* aNChildren)
+{
+  MOZ_ASSERT(mscom::IsCurrentThreadMTA());
+
+  HRESULT hr;
+  if (!mscom::InvokeOnMainThread("HandlerProvider::GetAllChildrenMainThread",
+                                 this,
+                                 &HandlerProvider::GetAllChildrenMainThread,
+                                 aChildren, aNChildren, &hr)) {
     return E_FAIL;
   }
 

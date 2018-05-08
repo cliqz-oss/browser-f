@@ -44,7 +44,6 @@
 
 // Generated
 #include "nsIDOMEventListener.h"
-#include "nsIDOMWebGLRenderingContext.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsIObserver.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
@@ -104,6 +103,7 @@ class MozFramebuffer;
 } // namespace gl
 
 namespace webgl {
+class AvailabilityRunnable;
 struct LinkedProgramInfo;
 class ShaderValidator;
 class TexUnpackBlob;
@@ -271,11 +271,27 @@ struct TexImageSourceAdapter final : public TexImageSource
     }
 };
 
+// --
+
+namespace webgl {
+class AvailabilityRunnable final : public Runnable
+{
+public:
+    const RefPtr<WebGLContext> mWebGL; // Prevent CC
+    std::vector<RefPtr<WebGLQuery>> mQueries;
+    std::vector<RefPtr<WebGLSync>> mSyncs;
+
+    explicit AvailabilityRunnable(WebGLContext* webgl);
+    ~AvailabilityRunnable();
+
+    NS_IMETHOD Run() override;
+};
+} // namespace webgl
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class WebGLContext
-    : public nsIDOMWebGLRenderingContext
-    , public nsICanvasRenderingContextInternal
+    : public nsICanvasRenderingContextInternal
     , public nsSupportsWeakReference
     , public WebGLContextUnchecked
     , public nsWrapperCache
@@ -299,6 +315,7 @@ class WebGLContext
     friend class WebGLExtensionLoseContext;
     friend class WebGLExtensionVertexArray;
     friend class WebGLMemoryTracker;
+    friend class webgl::AvailabilityRunnable;
     friend struct webgl::LinkedProgramInfo;
     friend struct webgl::UniformBlockInfo;
 
@@ -332,11 +349,9 @@ public:
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(WebGLContext,
-                                                           nsIDOMWebGLRenderingContext)
+                                                           nsICanvasRenderingContextInternal)
 
     virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> givenProto) override = 0;
-
-    NS_DECL_NSIDOMWEBGLRENDERINGCONTEXT
 
     virtual void OnVisibilityChange() override;
     virtual void OnMemoryPressure() override;
@@ -2054,6 +2069,12 @@ public:
 
     void UpdateMaxDrawBuffers();
 
+    // --
+private:
+    webgl::AvailabilityRunnable* mAvailabilityRunnable = nullptr;
+public:
+    webgl::AvailabilityRunnable* EnsureAvailabilityRunnable();
+
     // Friend list
     friend class ScopedCopyTexImageSource;
     friend class ScopedResolveTexturesForDraw;
@@ -2084,7 +2105,7 @@ public:
 inline nsISupports*
 ToSupports(WebGLContext* webgl)
 {
-    return static_cast<nsIDOMWebGLRenderingContext*>(webgl);
+    return static_cast<nsICanvasRenderingContextInternal*>(webgl);
 }
 
 // Returns `value` rounded to the next highest multiple of `multiple`.

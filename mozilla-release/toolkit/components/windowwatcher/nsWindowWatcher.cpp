@@ -32,7 +32,6 @@
 #include "nsIDOMDocument.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMChromeWindow.h"
-#include "nsIDOMModalContentWindow.h"
 #include "nsIPrompt.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIScreen.h"
@@ -2267,10 +2266,8 @@ nsWindowWatcher::SizeOpenedWindow(nsIDocShellTreeOwner* aTreeOwner,
   if (aParent && aOpenerFullZoom.isNothing()) {
     nsCOMPtr<nsPIDOMWindowOuter> piWindow = nsPIDOMWindowOuter::From(aParent);
     if (nsIDocument* doc = piWindow->GetDoc()) {
-      if (nsIPresShell* shell = doc->GetShell()) {
-        if (nsPresContext* presContext = shell->GetPresContext()) {
-          openerZoom = presContext->GetFullZoom();
-        }
+      if (nsPresContext* presContext = doc->GetPresContext()) {
+        openerZoom = presContext->GetFullZoom();
       }
     }
   }

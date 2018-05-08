@@ -10,25 +10,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "DownloadsTaskbar",
 ];
 
 // Globals
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Downloads",
+                               "resource://gre/modules/Downloads.jsm");
+ChromeUtils.defineModuleGetter(this, "RecentWindow",
+                               "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gWinTaskbar", function() {
   if (!("@mozilla.org/windows-taskbar;1" in Cc)) {
@@ -50,7 +45,7 @@ XPCOMUtils.defineLazyGetter(this, "gMacTaskbarProgress", function() {
 /**
  * Handles the download progress indicator in the taskbar.
  */
-this.DownloadsTaskbar = {
+var DownloadsTaskbar = {
   /**
    * Underlying DownloadSummary providing the aggregate download information, or
    * null if the indicator has never been initialized.

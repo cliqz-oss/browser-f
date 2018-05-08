@@ -3,13 +3,12 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
-Cu.import("resource://gre/modules/UITelemetry.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/UITelemetry.jsm");
 
-this.EXPORTED_SYMBOLS = ["NetErrorHelper"];
+var EXPORTED_SYMBOLS = ["NetErrorHelper"];
 
 const KEY_CODE_ENTER = 13;
 

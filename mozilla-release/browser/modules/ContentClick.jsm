@@ -5,30 +5,36 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "ContentClick" ];
 
-this.EXPORTED_SYMBOLS = [ "ContentClick" ];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUIUtils",
-                                  "resource:///modules/PlacesUIUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUIUtils",
+                               "resource:///modules/PlacesUIUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 var ContentClick = {
   // Listeners are added in nsBrowserGlue.js
   receiveMessage(message) {
     switch (message.name) {
       case "Content:Click":
-        this.contentAreaClick(message.json, message.target);
+        // Bug 1446913 - Ensure this happens in the next tick so TabOpen/TabMove
+        // events are processed correctly in webextensions.
+        Promise.resolve().then(() => {
+          this.contentAreaClick(message.json, message.target);
+        });
         break;
     }
   },
 
+  /**
+   * Handles clicks in the content area.
+   *
+   * @param json {Object} JSON object that looks like an Event
+   * @param browser {Element<browser>}
+   */
   contentAreaClick(json, browser) {
     // This is heavily based on contentAreaClick from browser.js (Bug 903016)
     // The json is set up in a way to look like an Event.

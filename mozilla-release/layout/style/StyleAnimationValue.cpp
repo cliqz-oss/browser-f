@@ -18,16 +18,22 @@
 #include "mozilla/UniquePtr.h"
 #include "nsAutoPtr.h"
 #include "nsCOMArray.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsIStyleRule.h"
 #include "mozilla/css/StyleRule.h"
+#endif
 #include "nsString.h"
 #include "nsStyleContext.h"
+#ifdef MOZ_OLD_STYLE
 #include "nsStyleSet.h"
+#endif
 #include "nsComputedDOMStyle.h"
 #include "nsContentUtils.h"
 #include "nsCSSParser.h"
 #include "nsCSSPseudoElements.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/css/Declaration.h"
+#endif
 #include "mozilla/dom/Element.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Likely.h"
@@ -47,6 +53,7 @@ using nsStyleTransformMatrix::Decompose2DMatrix;
 using nsStyleTransformMatrix::Decompose3DMatrix;
 using nsStyleTransformMatrix::ShearType;
 
+#ifdef MOZ_OLD_STYLE
 // HELPER METHODS
 // --------------
 /*
@@ -186,6 +193,7 @@ TransformFunctionListsMatch(const nsCSSValueList *list1,
   // Length match?
   return !item1 && !item2;
 }
+#endif
 
 static already_AddRefed<nsCSSValue::Array>
 AppendFunction(nsCSSKeyword aTransformFunction)
@@ -238,6 +246,7 @@ AppendFunction(nsCSSKeyword aTransformFunction)
   return arr.forget();
 }
 
+#ifdef MOZ_OLD_STYLE
 static already_AddRefed<nsCSSValue::Array>
 ToPrimitive(nsCSSValue::Array* aArray)
 {
@@ -455,7 +464,7 @@ CalcValueToCSSValue(const PixelCalcValue& aCalc, nsCSSValue& aValue)
   aValue.SetArrayValue(arr, eCSSUnit_Calc);
 }
 
-double
+static double
 CalcPositionSquareDistance(const nsCSSValue& aPos1,
                            const nsCSSValue& aPos2)
 {
@@ -511,7 +520,7 @@ CalcBackgroundCoord(const nsCSSValue& aCoord)
   return ExtractCalcValue(array->Item(1));
 }
 
-double
+static double
 CalcPositionCoordSquareDistance(const nsCSSValue& aPos1,
                                 const nsCSSValue& aPos2)
 {
@@ -2022,7 +2031,7 @@ AddWeightedColorsAndClamp(double aCoeff1, const RGBAColorData& aValue1,
     : AddWeightedColors(aCoeff1, aValue1, aCoeff2, aValue2).ToColor();
 }
 
-void
+static void
 AppendToCSSValueList(UniquePtr<nsCSSValueList>& aHead,
                      UniquePtr<nsCSSValueList>&& aValueToAppend,
                      nsCSSValueList** aTail)
@@ -2038,7 +2047,7 @@ AppendToCSSValueList(UniquePtr<nsCSSValueList>& aHead,
   }
 }
 
-void
+static void
 AppendToCSSValuePairList(UniquePtr<nsCSSValuePairList>& aHead,
                          UniquePtr<nsCSSValuePairList>&& aValueToAppend,
                          nsCSSValuePairList** aTail)
@@ -3410,7 +3419,7 @@ StyleAnimationValue::Accumulate(nsCSSPropertyID aProperty,
   return result;
 }
 
-already_AddRefed<css::StyleRule>
+static already_AddRefed<css::StyleRule>
 BuildStyleRule(nsCSSPropertyID aProperty,
                dom::Element* aTargetElement,
                const nsAString& aSpecifiedValue,
@@ -3445,7 +3454,7 @@ BuildStyleRule(nsCSSPropertyID aProperty,
   return rule.forget();
 }
 
-already_AddRefed<css::StyleRule>
+static already_AddRefed<css::StyleRule>
 BuildStyleRule(nsCSSPropertyID aProperty,
                dom::Element* aTargetElement,
                const nsCSSValue& aSpecifiedValue,
@@ -4636,10 +4645,11 @@ StyleAnimationValue::ExtractComputedValue(nsCSSPropertyID aProperty,
           const nsStyleDisplay *display =
             static_cast<const nsStyleDisplay*>(styleStruct);
           nsAutoPtr<nsCSSValueList> result;
-          if (display->mSpecifiedTransform) {
+          RefPtr<nsCSSValueSharedList> transformList = display->GetCombinedTransform();
+          if (transformList) {
             // Clone, and convert all lengths (not percents) to pixels.
             nsCSSValueList **resultTail = getter_Transfers(result);
-            for (const nsCSSValueList *l = display->mSpecifiedTransform->mHead;
+            for (const nsCSSValueList *l = transformList->mHead;
                  l; l = l->mNext) {
               nsCSSValueList *clone = new nsCSSValueList;
               *resultTail = clone;
@@ -5314,6 +5324,7 @@ StyleAnimationValue::operator==(const StyleAnimationValue& aOther) const
   NS_NOTREACHED("incomplete case");
   return false;
 }
+#endif
 
 
 // AnimationValue Implementation
@@ -5321,14 +5332,22 @@ StyleAnimationValue::operator==(const StyleAnimationValue& aOther) const
 bool
 AnimationValue::operator==(const AnimationValue& aOther) const
 {
+#ifdef MOZ_OLD_STYLE
   // It is possible to compare an empty AnimationValue with others, so both
   // mServo and mGecko could be null while comparing.
   MOZ_ASSERT(!mServo || mGecko.IsNull());
+#endif
   if (mServo && aOther.mServo) {
     return Servo_AnimationValue_DeepEqual(mServo, aOther.mServo);
   }
-  return !mServo && !aOther.mServo &&
-         mGecko == aOther.mGecko;
+  if (!mServo && !aOther.mServo) {
+#ifdef MOZ_OLD_STYLE
+    return mGecko == aOther.mGecko;
+#else
+    return true;
+#endif
+  }
+  return false;
 }
 
 bool
@@ -5340,26 +5359,44 @@ AnimationValue::operator!=(const AnimationValue& aOther) const
 float
 AnimationValue::GetOpacity() const
 {
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
   MOZ_ASSERT(mServo || mGecko.GetUnit() == StyleAnimationValue::eUnit_Float,
              "Should have the correct unit on Gecko backend");
-  return mServo ? Servo_AnimationValue_GetOpacity(mServo)
-                : mGecko.GetFloatValue();
+#else
+  MOZ_ASSERT(mServo);
+#endif
+  if (mServo) {
+    return Servo_AnimationValue_GetOpacity(mServo);
+  }
+#ifdef MOZ_OLD_STYLE
+  return mGecko.GetFloatValue();
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 already_AddRefed<const nsCSSValueSharedList>
 AnimationValue::GetTransformList() const
 {
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
   MOZ_ASSERT(mServo || mGecko.GetUnit() == StyleAnimationValue::eUnit_Transform,
              "The unit of interpolated value for transform should be "
              "transform on Gecko backend");
+#else
+  MOZ_ASSERT(mServo);
+#endif
 
   RefPtr<nsCSSValueSharedList> transform;
   if (mServo) {
     Servo_AnimationValue_GetTransform(mServo, &transform);
   } else {
+#ifdef MOZ_OLD_STYLE
     transform = mGecko.GetCSSValueSharedListValue();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
   return transform.forget();
 }
@@ -5367,28 +5404,46 @@ AnimationValue::GetTransformList() const
 Size
 AnimationValue::GetScaleValue(const nsIFrame* aFrame) const
 {
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
+#else
+  MOZ_ASSERT(mServo);
+#endif
+
   if (mServo) {
     RefPtr<nsCSSValueSharedList> list;
     Servo_AnimationValue_GetTransform(mServo, &list);
     return nsStyleTransformMatrix::GetScaleValue(list, aFrame);
   }
+#ifdef MOZ_OLD_STYLE
   return mGecko.GetScaleValue(aFrame);
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 void
 AnimationValue::SerializeSpecifiedValue(nsCSSPropertyID aProperty,
                                         nsAString& aString) const
 {
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
+#else
+  MOZ_ASSERT(mServo);
+#endif
+
   if (mServo) {
     Servo_AnimationValue_Serialize(mServo, aProperty, &aString);
     return;
   }
 
+#ifdef MOZ_OLD_STYLE
   DebugOnly<bool> uncomputeResult =
     StyleAnimationValue::UncomputeValue(aProperty, mGecko, aString);
   MOZ_ASSERT(uncomputeResult, "failed to uncompute StyleAnimationValue");
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 bool
@@ -5399,20 +5454,29 @@ AnimationValue::IsInterpolableWith(nsCSSPropertyID aProperty,
     return false;
   }
 
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
   MOZ_ASSERT(mGecko.IsNull() == aToValue.mGecko.IsNull() &&
              !mServo == !aToValue.mServo,
              "Animation values should have the same style engine");
+#else
+  MOZ_ASSERT(mServo);
+  MOZ_ASSERT(aToValue.mServo);
+#endif
 
   if (mServo) {
     return Servo_AnimationValues_IsInterpolable(mServo, aToValue.mServo);
   }
 
+#ifdef MOZ_OLD_STYLE
   // If this is ever a performance problem, we could add a
   // StyleAnimationValue::IsInterpolatable method, but it seems fine for now.
   StyleAnimationValue dummy;
   return StyleAnimationValue::Interpolate(
            aProperty, mGecko, aToValue.mGecko, 0.5, dummy);
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 double
@@ -5424,10 +5488,15 @@ AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
     return 0.0;
   }
 
+#ifdef MOZ_OLD_STYLE
   MOZ_ASSERT(!mServo != mGecko.IsNull());
   MOZ_ASSERT(mGecko.IsNull() == aOther.mGecko.IsNull() &&
              !mServo == !aOther.mServo,
              "Animation values should have the same style engine");
+#else
+  MOZ_ASSERT(mServo);
+  MOZ_ASSERT(aOther.mServo);
+#endif
 
   double distance= 0.0;
   if (mServo) {
@@ -5437,6 +5506,7 @@ AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
            : distance;
   }
 
+#ifdef MOZ_OLD_STYLE
   return StyleAnimationValue::ComputeDistance(aProperty,
                                               mGecko,
                                               aOther.mGecko,
@@ -5444,6 +5514,9 @@ AnimationValue::ComputeDistance(nsCSSPropertyID aProperty,
                                               distance)
          ? distance
          : 0.0;
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 /* static */ AnimationValue
@@ -5468,14 +5541,10 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
   // GetStyleContext() flushes style, so we shouldn't assume that any
   // non-owning references we have are still valid.
   RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContext(aElement, nullptr, shell);
+    nsComputedDOMStyle::GetStyleContext(aElement, nullptr);
+  MOZ_ASSERT(styleContext);
 
-  if (auto servoContext = styleContext->GetAsServo()) {
-    nsPresContext* presContext = shell->GetPresContext();
-    if (!presContext) {
-      return result;
-    }
-
+  if (auto* servoContext = styleContext->GetAsServo()) {
     RefPtr<RawServoDeclarationBlock> declarations =
       ServoCSSParser::ParseProperty(aProperty, aValue,
                                     ServoCSSParser::GetParsingEnvironment(doc));
@@ -5484,14 +5553,14 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
       return result;
     }
 
-    result.mServo = presContext->StyleSet()
-                               ->AsServo()
-                               ->ComputeAnimationValue(aElement,
-                                                       declarations,
-                                                       servoContext);
+    result.mServo =
+      shell->StyleSet()->AsServo()->ComputeAnimationValue(aElement,
+                                                          declarations,
+                                                          servoContext);
     return result;
   }
 
+#ifdef MOZ_OLD_STYLE
   if (!StyleAnimationValue::ComputeValue(aProperty, aElement,
                                          styleContext->AsGecko(),
                                          aValue, false /* |aUseSVGMode| */,
@@ -5499,6 +5568,9 @@ AnimationValue::FromString(nsCSSPropertyID aProperty,
     MOZ_ASSERT(result.IsNull());
   }
   return result;
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 /* static */ AnimationValue
@@ -5511,7 +5583,11 @@ AnimationValue::Opacity(StyleBackendType aBackendType, float aOpacity)
       result.mServo = Servo_AnimationValue_Opacity(aOpacity).Consume();
       break;
     case StyleBackendType::Gecko:
+#ifdef MOZ_OLD_STYLE
       result.mGecko.SetFloatValue(aOpacity);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unsupported style backend");
@@ -5530,7 +5606,11 @@ AnimationValue::Transform(StyleBackendType aBackendType,
       result.mServo = Servo_AnimationValue_Transform(aList).Consume();
       break;
     case StyleBackendType::Gecko:
+#ifdef MOZ_OLD_STYLE
       result.mGecko.SetTransformValue(&aList);
+#else
+      MOZ_CRASH("old style system disabled");
+#endif
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unsupported style backend");

@@ -4,15 +4,15 @@
 
 "use strict";
 
-let {FormAutofillParent} = Cu.import("resource://formautofill/FormAutofillParent.jsm", {});
-Cu.import("resource://formautofill/ProfileStorage.jsm");
+let {FormAutofillParent} = ChromeUtils.import("resource://formautofill/FormAutofillParent.jsm", {});
+ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm");
 
 add_task(async function test_profileSavedFieldNames_init() {
   let formAutofillParent = new FormAutofillParent();
   sinon.stub(formAutofillParent, "_updateSavedFieldNames");
 
   await formAutofillParent.init();
-  await formAutofillParent.profileStorage.initialize();
+  await formAutofillParent.formAutofillStorage.initialize();
   Assert.equal(formAutofillParent._updateSavedFieldNames.called, true);
 
   formAutofillParent._uninit();
@@ -43,8 +43,8 @@ add_task(async function test_profileSavedFieldNames_update() {
     Services.prefs.clearUserPref("extensions.formautofill.addresses.enabled");
   });
 
-  sinon.stub(profileStorage.addresses, "getAll");
-  profileStorage.addresses.getAll.returns([]);
+  sinon.stub(formAutofillParent.formAutofillStorage.addresses, "getAll");
+  formAutofillParent.formAutofillStorage.addresses.getAll.returns([]);
 
   // The set is empty if there's no profile in the store.
   formAutofillParent._updateSavedFieldNames();
@@ -72,7 +72,7 @@ add_task(async function test_profileSavedFieldNames_update() {
     timeLastModified: 0,
     timesUsed: 0,
   }];
-  profileStorage.addresses.getAll.returns(fakeStorage);
+  formAutofillParent.formAutofillStorage.addresses.getAll.returns(fakeStorage);
   formAutofillParent._updateSavedFieldNames();
 
   let autofillSavedFieldNames = Services.ppmm.initialProcessData.autofillSavedFieldNames;

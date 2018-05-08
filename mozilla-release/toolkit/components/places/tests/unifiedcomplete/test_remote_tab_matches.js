@@ -3,7 +3,7 @@
 */
 "use strict";
 
-Cu.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/main.js");
 
 Services.prefs.setCharPref("services.sync.username", "someone@somewhere.com");
 Services.prefs.setCharPref("services.sync.registerEngines", "");
@@ -17,6 +17,7 @@ function MockTabsEngine() {
 MockTabsEngine.prototype = {
   name: "tabs",
 
+  startTracking() {},
   getAllClients() {
     return this.clients;
   },
@@ -199,6 +200,34 @@ add_task(async function test_localtab_matches_override() {
     searchParam: "enable-actions",
     matches: [ makeSearchMatch("ex", { heuristic: true }),
                makeSwitchToTabMatch("http://foo.com/", { title: "An Example" }),
+             ],
+  });
+});
+
+add_task(async function test_remotetab_matches_override() {
+  // If We have an history result to the same page, we should only get the
+  // remote tab match.
+  let url = "http://foo.remote.com/";
+  // First setup Sync to have the page as a remote tab.
+  configureEngine({
+    guid_mobile: {
+      clientName: "My Phone",
+      tabs: [{
+        urlHistory: [url],
+        title: "An Example",
+      }],
+    }
+  });
+
+  // Setup Places to think the tab is open locally.
+  await PlacesTestUtils.addVisits(url);
+
+  await check_autocomplete({
+    search: "rem",
+    searchParam: "enable-actions",
+    matches: [ makeSearchMatch("rem", { heuristic: true }),
+               makeRemoteTabMatch("http://foo.remote.com/", "My Phone",
+                                  { title: "An Example" }),
              ],
   });
 });

@@ -6,9 +6,8 @@
 
 "use strict";
 
-const { utils: Cu } = Components;
 const { BrowserLoader } =
-  Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+  ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 const { require } = BrowserLoader({
   baseURI: "resource://devtools/client/responsive.html/",
   window
@@ -24,10 +23,11 @@ const { Provider } = require("devtools/client/shared/vendor/react-redux");
 const message = require("./utils/message");
 const App = createFactory(require("./app"));
 const Store = require("./store");
-const { changeLocation } = require("./actions/location");
-const { changeDisplayPixelRatio } = require("./actions/display-pixel-ratio");
-const { addViewport, resizeViewport } = require("./actions/viewports");
 const { loadDevices } = require("./actions/devices");
+const { changeDisplayPixelRatio } = require("./actions/display-pixel-ratio");
+const { changeLocation } = require("./actions/location");
+const { loadReloadConditions } = require("./actions/reload-conditions");
+const { addViewport, resizeViewport } = require("./actions/viewports");
 
 // Exposed for use by tests
 window.require = require;
@@ -80,7 +80,10 @@ message.wait(window, "init").then(() => bootstrap.init());
 
 // manager.js sends a message to signal init is done, which can be used for delayed
 // startup work that shouldn't block initial load
-message.wait(window, "post-init").then(() => bootstrap.dispatch(loadDevices()));
+message.wait(window, "post-init").then(() => {
+  bootstrap.dispatch(loadDevices());
+  bootstrap.dispatch(loadReloadConditions());
+});
 
 window.addEventListener("unload", function () {
   bootstrap.destroy();

@@ -13,7 +13,6 @@ config = {
     "mar_tools_url": os.environ["MAR_TOOLS_URL"],
 
     # repositories
-    "mozilla_dir": "mozilla-release",
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -29,14 +28,4 @@ config = {
     # purge options
     'purge_minsize': 12,
     'is_automation': True,
-    'default_actions': [
-        "clobber",
-        "pull",
-        "clone-locales",
-        "list-locales",
-        "setup",
-        "repack",
-        "taskcluster-upload",
-        "summary",
-    ],
 }

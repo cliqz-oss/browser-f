@@ -20,25 +20,23 @@
 #define wasm_frame_iter_h
 
 #include "js/ProfilingFrameIterator.h"
+#include "js/TypeDecls.h"
 #include "wasm/WasmTypes.h"
-
-class JSAtom;
 
 namespace js {
 
 namespace jit {
 class MacroAssembler;
 struct Register;
+class Label;
 } // namespace jit
 
 namespace wasm {
 
-class CallSite;
 class Code;
 class CodeRange;
-class CodeSegment;
+class ModuleSegment;
 class DebugFrame;
-class DebugState;
 class Instance;
 class SigIdDesc;
 struct Frame;
@@ -69,6 +67,7 @@ class WasmFrameIter
     const CodeRange* codeRange_;
     unsigned lineOrBytecode_;
     Frame* fp_;
+    uint8_t* unwoundIonCallerFP_;
     Unwind unwind_;
     void** unwoundAddressOfReturnAddress_;
 
@@ -91,6 +90,7 @@ class WasmFrameIter
     void** unwoundAddressOfReturnAddress() const;
     bool debugEnabled() const;
     DebugFrame* debugFrame() const;
+    uint8_t* unwoundIonCallerFP() const { return unwoundIonCallerFP_; }
 };
 
 enum class SymbolicAddress;
@@ -108,12 +108,13 @@ class ExitReason
   public:
     enum class Fixed : uint32_t
     {
-        None,          // default state, the pc is in wasm code
-        ImportJit,     // fast-path call directly into JIT code
-        ImportInterp,  // slow-path call into C++ Invoke()
-        BuiltinNative, // fast-path call directly into native C++ code
-        Trap,          // call to trap handler
-        DebugTrap      // call to debug trap handler
+        None,            // default state, the pc is in wasm code
+        FakeInterpEntry, // slow-path entry call from C++ WasmCall()
+        ImportJit,       // fast-path call directly into JIT code
+        ImportInterp,    // slow-path call into C++ Invoke()
+        BuiltinNative,   // fast-path call directly into native C++ code
+        Trap,            // call to trap handler
+        DebugTrap        // call to debug trap handler
     };
 
     MOZ_IMPLICIT ExitReason(Fixed exitReason)
@@ -141,6 +142,7 @@ class ExitReason
     bool isFixed() const { return (payload_ & 0x1) == 0; }
     bool isNone() const { return isFixed() && fixed() == Fixed::None; }
     bool isNative() const { return !isFixed() || fixed() == Fixed::BuiltinNative; }
+    bool isInterpEntry() const { return isFixed() && fixed() == Fixed::FakeInterpEntry; }
 
     uint32_t encode() const {
         return payload_;
@@ -164,6 +166,7 @@ class ProfilingFrameIterator
     Frame* callerFP_;
     void* callerPC_;
     void* stackAddress_;
+    uint8_t* unwoundIonCallerFP_;
     ExitReason exitReason_;
 
     void initFromExitFP(const Frame* fp);
@@ -185,9 +188,10 @@ class ProfilingFrameIterator
                            const JS::ProfilingFrameIterator::RegisterState& state);
 
     void operator++();
-    bool done() const { return !codeRange_; }
+    bool done() const { return !codeRange_ && exitReason_.isNone(); }
 
     void* stackAddress() const { MOZ_ASSERT(!done()); return stackAddress_; }
+    uint8_t* unwoundIonCallerFP() const { MOZ_ASSERT(done()); return unwoundIonCallerFP_; }
     const char* label() const;
 };
 
@@ -204,14 +208,21 @@ GenerateExitPrologue(jit::MacroAssembler& masm, unsigned framePushed, ExitReason
 void
 GenerateExitEpilogue(jit::MacroAssembler& masm, unsigned framePushed, ExitReason reason,
                      CallableOffsets* offsets);
+
 void
 GenerateJitExitPrologue(jit::MacroAssembler& masm, unsigned framePushed, CallableOffsets* offsets);
 void
 GenerateJitExitEpilogue(jit::MacroAssembler& masm, unsigned framePushed, CallableOffsets* offsets);
+
 void
-GenerateFunctionPrologue(jit::MacroAssembler& masm, unsigned framePushed, const SigIdDesc& sigId,
-                         FuncOffsets* offsets, CompileMode mode = CompileMode::Once,
-                         uint32_t funcIndex = 0);
+GenerateJitEntryPrologue(jit::MacroAssembler& masm, Offsets* offsets);
+
+typedef bool IsLeaf;
+
+void
+GenerateFunctionPrologue(jit::MacroAssembler& masm, uint32_t framePushed, IsLeaf isLeaf,
+                         const SigIdDesc& sigId, BytecodeOffset trapOffset, FuncOffsets* offsets,
+                         const mozilla::Maybe<uint32_t>& tier1FuncIndex = mozilla::Nothing());
 void
 GenerateFunctionEpilogue(jit::MacroAssembler& masm, unsigned framePushed, FuncOffsets* offsets);
 
@@ -219,7 +230,7 @@ GenerateFunctionEpilogue(jit::MacroAssembler& masm, unsigned framePushed, FuncOf
 // is such a plausible instance, and otherwise null.
 
 Instance*
-LookupFaultingInstance(const CodeSegment& codeSegment, void* pc, void* fp);
+LookupFaultingInstance(const ModuleSegment& codeSegment, void* pc, void* fp);
 
 // Return whether the given PC is in wasm code.
 

@@ -11,7 +11,7 @@
   */
 
 // Include PlacesDBUtils module
-Components.utils.import("resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesDBUtils.jsm");
 
 // Get services and database connection
 var hs = PlacesUtils.history;
@@ -369,35 +369,6 @@ tests.push({
     Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
     Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
     Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
-  }
-});
-
-// ------------------------------------------------------------------------------
-tests.push({
-  name: "C.2",
-  desc: "Fix roots titles",
-
-  setup() {
-    // Sanity check: ensure that roots titles are correct. We can use our check.
-    this.check();
-    // Change some roots' titles.
-    bs.setItemTitle(bs.placesRoot, "bad title");
-    Assert.equal(bs.getItemTitle(bs.placesRoot), "bad title");
-    bs.setItemTitle(bs.unfiledBookmarksFolder, "bad title");
-    Assert.equal(bs.getItemTitle(bs.unfiledBookmarksFolder), "bad title");
-  },
-
-  check() {
-    // Ensure all roots titles are correct.
-    Assert.equal(bs.getItemTitle(bs.placesRoot), "");
-    Assert.equal(bs.getItemTitle(bs.bookmarksMenuFolder),
-                 PlacesUtils.getString("BookmarksMenuFolderTitle"));
-    Assert.equal(bs.getItemTitle(bs.tagsFolder),
-                 PlacesUtils.getString("TagsFolderTitle"));
-    Assert.equal(bs.getItemTitle(bs.unfiledBookmarksFolder),
-                 PlacesUtils.getString("OtherBookmarksFolderTitle"));
-    Assert.equal(bs.getItemTitle(bs.toolbarFolder),
-                 PlacesUtils.getString("BookmarksToolbarFolderTitle"));
   }
 });
 
@@ -1667,9 +1638,9 @@ tests.push({
 
   async check() {
     // Check that all items are correct
-    let isVisited = await promiseIsURIVisited(this._uri1);
+    let isVisited = await PlacesUtils.history.hasVisits(this._uri1);
     Assert.ok(isVisited);
-    isVisited = await promiseIsURIVisited(this._uri2);
+    isVisited = await PlacesUtils.history.hasVisits(this._uri2);
     Assert.ok(isVisited);
 
     Assert.equal((await bs.fetch(this._bookmark.guid)).url, this._uri1.spec);

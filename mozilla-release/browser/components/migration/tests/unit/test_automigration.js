@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource:///modules/AutoMigrate.jsm", this);
+ChromeUtils.import("resource:///modules/AutoMigrate.jsm", this);
 
 let gShimmedMigratorKeyPicker = null;
 let gShimmedMigrator = null;
@@ -11,7 +11,7 @@ const kUsecPerMin = 60 * 1000000;
 // we get in trouble because the object itself is frozen, and Proxies can't
 // return a different value to an object when directly proxying a frozen
 // object.
-let AutoMigrateBackstage = Cu.import("resource:///modules/AutoMigrate.jsm", {});
+let AutoMigrateBackstage = ChromeUtils.import("resource:///modules/AutoMigrate.jsm", {});
 
 AutoMigrateBackstage.MigrationUtils = new Proxy({}, {
   get(target, name) {
@@ -43,36 +43,45 @@ async function visitsForURL(url) {
   return visitCount;
 }
 
+async function promiseThrows(fn) {
+  let failed = false;
+  try {
+    await fn();
+  } catch (e) {
+    failed = true;
+  }
+  Assert.ok(failed);
+}
 
 /**
  * Test automatically picking a browser to migrate from
  */
 add_task(async function checkMigratorPicking() {
-  Assert.throws(() => AutoMigrate.pickMigrator("firefox"),
-                /Can't automatically migrate from Firefox/,
-                "Should throw when explicitly picking Firefox.");
+  await promiseThrows(() => AutoMigrate.pickMigrator("firefox"),
+                      /Can't automatically migrate from Firefox/,
+                      "Should throw when explicitly picking Firefox.");
 
-  Assert.throws(() => AutoMigrate.pickMigrator("gobbledygook"),
-                /migrator object is not available/,
-                "Should throw when passing unknown migrator key");
+  await promiseThrows(() => AutoMigrate.pickMigrator("gobbledygook"),
+                      /migrator object is not available/,
+                      "Should throw when passing unknown migrator key");
   gShimmedMigratorKeyPicker = function() {
     return "firefox";
   };
-  Assert.throws(() => AutoMigrate.pickMigrator(),
-                /Can't automatically migrate from Firefox/,
-                "Should throw when implicitly picking Firefox.");
+  await promiseThrows(() => AutoMigrate.pickMigrator(),
+                      /Can't automatically migrate from Firefox/,
+                      "Should throw when implicitly picking Firefox.");
   gShimmedMigratorKeyPicker = function() {
     return "gobbledygook";
   };
-  Assert.throws(() => AutoMigrate.pickMigrator(),
-                /migrator object is not available/,
-                "Should throw when an unknown migrator is the default");
+  await promiseThrows(() => AutoMigrate.pickMigrator(),
+                      /migrator object is not available/,
+                      "Should throw when an unknown migrator is the default");
   gShimmedMigratorKeyPicker = function() {
     return "";
   };
-  Assert.throws(() => AutoMigrate.pickMigrator(),
-                /Could not determine default browser key/,
-                "Should throw when an unknown migrator is the default");
+  await promiseThrows(() => AutoMigrate.pickMigrator(),
+                      /Could not determine default browser key/,
+                      "Should throw when an unknown migrator is the default");
 });
 
 
@@ -80,32 +89,37 @@ add_task(async function checkMigratorPicking() {
  * Test automatically picking a profile to migrate from
  */
 add_task(async function checkProfilePicking() {
-  let fakeMigrator = {sourceProfiles: [{id: "a"}, {id: "b"}]};
-  let profB = fakeMigrator.sourceProfiles[1];
-  Assert.throws(() => AutoMigrate.pickProfile(fakeMigrator),
-                /Don't know how to pick a profile when more/,
-                "Should throw when there are multiple profiles.");
-  Assert.throws(() => AutoMigrate.pickProfile(fakeMigrator, "c"),
-                /Profile specified was not found/,
-                "Should throw when the profile supplied doesn't exist.");
-  let profileToMigrate = AutoMigrate.pickProfile(fakeMigrator, "b");
+  let fakeMigrator = {
+    _sourceProfiles: [{id: "a"}, {id: "b"}],
+    getSourceProfiles() {
+      return this._sourceProfiles;
+    },
+  };
+  let profB = fakeMigrator._sourceProfiles[1];
+  await promiseThrows(() => AutoMigrate.pickProfile(fakeMigrator),
+                      /Don't know how to pick a profile when more/,
+                      "Should throw when there are multiple profiles.");
+  await promiseThrows(() => AutoMigrate.pickProfile(fakeMigrator, "c"),
+                      /Profile specified was not found/,
+                      "Should throw when the profile supplied doesn't exist.");
+  let profileToMigrate = await AutoMigrate.pickProfile(fakeMigrator, "b");
   Assert.equal(profileToMigrate, profB, "Should return profile supplied");
 
-  fakeMigrator.sourceProfiles = null;
-  Assert.throws(() => AutoMigrate.pickProfile(fakeMigrator, "c"),
-                /Profile specified but only a default profile found./,
-                "Should throw when the profile supplied doesn't exist.");
-  profileToMigrate = AutoMigrate.pickProfile(fakeMigrator);
+  fakeMigrator._sourceProfiles = null;
+  await promiseThrows(() => AutoMigrate.pickProfile(fakeMigrator, "c"),
+                      /Profile specified but only a default profile found./,
+                      "Should throw when the profile supplied doesn't exist.");
+  profileToMigrate = await AutoMigrate.pickProfile(fakeMigrator);
   Assert.equal(profileToMigrate, null, "Should return default profile when that's the only one.");
 
-  fakeMigrator.sourceProfiles = [];
-  Assert.throws(() => AutoMigrate.pickProfile(fakeMigrator),
-                /No profile data found/,
-                "Should throw when no profile data is present.");
+  fakeMigrator._sourceProfiles = [];
+  await promiseThrows(() => AutoMigrate.pickProfile(fakeMigrator),
+                      /No profile data found/,
+                      "Should throw when no profile data is present.");
 
-  fakeMigrator.sourceProfiles = [{id: "a"}];
-  let profA = fakeMigrator.sourceProfiles[0];
-  profileToMigrate = AutoMigrate.pickProfile(fakeMigrator);
+  fakeMigrator._sourceProfiles = [{id: "a"}];
+  let profA = fakeMigrator._sourceProfiles[0];
+  profileToMigrate = await AutoMigrate.pickProfile(fakeMigrator);
   Assert.equal(profileToMigrate, profA, "Should return the only profile if only one is present.");
 });
 
@@ -115,7 +129,7 @@ add_task(async function checkProfilePicking() {
  */
 add_task(async function checkIntegration() {
   gShimmedMigrator = {
-    get sourceProfiles() {
+    getSourceProfiles() {
       info("Read sourceProfiles");
       return null;
     },
@@ -130,7 +144,7 @@ add_task(async function checkIntegration() {
   gShimmedMigratorKeyPicker = function() {
     return "gobbledygook";
   };
-  AutoMigrate.migrate("startup");
+  await AutoMigrate.migrate("startup");
   Assert.strictEqual(gShimmedMigrator._getMigrateDataArgs, null,
                      "getMigrateData called with 'null' as a profile");
 
@@ -146,7 +160,7 @@ add_task(async function checkIntegration() {
 add_task(async function checkUndoPreconditions() {
   let shouldAddData = false;
   gShimmedMigrator = {
-    get sourceProfiles() {
+    getSourceProfiles() {
       info("Read sourceProfiles");
       return null;
     },
@@ -154,16 +168,16 @@ add_task(async function checkUndoPreconditions() {
       this._getMigrateDataArgs = profileToMigrate;
       return Ci.nsIBrowserProfileMigrator.BOOKMARKS;
     },
-    migrate(types, startup, profileToMigrate) {
+    async migrate(types, startup, profileToMigrate) {
       this._migrateArgs = [types, startup, profileToMigrate];
       if (shouldAddData) {
         // Insert a login and check that that worked.
-        MigrationUtils.insertLoginWrapper({
+        await MigrationUtils.insertLoginsWrapper([{
           hostname: "www.mozilla.org",
           formSubmitURL: "http://www.mozilla.org",
           username: "user",
           password: "pass",
-        });
+        }]);
       }
       TestUtils.executeSoon(function() {
         Services.obs.notifyObservers(null, "Migration:Ended", undefined);
@@ -174,7 +188,7 @@ add_task(async function checkUndoPreconditions() {
   gShimmedMigratorKeyPicker = function() {
     return "gobbledygook";
   };
-  AutoMigrate.migrate("startup");
+  await AutoMigrate.migrate("startup");
   let migrationFinishedPromise = TestUtils.topicObserved("Migration:Ended");
   Assert.strictEqual(gShimmedMigrator._getMigrateDataArgs, null,
                      "getMigrateData called with 'null' as a profile");
@@ -193,7 +207,7 @@ add_task(async function checkUndoPreconditions() {
   Preferences.reset("browser.migrate.automigrate.browser");
   shouldAddData = true;
 
-  AutoMigrate.migrate("startup");
+  await AutoMigrate.migrate("startup");
   migrationFinishedPromise = TestUtils.topicObserved("Migration:Ended");
   Assert.strictEqual(gShimmedMigrator._getMigrateDataArgs, null,
                      "getMigrateData called with 'null' as a profile");
@@ -225,12 +239,12 @@ add_task(async function checkUndoRemoval() {
   MigrationUtils.initializeUndoData();
   Preferences.set("browser.migrate.automigrate.browser", "automationbrowser");
   // Insert a login and check that that worked.
-  MigrationUtils.insertLoginWrapper({
+  await MigrationUtils.insertLoginsWrapper([{
     hostname: "www.mozilla.org",
     formSubmitURL: "http://www.mozilla.org",
     username: "user",
     password: "pass",
-  });
+  }]);
   let storedLogins = Services.logins.findLogins({}, "www.mozilla.org",
                                                 "http://www.mozilla.org", null);
   Assert.equal(storedLogins.length, 1, "Should have 1 login");
@@ -269,7 +283,7 @@ add_task(async function checkUndoRemoval() {
         transitionType: PlacesUtils.history.TRANSITION_LINK,
         visitDate: now_uSec - 100 * kUsecPerMin,
       },
-    ]
+    ],
   }]);
   await frecencyUpdatePromise;
 
@@ -335,23 +349,23 @@ add_task(async function checkUndoBookmarksState() {
   let url = "http://www.example.com";
   let parentGuid = PlacesUtils.bookmarks.toolbarGuid;
   let {guid, lastModified} = await MigrationUtils.insertBookmarkWrapper({
-    title, url, parentGuid
+    title, url, parentGuid,
   });
   Assert.deepEqual((await MigrationUtils.stopAndRetrieveUndoData()).get("bookmarks"),
       [{lastModified, parentGuid, guid, type: TYPE_BOOKMARK}]);
 
   MigrationUtils.initializeUndoData();
   ({guid, lastModified} = await MigrationUtils.insertBookmarkWrapper({
-    title, parentGuid, type: TYPE_FOLDER
+    title, parentGuid, type: TYPE_FOLDER,
   }));
   let folder = {guid, lastModified, parentGuid, type: TYPE_FOLDER};
   let folderGuid = folder.guid;
   ({guid, lastModified} = await MigrationUtils.insertBookmarkWrapper({
-    title, url, parentGuid: folderGuid
+    title, url, parentGuid: folderGuid,
   }));
   let kid1 = {guid, lastModified, parentGuid: folderGuid, type: TYPE_BOOKMARK};
   ({guid, lastModified} = await MigrationUtils.insertBookmarkWrapper({
-    title, url, parentGuid: folderGuid
+    title, url, parentGuid: folderGuid,
   }));
   let kid2 = {guid, lastModified, parentGuid: folderGuid, type: TYPE_BOOKMARK};
 
@@ -375,28 +389,28 @@ add_task(async function testBookmarkRemovalByUndo() {
   let url = "http://www.mymagicaluniqueurl.com";
   let parentGuid = PlacesUtils.bookmarks.toolbarGuid;
   let {guid} = await MigrationUtils.insertBookmarkWrapper({
-    title: "Some folder", parentGuid, type: TYPE_FOLDER
+    title: "Some folder", parentGuid, type: TYPE_FOLDER,
   });
   let folderGuid = guid;
   let itemsToRemove = [];
   ({guid} = await MigrationUtils.insertBookmarkWrapper({
-    title: "Inner folder", parentGuid: folderGuid, type: TYPE_FOLDER
+    title: "Inner folder", parentGuid: folderGuid, type: TYPE_FOLDER,
   }));
   let innerFolderGuid = guid;
   itemsToRemove.push(innerFolderGuid);
 
   ({guid} = await MigrationUtils.insertBookmarkWrapper({
-    title: "Inner inner folder", parentGuid: innerFolderGuid, type: TYPE_FOLDER
+    title: "Inner inner folder", parentGuid: innerFolderGuid, type: TYPE_FOLDER,
   }));
   itemsToRemove.push(guid);
 
   ({guid} = await MigrationUtils.insertBookmarkWrapper({
-    title: "Inner nested item", url: "http://inner-nested-example.com", parentGuid: guid
+    title: "Inner nested item", url: "http://inner-nested-example.com", parentGuid: guid,
   }));
   itemsToRemove.push(guid);
 
   ({guid} = await MigrationUtils.insertBookmarkWrapper({
-    title, url, parentGuid: folderGuid
+    title, url, parentGuid: folderGuid,
   }));
   itemsToRemove.push(guid);
 
@@ -427,13 +441,13 @@ add_task(async function testBookmarkRemovalByUndo() {
 
 add_task(async function checkUndoLoginsState() {
   MigrationUtils.initializeUndoData();
-  MigrationUtils.insertLoginWrapper({
+  await MigrationUtils.insertLoginsWrapper([{
     username: "foo",
     password: "bar",
     hostname: "https://example.com",
     formSubmitURL: "https://example.com/",
     timeCreated: new Date(),
-  });
+  }]);
   let storedLogins = Services.logins.findLogins({}, "https://example.com", "", "");
   let storedLogin = storedLogins[0];
   storedLogin.QueryInterface(Ci.nsILoginMetaInfo);
@@ -445,28 +459,28 @@ add_task(async function checkUndoLoginsState() {
 
 add_task(async function testLoginsRemovalByUndo() {
   MigrationUtils.initializeUndoData();
-  MigrationUtils.insertLoginWrapper({
+  await MigrationUtils.insertLoginsWrapper([{
     username: "foo",
     password: "bar",
     hostname: "https://example.com",
     formSubmitURL: "https://example.com/",
     timeCreated: new Date(),
-  });
-  MigrationUtils.insertLoginWrapper({
+  }]);
+  await MigrationUtils.insertLoginsWrapper([{
     username: "foo",
     password: "bar",
     hostname: "https://example.org",
     formSubmitURL: "https://example.org/",
     timeCreated: new Date(new Date().getTime() - 10000),
-  });
+  }]);
   // This should update the existing login
-  LoginHelper.maybeImportLogin({
+  await LoginHelper.maybeImportLogins([{
     username: "foo",
     password: "bazzy",
     hostname: "https://example.org",
     formSubmitURL: "https://example.org/",
     timePasswordChanged: new Date(),
-  });
+  }]);
   Assert.equal(1, LoginHelper.searchLoginsWithObject({hostname: "https://example.org", formSubmitURL: "https://example.org/"}).length,
                "Should be only 1 login for example.org (that was updated)");
   let undoLoginData = (await MigrationUtils.stopAndRetrieveUndoData()).get("logins");
@@ -528,7 +542,7 @@ add_task(async function checkUndoVisitsState() {
     last: new Date("2016-04-03").getTime() * 1000,
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function checkUndoVisitsState() {
@@ -579,7 +593,7 @@ add_task(async function checkUndoVisitsState() {
       onManyFrecenciesChanged() {
         PlacesUtils.history.removeObserver(this);
         resolve();
-      }
+      },
     });
   });
   await PlacesUtils.history.insertMany([{
@@ -608,7 +622,7 @@ add_task(async function checkUndoVisitsState() {
 
   let frecencyChangesExpected = new Map([
     ["http://www.example.com/", PromiseUtils.defer()],
-    ["http://www.example.org/", PromiseUtils.defer()]
+    ["http://www.example.org/", PromiseUtils.defer()],
   ]);
   let uriDeletedExpected = new Map([
     ["http://www.mozilla.org/", PromiseUtils.defer()],
@@ -661,7 +675,7 @@ add_task(async function checkUndoVisitsState() {
                "2 example.org visits should have persisted (out of 4).");
   Assert.equal(await visitsForURL("http://www.unrelated.org/"), 1,
                "1 unrelated.org visits should have persisted as it's not involved in the import.");
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function checkHistoryRemovalCompletion() {

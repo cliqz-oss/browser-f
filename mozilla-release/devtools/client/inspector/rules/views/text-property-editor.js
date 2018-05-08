@@ -29,6 +29,7 @@ const FILTER_SWATCH_CLASS = "ruleview-filterswatch";
 const ANGLE_SWATCH_CLASS = "ruleview-angleswatch";
 const INSET_POINT_TYPES = ["top", "right", "bottom", "left"];
 const FONT_FAMILY_CLASS = "ruleview-font-family";
+const SHAPE_SWATCH_CLASS = "ruleview-shapeswatch";
 
 /*
  * An actionable element is an element which on click triggers a specific action
@@ -135,12 +136,6 @@ TextPropertyEditor.prototype = {
       tabindex: "-1"
     });
 
-    // Click to expand the computed properties of the text property.
-    this.expander = createChild(this.container, "span", {
-      class: "ruleview-expander theme-twisty"
-    });
-    this.expander.addEventListener("click", this._onExpandClicked, true);
-
     this.nameContainer = createChild(this.container, "span", {
       class: "ruleview-namecontainer"
     });
@@ -153,6 +148,12 @@ TextPropertyEditor.prototype = {
     });
 
     appendText(this.nameContainer, ": ");
+
+    // Click to expand the computed properties of the text property.
+    this.expander = createChild(this.container, "span", {
+      class: "ruleview-expander theme-twisty"
+    });
+    this.expander.addEventListener("click", this._onExpandClicked, true);
 
     // Create a span that will hold the property and semicolon.
     // Use this span to create a slightly larger click target
@@ -316,6 +317,7 @@ TextPropertyEditor.prototype = {
         multiline: true,
         maxWidth: () => this.container.getBoundingClientRect().width,
         cssProperties: this.cssProperties,
+        cssVariables: this.rule.elementStyle.variables,
       });
 
       this.ruleView.highlighters.on("hover-shape-point", this._onHoverShapePoint);
@@ -379,6 +381,7 @@ TextPropertyEditor.prototype = {
       flexClass: "ruleview-flex",
       gridClass: "ruleview-grid",
       shapeClass: "ruleview-shape",
+      shapeSwatchClass: SHARED_SWATCH_CLASS + " " + SHAPE_SWATCH_CLASS,
       defaultColorType: !propDirty,
       urlClass: "theme-link",
       fontFamilyClass: FONT_FAMILY_CLASS,
@@ -506,7 +509,7 @@ TextPropertyEditor.prototype = {
       }
     }
 
-    let shapeToggle = this.valueSpan.querySelector(".ruleview-shape");
+    let shapeToggle = this.valueSpan.querySelector(".ruleview-shapeswatch");
     if (shapeToggle) {
       let mode = "css" + name.split("-").map(s => {
         return s[0].toUpperCase() + s.slice(1);
@@ -553,6 +556,7 @@ TextPropertyEditor.prototype = {
     this.element.classList.remove("ruleview-overridden");
     this.filterProperty.hidden = true;
     this.enable.style.visibility = "hidden";
+    this.expander.style.display = "none";
   },
 
   /**
@@ -574,6 +578,9 @@ TextPropertyEditor.prototype = {
                                  !this.prop.overridden ||
                                  this.ruleEditor.rule.isUnmatched;
 
+    let showExpander = this.prop.computed.some(c => c.name !== this.prop.name);
+    this.expander.style.display = showExpander ? "inline-block" : "none";
+
     if (!this.editing &&
         (this.prop.overridden || !this.prop.enabled ||
          !this.prop.isKnownProperty())) {
@@ -591,7 +598,7 @@ TextPropertyEditor.prototype = {
     this.computed.innerHTML = "";
 
     let showExpander = this.prop.computed.some(c => c.name !== this.prop.name);
-    this.expander.style.visibility = showExpander ? "visible" : "hidden";
+    this.expander.style.display = !this.editing && showExpander ? "inline-block" : "none";
 
     this._populatedComputed = false;
     if (this.expander.hasAttribute("open")) {
@@ -1038,7 +1045,7 @@ TextPropertyEditor.prototype = {
    */
   _onHoverShapePoint: function (event, point) {
     // If there is no shape toggle, or it is not active, return.
-    let shapeToggle = this.valueSpan.querySelector(".ruleview-shape.active");
+    let shapeToggle = this.valueSpan.querySelector(".ruleview-shapeswatch.active");
     if (!shapeToggle) {
       return;
     }

@@ -15,7 +15,9 @@
 #ifdef XP_WIN
 #include "mozilla/LookAndFeel.h"
 #endif
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRuleProcessor.h"
+#endif
 #include "nsDeviceContext.h"
 #include "nsIBaseWindow.h"
 #include "nsIDocShell.h"
@@ -35,72 +37,61 @@ static uint8_t sWinThemeId = LookAndFeel::eWindowsTheme_Generic;
 #endif
 
 static const nsCSSProps::KTableEntry kOrientationKeywords[] = {
-  { eCSSKeyword_portrait,                 NS_STYLE_ORIENTATION_PORTRAIT },
-  { eCSSKeyword_landscape,                NS_STYLE_ORIENTATION_LANDSCAPE },
+  { eCSSKeyword_portrait,                 StyleOrientation::Portrait },
+  { eCSSKeyword_landscape,                StyleOrientation::Landscape },
   { eCSSKeyword_UNKNOWN,                  -1 }
 };
 
 static const nsCSSProps::KTableEntry kScanKeywords[] = {
-  { eCSSKeyword_progressive,              NS_STYLE_SCAN_PROGRESSIVE },
-  { eCSSKeyword_interlace,                NS_STYLE_SCAN_INTERLACE },
+  { eCSSKeyword_progressive,              StyleScan::Progressive },
+  { eCSSKeyword_interlace,                StyleScan::Interlace },
   { eCSSKeyword_UNKNOWN,                  -1 }
 };
 
 static const nsCSSProps::KTableEntry kDisplayModeKeywords[] = {
-  { eCSSKeyword_browser,                 NS_STYLE_DISPLAY_MODE_BROWSER },
-  { eCSSKeyword_minimal_ui,              NS_STYLE_DISPLAY_MODE_MINIMAL_UI },
-  { eCSSKeyword_standalone,              NS_STYLE_DISPLAY_MODE_STANDALONE },
-  { eCSSKeyword_fullscreen,              NS_STYLE_DISPLAY_MODE_FULLSCREEN },
+  { eCSSKeyword_browser,                 StyleDisplayMode::Browser },
+  { eCSSKeyword_minimal_ui,              StyleDisplayMode::MinimalUi },
+  { eCSSKeyword_standalone,              StyleDisplayMode::Standalone },
+  { eCSSKeyword_fullscreen,              StyleDisplayMode::Fullscreen },
   { eCSSKeyword_UNKNOWN,                 -1 }
 };
 
 #ifdef XP_WIN
 struct WindowsThemeName {
-  LookAndFeel::WindowsTheme id;
-  const wchar_t* name;
+  LookAndFeel::WindowsTheme mId;
+  nsStaticAtom** mName;
 };
 
 // Windows theme identities used in the -moz-windows-theme media query.
-const WindowsThemeName themeStrings[] = {
-  { LookAndFeel::eWindowsTheme_Aero,       L"aero" },
-  { LookAndFeel::eWindowsTheme_AeroLite,   L"aero-lite" },
-  { LookAndFeel::eWindowsTheme_LunaBlue,   L"luna-blue" },
-  { LookAndFeel::eWindowsTheme_LunaOlive,  L"luna-olive" },
-  { LookAndFeel::eWindowsTheme_LunaSilver, L"luna-silver" },
-  { LookAndFeel::eWindowsTheme_Royale,     L"royale" },
-  { LookAndFeel::eWindowsTheme_Zune,       L"zune" },
-  { LookAndFeel::eWindowsTheme_Generic,    L"generic" }
+const WindowsThemeName kThemeStrings[] = {
+  { LookAndFeel::eWindowsTheme_Aero,       &nsGkAtoms::aero },
+  { LookAndFeel::eWindowsTheme_AeroLite,   &nsGkAtoms::aero_lite },
+  { LookAndFeel::eWindowsTheme_LunaBlue,   &nsGkAtoms::luna_blue },
+  { LookAndFeel::eWindowsTheme_LunaOlive,  &nsGkAtoms::luna_olive },
+  { LookAndFeel::eWindowsTheme_LunaSilver, &nsGkAtoms::luna_silver },
+  { LookAndFeel::eWindowsTheme_Royale,     &nsGkAtoms::royale },
+  { LookAndFeel::eWindowsTheme_Zune,       &nsGkAtoms::zune },
+  { LookAndFeel::eWindowsTheme_Generic,    &nsGkAtoms::generic_ }
 };
 
 struct OperatingSystemVersionInfo {
-  LookAndFeel::OperatingSystemVersion id;
-  const wchar_t* name;
+  LookAndFeel::OperatingSystemVersion mId;
+  nsStaticAtom** mName;
 };
 
 // Os version identities used in the -moz-os-version media query.
-const OperatingSystemVersionInfo osVersionStrings[] = {
-  { LookAndFeel::eOperatingSystemVersion_Windows7,      L"windows-win7" },
-  { LookAndFeel::eOperatingSystemVersion_Windows8,      L"windows-win8" },
-  { LookAndFeel::eOperatingSystemVersion_Windows10,     L"windows-win10" }
+const OperatingSystemVersionInfo kOsVersionStrings[] = {
+  { LookAndFeel::eOperatingSystemVersion_Windows7,  &nsGkAtoms::windows_win7 },
+  { LookAndFeel::eOperatingSystemVersion_Windows8,  &nsGkAtoms::windows_win8 },
+  { LookAndFeel::eOperatingSystemVersion_Windows10, &nsGkAtoms::windows_win10 }
 };
 #endif
-
-static nsPresContext*
-GetPresContext(nsIDocument* aDocument)
-{
-  nsIPresShell* presShell = aDocument->GetShell();
-  if (!presShell) {
-    return nullptr;
-  }
-
-  return presShell->GetPresContext();
-}
 
 // A helper for four features below
 static nsSize
 GetSize(nsIDocument* aDocument)
 {
-  nsPresContext* pc = GetPresContext(aDocument);
+  nsPresContext* pc = aDocument->GetPresContext();
 
   // Per spec, return a 0x0 viewport if we're not being rendered. See:
   //
@@ -138,12 +129,6 @@ GetHeight(nsIDocument* aDocument, const nsMediaFeature*,
 }
 
 static bool
-ShouldResistFingerprinting(nsIDocument* aDocument)
-{
-  return nsContentUtils::ShouldResistFingerprinting(aDocument->GetDocShell());
-}
-
-static bool
 IsDeviceSizePageSize(nsIDocument* aDocument)
 {
   nsIDocShell* docShell = aDocument->GetDocShell();
@@ -157,11 +142,12 @@ IsDeviceSizePageSize(nsIDocument* aDocument)
 static nsSize
 GetDeviceSize(nsIDocument* aDocument)
 {
-  if (ShouldResistFingerprinting(aDocument) || IsDeviceSizePageSize(aDocument)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aDocument) ||
+      IsDeviceSizePageSize(aDocument)) {
     return GetSize(aDocument);
   }
 
-  nsPresContext* pc = GetPresContext(aDocument);
+  nsPresContext* pc = aDocument->GetPresContext();
   // NOTE(emilio): We should probably figure out how to return an appropriate
   // device size here, though in a multi-screen world that makes no sense
   // really.
@@ -203,9 +189,9 @@ GetOrientation(nsIDocument* aDocument, const nsMediaFeature*,
 {
   nsSize size = GetSize(aDocument);
   // Per spec, square viewports should be 'portrait'
-  int32_t orientation = size.width > size.height
-    ?  NS_STYLE_ORIENTATION_LANDSCAPE : NS_STYLE_ORIENTATION_PORTRAIT;
-  aResult.SetIntValue(orientation, eCSSUnit_Enumerated);
+  auto orientation = size.width > size.height
+    ? StyleOrientation::Landscape : StyleOrientation::Portrait;
+  aResult.SetEnumValue(orientation);
 }
 
 static void
@@ -214,9 +200,9 @@ GetDeviceOrientation(nsIDocument* aDocument, const nsMediaFeature*,
 {
   nsSize size = GetDeviceSize(aDocument);
   // Per spec, square viewports should be 'portrait'
-  int32_t orientation = size.width > size.height
-    ? NS_STYLE_ORIENTATION_LANDSCAPE : NS_STYLE_ORIENTATION_PORTRAIT;
-  aResult.SetIntValue(orientation, eCSSUnit_Enumerated);
+  auto orientation = size.width > size.height
+    ? StyleOrientation::Landscape : StyleOrientation::Portrait;
+  aResult.SetEnumValue(orientation);
 }
 
 static void
@@ -255,7 +241,7 @@ GetDeviceAspectRatio(nsIDocument* aDocument, const nsMediaFeature*,
 static nsDeviceContext*
 GetDeviceContextFor(nsIDocument* aDocument)
 {
-  nsPresContext* pc = GetPresContext(aDocument);
+  nsPresContext* pc = aDocument->GetPresContext();
   if (!pc) {
     return nullptr;
   }
@@ -274,7 +260,7 @@ GetColor(nsIDocument* aDocument, const nsMediaFeature*,
   // rendered.
   uint32_t depth = 24;
 
-  if (!ShouldResistFingerprinting(aDocument)) {
+  if (!nsContentUtils::ShouldResistFingerprinting(aDocument)) {
     if (nsDeviceContext* dx = GetDeviceContextFor(aDocument)) {
       // FIXME: On a monochrome device, return 0!
       dx->GetDepth(depth);
@@ -323,7 +309,7 @@ GetResolution(nsIDocument* aDocument, const nsMediaFeature*,
   float dppx = 1.;
 
   if (nsDeviceContext* dx = GetDeviceContextFor(aDocument)) {
-    if (ShouldResistFingerprinting(aDocument)) {
+    if (nsContentUtils::ShouldResistFingerprinting(aDocument)) {
       dppx = dx->GetFullZoom();
     } else {
       // Get the actual device pixel ratio, which also takes zoom into account.
@@ -365,28 +351,27 @@ GetDisplayMode(nsIDocument* aDocument, const nsMediaFeature*,
     nsCOMPtr<nsIWidget> mainWidget;
     baseWindow->GetMainWidget(getter_AddRefs(mainWidget));
     if (mainWidget && mainWidget->SizeMode() == nsSizeMode_Fullscreen) {
-      aResult.SetIntValue(NS_STYLE_DISPLAY_MODE_FULLSCREEN, eCSSUnit_Enumerated);
+      aResult.SetEnumValue(StyleDisplayMode::Fullscreen);
       return;
     }
   }
 
-  static_assert(nsIDocShell::DISPLAY_MODE_BROWSER == NS_STYLE_DISPLAY_MODE_BROWSER &&
-                nsIDocShell::DISPLAY_MODE_MINIMAL_UI == NS_STYLE_DISPLAY_MODE_MINIMAL_UI &&
-                nsIDocShell::DISPLAY_MODE_STANDALONE == NS_STYLE_DISPLAY_MODE_STANDALONE &&
-                nsIDocShell::DISPLAY_MODE_FULLSCREEN == NS_STYLE_DISPLAY_MODE_FULLSCREEN,
+  static_assert(nsIDocShell::DISPLAY_MODE_BROWSER == static_cast<int32_t>(StyleDisplayMode::Browser) &&
+                nsIDocShell::DISPLAY_MODE_MINIMAL_UI == static_cast<int32_t>(StyleDisplayMode::MinimalUi) &&
+                nsIDocShell::DISPLAY_MODE_STANDALONE == static_cast<int32_t>(StyleDisplayMode::Standalone) &&
+                nsIDocShell::DISPLAY_MODE_FULLSCREEN == static_cast<int32_t>(StyleDisplayMode::Fullscreen),
                 "nsIDocShell display modes must mach nsStyleConsts.h");
 
-  uint32_t displayMode = NS_STYLE_DISPLAY_MODE_BROWSER;
+  uint32_t displayMode = nsIDocShell::DISPLAY_MODE_BROWSER;
   if (nsIDocShell* docShell = rootDocument->GetDocShell()) {
     docShell->GetDisplayMode(&displayMode);
   }
 
-  aResult.SetIntValue(displayMode, eCSSUnit_Enumerated);
+  aResult.SetEnumValue(static_cast<StyleDisplayMode>(displayMode));
 }
 
 static void
-GetGrid(nsIDocument* aDocument, const nsMediaFeature*,
-        nsCSSValue& aResult)
+GetGrid(nsIDocument* aDocument, const nsMediaFeature*, nsCSSValue& aResult)
 {
   // Gecko doesn't support grid devices (e.g., ttys), so the 'grid'
   // feature is always 0.
@@ -397,7 +382,7 @@ static void
 GetDevicePixelRatio(nsIDocument* aDocument, const nsMediaFeature*,
                     nsCSSValue& aResult)
 {
-  if (ShouldResistFingerprinting(aDocument)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aDocument)) {
     aResult.SetFloatValue(1.0, eCSSUnit_Number);
     return;
   }
@@ -454,7 +439,8 @@ GetSystemMetric(nsIDocument* aDocument, const nsMediaFeature* aFeature,
   MOZ_ASSERT(!isAccessibleFromContentPages ||
              *aFeature->mName == nsGkAtoms::_moz_touch_enabled);
 
-  if (isAccessibleFromContentPages && ShouldResistFingerprinting(aDocument)) {
+  if (isAccessibleFromContentPages &&
+      nsContentUtils::ShouldResistFingerprinting(aDocument)) {
     // If "privacy.resistFingerprinting" is enabled, then we simply don't
     // return any system-backed media feature values. (No spoofed values
     // returned.)
@@ -476,7 +462,7 @@ GetWindowsTheme(nsIDocument* aDocument, const nsMediaFeature* aFeature,
   aResult.Reset();
 
   MOZ_ASSERT(aFeature->mReqFlags & nsMediaFeature::eUserAgentAndChromeOnly);
-  if (ShouldResistFingerprinting(aDocument)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aDocument)) {
     return;
   }
 
@@ -488,10 +474,9 @@ GetWindowsTheme(nsIDocument* aDocument, const nsMediaFeature* aFeature,
     return;
 
   // Look up the appropriate theme string
-  for (size_t i = 0; i < ArrayLength(themeStrings); ++i) {
-    if (windowsThemeId == themeStrings[i].id) {
-      aResult.SetStringValue(nsDependentString(themeStrings[i].name),
-                             eCSSUnit_Ident);
+  for (const auto& theme : kThemeStrings) {
+    if (windowsThemeId == theme.mId) {
+      aResult.SetAtomIdentValue((*theme.mName)->ToAddRefed());
       break;
     }
   }
@@ -505,7 +490,7 @@ GetOperatingSystemVersion(nsIDocument* aDocument, const nsMediaFeature* aFeature
   aResult.Reset();
 
   MOZ_ASSERT(aFeature->mReqFlags & nsMediaFeature::eUserAgentAndChromeOnly);
-  if (ShouldResistFingerprinting(aDocument)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aDocument)) {
     return;
   }
 
@@ -514,10 +499,9 @@ GetOperatingSystemVersion(nsIDocument* aDocument, const nsMediaFeature* aFeature
   if (NS_SUCCEEDED(
         LookAndFeel::GetInt(LookAndFeel::eIntID_OperatingSystemVersionIdentifier,
                             &metricResult))) {
-    for (size_t i = 0; i < ArrayLength(osVersionStrings); ++i) {
-      if (metricResult == osVersionStrings[i].id) {
-        aResult.SetStringValue(nsDependentString(osVersionStrings[i].name),
-                               eCSSUnit_Ident);
+    for (const auto& osVersion : kOsVersionStrings) {
+      if (metricResult == osVersion.mId) {
+        aResult.SetAtomIdentValue((*osVersion.mName)->ToAddRefed());
         break;
       }
     }

@@ -4,7 +4,7 @@
     "visibility": "public",
     "filename": "eslint.tar.gz",
     "unpack": true,
-    "digest": "cfe0e47b045337d5bd61530a2eeadfd6e83609c2438dcbc32b9d7a297b823fb2c21b1bad66589eef258f749a6e5f5c3bddab2932efa0ef683a9e4f0cf75bf40b",
-    "size": 4905426
+    "digest": "0c4825c9a0873f55d6a74417e8ef9c1189e0430b2a90eff799f312ed95f4effee0e4f61da081022fb0f2b8ef6946f5c8b9a519e5d05dac8ed90c9126088c2f47",
+    "size": 4582274
   }
 ]

@@ -9,7 +9,7 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="menuitem-base" role="xul:menuitem"
+  <binding id="menuitem-base"
            extends="chrome://global/content/bindings/general.xml#basetext">
     <implementation implements="nsIDOMXULSelectControlItemElement, nsIDOMXULContainerItemElement">
       <property name="value" onset="this.setAttribute('value', val); return val;"
@@ -22,7 +22,7 @@
           <![CDATA[
             var parent = this.parentNode;
             if (parent &&
-                parent.parentNode instanceof Components.interfaces.nsIDOMXULSelectControlElement)
+                parent.parentNode instanceof Ci.nsIDOMXULSelectControlElement)
               return parent.parentNode;
             return null;
           ]]>
@@ -33,7 +33,7 @@
       <property name="parentContainer" readonly="true">
         <getter>
           for (var parent = this.parentNode; parent; parent = parent.parentNode) {
-            if (parent instanceof Components.interfaces.nsIDOMXULContainerElement)
+            if (parent instanceof Ci.nsIDOMXULContainerElement)
               return parent;
           }
           return null;
@@ -240,17 +240,6 @@
     </content>
   </binding>
 
-  <binding id="menuitem-iconic-desc-noaccel" extends="chrome://global/content/bindings/menu.xml#menuitem">
-    <content>
-      <xul:hbox class="menu-iconic-left" align="center" pack="center"
-                xbl:inherits="selected,disabled,checked">
-        <xul:image class="menu-iconic-icon" xbl:inherits="src=image,validate,src"/>
-      </xul:hbox>
-      <xul:label class="menu-iconic-text" xbl:inherits="value=label,accesskey,crop" crop="right" flex="1"/>
-      <xul:label class="menu-iconic-text menu-description" xbl:inherits="value=description" crop="right" flex="10000"/>
-    </content>
-  </binding>
-
   <binding id="menu-iconic"
            extends="chrome://global/content/bindings/menu.xml#menu-base">
     <content>
@@ -266,13 +255,6 @@
         <xul:image/>
       </xul:hbox>
       <children includes="menupopup|template"/>
-    </content>
-  </binding>
-
-  <binding id="menubutton-item" extends="chrome://global/content/bindings/menu.xml#menuitem-base">
-    <content>
-      <xul:label class="menubutton-text" flex="1" xbl:inherits="value=label,accesskey,crop" crop="right"/>
-      <children includes="menupopup"/>
     </content>
   </binding>
 </bindings>

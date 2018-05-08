@@ -107,6 +107,7 @@
   <string name="share_image_failed">&share_image_failed;</string>
   <string name="save_as_pdf">&save_as_pdf;</string>
   <string name="print">&print;</string>
+  <string name="view_page_source">&view_page_source;</string>
   <string name="find_in_page">&find_in_page;</string>
   <string name="desktop_mode">&desktop_mode;</string>
   <string name="page">&page;</string>
@@ -597,6 +598,7 @@
   <string name="devtools_auth_scan_header">&devtools_auth_scan_header;</string>
 
   <string name="unsupported_sdk_version">&unsupported_sdk_version;</string>
+  <string name="corrupt_apk">&corrupt_apk;</string>
   <string name="eol_notification_title">&eol_notification_title2;</string>
   <string name="eol_notification_summary">&eol_notification_summary;</string>
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/honeycomb -->
@@ -606,7 +608,6 @@
   <string name="whatsnew_notification_summary">&whatsnew_notification_summary;</string>
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/new-android -->
   <string name="whatsnew_notification_url">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/new-android</string>
-  <string name="aurora_transition_notification_url">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/aurora-transition</string>
 
   <string name="promotion_add_page_shortcut">&promotion_add_page_shortcut;</string>
 

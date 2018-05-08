@@ -47,12 +47,13 @@ pub enum Color {
 
 #[cfg(feature = "gecko")]
 mod gecko {
-    define_css_keyword_enum! { SpecialColorKeyword:
-        "-moz-default-color" => MozDefaultColor,
-        "-moz-default-background-color" => MozDefaultBackgroundColor,
-        "-moz-hyperlinktext" => MozHyperlinktext,
-        "-moz-activehyperlinktext" => MozActiveHyperlinktext,
-        "-moz-visitedhyperlinktext" => MozVisitedHyperlinktext,
+    #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, ToCss)]
+    pub enum SpecialColorKeyword {
+        MozDefaultColor,
+        MozDefaultBackgroundColor,
+        MozHyperlinktext,
+        MozActivehyperlinktext,
+        MozVisitedhyperlinktext,
     }
 }
 
@@ -70,7 +71,6 @@ impl<'a, 'b: 'a, 'i: 'a> ::cssparser::ColorComponentParser<'i> for ColorComponen
         &self,
         input: &mut Parser<'i, 't>,
     ) -> Result<AngleOrNumber, ParseError<'i>> {
-        #[allow(unused_imports)] use std::ascii::AsciiExt;
         use values::specified::Angle;
 
         let location = input.current_source_location();
@@ -122,8 +122,6 @@ impl<'a, 'b: 'a, 'i: 'a> ::cssparser::ColorComponentParser<'i> for ColorComponen
         &self,
         input: &mut Parser<'i, 't>,
     ) -> Result<NumberOrPercentage, ParseError<'i>> {
-        #[allow(unused_imports)] use std::ascii::AsciiExt;
-
         let location = input.current_source_location();
 
         match input.next()?.clone() {
@@ -141,8 +139,6 @@ impl<'a, 'b: 'a, 'i: 'a> ::cssparser::ColorComponentParser<'i> for ColorComponen
 
 impl Parse for Color {
     fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        #[allow(unused_imports)] use std::ascii::AsciiExt;
-
         // Currently we only store authored value for color keywords,
         // because all browsers serialize those values as keywords for
         // specified value.
@@ -164,12 +160,14 @@ impl Parse for Color {
             Err(e) => {
                 #[cfg(feature = "gecko")]
                 {
-                    if let Ok(system) = input.try(SystemColor::parse) {
-                        return Ok(Color::System(system));
-                    }
+                    if let Ok(ident) = input.expect_ident() {
+                        if let Ok(system) = SystemColor::from_ident(ident) {
+                            return Ok(Color::System(system));
+                        }
 
-                    if let Ok(c) = gecko::SpecialColorKeyword::parse(input) {
-                        return Ok(Color::Special(c));
+                        if let Ok(c) = gecko::SpecialColorKeyword::from_ident(ident) {
+                            return Ok(Color::Special(c));
+                        }
                     }
                 }
 
@@ -314,7 +312,7 @@ impl Color {
         if let Some(unit) = unit {
             written += (&mut serialization[written..]).write(unit.as_bytes()).unwrap();
         }
-        debug_assert!(written == 6);
+        debug_assert_eq!(written, 6);
         parse_hash_color(&serialization).map_err(|()| {
             location.new_custom_error(StyleParseErrorKind::UnspecifiedError)
         })
@@ -372,8 +370,8 @@ impl Color {
                         Keyword::MozDefaultColor => pres_context.mDefaultColor,
                         Keyword::MozDefaultBackgroundColor => pres_context.mBackgroundColor,
                         Keyword::MozHyperlinktext => pres_context.mLinkColor,
-                        Keyword::MozActiveHyperlinktext => pres_context.mActiveLinkColor,
-                        Keyword::MozVisitedHyperlinktext => pres_context.mVisitedLinkColor,
+                        Keyword::MozActivehyperlinktext => pres_context.mActiveLinkColor,
+                        Keyword::MozVisitedhyperlinktext => pres_context.mVisitedLinkColor,
                     })
                 })
             }

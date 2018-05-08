@@ -18,6 +18,8 @@ EXPORTS.mozilla.dom += [
     'PerformanceObserverEntryList.h',
     'PerformanceResourceTiming.h',
     'PerformanceService.h',
+    'PerformanceStorage.h',
+    'PerformanceStorageWorker.h',
     'PerformanceTiming.h',
 ]
 
@@ -33,12 +35,9 @@ UNIFIED_SOURCES += [
     'PerformanceObserverEntryList.cpp',
     'PerformanceResourceTiming.cpp',
     'PerformanceService.cpp',
+    'PerformanceStorageWorker.cpp',
     'PerformanceTiming.cpp',
     'PerformanceWorker.cpp',
-]
-
-LOCAL_INCLUDES += [
-    '/dom/workers',
 ]
 
 MOCHITEST_MANIFESTS += [ 'tests/mochitest.ini' ]

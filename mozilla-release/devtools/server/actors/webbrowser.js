@@ -8,7 +8,6 @@
 
 var { Ci } = require("chrome");
 var Services = require("Services");
-var promise = require("promise");
 const defer = require("devtools/shared/defer");
 var { DebuggerServer } = require("devtools/server/main");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
@@ -20,6 +19,7 @@ loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker
 loader.lazyRequireGetter(this, "ServiceWorkerRegistrationActorList", "devtools/server/actors/worker-list", true);
 loader.lazyRequireGetter(this, "ProcessActorList", "devtools/server/actors/process", true);
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
+loader.lazyImporter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
 
 /**
  * Browser-specific actors.
@@ -256,7 +256,7 @@ BrowserTabList.prototype._getChildren = function (window) {
   });
 };
 
-BrowserTabList.prototype.getList = function () {
+BrowserTabList.prototype.getList = function (browserActorOptions) {
   let topXULWindow = Services.wm.getMostRecentWindow(
     DebuggerServer.chromeWindowType);
   let selectedBrowser = null;
@@ -279,7 +279,7 @@ BrowserTabList.prototype.getList = function () {
   for (let browser of this._getBrowsers()) {
     let selected = browser === selectedBrowser;
     actorPromises.push(
-      this._getActorForBrowser(browser)
+      this._getActorForBrowser(browser, browserActorOptions)
           .then(actor => {
             // Set the 'selected' properties on all actors correctly.
             actor.selected = selected;
@@ -303,21 +303,24 @@ BrowserTabList.prototype.getList = function () {
   this._mustNotify = true;
   this._checkListening();
 
-  return promise.all(actorPromises).then(values => {
+  return Promise.all(actorPromises).then(values => {
     // Filter out null values if we received a tabDestroyed error.
     return values.filter(value => value != null);
   });
 };
 
-BrowserTabList.prototype._getActorForBrowser = function (browser) {
+/**
+ * @param browserActorOptions see options argument of BrowserTabActor constructor.
+ */
+BrowserTabList.prototype._getActorForBrowser = function (browser, browserActorOptions) {
   // Do we have an existing actor for this browser? If not, create one.
   let actor = this._actorByBrowser.get(browser);
   if (actor) {
     this._foundCount++;
-    return actor.update();
+    return actor.update(browserActorOptions);
   }
 
-  actor = new BrowserTabActor(this._connection, browser);
+  actor = new BrowserTabActor(this._connection, browser, browserActorOptions);
   this._actorByBrowser.set(browser, actor);
   this._checkListening();
   return actor.connect();
@@ -329,7 +332,7 @@ BrowserTabList.prototype.getTab = function ({ outerWindowID, tabId }) {
     let window = Services.wm.getOuterWindowWithId(outerWindowID);
     // Safety check to prevent debugging top level window via getTab
     if (window && window.isChromeWindow) {
-      return promise.reject({
+      return Promise.reject({
         error: "forbidden",
         message: "Window with outerWindowID '" + outerWindowID + "' is chrome"
       });
@@ -349,7 +352,7 @@ BrowserTabList.prototype.getTab = function ({ outerWindowID, tabId }) {
         return this._getActorForBrowser(browser);
       }
     }
-    return promise.reject({
+    return Promise.reject({
       error: "noTab",
       message: "Unable to find tab with outerWindowID '" + outerWindowID + "'"
     });
@@ -362,7 +365,7 @@ BrowserTabList.prototype.getTab = function ({ outerWindowID, tabId }) {
         return this._getActorForBrowser(browser);
       }
     }
-    return promise.reject({
+    return Promise.reject({
       error: "noTab",
       message: "Unable to find tab with tabId '" + tabId + "'"
     });
@@ -374,7 +377,7 @@ BrowserTabList.prototype.getTab = function ({ outerWindowID, tabId }) {
     let selectedBrowser = this._getSelectedBrowser(topXULWindow);
     return this._getActorForBrowser(selectedBrowser);
   }
-  return promise.reject({
+  return Promise.reject({
     error: "noTab",
     message: "Unable to find any selected browser"
   });
@@ -695,16 +698,19 @@ exports.BrowserTabList = BrowserTabList;
  *
  * @param connection The main RDP connection.
  * @param browser <xul:browser> or <iframe mozbrowser> element to connect to.
+ * @param options
+ *        - {Boolean} favicons: true if the form should include the favicon for the tab.
  */
-function BrowserTabActor(connection, browser) {
+function BrowserTabActor(connection, browser, options = {}) {
   this._conn = connection;
   this._browser = browser;
   this._form = null;
   this.exited = false;
+  this.options = options;
 }
 
 BrowserTabActor.prototype = {
-  connect() {
+  async connect() {
     let onDestroy = () => {
       if (this._deferredUpdate) {
         // Reject the update promise if the tab was destroyed while requesting an update
@@ -716,10 +722,14 @@ BrowserTabActor.prototype = {
       this.exit();
     };
     let connect = DebuggerServer.connectToChild(this._conn, this._browser, onDestroy);
-    return connect.then(form => {
-      this._form = form;
-      return this;
-    });
+    let form = await connect;
+
+    this._form = form;
+    if (this.options.favicons) {
+      this._form.favicon = await this.getFaviconData();
+    }
+
+    return this;
   },
 
   get _tabbrowser() {
@@ -736,27 +746,52 @@ BrowserTabActor.prototype = {
            this._browser.frameLoader.messageManager;
   },
 
-  update() {
+  async getFaviconData() {
+    try {
+      let { data } = await PlacesUtils.promiseFaviconData(this._form.url);
+      return data;
+    } catch (e) {
+      // Favicon unavailable for this url.
+      return null;
+    }
+  },
+
+  /**
+   * @param {Object} options
+   *        See BrowserTabActor constructor.
+   */
+  async update(options = {}) {
+    // Update the BrowserTabActor options.
+    this.options = options;
+
     // If the child happens to be crashed/close/detach, it won't have _form set,
     // so only request form update if some code is still listening on the other
     // side.
-    if (!this.exited) {
-      this._deferredUpdate = defer();
+    if (this.exited) {
+      return this.connect();
+    }
+
+    let form = await new Promise(resolve => {
       let onFormUpdate = msg => {
-        // There may be more than just one childtab.js up and running
+        // There may be more than just one content.js (ContentActor) up and running
         if (this._form.actor != msg.json.actor) {
           return;
         }
         this._mm.removeMessageListener("debug:form", onFormUpdate);
-        this._form = msg.json;
-        this._deferredUpdate.resolve(this);
+
+        resolve(msg.json);
       };
+
       this._mm.addMessageListener("debug:form", onFormUpdate);
       this._mm.sendAsyncMessage("debug:form");
-      return this._deferredUpdate.promise;
+    });
+
+    this._form = form;
+    if (this.options.favicons) {
+      this._form.favicon = await this.getFaviconData();
     }
 
-    return this.connect();
+    return this;
   },
 
   /**
@@ -809,6 +844,7 @@ BrowserTabActor.prototype = {
     if (!form.url) {
       form.url = this.url;
     }
+
     return form;
   },
 

@@ -8,16 +8,13 @@
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
           xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="toolbar" role="xul:toolbar">
-    <resources>
-      <stylesheet src="chrome://global/skin/toolbar.css"/>
-    </resources>
+  <binding id="toolbar">
     <implementation>
       <field name="overflowedDuringConstruction">null</field>
 
       <constructor><![CDATA[
           let scope = {};
-          Cu.import("resource:///modules/CustomizableUI.jsm", scope);
+          ChromeUtils.import("resource:///modules/CustomizableUI.jsm", scope);
           let CustomizableUI = scope.CustomizableUI;
           // Add an early overflow event listener that will mark if the
           // toolbar overflowed during construction.
@@ -50,6 +47,11 @@
       <method name="handleEvent">
         <parameter name="aEvent"/>
         <body><![CDATA[
+          // Ignore overflow/underflow events from from nodes inside the toolbar.
+          if (aEvent.target != this.customizationTarget) {
+            return;
+          }
+
           if (aEvent.type == "overflow" && aEvent.detail > 0) {
             if (this.overflowable && this.overflowable.initialized) {
               this.overflowable.onOverflow(aEvent);
@@ -163,7 +165,7 @@
           let oldIds = CustomizableUI.getWidgetIdsInArea(this.id);
 
           // Get a list of items only in the new list
-          let newIds = newVal.filter(id => oldIds.indexOf(id) == -1);
+          let newIds = newVal.filter(id => !oldIds.includes(id));
           CustomizableUI.beginBatchUpdate();
           try {
             for (let newId of newIds) {
@@ -184,7 +186,7 @@
             }
 
             let currentIds = this.currentSet.split(",");
-            let removedIds = currentIds.filter(id => newIds.indexOf(id) == -1 && newVal.indexOf(id) == -1);
+            let removedIds = currentIds.filter(id => !newIds.includes(id) && !newVal.includes(id));
             for (let removedId of removedIds) {
               CustomizableUI.removeWidgetFromArea(removedId);
             }
@@ -336,7 +338,7 @@
           this._draggableStarted = true;
           try {
             let tmp = {};
-            Components.utils.import("resource://gre/modules/WindowDraggingUtils.jsm", tmp);
+            ChromeUtils.import("resource://gre/modules/WindowDraggingUtils.jsm", tmp);
             let draggableThis = new tmp.WindowDraggingElement(this);
             draggableThis.mouseDownCheck = function(e) {
               return this._dragBindingAlive;

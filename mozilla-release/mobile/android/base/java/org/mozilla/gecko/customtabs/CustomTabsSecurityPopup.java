@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-package org.mozilla.gecko.toolbar;
+package org.mozilla.gecko.customtabs;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -18,8 +18,6 @@ import android.widget.Toast;
 import org.mozilla.gecko.AboutPages;
 import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.EventDispatcher;
-import org.mozilla.gecko.GeckoView;
-import org.mozilla.gecko.GeckoSession.ProgressListener.SecurityInformation;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.SiteIdentity;
 import org.mozilla.gecko.SiteIdentity.SecurityMode;
@@ -35,6 +33,8 @@ import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.widget.AnchoredPopup;
 import org.mozilla.gecko.widget.DoorHanger;
 import org.mozilla.gecko.widget.DoorHanger.OnButtonClickListener;
+import org.mozilla.geckoview.GeckoSession.ProgressDelegate.SecurityInformation;
+import org.mozilla.geckoview.GeckoView;
 
 import android.app.Activity;
 import android.content.Context;

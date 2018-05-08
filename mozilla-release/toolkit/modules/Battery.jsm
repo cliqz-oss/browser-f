@@ -10,16 +10,12 @@
   * To spoof the battery values, set `Debugging.fake = true` after exporting this with a BackstagePass,
   * after which you can spoof a property yb setting the relevant property of the BatteryManager object.
   */
-this.EXPORTED_SYMBOLS = ["GetBattery", "Battery"];
+var EXPORTED_SYMBOLS = ["GetBattery", "Battery"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
 // Load Services, for the BatteryManager API
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
 // Values for the fake battery. See the documentation of Navigator.battery for the meaning of each field.
@@ -31,7 +27,7 @@ var gFakeBattery = {
 };
 
 // BackendPass-exported object for toggling spoofing
-this.Debugging = {
+var Debugging = {
   /**
    * If `false`, use the DOM Battery implementation.
    * Set it to `true` if you need to fake battery values
@@ -40,7 +36,7 @@ this.Debugging = {
   fake: false
 };
 
-this.GetBattery = function() {
+var GetBattery = function() {
   return new Services.appShell.hiddenDOMWindow.Promise(function(resolve, reject) {
     // Return fake values if spoofing is enabled, otherwise fetch the real values from the BatteryManager API
     if (Debugging.fake) {
@@ -51,7 +47,7 @@ this.GetBattery = function() {
   });
 };
 
-this.Battery = {};
+var Battery = {};
 
 for (let k of ["charging", "chargingTime", "dischargingTime", "level"]) {
   let prop = k;

@@ -2,12 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.importGlobalProperties(['Blob', 'File']);
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(['Blob', 'File']);
 
 const Assert = {
   ok(cond, text) {
@@ -64,7 +60,7 @@ BlobComponent.prototype =
   flags: 0,
 
   getInterfaces: function getInterfaces(aCount) {
-    var interfaces = [Components.interfaces.nsIClassInfo];
+    var interfaces = [Ci.nsIClassInfo];
     aCount.value = interfaces.length;
     return interfaces;
   },
@@ -74,7 +70,7 @@ BlobComponent.prototype =
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIClassInfo])
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIClassInfo])
 };
 
 var gComponentsArray = [BlobComponent];

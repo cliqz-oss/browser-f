@@ -40,17 +40,13 @@
   These files did not have a license
 */
 
-function canQuitApplication() {
-  var os = Components.classes["@mozilla.org/observer-service;1"]
-    .getService(Components.interfaces.nsIObserverService);
-  if (!os) {
-    return true;
-  }
+/* import-globals-from pageloader.js */
 
+function canQuitApplication() {
   try {
-    var cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"]
-      .createInstance(Components.interfaces.nsISupportsPRBool);
-    os.notifyObservers(cancelQuit, "quit-application-requested");
+    var cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+      .createInstance(Ci.nsISupportsPRBool);
+    Services.obs.notifyObservers(cancelQuit, "quit-application-requested");
 
     // Something aborted the quit process.
     if (cancelQuit.data) {
@@ -71,14 +67,12 @@ function goQuitApplication() {
   var appService;
   var forceQuit;
 
-  if (kAppStartup in Components.classes) {
-    appService = Components.classes[kAppStartup].
-      getService(Components.interfaces.nsIAppStartup);
-    forceQuit  = Components.interfaces.nsIAppStartup.eForceQuit;
-  } else if (kAppShell in Components.classes) {
-    appService = Components.classes[kAppShell].
-      getService(Components.interfaces.nsIAppShellService);
-    forceQuit = Components.interfaces.nsIAppShellService.eForceQuit;
+  if (kAppStartup in Cc) {
+    appService = Services.startup;
+    forceQuit  = Ci.nsIAppStartup.eForceQuit;
+  } else if (kAppShell in Cc) {
+    appService = Services.appShell;
+    forceQuit = Ci.nsIAppShellService.eForceQuit;
   } else {
     throw "goQuitApplication: no AppStartup/appShell";
   }
@@ -91,4 +85,3 @@ function goQuitApplication() {
 
   return true;
 }
-

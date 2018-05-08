@@ -5,20 +5,15 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const {PushDB} = Cu.import("resource://gre/modules/PushDB.jsm");
-const {PushRecord} = Cu.import("resource://gre/modules/PushRecord.jsm");
-const {PushCrypto} = Cu.import("resource://gre/modules/PushCrypto.jsm");
+const {PushDB} = ChromeUtils.import("resource://gre/modules/PushDB.jsm");
+const {PushRecord} = ChromeUtils.import("resource://gre/modules/PushRecord.jsm");
+const {PushCrypto} = ChromeUtils.import("resource://gre/modules/PushCrypto.jsm");
 
 const kPUSHWSDB_DB_NAME = "pushapi";
 const kPUSHWSDB_DB_VERSION = 5; // Change this if the IndexedDB format changes
@@ -50,10 +45,10 @@ const kDELIVERY_REASON_TO_CODE = {
 
 const prefs = new Preferences("dom.push.");
 
-this.EXPORTED_SYMBOLS = ["PushServiceWebSocket"];
+var EXPORTED_SYMBOLS = ["PushServiceWebSocket"];
 
 XPCOMUtils.defineLazyGetter(this, "console", () => {
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   return new ConsoleAPI({
     maxLogLevelPref: "dom.push.loglevel",
     prefix: "PushServiceWebSocket",
@@ -121,7 +116,7 @@ const STATE_WAITING_FOR_HELLO = 2;
 // Websocket operational, handshake completed, begin protocol messaging.
 const STATE_READY = 3;
 
-this.PushServiceWebSocket = {
+var PushServiceWebSocket = {
   _mainPushService: null,
   _serverURI: null,
 
@@ -519,10 +514,7 @@ this.PushServiceWebSocket = {
 
   connect: function(records) {
     console.debug("connect()");
-    // Check to see if we need to do anything.
-    if (records.length > 0) {
-      this._beginWSSetup();
-    }
+    this._beginWSSetup();
   },
 
   isConnected: function() {
@@ -1028,7 +1020,7 @@ this.PushServiceWebSocket = {
     let handlerName = reply.messageType[0].toUpperCase() +
                       reply.messageType.slice(1).toLowerCase();
 
-    if (handlers.indexOf(handlerName) == -1) {
+    if (!handlers.includes(handlerName)) {
       console.warn("wsOnMessageAvailable: No whitelisted handler", handlerName,
         "for message", reply.messageType);
       return;

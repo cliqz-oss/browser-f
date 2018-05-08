@@ -10,9 +10,13 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/MathAlgorithms.h"
 
+#include "jit/arm64/vixl/Instructions-vixl.h"
 #include "jit/shared/Architecture-shared.h"
 
 #include "js/Utility.h"
+
+#define JS_HAS_HIDDEN_SP
+static const uint32_t HiddenSPEncoding = vixl::kSPRegInternalCode;
 
 namespace js {
 namespace jit {
@@ -167,9 +171,6 @@ class Registers {
         (1 << Registers::lr) |
         (1 << Registers::sp);
 
-    // Registers that can be allocated without being saved, generally.
-    static const SetType TempMask = VolatileMask & ~NonAllocatableMask;
-
     static const SetType WrapperMask = VolatileMask;
 
     // Registers returned from a JS -> JS call.
@@ -278,9 +279,6 @@ class FloatRegisters
 
     // d31 is the ScratchFloatReg.
     static const SetType NonAllocatableMask = (SetType(1) << FloatRegisters::d31) * SpreadCoefficient;
-
-    // Registers that can be allocated without being saved, generally.
-    static const SetType TempMask = VolatileMask & ~NonAllocatableMask;
 
     static const SetType AllocatableMask = AllMask & ~NonAllocatableMask;
     union RegisterContent {
@@ -492,6 +490,8 @@ hasMultiAlias()
 {
     return false;
 }
+
+uint32_t GetARM64Flags();
 
 } // namespace jit
 } // namespace js

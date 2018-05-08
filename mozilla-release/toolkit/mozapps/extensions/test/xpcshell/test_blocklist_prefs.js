@@ -5,12 +5,10 @@
 // Tests resetting of preferences in blocklist entry when an add-on is blocked.
 // See bug 802434.
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 var testserver = new HttpServer();
 testserver.start(-1);
 gPort = testserver.identity.primaryPort;

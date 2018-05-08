@@ -11,7 +11,6 @@
 #include "mozilla/SelectionState.h"
 #include "mozilla/TextEditRules.h"
 #include "nsCOMPtr.h"
-#include "nsIEditActionListener.h"
 #include "nsIEditor.h"
 #include "nsIHTMLEditor.h"
 #include "nsISupportsImpl.h"
@@ -34,6 +33,8 @@ class HTMLEditor;
 class RulesInfo;
 class SplitNodeResult;
 class TextEditor;
+enum class EditAction : int32_t;
+
 namespace dom {
 class Element;
 class Selection;
@@ -76,7 +77,6 @@ struct StyleCache final : public PropItem
 #define SIZE_STYLE_TABLE 19
 
 class HTMLEditRules : public TextEditRules
-                    , public nsIEditActionListener
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -108,36 +108,22 @@ public:
   nsresult GetParagraphState(bool* aMixed, nsAString& outFormat);
   nsresult MakeSureElemStartsOrEndsOnCR(nsINode& aNode);
 
-  // nsIEditActionListener methods
+  void DidCreateNode(Element* aNewElement);
+  void DidInsertNode(nsIContent& aNode);
+  void WillDeleteNode(nsINode* aChild);
+  void DidSplitNode(nsINode* aExistingRightNode,
+                    nsINode* aNewLeftNode);
+  void WillJoinNodes(nsINode& aLeftNode, nsINode& aRightNode);
+  void DidJoinNodes(nsINode& aLeftNode, nsINode& aRightNode);
+  void DidInsertText(nsINode* aTextNode, int32_t aOffset,
+                     const nsAString& aString);
+  void DidDeleteText(nsINode* aTextNode, int32_t aOffset, int32_t aLength);
+  void WillDeleteSelection(Selection* aSelection);
 
-  NS_IMETHOD WillCreateNode(const nsAString& aTag,
-                            nsIDOMNode* aNextSiblingOfNewNode) override;
-  NS_IMETHOD DidCreateNode(const nsAString& aTag, nsIDOMNode* aNewNode,
-                           nsresult aResult) override;
-  NS_IMETHOD WillInsertNode(nsIDOMNode* aNode,
-                            nsIDOMNode* aNextSiblingOfNewNode) override;
-  NS_IMETHOD DidInsertNode(nsIDOMNode* aNode, nsresult aResult) override;
-  NS_IMETHOD WillDeleteNode(nsIDOMNode* aChild) override;
-  NS_IMETHOD DidDeleteNode(nsIDOMNode* aChild, nsresult aResult) override;
-  NS_IMETHOD WillSplitNode(nsIDOMNode* aExistingRightNode,
-                           int32_t aOffset) override;
-  NS_IMETHOD DidSplitNode(nsIDOMNode* aExistingRightNode,
-                          nsIDOMNode* aNewLeftNode) override;
-  NS_IMETHOD WillJoinNodes(nsIDOMNode* aLeftNode, nsIDOMNode* aRightNode,
-                           nsIDOMNode* aParent) override;
-  NS_IMETHOD DidJoinNodes(nsIDOMNode* aLeftNode, nsIDOMNode* aRightNode,
-                          nsIDOMNode* aParent, nsresult aResult) override;
-  NS_IMETHOD WillInsertText(nsIDOMCharacterData* aTextNode, int32_t aOffset,
-                            const nsAString &aString) override;
-  NS_IMETHOD DidInsertText(nsIDOMCharacterData* aTextNode, int32_t aOffset,
-                           const nsAString &aString, nsresult aResult) override;
-  NS_IMETHOD WillDeleteText(nsIDOMCharacterData* aTextNode, int32_t aOffset,
-                            int32_t aLength) override;
-  NS_IMETHOD DidDeleteText(nsIDOMCharacterData* aTextNode, int32_t aOffset,
-                           int32_t aLength, nsresult aResult) override;
-  NS_IMETHOD WillDeleteSelection(nsISelection* aSelection) override;
-  NS_IMETHOD DidDeleteSelection(nsISelection* aSelection) override;
   void DeleteNodeIfCollapsedText(nsINode& aNode);
+
+  void StartToListenToEditActions() { mListenerEnabled = true; }
+  void EndListeningToEditActions() { mListenerEnabled = false; }
 
 protected:
   virtual ~HTMLEditRules();
@@ -295,7 +281,7 @@ protected:
   nsresult AlignBlockContents(nsIDOMNode* aNode, const nsAString* alignType);
   nsresult AppendInnerFormatNodes(nsTArray<OwningNonNull<nsINode>>& aArray,
                                   nsINode* aNode);
-  nsresult GetFormatString(nsIDOMNode* aNode, nsAString &outFormat);
+  nsresult GetFormatString(nsINode* aNode, nsAString &outFormat);
   enum class Lists { no, yes };
   enum class Tables { no, yes };
   void GetInnerContent(nsINode& aNode,
@@ -434,8 +420,26 @@ protected:
   void MakeTransitionList(nsTArray<OwningNonNull<nsINode>>& aNodeArray,
                           nsTArray<bool>& aTransitionArray);
   nsresult RemoveBlockStyle(nsTArray<OwningNonNull<nsINode>>& aNodeArray);
+
+  /**
+   * ApplyBlockStyle() formats all nodes in aNodeArray with block elements
+   * whose name is aBlockTag.
+   * If aNodeArray has an inline element, a block element is created and the
+   * inline element and following inline elements are moved into the new block
+   * element.
+   * If aNodeArray has <br> elements, they'll be removed from the DOM tree and
+   * new block element will be created when there are some remaining inline
+   * elements.
+   * If aNodeArray has a block element, this calls itself with children of
+   * the block element.  Then, new block element will be created when there
+   * are some remaining inline elements.
+   *
+   * @param aNodeArray      Must be descendants of a node.
+   * @param aBlockTag       The element name of new block elements.
+   */
   nsresult ApplyBlockStyle(nsTArray<OwningNonNull<nsINode>>& aNodeArray,
                            nsAtom& aBlockTag);
+
   nsresult MakeBlockquote(nsTArray<OwningNonNull<nsINode>>& aNodeArray);
 
   /**

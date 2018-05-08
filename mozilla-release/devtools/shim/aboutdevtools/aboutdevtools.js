@@ -4,8 +4,7 @@
 
 "use strict";
 
-const { utils: Cu } = Components;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 const DEVTOOLS_ENABLED_PREF = "devtools.enabled";
 

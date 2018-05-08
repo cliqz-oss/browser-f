@@ -31,7 +31,7 @@ function test_absolute_source_map() {
     Assert.equal(packet.type, "newSource");
     Assert.ok(!!packet.source);
 
-    Assert.ok(packet.source.url.indexOf("sourcemapped.coffee") !== -1,
+    Assert.ok(packet.source.url.includes("sourcemapped.coffee"),
               "The new source should be a coffee file.");
     Assert.equal(packet.source.url.indexOf("sourcemapped.js"), -1,
                  "The new source should not be a js file.");
@@ -42,6 +42,6 @@ function test_absolute_source_map() {
   let code = readFile("sourcemapped.js")
     + "\n//# sourceMappingURL=" + getFileUrl("source-map-data/sourcemapped.map");
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
-                                 getFileUrl("sourcemapped.js"), 1);
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
+                   getFileUrl("sourcemapped.js"), 1);
 }

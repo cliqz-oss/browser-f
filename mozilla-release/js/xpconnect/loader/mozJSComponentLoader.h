@@ -62,8 +62,14 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
 
     static mozJSComponentLoader* Get() { return sSelf; }
 
-    nsresult Import(const nsACString& aResourceURI, JS::HandleValue aTargetObj,
-                    JSContext* aCx, uint8_t aArgc, JS::MutableHandleValue aRetval);
+    nsresult ImportInto(const nsACString& aResourceURI, JS::HandleValue aTargetObj,
+                        JSContext* aCx, uint8_t aArgc, JS::MutableHandleValue aRetval);
+
+    nsresult Import(JSContext* aCx, const nsACString& aResourceURI,
+                    JS::MutableHandleObject aModuleGlobal,
+                    JS::MutableHandleObject aModuleExports,
+                    bool aIgnoreExports = false);
+
     nsresult Unload(const nsACString& aResourceURI);
     nsresult IsModuleLoaded(const nsACString& aResourceURI, bool* aRetval);
     bool IsLoaderGlobal(JSObject* aObj) {
@@ -71,6 +77,14 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
     }
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
+
+    /**
+     * Temporary diagnostic function for startup crashes in bug 1403348:
+     *
+     * Annotate the crash report with the contents of the async shutdown
+     * module/component scripts.
+     */
+    nsresult AnnotateCrashReport();
 
  protected:
     virtual ~mozJSComponentLoader();
@@ -124,7 +138,8 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
     {
     public:
         explicit ModuleEntry(JS::RootingContext* aRootingCx)
-          : mozilla::Module(), obj(aRootingCx), thisObjectKey(aRootingCx)
+          : mozilla::Module(), obj(aRootingCx), exports(aRootingCx),
+            thisObjectKey(aRootingCx)
         {
             mVersion = mozilla::Module::kVersion;
             mCIDs = nullptr;
@@ -174,6 +189,7 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
 
         nsCOMPtr<xpcIJSGetFactory> getfactoryobj;
         JS::PersistentRootedObject obj;
+        JS::PersistentRootedObject exports;
         JS::PersistentRootedScript thisObjectKey;
         char* location;
         nsCString resolvedURL;
@@ -181,6 +197,10 @@ class mozJSComponentLoader final : public mozilla::ModuleLoader,
         nsCString importStack;
 #endif
     };
+
+    nsresult ExtractExports(JSContext* aCx, ComponentLoaderInfo& aInfo,
+                            ModuleEntry* aMod,
+                            JS::MutableHandleObject aExports);
 
     static size_t DataEntrySizeOfExcludingThis(const nsACString& aKey, ModuleEntry* const& aData,
                                                mozilla::MallocSizeOf aMallocSizeOf, void* arg);

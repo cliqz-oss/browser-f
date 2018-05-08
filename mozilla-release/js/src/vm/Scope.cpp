@@ -6,14 +6,12 @@
 
 #include "vm/Scope.h"
 
-#include "mozilla/ScopeExit.h"
-
-#include "jsscript.h"
 #include "builtin/ModuleObject.h"
 #include "gc/Allocator.h"
+#include "gc/FreeOp.h"
+#include "util/StringBuffer.h"
 #include "vm/EnvironmentObject.h"
-#include "vm/Runtime.h"
-#include "vm/StringBuffer.h"
+#include "vm/JSScript.h"
 #include "wasm/WasmInstance.h"
 
 #include "gc/ObjectKind-inl.h"
@@ -22,10 +20,7 @@
 using namespace js;
 
 using mozilla::Maybe;
-using mozilla::MakeScopeExit;
 using mozilla::Move;
-using mozilla::Nothing;
-using mozilla::Some;
 
 const char*
 js::BindingKindString(BindingKind kind)

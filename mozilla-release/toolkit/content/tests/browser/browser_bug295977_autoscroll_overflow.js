@@ -97,7 +97,7 @@ body > div > div {width: 1000px;height: 1000px;}\
       continue;
      }
 
-    let prefsChanged = (test.middlemousepastepref == false || test.middlemousepastepref == true);
+    let prefsChanged = "middlemousepastepref" in test;
     if (prefsChanged) {
       await pushPrefs([["middlemouse.paste", test.middlemousepastepref]]);
     }
@@ -158,7 +158,7 @@ body > div > div {width: 1000px;height: 1000px;}\
     } while (timeCompensation < 5);
 
     // Close the autoscroll popup by synthesizing Esc.
-    EventUtils.synthesizeKey("VK_ESCAPE", {});
+    EventUtils.synthesizeKey("KEY_Escape");
     let scrollVert = test.expected & expectScrollVert;
     let scrollHori = test.expected & expectScrollHori;
 
@@ -195,7 +195,7 @@ body > div > div {width: 1000px;height: 1000px;}\
           msg += args.elemid + " should" + (args.scrollHori ? "" : " not") + " have scrolled horizontally";
         }
 
-        Assert.ok(msg.indexOf("Failed") == -1, msg);
+        Assert.ok(!msg.includes("Failed"), msg);
        }
     );
 

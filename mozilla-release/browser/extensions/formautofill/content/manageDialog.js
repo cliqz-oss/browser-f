@@ -6,26 +6,25 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 const EDIT_ADDRESS_URL = "chrome://formautofill/content/editAddress.xhtml";
 const EDIT_CREDIT_CARD_URL = "chrome://formautofill/content/editCreditCard.xhtml";
 const AUTOFILL_BUNDLE_URI = "chrome://formautofill/locale/formautofill.properties";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "profileStorage",
-                                  "resource://formautofill/ProfileStorage.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "MasterPassword",
-                                  "resource://formautofill/MasterPassword.jsm");
+ChromeUtils.defineModuleGetter(this, "formAutofillStorage",
+                               "resource://formautofill/FormAutofillStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "MasterPassword",
+                               "resource://formautofill/MasterPassword.jsm");
 
 this.log = null;
 FormAutofillUtils.defineLazyLogGetter(this, "manageAddresses");
 
 class ManageRecords {
   constructor(subStorageName, elements) {
-    this._storageInitPromise = profileStorage.initialize();
+    this._storageInitPromise = formAutofillStorage.initialize();
     this._subStorageName = subStorageName;
     this._elements = elements;
     this._newRequest = false;
@@ -68,7 +67,7 @@ class ManageRecords {
    */
   async getStorage() {
     await this._storageInitPromise;
-    return profileStorage[this._subStorageName];
+    return formAutofillStorage[this._subStorageName];
   }
 
   /**
@@ -207,6 +206,10 @@ class ManageRecords {
         this.handleKeyPress(event);
         break;
       }
+      case "contextmenu": {
+        event.preventDefault();
+        break;
+      }
     }
   }
 
@@ -251,6 +254,7 @@ class ManageRecords {
   attachEventListeners() {
     window.addEventListener("unload", this, {once: true});
     window.addEventListener("keypress", this);
+    window.addEventListener("contextmenu", this);
     this._elements.records.addEventListener("change", this);
     this._elements.records.addEventListener("click", this);
     this._elements.controlsContainer.addEventListener("click", this);
@@ -262,6 +266,7 @@ class ManageRecords {
    */
   detachEventListeners() {
     window.removeEventListener("keypress", this);
+    window.removeEventListener("contextmenu", this);
     this._elements.records.removeEventListener("change", this);
     this._elements.records.removeEventListener("click", this);
     this._elements.controlsContainer.removeEventListener("click", this);

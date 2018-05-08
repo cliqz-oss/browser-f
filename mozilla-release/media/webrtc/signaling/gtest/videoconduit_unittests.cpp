@@ -102,15 +102,17 @@ public:
                                        unsigned short height,
                                        uint64_t capture_time_ms)
   {
-    unsigned int yplane_length = width*height;
-    unsigned int cbcrplane_length = (width*height + 1)/2;
-    unsigned int video_length = yplane_length + cbcrplane_length;
-    uint8_t* buffer = new uint8_t[video_length];
-    memset(buffer, 0x10, yplane_length);
-    memset(buffer + yplane_length, 0x80, cbcrplane_length);
-    return mVideoConduit->SendVideoFrame(buffer, video_length, width, height,
-                                         VideoType::kVideoI420,
-                                         capture_time_ms);
+    rtc::scoped_refptr<webrtc::I420Buffer> buffer =
+      webrtc::I420Buffer::Create(width, height);
+    memset(buffer->MutableDataY(), 0x10, buffer->StrideY() * buffer->height());
+    memset(buffer->MutableDataU(), 0x80, buffer->StrideU() * ((buffer->height() + 1) / 2));
+    memset(buffer->MutableDataV(), 0x80, buffer->StrideV() * ((buffer->height() + 1) / 2));
+
+    webrtc::VideoFrame frame(buffer,
+                             capture_time_ms,
+                             capture_time_ms,
+                             webrtc::kVideoRotation_0);
+    return mVideoConduit->SendVideoFrame(frame);
   }
 
   MockCall* mCall;
@@ -730,6 +732,59 @@ TEST_F(VideoConduitTest, TestOnSinkWantsChanged)
   mVideoConduit->ConfigureSendMediaCodec(&codecConfig);
   mVideoConduit->OnSinkWantsChanged(wants);
   ASSERT_EQ(mAdapter->mMaxPixelCount, 64000);
+}
+
+TEST_F(VideoConduitTest, TestConfigureSendMediaCodecSimulcastOddScreen)
+{
+  std::vector<unsigned int> ssrcs = {42, 43, 44};
+  mVideoConduit->SetLocalSSRCs(ssrcs);
+
+  MediaConduitErrorCode ec;
+  EncodingConstraints constraints;
+  VideoCodecConfig::SimulcastEncoding encoding;
+  VideoCodecConfig::SimulcastEncoding encoding2;
+  VideoCodecConfig::SimulcastEncoding encoding3;
+  encoding2.constraints.scaleDownBy = 2;
+  encoding3.constraints.scaleDownBy = 4;
+
+  VideoCodecConfig codecConfig(120, "VP8", constraints);
+  codecConfig.mSimulcastEncodings.push_back(encoding);
+  codecConfig.mSimulcastEncodings.push_back(encoding2);
+  codecConfig.mSimulcastEncodings.push_back(encoding3);
+  ec = mVideoConduit->ConfigureSendMediaCodec(&codecConfig);
+  ASSERT_EQ(ec, kMediaConduitNoError);
+  mVideoConduit->StartTransmitting();
+  std::vector<webrtc::VideoStream> videoStreams;
+  videoStreams = mCall->mEncoderConfig.video_stream_factory->CreateEncoderStreams(26, 24, mCall->mEncoderConfig);
+  ASSERT_EQ(videoStreams.size(), 2U);
+  mVideoConduit->StopTransmitting();
+}
+
+TEST_F(VideoConduitTest, TestConfigureSendMediaCodecSimulcastScreenshare)
+{
+  std::vector<unsigned int> ssrcs = {42, 43, 44};
+  mVideoConduit->SetLocalSSRCs(ssrcs);
+
+  MediaConduitErrorCode ec;
+  EncodingConstraints constraints;
+  VideoCodecConfig::SimulcastEncoding encoding;
+  VideoCodecConfig::SimulcastEncoding encoding2;
+  VideoCodecConfig::SimulcastEncoding encoding3;
+  encoding2.constraints.scaleDownBy = 2;
+  encoding3.constraints.scaleDownBy = 4;
+
+  VideoCodecConfig codecConfig(120, "VP8", constraints);
+  codecConfig.mSimulcastEncodings.push_back(encoding);
+  codecConfig.mSimulcastEncodings.push_back(encoding2);
+  codecConfig.mSimulcastEncodings.push_back(encoding3);
+  ec = mVideoConduit->ConfigureCodecMode(webrtc::VideoCodecMode::kScreensharing);
+  ec = mVideoConduit->ConfigureSendMediaCodec(&codecConfig);
+  ASSERT_EQ(ec, kMediaConduitNoError);
+  mVideoConduit->StartTransmitting();
+  std::vector<webrtc::VideoStream> videoStreams;
+  videoStreams = mCall->mEncoderConfig.video_stream_factory->CreateEncoderStreams(640, 480, mCall->mEncoderConfig);
+  ASSERT_EQ(videoStreams.size(), 1U);
+  mVideoConduit->StopTransmitting();
 }
 
 TEST_F(VideoConduitTest, TestReconfigureReceiveMediaCodecs)

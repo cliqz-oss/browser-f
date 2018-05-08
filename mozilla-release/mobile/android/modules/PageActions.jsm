@@ -4,16 +4,15 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "uuidgen",
                                    "@mozilla.org/uuid-generator;1",
                                    "nsIUUIDGenerator");
 
-this.EXPORTED_SYMBOLS = ["PageActions"];
+var EXPORTED_SYMBOLS = ["PageActions"];
 
 // Copied from browser.js
 // TODO: We should move this method to a common importable location

@@ -150,7 +150,7 @@ MODERN_MERCURIAL_VERSION = LooseVersion('4.2.3')
 MODERN_PYTHON_VERSION = LooseVersion('2.7.3')
 
 # Upgrade rust older than this.
-MODERN_RUST_VERSION = LooseVersion('1.22.0')
+MODERN_RUST_VERSION = LooseVersion('1.24.0')
 
 
 class BaseBootstrapper(object):
@@ -258,14 +258,6 @@ class BaseBootstrapper(object):
         raise NotImplementedError(
             '%s does not yet implement ensure_stylo_packages()'
             % __name__)
-
-    def ensure_proguard_packages(self, state_dir, checkout_root):
-        '''
-        Install any necessary packages that provide the Proguard JAR.
-
-        Only required to build mobile/android.
-        '''
-        self.install_toolchain_artifact(state_dir, checkout_root, 'proguard-jar')
 
     def install_toolchain_artifact(self, state_dir, checkout_root, toolchain_job):
         mach_binary = os.path.join(checkout_root, 'mach')

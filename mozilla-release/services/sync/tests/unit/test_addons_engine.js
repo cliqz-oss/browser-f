@@ -3,16 +3,15 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-sync/addonsreconciler.js");
-Cu.import("resource://services-sync/engines/addons.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-sync/addonsreconciler.js");
+ChromeUtils.import("resource://services-sync/engines/addons.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.defineModuleGetter(this, "Preferences", "resource://gre/modules/Preferences.jsm");
 
 const prefs = new Preferences();
 prefs.set("extensions.getAddons.get.url",
@@ -29,7 +28,7 @@ async function resetReconciler() {
 
   await reconciler.saveState();
 
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
 }
 
 add_task(async function setup() {
@@ -55,7 +54,7 @@ add_task(async function setup() {
 add_task(async function test_addon_install() {
   _("Ensure basic add-on APIs work as expected.");
 
-  let install = getAddonInstall("test_bootstrap1_1");
+  let install = await getAddonInstall("test_bootstrap1_1");
   Assert.notEqual(install, null);
   Assert.equal(install.type, "extension");
   Assert.equal(install.name, "Test Bootstrap 1");
@@ -70,7 +69,7 @@ add_task(async function test_find_dupe() {
   // test, so we do it manually.
   await engine._refreshReconcilerState();
 
-  let addon = installAddon("test_bootstrap1_1");
+  let addon = await installAddon("test_bootstrap1_1", reconciler);
 
   let record = {
     id:            Utils.makeGUID(),
@@ -87,7 +86,7 @@ add_task(async function test_find_dupe() {
   dupe = await engine._findDupe(record);
   Assert.equal(null, dupe);
 
-  uninstallAddon(addon);
+  await uninstallAddon(addon, reconciler);
   await resetReconciler();
 });
 
@@ -110,7 +109,7 @@ add_task(async function test_get_changed_ids() {
   let now = new Date();
   let changeTime = now.getTime() / 1000;
   let guid1 = Utils.makeGUID();
-  tracker.addChangedID(guid1, changeTime);
+  await tracker.addChangedID(guid1, changeTime);
 
   changes = await engine.getChangedIDs();
   Assert.equal("object", typeof(changes));
@@ -118,11 +117,11 @@ add_task(async function test_get_changed_ids() {
   Assert.ok(guid1 in changes);
   Assert.equal(changeTime, changes[guid1]);
 
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
 
   _("Ensure reconciler changes are populated.");
-  let addon = installAddon("test_bootstrap1_1");
-  tracker.clearChangedIDs(); // Just in case.
+  let addon = await installAddon("test_bootstrap1_1", reconciler);
+  await tracker.clearChangedIDs(); // Just in case.
   changes = await engine.getChangedIDs();
   Assert.equal("object", typeof(changes));
   Assert.equal(1, Object.keys(changes).length);
@@ -132,7 +131,7 @@ add_task(async function test_get_changed_ids() {
 
   let oldTime = changes[addon.syncGUID];
   let guid2 = addon.syncGUID;
-  uninstallAddon(addon);
+  await uninstallAddon(addon, reconciler);
   changes = await engine.getChangedIDs();
   Assert.equal(1, Object.keys(changes).length);
   Assert.ok(guid2 in changes);
@@ -152,7 +151,7 @@ add_task(async function test_get_changed_ids() {
     foreignInstall: false
   };
   reconciler.addons.DUMMY = record;
-  reconciler._addChange(record.modified, CHANGE_INSTALLED, record);
+  await reconciler._addChange(record.modified, CHANGE_INSTALLED, record);
 
   changes = await engine.getChangedIDs();
   _(JSON.stringify(changes));
@@ -189,7 +188,7 @@ add_task(async function test_disabled_install_semantics() {
 
   let amoServer = new HttpServer();
   amoServer.registerFile("/search/guid:addon1%40tests.mozilla.org",
-                         do_get_file("addon1-search.xml"));
+                         do_get_file("addon1-search.json"));
 
   let installXPI = ExtensionsTestPath("/addons/test_install1.xpi");
   amoServer.registerFile("/addon1.xpi", do_get_file(installXPI));

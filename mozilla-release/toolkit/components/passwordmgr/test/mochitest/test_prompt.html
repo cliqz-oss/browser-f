@@ -27,11 +27,10 @@ var isOk;
 isTabModal = false;
 
 let prompterParent = runInParent(() => {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
   const promptFac = Cc["@mozilla.org/passwordmanager/authpromptfactory;1"].
                     getService(Ci.nsIPromptFactory);
 
-  let {Services} = Cu.import("resource://gre/modules/Services.jsm", {});
+  let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
   let chromeWin = Services.wm.getMostRecentWindow("navigator:browser");
   let prompter1 = promptFac.getPrompt(chromeWin, Ci.nsIAuthPrompt);
 
@@ -51,8 +50,7 @@ const defaultTitle = "the title";
 const defaultMsg = "the message";
 
 function initLogins() {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-  const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+  const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
   var login1, login2A, login2B, login2C, login2D, login2E;
   login1  = Cc["@mozilla.org/login-manager/loginInfo;1"].
             createInstance(Ci.nsILoginInfo);

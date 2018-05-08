@@ -38,15 +38,12 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
+ChromeUtils.defineModuleGetter(this, "Task",
   "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "gDebug",
   "@mozilla.org/xpcom/debug;1", "nsIDebug2");
@@ -343,14 +340,14 @@ function getOrigin(topFrame, filename = null, lineNumber = null, stack = null) {
   }
 }
 
-this.EXPORTED_SYMBOLS = ["AsyncShutdown"];
+var EXPORTED_SYMBOLS = ["AsyncShutdown"];
 
 /**
  * {string} topic -> phase
  */
 var gPhases = new Map();
 
-this.AsyncShutdown = {
+var AsyncShutdown = {
   /**
    * Access function getPhase. For testing purposes only.
    */
@@ -360,6 +357,15 @@ this.AsyncShutdown = {
       return getPhase;
     }
     return undefined;
+  },
+
+  /**
+   * This constant is used as the amount of milliseconds to allow shutdown to be
+   * blocked until we crash the process forcibly and is read from the
+   * 'toolkit.asyncshutdown.crash_timeout' pref.
+   */
+  get DELAY_CRASH_MS() {
+    return DELAY_CRASH_MS;
   }
 };
 

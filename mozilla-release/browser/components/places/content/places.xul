@@ -16,8 +16,6 @@
 #ifdef XP_MACOSX
 <?xul-overlay href="chrome://browser/content/macBrowserOverlay.xul"?>
 #else
-<?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
-<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
 #endif
 
@@ -28,6 +26,10 @@
 %editMenuOverlayDTD;
 <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
 %browserDTD;
+#ifdef XP_MACOSX
+<!ENTITY % baseMenuOverlayDTD SYSTEM "chrome://browser/locale/baseMenuOverlay.dtd">
+%baseMenuOverlayDTD;
+#endif
 ]>
 
 <window id="places"
@@ -48,8 +50,6 @@
   <!-- On Mac, these are included via macBrowserOverlay.xul -> browser.js -> defineLazyScriptGetter -->
   <script type="application/javascript"
           src="chrome://browser/content/places/editBookmarkOverlay.js"/>
-  <script type="application/javascript"
-          src="chrome://browser/content/browser-sync.js"/>
 #endif
 
   <stringbundleset id="placesStringSet">
@@ -60,7 +60,7 @@
 #ifdef XP_MACOSX
 #include ../../../base/content/browserMountPoints.inc
 #else
-  <commandset id="editMenuCommands"/>
+#include ../../../../toolkit/content/editMenuCommands.inc.xul
   <commandset id="placesCommands"/>
 #endif
 
@@ -131,11 +131,12 @@
 #endif
   </keyset>
 
-  <keyset id="editMenuKeys">
+#include ../../../../toolkit/content/editMenuKeys.inc.xul
 #ifdef XP_MACOSX
+  <keyset id="editMenuKeysExtra">
     <key id="key_delete2" keycode="VK_BACK" command="cmd_delete"/>
-#endif
   </keyset>
+#endif
 
   <popupset id="placesPopupset">
     <menupopup id="placesContext"/>
@@ -179,7 +180,15 @@
                       label="&cmd.new_separator.label;"
                       accesskey="&cmd.new_separator.accesskey;"/>
 
-#ifndef XP_MACOSX
+#ifdef XP_MACOSX
+            <menuseparator id="orgDeleteSeparator"/>
+
+            <menuitem id="orgDelete"
+                      command="cmd_delete"
+                      label="&deleteCmd.label;"
+                      key="key_delete"
+                      accesskey="&deleteCmd.accesskey;"/>
+#else
             <menuseparator id="orgUndoSeparator"/>
 
             <menuitem id="orgUndo"
@@ -227,20 +236,6 @@
                       key="key_selectAll"
                       accesskey="&selectAllCmd.accesskey;"/>
 
-#endif
-            <menuseparator id="orgMoveSeparator"/>
-
-            <menuitem id="orgMoveBookmarks"
-                      command="placesCmd_moveBookmarks"
-                      label="&cmd.moveBookmarks.label;"
-                      accesskey="&cmd.moveBookmarks.accesskey;"/>
-#ifdef XP_MACOSX
-            <menuitem id="orgDelete"
-                      command="cmd_delete"
-                      label="&deleteCmd.label;"
-                      key="key_delete"
-                      accesskey="&deleteCmd.accesskey;"/>
-#else
             <menuseparator id="orgCloseSeparator"/>
 
             <menuitem id="orgClose"
@@ -332,7 +327,6 @@
       <spacer id="libraryToolbarSpacer" flex="1"/>
 
       <textbox id="searchFilter"
-               clickSelectsAll="true"
                type="search"
                aria-controls="placeContent"
                oncommand="PlacesSearchBox.search(this.value);"

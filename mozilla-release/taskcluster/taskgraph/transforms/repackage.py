@@ -7,10 +7,17 @@ Transform the repackage task into an actual task description.
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import copy
+
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import copy_attributes_from_dependent_job
-from taskgraph.util.schema import validate_schema, Schema
-from taskgraph.util.taskcluster import get_taskcluster_artifact_prefix
+from taskgraph.util.schema import (
+    validate_schema,
+    optionally_keyed_by,
+    resolve_keyed_by,
+    Schema,
+)
+from taskgraph.util.taskcluster import get_taskcluster_artifact_prefix, get_artifact_prefix
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Any, Required, Optional
 
@@ -19,6 +26,11 @@ transforms = TransformSequence()
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
 task_description_schema = {str(k): v for k, v in task_description_schema.schema.iteritems()}
+
+
+def _by_platform(arg):
+    return optionally_keyed_by('build-platform', arg)
+
 
 # shortcut for a string where task references are allowed
 taskref_or_string = Any(
@@ -52,6 +64,20 @@ packaging_description_schema = Schema({
     # Shipping product and phase
     Optional('shipping-product'): task_description_schema['shipping-product'],
     Optional('shipping-phase'): task_description_schema['shipping-phase'],
+
+    # All l10n jobs use mozharness
+    Required('mozharness'): {
+        # Config files passed to the mozharness script
+        Required('config'): _by_platform([basestring]),
+
+        # Additional paths to look for mozharness configs in. These should be
+        # relative to the base of the source checkout
+        Optional('config-paths'): [basestring],
+
+        # if true, perform a checkout of a comm-central based branch inside the
+        # gecko checkout
+        Required('comm-checkout', default=False): bool,
+    }
 })
 
 
@@ -62,6 +88,28 @@ def validate(config, jobs):
         validate_schema(
             packaging_description_schema, job,
             "In packaging ({!r} kind) task for {!r}:".format(config.kind, label))
+        yield job
+
+
+@transforms.add
+def copy_in_useful_magic(config, jobs):
+    """Copy attributes from upstream task to be used for keyed configuration."""
+    for job in jobs:
+        dep = job['dependent-task']
+        job['build-platform'] = dep.attributes.get("build_platform")
+        yield job
+
+
+@transforms.add
+def handle_keyed_by(config, jobs):
+    """Resolve fields that can be keyed by platform, etc."""
+    fields = [
+        "mozharness.config",
+    ]
+    for job in jobs:
+        job = copy.deepcopy(job)  # don't overwrite dict values here
+        for field in fields:
+            resolve_keyed_by(item=job, field=field, item_name="?")
         yield job
 
 
@@ -126,19 +174,19 @@ def make_job_description(config, jobs):
         level = config.params['level']
 
         build_platform = attributes['build_platform']
-        run = {
+        run = job.get('mozharness', {})
+        run.update({
             'using': 'mozharness',
             'script': 'mozharness/scripts/repackage.py',
-            'config': _generate_task_mozharness_config(build_platform),
             'job-script': 'taskcluster/scripts/builder/repackage.sh',
             'actions': ['download_input', 'setup', 'repackage'],
             'extra-workspace-cache-key': 'repackage',
-        }
+        })
 
         worker = {
-            'env': _generate_task_env(build_platform, build_task_ref,
+            'env': _generate_task_env(dep_job, build_platform, build_task_ref,
                                       signing_task_ref, locale=locale),
-            'artifacts': _generate_task_output_files(build_platform, locale=locale),
+            'artifacts': _generate_task_output_files(dep_job, build_platform, locale=locale),
             'chain-of-trust': True,
             'max-run-time': 7200 if build_platform.startswith('win') else 3600,
         }
@@ -161,7 +209,7 @@ def make_job_description(config, jobs):
                 )
 
             run['tooltool-downloads'] = 'internal'
-            worker['docker-image'] = {"in-tree": "desktop-build"}
+            worker['docker-image'] = {"in-tree": "debian7-amd64-build"}
 
         description = (
             "Repackaging for locale '{locale}' for build '"
@@ -194,22 +242,11 @@ def make_job_description(config, jobs):
         yield task
 
 
-def _generate_task_mozharness_config(build_platform):
-    if build_platform.startswith('macosx'):
-        return ['repackage/osx_signed.py']
-    else:
-        bits = 32 if '32' in build_platform else 64
-        if build_platform.startswith('linux'):
-            return ['repackage/linux{}_signed.py'.format(bits)]
-        elif build_platform.startswith('win'):
-            return ['repackage/win{}_signed.py'.format(bits)]
-
-    raise NotImplementedError('Unsupported build_platform: "{}"'.format(build_platform))
-
-
-def _generate_task_env(build_platform, build_task_ref, signing_task_ref, locale=None):
-    mar_prefix = get_taskcluster_artifact_prefix(build_task_ref, postfix='host/bin/', locale=None)
-    signed_prefix = get_taskcluster_artifact_prefix(signing_task_ref, locale=locale)
+def _generate_task_env(task, build_platform, build_task_ref, signing_task_ref, locale=None):
+    mar_prefix = get_taskcluster_artifact_prefix(
+        task, build_task_ref, postfix='host/bin/', locale=None
+    )
+    signed_prefix = get_taskcluster_artifact_prefix(task, signing_task_ref, locale=locale)
 
     if build_platform.startswith('linux') or build_platform.startswith('macosx'):
         tarball_extension = 'bz2' if build_platform.startswith('linux') else 'gz'
@@ -236,15 +273,16 @@ def _generate_task_env(build_platform, build_task_ref, signing_task_ref, locale=
     raise NotImplementedError('Unsupported build_platform: "{}"'.format(build_platform))
 
 
-def _generate_task_output_files(build_platform, locale=None):
+def _generate_task_output_files(task, build_platform, locale=None):
     locale_output_path = '{}/'.format(locale) if locale else ''
+    artifact_prefix = get_artifact_prefix(task)
 
     if build_platform.startswith('linux') or build_platform.startswith('macosx'):
         output_files = [{
             'type': 'file',
             'path': '/builds/worker/workspace/build/artifacts/{}target.complete.mar'
                     .format(locale_output_path),
-            'name': 'public/build/{}target.complete.mar'.format(locale_output_path),
+            'name': '{}/{}target.complete.mar'.format(artifact_prefix, locale_output_path),
         }]
 
         if build_platform.startswith('macosx'):
@@ -252,26 +290,30 @@ def _generate_task_output_files(build_platform, locale=None):
                 'type': 'file',
                 'path': '/builds/worker/workspace/build/artifacts/{}target.dmg'
                         .format(locale_output_path),
-                'name': 'public/build/{}target.dmg'.format(locale_output_path),
+                'name': '{}/{}target.dmg'.format(artifact_prefix, locale_output_path),
             })
 
     elif build_platform.startswith('win'):
         output_files = [{
             'type': 'file',
-            'path': 'public/build/{}target.installer.exe'.format(locale_output_path),
-            'name': 'public/build/{}target.installer.exe'.format(locale_output_path),
+            'path': '{}/{}target.installer.exe'.format(artifact_prefix, locale_output_path),
+            'name': '{}/{}target.installer.exe'.format(artifact_prefix, locale_output_path),
         }, {
             'type': 'file',
-            'path': 'public/build/{}target.complete.mar'.format(locale_output_path),
-            'name': 'public/build/{}target.complete.mar'.format(locale_output_path),
+            'path': '{}/{}target.complete.mar'.format(artifact_prefix, locale_output_path),
+            'name': '{}/{}target.complete.mar'.format(artifact_prefix, locale_output_path),
         }]
 
         # Stub installer is only generated on win32
         if '32' in build_platform:
             output_files.append({
                 'type': 'file',
-                'path': 'public/build/{}target.stub-installer.exe'.format(locale_output_path),
-                'name': 'public/build/{}target.stub-installer.exe'.format(locale_output_path),
+                'path': '{}/{}target.stub-installer.exe'.format(
+                    artifact_prefix, locale_output_path
+                ),
+                'name': '{}/{}target.stub-installer.exe'.format(
+                    artifact_prefix, locale_output_path
+                ),
             })
 
     if output_files:

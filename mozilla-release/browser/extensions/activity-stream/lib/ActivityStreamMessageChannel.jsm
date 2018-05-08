@@ -4,11 +4,10 @@
 
 "use strict";
 
-const {utils: Cu} = Components;
-Cu.import("resource:///modules/AboutNewTab.jsm");
-Cu.import("resource://gre/modules/RemotePageManager.jsm");
+ChromeUtils.import("resource:///modules/AboutNewTab.jsm");
+ChromeUtils.import("resource://gre/modules/RemotePageManager.jsm");
 
-const {actionCreators: ac, actionTypes: at, actionUtils: au} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+const {actionCreators: ac, actionTypes: at, actionUtils: au} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 
 const ABOUT_NEW_TAB_URL = "about:newtab";
 const ABOUT_HOME_URL = "about:home";
@@ -26,7 +25,7 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
   /**
    * ActivityStreamMessageChannel - This module connects a Redux store to a RemotePageManager in Firefox.
    *                  Call .createChannel to start the connection, and .destroyChannel to destroy it.
-   *                  You should use the BroadcastToContent, SendToContent, and SendToMain action creators
+   *                  You should use the BroadcastToContent, AlsoToOneContent, and AlsoToMain action creators
    *                  in common/Actions.jsm to help you create actions that will be automatically routed
    *                  to the correct location.
    *
@@ -51,7 +50,7 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
   }
 
   /**
-   * middleware - Redux middleware that looks for SendToContent and BroadcastToContent type
+   * middleware - Redux middleware that looks for AlsoToOneContent and BroadcastToContent type
    *              actions, and sends them out.
    *
    * @param  {object} store A redux store
@@ -64,7 +63,7 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
         next(action);
         return;
       }
-      if (au.isSendToContent(action)) {
+      if (au.isSendToOneContent(action)) {
         this.send(action);
       } else if (au.isBroadcastToContent(action)) {
         this.broadcast(action);
@@ -85,7 +84,7 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
    * @param  {string} targetId The portID of the port that sent the message
    */
   onActionFromContent(action, targetId) {
-    this.dispatch(ac.SendToMain(action, targetId));
+    this.dispatch(ac.AlsoToMain(action, targetId));
   }
 
   /**
@@ -257,4 +256,4 @@ this.ActivityStreamMessageChannel = class ActivityStreamMessageChannel {
 };
 
 this.DEFAULT_OPTIONS = DEFAULT_OPTIONS;
-this.EXPORTED_SYMBOLS = ["ActivityStreamMessageChannel", "DEFAULT_OPTIONS"];
+const EXPORTED_SYMBOLS = ["ActivityStreamMessageChannel", "DEFAULT_OPTIONS"];

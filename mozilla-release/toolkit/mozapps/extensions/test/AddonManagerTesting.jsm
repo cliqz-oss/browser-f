@@ -7,18 +7,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "AddonManagerTesting",
 ];
 
-const {utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-
-this.AddonManagerTesting = {
+var AddonManagerTesting = {
   /**
    * Get the add-on that is specified by its ID.
    *

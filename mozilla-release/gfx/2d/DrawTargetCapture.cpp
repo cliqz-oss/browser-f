@@ -365,7 +365,7 @@ DrawTargetCaptureImpl::ContainsOnlyColoredGlyphs(RefPtr<ScaledFont>& aScaledFont
 
     if (command->GetType() == CommandType::SETTRANSFORM) {
       SetTransformCommand* transform = static_cast<SetTransformCommand*>(command);
-      if (transform->mTransform != Matrix()) {
+      if (!transform->mTransform.IsIdentity()) {
         return false;
       }
       continue;
@@ -441,6 +441,16 @@ DrawTargetCaptureImpl::CreateFilter(FilterType aType)
   } else {
     return mRefDT->CreateFilter(aType);
   }
+}
+
+void
+DrawTargetCaptureImpl::Dump()
+{
+  TreeLog output;
+  output << "DrawTargetCapture(" << (void*)(this) << ")\n";
+  TreeAutoIndent indent(output);
+  mCommands.Log(output);
+  output << "\n";
 }
 
 } // namespace gfx

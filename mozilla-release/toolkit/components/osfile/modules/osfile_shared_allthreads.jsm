@@ -22,12 +22,6 @@
 // Boilerplate used to be able to import this module both from the main
 // thread and from worker threads.
 
-// Since const is lexically scoped, hoist the
-// conditionally-useful definition ourselves.
-const Cu = typeof Components != "undefined" ? Components.utils : undefined;
-const Ci = typeof Components != "undefined" ? Components.interfaces : undefined;
-const Cc = typeof Components != "undefined" ? Components.classes : undefined;
-
 /**
  * A constructor for messages that require transfers instead of copies.
  *
@@ -42,8 +36,8 @@ if (typeof Components != "undefined") {
   // loader.
   this.exports = {};
 
-  Cu.import("resource://gre/modules/Services.jsm", this);
-  Meta = Cu.import("resource://gre/modules/PromiseWorker.jsm", {}).BasePromiseWorker.Meta;
+  ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+  Meta = ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", {}).BasePromiseWorker.Meta;
 } else {
   importScripts("resource://gre/modules/workers/require.js");
   Meta = require("resource://gre/modules/workers/PromiseWorker.js").Meta;
@@ -92,7 +86,7 @@ if (typeof Components != "undefined") {
   // On the main thread, OS.Constants is defined by a xpcom
   // component. On other threads, it is available automatically
   /* global OS */
-  Cu.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
   Cc["@mozilla.org/net/osfileconstantsservice;1"].
     getService(Ci.nsIOSFileConstantsService).init();
 }
@@ -223,7 +217,7 @@ var clone = function(object, refs = []) {
     });
   };
   for (let k in object) {
-    if (refs.indexOf(k) < 0) {
+    if (!refs.includes(k)) {
       result[k] = object[k];
     } else {
       refer(result, k, object);

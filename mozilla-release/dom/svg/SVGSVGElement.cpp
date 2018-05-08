@@ -32,6 +32,9 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace dom {
 
+using namespace SVGPreserveAspectRatioBinding;
+using namespace SVGSVGElementBinding;
+
 nsSVGEnumMapping SVGSVGElement::sZoomAndPanMap[] = {
   {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
   {&nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
@@ -69,7 +72,7 @@ DOMSVGTranslatePoint::Copy()
 nsISupports*
 DOMSVGTranslatePoint::GetParentObject()
 {
-  return static_cast<nsIDOMSVGElement*>(mElement);
+  return static_cast<nsIDOMElement*>(mElement);
 }
 
 void
@@ -123,8 +126,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(SVGSVGElement,
                                              SVGSVGElementBase,
                                              nsIDOMNode,
-                                             nsIDOMElement,
-                                             nsIDOMSVGElement)
+                                             nsIDOMElement)
 
 SVGView::SVGView()
 {

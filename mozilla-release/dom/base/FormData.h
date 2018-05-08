@@ -13,8 +13,6 @@
 #include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FormDataBinding.h"
-#include "nsIDOMFormData.h"
-#include "nsIXMLHttpRequest.h"
 #include "nsTArray.h"
 #include "nsWrapperCache.h"
 
@@ -24,8 +22,7 @@ namespace dom {
 class HTMLFormElement;
 class GlobalObject;
 
-class FormData final : public nsIDOMFormData,
-                       public nsIXHRSendable,
+class FormData final : public nsISupports,
                        public HTMLFormSubmission,
                        public nsWrapperCache
 {
@@ -61,11 +58,7 @@ public:
   explicit FormData(nsISupports* aOwner = nullptr);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(FormData,
-                                                         nsIDOMFormData)
-
-  NS_DECL_NSIDOMFORMDATA
-  NS_DECL_NSIXHRSENDABLE
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(FormData)
 
   // nsWrapperCache
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
@@ -114,7 +107,7 @@ public:
   // HTMLFormSubmission
   virtual nsresult
   GetEncodedSubmission(nsIURI* aURI, nsIInputStream** aPostDataStream,
-                       int64_t* aPostDataStreamLength) override;
+                       int64_t* aPostDataStreamLength, nsCOMPtr<nsIURI>& aOutURI) override;
 
   virtual nsresult AddNameValuePair(const nsAString& aName,
                                     const nsAString& aValue) override
@@ -154,6 +147,10 @@ public:
 
     return true;
   }
+
+  nsresult
+  GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
+              nsACString& aContentTypeWithCharset, nsACString& aCharset) const;
 
 private:
   nsCOMPtr<nsISupports> mOwner;

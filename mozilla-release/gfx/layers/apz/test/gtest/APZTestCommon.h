@@ -19,11 +19,11 @@
 #include "mozilla/layers/AsyncCompositionManager.h" // for ViewTransform
 #include "mozilla/layers/GeckoContentController.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/LayerMetricsWrapper.h"
 #include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/TypedEnumBits.h"
 #include "mozilla/UniquePtr.h"
+#include "apz/src/APZCTreeManager.h"
 #include "apz/src/AsyncPanZoomController.h"
 #include "apz/src/HitTestingTreeNode.h"
 #include "base/task.h"
@@ -217,7 +217,7 @@ public:
   }
 
   nsEventStatus ReceiveInputEvent(const InputData& aEvent, uint64_t* aOutInputBlockId) {
-    return GetInputQueue()->ReceiveInputEvent(this, !mWaitForMainThread, aEvent, aOutInputBlockId);
+    return GetInputQueue()->ReceiveInputEvent(this, TargetConfirmationFlags{!mWaitForMainThread}, aEvent, aOutInputBlockId);
   }
 
   void ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault) {
@@ -263,6 +263,11 @@ public:
   void AssertStateIsFling() const {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
     EXPECT_EQ(FLING, mState);
+  }
+
+  void AssertStateIsSmoothScroll() const {
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
+    EXPECT_EQ(SMOOTH_SCROLL, mState);
   }
 
   void AssertNotAxisLocked() const {

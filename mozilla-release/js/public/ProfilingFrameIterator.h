@@ -10,14 +10,9 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
 
-#include "jsbytecode.h"
 #include "js/GCAPI.h"
 #include "js/TypeDecls.h"
 #include "js/Utility.h"
-
-struct JSContext;
-struct JSRuntime;
-class JSScript;
 
 namespace js {
     class Activation;
@@ -54,7 +49,7 @@ class MOZ_NON_PARAM JS_PUBLIC_API(ProfilingFrameIterator)
 
   private:
     JSContext* cx_;
-    uint32_t sampleBufferGen_;
+    mozilla::Maybe<uint64_t> samplePositionInProfilerBuffer_;
     js::Activation* activation_;
     Kind kind_;
 
@@ -90,10 +85,6 @@ class MOZ_NON_PARAM JS_PUBLIC_API(ProfilingFrameIterator)
     void settleFrames();
     void settle();
 
-    bool hasSampleBufferGen() const {
-        return sampleBufferGen_ != UINT32_MAX;
-    }
-
   public:
     struct RegisterState
     {
@@ -105,7 +96,7 @@ class MOZ_NON_PARAM JS_PUBLIC_API(ProfilingFrameIterator)
     };
 
     ProfilingFrameIterator(JSContext* cx, const RegisterState& state,
-                           uint32_t sampleBufferGen = UINT32_MAX);
+                           const mozilla::Maybe<uint64_t>& samplePositionInProfilerBuffer = mozilla::Nothing());
     ~ProfilingFrameIterator();
     void operator++();
     bool done() const { return !activation_; }
@@ -153,60 +144,101 @@ JS_FRIEND_API(bool)
 IsProfilingEnabledForContext(JSContext* cx);
 
 /**
- * After each sample run, this method should be called with the latest sample
- * buffer generation, and the lapCount.  It will update corresponding fields on
- * JSRuntime.
+ * After each sample run, this method should be called with the current buffer
+ * position at which the buffer contents start. This will update the
+ * corresponding field on the JSRuntime.
  *
- * See fields |profilerSampleBufferGen|, |profilerSampleBufferLapCount| on
- * JSRuntime for documentation about what these values are used for.
+ * See the field |profilerSampleBufferRangeStart| on JSRuntime for documentation
+ * about what this value is used for.
  */
 JS_FRIEND_API(void)
-UpdateJSContextProfilerSampleBufferGen(JSContext* cx, uint32_t generation,
-                                       uint32_t lapCount);
+SetJSContextProfilerSampleBufferRangeStart(JSContext* cx, uint64_t rangeStart);
 
-struct ForEachProfiledFrameOp
+class ProfiledFrameRange;
+
+// A handle to the underlying JitcodeGlobalEntry, so as to avoid repeated
+// lookups on JitcodeGlobalTable.
+class MOZ_STACK_CLASS ProfiledFrameHandle
 {
-    // A handle to the underlying JitcodeGlobalEntry, so as to avoid repeated
-    // lookups on JitcodeGlobalTable.
-    class MOZ_STACK_CLASS FrameHandle
-    {
-        friend JS_PUBLIC_API(void) ForEachProfiledFrame(JSContext* cx, void* addr,
-                                                        ForEachProfiledFrameOp& op);
+    friend class ProfiledFrameRange;
 
-        JSRuntime* rt_;
-        js::jit::JitcodeGlobalEntry& entry_;
-        void* addr_;
-        void* canonicalAddr_;
-        const char* label_;
-        uint32_t depth_;
-        mozilla::Maybe<uint8_t> optsIndex_;
+    JSRuntime* rt_;
+    js::jit::JitcodeGlobalEntry& entry_;
+    void* addr_;
+    void* canonicalAddr_;
+    const char* label_;
+    uint32_t depth_;
+    mozilla::Maybe<uint8_t> optsIndex_;
 
-        FrameHandle(JSRuntime* rt, js::jit::JitcodeGlobalEntry& entry, void* addr,
-                    const char* label, uint32_t depth);
+    ProfiledFrameHandle(JSRuntime* rt, js::jit::JitcodeGlobalEntry& entry,
+                        void* addr, const char* label, uint32_t depth);
 
-        void updateHasTrackedOptimizations();
+    void updateHasTrackedOptimizations();
 
-      public:
-        const char* label() const { return label_; }
-        uint32_t depth() const { return depth_; }
-        bool hasTrackedOptimizations() const { return optsIndex_.isSome(); }
-        void* canonicalAddress() const { return canonicalAddr_; }
+public:
+    const char* label() const { return label_; }
+    uint32_t depth() const { return depth_; }
+    bool hasTrackedOptimizations() const { return optsIndex_.isSome(); }
+    void* canonicalAddress() const { return canonicalAddr_; }
 
-        JS_PUBLIC_API(ProfilingFrameIterator::FrameKind) frameKind() const;
-        JS_PUBLIC_API(void) forEachOptimizationAttempt(ForEachTrackedOptimizationAttemptOp& op,
-                                                       JSScript** scriptOut,
-                                                       jsbytecode** pcOut) const;
+    JS_PUBLIC_API(ProfilingFrameIterator::FrameKind) frameKind() const;
+    JS_PUBLIC_API(void) forEachOptimizationAttempt(ForEachTrackedOptimizationAttemptOp& op,
+                                                    JSScript** scriptOut,
+                                                    jsbytecode** pcOut) const;
 
-        JS_PUBLIC_API(void)
-        forEachOptimizationTypeInfo(ForEachTrackedOptimizationTypeInfoOp& op) const;
-    };
-
-    // Called once per frame.
-    virtual void operator()(const FrameHandle& frame) = 0;
+    JS_PUBLIC_API(void)
+    forEachOptimizationTypeInfo(ForEachTrackedOptimizationTypeInfoOp& op) const;
 };
 
-JS_PUBLIC_API(void)
-ForEachProfiledFrame(JSContext* cx, void* addr, ForEachProfiledFrameOp& op);
+class ProfiledFrameRange
+{
+public:
+    class Iter final
+    {
+    public:
+        Iter(const ProfiledFrameRange& range, uint32_t index)
+          : range_(range)
+          , index_(index)
+        {}
+
+        JS_PUBLIC_API(ProfiledFrameHandle) operator*() const;
+
+        // Provide the bare minimum of iterator methods that are needed for
+        // C++ ranged for loops.
+        Iter& operator++() { ++index_; return *this; }
+        bool operator==(const Iter& rhs) { return index_ == rhs.index_; }
+        bool operator!=(const Iter& rhs) { return !(*this == rhs); }
+
+    private:
+        const ProfiledFrameRange& range_;
+        uint32_t index_;
+    };
+
+    Iter begin() const { return Iter(*this, 0); }
+    Iter end() const { return Iter(*this, depth_); }
+
+private:
+    friend JS_PUBLIC_API(ProfiledFrameRange) GetProfiledFrames(JSContext* cx,
+                                                               void* addr);
+
+    ProfiledFrameRange(JSRuntime* rt, void* addr, js::jit::JitcodeGlobalEntry* entry)
+      : rt_(rt)
+      , addr_(addr)
+      , entry_(entry)
+      , depth_(0)
+    {}
+
+    JSRuntime* rt_;
+    void* addr_;
+    js::jit::JitcodeGlobalEntry* entry_;
+    // Assume maximum inlining depth is <64
+    const char* labels_[64];
+    uint32_t depth_;
+};
+
+// Returns a range that can be iterated over using C++ ranged for loops.
+JS_PUBLIC_API(ProfiledFrameRange)
+GetProfiledFrames(JSContext* cx, void* addr);
 
 } // namespace JS
 

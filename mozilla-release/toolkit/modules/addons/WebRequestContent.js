@@ -7,16 +7,11 @@
 
 "use strict";
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "WebRequestCommon",
-                                  "resource://gre/modules/WebRequestCommon.jsm");
+ChromeUtils.defineModuleGetter(this, "WebRequestCommon",
+                               "resource://gre/modules/WebRequestCommon.jsm");
 
 // Websockets will get handled via httpchannel notifications same as http
 // requests, treat them the same as http in ContentPolicy.

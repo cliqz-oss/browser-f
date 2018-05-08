@@ -23,6 +23,7 @@
 #include "mozilla/dom/PGamepadEventChannelParent.h"
 #include "mozilla/dom/PGamepadTestChannelParent.h"
 #include "mozilla/dom/MessagePortParent.h"
+#include "mozilla/dom/ServiceWorkerManagerParent.h"
 #include "mozilla/dom/ServiceWorkerRegistrar.h"
 #include "mozilla/dom/asmjscache/AsmJSCache.h"
 #include "mozilla/dom/cache/ActorUtils.h"
@@ -32,6 +33,9 @@
 #include "mozilla/dom/ipc/TemporaryIPCBlobParent.h"
 #include "mozilla/dom/quota/ActorsParent.h"
 #include "mozilla/dom/StorageIPC.h"
+#include "mozilla/dom/MIDIManagerParent.h"
+#include "mozilla/dom/MIDIPortParent.h"
+#include "mozilla/dom/MIDIPlatformService.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
@@ -51,7 +55,6 @@
 #include "nsThreadUtils.h"
 #include "nsTraceRefcnt.h"
 #include "nsXULAppAPI.h"
-#include "ServiceWorkerManagerParent.h"
 
 #ifdef DISABLE_ASSERTS_FOR_FUZZING
 #define ASSERT_UNLESS_FUZZING(...) do { } while (0)
@@ -70,14 +73,14 @@ using mozilla::dom::MessagePortParent;
 using mozilla::dom::PMessagePortParent;
 using mozilla::dom::UDPSocketParent;
 using mozilla::dom::WebAuthnTransactionParent;
+using mozilla::AssertIsOnMainThread;
+using mozilla::dom::PMIDIPortParent;
+using mozilla::dom::PMIDIManagerParent;
+using mozilla::dom::MIDIPortParent;
+using mozilla::dom::MIDIManagerParent;
+using mozilla::dom::MIDIPlatformService;
 
 namespace {
-
-void
-AssertIsOnMainThread()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-}
 
 class TestParent final : public mozilla::ipc::PBackgroundTestParent
 {
@@ -107,7 +110,6 @@ namespace ipc {
 using mozilla::dom::ContentParent;
 using mozilla::dom::BroadcastChannelParent;
 using mozilla::dom::ServiceWorkerRegistrationData;
-using mozilla::dom::workers::ServiceWorkerManagerParent;
 
 BackgroundParentImpl::BackgroundParentImpl()
 {
@@ -659,8 +661,8 @@ BackgroundParentImpl::AllocPServiceWorkerManagerParent()
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
-  RefPtr<dom::workers::ServiceWorkerManagerParent> agent =
-    new dom::workers::ServiceWorkerManagerParent();
+  RefPtr<dom::ServiceWorkerManagerParent> agent =
+    new dom::ServiceWorkerManagerParent();
   return agent.forget().take();
 }
 
@@ -672,8 +674,8 @@ BackgroundParentImpl::DeallocPServiceWorkerManagerParent(
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aActor);
 
-  RefPtr<dom::workers::ServiceWorkerManagerParent> parent =
-    dont_AddRef(static_cast<dom::workers::ServiceWorkerManagerParent*>(aActor));
+  RefPtr<dom::ServiceWorkerManagerParent> parent =
+    dont_AddRef(static_cast<dom::ServiceWorkerManagerParent*>(aActor));
   MOZ_ASSERT(parent);
   return true;
 }
@@ -965,6 +967,53 @@ BackgroundParentImpl::DeallocPHttpBackgroundChannelParent(
   RefPtr<net::HttpBackgroundChannelParent> actor =
     dont_AddRef(static_cast<net::HttpBackgroundChannelParent*>(aActor));
 
+  return true;
+}
+
+PMIDIPortParent*
+BackgroundParentImpl::AllocPMIDIPortParent(const MIDIPortInfo& aPortInfo, const bool& aSysexEnabled)
+{
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIPortParent> result = new MIDIPortParent(aPortInfo, aSysexEnabled);
+  return result.forget().take();
+}
+
+bool
+BackgroundParentImpl::DeallocPMIDIPortParent(PMIDIPortParent* aActor)
+{
+  MOZ_ASSERT(aActor);
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIPortParent> parent =
+    dont_AddRef(static_cast<MIDIPortParent*>(aActor));
+  parent->Teardown();
+  return true;
+}
+
+PMIDIManagerParent*
+BackgroundParentImpl::AllocPMIDIManagerParent()
+{
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIManagerParent> result = new MIDIManagerParent();
+  MIDIPlatformService::Get()->AddManager(result);
+  return result.forget().take();
+}
+
+bool
+BackgroundParentImpl::DeallocPMIDIManagerParent(PMIDIManagerParent* aActor)
+{
+  MOZ_ASSERT(aActor);
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIManagerParent> parent =
+    dont_AddRef(static_cast<MIDIManagerParent*>(aActor));
+  parent->Teardown();
   return true;
 }
 

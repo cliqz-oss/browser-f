@@ -18,43 +18,8 @@
 namespace mozilla {
 namespace dom {
 
-class U2FRegisterResult {
-public:
-  explicit U2FRegisterResult(nsTArray<uint8_t>&& aRegistration)
-    : mRegistration(aRegistration)
-  { }
-
-  void ConsumeRegistration(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mRegistration);
-  }
-
-private:
-  nsTArray<uint8_t> mRegistration;
-};
-
-class U2FSignResult {
-public:
-  explicit U2FSignResult(nsTArray<uint8_t>&& aKeyHandle,
-                         nsTArray<uint8_t>&& aSignature)
-    : mKeyHandle(aKeyHandle)
-    , mSignature(aSignature)
-  { }
-
-  void ConsumeKeyHandle(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mKeyHandle);
-  }
-
-  void ConsumeSignature(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mSignature);
-  }
-
-private:
-  nsTArray<uint8_t> mKeyHandle;
-  nsTArray<uint8_t> mSignature;
-};
-
-typedef MozPromise<U2FRegisterResult, nsresult, true> U2FRegisterPromise;
-typedef MozPromise<U2FSignResult, nsresult, true> U2FSignPromise;
+typedef MozPromise<WebAuthnMakeCredentialResult, nsresult, true> U2FRegisterPromise;
+typedef MozPromise<WebAuthnGetAssertionResult, nsresult, true> U2FSignPromise;
 
 class U2FTokenTransport
 {
@@ -63,20 +28,14 @@ public:
   U2FTokenTransport() {}
 
   virtual RefPtr<U2FRegisterPromise>
-  Register(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-           const WebAuthnAuthenticatorSelection &aAuthenticatorSelection,
-           const nsTArray<uint8_t>& aApplication,
-           const nsTArray<uint8_t>& aChallenge,
-           uint32_t aTimeoutMS) = 0;
+  Register(const WebAuthnMakeCredentialInfo& aInfo) = 0;
 
   virtual RefPtr<U2FSignPromise>
-  Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-       const nsTArray<uint8_t>& aApplication,
-       const nsTArray<uint8_t>& aChallenge,
-       bool aRequireUserVerification,
-       uint32_t aTimeoutMS) = 0;
+  Sign(const WebAuthnGetAssertionInfo& aInfo) = 0;
 
   virtual void Cancel() = 0;
+
+  virtual void Drop() { }
 
 protected:
   virtual ~U2FTokenTransport() = default;

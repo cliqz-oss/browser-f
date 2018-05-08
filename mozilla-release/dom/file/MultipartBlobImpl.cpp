@@ -23,8 +23,6 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-NS_IMPL_ISUPPORTS_INHERITED0(MultipartBlobImpl, BlobImpl)
-
 /* static */ already_AddRefed<MultipartBlobImpl>
 MultipartBlobImpl::Create(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,
                           const nsAString& aName,
@@ -271,7 +269,8 @@ MultipartBlobImpl::SetLengthAndModifiedDate(ErrorResult& aRv)
     //   x.getTime() < f.dateModified.getTime()
     // could fail.
     mLastModificationDate = nsRFPService::ReduceTimePrecisionAsUSecs(
-      lastModifiedSet ? lastModified * PR_USEC_PER_MSEC : JS_Now());
+      lastModifiedSet ? lastModified * PR_USEC_PER_MSEC : JS_Now(), 0);
+    // mLastModificationDate is an absolute timestamp so we supply a zero context mix-in
   }
 }
 

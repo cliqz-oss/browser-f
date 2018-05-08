@@ -159,9 +159,8 @@ class MOZ_STACK_CLASS ModuleGenerator
 
     // Data that is moved into the result of finish()
     Assumptions                     assumptions_;
-    LinkDataTier*                   linkDataTier_; // Owned by linkData_
-    LinkData                        linkData_;
-    MetadataTier*                   metadataTier_; // Owned by metadata_
+    UniqueLinkDataTier              linkDataTier_;
+    UniqueMetadataTier              metadataTier_;
     MutableMetadata                 metadata_;
 
     // Data scoped to the ModuleGenerator's lifetime
@@ -203,8 +202,7 @@ class MOZ_STACK_CLASS ModuleGenerator
     bool finishOutstandingTask();
     bool finishCode();
     bool finishMetadata(const ShareableBytes& bytecode);
-    UniqueCodeSegment finish(const ShareableBytes& bytecode);
-    UniqueJumpTable createJumpTable(const CodeSegment& codeSegment);
+    UniqueModuleSegment finish(const ShareableBytes& bytecode);
 
     bool isAsmJS() const { return env_->isAsmJS(); }
     Tier tier() const { return env_->tier; }

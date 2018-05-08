@@ -1,9 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { interfaces: Ci, utils: Cu } = Components;
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -17,10 +16,6 @@ function test() {
   });
 
   SpecialPowers.pushPrefEnv({set: [
-    ["browser.cache.offline.enable", false],
-    ["browser.cache.disk.enable", false],
-    ["browser.cache.memory.enable", false],
-    ["browser.storageManager.enabled", true],
     ["privacy.userContext.ui.enabled", true]
   ]}).then(() => open_preferences(runTest));
 }

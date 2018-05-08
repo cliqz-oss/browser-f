@@ -30,6 +30,7 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "nsContentTypeParser.h"
 #include "nsContentUtils.h"
+#include "nsDocShell.h"
 #include "nsError.h"
 #include "nsIDocument.h"
 #include "nsIPermissionManager.h"
@@ -220,6 +221,8 @@ class MediaRecorder::Session: public PrincipalChangeObserver<MediaStreamTrack>,
                          , public MutableBlobStorageCallback
   {
   public:
+    // We need to always declare refcounting because
+    // MutableBlobStorageCallback has pure-virtual refcounting.
     NS_DECL_ISUPPORTS_INHERITED
 
     // aDestroyRunnable can be null. If it's not, it will be dispatched after
@@ -981,6 +984,10 @@ private:
       mEncoder->ConnectMediaStreamTrack(track);
     }
 
+    // If user defines timeslice interval for video blobs we have to set
+    // appropriate video keyframe interval defined in milliseconds.
+    mEncoder->SetVideoKeyFrameInterval(mTimeSlice);
+
     // Set mRunningState to Running so that ExtractRunnable/DestroyRunnable will
     // take the responsibility to end the session.
     mRunningState = RunningState::Starting;
@@ -1693,9 +1700,20 @@ MediaRecorder::NotifyOwnerDocumentActivityChanged()
   nsIDocument* doc = window->GetExtantDoc();
   NS_ENSURE_TRUE_VOID(doc);
 
-  LOG(LogLevel::Debug, ("MediaRecorder %p document IsActive %d isVisible %d\n",
-                     this, doc->IsActive(), doc->IsVisible()));
-  if (!doc->IsActive() || !doc->IsVisible()) {
+  bool inFrameSwap = false;
+  if (nsDocShell* docShell = static_cast<nsDocShell*>(doc->GetDocShell())) {
+    inFrameSwap = docShell->InFrameSwap();
+  }
+
+  LOG(LogLevel::Debug, ("MediaRecorder %p NotifyOwnerDocumentActivityChanged "
+                        "IsActive=%d, "
+                        "IsVisible=%d, "
+                        "InFrameSwap=%d",
+                        this,
+                        doc->IsActive(),
+                        doc->IsVisible(),
+                        inFrameSwap));
+  if (!doc->IsActive() || !(inFrameSwap || doc->IsVisible())) {
     // Stop the session.
     ErrorResult result;
     Stop(result);

@@ -222,8 +222,7 @@ where
     T: Copy + Into<ItemId>
 {
     fn can_derive_default(&self, ctx: &BindgenContext) -> bool {
-        ctx.options().derive_default &&
-            ctx.lookup_can_derive_default(*self)
+        ctx.options().derive_default && ctx.lookup_can_derive_default(*self)
     }
 }
 
@@ -232,7 +231,7 @@ where
     T: Copy + Into<ItemId>
 {
     fn can_derive_copy(&self, ctx: &BindgenContext) -> bool {
-        ctx.lookup_can_derive_copy(*self)
+        ctx.options().derive_copy && ctx.lookup_can_derive_copy(*self)
     }
 }
 
@@ -1970,7 +1969,14 @@ impl BindgenContext {
                     CXType_Float => FloatKind::Float,
                     CXType_Double => FloatKind::Double,
                     CXType_LongDouble => FloatKind::LongDouble,
-                    _ => panic!("Non floating-type complex?"),
+                    CXType_Float128 => FloatKind::Float128,
+                    _ => {
+                        panic!(
+                            "Non floating-type complex? {:?}, {:?}",
+                            ty,
+                            float_type,
+                        )
+                    },
                 };
                 TypeKind::Complex(float_kind)
             }
@@ -2092,7 +2098,7 @@ impl BindgenContext {
             ::clang_sys::CXCursor_Namespace,
             "Be a nice person"
         );
-        let tokens = match self.translation_unit.tokens(&cursor) {
+        let tokens = match cursor.tokens() {
             Some(tokens) => tokens,
             None => return (None, ModuleKind::Normal),
         };
@@ -2445,6 +2451,7 @@ impl BindgenContext {
         // Look up the computed value for whether the item with `id` can
         // derive `Copy` or not.
         let id = id.into();
+
         !self.lookup_has_type_param_in_array(id) &&
             !self.cannot_derive_copy.as_ref().unwrap().contains(&id)
     }

@@ -30,13 +30,13 @@ const {
   classes: Cc,
   interfaces: Ci
 } = Components;
-Cu.import("resource://gre/modules/PromiseMessage.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/ManifestProcessor.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",  // jshint ignore:line
+ChromeUtils.import("resource://gre/modules/PromiseMessage.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ManifestProcessor.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",  // jshint ignore:line
   "resource://gre/modules/BrowserUtils.jsm");
 
-this.ManifestObtainer = { // jshint ignore:line
+var ManifestObtainer = { // jshint ignore:line
   /**
   * Public interface for obtaining a web manifest from a XUL browser, to use
   * on the parent process.
@@ -156,4 +156,4 @@ const fetchManifest = async function(aWindow) {
   return manifest;
 };
 
-this.EXPORTED_SYMBOLS = ["ManifestObtainer"]; // jshint ignore:line
+var EXPORTED_SYMBOLS = ["ManifestObtainer"]; // jshint ignore:line

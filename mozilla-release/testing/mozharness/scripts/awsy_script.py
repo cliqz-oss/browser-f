@@ -38,23 +38,17 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
           "default": False,
           "help": "Run tests with multiple processes. (Desktop builds only)",
           }],
-        [["--enable-stylo"],
-         {"action": "store_true",
-          "dest": "enable_stylo",
-          "default": False,
-          "help": "Run tests with Stylo enabled.",
-          }],
-        [["--disable-stylo"],
-         {"action": "store_true",
-          "dest": "disable_stylo",
-          "default": False,
-          "help": "Run tests with Stylo disabled.",
-          }],
         [["--single-stylo-traversal"],
          {"action": "store_true",
           "dest": "single_stylo_traversal",
           "default": False,
           "help": "Set STYLO_THREADS=1.",
+          }],
+        [["--enable-webrender"],
+         {"action": "store_true",
+          "dest": "enable_webrender",
+          "default": False,
+          "help": "Tries to enable the WebRender compositor.",
           }]
     ] + testing_config_options + copy.deepcopy(blobupload_config_options) \
                                + copy.deepcopy(code_coverage_config_options)
@@ -85,8 +79,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         self.installer_url = self.config.get("installer_url")
         self.tests = None
 
-        abs_work_dir = self.query_abs_dirs()['abs_work_dir']
-        self.testdir = os.path.join(abs_work_dir, 'tests')
+        self.testdir = self.query_abs_dirs()['abs_test_install_dir']
         self.awsy_path = os.path.join(self.testdir, 'awsy')
         self.awsy_libdir = os.path.join(self.awsy_path, 'awsy')
         self.webroot_dir = os.path.join(self.testdir, 'html')
@@ -100,6 +93,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
 
         dirs = {}
         dirs['abs_blob_upload_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'blobber_upload_dir')
+        dirs['abs_test_install_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'tests')
         abs_dirs.update(dirs)
         self.abs_dirs = abs_dirs
         return self.abs_dirs
@@ -175,21 +169,17 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         test_file = os.path.join(self.awsy_libdir, 'test_memory_usage.py')
         cmd.append(test_file)
 
-        if self.config['disable_stylo']:
-            if self.config['single_stylo_traversal']:
-                self.fatal("--disable-stylo conflicts with --single-stylo-traversal")
-            if self.config['enable_stylo']:
-                self.fatal("--disable-stylo conflicts with --enable-stylo")
-
         if self.config['single_stylo_traversal']:
             env['STYLO_THREADS'] = '1'
         else:
             env['STYLO_THREADS'] = '4'
 
-        if self.config['enable_stylo']:
-            env['STYLO_FORCE_ENABLED'] = '1'
-        if self.config['disable_stylo']:
-            env['STYLO_FORCE_DISABLED'] = '1'
+        # TODO: consider getting rid of this as stylo is enabled by default
+        env['STYLO_FORCE_ENABLED'] = '1'
+
+        if self.config['enable_webrender']:
+            env['MOZ_WEBRENDER'] = '1'
+            env['MOZ_ACCELERATED'] = '1'
 
         env['MOZ_UPLOAD_DIR'] = dirs['abs_blob_upload_dir']
         if not os.path.isdir(env['MOZ_UPLOAD_DIR']):

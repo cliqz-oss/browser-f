@@ -7,9 +7,8 @@
 #ifndef vm_RegExpStatics_h
 #define vm_RegExpStatics_h
 
-#include "jscntxt.h"
-
 #include "gc/Marking.h"
+#include "vm/JSContext.h"
 #include "vm/MatchPairs.h"
 #include "vm/RegExpShared.h"
 #include "vm/Runtime.h"
@@ -45,7 +44,7 @@ class RegExpStatics
 
   public:
     RegExpStatics() { clear(); }
-    static RegExpStaticsObject* create(JSContext* cx, Handle<GlobalObject*> parent);
+    static RegExpStaticsObject* create(JSContext* cx);
 
   private:
     bool executeLazy(JSContext* cx);
@@ -63,7 +62,8 @@ class RegExpStatics
     /* Mutators. */
     inline void updateLazily(JSContext* cx, JSLinearString* input,
                              RegExpShared* shared, size_t lastIndex);
-    inline bool updateFromMatchPairs(JSContext* cx, JSLinearString* input, MatchPairs& newPairs);
+    inline bool updateFromMatchPairs(JSContext* cx, JSLinearString* input,
+                                     VectorMatchPairs& newPairs);
 
     inline void clear();
 
@@ -252,7 +252,8 @@ RegExpStatics::updateLazily(JSContext* cx, JSLinearString* input,
 }
 
 inline bool
-RegExpStatics::updateFromMatchPairs(JSContext* cx, JSLinearString* input, MatchPairs& newPairs)
+RegExpStatics::updateFromMatchPairs(JSContext* cx, JSLinearString* input,
+                                    VectorMatchPairs& newPairs)
 {
     MOZ_ASSERT(input);
 

@@ -4,13 +4,13 @@
 
 'use strict';
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr, Constructor: CC } = Components;
+const CC = Components.Constructor;
 const ServerSocket = CC("@mozilla.org/network/server-socket;1",
                         "nsIServerSocket",
                         "init");
 
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-Cu.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
+ChromeUtils.import('resource://gre/modules/Services.jsm');
 
 var testServer = null;
 var clientTransport = null;

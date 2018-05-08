@@ -3,6 +3,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Test that the sidebar is hidden for all methods of closing it.
 
 "use strict";
@@ -65,7 +67,7 @@ add_task(async function () {
 
   info("Send escape to hide sidebar");
   onSidebarShown = waitForNodeMutation(wrapper, { childList: true });
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await onSidebarShown;
   sidebar = hud.ui.document.querySelector(".sidebar");
   ok(!sidebar, "Sidebar hidden after sending esc");

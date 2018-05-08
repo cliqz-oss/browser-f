@@ -16,18 +16,15 @@
  */
 
 
-/* fluent@0.6.0 */
+/* fluent@0.6.3 */
 
 /* eslint no-console: ["error", { allow: ["warn", "error"] }] */
 /* global console */
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
-const { L10nRegistry } = Cu.import("resource://gre/modules/L10nRegistry.jsm", {});
-const LocaleService = Cc["@mozilla.org/intl/localeservice;1"].getService(Ci.mozILocaleService);
-const ObserverService = Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService);
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { L10nRegistry } = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { AppConstants } = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
 
 /*
  * CachedIterable caches the elements yielded by an iterable.
@@ -48,7 +45,7 @@ class CachedIterable {
     } else if (Symbol.iterator in Object(iterable)) {
       this.iterator = iterable[Symbol.iterator]();
     } else {
-      throw new TypeError('Argument must implement the iteration protocol.');
+      throw new TypeError("Argument must implement the iteration protocol.");
     }
 
     this.seen = [];
@@ -95,24 +92,6 @@ class CachedIterable {
 }
 
 /**
- * Specialized version of an Error used to indicate errors that are result
- * of a problem during the localization process.
- *
- * We use them to identify the class of errors the require a fallback
- * mechanism to be triggered vs errors that should be reported, but
- * do not prevent the message from being used.
- *
- * An example of an L10nError is a missing entry.
- */
-class L10nError extends Error {
-  constructor(message) {
-    super();
-    this.name = 'L10nError';
-    this.message = message;
-  }
-}
-
- /**
  * The default localization strategy for Gecko. It comabines locales
  * available in L10nRegistry, with locales requested by the user to
  * generate the iterator over MessageContexts.
@@ -122,14 +101,8 @@ class L10nError extends Error {
  * be localized into a different language - for example DevTools.
  */
 function defaultGenerateMessages(resourceIds) {
-  const availableLocales = L10nRegistry.getAvailableLocales();
-
-  const requestedLocales = LocaleService.getRequestedLocales();
-  const defaultLocale = LocaleService.defaultLocale;
-  const locales = LocaleService.negotiateLanguages(
-    requestedLocales, availableLocales, defaultLocale,
-  );
-  return L10nRegistry.generateContexts(locales, resourceIds);
+  const appLocales = Services.locale.getAppLocalesAsLangTags();
+  return L10nRegistry.generateContexts(appLocales, resourceIds);
 }
 
 /**
@@ -166,17 +139,26 @@ class Localization {
    */
   async formatWithFallback(keys, method) {
     const translations = [];
+
     for await (let ctx of this.ctxs) {
       // This can operate on synchronous and asynchronous
       // contexts coming from the iterator.
-      if (typeof ctx.then === 'function') {
+      if (typeof ctx.then === "function") {
         ctx = await ctx;
       }
-      const errors = keysFromContext(method, ctx, keys, translations);
-      if (!errors) {
+      const missingIds = keysFromContext(method, ctx, keys, translations);
+
+      if (missingIds.size === 0) {
         break;
       }
+
+      if (AppConstants.NIGHTLY_BUILD) {
+        const locale = ctx.locales[0];
+        const ids = Array.from(missingIds).join(", ");
+        console.warn(`Missing translations in ${locale}: ${ids}`);
+      }
     }
+
     return translations;
   }
 
@@ -258,19 +240,17 @@ class Localization {
   }
 
   /**
-   * Register observers on events that will trigger cache invalidation
+   * Register weak observers on events that will trigger cache invalidation
    */
   registerObservers() {
-    ObserverService.addObserver(this, 'l10n:available-locales-changed', false);
-    ObserverService.addObserver(this, 'intl:requested-locales-changed', false);
+    Services.obs.addObserver(this, "intl:app-locales-changed", true);
   }
 
   /**
    * Unregister observers on events that will trigger cache invalidation
    */
   unregisterObservers() {
-    ObserverService.removeObserver(this, 'l10n:available-locales-changed');
-    ObserverService.removeObserver(this, 'intl:requested-locales-changed');
+    Services.obs.removeObserver(this, "intl:app-locales-changed");
   }
 
   /**
@@ -282,8 +262,7 @@ class Localization {
    */
   observe(subject, topic, data) {
     switch (topic) {
-      case 'l10n:available-locales-changed':
-      case 'intl:requested-locales-changed':
+      case "intl:app-locales-changed":
         this.onLanguageChange();
         break;
       default:
@@ -299,6 +278,10 @@ class Localization {
     this.ctxs = new CachedIterable(this.generateMessages(this.resourceIds));
   }
 }
+
+Localization.prototype.QueryInterface = XPCOMUtils.generateQI([
+  Ci.nsISupportsWeakReference
+]);
 
 /**
  * Format the value of a message into a string.
@@ -320,11 +303,6 @@ class Localization {
  */
 function valueFromContext(ctx, errors, id, args) {
   const msg = ctx.getMessage(id);
-
-  if (msg === undefined) {
-    errors.push(new L10nError(`Unknown entity: ${id}`));
-    return id;
-  }
 
   return ctx.format(msg, args, errors);
 }
@@ -354,11 +332,6 @@ function valueFromContext(ctx, errors, id, args) {
 function messageFromContext(ctx, errors, id, args) {
   const msg = ctx.getMessage(id);
 
-  if (msg === undefined) {
-    errors.push(new L10nError(`Unknown message: ${id}`));
-    return { value: id, attrs: null };
-  }
-
   const formatted = {
     value: ctx.format(msg, args, errors),
     attrs: null,
@@ -366,13 +339,10 @@ function messageFromContext(ctx, errors, id, args) {
 
   if (msg.attrs) {
     formatted.attrs = [];
-    for (const attrName in msg.attrs) {
-      const formattedAttr = ctx.format(msg.attrs[attrName], args, errors);
-      if (formattedAttr !== null) {
-        formatted.attrs.push([
-          attrName,
-          formattedAttr
-        ]);
+    for (const name in msg.attrs) {
+      const value = ctx.format(msg.attrs[name], args, errors);
+      if (value !== null) {
+        formatted.attrs.push({ name, value });
       }
     }
   }
@@ -384,7 +354,7 @@ function messageFromContext(ctx, errors, id, args) {
  * This function is an inner function for `Localization.formatWithFallback`.
  *
  * It takes a `MessageContext`, list of l10n-ids and a method to be used for
- * key resolution (either `valueFromContext` or `entityFromContext`) and
+ * key resolution (either `valueFromContext` or `messageFromContext`) and
  * optionally a value returned from `keysFromContext` executed against
  * another `MessageContext`.
  *
@@ -399,8 +369,8 @@ function messageFromContext(ctx, errors, id, args) {
  * we return it. If it does, we'll try to resolve the key using the passed
  * `MessageContext`.
  *
- * In the end, we fill the translations array, and return if we
- * encountered at least one error.
+ * In the end, we fill the translations array, and return the Set with
+ * missing ids.
  *
  * See `Localization.formatWithFallback` for more info on how this is used.
  *
@@ -409,36 +379,29 @@ function messageFromContext(ctx, errors, id, args) {
  * @param {Array<string>}  keys
  * @param {{Array<{value: string, attrs: Object}>}} translations
  *
- * @returns {Boolean}
+ * @returns {Set<string>}
  * @private
  */
 function keysFromContext(method, ctx, keys, translations) {
   const messageErrors = [];
-  let hasErrors = false;
+  const missingIds = new Set();
 
   keys.forEach((key, i) => {
     if (translations[i] !== undefined) {
       return;
     }
 
-    messageErrors.length = 0;
-    const translation = method(ctx, messageErrors, key[0], key[1]);
-
-    if (messageErrors.length === 0 ||
-        !messageErrors.some(e => e instanceof L10nError)) {
-      translations[i] = translation;
+    if (ctx.hasMessage(key[0])) {
+      messageErrors.length = 0;
+      translations[i] = method(ctx, messageErrors, key[0], key[1]);
+      // XXX: Report resolver errors
     } else {
-      hasErrors = true;
-    }
-
-    if (messageErrors.length) {
-      const { console } = Cu.import("resource://gre/modules/Console.jsm", {});
-      messageErrors.forEach(error => console.warn(error));
+      missingIds.add(key[0]);
     }
   });
 
-  return hasErrors;
+  return missingIds;
 }
 
 this.Localization = Localization;
-this.EXPORTED_SYMBOLS = ['Localization'];
+var EXPORTED_SYMBOLS = ["Localization"];

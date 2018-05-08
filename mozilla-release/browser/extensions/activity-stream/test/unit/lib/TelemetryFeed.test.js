@@ -25,6 +25,7 @@ describe("TelemetryFeed", () => {
   let instance;
   let clock;
   class PingCentre {sendPing() {} uninit() {}}
+  class UTEventReporting {sendUserEvent() {} sendSessionEndEvent() {} uninit() {}}
   class PerfService {
     getMostRecentAbsMarkStartByName() { return 1234; }
     mark() {}
@@ -36,16 +37,21 @@ describe("TelemetryFeed", () => {
     TelemetryFeed,
     USER_PREFS_ENCODING,
     PREF_IMPRESSION_ID,
-    TELEMETRY_PREF
-  } = injector({"common/PerfService.jsm": {perfService}});
+    TELEMETRY_PREF,
+    EVENTS_TELEMETRY_PREF
+  } = injector({
+    "common/PerfService.jsm": {perfService},
+    "lib/UTEventReporting.jsm": {UTEventReporting}
+  });
 
   beforeEach(() => {
     globals = new GlobalOverrider();
     sandbox = globals.sandbox;
     clock = sinon.useFakeTimers();
-    sandbox.spy(global.Components.utils, "reportError");
+    sandbox.spy(global.Cu, "reportError");
     globals.set("gUUIDGenerator", {generateUUID: () => FAKE_UUID});
     globals.set("PingCentre", PingCentre);
+    globals.set("UTEventReporting", UTEventReporting);
     instance = new TelemetryFeed();
     instance.store = store;
   });
@@ -57,6 +63,9 @@ describe("TelemetryFeed", () => {
   describe("#init", () => {
     it("should add .pingCentre, a PingCentre instance", () => {
       assert.instanceOf(instance.pingCentre, PingCentre);
+    });
+    it("should add .utEvents, a UTEventReporting instance", () => {
+      assert.instanceOf(instance.utEvents, UTEventReporting);
     });
     it("should make this.browserOpenNewtabStart() observe browser-open-newtab-start", () => {
       sandbox.spy(Services.obs, "addObserver");
@@ -88,6 +97,21 @@ describe("TelemetryFeed", () => {
         instance._prefs.set(TELEMETRY_PREF, true);
 
         assert.propertyVal(instance, "telemetryEnabled", true);
+      });
+    });
+    describe("events telemetry pref changes from false to true", () => {
+      beforeEach(() => {
+        FakePrefs.prototype.prefs = {};
+        FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = false;
+        instance = new TelemetryFeed();
+
+        assert.propertyVal(instance, "eventTelemetryEnabled", false);
+      });
+
+      it("should set the enabled property to true", () => {
+        instance._prefs.set(EVENTS_TELEMETRY_PREF, true);
+
+        assert.propertyVal(instance, "eventTelemetryEnabled", true);
       });
     });
   });
@@ -232,6 +256,7 @@ describe("TelemetryFeed", () => {
     });
     it("should call createSessionSendEvent and sendEvent with the sesssion", () => {
       sandbox.stub(instance, "sendEvent");
+      sandbox.stub(instance, "sendUTEvent");
       sandbox.stub(instance, "createSessionEndEvent");
       const session = instance.addSession("foo");
 
@@ -239,7 +264,10 @@ describe("TelemetryFeed", () => {
 
       // Did we call sendEvent with the result of createSessionEndEvent?
       assert.calledWith(instance.createSessionEndEvent, session);
-      assert.calledWith(instance.sendEvent, instance.createSessionEndEvent.firstCall.returnValue);
+
+      let sessionEndEvent = instance.createSessionEndEvent.firstCall.returnValue;
+      assert.calledWith(instance.sendEvent, sessionEndEvent);
+      assert.calledWith(instance.sendUTEvent, sessionEndEvent, instance.utEvents.sendSessionEndEvent);
     });
   });
   describe("ping creators", () => {
@@ -290,7 +318,7 @@ describe("TelemetryFeed", () => {
       it("should create a valid event", async () => {
         const portID = "foo";
         const data = {source: "TOP_SITES", event: "CLICK"};
-        const action = ac.SendToMain(ac.UserEvent(data), portID);
+        const action = ac.AlsoToMain(ac.UserEvent(data), portID);
         const session = instance.addSession(portID);
 
         const ping = await instance.createUserEvent(action);
@@ -315,7 +343,7 @@ describe("TelemetryFeed", () => {
       it("should create a valid event with a session", async () => {
         const portID = "foo";
         const data = {source: "TOP_SITES", event: "MISSING_IMAGE", value: 10};
-        const action = ac.SendToMain(ac.UndesiredEvent(data), portID);
+        const action = ac.AlsoToMain(ac.UndesiredEvent(data), portID);
         const session = instance.addSession(portID);
 
         const ping = await instance.createUndesiredEvent(action);
@@ -448,6 +476,19 @@ describe("TelemetryFeed", () => {
       assert.calledWith(instance.pingCentre.sendPing, event);
     });
   });
+  describe("#sendUTEvent", () => {
+    it("should call the UT event function passed in", async () => {
+      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
+      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
+      const event = {};
+      instance = new TelemetryFeed();
+      sandbox.stub(instance.utEvents, "sendUserEvent");
+
+      await instance.sendUTEvent(event, instance.utEvents.sendUserEvent);
+
+      assert.calledWith(instance.utEvents.sendUserEvent, event);
+    });
+  });
 
   describe("#setLoadTriggerInfo", () => {
     it("should call saveSessionPerfData w/load_trigger_{ts,type} data", () => {
@@ -524,6 +565,13 @@ describe("TelemetryFeed", () => {
 
       assert.calledOnce(stub);
     });
+    it("should call .utEvents.uninit", () => {
+      const stub = sandbox.stub(instance.utEvents, "uninit");
+
+      instance.uninit();
+
+      assert.calledOnce(stub);
+    });
     it("should remove the a-s telemetry pref listener", () => {
       FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
       instance = new TelemetryFeed();
@@ -534,13 +582,23 @@ describe("TelemetryFeed", () => {
 
       assert.notProperty(instance._prefs.observers, TELEMETRY_PREF);
     });
+    it("should remove the a-s ut telemetry pref listener", () => {
+      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
+      instance = new TelemetryFeed();
+
+      assert.property(instance._prefs.observers, EVENTS_TELEMETRY_PREF);
+
+      instance.uninit();
+
+      assert.notProperty(instance._prefs.observers, EVENTS_TELEMETRY_PREF);
+    });
     it("should call Cu.reportError if this._prefs.ignore throws", () => {
       globals.sandbox.stub(FakePrefs.prototype, "ignore").throws("Some Error");
       instance = new TelemetryFeed();
 
       instance.uninit();
 
-      assert.called(global.Components.utils.reportError);
+      assert.called(global.Cu.reportError);
     });
     it("should make this.browserOpenNewtabStart() stop observing browser-open-newtab-start", async () => {
       await instance.init();
@@ -575,7 +633,7 @@ describe("TelemetryFeed", () => {
     it("should call .handleNewTabInit on a NEW_TAB_INIT action", () => {
       sandbox.spy(instance, "handleNewTabInit");
 
-      instance.onAction(ac.SendToMain({
+      instance.onAction(ac.AlsoToMain({
         type: at.NEW_TAB_INIT,
         data: {url: "about:newtab", browser}
       }));
@@ -586,7 +644,7 @@ describe("TelemetryFeed", () => {
       const stub = sandbox.stub(instance, "addSession").returns({perf: {}});
       sandbox.stub(instance, "setLoadTriggerInfo");
 
-      instance.onAction(ac.SendToMain({
+      instance.onAction(ac.AlsoToMain({
         type: at.NEW_TAB_INIT,
         data: {url: "about:monkeys", browser}
       }, "port123"));
@@ -597,7 +655,7 @@ describe("TelemetryFeed", () => {
     it("should call .endSession() on a NEW_TAB_UNLOAD action", () => {
       const stub = sandbox.stub(instance, "endSession");
 
-      instance.onAction(ac.SendToMain({type: at.NEW_TAB_UNLOAD}, "port123"));
+      instance.onAction(ac.AlsoToMain({type: at.NEW_TAB_UNLOAD}, "port123"));
 
       assert.calledWith(stub, "port123");
     });
@@ -606,7 +664,7 @@ describe("TelemetryFeed", () => {
       const data = {some_ts: 10};
       const action = {type: at.SAVE_SESSION_PERF_DATA, data};
 
-      instance.onAction(ac.SendToMain(action, "port123"));
+      instance.onAction(ac.AlsoToMain(action, "port123"));
 
       assert.calledWith(stub, "port123", data);
     });
@@ -622,6 +680,7 @@ describe("TelemetryFeed", () => {
     });
     it("should send an event on a TELEMETRY_USER_EVENT action", () => {
       const sendEvent = sandbox.stub(instance, "sendEvent");
+      const sendUTEvent = sandbox.stub(instance, "sendUTEvent");
       const eventCreator = sandbox.stub(instance, "createUserEvent");
       const action = {type: at.TELEMETRY_USER_EVENT};
 
@@ -629,6 +688,7 @@ describe("TelemetryFeed", () => {
 
       assert.calledWith(eventCreator, action);
       assert.calledWith(sendEvent, eventCreator.returnValue);
+      assert.calledWith(sendUTEvent, eventCreator.returnValue, instance.utEvents.sendUserEvent);
     });
     it("should send an event on a TELEMETRY_PERFORMANCE_EVENT action", () => {
       const sendEvent = sandbox.stub(instance, "sendEvent");
@@ -655,7 +715,7 @@ describe("TelemetryFeed", () => {
       sandbox.stub(instance.sessions, "get").returns(session);
       sandbox.spy(instance, "handlePagePrerendered");
 
-      instance.onAction(ac.SendToMain({type: at.PAGE_PRERENDERED}));
+      instance.onAction(ac.AlsoToMain({type: at.PAGE_PRERENDERED}));
 
       assert.calledOnce(instance.handlePagePrerendered);
       assert.ok(session.perf.is_prerendered);
@@ -669,7 +729,7 @@ describe("TelemetryFeed", () => {
       const session = {perf: {}};
       sandbox.stub(instance.sessions, "get").returns(session);
 
-      instance.onAction(ac.SendToMain({type: at.PAGE_PRERENDERED}));
+      instance.onAction(ac.AlsoToMain({type: at.PAGE_PRERENDERED}));
 
       assert.ok(session.perf.is_prerendered);
     });
@@ -680,7 +740,7 @@ describe("TelemetryFeed", () => {
       let preloadedBrowser = {getAttribute() { return "preloaded"; }};
       sandbox.stub(instance, "addSession").returns(session);
 
-      instance.onAction(ac.SendToMain({
+      instance.onAction(ac.AlsoToMain({
         type: at.NEW_TAB_INIT,
         data: {url: "about:newtab", browser: preloadedBrowser}
       }));
@@ -692,7 +752,7 @@ describe("TelemetryFeed", () => {
       let nonPreloadedBrowser = {getAttribute() { return ""; }};
       sandbox.stub(instance, "addSession").returns(session);
 
-      instance.onAction(ac.SendToMain({
+      instance.onAction(ac.AlsoToMain({
         type: at.NEW_TAB_INIT,
         data: {url: "about:newtab", browser: nonPreloadedBrowser}
       }));

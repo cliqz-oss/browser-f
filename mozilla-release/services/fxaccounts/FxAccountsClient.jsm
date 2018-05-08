@@ -2,25 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["FxAccountsClient"];
+var EXPORTED_SYMBOLS = ["FxAccountsClient"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-common/hawkclient.js");
-Cu.import("resource://services-common/hawkrequest.js");
-Cu.import("resource://services-crypto/utils.js");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/Credentials.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-common/hawkclient.js");
+ChromeUtils.import("resource://services-common/hawkrequest.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/Credentials.jsm");
 
 const HOST_PREF = "identity.fxaccounts.auth.uri";
 
 const SIGNIN = "/account/login";
 const SIGNUP = "/account/create";
 
-this.FxAccountsClient = function(host = Services.prefs.getCharPref(HOST_PREF)) {
+var FxAccountsClient = function(host = Services.prefs.getCharPref(HOST_PREF)) {
   this.host = host;
 
   // The FxA auth server expects requests to certain endpoints to be authorized

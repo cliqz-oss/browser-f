@@ -113,15 +113,15 @@ pub enum ReflowGoal {
     TickAnimations,
     ContentBoxQuery(TrustedNodeAddress),
     ContentBoxesQuery(TrustedNodeAddress),
-    NodeOverflowQuery(TrustedNodeAddress),
-    NodeScrollRootIdQuery(TrustedNodeAddress),
+    NodeScrollIdQuery(TrustedNodeAddress),
     NodeGeometryQuery(TrustedNodeAddress),
     NodeScrollGeometryQuery(TrustedNodeAddress),
     ResolvedStyleQuery(TrustedNodeAddress, Option<PseudoElement>, PropertyId),
     OffsetParentQuery(TrustedNodeAddress),
-    MarginStyleQuery(TrustedNodeAddress),
+    StyleQuery(TrustedNodeAddress),
     TextIndexQuery(TrustedNodeAddress, Point2D<f32>),
     NodesFromPointQuery(Point2D<f32>, NodesFromPointQueryType),
+    ElementInnerTextQuery(TrustedNodeAddress),
 }
 
 impl ReflowGoal {
@@ -130,12 +130,13 @@ impl ReflowGoal {
     pub fn needs_display_list(&self) -> bool {
         match *self {
             ReflowGoal::NodesFromPointQuery(..) | ReflowGoal::TextIndexQuery(..) |
-            ReflowGoal::TickAnimations | ReflowGoal::Full => true,
+            ReflowGoal::TickAnimations | ReflowGoal::ElementInnerTextQuery(_) |
+            ReflowGoal::Full => true,
             ReflowGoal::ContentBoxQuery(_) | ReflowGoal::ContentBoxesQuery(_) |
             ReflowGoal::NodeGeometryQuery(_) | ReflowGoal::NodeScrollGeometryQuery(_) |
-            ReflowGoal::NodeOverflowQuery(_) | ReflowGoal::NodeScrollRootIdQuery(_) |
+            ReflowGoal::NodeScrollIdQuery(_) |
             ReflowGoal::ResolvedStyleQuery(..) | ReflowGoal::OffsetParentQuery(_) |
-            ReflowGoal::MarginStyleQuery(_)  => false,
+            ReflowGoal::StyleQuery(_) => false,
         }
     }
 
@@ -143,13 +144,13 @@ impl ReflowGoal {
     /// false if a layout_thread display list is sufficient.
     pub fn needs_display(&self) -> bool {
         match *self {
-            ReflowGoal::MarginStyleQuery(_)  | ReflowGoal::TextIndexQuery(..) |
+            ReflowGoal::StyleQuery(_)  | ReflowGoal::TextIndexQuery(..) |
             ReflowGoal::ContentBoxQuery(_) | ReflowGoal::ContentBoxesQuery(_) |
             ReflowGoal::NodeGeometryQuery(_) | ReflowGoal::NodeScrollGeometryQuery(_) |
-            ReflowGoal::NodeOverflowQuery(_) | ReflowGoal::NodeScrollRootIdQuery(_) |
-            ReflowGoal::ResolvedStyleQuery(..) |
+            ReflowGoal::NodeScrollIdQuery(_) | ReflowGoal::ResolvedStyleQuery(..) |
             ReflowGoal::OffsetParentQuery(_) => false,
             ReflowGoal::NodesFromPointQuery(..) | ReflowGoal::Full |
+            ReflowGoal::ElementInnerTextQuery(_) |
             ReflowGoal::TickAnimations => true,
         }
     }

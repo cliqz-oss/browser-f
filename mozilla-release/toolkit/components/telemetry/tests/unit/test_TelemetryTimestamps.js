@@ -1,18 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // The @mozilla/xre/app-info;1 XPCOM object provided by the xpcshell test harness doesn't
 // implement the nsIXULAppInfo interface, which is needed by Services.jsm and
 // TelemetrySession.jsm. updateAppInfo() creates and registers a minimal mock app-info.
-Cu.import("resource://testing-common/AppInfo.jsm");
+ChromeUtils.import("resource://testing-common/AppInfo.jsm");
 updateAppInfo();
 
 var gGlobalScope = this;
@@ -40,7 +37,7 @@ add_task(async function actualTest() {
 
   // Test the module logic
   let tmp = {};
-  Cu.import("resource://gre/modules/TelemetryTimestamps.jsm", tmp);
+  ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", tmp);
   let TelemetryTimestamps = tmp.TelemetryTimestamps;
   let now = Date.now();
   TelemetryTimestamps.add("foo");

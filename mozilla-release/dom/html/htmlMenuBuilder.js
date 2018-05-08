@@ -4,10 +4,7 @@
 
 // This component is used to build the menus for the HTML contextmenu attribute.
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // A global value that is used to identify each menu item. It is
 // incremented with each one that is found.

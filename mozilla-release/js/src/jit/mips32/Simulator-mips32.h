@@ -34,6 +34,7 @@
 #include "mozilla/Atomics.h"
 
 #include "jit/IonTypes.h"
+#include "js/ProfilingFrameIterator.h"
 #include "threading/Thread.h"
 #include "vm/MutexIDs.h"
 #include "wasm/WasmCode.h"
@@ -77,6 +78,12 @@ const uint32_t kFCSROverflowFlagBit = 4;
 const uint32_t kFCSRDivideByZeroFlagBit = 5;
 const uint32_t kFCSRInvalidOpFlagBit = 6;
 
+const uint32_t kFCSRInexactCauseBit = 12;
+const uint32_t kFCSRUnderflowCauseBit = 13;
+const uint32_t kFCSROverflowCauseBit = 14;
+const uint32_t kFCSRDivideByZeroCauseBit = 15;
+const uint32_t kFCSRInvalidOpCauseBit = 16;
+
 const uint32_t kFCSRInexactFlagMask = 1 << kFCSRInexactFlagBit;
 const uint32_t kFCSRUnderflowFlagMask = 1 << kFCSRUnderflowFlagBit;
 const uint32_t kFCSROverflowFlagMask = 1 << kFCSROverflowFlagBit;
@@ -101,6 +108,7 @@ const uint32_t kFCSRExceptionFlagMask = kFCSRFlagMask ^ kFCSRInexactFlagMask;
 //   debugger.
 const uint32_t kMaxWatchpointCode = 31;
 const uint32_t kMaxStopCode = 127;
+const uint32_t kWasmTrapCode = 6;
 
 // -----------------------------------------------------------------------------
 // Utility functions
@@ -154,6 +162,8 @@ class Simulator {
     // Constructor/destructor are for internal use only; use the static methods above.
     Simulator();
     ~Simulator();
+
+    static bool supportsAtomics() { return true; }
 
     // The currently executing Simulator instance. Potentially there can be one
     // for each native thread.
@@ -296,10 +306,11 @@ class Simulator {
 
     // Handle a wasm interrupt triggered by an async signal handler.
     void handleWasmInterrupt();
-    void startInterrupt(JitActivation* act);
+    JS::ProfilingFrameIterator::RegisterState registerState();
 
     // Handle any wasm faults, returning true if the fault was handled.
     bool handleWasmFault(int32_t addr, unsigned numBytes);
+    bool handleWasmTrapFault();
 
     // Executes one instruction.
     void instructionDecode(SimInstruction* instr);

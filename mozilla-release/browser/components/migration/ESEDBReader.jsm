@@ -4,15 +4,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ESEDBReader"]; /* exported ESEDBReader */
+var EXPORTED_SYMBOLS = ["ESEDBReader"]; /* exported ESEDBReader */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/ctypes.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyGetter(this, "log", () => {
-  let ConsoleAPI = Cu.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
+  let ConsoleAPI = ChromeUtils.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
   let consoleOptions = {
     maxLogLevelPref: "browser.esedbreader.loglevel",
     prefix: "ESEDBReader",
@@ -20,7 +18,7 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
   return new ConsoleAPI(consoleOptions);
 });
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 
 // We have a globally unique identifier for ESE instances. A new one
 // is used for each different database opened.
@@ -33,7 +31,7 @@ const MAX_STR_LENGTH = 64 * 1024;
 const KERNEL = {};
 KERNEL.FILETIME = new ctypes.StructType("FILETIME", [
   {dwLowDateTime: ctypes.uint32_t},
-  {dwHighDateTime: ctypes.uint32_t}
+  {dwHighDateTime: ctypes.uint32_t},
 ]);
 KERNEL.SYSTEMTIME = new ctypes.StructType("SYSTEMTIME", [
   {wYear: ctypes.uint16_t},
@@ -43,7 +41,7 @@ KERNEL.SYSTEMTIME = new ctypes.StructType("SYSTEMTIME", [
   {wHour: ctypes.uint16_t},
   {wMinute: ctypes.uint16_t},
   {wSecond: ctypes.uint16_t},
-  {wMilliseconds: ctypes.uint16_t}
+  {wMilliseconds: ctypes.uint16_t},
 ]);
 
 // DB column types, cribbed from the ESE header
@@ -97,7 +95,7 @@ ESE.JET_COLUMNDEF = new ctypes.StructType("JET_COLUMNDEF", [
   {"cp": ctypes.unsigned_short },
   {"wCollate": ctypes.unsigned_short }, /* Must be 0 */
   {"cbMax": ctypes.unsigned_long },
-  {"grbit": ESE.JET_GRBIT }
+  {"grbit": ESE.JET_GRBIT },
 ]);
 
 // Track open databases

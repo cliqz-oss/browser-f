@@ -45,13 +45,17 @@ skip-if(!this.hasOwnProperty("SIMD")) include test262/built-ins/Simd/jstests.lis
 skip-if(!this.hasOwnProperty("SharedArrayBuffer")) script non262/SIMD/load-sab-buffer-compat.js
 skip-if(!this.hasOwnProperty("Atomics")) include test262/built-ins/Atomics/jstests.list
 skip-if(!this.hasOwnProperty("SharedArrayBuffer")) include test262/built-ins/SharedArrayBuffer/jstests.list
-skip-if(!this.hasOwnProperty("SharedArrayBuffer")) script test262/built-ins/ArrayBuffer/prototype/byteLength/this-is-sharedarraybuffer.js
-skip-if(!this.hasOwnProperty("SharedArrayBuffer")) script test262/built-ins/ArrayBuffer/prototype/slice/this-is-sharedarraybuffer.js
-skip-if(!this.hasOwnProperty("SharedArrayBuffer")) script test262/built-ins/TypedArrays/internals/Get/indexed-value-sab.js
 
 # flatMap and flatten are Nightly-only
 skip-if(!Array.prototype.flatMap) include test262/built-ins/Array/prototype/flatMap/jstests.list
 skip-if(!Array.prototype.flatten) include test262/built-ins/Array/prototype/flatten/jstests.list
+
+# trimStart and trimEnd are Nightly-only
+skip-if(!String.prototype.trimStart) include test262/built-ins/String/prototype/trimStart/jstests.list
+skip-if(!String.prototype.trimStart) include test262/annexB/built-ins/String/prototype/trimLeft/jstests.list
+skip-if(!String.prototype.trimEnd) include test262/built-ins/String/prototype/trimEnd/jstests.list
+skip-if(!String.prototype.trimEnd) include test262/annexB/built-ins/String/prototype/trimRight/jstests.list
+
 
 #####################################
 # Test262 tests disabled on browser #
@@ -440,25 +444,6 @@ skip script test262/annexB/language/function-code/block-decl-func-skip-arguments
 skip script test262/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js
 skip script test262/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js
 
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1407588
-skip script test262/language/statements/for-of/iterator-next-reference.js
-skip script test262/language/expressions/async-generator/yield-star-async-next.js
-skip script test262/language/expressions/async-generator/named-yield-star-async-next.js
-skip script test262/language/expressions/object/method-definition/async-gen-yield-star-async-next.js
-skip script test262/language/expressions/class/async-gen-method-yield-star-async-next.js
-skip script test262/language/expressions/class/async-gen-method-static-yield-star-async-next.js
-skip script test262/language/statements/async-generator/yield-star-async-next.js
-skip script test262/language/statements/class/async-gen-method-yield-star-async-next.js
-skip script test262/language/statements/class/async-gen-method-static-yield-star-async-next.js
-skip script test262/language/statements/async-generator/yield-star-sync-next.js
-skip script test262/language/statements/class/async-gen-method-yield-star-sync-next.js
-skip script test262/language/statements/class/async-gen-method-static-yield-star-sync-next.js
-skip script test262/language/expressions/async-generator/named-yield-star-sync-next.js
-skip script test262/language/expressions/async-generator/yield-star-sync-next.js
-skip script test262/language/expressions/object/method-definition/async-gen-yield-star-sync-next.js
-skip script test262/language/expressions/class/async-gen-method-yield-star-sync-next.js
-skip script test262/language/expressions/class/async-gen-method-static-yield-star-sync-next.js
-
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1321616
 skip script test262/annexB/built-ins/Function/createdynfn-html-close-comment-params.js
 
@@ -475,5 +460,10 @@ skip script test262/harness/detachArrayBuffer.js
 # Tests disabled due to invalid test expectations  #
 ####################################################
 
-# assert.compareArray doesn't perform deep-equality comparison.
-skip script test262/built-ins/Array/prototype/flatMap/depth-always-one.js
+# https://github.com/tc39/test262/pull/972
+skip script test262/language/expressions/tagged-template/cache-identical-source-new-function.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions-new-function.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions.js
+skip script test262/language/expressions/tagged-template/cache-identical-source.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions-eval.js
+skip script test262/language/expressions/tagged-template/cache-identical-source-eval.js

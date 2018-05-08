@@ -3,20 +3,14 @@ import os
 config = {
     'default_actions': [
         'clobber',
-        'clone-tools',
-        'checkout-sources',
-        # 'setup-mock', windows do not use mock
         'build',
         'update',  # decided by query_is_nightly()
     ],
     'stage_platform': 'win32-st-an-debug',
     'debug_build': True,
     'enable_signing': False,
-    'enable_talos_sendchange': False,
-    'enable_unittest_sendchange': False,
     'tooltool_manifest_src': "browser/config/tooltool-manifests/win32/\
 releng.manifest",
-    'platform_supports_post_upload_to_latest': False,
     'perfherder_extra_options': ['static-analysis'],
     #### 32 bit build specific #####
     'env': {

@@ -3,9 +3,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const paymentSrv = Cc["@mozilla.org/dom/payments/payment-request-service;1"].getService(Ci.nsIPaymentRequestService);
 
@@ -23,11 +21,11 @@ shippingAddress.init("USA",              // country
                      addressLine,        // address line
                      "CA",               // region
                      "San Bruno",        // city
-                     "",                 // dependent locality
+                     "Test locality",    // dependent locality
                      "94066",            // postal code
                      "123456",           // sorting code
                      "en",               // language code
-                     "",                 // organization
+                     "Testing Org",      // organization
                      "Bill A. Pacheco",  // recipient
                      "+1-434-441-3879"); // phone
 

@@ -3,20 +3,20 @@
 
 "use strict";
 
-var { FileUtils } = Cu.import("resource://gre/modules/FileUtils.jsm", {});
+var { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
 var Pipe = CC("@mozilla.org/pipe;1", "nsIPipe", "init");
 
 function run_test() {
   initTestDebuggerServer();
   add_test_bulk_actor();
 
-  add_task(function* () {
-    yield test_bulk_request_cs(socket_transport, "jsonReply", "json");
-    yield test_bulk_request_cs(local_transport, "jsonReply", "json");
-    yield test_bulk_request_cs(socket_transport, "bulkEcho", "bulk");
-    yield test_bulk_request_cs(local_transport, "bulkEcho", "bulk");
-    yield test_json_request_cs(socket_transport, "bulkReply", "bulk");
-    yield test_json_request_cs(local_transport, "bulkReply", "bulk");
+  add_task(async function () {
+    await test_bulk_request_cs(socket_transport, "jsonReply", "json");
+    await test_bulk_request_cs(local_transport, "jsonReply", "json");
+    await test_bulk_request_cs(socket_transport, "bulkEcho", "bulk");
+    await test_bulk_request_cs(local_transport, "bulkEcho", "bulk");
+    await test_json_request_cs(socket_transport, "bulkReply", "bulk");
+    await test_json_request_cs(local_transport, "bulkReply", "bulk");
     DebuggerServer.destroy();
   });
 
@@ -133,7 +133,7 @@ var replyHandlers = {
 
 /** * Tests ***/
 
-var test_bulk_request_cs = Task.async(function* (transportFactory, actorType, replyType) {
+var test_bulk_request_cs = async function (transportFactory, actorType, replyType) {
   // Ensure test files are not present from a failed run
   cleanup_files();
   writeTestTempFile("bulk-input", really_long());
@@ -142,12 +142,12 @@ var test_bulk_request_cs = Task.async(function* (transportFactory, actorType, re
   let serverDeferred = defer();
   let bulkCopyDeferred = defer();
 
-  let transport = yield transportFactory();
+  let transport = await transportFactory();
 
   let client = new DebuggerClient(transport);
   client.connect().then(([app, traits]) => {
     Assert.equal(traits.bulk, true);
-    client.listTabs(clientDeferred.resolve);
+    client.listTabs().then(clientDeferred.resolve);
   });
 
   function bulkSendReadyCallback({copyFrom}) {
@@ -179,7 +179,7 @@ var test_bulk_request_cs = Task.async(function* (transportFactory, actorType, re
     });
   }).catch(do_throw);
 
-  DebuggerServer.on("connectionchange", (event, type) => {
+  DebuggerServer.on("connectionchange", type => {
     if (type === "closed") {
       serverDeferred.resolve();
     }
@@ -190,9 +190,9 @@ var test_bulk_request_cs = Task.async(function* (transportFactory, actorType, re
     bulkCopyDeferred.promise,
     serverDeferred.promise
   ]);
-});
+};
 
-var test_json_request_cs = Task.async(function* (transportFactory, actorType, replyType) {
+var test_json_request_cs = async function (transportFactory, actorType, replyType) {
   // Ensure test files are not present from a failed run
   cleanup_files();
   writeTestTempFile("bulk-input", really_long());
@@ -200,12 +200,12 @@ var test_json_request_cs = Task.async(function* (transportFactory, actorType, re
   let clientDeferred = defer();
   let serverDeferred = defer();
 
-  let transport = yield transportFactory();
+  let transport = await transportFactory();
 
   let client = new DebuggerClient(transport);
   client.connect((app, traits) => {
     Assert.equal(traits.bulk, true);
-    client.listTabs(clientDeferred.resolve);
+    client.listTabs().then(clientDeferred.resolve);
   });
 
   clientDeferred.promise.then(response => {
@@ -221,7 +221,7 @@ var test_json_request_cs = Task.async(function* (transportFactory, actorType, re
     });
   }).catch(do_throw);
 
-  DebuggerServer.on("connectionchange", (event, type) => {
+  DebuggerServer.on("connectionchange", type => {
     if (type === "closed") {
       serverDeferred.resolve();
     }
@@ -231,7 +231,7 @@ var test_json_request_cs = Task.async(function* (transportFactory, actorType, re
     clientDeferred.promise,
     serverDeferred.promise
   ]);
-});
+};
 
 /** * Test Utils ***/
 

@@ -60,8 +60,13 @@ PARAMETERS = {
     'project': 'mozilla-central',
     'pushdate': lambda: int(time.time()),
     'pushlog_id': '0',
+    'release_enable_emefree': False,
+    'release_enable_partners': False,
     'release_eta': '',
     'release_history': {},
+    'release_partners': None,
+    'release_partner_config': None,
+    'release_partner_build_number': 1,
     'release_type': '',
     'target_tasks_method': 'default',
     'try_mode': None,
@@ -183,7 +188,9 @@ def load_parameters_file(filename, strict=True):
         if filename.startswith("task-id="):
             task_id = filename.split("=")[1]
         elif filename.startswith("project="):
-            index = "gecko.v2.{}.latest.firefox.decision".format(filename.split("=")[1])
+            index = "gecko.v2.{project}.latest.taskgraph.decision".format(
+                project=filename.split("=")[1],
+            )
             task_id = find_task_id(index)
 
         if task_id:

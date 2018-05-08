@@ -18,13 +18,32 @@
 namespace mozilla {
 namespace dom {
 
+class U2FAppIds {
+public:
+  explicit U2FAppIds(const nsTArray<nsTArray<uint8_t>>& aApplications)
+  {
+    mAppIds = rust_u2f_app_ids_new();
+
+    for (auto& app_id: aApplications) {
+      rust_u2f_app_ids_add(mAppIds, app_id.Elements(), app_id.Length());
+    }
+  }
+
+  rust_u2f_app_ids* Get() { return mAppIds; }
+
+  ~U2FAppIds() { rust_u2f_app_ids_free(mAppIds); }
+
+private:
+  rust_u2f_app_ids* mAppIds;
+};
+
 class U2FKeyHandles {
 public:
   explicit U2FKeyHandles(const nsTArray<WebAuthnScopedCredential>& aCredentials)
   {
     mKeyHandles = rust_u2f_khs_new();
 
-    for (auto cred: aCredentials) {
+    for (auto& cred: aCredentials) {
       rust_u2f_khs_add(mKeyHandles,
                        cred.id().Elements(),
                        cred.id().Length(),
@@ -45,11 +64,31 @@ public:
   explicit U2FResult(uint64_t aTransactionId, rust_u2f_result* aResult)
     : mTransactionId(aTransactionId)
     , mResult(aResult)
-  { }
+  {
+    MOZ_ASSERT(mResult);
+  }
 
   ~U2FResult() { rust_u2f_res_free(mResult); }
 
   uint64_t GetTransactionId() { return mTransactionId; }
+
+  bool IsError() { return NS_FAILED(GetError()); }
+
+  nsresult GetError() {
+    switch (rust_u2f_result_error(mResult)) {
+      case U2F_ERROR_UKNOWN:
+      case U2F_ERROR_CONSTRAINT:
+        return NS_ERROR_DOM_UNKNOWN_ERR;
+      case U2F_ERROR_NOT_SUPPORTED:
+        return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
+      case U2F_ERROR_INVALID_STATE:
+        return NS_ERROR_DOM_INVALID_STATE_ERR;
+      case U2F_ERROR_NOT_ALLOWED:
+        return NS_ERROR_DOM_NOT_ALLOWED_ERR;
+      default:
+        return NS_OK;
+    }
+  }
 
   bool CopyRegistration(nsTArray<uint8_t>& aBuffer)
   {
@@ -66,12 +105,13 @@ public:
     return CopyBuffer(U2F_RESBUF_ID_SIGNATURE, aBuffer);
   }
 
+  bool CopyAppId(nsTArray<uint8_t>& aBuffer)
+  {
+    return CopyBuffer(U2F_RESBUF_ID_APPID, aBuffer);
+  }
+
 private:
   bool CopyBuffer(uint8_t aResBufID, nsTArray<uint8_t>& aBuffer) {
-    if (!mResult) {
-      return false;
-    }
-
     size_t len;
     if (!rust_u2f_resbuf_length(mResult, aResBufID, &len)) {
       return false;
@@ -93,27 +133,20 @@ class U2FHIDTokenManager final : public U2FTokenTransport
 public:
   explicit U2FHIDTokenManager();
 
-  virtual RefPtr<U2FRegisterPromise>
-  Register(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-           const WebAuthnAuthenticatorSelection &aAuthenticatorSelection,
-           const nsTArray<uint8_t>& aApplication,
-           const nsTArray<uint8_t>& aChallenge,
-           uint32_t aTimeoutMS) override;
+  RefPtr<U2FRegisterPromise>
+  Register(const WebAuthnMakeCredentialInfo& aInfo) override;
 
-  virtual RefPtr<U2FSignPromise>
-  Sign(const nsTArray<WebAuthnScopedCredential>& aCredentials,
-       const nsTArray<uint8_t>& aApplication,
-       const nsTArray<uint8_t>& aChallenge,
-       bool aRequireUserVerification,
-       uint32_t aTimeoutMS) override;
+  RefPtr<U2FSignPromise>
+  Sign(const WebAuthnGetAssertionInfo& aInfo) override;
 
   void Cancel() override;
+  void Drop() override;
 
   void HandleRegisterResult(UniquePtr<U2FResult>&& aResult);
   void HandleSignResult(UniquePtr<U2FResult>&& aResult);
 
 private:
-  ~U2FHIDTokenManager();
+  ~U2FHIDTokenManager() { }
 
   void ClearPromises() {
     mRegisterPromise.RejectIfExists(NS_ERROR_DOM_UNKNOWN_ERR, __func__);
@@ -122,6 +155,7 @@ private:
 
   rust_u2f_manager* mU2FManager;
   uint64_t mTransactionId;
+  nsTArray<uint8_t> mCurrentAppId;
   MozPromiseHolder<U2FRegisterPromise> mRegisterPromise;
   MozPromiseHolder<U2FSignPromise> mSignPromise;
 };

@@ -1,4 +1,5 @@
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* vim: set ts=8 sts=4 et sw=4 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,29 +9,39 @@
 #include "xpt_xdr.h"
 #include "nscore.h"
 #include <string.h>             /* strchr */
+#include "mozilla/Assertions.h"
 #include "mozilla/EndianUtils.h"
 
-#define CURS_POOL_OFFSET_RAW(cursor)                                          \
-  ((cursor)->pool == XPT_HEADER                                               \
-   ? (cursor)->offset                                                         \
-   : (XPT_ASSERT((cursor)->state->data_offset),                               \
-      (cursor)->offset + (cursor)->state->data_offset))
+static size_t
+CursPoolOffsetRaw(NotNull<XPTCursor*> cursor)
+{
+    if (cursor->pool == XPT_HEADER) {
+        return cursor->offset;
+    }
+    MOZ_ASSERT(cursor->state->data_offset);
+    return cursor->offset + cursor->state->data_offset;
+}
 
-#define CURS_POOL_OFFSET(cursor)                                              \
-  (CURS_POOL_OFFSET_RAW(cursor) - 1)
+static size_t
+CursPoolOffset(NotNull<XPTCursor*> cursor)
+{
+    return CursPoolOffsetRaw(cursor) - 1;
+}
 
-/* can be used as lvalue */
-#define CURS_POINT(cursor)                                                    \
-  ((cursor)->state->pool_data[CURS_POOL_OFFSET(cursor)])
+static char*
+CursPoint(NotNull<XPTCursor*> cursor)
+{
+    return &cursor->state->pool_data[CursPoolOffset(cursor)];
+}
 
 static bool
-CHECK_COUNT(NotNull<XPTCursor*> cursor, uint32_t space)
+CheckCount(NotNull<XPTCursor*> cursor, uint32_t space)
 {
     // Fail if we're in the data area and about to exceed the allocation.
     // XXX Also fail if we're in the data area and !state->data_offset
     if (cursor->pool == XPT_DATA &&
-        (CURS_POOL_OFFSET(cursor) + space > (cursor)->state->pool_allocated)) {
-        XPT_ASSERT(0);
+        (CursPoolOffset(cursor) + space > cursor->state->pool_allocated)) {
+        MOZ_ASSERT(false);
         fprintf(stderr, "FATAL: no room for %u in cursor\n", space);
         return false;
     }
@@ -38,7 +49,7 @@ CHECK_COUNT(NotNull<XPTCursor*> cursor, uint32_t space)
     return true;
 }
 
-XPT_PUBLIC_API(void)
+void
 XPT_InitXDRState(XPTState* state, char *data, uint32_t len)
 {
     state->next_cursor[0] = state->next_cursor[1] = 1;
@@ -47,13 +58,13 @@ XPT_InitXDRState(XPTState* state, char *data, uint32_t len)
 }
 
 /* All offsets are 1-based */
-XPT_PUBLIC_API(void)
+void
 XPT_SetDataOffset(XPTState *state, uint32_t data_offset)
 {
    state->data_offset = data_offset;
 }
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_MakeCursor(XPTState *state, XPTPool pool, uint32_t len,
                NotNull<XPTCursor*> cursor)
 {
@@ -62,7 +73,7 @@ XPT_MakeCursor(XPTState *state, XPTPool pool, uint32_t len,
     cursor->bits = 0;
     cursor->offset = state->next_cursor[pool];
 
-    if (!(CHECK_COUNT(cursor, len)))
+    if (!(CheckCount(cursor, len)))
         return false;
 
     /* this check should be in CHECK_CURSOR */
@@ -76,7 +87,7 @@ XPT_MakeCursor(XPTState *state, XPTPool pool, uint32_t len,
     return true;
 }
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_SeekTo(NotNull<XPTCursor*> cursor, uint32_t offset)
 {
     /* XXX do some real checking and update len and stuff */
@@ -84,7 +95,7 @@ XPT_SeekTo(NotNull<XPTCursor*> cursor, uint32_t offset)
     return true;
 }
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_SkipStringInline(NotNull<XPTCursor*> cursor)
 {
     uint16_t length;
@@ -99,8 +110,8 @@ XPT_SkipStringInline(NotNull<XPTCursor*> cursor)
     return true;
 }
 
-XPT_PUBLIC_API(bool)
-XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, char **identp,
+bool
+XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, const char **identp,
               bool ignore)
 {
     uint32_t offset = 0;
@@ -116,7 +127,7 @@ XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, char **identp,
     my_cursor.pool = XPT_DATA;
     my_cursor.offset = offset;
     my_cursor.state = cursor->state;
-    char* start = &CURS_POINT(&my_cursor);
+    char* start = CursPoint(WrapNotNull(&my_cursor));
 
     char* end = strchr(start, 0); /* find the end of the string */
     if (!end) {
@@ -124,7 +135,7 @@ XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, char **identp,
         return false;
     }
     int len = end - start;
-    XPT_ASSERT(len > 0);
+    MOZ_ASSERT(len > 0);
 
     if (!ignore) {
         char *ident = (char*)XPT_CALLOC1(arena, len + 1u);
@@ -152,7 +163,7 @@ XPT_DoCString(XPTArena *arena, NotNull<XPTCursor*> cursor, char **identp,
  *
  * (http://www.mozilla.org/scriptable/typelib_file.html#iid)
  */
-XPT_PUBLIC_API(bool)
+bool
 XPT_DoIID(NotNull<XPTCursor*> cursor, nsID *iidp)
 {
     int i;
@@ -176,16 +187,16 @@ XPT_DoIID(NotNull<XPTCursor*> cursor, nsID *iidp)
     do {                                          \
         const size_t sz = sizeof(T);              \
                                                   \
-        if (!CHECK_COUNT(cursor, sz)) {           \
+        if (!CheckCount(cursor, sz)) {            \
             return false;                         \
         }                                         \
                                                   \
-        *valuep = func(&CURS_POINT(cursor));      \
+        *valuep = func(CursPoint(cursor));        \
         cursor->offset += sz;                     \
         return true;                              \
     } while(0)
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_Do64(NotNull<XPTCursor*> cursor, int64_t *u64p)
 {
     XPT_DOINT(int64_t, mozilla::BigEndian::readInt64, u64p);
@@ -197,13 +208,13 @@ XPT_Do64(NotNull<XPTCursor*> cursor, int64_t *u64p)
  * well-aligned cases and do a single store, if they cared.  I might care
  * later.
  */
-XPT_PUBLIC_API(bool)
+bool
 XPT_Do32(NotNull<XPTCursor*> cursor, uint32_t *u32p)
 {
     XPT_DOINT(uint32_t, mozilla::BigEndian::readUint32, u32p);
 }
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_Do16(NotNull<XPTCursor*> cursor, uint16_t *u16p)
 {
     XPT_DOINT(uint16_t, mozilla::BigEndian::readUint16, u16p);
@@ -211,13 +222,13 @@ XPT_Do16(NotNull<XPTCursor*> cursor, uint16_t *u16p)
 
 #undef XPT_DOINT
 
-XPT_PUBLIC_API(bool)
+bool
 XPT_Do8(NotNull<XPTCursor*> cursor, uint8_t *u8p)
 {
-    if (!CHECK_COUNT(cursor, 1))
+    if (!CheckCount(cursor, 1))
         return false;
 
-    *u8p = CURS_POINT(cursor);
+    *u8p = *CursPoint(cursor);
 
     cursor->offset++;
 

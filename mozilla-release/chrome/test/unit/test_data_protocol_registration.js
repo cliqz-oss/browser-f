@@ -12,7 +12,7 @@ registerManifests(manifests);
 function run_test() {
   const uuidGenerator = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
 
-  let newAppInfo = Components.utils.import("resource://testing-common/AppInfo.jsm", {}).newAppInfo;
+  let newAppInfo = ChromeUtils.import("resource://testing-common/AppInfo.jsm", {}).newAppInfo;
   let XULAppInfo = newAppInfo({
     name: "XPCShell",
     ID: "{39885e5f-f6b4-4e2a-87e5-6259ecf79011}",
@@ -94,7 +94,7 @@ function run_test() {
     let ind = old_factories_inds[i];
     registrar.unregisterFactory(factory.CID, factory);
 
-    if (ind == true) {
+    if (ind) {
       let old_factory = old_factories[i];
       registrar.registerFactory(old_factory.CID, factory.scheme, factory.contractID, old_factory.factory);
     }

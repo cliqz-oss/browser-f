@@ -1,6 +1,6 @@
 [package]
 name = "webrender"
-version = "0.56.1"
+version = "0.57.0"
 authors = ["Glenn Watson <gw@intuitionlibrary.com>"]
 license = "MPL-2.0"
 repository = "https://github.com/servo/webrender"
@@ -11,37 +11,39 @@ default = ["freetype-lib"]
 freetype-lib = ["freetype/servo-freetype-sys"]
 profiler = ["thread_profiler/thread_profiler"]
 debugger = ["ws", "serde_json", "serde", "image", "base64"]
-capture = ["webrender_api/debug-serialization", "ron", "serde"]
+capture = ["webrender_api/serialize", "ron", "serde"]
+replay = ["webrender_api/deserialize", "ron", "serde"]
 
 [dependencies]
 app_units = "0.6"
 bincode = "0.9"
 byteorder = "1.0"
-euclid = "0.16"
+euclid = "0.17"
 fxhash = "0.2.1"
-gleam = "0.4.19"
+gleam = "0.4.20"
 lazy_static = "1"
-log = "0.3"
+log = "0.4"
 num-traits = "0.1.32"
 time = "0.1"
-rayon = "0.8"
+rayon = "1"
 webrender_api = {path = "../webrender_api"}
 bitflags = "1.0"
 thread_profiler = "0.1.1"
-plane-split = "0.7"
+plane-split = "0.8"
+png = { optional = true, version = "0.11" }
 smallvec = "0.6"
 ws = { optional = true, version = "0.7.3" }
 serde_json = { optional = true, version = "1.0" }
 serde = { optional = true, version = "1.0", features = ["serde_derive"] }
 image = { optional = true, version = "0.17" }
 base64 = { optional = true, version = "0.3.0" }
-ron = { optional = true, version = "0.1.5" }
+ron = { optional = true, version = "0.1.7" }
 
 [dev-dependencies]
-angle = {git = "https://github.com/servo/angle", branch = "servo"}
-env_logger = "0.4"
+mozangle = "0.1"
+env_logger = "0.5"
 rand = "0.3"                # for the benchmarks
-servo-glutin = "0.13"     # for the example apps
+glutin = "0.12"             # for the example apps
 
 [target.'cfg(any(target_os = "android", all(unix, not(target_os = "macos"))))'.dependencies]
 freetype = { version = "0.3", default-features = false }
@@ -50,6 +52,6 @@ freetype = { version = "0.3", default-features = false }
 dwrote = "0.4.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-foundation = "0.4.6"
-core-graphics = "0.12.3"
-core-text = { version = "8.0", default-features = false }
+core-foundation = "0.5"
+core-graphics = "0.13"
+core-text = { version = "9.2.0", default-features = false }

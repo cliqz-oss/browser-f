@@ -24,34 +24,24 @@
 #include <sys/stat.h>
 
 #include "jsarray.h"
-#include "jsatom.h"
 #include "jsbool.h"
-#include "jscntxt.h"
 #include "jsdate.h"
 #include "jsexn.h"
 #include "jsfriendapi.h"
-#include "jsfun.h"
-#include "jsiter.h"
 #include "jsmath.h"
 #include "jsnum.h"
-#include "jsobj.h"
-#include "json.h"
-#include "jsprf.h"
-#include "jsscript.h"
-#include "jsstr.h"
 #include "jstypes.h"
 #include "jsutil.h"
-#include "jsweakmap.h"
-#include "jswrapper.h"
 
 #include "builtin/AtomicsObject.h"
 #include "builtin/Eval.h"
-#include "builtin/Intl.h"
+#include "builtin/JSON.h"
 #include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/RegExp.h"
 #include "builtin/Stream.h"
-#include "builtin/SymbolObject.h"
+#include "builtin/String.h"
+#include "builtin/Symbol.h"
 #ifdef ENABLE_SIMD
 # include "builtin/SIMD.h"
 #endif
@@ -61,8 +51,11 @@
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/FullParseHandler.h"  // for JS_BufferIsCompileableUnit
 #include "frontend/Parser.h" // for JS_BufferIsCompileableUnit
+#include "gc/FreeOp.h"
 #include "gc/Marking.h"
 #include "gc/Policy.h"
+#include "gc/PublicIterators.h"
+#include "gc/WeakMap.h"
 #include "jit/JitCommon.h"
 #include "js/CharacterEncoding.h"
 #include "js/Conversions.h"
@@ -72,6 +65,9 @@
 #include "js/SliceBudget.h"
 #include "js/StructuredClone.h"
 #include "js/Utility.h"
+#include "js/Wrapper.h"
+#include "util/StringBuffer.h"
+#include "util/Text.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/DateObject.h"
@@ -80,40 +76,38 @@
 #include "vm/ErrorObject.h"
 #include "vm/HelperThreads.h"
 #include "vm/Interpreter.h"
+#include "vm/Iteration.h"
+#include "vm/JSAtom.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/RegExpStatics.h"
 #include "vm/Runtime.h"
 #include "vm/SavedStacks.h"
 #include "vm/SelfHosting.h"
 #include "vm/Shape.h"
-#include "vm/String.h"
-#include "vm/StringBuffer.h"
-#include "vm/Symbol.h"
+#include "vm/StringType.h"
+#include "vm/SymbolType.h"
 #include "vm/WrapperObject.h"
 #include "vm/Xdr.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmModule.h"
 
-#include "jsatominlines.h"
-#include "jsfuninlines.h"
-#include "jsscriptinlines.h"
-
 #include "vm/Interpreter-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSFunction-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/SavedStacks-inl.h"
-#include "vm/String-inl.h"
+#include "vm/StringType-inl.h"
 
 using namespace js;
 using namespace js::gc;
 
 using mozilla::Maybe;
 using mozilla::PodCopy;
-using mozilla::PodZero;
 using mozilla::Some;
-
-using JS::AutoGCRooter;
-using JS::ToInt32;
-using JS::ToInteger;
-using JS::ToUint32;
 
 #ifdef HAVE_VA_LIST_AS_ARRAY
 #define JS_ADDRESSOF_VA_LIST(ap) ((va_list*)(ap))
@@ -1063,9 +1057,7 @@ static const JSStdName builtin_property_names[] = {
     { EAGER_ATOM(encodeURI), JSProto_String },
     { EAGER_ATOM(decodeURIComponent), JSProto_String },
     { EAGER_ATOM(encodeURIComponent), JSProto_String },
-#if JS_HAS_UNEVAL
     { EAGER_ATOM(uneval), JSProto_String },
-#endif
 
     { 0, JSProto_LIMIT }
 };
@@ -3991,6 +3983,7 @@ JS::TransitiveCompileOptions::copyPODTransitiveOptions(const TransitiveCompileOp
     canLazilyParse = rhs.canLazilyParse;
     strictOption = rhs.strictOption;
     extraWarningsOption = rhs.extraWarningsOption;
+    expressionClosuresOption = rhs.expressionClosuresOption;
     werrorOption = rhs.werrorOption;
     asmJSOption = rhs.asmJSOption;
     throwOnAsmJSValidationFailureOption = rhs.throwOnAsmJSValidationFailureOption;
@@ -4001,6 +3994,7 @@ JS::TransitiveCompileOptions::copyPODTransitiveOptions(const TransitiveCompileOp
     introductionOffset = rhs.introductionOffset;
     hasIntroductionInfo = rhs.hasIntroductionInfo;
     isProbablySystemOrAddonCode = rhs.isProbablySystemOrAddonCode;
+    hideScriptFromDebugger = rhs.hideScriptFromDebugger;
 };
 
 void
@@ -4012,6 +4006,7 @@ JS::ReadOnlyCompileOptions::copyPODOptions(const ReadOnlyCompileOptions& rhs)
     scriptSourceOffset = rhs.scriptSourceOffset;
     isRunOnce = rhs.isRunOnce;
     noScriptRval = rhs.noScriptRval;
+    nonSyntacticScope = rhs.nonSyntacticScope;
 }
 
 JS::OwningCompileOptions::OwningCompileOptions(JSContext* cx)
@@ -4111,6 +4106,7 @@ JS::CompileOptions::CompileOptions(JSContext* cx)
 {
     strictOption = cx->options().strictMode();
     extraWarningsOption = cx->compartment()->behaviors().extraWarnings(cx);
+    expressionClosuresOption = cx->options().expressionClosures();
     isProbablySystemOrAddonCode = cx->compartment()->isProbablySystemOrAddonCode();
     werrorOption = cx->options().werror();
     if (!cx->options().asmJS())
@@ -4123,10 +4119,11 @@ JS::CompileOptions::CompileOptions(JSContext* cx)
 }
 
 static bool
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKind,
+Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
         SourceBufferHolder& srcBuf, MutableHandleScript script)
 {
-    MOZ_ASSERT(scopeKind == ScopeKind::Global || scopeKind == ScopeKind::NonSyntactic);
+    ScopeKind scopeKind = options.nonSyntacticScope ? ScopeKind::NonSyntactic : ScopeKind::Global;
+
     MOZ_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
@@ -4136,15 +4133,15 @@ Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKin
 }
 
 static bool
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKind,
+Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
         const char16_t* chars, size_t length, MutableHandleScript script)
 {
     SourceBufferHolder srcBuf(chars, length, SourceBufferHolder::NoOwnership);
-    return ::Compile(cx, options, scopeKind, srcBuf, script);
+    return ::Compile(cx, options, srcBuf, script);
 }
 
 static bool
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKind,
+Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
         const char* bytes, size_t length, MutableHandleScript script)
 {
     UniqueTwoByteChars chars;
@@ -4155,22 +4152,22 @@ Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKin
     if (!chars)
         return false;
 
-    return ::Compile(cx, options, scopeKind, chars.get(), length, script);
+    return ::Compile(cx, options, chars.get(), length, script);
 }
 
 static bool
-Compile(JSContext* cx, const ReadOnlyCompileOptions& options, ScopeKind scopeKind,
+Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
         FILE* fp, MutableHandleScript script)
 {
     FileContents buffer(cx);
     if (!ReadCompleteFile(cx, fp, buffer))
         return false;
 
-    return ::Compile(cx, options, scopeKind, buffer.begin(), buffer.length(), script);
+    return ::Compile(cx, options, buffer.begin(), buffer.length(), script);
 }
 
 static bool
-Compile(JSContext* cx, const ReadOnlyCompileOptions& optionsArg, ScopeKind scopeKind,
+Compile(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
         const char* filename, MutableHandleScript script)
 {
     AutoFile file;
@@ -4178,78 +4175,88 @@ Compile(JSContext* cx, const ReadOnlyCompileOptions& optionsArg, ScopeKind scope
         return false;
     CompileOptions options(cx, optionsArg);
     options.setFileAndLine(filename, 1);
-    return ::Compile(cx, options, scopeKind, file.fp(), script);
+    return ::Compile(cx, options, file.fp(), script);
 }
 
 bool
 JS::Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
             SourceBufferHolder& srcBuf, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::Global, srcBuf, script);
+    return ::Compile(cx, options, srcBuf, script);
 }
 
 bool
 JS::Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
             const char* bytes, size_t length, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::Global, bytes, length, script);
+    return ::Compile(cx, options, bytes, length, script);
 }
 
 bool
 JS::Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
             const char16_t* chars, size_t length, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::Global, chars, length, script);
+    return ::Compile(cx, options, chars, length, script);
 }
 
 bool
 JS::Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
             FILE* file, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::Global, file, script);
+    return ::Compile(cx, options, file, script);
 }
 
 bool
 JS::Compile(JSContext* cx, const ReadOnlyCompileOptions& options,
             const char* filename, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::Global, filename, script);
+    return ::Compile(cx, options, filename, script);
 }
 
 bool
-JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
+JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
                                 SourceBufferHolder& srcBuf, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::NonSyntactic, srcBuf, script);
+    CompileOptions options(cx, optionsArg);
+    options.setNonSyntacticScope(true);
+    return ::Compile(cx, options, srcBuf, script);
 }
 
 bool
-JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
+JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
                                 const char* bytes, size_t length, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::NonSyntactic, bytes, length, script);
+    CompileOptions options(cx, optionsArg);
+    options.setNonSyntacticScope(true);
+    return ::Compile(cx, options, bytes, length, script);
 }
 
 bool
-JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
+JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
                                 const char16_t* chars, size_t length,
                                 JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::NonSyntactic, chars, length, script);
+    CompileOptions options(cx, optionsArg);
+    options.setNonSyntacticScope(true);
+    return ::Compile(cx, options, chars, length, script);
 }
 
 bool
-JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
+JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
                                 FILE* file, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::NonSyntactic, file, script);
+    CompileOptions options(cx, optionsArg);
+    options.setNonSyntacticScope(true);
+    return ::Compile(cx, options, file, script);
 }
 
 bool
-JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& options,
+JS::CompileForNonSyntacticScope(JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
                                 const char* filename, JS::MutableHandleScript script)
 {
-    return ::Compile(cx, options, ScopeKind::NonSyntactic, filename, script);
+    CompileOptions options(cx, optionsArg);
+    options.setNonSyntacticScope(true);
+    return ::Compile(cx, options, filename, script);
 }
 
 enum class OffThread {
@@ -4417,14 +4424,14 @@ JS_PUBLIC_API(bool)
 JS_CompileScript(JSContext* cx, const char* ascii, size_t length,
                  const JS::CompileOptions& options, MutableHandleScript script)
 {
-    return Compile(cx, options, ascii, length, script);
+    return ::Compile(cx, options, ascii, length, script);
 }
 
 JS_PUBLIC_API(bool)
 JS_CompileUCScript(JSContext* cx, const char16_t* chars, size_t length,
                    const JS::CompileOptions& options, MutableHandleScript script)
 {
-    return Compile(cx, options, chars, length, script);
+    return ::Compile(cx, options, chars, length, script);
 }
 
 JS_PUBLIC_API(bool)
@@ -4660,6 +4667,28 @@ JS::CompileFunction(JSContext* cx, AutoObjectVector& envChain,
 
     return CompileFunction(cx, envChain, options, name, nargs, argnames,
                            chars.get(), length, fun);
+}
+
+JS_PUBLIC_API(bool)
+JS::InitScriptSourceElement(JSContext* cx, HandleScript script,
+                            HandleObject element, HandleString elementAttrName)
+{
+    MOZ_ASSERT(cx);
+    MOZ_ASSERT(CurrentThreadCanAccessRuntime(cx->runtime()));
+
+    RootedScriptSource sso(cx, &script->sourceObject()->as<ScriptSourceObject>());
+    return ScriptSourceObject::initElementProperties(cx, sso, element, elementAttrName);
+}
+
+JS_PUBLIC_API(void)
+JS::ExposeScriptToDebugger(JSContext* cx, HandleScript script)
+{
+    MOZ_ASSERT(cx);
+    MOZ_ASSERT(CurrentThreadCanAccessRuntime(cx->runtime()));
+
+    MOZ_ASSERT(script->hideScriptFromDebugger());
+    script->clearHideScriptFromDebugger();
+    Debugger::onNewScript(cx, script);
 }
 
 JS_PUBLIC_API(JSString*)
@@ -4986,6 +5015,13 @@ JS::GetRequestedModuleSourcePos(JSContext* cx, JS::HandleValue value,
     auto& requested = value.toObject().as<RequestedModuleObject>();
     *lineNumber = requested.lineNumber();
     *columnNumber = requested.columnNumber();
+}
+
+JS_PUBLIC_API(JSScript*)
+JS::GetModuleScript(JS::HandleObject moduleRecord)
+{
+    AssertHeapIsIdle();
+    return moduleRecord->as<ModuleObject>().script();
 }
 
 JS_PUBLIC_API(JSObject*)
@@ -5827,6 +5863,14 @@ JS_AtomizeAndPinStringN(JSContext* cx, const char* s, size_t length)
     JSAtom* atom = Atomize(cx, s, length, PinAtom);
     MOZ_ASSERT_IF(atom, JS_StringHasBeenPinned(cx, atom));
     return atom;
+}
+
+JS_PUBLIC_API(JSString*)
+JS_NewLatin1String(JSContext* cx, JS::Latin1Char* chars, size_t length)
+{
+    AssertHeapIsIdle();
+    CHECK_REQUEST(cx);
+    return NewString<CanGC>(cx, chars, length);
 }
 
 JS_PUBLIC_API(JSString*)
@@ -7234,11 +7278,29 @@ JS_SetGlobalJitCompilerOption(JSContext* cx, JSJitCompilerOption opt, uint32_t v
       case JSJITCOMPILER_SPECTRE_INDEX_MASKING:
         jit::JitOptions.spectreIndexMasking = !!value;
         break;
+      case JSJITCOMPILER_SPECTRE_OBJECT_MITIGATIONS_BARRIERS:
+        jit::JitOptions.spectreObjectMitigationsBarriers = !!value;
+        break;
+      case JSJITCOMPILER_SPECTRE_OBJECT_MITIGATIONS_MISC:
+        jit::JitOptions.spectreObjectMitigationsMisc = !!value;
+        break;
+      case JSJITCOMPILER_SPECTRE_STRING_MITIGATIONS:
+        jit::JitOptions.spectreStringMitigations = !!value;
+        break;
+      case JSJITCOMPILER_SPECTRE_VALUE_MASKING:
+        jit::JitOptions.spectreValueMasking = !!value;
+        break;
+      case JSJITCOMPILER_SPECTRE_JIT_TO_CXX_CALLS:
+        jit::JitOptions.spectreJitToCxxCalls = !!value;
+        break;
       case JSJITCOMPILER_ASMJS_ATOMICS_ENABLE:
         jit::JitOptions.asmJSAtomicsEnable = !!value;
         break;
       case JSJITCOMPILER_WASM_FOLD_OFFSETS:
         jit::JitOptions.wasmFoldOffsets = !!value;
+        break;
+      case JSJITCOMPILER_WASM_DELAY_TIER2:
+        jit::JitOptions.wasmDelayTier2 = !!value;
         break;
       case JSJITCOMPILER_ION_INTERRUPT_WITHOUT_SIGNAL:
         jit::JitOptions.ionInterruptWithoutSignals = !!value;
@@ -7309,7 +7371,7 @@ JS_GetGlobalJitCompilerOption(JSContext* cx, JSJitCompilerOption opt, uint32_t* 
 
 #if !defined(STATIC_EXPORTABLE_JS_API) && !defined(STATIC_JS_API) && defined(XP_WIN)
 
-#include "jswin.h"
+#include "util/Windows.h"
 
 /*
  * Initialization routine for the JS DLL.
@@ -7702,7 +7764,7 @@ JS::CaptureCurrentStack(JSContext* cx, JS::MutableHandleObject stackp,
 JS_PUBLIC_API(bool)
 JS::CopyAsyncStack(JSContext* cx, JS::HandleObject asyncStack,
                    JS::HandleString asyncCause, JS::MutableHandleObject stackp,
-                   unsigned maxFrameCount)
+                   const Maybe<size_t>& maxFrameCount)
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
@@ -7722,6 +7784,13 @@ JS_PUBLIC_API(Zone*)
 JS::GetObjectZone(JSObject* obj)
 {
     return obj->zone();
+}
+
+JS_PUBLIC_API(Zone*)
+JS::GetNurseryStringZone(JSString* str)
+{
+    MOZ_ASSERT(!str->isTenured());
+    return str->zone();
 }
 
 JS_PUBLIC_API(JS::TraceKind)

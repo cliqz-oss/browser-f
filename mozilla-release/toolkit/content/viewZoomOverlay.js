@@ -10,9 +10,7 @@
  * that accept a browser to be modified.
  **/
 
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var ZoomManager = {
   get MIN() {
@@ -52,7 +50,7 @@ var ZoomManager = {
 
   setZoomForBrowser: function ZoomManager_setZoomForBrowser(aBrowser, aVal) {
     if (aVal < this.MIN || aVal > this.MAX)
-      throw Components.results.NS_ERROR_INVALID_ARG;
+      throw Cr.NS_ERROR_INVALID_ARG;
 
     if (this.useFullZoom || aBrowser.isSyntheticDocument) {
       aBrowser.textZoom = 1;

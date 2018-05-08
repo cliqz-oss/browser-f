@@ -30,7 +30,7 @@ public:
 
   virtual void DetachAllSnapshots() override;
 
-  virtual IntSize GetSize() override { return mSize; }
+  virtual IntSize GetSize() const override { return mSize; }
 
   /* Ensure that the DrawTarget backend has flushed all drawing operations to
    * this draw target. This must be called before using the backing surface of
@@ -232,6 +232,32 @@ public:
                          bool aCopyBackground = false) override;
 
   /**
+   * Push a 'layer' to the DrawTarget, a layer is a temporary surface that all
+   * drawing will be redirected to, this is used for example to support group
+   * opacity or the masking of groups. Clips must be balanced within a layer,
+   * i.e. between a matching PushLayer/PopLayer pair there must be as many
+   * PushClip(Rect) calls as there are PopClip calls.
+   *
+   * @param aOpaque Whether the layer will be opaque
+   * @param aOpacity Opacity of the layer
+   * @param aMask Mask applied to the layer
+   * @param aMaskTransform Transform applied to the layer mask
+   * @param aBounds Optional bounds in device space to which the layer is
+   *                limited in size.
+   * @param aCopyBackground Whether to copy the background into the layer, this
+   *                        is only supported when aOpaque is true.a
+   * @param aCompositionOp The CompositionOp to use when blending the layer into
+   *                       the destination
+   */
+  virtual void PushLayerWithBlend(bool aOpaque, Float aOpacity,
+                         SourceSurface* aMask,
+                         const Matrix& aMaskTransform,
+                         const IntRect& aBounds = IntRect(),
+                         bool aCopyBackground = false,
+                         CompositionOp aCompositionOp = CompositionOp::OP_OVER) override;
+
+
+  /**
    * This balances a call to PushLayer and proceeds to blend the layer back
    * onto the background. This blend will blend the temporary surface back
    * onto the target in device space using POINT sampling and operator over.
@@ -269,6 +295,14 @@ public:
    */
   virtual already_AddRefed<DrawTarget>
     CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const override;
+
+   /**
+   * Create a similar DrawTarget whose requested size may be clipped based
+   * on this DrawTarget's rect transformed to the new target's space.
+   */
+  virtual RefPtr<DrawTarget> CreateClippedDrawTarget(const IntSize& aMaxSize,
+                                                     const Matrix& aTransform,
+                                                     SurfaceFormat aFormat) const override;
 
   /*
    * Create a path builder with the specified fillmode.

@@ -8,7 +8,6 @@ config = {
 
     # repositories
     # staging beta dev releases use jamun repo for now
-    "mozilla_dir": "jamun",
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -24,14 +23,4 @@ config = {
     # purge options
     'is_automation': True,
     'purge_minsize': 12,
-    'default_actions': [
-        "clobber",
-        "pull",
-        "clone-locales",
-        "list-locales",
-        "setup",
-        "repack",
-        "taskcluster-upload",
-        "summary",
-    ],
 }

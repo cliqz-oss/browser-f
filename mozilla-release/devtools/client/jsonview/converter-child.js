@@ -7,7 +7,7 @@
 "use strict";
 
 const {Cc, Ci, Cu, CC} = require("chrome");
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 const Services = require("Services");
 
 loader.lazyRequireGetter(this, "NetworkHelper",
@@ -81,6 +81,15 @@ Converter.prototype = {
     // and scripts. The JSON will be manually inserted as text.
     request.QueryInterface(Ci.nsIChannel);
     request.contentType = "text/html";
+
+    // Enforce strict CSP:
+    try {
+      request.QueryInterface(Ci.nsIHttpChannel);
+      request.setResponseHeader("Content-Security-Policy",
+        "default-src 'none' ; script-src resource:; ", false);
+    } catch (ex) {
+      // If this is not an HTTP channel we can't and won't do anything.
+    }
 
     // Don't honor the charset parameter and use UTF-8 (see bug 741776).
     request.contentCharset = "UTF-8";
@@ -227,8 +236,6 @@ function initialHTML(doc) {
     os = "linux";
   }
 
-  // The base URI is prepended to all URIs instead of using a <base> element
-  // because the latter can be blocked by a CSP base-uri directive (bug 1316393)
   let baseURI = "resource://devtools-client-jsonview/";
 
   return "<!DOCTYPE html>\n" +

@@ -5,6 +5,7 @@ geckoview:
     instance-size: xlarge
     loopback-video: true
     e10s: false
+    target: geckoview_example.apk
     mozharness:
         script: android_emulator_unittest.py
         no-read-buildbot-config: true
@@ -28,7 +29,6 @@ robocop:
         by-test-platform:
             # android-4.3-arm7-api-16/debug -- not run
             android-4.3-arm7-api-16/opt: 4
-            android-4.3-arm7-api-16-gradle/opt: 4
     loopback-video: true
     e10s: false
     mozharness:
@@ -64,12 +64,13 @@ test-verify:
         by-test-platform:
             android.*: xlarge
             default: default
-    max-run-time: 5400
+    max-run-time: 10800
     allow-software-gl-layers: false
     run-on-projects:
         by-test-platform:
             # do not run on ccov; see also the enable_code_coverage transform
             linux64-ccov/.*: []
+            windows10-64-ccov/debug: []
             # do not run on beta or release: usually just confirms earlier results
             default: ['trunk', 'try']
     tier:
@@ -90,7 +91,6 @@ test-verify:
                     - unittests/linux_unittest.py
                     - remove_executables.py
                 macosx.*:
-                    - remove_executables.py
                     - unittests/mac_unittest.py
                 windows.*:
                     - unittests/win_taskcluster_unittest.py

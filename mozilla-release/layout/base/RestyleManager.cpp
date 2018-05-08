@@ -10,9 +10,26 @@
 #include "Layers.h"
 #include "LayerAnimationInfo.h" // For LayerAnimationInfo::sRecords
 #include "mozilla/StyleSetHandleInlines.h"
+#include "nsAnimationManager.h"
+#include "nsCSSFrameConstructor.h"
+#include "nsCSSRendering.h"
 #include "nsIFrame.h"
+#include "nsIFrameInlines.h"
 #include "nsIPresShellInlines.h"
+#include "nsPlaceholderFrame.h"
+#include "nsStyleChangeList.h"
+#include "nsStyleUtil.h"
+#include "nsTransitionManager.h"
+#include "StickyScrollContainer.h"
+#include "mozilla/EffectSet.h"
+#include "mozilla/IntegerRange.h"
+#include "mozilla/ViewportFrame.h"
+#include "SVGObserverUtils.h"
+#include "SVGTextFrame.h"
+#include "ActiveLayerTracker.h"
+#include "nsSVGIntegrationUtils.h"
 
+using namespace mozilla::dom;
 
 namespace mozilla {
 
@@ -37,27 +54,6 @@ RestyleManager::ContentInserted(nsINode* aContainer, nsIContent* aChild)
 
 void
 RestyleManager::ContentAppended(nsIContent* aContainer, nsIContent* aFirstNewContent)
-{
-  RestyleForAppend(aContainer, aFirstNewContent);
-}
-
-void
-RestyleManager::RestyleForEmptyChange(Element* aContainer)
-{
-  // In some cases (:empty + E, :empty ~ E), a change in the content of
-  // an element requires restyling its parent's siblings.
-  nsRestyleHint hint = eRestyle_Subtree;
-  nsIContent* grandparent = aContainer->GetParent();
-  if (grandparent &&
-      (grandparent->GetFlags() & NODE_HAS_SLOW_SELECTOR_LATER_SIBLINGS)) {
-    hint = nsRestyleHint(hint | eRestyle_LaterSiblings);
-  }
-  PostRestyleEvent(aContainer, hint, nsChangeHint(0));
-}
-
-void
-RestyleManager::RestyleForAppend(nsIContent* aContainer,
-                                 nsIContent* aFirstNewContent)
 {
   // The container cannot be a document, but might be a ShadowRoot.
   if (!aContainer->IsElement()) {
@@ -89,7 +85,7 @@ RestyleManager::RestyleForAppend(nsIContent* aContainer,
       // so be conservative and assume :-moz-only-whitespace (i.e., make
       // IsSignificantChild less likely to be true, and thus make us more
       // likely to restyle).
-      if (nsStyleUtil::IsSignificantChild(cur, true, false)) {
+      if (nsStyleUtil::IsSignificantChild(cur, false)) {
         wasEmpty = false;
         break;
       }
@@ -119,6 +115,62 @@ RestyleManager::RestyleForAppend(nsIContent* aContainer,
   }
 }
 
+void
+RestyleManager::RestyleForEmptyChange(Element* aContainer)
+{
+  // In some cases (:empty + E, :empty ~ E), a change in the content of
+  // an element requires restyling its parent's siblings.
+  nsRestyleHint hint = eRestyle_Subtree;
+  nsIContent* grandparent = aContainer->GetParent();
+  if (grandparent &&
+      (grandparent->GetFlags() & NODE_HAS_SLOW_SELECTOR_LATER_SIBLINGS)) {
+    hint = nsRestyleHint(hint | eRestyle_LaterSiblings);
+  }
+  PostRestyleEvent(aContainer, hint, nsChangeHint(0));
+}
+
+void
+RestyleManager::MaybeRestyleForEdgeChildChange(Element* aContainer,
+                                               nsIContent* aChangedChild)
+{
+  MOZ_ASSERT(aContainer->GetFlags() & NODE_HAS_EDGE_CHILD_SELECTOR);
+  MOZ_ASSERT(aChangedChild->GetParent() == aContainer);
+  // restyle the previously-first element child if it is after this node
+  bool passedChild = false;
+  for (nsIContent* content = aContainer->GetFirstChild();
+       content;
+       content = content->GetNextSibling()) {
+    if (content == aChangedChild) {
+      passedChild = true;
+      continue;
+    }
+    if (content->IsElement()) {
+      if (passedChild) {
+        PostRestyleEvent(content->AsElement(), eRestyle_Subtree,
+                         nsChangeHint(0));
+      }
+      break;
+    }
+  }
+  // restyle the previously-last element child if it is before this node
+  passedChild = false;
+  for (nsIContent* content = aContainer->GetLastChild();
+       content;
+       content = content->GetPreviousSibling()) {
+    if (content == aChangedChild) {
+      passedChild = true;
+      continue;
+    }
+    if (content->IsElement()) {
+      if (passedChild) {
+        PostRestyleEvent(content->AsElement(), eRestyle_Subtree,
+                         nsChangeHint(0));
+      }
+      break;
+    }
+  }
+}
+
 // Needed since we can't use PostRestyleEvent on non-elements (with
 // eRestyle_LaterSiblings or nsRestyleHint(eRestyle_Subtree |
 // eRestyle_LaterSiblings) as appropriate).
@@ -135,6 +187,132 @@ RestyleSiblingsStartingWith(RestyleManager* aRestyleManager,
                          nsChangeHint(0));
       break;
     }
+  }
+}
+
+template<typename CharT>
+bool
+WhitespaceOnly(const CharT* aBuffer, size_t aUpTo)
+{
+  for (auto index : IntegerRange(aUpTo)) {
+    if (!dom::IsSpaceCharacter(aBuffer[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<typename CharT>
+bool
+WhitespaceOnlyChangedOnAppend(const CharT* aBuffer,
+                              size_t aOldLength,
+                              size_t aNewLength)
+{
+  MOZ_ASSERT(aOldLength <= aNewLength);
+  if (!WhitespaceOnly(aBuffer, aOldLength)) {
+    // The old text was already not whitespace-only.
+    return false;
+  }
+
+  return !WhitespaceOnly(aBuffer + aOldLength, aNewLength - aOldLength);
+}
+
+static bool
+HasAnySignificantSibling(Element* aContainer, nsIContent* aChild)
+{
+  MOZ_ASSERT(aChild->GetParent() == aContainer);
+  for (nsIContent* child = aContainer->GetFirstChild();
+       child;
+       child = child->GetNextSibling()) {
+    if (child == aChild) {
+      continue;
+    }
+    // We don't know whether we're testing :empty or :-moz-only-whitespace,
+    // so be conservative and assume :-moz-only-whitespace (i.e., make
+    // IsSignificantChild less likely to be true, and thus make us more
+    // likely to restyle).
+    if (nsStyleUtil::IsSignificantChild(child, false)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void
+RestyleManager::CharacterDataChanged(nsIContent* aContent,
+                                     const CharacterDataChangeInfo& aInfo)
+{
+  nsINode* parent = aContent->GetParentNode();
+  MOZ_ASSERT(parent, "How were we notified of a stray node?");
+
+  uint32_t slowSelectorFlags = parent->GetFlags() & NODE_ALL_SELECTOR_FLAGS;
+  if (!(slowSelectorFlags & (NODE_HAS_EMPTY_SELECTOR |
+                             NODE_HAS_EDGE_CHILD_SELECTOR))) {
+    // Nothing to do, no other slow selector can change as a result of this.
+    return;
+  }
+
+  if (!aContent->IsNodeOfType(nsINode::eTEXT)) {
+    // Doesn't matter to styling (could be a processing instruction or a
+    // comment), it can't change whether any selectors match or don't.
+    return;
+  }
+
+
+  if (MOZ_UNLIKELY(!parent->IsElement())) {
+    MOZ_ASSERT(parent->IsShadowRoot());
+    return;
+  }
+
+  if (MOZ_UNLIKELY(aContent->IsRootOfAnonymousSubtree())) {
+    // This is an anonymous node and thus isn't in child lists, so isn't taken
+    // into account for selector matching the relevant selectors here.
+    return;
+  }
+
+  // Handle appends specially since they're common and we can know both the old
+  // and the new text exactly.
+  //
+  // TODO(emilio): This could be made much more general if :-moz-only-whitespace
+  // / :-moz-first-node and :-moz-last-node didn't exist. In that case we only
+  // need to know whether we went from empty to non-empty, and that's trivial to
+  // know, with CharacterDataChangeInfo...
+  if (!aInfo.mAppend) {
+    // FIXME(emilio): This restyles unnecessarily if the text node is the only
+    // child of the parent element. Fortunately, it's uncommon to have such
+    // nodes and this not being an append.
+    //
+    // See the testcase in bug 1427625 for a test-case that triggers this.
+    RestyleForInsertOrChange(parent->AsElement(), aContent);
+    return;
+  }
+
+  const nsTextFragment* text = aContent->GetText();
+
+  const size_t oldLength = aInfo.mChangeStart;
+  const size_t newLength = text->GetLength();
+
+  const bool emptyChanged = !oldLength && newLength;
+
+  const bool whitespaceOnlyChanged = text->Is2b()
+    ? WhitespaceOnlyChangedOnAppend(text->Get2b(), oldLength, newLength)
+    : WhitespaceOnlyChangedOnAppend(text->Get1b(), oldLength, newLength);
+
+  if (!emptyChanged && !whitespaceOnlyChanged) {
+    return;
+  }
+
+  if (slowSelectorFlags & NODE_HAS_EMPTY_SELECTOR) {
+    if (!HasAnySignificantSibling(parent->AsElement(), aContent)) {
+      // We used to be empty, restyle the parent.
+      RestyleForEmptyChange(parent->AsElement());
+      return;
+    }
+  }
+
+  if (slowSelectorFlags & NODE_HAS_EDGE_CHILD_SELECTOR) {
+    MaybeRestyleForEdgeChildChange(parent->AsElement(), aContent);
   }
 }
 
@@ -161,23 +339,13 @@ RestyleManager::RestyleForInsertOrChange(nsINode* aContainer,
     return;
 
   if (selectorFlags & NODE_HAS_EMPTY_SELECTOR) {
-    // see whether we need to restyle the container
-    bool wasEmpty = true; // :empty or :-moz-only-whitespace
-    for (nsIContent* child = container->GetFirstChild();
-         child;
-         child = child->GetNextSibling()) {
-      if (child == aChild)
-        continue;
-      // We don't know whether we're testing :empty or :-moz-only-whitespace,
-      // so be conservative and assume :-moz-only-whitespace (i.e., make
-      // IsSignificantChild less likely to be true, and thus make us more
-      // likely to restyle).
-      if (nsStyleUtil::IsSignificantChild(child, true, false)) {
-        wasEmpty = false;
-        break;
-      }
-    }
+    // See whether we need to restyle the container due to :empty /
+    // :-moz-only-whitespace.
+    const bool wasEmpty = !HasAnySignificantSibling(container, aChild);
     if (wasEmpty) {
+      // FIXME(emilio): When coming from CharacterDataChanged this can restyle
+      // unnecessarily. Also can restyle unnecessarily if aChild is not
+      // significant anyway, though that's more unlikely.
       RestyleForEmptyChange(container);
       return;
     }
@@ -195,40 +363,7 @@ RestyleManager::RestyleForInsertOrChange(nsINode* aContainer,
   }
 
   if (selectorFlags & NODE_HAS_EDGE_CHILD_SELECTOR) {
-    // restyle the previously-first element child if it is after this node
-    bool passedChild = false;
-    for (nsIContent* content = container->GetFirstChild();
-         content;
-         content = content->GetNextSibling()) {
-      if (content == aChild) {
-        passedChild = true;
-        continue;
-      }
-      if (content->IsElement()) {
-        if (passedChild) {
-          PostRestyleEvent(content->AsElement(), eRestyle_Subtree,
-                           nsChangeHint(0));
-        }
-        break;
-      }
-    }
-    // restyle the previously-last element child if it is before this node
-    passedChild = false;
-    for (nsIContent* content = container->GetLastChild();
-         content;
-         content = content->GetPreviousSibling()) {
-      if (content == aChild) {
-        passedChild = true;
-        continue;
-      }
-      if (content->IsElement()) {
-        if (passedChild) {
-          PostRestyleEvent(content->AsElement(), eRestyle_Subtree,
-                           nsChangeHint(0));
-        }
-        break;
-      }
-    }
+    MaybeRestyleForEdgeChildChange(container, aChild);
   }
 }
 
@@ -237,6 +372,12 @@ RestyleManager::ContentRemoved(nsINode* aContainer,
                                nsIContent* aOldChild,
                                nsIContent* aFollowingSibling)
 {
+  // Computed style data isn't useful for detached nodes, and we'll need to
+  // recompute it anyway if we ever insert the nodes back into a document.
+  if (IsServo() && aOldChild->IsElement()) {
+    ServoRestyleManager::ClearServoDataFromSubtree(aOldChild->AsElement());
+  }
+
   // The container might be a document or a ShadowRoot.
   if (!aContainer->IsElement()) {
     return;
@@ -264,7 +405,7 @@ RestyleManager::ContentRemoved(nsINode* aContainer,
       // so be conservative and assume :-moz-only-whitespace (i.e., make
       // IsSignificantChild less likely to be true, and thus make us more
       // likely to restyle).
-      if (nsStyleUtil::IsSignificantChild(child, true, false)) {
+      if (nsStyleUtil::IsSignificantChild(child, false)) {
         isEmpty = false;
         break;
       }
@@ -432,12 +573,14 @@ RestyleManager::ChangeHintToString(nsChangeHint aHint)
     "ReflowChangesSizeOrPosition", "UpdateComputedBSize",
     "UpdateUsesOpacity", "UpdateBackgroundPosition",
     "AddOrRemoveTransform", "CSSOverflowChange",
-    "UpdateWidgetProperties", "UpdateTableCellSpans"
+    "UpdateWidgetProperties", "UpdateTableCellSpans",
+    "VisibilityChange"
   };
-  static_assert(nsChangeHint_AllHints == (1u << ArrayLength(names)) - 1,
+  static_assert(nsChangeHint_AllHints ==
+                  static_cast<uint32_t>((1ull << ArrayLength(names)) - 1),
                 "Name list doesn't match change hints.");
-  uint32_t hint = aHint & ((1u << ArrayLength(names)) - 1);
-  uint32_t rest = aHint & ~((1u << ArrayLength(names)) - 1);
+  uint32_t hint = aHint & static_cast<uint32_t>((1ull << ArrayLength(names)) - 1);
+  uint32_t rest = aHint & ~static_cast<uint32_t>((1ull << ArrayLength(names)) - 1);
   if ((hint & NS_STYLE_HINT_REFLOW) == NS_STYLE_HINT_REFLOW) {
     result.AppendLiteral("NS_STYLE_HINT_REFLOW");
     hint = hint & ~NS_STYLE_HINT_REFLOW;
@@ -452,7 +595,7 @@ RestyleManager::ChangeHintToString(nsChangeHint aHint)
     any = true;
   }
   for (uint32_t i = 0; i < ArrayLength(names); i++) {
-    if (hint & (1 << i)) {
+    if (hint & (1u << i)) {
       if (any) {
         result.AppendLiteral(" | ");
       }
@@ -482,6 +625,7 @@ static bool gInApplyRenderingChangeToTree = false;
 #endif
 
 #ifdef DEBUG
+#ifdef MOZ_OLD_STYLE
 static void
 DumpContext(nsIFrame* aFrame, nsStyleContext* aContext)
 {
@@ -628,6 +772,7 @@ VerifyStyleTree(nsIFrame* aFrame)
     VerifyContextParent(aFrame, extraContext->AsGecko(), context);
   }
 }
+#endif
 
 void
 RestyleManager::DebugVerifyStyleTree(nsIFrame* aFrame)
@@ -638,9 +783,13 @@ RestyleManager::DebugVerifyStyleTree(nsIFrame* aFrame)
     // we work out what we want to assert (bug 1322570).
     return;
   }
+#ifdef MOZ_OLD_STYLE
   if (aFrame) {
     VerifyStyleTree(aFrame);
   }
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 #endif // DEBUG
@@ -702,7 +851,7 @@ GetFrameForChildrenOnlyTransformHint(nsIFrame* aFrame)
 // Returns true if this function managed to successfully move a frame, and
 // false if it could not process the position change, and a reflow should
 // be performed instead.
-bool
+static bool
 RecomputePosition(nsIFrame* aFrame)
 {
   // Don't process position changes on table frames, since we already handle
@@ -1057,7 +1206,7 @@ DoApplyRenderingChangeToTree(nsIFrame* aFrame,
       // layer for this frame, and not scheduling an invalidating
       // paint.
       if (!needInvalidatingPaint) {
-        Layer* layer;
+        nsDisplayItem::Layer* layer;
         needInvalidatingPaint |= !aFrame->TryUpdateTransformOnly(&layer);
 
         if (!needInvalidatingPaint) {
@@ -1715,6 +1864,9 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
       if (hint & nsChangeHint_UpdateTableCellSpans) {
         frameConstructor->UpdateTableCellSpans(content);
       }
+      if (hint & nsChangeHint_VisibilityChange) {
+        frame->UpdateVisibleDescendantsState();
+      }
     }
   }
 
@@ -1752,10 +1904,20 @@ RestyleManager::IncrementAnimationGeneration()
   // We update the animation generation at start of each call to
   // ProcessPendingRestyles so we should ignore any subsequent (redundant)
   // calls that occur while we are still processing restyles.
-  if ((IsGecko() && !AsGecko()->IsProcessingRestyles()) ||
-      (IsServo() && !mInStyleRefresh)) {
-    ++mAnimationGeneration;
+  if (IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+    if (AsGecko()->IsProcessingRestyles()) {
+      return;
+    }
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
+  } else {
+    if (mInStyleRefresh) {
+      return;
+    }
   }
+  ++mAnimationGeneration;
 }
 
 /* static */ void

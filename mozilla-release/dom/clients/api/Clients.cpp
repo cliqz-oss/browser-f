@@ -12,8 +12,8 @@
 #include "mozilla/dom/ClientsBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ServiceWorkerDescriptor.h"
+#include "mozilla/dom/ServiceWorkerManager.h"
 #include "mozilla/dom/WorkerPrivate.h"
-#include "mozilla/dom/workers/ServiceWorkerManager.h"
 #include "mozilla/SystemGroup.h"
 #include "nsIGlobalObject.h"
 #include "nsString.h"
@@ -21,9 +21,6 @@
 namespace mozilla {
 namespace dom {
 
-using mozilla::dom::workers::GetCurrentThreadWorkerPrivate;
-using mozilla::dom::workers::WorkerPrivate;
-using mozilla::dom::workers::ServiceWorkerManager;
 using mozilla::ipc::PrincipalInfo;
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(Clients);
@@ -68,7 +65,11 @@ Clients::Get(const nsAString& aClientID, ErrorResult& aRv)
   }
 
   nsID id;
-  if (!id.Parse(NS_ConvertUTF16toUTF8(aClientID).get())) {
+  // nsID::Parse accepts both "{...}" and "...", but we only emit the latter, so
+  // forbid strings that start with "{" to avoid inconsistency and bugs like
+  // bug 1446225.
+  if (aClientID.IsEmpty() || aClientID.CharAt(0) == '{' ||
+      !id.Parse(NS_ConvertUTF16toUTF8(aClientID).get())) {
     // Invalid ID means we will definitely not find a match, so just
     // resolve with undefined indicating "not found".
     outerPromise->MaybeResolveWithUndefined();

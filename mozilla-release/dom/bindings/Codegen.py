@@ -2706,8 +2706,15 @@ class AttrDefiner(PropertyDefiner):
                           not isNonExposedNavigatorObjectGetter(m, descriptor)]
         else:
             attributes = []
-        self.chrome = [m for m in attributes if isChromeOnly(m)]
-        self.regular = [m for m in attributes if not isChromeOnly(m)]
+
+        attributes = [
+            {"name": name, "attr": attr}
+            for attr in attributes
+            for name in [attr.identifier.name] + attr.bindingAliases
+        ]
+
+        self.chrome = [m for m in attributes if isChromeOnly(m["attr"])]
+        self.regular = [m for m in attributes if not isChromeOnly(m["attr"])]
         self.static = static
         self.unforgeable = unforgeable
 
@@ -2723,6 +2730,9 @@ class AttrDefiner(PropertyDefiner):
     def generateArray(self, array, name):
         if len(array) == 0:
             return ""
+
+        def condition(m, d):
+            return PropertyDefiner.getControllingCondition(m["attr"], d)
 
         def flags(attr):
             unforgeable = " | JSPROP_PERMANENT" if self.unforgeable else ""
@@ -2791,16 +2801,16 @@ class AttrDefiner(PropertyDefiner):
             return "%s, %s" % \
                    (accessor, jitinfo)
 
-        def specData(attr):
-            return (attr.identifier.name, flags(attr), getter(attr),
-                    setter(attr))
+        def specData(entry):
+            name, attr = entry["name"], entry["attr"]
+            return (name, flags(attr), getter(attr), setter(attr))
 
         return self.generatePrefableArray(
             array, name,
             lambda fields: '  { "%s", %s, %s, %s }' % fields,
             '  { nullptr, 0, nullptr, nullptr, nullptr, nullptr }',
             'JSPropertySpec',
-            PropertyDefiner.getControllingCondition, specData)
+            condition, specData)
 
 
 class ConstDefiner(PropertyDefiner):
@@ -3366,66 +3376,28 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
             "\n").define()
 
 
-class CGGetPerInterfaceObject(CGAbstractMethod):
-    """
-    A method for getting a per-interface object (a prototype object or interface
-    constructor object).
-    """
-    def __init__(self, descriptor, name, idPrefix="", extraArgs=[]):
-        args = [Argument('JSContext*', 'aCx')] + extraArgs
-        CGAbstractMethod.__init__(self, descriptor, name,
-                                  'JS::Handle<JSObject*>', args)
-        self.id = idPrefix + "id::" + self.descriptor.name
-
-    def definition_body(self):
-        return fill(
-            """
-            /* Make sure our global is sane.  Hopefully we can remove this sometime */
-            JSObject* global = JS::CurrentGlobalOrNull(aCx);
-            if (!(js::GetObjectClass(global)->flags & JSCLASS_DOM_GLOBAL)) {
-              return nullptr;
-            }
-
-            /* Check to see whether the interface objects are already installed */
-            ProtoAndIfaceCache& protoAndIfaceCache = *GetProtoAndIfaceCache(global);
-            if (!protoAndIfaceCache.HasEntryInSlot(${id})) {
-              JS::Rooted<JSObject*> rootedGlobal(aCx, global);
-              CreateInterfaceObjects(aCx, rootedGlobal, protoAndIfaceCache, aDefineOnGlobal);
-            }
-
-            /*
-             * The object might _still_ be null, but that's OK.
-             *
-             * Calling fromMarkedLocation() is safe because protoAndIfaceCache is
-             * traced by TraceProtoAndIfaceCache() and its contents are never
-             * changed after they have been set.
-             *
-             * Calling address() avoids the read read barrier that does gray
-             * unmarking, but it's not possible for the object to be gray here.
-             */
-
-            const JS::Heap<JSObject*>& entrySlot = protoAndIfaceCache.EntrySlotMustExist(${id});
-            MOZ_ASSERT(JS::ObjectIsNotGray(entrySlot));
-            return JS::Handle<JSObject*>::fromMarkedLocation(entrySlot.address());
-            """,
-            id=self.id)
-
-
-class CGGetProtoObjectHandleMethod(CGGetPerInterfaceObject):
+class CGGetProtoObjectHandleMethod(CGAbstractMethod):
     """
     A method for getting the interface prototype object.
     """
     def __init__(self, descriptor):
-        CGGetPerInterfaceObject.__init__(self, descriptor, "GetProtoObjectHandle",
-                                         "prototypes::")
+        CGAbstractMethod.__init__(
+            self, descriptor, "GetProtoObjectHandle",
+            'JS::Handle<JSObject*>',
+            [Argument('JSContext*', 'aCx')],
+            inline=True)
 
     def definition_body(self):
-        return dedent("""
+        return fill(
+            """
             /* Get the interface prototype object for this class.  This will create the
                object as needed. */
-            bool aDefineOnGlobal = true;
+            return GetPerInterfaceObjectHandle(aCx, prototypes::id::${name},
+                                               &CreateInterfaceObjects,
+                                               /* aDefineOnGlobal = */ true);
 
-            """) + CGGetPerInterfaceObject.definition_body(self)
+            """,
+            name=self.descriptor.name)
 
 
 class CGGetProtoObjectMethod(CGAbstractMethod):
@@ -3441,22 +3413,29 @@ class CGGetProtoObjectMethod(CGAbstractMethod):
         return "return GetProtoObjectHandle(aCx);\n"
 
 
-class CGGetConstructorObjectHandleMethod(CGGetPerInterfaceObject):
+class CGGetConstructorObjectHandleMethod(CGAbstractMethod):
     """
     A method for getting the interface constructor object.
     """
     def __init__(self, descriptor):
-        CGGetPerInterfaceObject.__init__(
+        CGAbstractMethod.__init__(
             self, descriptor, "GetConstructorObjectHandle",
-            "constructors::",
-            extraArgs=[Argument("bool", "aDefineOnGlobal", "true")])
+            'JS::Handle<JSObject*>',
+            [Argument('JSContext*', 'aCx'),
+             Argument('bool', 'aDefineOnGlobal', 'true')],
+            inline=True)
 
     def definition_body(self):
-        return dedent("""
+        return fill(
+            """
             /* Get the interface object for this class.  This will create the object as
                needed. */
 
-            """) + CGGetPerInterfaceObject.definition_body(self)
+            return GetPerInterfaceObjectHandle(aCx, constructors::id::${name},
+                                               &CreateInterfaceObjects,
+                                               aDefineOnGlobal);
+            """,
+            name=self.descriptor.name)
 
 
 class CGGetConstructorObjectMethod(CGAbstractMethod):
@@ -5372,7 +5351,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
                 assert booleanConversion
                 other.append(booleanConversion[0])
 
-            other = CGWrapper(CGIndenter(other), pre="do {\n", post="} while (0);\n")
+            other = CGWrapper(CGIndenter(other), pre="do {\n", post="} while (false);\n")
             if hasObjectTypes or setDictionary:
                 other = CGWrapper(CGIndenter(other), "{\n", post="}\n")
                 if object:
@@ -6769,7 +6748,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
                 // are different ways to succeed at wrapping the object.
                 do {
                   $*{innerTemplate}
-                } while (0);
+                } while (false);
                 if (!JS_DefineElement(cx, returnArray, ${index}, tmp,
                                       JSPROP_ENUMERATE)) {
                   $*{exceptionCode}
@@ -6835,7 +6814,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
                 // are different ways to succeed at wrapping the value.
                 do {
                   $*{innerTemplate}
-                } while (0);
+                } while (false);
                 $*{expandedKeyDecl}
                 if (!JS_DefineUCProperty(cx, returnObj,
                                          ${keyName}.BeginReading(),
@@ -7772,7 +7751,10 @@ class CGPerSignatureCall(CGThing):
 
         needsUnwrap = False
         argsPost = []
-        if isConstructor:
+        runConstructorInCallerCompartment = \
+            descriptor.interface.getExtendedAttribute(
+                'RunConstructorInCallerCompartment')
+        if isConstructor and not runConstructorInCallerCompartment:
             needsUnwrap = True
             needsUnwrappedVar = False
             unwrappedVar = "obj"
@@ -8090,7 +8072,7 @@ class CGPerSignatureCall(CGThing):
                   JSAutoCompartment ac(cx, conversionScope);
                   do { // block we break out of when done wrapping
                     $*{wrapCode}
-                  } while (0);
+                  } while (false);
                   $*{postConversionSteps}
                 }
                 { // And now store things in the compartment of our slotStorage.
@@ -8493,7 +8475,7 @@ class CGMethodCall(CGThing):
                     # Indent by 4, since we need to indent further
                     # than our "do" statement
                     tryCall(sig, 4, isDefinitelyObject=True)
-                    caseBody.append(CGIndenter(CGGeneric("} while (0);\n")))
+                    caseBody.append(CGIndenter(CGGeneric("} while (false);\n")))
 
                 caseBody.append(CGGeneric("}\n"))
 
@@ -8833,20 +8815,13 @@ class CGGenericPromiseReturningMethod(CGAbstractBindingMethod):
     def __init__(self, descriptor):
         unwrapFailureCode = dedent("""
             ThrowInvalidThis(cx, args, %%(securityError)s, "%s");\n
-            return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
-                                             args.rval());\n""" %
+            return ConvertExceptionToPromise(cx, args.rval());\n""" %
                                    descriptor.interface.identifier.name)
 
         name = "genericPromiseReturningMethod"
-        customCallArgs = dedent("""
-            JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-            // Make sure to save the callee before someone maybe messes with rval().
-            JS::Rooted<JSObject*> callee(cx, &args.callee());
-        """)
 
         CGAbstractBindingMethod.__init__(self, descriptor, name,
                                          JSNativeArguments(),
-                                         callArgs=customCallArgs,
                                          unwrapFailureCode=unwrapFailureCode)
 
     def generate_code(self):
@@ -8863,8 +8838,7 @@ class CGGenericPromiseReturningMethod(CGAbstractBindingMethod):
             }
 
             MOZ_ASSERT(info->returnType() == JSVAL_TYPE_OBJECT);
-            return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
-                                             args.rval());
+            return ConvertExceptionToPromise(cx, args.rval());
             """))
 
 
@@ -8910,15 +8884,11 @@ class CGMethodPromiseWrapper(CGAbstractStaticMethod):
     def definition_body(self):
         return fill(
             """
-            // Make sure to save the callee before someone maybe messes
-            // with rval().
-            JS::Rooted<JSObject*> callee(cx, &args.callee());
             bool ok = ${methodName}(${args});
             if (ok) {
               return true;
             }
-            return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
-                                             args.rval());
+            return ConvertExceptionToPromise(cx, args.rval());
             """,
             methodName=self.method.name,
             args=", ".join(arg.name for arg in self.args))
@@ -9201,21 +9171,13 @@ class CGGenericPromiseReturningGetter(CGAbstractBindingMethod):
         unwrapFailureCode = fill(
             """
             ThrowInvalidThis(cx, args, %%(securityError)s, "${iface}");
-            return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
-                                             args.rval());
+            return ConvertExceptionToPromise(cx, args.rval());
             """,
             iface=descriptor.interface.identifier.name)
         name = "genericPromiseReturningGetter"
-        customCallArgs = dedent(
-            """
-            JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-            // Make sure to save the callee before someone maybe messes with rval().
-            JS::Rooted<JSObject*> callee(cx, &args.callee());
-            """)
 
         CGAbstractBindingMethod.__init__(self, descriptor, name,
                                          JSNativeArguments(),
-                                         callArgs=customCallArgs,
                                          unwrapFailureCode=unwrapFailureCode)
 
     def generate_code(self):
@@ -9233,8 +9195,7 @@ class CGGenericPromiseReturningGetter(CGAbstractBindingMethod):
             }
 
             MOZ_ASSERT(info->returnType() == JSVAL_TYPE_OBJECT);
-            return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
-                                             args.rval());
+            return ConvertExceptionToPromise(cx, args.rval());
             """))
 
 
@@ -9378,14 +9339,7 @@ class CGGetterPromiseWrapper(CGAbstractStaticMethod):
             if (ok) {
               return true;
             }
-            JS::Rooted<JSObject*> globalForPromise(cx);
-            // We can't use xpc::XrayAwareCalleeGlobal here because we have no
-            // callee.  Use our hacky version instead.
-            if (!xpc::XrayAwareCalleeGlobalForSpecializedGetters(cx, obj,
-                                                                 &globalForPromise)) {
-              return false;
-            }
-            return ConvertExceptionToPromise(cx, globalForPromise, args.rval());
+            return ConvertExceptionToPromise(cx, args.rval());
             """,
             getterName=self.getter.name,
             args=", ".join(arg.name for arg in self.args))
@@ -13667,7 +13621,7 @@ class CGDictionary(CGThing):
             CGIndenter(conversion),
             pre=("do {\n"
                  "  // block for our 'break' successCode and scope for 'temp' and 'currentValue'\n"),
-            post="} while(0);\n")
+            post="} while(false);\n")
         if member.canHaveMissingValue():
             # Only do the conversion if we have a value
             conversion = CGIfWrapper(conversion, "%s.WasPassed()" % memberLoc)
@@ -13812,6 +13766,11 @@ class CGDictionary(CGThing):
             # Primitives (numbers and booleans) are ok, as long as
             # they're not unrestricted float/double.
             return not type.isFloat() or not type.isUnrestricted()
+
+        if type.isRecord():
+            # Records are okay, as long as the value type is.
+            # Per spec, only strings are allowed as keys.
+            return CGDictionary.typeSafeToJSONify(type.inner)
 
         return False
 
@@ -14333,6 +14292,7 @@ class CGBindingRoot(CGThing):
         jsImplemented = config.getDescriptors(webIDLFile=webIDLFile,
                                               isJSImplemented=True)
         bindingDeclareHeaders["nsWeakReference.h"] = jsImplemented
+        bindingDeclareHeaders["mozilla/dom/PrototypeList.h"] = descriptors
         bindingHeaders["nsIGlobalObject.h"] = jsImplemented
         bindingHeaders["AtomList.h"] = hasNonEmptyDictionaries or jsImplemented or callbackDescriptors
 
@@ -15881,7 +15841,7 @@ class CGCallback(CGClass):
         argsWithoutRv.insert(0, Argument("const T&",  "thisVal"))
 
         argnamesWithoutThisAndRv = [arg.name for arg in argsWithoutThisAndRv]
-        argnamesWithoutThisAndRv.insert(rvIndex, "rv");
+        argnamesWithoutThisAndRv.insert(rvIndex, "IgnoreErrors()");
         # If we just leave things like that, and have no actual arguments in the
         # IDL, we will end up trying to call the templated "without rv" overload
         # with "rv" as the thisVal.  That's no good.  So explicitly append the
@@ -15892,7 +15852,7 @@ class CGCallback(CGClass):
         argnamesWithoutRv = [arg.name for arg in argsWithoutRv]
         # Note that we need to insert at rvIndex + 1, since we inserted a
         # thisVal arg at the start.
-        argnamesWithoutRv.insert(rvIndex + 1, "rv")
+        argnamesWithoutRv.insert(rvIndex + 1, "IgnoreErrors()")
 
         errorReturn = method.getDefaultRetval()
 
@@ -15936,14 +15896,12 @@ class CGCallback(CGClass):
             callArgs=", ".join(argnamesWithoutThis))
         bodyWithThisWithoutRv = fill(
             """
-            IgnoredErrorResult rv;
             return ${methodName}(${callArgs});
             """,
             methodName=method.name,
             callArgs=", ".join(argnamesWithoutRv))
         bodyWithoutThisAndRv = fill(
             """
-            IgnoredErrorResult rv;
             return ${methodName}(${callArgs});
             """,
             methodName=method.name,
@@ -16216,7 +16174,7 @@ class CallbackMember(CGNativeMember):
         # also so that we can just "break;" for our successCode.
         argConversions = [CGWrapper(CGIndenter(CGGeneric(c)),
                                     pre="do {\n",
-                                    post="} while (0);\n")
+                                    post="} while (false);\n")
                           for c in argConversions]
         if self.argCount > 0:
             argConversions.insert(0, self.getArgcDecl())
@@ -17281,6 +17239,7 @@ class GlobalGenRoots():
         idEnum = CGWrapper(idEnum, post='\n')
 
         curr = CGList([CGGeneric(define="#include <stdint.h>\n\n"),
+                       CGGeneric(declare='#include "jsfriendapi.h"\n\n'),
                        idEnum])
 
         # Let things know the maximum length of the prototype chain.
@@ -17803,9 +17762,17 @@ class CGEventClass(CGBindingImplClass):
         CGBindingImplClass.__init__(self, descriptor, CGEventMethod, CGEventGetter, CGEventSetter, False, "WrapObjectInternal")
         members = []
         extraMethods = []
+        self.membersNeedingCC = []
+        self.membersNeedingTrace = []
+
         for m in descriptor.interface.members:
+            if getattr(m, "originatingInterface",
+                       descriptor.interface) != descriptor.interface:
+                continue
+
             if m.isAttr():
                 if m.type.isAny():
+                    self.membersNeedingTrace.append(m)
                     # Add a getter that doesn't need a JSContext.  Note that we
                     # don't need to do this if our originating interface is not
                     # the descriptor's interface, because in that case we
@@ -17824,9 +17791,16 @@ class CGEventClass(CGBindingImplClass):
                                 aRetVal.set(${memberName});
                                 """,
                                 memberName=CGDictionary.makeMemberName(m.identifier.name))))
-                if getattr(m, "originatingInterface",
-                           descriptor.interface) != descriptor.interface:
-                    continue
+                elif (m.type.isObject() or
+                      m.type.isSpiderMonkeyInterface()):
+                    self.membersNeedingTrace.append(m)
+                elif typeNeedsRooting(m.type):
+                    raise TypeError(
+                        "Need to implement tracing for event member of type %s" %
+                        m.type)
+                elif idlTypeNeedsCycleCollection(m.type):
+                    self.membersNeedingCC.append(m)
+
                 nativeType = self.getNativeTypeForIDLType(m.type).define()
                 members.append(ClassMember(CGDictionary.makeMemberName(m.identifier.name),
                                nativeType,
@@ -17835,20 +17809,39 @@ class CGEventClass(CGBindingImplClass):
 
         parent = self.descriptor.interface.parent
         self.parentType = self.descriptor.getDescriptor(parent.identifier.name).nativeType.split('::')[-1]
+        self.nativeType = self.descriptor.nativeType.split('::')[-1]
+
+        if self.needCC():
+            isupportsDecl = fill(
+                """
+                NS_DECL_ISUPPORTS_INHERITED
+                NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(${nativeType}, ${parentType})
+                """,
+                nativeType=self.nativeType,
+                parentType=self.parentType)
+        else:
+            isupportsDecl = fill(
+                """
+                NS_INLINE_DECL_REFCOUNTING_INHERITED(${nativeType}, ${parentType})
+                """,
+                nativeType=self.nativeType,
+                parentType=self.parentType)
+
         baseDeclarations = fill(
             """
             public:
-              NS_DECL_ISUPPORTS_INHERITED
-              NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(${nativeType}, ${parentType})
+              $*{isupportsDecl}
+
             protected:
               virtual ~${nativeType}();
               explicit ${nativeType}(mozilla::dom::EventTarget* aOwner);
 
             """,
-            nativeType=self.descriptor.nativeType.split('::')[-1],
+            isupportsDecl=isupportsDecl,
+            nativeType=self.nativeType,
             parentType=self.parentType)
 
-        className = descriptor.nativeType.split('::')[-1]
+        className = self.nativeType
         asConcreteTypeMethod = ClassMethod("As%s" % className,
                                            "%s*" % className,
                                            [],
@@ -17867,80 +17860,90 @@ class CGEventClass(CGBindingImplClass):
     def getWrapObjectBody(self):
         return "return %sBinding::Wrap(aCx, this, aGivenProto);\n" % self.descriptor.name
 
+    def needCC(self):
+        return (len(self.membersNeedingCC) != 0 or
+                len(self.membersNeedingTrace) != 0)
+
     def implTraverse(self):
         retVal = ""
-        for m in self.descriptor.interface.members:
-            # Unroll the type so we pick up sequences of interfaces too.
-            if m.isAttr() and idlTypeNeedsCycleCollection(m.type):
-                retVal += ("  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(" +
-                           CGDictionary.makeMemberName(m.identifier.name) +
-                           ")\n")
+        for m in self.membersNeedingCC:
+            retVal += ("  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(%s)\n" %
+                       CGDictionary.makeMemberName(m.identifier.name))
         return retVal
 
     def implUnlink(self):
         retVal = ""
-        for m in self.descriptor.interface.members:
-            if m.isAttr():
-                name = CGDictionary.makeMemberName(m.identifier.name)
-                # Unroll the type so we pick up sequences of interfaces too.
-                if idlTypeNeedsCycleCollection(m.type):
-                    retVal += "  NS_IMPL_CYCLE_COLLECTION_UNLINK(" + name + ")\n"
-                elif m.type.isAny():
-                    retVal += "  tmp->" + name + ".setUndefined();\n"
-                elif m.type.isObject() or m.type.isSpiderMonkeyInterface():
-                    retVal += "  tmp->" + name + " = nullptr;\n"
+        for m in self.membersNeedingCC:
+            retVal += ("  NS_IMPL_CYCLE_COLLECTION_UNLINK(%s)\n" %
+                       CGDictionary.makeMemberName(m.identifier.name))
+        for m in self.membersNeedingTrace:
+            name = CGDictionary.makeMemberName(m.identifier.name)
+            if m.type.isAny():
+                retVal += "  tmp->" + name + ".setUndefined();\n"
+            elif m.type.isObject() or m.type.isSpiderMonkeyInterface():
+                retVal += "  tmp->" + name + " = nullptr;\n"
+            else:
+                raise TypeError("Unknown traceable member type %s" % m.type)
         return retVal
 
     def implTrace(self):
         retVal = ""
-        for m in self.descriptor.interface.members:
-            if m.isAttr():
-                name = CGDictionary.makeMemberName(m.identifier.name)
-                if m.type.isAny() or m.type.isObject() or m.type.isSpiderMonkeyInterface():
-                    retVal += "  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(" + name + ")\n"
-                elif typeNeedsRooting(m.type):
-                    raise TypeError("Need to implement tracing for event "
-                                    "member of type %s" % m.type)
+        for m in self.membersNeedingTrace:
+            retVal += ("  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(%s)\n" %
+                       CGDictionary.makeMemberName(m.identifier.name))
         return retVal
 
     def define(self):
         dropJS = ""
-        for m in self.descriptor.interface.members:
-            if m.isAttr():
-                member = CGDictionary.makeMemberName(m.identifier.name)
-                if m.type.isAny():
-                    dropJS += member + " = JS::UndefinedValue();\n"
-                elif m.type.isObject() or m.type.isSpiderMonkeyInterface():
-                    dropJS += member + " = nullptr;\n"
+        for m in self.membersNeedingTrace:
+            member = CGDictionary.makeMemberName(m.identifier.name)
+            if m.type.isAny():
+                dropJS += member + " = JS::UndefinedValue();\n"
+            elif m.type.isObject() or m.type.isSpiderMonkeyInterface():
+                dropJS += member + " = nullptr;\n"
+            else:
+                raise TypeError("Unknown traceable member type %s" % m.type)
+
         if dropJS != "":
             dropJS += "mozilla::DropJSObjects(this);\n"
         # Just override CGClass and do our own thing
-        nativeType = self.descriptor.nativeType.split('::')[-1]
         ctorParams = ("aOwner, nullptr, nullptr" if self.parentType == "Event"
                       else "aOwner")
 
-        classImpl = fill(
+        if self.needCC():
+            classImpl = fill(
+                """
+
+                NS_IMPL_CYCLE_COLLECTION_CLASS(${nativeType})
+
+                NS_IMPL_ADDREF_INHERITED(${nativeType}, ${parentType})
+                NS_IMPL_RELEASE_INHERITED(${nativeType}, ${parentType})
+
+                NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(${nativeType}, ${parentType})
+                $*{traverse}
+                NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+                NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(${nativeType}, ${parentType})
+                $*{trace}
+                NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+                NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(${nativeType}, ${parentType})
+                $*{unlink}
+                NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+                NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(${nativeType})
+                NS_INTERFACE_MAP_END_INHERITING(${parentType})
+                """,
+                nativeType=self.nativeType,
+                parentType=self.parentType,
+                traverse=self.implTraverse(),
+                unlink=self.implUnlink(),
+                trace=self.implTrace())
+        else:
+            classImpl = ""
+
+        classImpl += fill(
             """
-
-            NS_IMPL_CYCLE_COLLECTION_CLASS(${nativeType})
-
-            NS_IMPL_ADDREF_INHERITED(${nativeType}, ${parentType})
-            NS_IMPL_RELEASE_INHERITED(${nativeType}, ${parentType})
-
-            NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(${nativeType}, ${parentType})
-            $*{traverse}
-            NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
-
-            NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(${nativeType}, ${parentType})
-            $*{trace}
-            NS_IMPL_CYCLE_COLLECTION_TRACE_END
-
-            NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(${nativeType}, ${parentType})
-            $*{unlink}
-            NS_IMPL_CYCLE_COLLECTION_UNLINK_END
-
-            NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(${nativeType})
-            NS_INTERFACE_MAP_END_INHERITING(${parentType})
 
             ${nativeType}::${nativeType}(mozilla::dom::EventTarget* aOwner)
               : ${parentType}(${ctorParams})
@@ -17953,14 +17956,11 @@ class CGEventClass(CGBindingImplClass):
             }
 
             """,
-            ifaceName=self.descriptor.name,
-            nativeType=nativeType,
+            nativeType=self.nativeType,
             ctorParams=ctorParams,
             parentType=self.parentType,
-            traverse=self.implTraverse(),
-            unlink=self.implUnlink(),
-            trace=self.implTrace(),
             dropJS=dropJS)
+
         return classImpl + CGBindingImplClass.define(self)
 
     def getNativeTypeForIDLType(self, type):

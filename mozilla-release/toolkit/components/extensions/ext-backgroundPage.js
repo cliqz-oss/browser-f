@@ -1,9 +1,9 @@
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
-                                  "resource://gre/modules/TelemetryStopwatch.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
+                               "resource://gre/modules/TelemetryStopwatch.jsm");
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 var {
   HiddenExtensionPage,
   promiseExtensionViewLoaded,
@@ -31,7 +31,7 @@ class BackgroundPage extends HiddenExtensionPage {
 
     extensions.emit("extension-browser-inserted", this.browser);
 
-    this.browser.loadURI(this.url);
+    this.browser.loadURIWithFlags(this.url, {triggeringPrincipal: this.extension.principal});
 
     let context = await promiseExtensionViewLoaded(this.browser);
     TelemetryStopwatch.finish("WEBEXT_BACKGROUND_PAGE_LOAD_MS", this);

@@ -1,11 +1,9 @@
 /*
  * Bug 1270678 - A test case to test does the favicon obey originAttributes.
  */
-let { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-let {HttpServer} = Cu.import("resource://testing-common/httpd.js", {});
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+let {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js", {});
 
 const USER_CONTEXTS = [
   "default",

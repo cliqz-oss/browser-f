@@ -5,9 +5,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PerformanceStats"];
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["PerformanceStats"];
 
 /**
  * API for querying and examining performance data.
@@ -24,14 +22,14 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
  * you should favor PerformanceWatcher.
  */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/ObjectUtils.jsm", this);
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm", this);
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
+ChromeUtils.defineModuleGetter(this, "setTimeout",
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
+ChromeUtils.defineModuleGetter(this, "clearTimeout",
   "resource://gre/modules/Timer.jsm");
 
 // The nsIPerformanceStatsService provides lower-level
@@ -97,7 +95,7 @@ Probe.prototype = {
       try {
         this._impl.isActive = false;
       } catch (ex) {
-        if (ex && typeof ex == "object" && ex.result == Components.results.NS_ERROR_NOT_AVAILABLE) {
+        if (ex && typeof ex == "object" && ex.result == Cr.NS_ERROR_NOT_AVAILABLE) {
           // The service has already been shutdown. Ignore further shutdown requests.
           return;
         }
@@ -568,7 +566,7 @@ Services.obs.addObserver(function(subject, topic, value) {
 }, FINALIZATION_TOPIC);
 
 // Public API
-this.PerformanceStats = {
+var PerformanceStats = {
   /**
    * Create a monitor for observing a set of performance probes.
    */

@@ -19,7 +19,7 @@
 
 // This is the schema version. Update it at any schema change and add a
 // corresponding migrateVxx method below.
-#define DATABASE_SCHEMA_VERSION 41
+#define DATABASE_SCHEMA_VERSION 43
 
 // Fired after Places inited.
 #define TOPIC_PLACES_INIT_COMPLETE "places-init-complete"
@@ -302,6 +302,8 @@ protected:
   nsresult MigrateV39Up();
   nsresult MigrateV40Up();
   nsresult MigrateV41Up();
+  nsresult MigrateV42Up();
+  nsresult MigrateV43Up();
 
   nsresult UpdateBookmarkRootTitles();
 
@@ -334,6 +336,9 @@ private:
   // Used to track whether icon payloads should be converted at the end of
   // schema migration.
   bool mShouldConvertIconPayloads;
+  // Used to track whether the favicons database should be vacuumed at the end
+  // of the schema migration.
+  bool mShouldVacuumIcons;
 
   /**
    * Phases for shutting down the Database.

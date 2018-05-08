@@ -1,6 +1,6 @@
-Components.utils.import("resource://gre/modules/Services.jsm", this);
-Components.utils.import("resource://gre/modules/Promise.jsm", this);
-Components.utils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Promise.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 add_task(function init() {
   do_get_profile();
@@ -28,16 +28,16 @@ add_task(async function system_shutdown() {
       let observer = function(aMessage) {
         try {
           info("Got message: " + aMessage);
-          if (!(aMessage instanceof Components.interfaces.nsIConsoleMessage)) {
+          if (!(aMessage instanceof Ci.nsIConsoleMessage)) {
             return;
           }
           let message = aMessage.message;
           info("Got message: " + message);
-          if (message.indexOf("TEST OS Controller WARNING") < 0) {
+          if (!message.includes("TEST OS Controller WARNING")) {
             return;
           }
           info("Got message: " + message + ", looking for resource " + resource);
-          if (message.indexOf(resource) < 0) {
+          if (!message.includes(resource)) {
             return;
           }
           info("Resource: " + resource + " found");

@@ -12,14 +12,18 @@
 namespace mozilla {
 namespace dom {
 
-namespace workers {
 class WorkerPrivate;
-}
 
 class PerformanceWorker final : public Performance
 {
 public:
-  explicit PerformanceWorker(workers::WorkerPrivate* aWorkerPrivate);
+  explicit PerformanceWorker(WorkerPrivate* aWorkerPrivate);
+
+  PerformanceStorage* AsPerformanceStorage() override
+  {
+    MOZ_CRASH("This should not be called on workers.");
+    return nullptr;
+  }
 
   virtual PerformanceTiming* Timing() override
   {
@@ -31,12 +35,6 @@ public:
   {
     MOZ_CRASH("This should not be called on workers.");
     return nullptr;
-  }
-
-  virtual void AddEntry(nsIHttpChannel* channel,
-                        nsITimedChannel* timedChannel) override
-  {
-    MOZ_CRASH("This should not be called on workers.");
   }
 
   TimeStamp CreationTimeStamp() const override;
@@ -55,6 +53,8 @@ public:
     return nullptr;
   }
 
+  virtual uint64_t GetRandomTimelineSeed() override;
+
   virtual nsITimedChannel* GetChannel() const override
   {
     MOZ_CRASH("This should not be called on workers.");
@@ -68,11 +68,11 @@ protected:
 
   void DispatchBufferFullEvent() override
   {
-    MOZ_CRASH("This should not be called on workers.");
+    // Nothing to do here. See bug 1432758.
   }
 
 private:
-  workers::WorkerPrivate* mWorkerPrivate;
+  WorkerPrivate* mWorkerPrivate;
 };
 
 } // namespace dom

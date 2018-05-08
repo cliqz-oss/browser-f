@@ -19,7 +19,7 @@ where
     );
 
     let matches = App::new("bindgen")
-        .version(env!("CARGO_PKG_VERSION"))
+        .version(option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"))
         .about("Generates Rust bindings from C/C++ headers.")
         .usage("bindgen [FLAGS] [OPTIONS] <header> -- <clang-args>...")
         .args(&[
@@ -237,9 +237,9 @@ where
                 .help("Generate inline functions."),
             Arg::with_name("whitelist-type")
                 .long("whitelist-type")
-                .help("Whitelist the type. Other non-whitelisted types will \
+                .help("Only generate types matching <regex>. Other non-whitelisted types will \
                        not be generated.")
-                .value_name("type")
+                .value_name("regex")
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1),
@@ -589,19 +589,19 @@ where
 
     if let Some(no_partialeq) = matches.values_of("no-partialeq") {
         for regex in no_partialeq {
-            builder = builder.no_partialeq(String::from(regex));
+            builder = builder.no_partialeq(regex);
         }
     }
 
     if let Some(no_copy) = matches.values_of("no-copy") {
         for regex in no_copy {
-            builder = builder.no_copy(String::from(regex));
+            builder = builder.no_copy(regex);
         }
     }
 
     if let Some(no_hash) = matches.values_of("no-hash") {
         for regex in no_hash {
-            builder = builder.no_hash(String::from(regex));
+            builder = builder.no_hash(regex);
         }
     }
 

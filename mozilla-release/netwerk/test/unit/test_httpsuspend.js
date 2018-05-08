@@ -1,8 +1,8 @@
 // This file ensures that suspending a channel directly after opening it
 // suspends future notifications correctly.
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpserv.identity.primaryPort;
@@ -16,11 +16,11 @@ var listener = {
   _gotData: false,
 
   QueryInterface: function(iid) {
-    if (iid.equals(Components.interfaces.nsIStreamListener) ||
-        iid.equals(Components.interfaces.nsIRequestObserver) ||
-        iid.equals(Components.interfaces.nsISupports))
+    if (iid.equals(Ci.nsIStreamListener) ||
+        iid.equals(Ci.nsIRequestObserver) ||
+        iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   onStartRequest: function(request, ctx) {

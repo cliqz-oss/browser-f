@@ -14,18 +14,15 @@ config = {
     "buildbot_json_path": "buildprops.json",
     "exes": {
         'python': sys.executable,
-        'virtualenv': [sys.executable, 'c:/mozilla-build/buildbotve/virtualenv.py'],
         'hg': 'c:/mozilla-build/hg/hg',
         'mozinstall': ['%s/build/venv/scripts/python' % os.getcwd(),
                        '%s/build/venv/scripts/mozinstall-script.py' % os.getcwd()],
-        'tooltool.py': [sys.executable, 'C:/mozilla-build/tooltool.py'],
     },
     ###
     "installer_path": INSTALLER_PATH,
     "binary_path": BINARY_PATH,
     "xpcshell_name": XPCSHELL_NAME,
     "virtualenv_path": 'venv',
-    "virtualenv_python_dll": os.path.join(os.path.dirname(sys.executable), "python27.dll"),
     "virtualenv_modules": ['pywin32'],
 
     "find_links": [
@@ -53,17 +50,9 @@ config = {
         "modules/*",
         "mozbase/*",
         "tools/*",
+        "mozpack/*",
+        "mozbuild/*",
     ],
-    "specific_tests_zip_dirs": {
-        "mochitest": ["mochitest/*"],
-        "reftest": ["reftest/*", "jsreftest/*"],
-        "xpcshell": ["xpcshell/*"],
-        "cppunittest": ["cppunittest/*"],
-        "gtest": ["gtest/*"],
-        "jittest": ["jit-test/*"],
-        "mozbase": ["mozbase/*"],
-        "mozmill": ["mozmill/*"],
-    },
     "suite_definitions": {
         "cppunittest": {
             "options": [

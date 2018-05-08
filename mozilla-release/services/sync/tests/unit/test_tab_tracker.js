@@ -1,9 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/engines/tabs.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/engines/tabs.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 let clientsEngine;
 
@@ -64,15 +64,15 @@ add_task(async function run_test() {
 
   _("Test listeners are registered on windows");
   logs = fakeSvcWinMediator();
-  Svc.Obs.notify("weave:engine:start-tracking");
+  tracker.start();
   Assert.equal(logs.length, 2);
   for (let log of logs) {
     Assert.equal(log.addTopics.length, 5);
-    Assert.ok(log.addTopics.indexOf("pageshow") >= 0);
-    Assert.ok(log.addTopics.indexOf("TabOpen") >= 0);
-    Assert.ok(log.addTopics.indexOf("TabClose") >= 0);
-    Assert.ok(log.addTopics.indexOf("TabSelect") >= 0);
-    Assert.ok(log.addTopics.indexOf("unload") >= 0);
+    Assert.ok(log.addTopics.includes("pageshow"));
+    Assert.ok(log.addTopics.includes("TabOpen"));
+    Assert.ok(log.addTopics.includes("TabClose"));
+    Assert.ok(log.addTopics.includes("TabSelect"));
+    Assert.ok(log.addTopics.includes("unload"));
     Assert.equal(log.remTopics.length, 0);
     Assert.equal(log.numAPL, 1, "Added 1 progress listener");
     Assert.equal(log.numRPL, 0, "Didn't remove a progress listener");
@@ -80,16 +80,16 @@ add_task(async function run_test() {
 
   _("Test listeners are unregistered on windows");
   logs = fakeSvcWinMediator();
-  Svc.Obs.notify("weave:engine:stop-tracking");
+  await tracker.stop();
   Assert.equal(logs.length, 2);
   for (let log of logs) {
     Assert.equal(log.addTopics.length, 0);
     Assert.equal(log.remTopics.length, 5);
-    Assert.ok(log.remTopics.indexOf("pageshow") >= 0);
-    Assert.ok(log.remTopics.indexOf("TabOpen") >= 0);
-    Assert.ok(log.remTopics.indexOf("TabClose") >= 0);
-    Assert.ok(log.remTopics.indexOf("TabSelect") >= 0);
-    Assert.ok(log.remTopics.indexOf("unload") >= 0);
+    Assert.ok(log.remTopics.includes("pageshow"));
+    Assert.ok(log.remTopics.includes("TabOpen"));
+    Assert.ok(log.remTopics.includes("TabClose"));
+    Assert.ok(log.remTopics.includes("TabSelect"));
+    Assert.ok(log.remTopics.includes("unload"));
     Assert.equal(log.numAPL, 0, "Didn't add a progress listener");
     Assert.equal(log.numRPL, 1, "Removed 1 progress listener");
   }
@@ -97,7 +97,7 @@ add_task(async function run_test() {
   _("Test tab listener");
   for (let evttype of ["TabOpen", "TabClose", "TabSelect"]) {
     // Pretend we just synced.
-    tracker.clearChangedIDs();
+    await tracker.clearChangedIDs();
     Assert.ok(!tracker.modified);
 
     // Send a fake tab event
@@ -108,7 +108,7 @@ add_task(async function run_test() {
   }
 
   // Pretend we just synced.
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
   Assert.ok(!tracker.modified);
 
   tracker.onTab({type: "pageshow", originalTarget: "pageshow"});
@@ -116,7 +116,7 @@ add_task(async function run_test() {
                              [clientsEngine.localID]));
 
   // Pretend we just synced and saw some progress listeners.
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
   Assert.ok(!tracker.modified);
   tracker.onLocationChange({ isTopLevel: false }, undefined, undefined, 0);
   Assert.ok(!tracker.modified, "non-toplevel request didn't flag as modified");

@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionFile"];
+var EXPORTED_SYMBOLS = ["SessionFile"];
 
 /**
  * Implementation of all the disk I/O required by the session store.
@@ -25,29 +25,22 @@ this.EXPORTED_SYMBOLS = ["SessionFile"];
  * This implementation uses OS.File, which guarantees property 1.
  */
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RunState",
+ChromeUtils.defineModuleGetter(this, "RunState",
   "resource:///modules/sessionstore/RunState.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
+ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
   "resource://gre/modules/TelemetryStopwatch.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
   "@mozilla.org/base/telemetry;1", "nsITelemetry");
 XPCOMUtils.defineLazyServiceGetter(this, "sessionStartup",
   "@mozilla.org/browser/sessionstartup;1", "nsISessionStartup");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionWorker",
+ChromeUtils.defineModuleGetter(this, "SessionWorker",
   "resource:///modules/sessionstore/SessionWorker.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
 
 const PREF_UPGRADE_BACKUP = "browser.sessionstore.upgradeBackup.latestBuildID";
@@ -59,7 +52,7 @@ const PREF_MAX_SERIALIZE_FWD = "browser.sessionstore.max_serialize_forward";
 XPCOMUtils.defineLazyPreferenceGetter(this, "kMaxWriteFailures",
   "browser.sessionstore.max_write_failures", 5);
 
-this.SessionFile = {
+var SessionFile = {
   /**
    * Read the contents of the session file, asynchronously.
    */

@@ -6,7 +6,7 @@
 
 /*
  * Base class for DOM Core's nsIDOMComment, nsIDOMDocumentType, nsIDOMText,
- * nsIDOMCDATASection, and nsIDOMProcessingInstruction nodes.
+ * CDATASection, and nsIDOMProcessingInstruction nodes.
  */
 
 #ifndef nsGenericDOMDataNode_h___
@@ -106,9 +106,11 @@ public:
   // nsINode methods
   virtual uint32_t GetChildCount() const override;
   virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
-  virtual int32_t IndexOf(const nsINode* aPossibleChild) const override;
-  virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                                 bool aNotify) override;
+  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const override;
+  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                                     bool aNotify) override;
+  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
+                                            bool aNotify) override;
   virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
   virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
   virtual void GetTextContentInternal(nsAString& aTextContent,
@@ -146,7 +148,7 @@ public:
   virtual nsresult AppendText(const char16_t* aBuffer, uint32_t aLength,
                               bool aNotify) override;
   virtual bool TextIsOnlyWhitespace() override;
-  virtual bool ThreadSafeTextIsOnlyWhitespace() const final override;
+  bool ThreadSafeTextIsOnlyWhitespace() const final;
   virtual bool HasTextForTranslation() override;
   virtual void AppendTextTo(nsAString& aResult) override;
   MOZ_MUST_USE

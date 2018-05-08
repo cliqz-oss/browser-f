@@ -6,15 +6,13 @@
 
 'use strict';
 
-this.EXPORTED_SYMBOLS = ['DNSResourceRecord'];
+var EXPORTED_SYMBOLS = ['DNSResourceRecord'];
 
-const { utils: Cu } = Components;
-
-Cu.import('resource://gre/modules/Services.jsm');
-Cu.import('resource://gre/modules/DataReader.jsm');
-Cu.import('resource://gre/modules/DataWriter.jsm');
-Cu.import('resource://gre/modules/DNSRecord.jsm');
-Cu.import('resource://gre/modules/DNSTypes.jsm');
+ChromeUtils.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/DataReader.jsm');
+ChromeUtils.import('resource://gre/modules/DataWriter.jsm');
+ChromeUtils.import('resource://gre/modules/DNSRecord.jsm');
+ChromeUtils.import('resource://gre/modules/DNSTypes.jsm');
 
 function debug(msg) {
   Services.console.logStringMessage('MulticastDNS: ' + msg);

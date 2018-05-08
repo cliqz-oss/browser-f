@@ -1,12 +1,12 @@
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
-                                  "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
 
 add_task(async function() {
-  let migrator = MigrationUtils.getMigrator("ie");
+  let migrator = await MigrationUtils.getMigrator("ie");
   // Sanity check for the source.
-  Assert.ok(migrator.sourceExists);
+  Assert.ok(await migrator.isSourceAvailable());
 
   const BOOL = ctypes.bool;
   const LPCTSTR = ctypes.char16_t.ptr;
@@ -61,7 +61,7 @@ add_task(async function() {
     href: `http://mycookietest.${Math.random()}.com`,
     name: "testcookie",
     value: "testvalue",
-    expiry: new Date(new Date().setDate(date + 2))
+    expiry: new Date(new Date().setDate(date + 2)),
   };
   let data = ctypes.char16_t.array()(256);
   let sizeRef = DWORD(256).address();

@@ -120,9 +120,11 @@ public:
   void AddHistoryObserver(nsNavHistoryQueryResultNode* aNode);
   void AddBookmarkFolderObserver(nsNavHistoryFolderResultNode* aNode, int64_t aFolder);
   void AddAllBookmarksObserver(nsNavHistoryQueryResultNode* aNode);
+  void AddMobilePrefsObserver(nsNavHistoryQueryResultNode* aNode);
   void RemoveHistoryObserver(nsNavHistoryQueryResultNode* aNode);
   void RemoveBookmarkFolderObserver(nsNavHistoryFolderResultNode* aNode, int64_t aFolder);
   void RemoveAllBookmarksObserver(nsNavHistoryQueryResultNode* aNode);
+  void RemoveMobilePrefsObserver(nsNavHistoryQueryResultNode* aNode);
   void StopObserving();
 
   nsresult OnVisit(nsIURI* aURI, int64_t aVisitId, PRTime aTime,
@@ -157,10 +159,12 @@ public:
   bool mIsHistoryObserver;
   bool mIsBookmarkFolderObserver;
   bool mIsAllBookmarksObserver;
+  bool mIsMobilePrefObserver;
 
   typedef nsTArray< RefPtr<nsNavHistoryQueryResultNode> > QueryObserverList;
   QueryObserverList mHistoryObservers;
   QueryObserverList mAllBookmarksObservers;
+  QueryObserverList mMobilePrefObservers;
 
   typedef nsTArray< RefPtr<nsNavHistoryFolderResultNode> > FolderObserverList;
   nsDataHashtable<nsTrimInt64HashKey, FolderObserverList*> mBookmarkFolderObservers;
@@ -180,6 +184,10 @@ public:
 
   ContainerObserverList mRefreshParticipants;
   void requestRefresh(nsNavHistoryContainerResultNode* aContainer);
+
+  void OnMobilePrefChanged();
+
+  static void OnMobilePrefChangedCallback(const char* prefName, void* closure);
 
 protected:
   virtual ~nsNavHistoryResult();
@@ -290,13 +298,16 @@ public:
                            const nsACString &aOldValue,
                            uint16_t aSource);
 
+  virtual nsresult OnMobilePrefChanged(bool newValue) {
+    return NS_OK;
+  };
+
 protected:
   virtual ~nsNavHistoryResultNode() {}
 
 public:
 
   nsNavHistoryResult* GetResult();
-  nsNavHistoryQueryOptions* GetGeneratingOptions();
 
   // These functions test the type. We don't use a virtual function since that
   // would take a vtable slot for every one of (potentially very many) nodes.
@@ -471,9 +482,18 @@ public:
   // Filled in by the result type generator in nsNavHistory.
   nsCOMArray<nsNavHistoryResultNode> mChildren;
 
+  // mOriginalOptions is the options object used to _define_ this specific
+  // container node. It may differ from mOptions, that is the options used
+  // to _fill_ this container node, because mOptions may be modified by
+  // the direct parent of this container node, see SetAsParentOfNode. For
+  // example, if the parent has excludeItems, options will have it too, even if
+  // originally this object was not defined with that option.
+  nsCOMPtr<nsNavHistoryQueryOptions> mOriginalOptions;
   nsCOMPtr<nsNavHistoryQueryOptions> mOptions;
 
   void FillStats();
+  // Sets this container as parent of aNode, propagating the appropriate options.
+  void SetAsParentOfNode(nsNavHistoryResultNode* aNode);
   nsresult ReverseUpdateStats(int32_t aAccessCountChange);
 
   // Sorting methods.
@@ -518,12 +538,6 @@ public:
   static int32_t SortComparison_VisitCountGreater(nsNavHistoryResultNode* a,
                                                   nsNavHistoryResultNode* b,
                                                   void* closure);
-  static int32_t SortComparison_KeywordLess(nsNavHistoryResultNode* a,
-                                            nsNavHistoryResultNode* b,
-                                            void* closure);
-  static int32_t SortComparison_KeywordGreater(nsNavHistoryResultNode* a,
-                                               nsNavHistoryResultNode* b,
-                                               void* closure);
   static int32_t SortComparison_AnnotationLess(nsNavHistoryResultNode* a,
                                                nsNavHistoryResultNode* b,
                                                void* closure);
@@ -561,6 +575,9 @@ public:
   // returns the index of the given node, -1 if not found
   int32_t FindChild(nsNavHistoryResultNode* aNode)
     { return mChildren.IndexOf(aNode); }
+
+  nsNavHistoryResultNode* FindChildByGuid(const nsACString& guid,
+                                          int32_t* nodeIndex);
 
   nsresult InsertChildAt(nsNavHistoryResultNode* aNode, int32_t aIndex);
   nsresult InsertSortedChild(nsNavHistoryResultNode* aNode,
@@ -627,6 +644,8 @@ public:
   NS_FORWARD_CONTAINERNODE_EXCEPT_HASCHILDREN
   NS_IMETHOD GetHasChildren(bool* aHasChildren) override;
   NS_DECL_NSINAVHISTORYQUERYRESULTNODE
+
+  virtual nsresult OnMobilePrefChanged(bool newValue) override;
 
   bool CanExpand();
   bool IsContainersQuery();

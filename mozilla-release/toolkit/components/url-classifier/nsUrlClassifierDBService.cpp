@@ -573,13 +573,11 @@ nsUrlClassifierDBServiceWorker::FinishStream()
     if (mProtocolParser->ResetRequested()) {
       mClassifier->ResetTables(Classifier::Clear_All, mUpdateTables);
     }
-  } else {
-    mUpdateStatus = NS_ERROR_UC_UPDATE_PROTOCOL_PARSER_ERROR;
   }
 
   mProtocolParser = nullptr;
 
-  return NS_OK;
+  return mUpdateStatus;
 }
 
 NS_IMETHODIMP
@@ -867,6 +865,16 @@ nsUrlClassifierDBServiceWorker::CacheCompletions(CacheResultArray *results)
   nsTArray<nsCString> tables;
   nsresult rv = mClassifier->ActiveTables(tables);
   NS_ENSURE_SUCCESS(rv, rv);
+  if (LOG_ENABLED()) {
+    nsCString s;
+    for (size_t i=0; i < tables.Length(); i++) {
+      if (!s.IsEmpty()) {
+        s += ",";
+      }
+      s += tables[i];
+    }
+    LOG(("Active tables: %s", s.get()));
+  }
 
   nsTArray<TableUpdate*> updates;
 
@@ -897,7 +905,8 @@ nsUrlClassifierDBServiceWorker::CacheCompletions(CacheResultArray *results)
       updates.AppendElement(tu);
       pParse->ForgetTableUpdates();
     } else {
-      LOG(("Completion received, but table is not active, so not caching."));
+      LOG(("Completion received, but table %s is not active, so not caching.",
+           result->table.get()));
     }
    }
 
@@ -1878,8 +1887,8 @@ nsUrlClassifierDBService::AsyncClassifyLocalWithTables(nsIURI *aURI,
         "nsUrlClassifierDBService::AsyncClassifyLocalWithTables",
         [callback, matchedLists, startTime]() -> void {
           // Measure the time diff between calling and callback.
-          AccumulateDelta_impl<Millisecond>::compute(
-            Telemetry::URLCLASSIFIER_ASYNC_CLASSIFYLOCAL_TIME, startTime);
+          AccumulateTimeDelta(Telemetry::URLCLASSIFIER_ASYNC_CLASSIFYLOCAL_TIME,
+                              startTime);
 
           // |callback| is captured as const value so ...
           auto cb = const_cast<nsIURIClassifierCallback*>(callback.get());
@@ -2127,6 +2136,7 @@ nsUrlClassifierDBService::SendThreatHitReport(nsIChannel *aChannel,
                      nsContentUtils::GetSystemPrincipal(),
                      nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                      nsIContentPolicy::TYPE_OTHER,
+                     nullptr,  // aPerformanceStorage
                      nullptr,  // aLoadGroup
                      nullptr,
                      loadFlags);

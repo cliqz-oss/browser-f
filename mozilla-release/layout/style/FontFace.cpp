@@ -20,6 +20,7 @@
 #include "nsCSSParser.h"
 #include "nsIDocument.h"
 #include "nsStyleUtil.h"
+#include "StylePrefs.h"
 
 namespace mozilla {
 namespace dom {
@@ -345,6 +346,21 @@ FontFace::SetFeatureSettings(const nsAString& aValue, ErrorResult& aRv)
 }
 
 void
+FontFace::GetVariationSettings(nsString& aResult)
+{
+  mFontFaceSet->FlushUserFontSet();
+  GetDesc(eCSSFontDesc_FontVariationSettings, eCSSProperty_font_variation_settings,
+          aResult);
+}
+
+void
+FontFace::SetVariationSettings(const nsAString& aValue, ErrorResult& aRv)
+{
+  mFontFaceSet->FlushUserFontSet();
+  SetDescriptor(eCSSFontDesc_FontVariationSettings, aValue, aRv);
+}
+
+void
 FontFace::GetDisplay(nsString& aResult)
 {
   mFontFaceSet->FlushUserFontSet();
@@ -526,6 +542,7 @@ FontFace::ParseDescriptor(nsCSSFontDesc aDescID,
     return ServoCSSParser::ParseFontDescriptor(aDescID, aString, url, aResult);
   }
 
+#ifdef MOZ_OLD_STYLE
   nsCSSParser parser;
   if (!parser.ParseFontFaceDescriptor(aDescID, aString,
                                       docURI, // aSheetURL
@@ -537,6 +554,9 @@ FontFace::ParseDescriptor(nsCSSFontDesc aDescID,
   }
 
   return true;
+#else
+  MOZ_CRASH("old style system disabled");
+#endif
 }
 
 void
@@ -596,6 +616,10 @@ FontFace::SetDescriptors(const nsAString& aFamily,
       !ParseDescriptor(eCSSFontDesc_FontFeatureSettings,
                        aDescriptors.mFeatureSettings,
                        mDescriptors->mFontFeatureSettings) ||
+      (StylePrefs::sFontVariationsEnabled &&
+       !ParseDescriptor(eCSSFontDesc_FontVariationSettings,
+                        aDescriptors.mVariationSettings,
+                        mDescriptors->mFontVariationSettings)) ||
       !ParseDescriptor(eCSSFontDesc_Display,
                        aDescriptors.mDisplay,
                        mDescriptors->mDisplay)) {

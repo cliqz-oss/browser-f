@@ -96,29 +96,6 @@ MacroAssemblerARM::convertUInt32ToDouble(Register src, FloatRegister dest_)
 
 static const double TO_DOUBLE_HIGH_SCALE = 0x100000000;
 
-bool
-MacroAssemblerARMCompat::convertUInt64ToDoubleNeedsTemp()
-{
-    return false;
-}
-
-void
-MacroAssemblerARMCompat::convertUInt64ToDouble(Register64 src, FloatRegister dest, Register temp)
-{
-    MOZ_ASSERT(temp == Register::Invalid());
-    ScratchDoubleScope scratchDouble(asMasm());
-
-    convertUInt32ToDouble(src.high, dest);
-    {
-        ScratchRegisterScope scratch(asMasm());
-        movePtr(ImmPtr(&TO_DOUBLE_HIGH_SCALE), scratch);
-        ma_vldr(Operand(Address(scratch, 0)).toVFPAddr(), scratchDouble);
-    }
-    asMasm().mulDouble(scratchDouble, dest);
-    convertUInt32ToDouble(src.low, scratchDouble);
-    asMasm().addDouble(scratchDouble, dest);
-}
-
 void
 MacroAssemblerARM::convertUInt32ToFloat32(Register src, FloatRegister dest_)
 {
@@ -330,22 +307,23 @@ MacroAssemblerARM::ma_nop()
     as_nop();
 }
 
-void
+BufferOffset
 MacroAssemblerARM::ma_movPatchable(Imm32 imm_, Register dest, Assembler::Condition c)
 {
     int32_t imm = imm_.value;
     if (HasMOVWT()) {
-        as_movw(dest, Imm16(imm & 0xffff), c);
+        BufferOffset offset = as_movw(dest, Imm16(imm & 0xffff), c);
         as_movt(dest, Imm16(imm >> 16 & 0xffff), c);
+        return offset;
     } else {
-        as_Imm32Pool(dest, imm, c);
+        return as_Imm32Pool(dest, imm, c);
     }
 }
 
-void
+BufferOffset
 MacroAssemblerARM::ma_movPatchable(ImmPtr imm, Register dest, Assembler::Condition c)
 {
-    ma_movPatchable(Imm32(int32_t(imm.value)), dest, c);
+    return ma_movPatchable(Imm32(int32_t(imm.value)), dest, c);
 }
 
 /* static */
@@ -426,10 +404,8 @@ MacroAssemblerARM::ma_mov(ImmWord imm, Register dest, Assembler::Condition c)
 void
 MacroAssemblerARM::ma_mov(ImmGCPtr ptr, Register dest)
 {
-    // As opposed to x86/x64 version, the data relocation has to be executed
-    // before to recover the pointer, and not after.
-    writeDataRelocation(ptr);
-    ma_movPatchable(Imm32(uintptr_t(ptr.value)), dest, Always);
+    BufferOffset offset = ma_movPatchable(Imm32(uintptr_t(ptr.value)), dest, Always);
+    writeDataRelocation(offset, ptr);
 }
 
 // Shifts (just a move with a shifting op2)
@@ -1828,18 +1804,6 @@ MacroAssemblerARMCompat::buildOOLFakeExitFrame(void* fakeReturnAddr)
 }
 
 void
-MacroAssembler::alignFrameForICArguments(AfterICSaveLive& aic)
-{
-    // Exists for MIPS compatibility.
-}
-
-void
-MacroAssembler::restoreFrameAlignmentForICArguments(AfterICSaveLive& aic)
-{
-    // Exists for MIPS compatibility.
-}
-
-void
 MacroAssemblerARMCompat::move32(Imm32 imm, Register dest)
 {
     ma_mov(imm, dest);
@@ -3040,34 +3004,69 @@ MacroAssemblerARMCompat::testGCThing(Condition cond, const BaseIndex& address)
 
 // Unboxing code.
 void
-MacroAssemblerARMCompat::unboxNonDouble(const ValueOperand& operand, Register dest)
+MacroAssemblerARMCompat::unboxNonDouble(const ValueOperand& operand, Register dest, JSValueType type)
 {
-    if (operand.payloadReg() != dest)
-        ma_mov(operand.payloadReg(), dest);
+    auto movPayloadToDest = [&]() {
+        if (operand.payloadReg() != dest)
+            ma_mov(operand.payloadReg(), dest, LeaveCC);
+    };
+    if (!JitOptions.spectreValueMasking) {
+        movPayloadToDest();
+        return;
+    }
+
+    // Spectre mitigation: We zero the payload if the tag does not match the
+    // expected type and if this is a pointer type.
+    if (type == JSVAL_TYPE_INT32 || type == JSVAL_TYPE_BOOLEAN) {
+        movPayloadToDest();
+        return;
+    }
+
+    // We zero the destination register and move the payload into it if
+    // the tag corresponds to the given type.
+    ma_cmp(operand.typeReg(), ImmType(type));
+    movPayloadToDest();
+    ma_mov(Imm32(0), dest, NotEqual);
 }
 
 void
-MacroAssemblerARMCompat::unboxNonDouble(const Address& src, Register dest)
+MacroAssemblerARMCompat::unboxNonDouble(const Address& src, Register dest, JSValueType type)
 {
     ScratchRegisterScope scratch(asMasm());
-    ma_ldr(ToPayload(src), dest, scratch);
+    if (!JitOptions.spectreValueMasking) {
+        ma_ldr(ToPayload(src), dest, scratch);
+        return;
+    }
+
+    // Spectre mitigation: We zero the payload if the tag does not match the
+    // expected type and if this is a pointer type.
+    if (type == JSVAL_TYPE_INT32 || type == JSVAL_TYPE_BOOLEAN) {
+        ma_ldr(ToPayload(src), dest, scratch);
+        return;
+    }
+
+    // We zero the destination register and move the payload into it if
+    // the tag corresponds to the given type.
+    ma_ldr(ToType(src), scratch, scratch);
+    ma_cmp(scratch, ImmType(type));
+    ma_ldr(ToPayload(src), dest, scratch, Offset, Equal);
+    ma_mov(Imm32(0), dest, NotEqual);
 }
 
 void
-MacroAssemblerARMCompat::unboxNonDouble(const BaseIndex& src, Register dest)
+MacroAssemblerARMCompat::unboxNonDouble(const BaseIndex& src, Register dest, JSValueType type)
 {
-    ScratchRegisterScope scratch(asMasm());
     SecondScratchRegisterScope scratch2(asMasm());
-    ma_alu(src.base, lsl(src.index, src.scale), scratch, OpAdd);
-    ma_ldr(Address(scratch, src.offset), dest, scratch2);
+    ma_alu(src.base, lsl(src.index, src.scale), scratch2, OpAdd);
+    Address value(scratch2, src.offset);
+    unboxNonDouble(value, dest, type);
 }
 
 void
 MacroAssemblerARMCompat::unboxDouble(const ValueOperand& operand, FloatRegister dest)
 {
     MOZ_ASSERT(dest.isDouble());
-    as_vxfer(operand.payloadReg(), operand.typeReg(),
-             VFPRegister(dest), CoreToFloat);
+    as_vxfer(operand.payloadReg(), operand.typeReg(), VFPRegister(dest), CoreToFloat);
 }
 
 void
@@ -3079,7 +3078,7 @@ MacroAssemblerARMCompat::unboxDouble(const Address& src, FloatRegister dest)
 }
 
 void
-MacroAssemblerARMCompat::unboxValue(const ValueOperand& src, AnyRegister dest)
+MacroAssemblerARMCompat::unboxValue(const ValueOperand& src, AnyRegister dest, JSValueType type)
 {
     if (dest.isFloat()) {
         Label notInt32, end;
@@ -3089,8 +3088,8 @@ MacroAssemblerARMCompat::unboxValue(const ValueOperand& src, AnyRegister dest)
         bind(&notInt32);
         unboxDouble(src, dest.fpu());
         bind(&end);
-    } else if (src.payloadReg() != dest.gpr()) {
-        as_mov(dest.gpr(), O2Reg(src.payloadReg()));
+    } else {
+        unboxNonDouble(src, dest.gpr(), type);
     }
 }
 
@@ -4152,7 +4151,7 @@ CodeOffsetJump
 MacroAssemblerARMCompat::jumpWithPatch(RepatchLabel* label, Condition cond, Label* documentation)
 {
     ARMBuffer::PoolEntry pe;
-    BufferOffset bo = as_BranchPool(0xdeadbeef, label, &pe, cond, documentation);
+    BufferOffset bo = as_BranchPool(0xdeadbeef, label, refLabel(documentation), &pe, cond);
     // Fill in a new CodeOffset with both the load and the pool entry that the
     // instruction loads from.
     CodeOffsetJump ret(bo.getOffset(), pe.index());
@@ -4815,32 +4814,65 @@ MacroAssembler::moveValue(const Value& src, const ValueOperand& dest)
 // Branch functions
 
 void
-MacroAssembler::branchPtrInNurseryChunk(Condition cond, Register ptr, Register temp,
-                                        Label* label)
+MacroAssembler::loadStoreBuffer(Register ptr, Register buffer)
 {
-    SecondScratchRegisterScope scratch2(*this);
-
-    MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-    MOZ_ASSERT(ptr != temp);
-    MOZ_ASSERT(ptr != scratch2);
-
-    ma_lsr(Imm32(gc::ChunkShift), ptr, scratch2);
-    ma_lsl(Imm32(gc::ChunkShift), scratch2, scratch2);
-    load32(Address(scratch2, gc::ChunkLocationOffset), scratch2);
-    branch32(cond, scratch2, Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
+    ma_lsr(Imm32(gc::ChunkShift), ptr, buffer);
+    ma_lsl(Imm32(gc::ChunkShift), buffer, buffer);
+    load32(Address(buffer, gc::ChunkStoreBufferOffset), buffer);
 }
 
 void
-MacroAssembler::branchValueIsNurseryObject(Condition cond, const Address& address,
-                                           Register temp, Label* label)
+MacroAssembler::branchPtrInNurseryChunk(Condition cond, Register ptr, Register temp,
+                                        Label* label)
+{
+    Maybe<SecondScratchRegisterScope> scratch2;
+    if (temp == Register::Invalid()) {
+        scratch2.emplace(*this);
+        temp = scratch2.ref();
+    }
+
+    MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+    MOZ_ASSERT(ptr != temp);
+
+    ma_lsr(Imm32(gc::ChunkShift), ptr, temp);
+    ma_lsl(Imm32(gc::ChunkShift), temp, temp);
+    load32(Address(temp, gc::ChunkLocationOffset), temp);
+    branch32(cond, temp, Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
+}
+
+void
+MacroAssembler::branchValueIsNurseryCell(Condition cond, const Address& address,
+                                         Register temp, Label* label)
 {
     MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+    Label done, checkAddress;
 
-    Label done;
-    branchTestObject(Assembler::NotEqual, address, cond == Assembler::Equal ? &done : label);
+    Register tag = temp;
+    extractTag(address, tag);
+    branchTestObject(Assembler::Equal, tag, &checkAddress);
+    branchTestString(Assembler::NotEqual, tag, cond == Assembler::Equal ? &done : label);
 
-    loadPtr(address, temp);
-    branchPtrInNurseryChunk(cond, temp, InvalidReg, label);
+    bind(&checkAddress);
+    loadPtr(ToPayload(address), temp);
+    SecondScratchRegisterScope scratch2(*this);
+    branchPtrInNurseryChunk(cond, temp, scratch2, label);
+
+    bind(&done);
+}
+
+void
+MacroAssembler::branchValueIsNurseryCell(Condition cond, ValueOperand value,
+                                         Register temp, Label* label)
+{
+    MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+    Label done, checkAddress;
+
+    branchTestObject(Assembler::Equal, value.typeReg(), &checkAddress);
+    branchTestString(Assembler::NotEqual, value.typeReg(),
+                     cond == Assembler::Equal ? &done : label);
+
+    bind(&checkAddress);
+    branchPtrInNurseryChunk(cond, value.payloadReg(), temp, label);
 
     bind(&done);
 }
@@ -4850,11 +4882,10 @@ MacroAssembler::branchValueIsNurseryObject(Condition cond, ValueOperand value,
                                            Register temp, Label* label)
 {
     MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
-
     Label done;
-    branchTestObject(Assembler::NotEqual, value, cond == Assembler::Equal ? &done : label);
 
-    branchPtrInNurseryChunk(cond, value.payloadReg(), InvalidReg, label);
+    branchTestObject(Assembler::NotEqual, value, cond == Assembler::Equal ? &done : label);
+    branchPtrInNurseryChunk(cond, value.payloadReg(), temp, label);
 
     bind(&done);
 }
@@ -4912,33 +4943,70 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
                                   const BaseIndex& dest, MIRType slotType);
 
 CodeOffset
-MacroAssembler::illegalInstruction()
+MacroAssembler::wasmTrapInstruction()
 {
     return CodeOffset(as_illegal_trap().getOffset());
 }
 
 void
-MacroAssembler::wasmTruncateDoubleToUInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateDoubleToUInt32(FloatRegister input, Register output,
+                                           bool isSaturating, Label* oolEntry)
 {
-    wasmTruncateToInt32(input, output, MIRType::Double, /* isUnsigned= */ true, oolEntry);
+    wasmTruncateToInt32(input, output, MIRType::Double, /* isUnsigned= */ true, isSaturating,
+                        oolEntry);
 }
 
 void
-MacroAssembler::wasmTruncateDoubleToInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateDoubleToInt32(FloatRegister input, Register output,
+                                          bool isSaturating, Label* oolEntry)
 {
-    wasmTruncateToInt32(input, output, MIRType::Double, /* isUnsigned= */ false, oolEntry);
+    wasmTruncateToInt32(input, output, MIRType::Double, /* isUnsigned= */ false,isSaturating,
+                         oolEntry);
 }
 
 void
-MacroAssembler::wasmTruncateFloat32ToUInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateFloat32ToUInt32(FloatRegister input, Register output,
+                                            bool isSaturating, Label* oolEntry)
 {
-    wasmTruncateToInt32(input, output, MIRType::Float32, /* isUnsigned= */ true, oolEntry);
+    wasmTruncateToInt32(input, output, MIRType::Float32, /* isUnsigned= */ true,isSaturating,
+                         oolEntry);
 }
 
 void
-MacroAssembler::wasmTruncateFloat32ToInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateFloat32ToInt32(FloatRegister input, Register output,
+                                           bool isSaturating, Label* oolEntry)
 {
-    wasmTruncateToInt32(input, output, MIRType::Float32, /* isUnsigned= */ false, oolEntry);
+    wasmTruncateToInt32(input, output, MIRType::Float32, /* isUnsigned= */ false,isSaturating,
+                         oolEntry);
+}
+
+void
+MacroAssembler::oolWasmTruncateCheckF32ToI32(FloatRegister input, Register output, TruncFlags flags,
+                                             wasm::BytecodeOffset off, Label* rejoin)
+{
+    outOfLineWasmTruncateToIntCheck(input, MIRType::Float32, MIRType::Int32, flags, rejoin, off);
+}
+
+void
+MacroAssembler::oolWasmTruncateCheckF64ToI32(FloatRegister input, Register output, TruncFlags flags,
+                                             wasm::BytecodeOffset off, Label* rejoin)
+{
+    outOfLineWasmTruncateToIntCheck(input, MIRType::Double, MIRType::Int32, flags, rejoin, off);
+}
+
+void
+MacroAssembler::oolWasmTruncateCheckF32ToI64(FloatRegister input, Register64 output, TruncFlags flags,
+                                             wasm::BytecodeOffset off, Label* rejoin)
+{
+    outOfLineWasmTruncateToIntCheck(input, MIRType::Float32, MIRType::Int64, flags, rejoin, off);
+}
+
+void
+MacroAssembler::oolWasmTruncateCheckF64ToI64(FloatRegister input, Register64 output, TruncFlags flags,
+                                             wasm::BytecodeOffset off,
+                                             Label* rejoin)
+{
+    outOfLineWasmTruncateToIntCheck(input, MIRType::Double, MIRType::Int64, flags, rejoin, off);
 }
 
 void
@@ -4999,8 +5067,10 @@ MacroAssembler::wasmUnalignedLoadI64(const wasm::MemoryAccessDesc& access, Regis
 
 void
 MacroAssembler::wasmUnalignedStore(const wasm::MemoryAccessDesc& access, Register value,
-                                   Register memoryBase, Register ptr, Register ptrScratch)
+                                   Register memoryBase, Register ptr, Register ptrScratch,
+                                   Register tmp)
 {
+    MOZ_ASSERT(tmp == Register::Invalid());
     wasmUnalignedStoreImpl(access, FloatRegister(), Register64::Invalid(), memoryBase, ptr,
                            ptrScratch, value);
 }
@@ -5620,15 +5690,156 @@ MacroAssembler::atomicFetchOp64(const Synchronization& sync, AtomicOp op, Regist
     AtomicFetchOp64(*this, sync, op, value, mem, temp, output);
 }
 
+// ========================================================================
+// JS atomic operations.
+
+template<typename T>
+static void
+CompareExchangeJS(MacroAssembler& masm, Scalar::Type arrayType, const Synchronization& sync,
+                  const T& mem, Register oldval, Register newval, Register temp, AnyRegister output)
+{
+    if (arrayType == Scalar::Uint32) {
+        masm.compareExchange(arrayType, sync, mem, oldval, newval, temp);
+        masm.convertUInt32ToDouble(temp, output.fpu());
+    } else {
+        masm.compareExchange(arrayType, sync, mem, oldval, newval, output.gpr());
+    }
+}
+
+void
+MacroAssembler::compareExchangeJS(Scalar::Type arrayType, const Synchronization& sync,
+                                  const Address& mem, Register oldval, Register newval,
+                                  Register temp, AnyRegister output)
+{
+    CompareExchangeJS(*this, arrayType, sync, mem, oldval, newval, temp, output);
+}
+
+void
+MacroAssembler::compareExchangeJS(Scalar::Type arrayType, const Synchronization& sync,
+                                  const BaseIndex& mem, Register oldval, Register newval,
+                                  Register temp, AnyRegister output)
+{
+    CompareExchangeJS(*this, arrayType, sync, mem, oldval, newval, temp, output);
+}
+
+template<typename T>
+static void
+AtomicExchangeJS(MacroAssembler& masm, Scalar::Type arrayType, const Synchronization& sync,
+                 const T& mem, Register value, Register temp, AnyRegister output)
+{
+    if (arrayType == Scalar::Uint32) {
+        masm.atomicExchange(arrayType, sync, mem, value, temp);
+        masm.convertUInt32ToDouble(temp, output.fpu());
+    } else {
+        masm.atomicExchange(arrayType, sync, mem, value, output.gpr());
+    }
+}
+
+void
+MacroAssembler::atomicExchangeJS(Scalar::Type arrayType, const Synchronization& sync,
+                                 const Address& mem, Register value, Register temp,
+                                 AnyRegister output)
+{
+    AtomicExchangeJS(*this, arrayType, sync, mem, value, temp, output);
+}
+
+void
+MacroAssembler::atomicExchangeJS(Scalar::Type arrayType, const Synchronization& sync,
+                                 const BaseIndex& mem, Register value, Register temp,
+                                 AnyRegister output)
+{
+    AtomicExchangeJS(*this, arrayType, sync, mem, value, temp, output);
+}
+
+template<typename T>
+static void
+AtomicFetchOpJS(MacroAssembler& masm, Scalar::Type arrayType, const Synchronization& sync,
+                AtomicOp op, Register value, const T& mem, Register temp1, Register temp2,
+                AnyRegister output)
+{
+    if (arrayType == Scalar::Uint32) {
+        masm.atomicFetchOp(arrayType, sync, op, value, mem, temp2, temp1);
+        masm.convertUInt32ToDouble(temp1, output.fpu());
+    } else {
+        masm.atomicFetchOp(arrayType, sync, op, value, mem, temp1, output.gpr());
+    }
+}
+
+void
+MacroAssembler::atomicFetchOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
+                                Register value, const Address& mem, Register temp1, Register temp2,
+                                AnyRegister output)
+{
+    AtomicFetchOpJS(*this, arrayType, sync, op, value, mem, temp1, temp2, output);
+}
+
+void
+MacroAssembler::atomicFetchOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
+                                Register value, const BaseIndex& mem, Register temp1, Register temp2,
+                                AnyRegister output)
+{
+    AtomicFetchOpJS(*this, arrayType, sync, op, value, mem, temp1, temp2, output);
+}
+
+void
+MacroAssembler::atomicEffectOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
+                           Register value, const BaseIndex& mem, Register temp)
+{
+    atomicEffectOp(arrayType, sync, op, value, mem, temp);
+}
+
+void
+MacroAssembler::atomicEffectOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
+                           Register value, const Address& mem, Register temp)
+{
+    atomicEffectOp(arrayType, sync, op, value, mem, temp);
+}
+
+// ========================================================================
+// Convert floating point.
+
+bool
+MacroAssembler::convertUInt64ToDoubleNeedsTemp()
+{
+    return false;
+}
+
+void
+MacroAssembler::convertUInt64ToDouble(Register64 src, FloatRegister dest, Register temp)
+{
+    MOZ_ASSERT(temp == Register::Invalid());
+    ScratchDoubleScope scratchDouble(*this);
+
+    convertUInt32ToDouble(src.high, dest);
+    {
+        ScratchRegisterScope scratch(*this);
+        movePtr(ImmPtr(&TO_DOUBLE_HIGH_SCALE), scratch);
+        ma_vldr(Operand(Address(scratch, 0)).toVFPAddr(), scratchDouble);
+    }
+    mulDouble(scratchDouble, dest);
+    convertUInt32ToDouble(src.low, scratchDouble);
+    addDouble(scratchDouble, dest);
+}
+
+// ========================================================================
+// Spectre Mitigations.
+
+void
+MacroAssembler::speculationBarrier()
+{
+    // Spectre mitigation recommended by ARM for cases where csel/cmov cannot be
+    // used.
+    as_csdb();
+}
 
 //}}} check_macroassembler_style
 
 void
 MacroAssemblerARM::wasmTruncateToInt32(FloatRegister input, Register output, MIRType fromType,
-                                       bool isUnsigned, Label* oolEntry)
+                                       bool isUnsigned, bool isSaturating, Label* oolEntry)
 {
     // vcvt* converts NaN into 0, so check for NaNs here.
-    {
+    if (!isSaturating) {
         if (fromType == MIRType::Double)
             asMasm().compareDouble(input, input);
         else if (fromType == MIRType::Float32)
@@ -5656,10 +5867,12 @@ MacroAssemblerARM::wasmTruncateToInt32(FloatRegister input, Register output, MIR
 
         ma_vxfer(scratch, output);
 
-        // int32_t(UINT32_MAX) == -1.
-        ma_cmp(output, Imm32(-1), scratchReg);
-        as_cmp(output, Imm8(0), Assembler::NotEqual);
-        ma_b(oolEntry, Assembler::Equal);
+        if (!isSaturating) {
+            // int32_t(UINT32_MAX) == -1.
+            ma_cmp(output, Imm32(-1), scratchReg);
+            as_cmp(output, Imm8(0), Assembler::NotEqual);
+            ma_b(oolEntry, Assembler::Equal);
+        }
 
         return;
     }
@@ -5674,16 +5887,25 @@ MacroAssemblerARM::wasmTruncateToInt32(FloatRegister input, Register output, MIR
         MOZ_CRASH("unexpected type in visitWasmTruncateToInt32");
 
     ma_vxfer(scratch, output);
-    ma_cmp(output, Imm32(INT32_MAX), scratchReg);
-    ma_cmp(output, Imm32(INT32_MIN), scratchReg, Assembler::NotEqual);
-    ma_b(oolEntry, Assembler::Equal);
+
+    if (!isSaturating) {
+        ma_cmp(output, Imm32(INT32_MAX), scratchReg);
+        ma_cmp(output, Imm32(INT32_MIN), scratchReg, Assembler::NotEqual);
+        ma_b(oolEntry, Assembler::Equal);
+    }
 }
 
 void
 MacroAssemblerARM::outOfLineWasmTruncateToIntCheck(FloatRegister input, MIRType fromType,
-                                                   MIRType toType, bool isUnsigned, Label* rejoin,
-                                                   wasm::BytecodeOffset trapOffset)
+                                                   MIRType toType, TruncFlags flags,
+                                                   Label* rejoin, wasm::BytecodeOffset trapOffset)
 {
+    // On ARM, saturating truncation codegen handles saturating itself rather
+    // than relying on out-of-line fixup code.
+    if (flags & TRUNC_SATURATING)
+        return;
+
+    bool isUnsigned = flags & TRUNC_UNSIGNED;
     ScratchDoubleScope scratchScope(asMasm());
     FloatRegister scratch;
 
@@ -5757,12 +5979,10 @@ MacroAssemblerARM::outOfLineWasmTruncateToIntCheck(FloatRegister input, MIRType 
 
     // Handle errors.
     bind(&fail);
-    asMasm().jump(wasm::OldTrapDesc(trapOffset, wasm::Trap::IntegerOverflow,
-                                    asMasm().framePushed()));
+    asMasm().wasmTrap(wasm::Trap::IntegerOverflow, trapOffset);
 
     bind(&inputIsNaN);
-    asMasm().jump(wasm::OldTrapDesc(trapOffset, wasm::Trap::InvalidConversionToInteger,
-                                    asMasm().framePushed()));
+    asMasm().wasmTrap(wasm::Trap::InvalidConversionToInteger, trapOffset);
 }
 
 void

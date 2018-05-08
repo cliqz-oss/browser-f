@@ -8,7 +8,9 @@
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/CORSMode.h"
+#include "mozilla/dom/ClientInfo.h"
 #include "mozilla/dom/HTMLLinkElement.h"
+#include "mozilla/dom/ServiceWorkerDescriptor.h"
 #include "mozilla/Preferences.h"
 
 #include "nsICacheEntry.h"
@@ -146,8 +148,11 @@ nsPrefetchNode::OpenChannel()
                                         source,
                                         source->NodePrincipal(),
                                         nullptr,   //aTriggeringPrincipal
+                                        Maybe<ClientInfo>(),
+                                        Maybe<ServiceWorkerDescriptor>(),
                                         securityFlags,
                                         mPolicyType,
+                                        nullptr,   // aPerformanceStorage
                                         loadGroup, // aLoadGroup
                                         this,      // aCallbacks
                                         nsIRequest::LOAD_BACKGROUND |

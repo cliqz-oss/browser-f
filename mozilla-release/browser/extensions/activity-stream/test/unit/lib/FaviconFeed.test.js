@@ -152,7 +152,7 @@ describe("FaviconFeed", () => {
       feed._sitesByDomain = {};
       feed._sitesByDomain._etag = "etag1234567890";
       await feed.refresh();
-      const headers = feed.loadFromURL.getCall(0).args[1];
+      const [, headers] = feed.loadFromURL.getCall(0).args;
       assert.equal(headers.get("If-None-Match"), feed._sitesByDomain._etag);
     });
     it("should not set _sitesByDomain if the remote manifest is not modified since last fetch", async () => {
@@ -207,7 +207,7 @@ describe("FaviconFeed", () => {
 
       assert.calledOnce(global.PlacesUtils.favicons.setAndFetchFaviconForPage);
       assert.calledWith(global.PlacesUtils.favicons.setAndFetchFaviconForPage,
-        {spec: url},
+        sinon.match({spec: url}),
         {ref: "tippytop", spec: `${url}/icon.png`},
         false,
         global.PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,

@@ -20,6 +20,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/Likely.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/MemoryReporting.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/ServoBindings.h"
 #include "nsAbsoluteContainingBlock.h"
@@ -34,7 +35,6 @@
 #include "nsTableColFrame.h"
 #include "nsTableRowFrame.h"
 #include "nsTableCellFrame.h"
-#include "nsIDOMHTMLDocument.h"
 #include "nsHTMLParts.h"
 #include "nsIPresShell.h"
 #include "nsUnicharUtils.h"
@@ -86,9 +86,9 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "nsAutoLayoutPhase.h"
+#include "nsStyleContextInlines.h"
 #include "nsStyleStructInlines.h"
 #include "nsPageContentFrame.h"
-#include "mozilla/GeckoStyleContext.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/RestyleManagerInlines.h"
 #include "mozilla/StylePrefs.h"
@@ -336,6 +336,8 @@ static int32_t FFWC_recursions=0;
 static int32_t FFWC_nextInFlows=0;
 #endif
 
+#ifdef MOZ_OLD_STYLE
+
 // Wrapper class to handle stack-construction a TreeMatchContext only if we're
 // using the Gecko style system.
 class MOZ_STACK_CLASS TreeMatchContextHolder
@@ -361,6 +363,21 @@ public:
 private:
   Maybe<TreeMatchContext> mMaybeTreeMatchContext;
 };
+
+#else
+
+// Define this dummy class so there are fewer call sites to change when the old
+// style system code is compiled out.
+class TreeMatchContextHolder
+{
+public:
+  explicit TreeMatchContextHolder(nsIDocument* aDocument) {}
+  bool Exists() const { return false; }
+  operator TreeMatchContext*() { return nullptr; }
+  TreeMatchContext* operator->() { MOZ_CRASH("old style system disabled"); }
+};
+
+#endif
 
 // Returns true if aFrame is an anonymous flex/grid item.
 static inline bool
@@ -880,7 +897,11 @@ public:
 
   bool HasAncestorFilter()
   {
+#ifdef MOZ_OLD_STYLE
     return mTreeMatchContext && mTreeMatchContext->mAncestorFilter.HasFilter();
+#else
+    return false;
+#endif
   }
 
   // Function to push the existing absolute containing block state and
@@ -1028,6 +1049,23 @@ protected:
   PendingBinding* mCurrentPendingBindingInsertionPoint;
 };
 
+#ifndef MOZ_OLD_STYLE
+
+namespace mozilla {
+
+class AutoDisplayContentsAncestorPusher
+{
+public:
+  AutoDisplayContentsAncestorPusher(TreeMatchContext& aTreeMatchContext,
+                                    nsPresContext* aPresContext,
+                                    nsIContent* aParent) {}
+  bool IsEmpty() const { return false; }
+};
+
+} // namespace mozilla
+
+#endif
+
 nsFrameConstructorState::nsFrameConstructorState(
   nsIPresShell* aPresShell,
   TreeMatchContext* aTreeMatchContext,
@@ -1037,7 +1075,7 @@ nsFrameConstructorState::nsFrameConstructorState(
   already_AddRefed<nsILayoutHistoryState> aHistoryState)
   : mPresContext(aPresShell->GetPresContext()),
     mPresShell(aPresShell),
-    mFrameManager(aPresShell->FrameManager()),
+    mFrameManager(aPresShell->FrameConstructor()),
 #ifdef MOZ_XUL
     mPopupItems(nullptr),
 #endif
@@ -1686,17 +1724,6 @@ nsCSSFrameConstructor::NotifyDestroyingFrame(nsIFrame* aFrame)
   nsFrameManager::NotifyDestroyingFrame(aFrame);
 }
 
-static bool
-HasGeneratedContent(const nsIContent* aChild)
-{
-  if (!aChild->MayHaveAnonymousChildren()) {
-    return false;
-  }
-
-  return nsLayoutUtils::GetBeforeFrame(aChild) ||
-         nsLayoutUtils::GetAfterFrame(aChild);
-}
-
 struct nsGenConInitializer {
   nsAutoPtr<nsGenConNode> mNode;
   nsGenConList*           mList;
@@ -1749,15 +1776,7 @@ nsCSSFrameConstructor::CreateGeneratedContent(nsFrameConstructorState& aState,
       // Create an image content object and pass it the image request.
       // XXX Check if it's an image type we can handle...
 
-      RefPtr<NodeInfo> nodeInfo;
-      nodeInfo = mDocument->NodeInfoManager()->
-        GetNodeInfo(nsGkAtoms::mozgeneratedcontentimage, nullptr,
-                    kNameSpaceID_XHTML, nsIDOMNode::ELEMENT_NODE);
-
-      nsCOMPtr<nsIContent> content;
-      NS_NewGenConImageContent(getter_AddRefs(content), nodeInfo.forget(),
-                               image);
-      return content.forget();
+      return CreateGenConImageContent(mDocument, image);
     }
 
     case eStyleContentType_String:
@@ -1918,7 +1937,7 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
     nsGkAtoms::mozgeneratedcontentbefore : nsGkAtoms::mozgeneratedcontentafter;
   nodeInfo = mDocument->NodeInfoManager()->GetNodeInfo(elemName, nullptr,
                                                        kNameSpaceID_None,
-                                                       nsIDOMNode::ELEMENT_NODE);
+                                                       nsINode::ELEMENT_NODE);
   nsCOMPtr<Element> container;
   nsresult rv = NS_NewXMLElement(getter_AddRefs(container), nodeInfo.forget());
   if (NS_FAILED(rv))
@@ -1964,6 +1983,7 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
         styleSet->AsServo()->ResolveServoStyle(container);
     }
   } else {
+#ifdef MOZ_OLD_STYLE
     mozilla::GeckoRestyleManager* geckoRM = RestyleManager()->AsGecko();
     GeckoRestyleManager::ReframingStyleContexts* rsc =
       geckoRM->GetReframingStyleContexts();
@@ -1983,6 +2003,9 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
       }
       pseudoStyleContext = newContext.forget();
     }
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
 
   uint32_t contentCount = pseudoStyleContext->StyleContent()->ContentCount();
@@ -3996,7 +4019,7 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
     insertionPointPusher(aState.mTreeMatchContext);
   if (adcp.isSome() && adcp->IsEmpty() && parent &&
       parent->IsActiveChildrenElement()) {
-    if (aState.mTreeMatchContext->mAncestorFilter.HasFilter()) {
+    if (aState.HasAncestorFilter()) {
       insertionPointPusher.PushAncestorAndStyleScope(parent);
     } else {
       insertionPointPusher.PushStyleScope(parent);
@@ -4252,19 +4275,6 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
     }
   }
 
-#ifdef MOZ_XUL
-  // More icky XUL stuff
-  if (aItem.mNameSpaceID == kNameSpaceID_XUL &&
-      (aItem.mTag == nsGkAtoms::treechildren || // trees always need titletips
-       content->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext) ||
-       content->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::tooltip))) {
-    nsIRootBox* rootBox = nsIRootBox::GetRootBox(mPresShell);
-    if (rootBox) {
-      rootBox->AddTooltipSupport(content);
-    }
-  }
-#endif
-
   NS_ASSERTION(newFrame->IsFrameOfType(nsIFrame::eLineParticipant) ==
                ((bits & FCDATA_IS_LINE_PARTICIPANT) != 0),
                "Incorrectly set FCDATA_IS_LINE_PARTICIPANT bits");
@@ -4499,6 +4509,7 @@ nsCSSFrameConstructor::FindXULTagData(Element* aElement,
   static const FrameConstructionDataByTag sXULTagData[] = {
 #ifdef MOZ_XUL
     SCROLLABLE_XUL_CREATE(button, NS_NewButtonBoxFrame),
+    SCROLLABLE_XUL_CREATE(thumb, NS_NewButtonBoxFrame),
     SCROLLABLE_XUL_CREATE(checkbox, NS_NewButtonBoxFrame),
     SCROLLABLE_XUL_CREATE(radio, NS_NewButtonBoxFrame),
     SCROLLABLE_XUL_CREATE(autorepeatbutton, NS_NewAutoRepeatBoxFrame),
@@ -5238,7 +5249,6 @@ nsCSSFrameConstructor::ResolveStyleContext(nsStyleContext* aParentStyleContext,
                                            Element* aOriginatingElementOrNull)
 {
   StyleSetHandle styleSet = mPresShell->StyleSet();
-  aContent->OwnerDoc()->FlushPendingLinkUpdates();
 
   RefPtr<nsStyleContext> result;
   if (aContent->IsElement()) {
@@ -5285,7 +5295,9 @@ nsCSSFrameConstructor::ResolveStyleContext(nsStyleContext* aParentStyleContext,
   // ServoRestyleManager does not handle transitions yet, and when it does
   // it probably won't need to track reframed style contexts to start
   // transitions correctly.
-  if (mozilla::GeckoRestyleManager* geckoRM = RestyleManager()->GetAsGecko()) {
+  if (RestyleManager()->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+    mozilla::GeckoRestyleManager* geckoRM = RestyleManager()->AsGecko();
     GeckoRestyleManager::ReframingStyleContexts* rsc =
       geckoRM->GetReframingStyleContexts();
     if (rsc) {
@@ -5304,6 +5316,9 @@ nsCSSFrameConstructor::ResolveStyleContext(nsStyleContext* aParentStyleContext,
             CSSPseudoElementType::NotPseudo, result->AsGecko());
       }
     }
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   }
 
   return result.forget();
@@ -5720,13 +5735,6 @@ nsCSSFrameConstructor::FindSVGData(Element* aElement,
       return &sTSpanData;
     }
     return &sSuppressData;
-  } else if (aTag == nsGkAtoms::text) {
-    static const FrameConstructionData sTextData =
-      FCDATA_WITH_WRAPPING_BLOCK(FCDATA_DISALLOW_OUT_OF_FLOW |
-                                 FCDATA_ALLOW_BLOCK_STYLES,
-                                 NS_NewSVGTextFrame,
-                                 nsCSSAnonBoxes::mozSVGText);
-    return &sTextData;
   } else if (aTag == nsGkAtoms::tspan ||
              aTag == nsGkAtoms::textPath) {
     return &sSuppressData;
@@ -5746,6 +5754,11 @@ nsCSSFrameConstructor::FindSVGData(Element* aElement,
     SIMPLE_SVG_CREATE(path, NS_NewSVGGeometryFrame),
     SIMPLE_SVG_CREATE(defs, NS_NewSVGContainerFrame),
     SIMPLE_SVG_CREATE(generic_, NS_NewSVGGenericContainerFrame),
+    { &nsGkAtoms::text,
+      FCDATA_WITH_WRAPPING_BLOCK(FCDATA_DISALLOW_OUT_OF_FLOW |
+                                 FCDATA_ALLOW_BLOCK_STYLES,
+                                 NS_NewSVGTextFrame,
+                                 nsCSSAnonBoxes::mozSVGText) },
     { &nsGkAtoms::foreignObject,
       FCDATA_WITH_WRAPPING_BLOCK(FCDATA_DISALLOW_OUT_OF_FLOW,
                                  NS_NewSVGForeignObjectFrame,
@@ -5988,9 +6001,13 @@ nsCSSFrameConstructor::AddFrameConstructionItemsInternal(nsFrameConstructorState
           styleContext =
             mPresShell->StyleSet()->AsServo()->ResolveServoStyle(aContent->AsElement());
         } else {
+#ifdef MOZ_OLD_STYLE
           styleContext =
             ResolveStyleContext(styleContext->AsGecko()->GetParent(),
                                 aContent, &aState);
+#else
+          MOZ_CRASH("old style system disabled");
+#endif
         }
       }
 
@@ -6820,7 +6837,7 @@ nsCSSFrameConstructor::IsValidSibling(nsIFrame*              aSibling,
 template<nsCSSFrameConstructor::SiblingDirection aDirection>
 nsIFrame*
 nsCSSFrameConstructor::FindSiblingInternal(
-  FlattenedChildIterator aIter,
+  FlattenedChildIterator& aIter,
   nsIContent* aTargetContent,
   StyleDisplay& aTargetContentDisplay)
 {
@@ -6932,8 +6949,9 @@ nsCSSFrameConstructor::FindSibling(const FlattenedChildIterator& aIter,
                                    StyleDisplay& aTargetContentDisplay)
 {
   nsIContent* targetContent = aIter.Get();
-  nsIFrame* sibling =
-    FindSiblingInternal<aDirection>(aIter, targetContent, aTargetContentDisplay);
+  FlattenedChildIterator siblingIter = aIter;
+  nsIFrame* sibling = FindSiblingInternal<aDirection>(
+    siblingIter, targetContent, aTargetContentDisplay);
   if (sibling) {
     return sibling;
   }
@@ -7112,8 +7130,7 @@ MaybeGetListBoxBodyFrame(nsIContent* aContainer, nsIContent* aChild)
   if (IsXULListBox(aContainer) &&
       aChild->IsXULElement(nsGkAtoms::listitem)) {
     RefPtr<nsXULElement> xulElement = nsXULElement::FromContent(aContainer);
-    IgnoredErrorResult ignored;
-    nsCOMPtr<nsIBoxObject> boxObject = xulElement->GetBoxObject(ignored);
+    nsCOMPtr<nsIBoxObject> boxObject = xulElement->GetBoxObject(IgnoreErrors());
     nsCOMPtr<nsPIListBoxObject> listBoxObject = do_QueryInterface(boxObject);
     if (listBoxObject) {
       return listBoxObject->GetListBoxBody(false);
@@ -7132,14 +7149,15 @@ nsCSSFrameConstructor::AddTextItemIfNeeded(nsFrameConstructorState& aState,
 {
   NS_PRECONDITION(aPossibleTextContent, "Must have node");
   if (!aPossibleTextContent->IsNodeOfType(nsINode::eTEXT) ||
-      !aPossibleTextContent->HasFlag(NS_CREATE_FRAME_IF_NON_WHITESPACE)) {
-    // Not text, or not suppressed due to being all-whitespace (if it
-    // were being suppressed, it would have the
-    // NS_CREATE_FRAME_IF_NON_WHITESPACE flag)
+      !aPossibleTextContent->HasFlag(NS_CREATE_FRAME_IF_NON_WHITESPACE) ||
+      aPossibleTextContent->HasFlag(NODE_NEEDS_FRAME)) {
+    // Not text, or not suppressed due to being all-whitespace (if it were being
+    // suppressed, it would have the NS_CREATE_FRAME_IF_NON_WHITESPACE flag), or
+    // going to be reframed anyway.
     return;
   }
-  NS_ASSERTION(!aPossibleTextContent->GetPrimaryFrame(),
-               "Text node has a frame and NS_CREATE_FRAME_IF_NON_WHITESPACE");
+  MOZ_ASSERT(!aPossibleTextContent->GetPrimaryFrame(),
+             "Text node has a frame and NS_CREATE_FRAME_IF_NON_WHITESPACE");
   AddFrameConstructionItems(aState, aPossibleTextContent, false,
                             aInsertion, aItems);
 }
@@ -7149,14 +7167,15 @@ nsCSSFrameConstructor::ReframeTextIfNeeded(nsIContent* aParentContent,
                                            nsIContent* aContent)
 {
   if (!aContent->IsNodeOfType(nsINode::eTEXT) ||
-      !aContent->HasFlag(NS_CREATE_FRAME_IF_NON_WHITESPACE)) {
-    // Not text, or not suppressed due to being all-whitespace (if it
-    // were being suppressed, it would have the
-    // NS_CREATE_FRAME_IF_NON_WHITESPACE flag)
+      !aContent->HasFlag(NS_CREATE_FRAME_IF_NON_WHITESPACE) ||
+      aContent->HasFlag(NODE_NEEDS_FRAME)) {
+    // Not text, or not suppressed due to being all-whitespace (if it were being
+    // suppressed, it would have the NS_CREATE_FRAME_IF_NON_WHITESPACE flag), or
+    // going to be reframed anyway.
     return;
   }
-  NS_ASSERTION(!aContent->GetPrimaryFrame(),
-               "Text node has a frame and NS_CREATE_FRAME_IF_NON_WHITESPACE");
+  MOZ_ASSERT(!aContent->GetPrimaryFrame(),
+             "Text node has a frame and NS_CREATE_FRAME_IF_NON_WHITESPACE");
   ContentInserted(aParentContent, aContent, nullptr, InsertionKind::Async);
 }
 
@@ -7278,12 +7297,17 @@ nsCSSFrameConstructor::MaybeConstructLazily(Operation aOperation,
   // We need different handling for servo given the scoped restyle roots.
   CheckBitsForLazyFrameConstruction(parent);
 
-  if (mozilla::GeckoRestyleManager* geckoRM = RestyleManager()->GetAsGecko()) {
+  if (RestyleManager()->IsGecko()) {
+#ifdef MOZ_OLD_STYLE
+    mozilla::GeckoRestyleManager* geckoRM = RestyleManager()->AsGecko();
     while (parent && !parent->HasFlag(NODE_DESCENDANTS_NEED_FRAMES)) {
       parent->SetFlags(NODE_DESCENDANTS_NEED_FRAMES);
       parent = parent->GetFlattenedTreeParent();
     }
     geckoRM->PostRestyleEventForLazyConstruction();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
     parent->AsElement()->NoteDescendantsNeedFramesForServo();
   }
@@ -7291,6 +7315,7 @@ nsCSSFrameConstructor::MaybeConstructLazily(Operation aOperation,
   return true;
 }
 
+#ifdef MOZ_OLD_STYLE
 void
 nsCSSFrameConstructor::CreateNeededFrames(
     nsIContent* aContent,
@@ -7387,6 +7412,7 @@ nsCSSFrameConstructor::CreateNeededFrames()
     CreateNeededFrames(rootElement, treeMatchContext);
   }
 }
+#endif
 
 void
 nsCSSFrameConstructor::IssueSingleInsertNofications(nsIContent* aContainer,
@@ -8447,6 +8473,8 @@ nsCSSFrameConstructor::ContentRemoved(nsIContent* aContainer,
                                       RemoveFlags aFlags)
 {
   MOZ_ASSERT(aChild);
+  MOZ_ASSERT(!aChild->IsRootOfAnonymousSubtree() || !aOldNextSibling,
+             "Anonymous roots don't have siblings");
   AUTO_LAYOUT_PHASE_ENTRY_POINT(mPresShell->GetPresContext(), FrameC);
   nsPresContext* presContext = mPresShell->GetPresContext();
   MOZ_ASSERT(presContext, "Our presShell should have a valid presContext");
@@ -8517,22 +8545,9 @@ nsCSSFrameConstructor::ContentRemoved(nsIContent* aContainer,
   MOZ_ASSERT(!childFrame || !GetDisplayContentsStyleFor(aChild),
              "display:contents nodes shouldn't have a frame");
   if (!childFrame && GetDisplayContentsStyleFor(aChild)) {
-    if (HasGeneratedContent(aChild)) {
-      nsIContent* ancestor = aChild->GetFlattenedTreeParent();
-      MOZ_ASSERT(ancestor, "display: contents on the root?");
-      while (!ancestor->GetPrimaryFrame()) {
-        ancestor = ancestor->GetFlattenedTreeParent();
-        MOZ_ASSERT(ancestor, "we can't have a display: contents subtree root!");
-      }
-
-      // XXXmats Can we recreate frames only for the ::after/::before content?
-      // XXX Perhaps even only those that belong to the aChild sub-tree?
-      LAYOUT_PHASE_TEMP_EXIT();
-      RecreateFramesForContent(ancestor, InsertionKind::Async);
-      LAYOUT_PHASE_TEMP_REENTER();
-      return true;
-    }
-
+    // NOTE(emilio): We may iterate through ::before and ::after here and they
+    // may be gone after the respective ContentRemoved call. Right now
+    // StyleChildrenIterator handles that properly, so it's not an issue.
     StyleChildrenIterator iter(aChild);
     for (nsIContent* c = iter.GetNextChild(); c; c = iter.GetNextChild()) {
       if (c->GetPrimaryFrame() || GetDisplayContentsStyleFor(c)) {
@@ -8695,14 +8710,18 @@ nsCSSFrameConstructor::ContentRemoved(nsIContent* aContainer,
     }
 #endif
 
-
     // Notify the parent frame that it should delete the frame
     if (childFrame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) {
       childFrame = childFrame->GetPlaceholderFrame();
       NS_ASSERTION(childFrame, "Missing placeholder frame for out of flow.");
       parentFrame = childFrame->GetParent();
     }
+
     RemoveFrame(nsLayoutUtils::GetChildListNameFor(childFrame), childFrame);
+
+    // NOTE(emilio): aChild could be dead here already if it is a ::before or
+    // ::after pseudo-element (since in that case it was owned by childFrame,
+    // which we just destroyed).
 
     if (isRoot) {
       mRootElementFrame = nullptr;
@@ -8722,8 +8741,7 @@ nsCSSFrameConstructor::ContentRemoved(nsIContent* aContainer,
     // to do this if the table parent type of our parent type is not
     // eTypeBlock, though, because in that case the whitespace isn't
     // being suppressed due to us anyway.
-    if (aContainer && !aChild->IsRootOfAnonymousSubtree() &&
-        aFlags == REMOVE_CONTENT &&
+    if (aContainer && aOldNextSibling && aFlags == REMOVE_CONTENT &&
         GetParentType(parentType) == eTypeBlock) {
       // Adjacent whitespace-only text nodes might have been suppressed if
       // this node does not have inline ends. Create frames for them now
@@ -8738,17 +8756,15 @@ nsCSSFrameConstructor::ContentRemoved(nsIContent* aContainer,
       //
       // FIXME(emilio): This should probably use the lazy frame construction
       // bits if possible instead of reframing it in place.
-      if (aOldNextSibling) {
-        nsIContent* prevSibling = aOldNextSibling->GetPreviousSibling();
-        if (prevSibling && prevSibling->GetPreviousSibling()) {
-          LAYOUT_PHASE_TEMP_EXIT();
-          ReframeTextIfNeeded(aContainer, prevSibling);
-          LAYOUT_PHASE_TEMP_REENTER();
-        }
+      nsIContent* prevSibling = aOldNextSibling->GetPreviousSibling();
+      if (prevSibling && prevSibling->GetPreviousSibling()) {
+        LAYOUT_PHASE_TEMP_EXIT();
+        ReframeTextIfNeeded(aContainer, prevSibling);
+        LAYOUT_PHASE_TEMP_REENTER();
       }
       // Reframe any text node just after the node being removed, if there is
       // one, and if it's not the last child or the first child.
-      if (aOldNextSibling && aOldNextSibling->GetNextSibling() &&
+      if (aOldNextSibling->GetNextSibling() &&
           aOldNextSibling->GetPreviousSibling()) {
         LAYOUT_PHASE_TEMP_EXIT();
         ReframeTextIfNeeded(aContainer, aOldNextSibling);
@@ -8837,7 +8853,7 @@ nsCSSFrameConstructor::EnsureFrameForTextNodeIsCreatedAfterFlush(
 
 void
 nsCSSFrameConstructor::CharacterDataChanged(nsIContent* aContent,
-                                            CharacterDataChangeInfo* aInfo)
+                                            const CharacterDataChangeInfo& aInfo)
 {
   AUTO_LAYOUT_PHASE_ENTRY_POINT(mPresShell->GetPresContext(), FrameC);
 
@@ -9396,6 +9412,7 @@ nsCSSFrameConstructor::CaptureStateForFramesOf(nsIContent* aContent,
   }
 }
 
+#ifdef MOZ_OLD_STYLE
 static bool
 DefinitelyEqualURIsAndPrincipal(mozilla::css::URLValue* aURI1,
                                 mozilla::css::URLValue* aURI2)
@@ -9447,6 +9464,7 @@ nsCSSFrameConstructor::MaybeRecreateFramesForElement(Element* aElement)
   RecreateFramesForContent(aElement, InsertionKind::Sync);
   return nullptr;
 }
+#endif
 
 static bool
 IsWhitespaceFrame(nsIFrame* aFrame)
@@ -11418,9 +11436,8 @@ nsCSSFrameConstructor::CreateFloatingLetterFrame(
   nsFirstLetterFrame* letterFrame =
     NS_NewFirstLetterFrame(mPresShell, aStyleContext);
   // We don't want to use a text content for a non-text frame (because we want
-  // its primary frame to be a text frame).  So use its parent for the
-  // first-letter.
-  nsIContent* letterContent = aTextContent->GetParent();
+  // its primary frame to be a text frame).
+  nsIContent* letterContent = aParentFrame->GetContent();
   nsContainerFrame* containingBlock = aState.GetGeometricParent(
     aStyleContext->StyleDisplay(), aParentFrame);
   InitAndRestoreFrame(aState, letterContent, containingBlock, letterFrame);
@@ -11555,8 +11572,8 @@ nsCSSFrameConstructor::CreateLetterFrame(nsContainerFrame* aBlockFrame,
 
       // Initialize the first-letter-frame.  We don't want to use a text
       // content for a non-text frame (because we want its primary frame to
-      // be a text frame).  So use its parent for the first-letter.
-      nsIContent* letterContent = aTextContent->GetParent();
+      // be a text frame).
+      nsIContent* letterContent = aParentFrame->GetContent();
       letterFrame->Init(letterContent, aParentFrame, nullptr);
 
       InitAndRestoreFrame(state, aTextContent, letterFrame, textFrame);
@@ -13120,4 +13137,23 @@ nsCSSFrameConstructor::FreeFCItem(FrameConstructionItem* aItem)
     item->mNext = mFirstFreeFCItem;
     mFirstFreeFCItem = item;
   }
+}
+
+void
+nsCSSFrameConstructor::AddSizeOfIncludingThis(nsWindowSizes& aSizes) const
+{
+  if (nsIFrame* rootFrame = GetRootFrame()) {
+    rootFrame->AddSizeOfExcludingThisForTree(aSizes);
+  }
+
+  // This must be done after measuring from the frame tree, since frame
+  // manager will measure sizes of staled computed values and style
+  // structs, which only make sense after we know what are being used.
+  nsFrameManager::AddSizeOfIncludingThis(aSizes);
+
+  // Measurement of the following members may be added later if DMD finds it
+  // is worthwhile:
+  // - mFCItemPool
+  // - mQuoteList
+  // - mCounterManager
 }

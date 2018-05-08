@@ -20,11 +20,8 @@
 SimpleTest.waitForExplicitFinish();
 SimpleTest.ignoreAllUncaughtExceptions();
 
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(Ci.nsICrashReporter);
 const SERVER_URL = "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs";
@@ -61,7 +58,7 @@ var testObserver = {
     ok("PluginHang" in submitted, "Request should contain PluginHang field");
     ok("additional_minidumps" in submitted, "Request should contain additional_minidumps field");
     let dumpNames = submitted.additional_minidumps.split(',');
-    ok(dumpNames.indexOf("browser") != -1, "additional_minidumps should contain browser");
+    ok(dumpNames.includes("browser"), "additional_minidumps should contain browser");
     info("additional_minidumps="+submitted.additional_minidumps);
     ok("upload_file_minidump" in submitted, "Request should contain upload_file_minidump field");
     ok("upload_file_minidump_browser" in submitted, "Request should contain upload_file_minidump_browser field");
@@ -114,7 +111,7 @@ var testObserver = {
         iid.equals(Ci.nsISupportsWeakReference) ||
         iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_NOINTERFACE;
+    throw Cr.NS_NOINTERFACE;
   }
 };
 

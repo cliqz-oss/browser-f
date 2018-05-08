@@ -22,20 +22,21 @@ public:
   {
   }
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(ServoNamespaceRule,
+                                       dom::CSSNamespaceRule)
 
 #ifdef DEBUG
-  void List(FILE* out = stdout, int32_t aIndent = 0) const final override;
+  void List(FILE* out = stdout, int32_t aIndent = 0) const final;
 #endif
-  already_AddRefed<Rule> Clone() const final override;
+  already_AddRefed<Rule> Clone() const final;
 
-  nsAtom* GetPrefix() const final override;
-  void GetURLSpec(nsString& aURLSpec) const final override;
+  nsAtom* GetPrefix() const final;
+  void GetURLSpec(nsString& aURLSpec) const final;
 
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const final override;
+  void GetCssText(nsAString& aCssText) const final;
 
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const final override;
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const final;
 
 private:
   ~ServoNamespaceRule();

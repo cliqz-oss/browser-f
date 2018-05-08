@@ -13,9 +13,10 @@ use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use values::CustomIdent;
 use values::KeyframesName;
 use values::generics::box_::AnimationIterationCount as GenericAnimationIterationCount;
+use values::generics::box_::Perspective as GenericPerspective;
 use values::generics::box_::VerticalAlign as GenericVerticalAlign;
 use values::specified::{AllowQuirks, Number};
-use values::specified::length::LengthOrPercentage;
+use values::specified::length::{LengthOrPercentage, NonNegativeLength};
 
 #[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, ToComputedValue, ToCss)]
@@ -28,9 +29,9 @@ pub enum Display {
     Table, InlineTable, TableRowGroup, TableHeaderGroup,
     TableFooterGroup, TableRow, TableColumnGroup,
     TableColumn, TableCell, TableCaption, ListItem, None,
-    #[parse(aliases = "-webkit-flex")]
+    #[css(aliases = "-webkit-flex")]
     Flex,
-    #[parse(aliases = "-webkit-inline-flex")]
+    #[css(aliases = "-webkit-inline-flex")]
     InlineFlex,
     #[cfg(feature = "gecko")]
     Grid,
@@ -216,6 +217,22 @@ impl Display {
             other => other,
         }
     }
+
+    /// Returns true if the value is `Contents`
+    #[inline]
+    pub fn is_contents(&self) -> bool {
+        match *self {
+            #[cfg(feature = "gecko")]
+            Display::Contents => true,
+            _ => false,
+        }
+    }
+
+    /// Returns true if the value is `None`
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        *self == Display::None
+    }
 }
 
 /// A specified value for the `vertical-align` property.
@@ -314,25 +331,34 @@ impl Parse for AnimationName {
     }
 }
 
-define_css_keyword_enum! { ScrollSnapType:
-    "none" => None,
-    "mandatory" => Mandatory,
-    "proximity" => Proximity,
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum ScrollSnapType {
+    None,
+    Mandatory,
+    Proximity,
 }
-add_impls_for_keyword_enum!(ScrollSnapType);
 
-define_css_keyword_enum! { OverscrollBehavior:
-    "auto" => Auto,
-    "contain" => Contain,
-    "none" => None,
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum OverscrollBehavior {
+    Auto,
+    Contain,
+    None,
 }
-add_impls_for_keyword_enum!(OverscrollBehavior);
 
-define_css_keyword_enum! { OverflowClipBox:
-    "padding-box" => PaddingBox,
-    "content-box" => ContentBox,
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum OverflowClipBox {
+    PaddingBox,
+    ContentBox,
 }
-add_impls_for_keyword_enum!(OverflowClipBox);
 
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 /// Provides a rendering hint to the user agent,
@@ -343,9 +369,9 @@ add_impls_for_keyword_enum!(OverflowClipBox);
 pub enum WillChange {
     /// Expresses no particular intent
     Auto,
-    #[css(comma, iterable)]
     /// <custom-ident>
-    AnimateableFeatures(Box<[CustomIdent]>),
+    #[css(comma)]
+    AnimateableFeatures(#[css(iterable)] Box<[CustomIdent]>),
 }
 
 impl WillChange {
@@ -561,5 +587,20 @@ impl Parse for Contain {
         } else {
             Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
+    }
+}
+
+/// A specified value for the `perspective` property.
+pub type Perspective = GenericPerspective<NonNegativeLength>;
+
+impl Parse for Perspective {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>
+    ) -> Result<Self, ParseError<'i>> {
+        if input.try(|i| i.expect_ident_matching("none")).is_ok() {
+            return Ok(GenericPerspective::None);
+        }
+        Ok(GenericPerspective::Length(NonNegativeLength::parse(context, input)?))
     }
 }

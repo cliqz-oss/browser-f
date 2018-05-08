@@ -261,6 +261,10 @@ impl PipelineId {
         webrender_api::ClipId::root_scroll_node(self.to_webrender())
     }
 
+    pub fn root_scroll_id(&self) -> webrender_api::ExternalScrollId {
+        webrender_api::ExternalScrollId(0, self.to_webrender())
+    }
+
     pub fn root_clip_and_scroll_info(&self) -> webrender_api::ClipAndScrollInfo {
         webrender_api::ClipAndScrollInfo::simple(self.root_scroll_node())
     }
@@ -361,10 +365,3 @@ pub const TEST_BROWSING_CONTEXT_INDEX: BrowsingContextIndex =
 #[cfg(feature = "unstable")]
 pub const TEST_BROWSING_CONTEXT_ID: BrowsingContextId =
     BrowsingContextId { namespace_id: TEST_NAMESPACE, index: TEST_BROWSING_CONTEXT_INDEX };
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
-pub enum FrameType {
-    IFrame,
-    MozBrowserIFrame,
-}
-

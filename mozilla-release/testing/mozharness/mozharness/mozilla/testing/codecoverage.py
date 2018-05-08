@@ -14,7 +14,11 @@ from mozharness.base.script import (
     PreScriptAction,
     PostScriptAction,
 )
-from mozharness.mozilla.tooltool import TooltoolMixin
+
+_here = os.path.abspath(os.path.dirname(__file__))
+_tooltool_path = os.path.normpath(os.path.join(_here, '..', '..', '..',
+                                               'external_tools',
+                                               'tooltool.py'))
 
 code_coverage_config_options = [
     [["--code-coverage"],
@@ -105,6 +109,7 @@ class CodeCoverageMixin(object):
         # Install grcov on the test machine
         # Get the path to the build machines gcno files.
         self.url_to_gcno = self.query_build_dir_url('target.code-coverage-gcno.zip')
+        self.url_to_chrome_map = self.query_build_dir_url('chrome-map.json')
         dirs = self.query_abs_dirs()
 
         # Create the grcov directory, get the tooltool manifest, and finally
@@ -121,8 +126,7 @@ class CodeCoverageMixin(object):
         manifest = os.path.join(dirs.get('abs_test_install_dir', os.path.join(dirs['abs_work_dir'], 'tests')), \
             'config/tooltool-manifests/%s/ccov.manifest' % platform)
 
-        tooltool_path = self._fetch_tooltool_py()
-        cmd = [sys.executable, tooltool_path, '--url', 'https://tooltool.mozilla-releng.net/', 'fetch', \
+        cmd = [sys.executable, _tooltool_path, '--url', 'https://tooltool.mozilla-releng.net/', 'fetch', \
             '-m', manifest, '-o', '-c', '/builds/worker/tooltool-cache']
         self.run_command(cmd, cwd=self.grcov_dir)
 
@@ -136,7 +140,7 @@ class CodeCoverageMixin(object):
             dirs = self.query_abs_dirs()
             jsdcov_dir = dirs['abs_blob_upload_dir']
             zipFile = os.path.join(jsdcov_dir, "jsdcov_artifacts.zip")
-            command = ["zip", "-r", zipFile, ".", "-i", "jscov*.json"]
+            command = ["zip", "-r", "-q", zipFile, ".", "-i", "jscov*.json"]
 
             self.info("Beginning compression of JSDCov artifacts...")
             self.run_command(command, cwd=jsdcov_dir)
@@ -163,13 +167,24 @@ class CodeCoverageMixin(object):
             file_path_gcda = os.path.join(os.getcwd(), 'code-coverage-gcda.zip')
             self.run_command(['zip', '-q', '-0', '-r', file_path_gcda, '.'], cwd=self.gcov_dir)
 
+            sys.path.append(dirs['abs_test_install_dir'])
+            sys.path.append(os.path.join(dirs['abs_test_install_dir'], 'mozbuild/codecoverage'))
+
+            # Download the chrome-map.json file from the build machine.
+            self.download_file(self.url_to_chrome_map)
+
+            from lcov_rewriter import LcovFileRewriter
+            jsvm_files = [os.path.join(self.jsvm_dir, e) for e in os.listdir(self.jsvm_dir)]
+            rewriter = LcovFileRewriter('chrome-map.json')
+            rewriter.rewrite_files(jsvm_files, 'jsvm_lcov_output.info', '')
+
             # Package JSVM coverage data.
             file_path_jsvm = os.path.join(dirs['abs_blob_upload_dir'], 'code-coverage-jsvm.zip')
-            self.run_command(['zip', '-r', file_path_jsvm, '.'], cwd=self.jsvm_dir)
+            self.run_command(['zip', '-q', file_path_jsvm, 'jsvm_lcov_output.info'])
 
             # GRCOV post-processing
-            # Download the gcno fom the build machine.
-            self.download_file(self.url_to_gcno, file_name=None, parent_dir=self.grcov_dir)
+            # Download the gcno from the build machine.
+            self.download_file(self.url_to_gcno, parent_dir=self.grcov_dir)
 
             # Run grcov on the zipped .gcno and .gcda files.
             grcov_command = [
@@ -197,7 +212,7 @@ class CodeCoverageMixin(object):
 
             # Zip the grcov output and upload it.
             self.run_command(
-                ['zip', os.path.join(dirs['abs_blob_upload_dir'], 'code-coverage-grcov.zip'), output_file_name],
+                ['zip', '-q', os.path.join(dirs['abs_blob_upload_dir'], 'code-coverage-grcov.zip'), output_file_name],
                 cwd=self.grcov_dir
             )
 

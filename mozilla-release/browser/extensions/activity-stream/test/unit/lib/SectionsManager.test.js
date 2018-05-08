@@ -1,5 +1,5 @@
 "use strict";
-import {CONTENT_MESSAGE_TYPE, MAIN_MESSAGE_TYPE, PRELOAD_MESSAGE_TYPE} from "common/Actions.jsm";
+import {actionCreators as ac, actionTypes as at, CONTENT_MESSAGE_TYPE, MAIN_MESSAGE_TYPE, PRELOAD_MESSAGE_TYPE} from "common/Actions.jsm";
 import {EventEmitter, GlobalOverrider} from "test/unit/utils";
 import {SectionsFeed, SectionsManager} from "lib/SectionsManager.jsm";
 
@@ -65,14 +65,14 @@ describe("SectionsManager", () => {
   });
   describe("#addBuiltInSection", () => {
     it("should not report an error if options is undefined", () => {
-      globals.sandbox.spy(global.Components.utils, "reportError");
+      globals.sandbox.spy(global.Cu, "reportError");
       SectionsManager.addBuiltInSection("feeds.section.topstories", undefined);
-      assert.notCalled(Components.utils.reportError);
+      assert.notCalled(Cu.reportError);
     });
     it("should report an error if options is malformed", () => {
-      globals.sandbox.spy(global.Components.utils, "reportError");
+      globals.sandbox.spy(global.Cu, "reportError");
       SectionsManager.addBuiltInSection("feeds.section.topstories", "invalid");
-      assert.calledOnce(Components.utils.reportError);
+      assert.calledOnce(Cu.reportError);
     });
   });
   describe("#addSection", () => {
@@ -209,6 +209,27 @@ describe("SectionsManager", () => {
       assert.notCalled(spy);
     });
   });
+  describe("#removeSectionCard", () => {
+    it("should dispatch an SECTION_UPDATE action in which cards corresponding to the given url are removed", () => {
+      const rows = [{url: "foo.com"}, {url: "bar.com"}];
+
+      SectionsManager.addSection(FAKE_ID, Object.assign({}, FAKE_OPTIONS, {rows}));
+      const spy = sinon.spy();
+      SectionsManager.on(SectionsManager.UPDATE_SECTION, spy);
+      SectionsManager.removeSectionCard(FAKE_ID, "foo.com");
+
+      assert.calledOnce(spy);
+      assert.equal(spy.firstCall.args[1], FAKE_ID);
+      assert.deepEqual(spy.firstCall.args[2].rows, [{url: "bar.com"}]);
+    });
+    it("should do nothing if the section doesn't exist", () => {
+      SectionsManager.removeSection(FAKE_ID);
+      const spy = sinon.spy();
+      SectionsManager.on(SectionsManager.UPDATE_SECTION, spy);
+      SectionsManager.removeSectionCard(FAKE_ID, "bar.com");
+      assert.notCalled(spy);
+    });
+  });
   describe("#updateBookmarkMetadata", () => {
     beforeEach(() => {
       let rows = [{
@@ -265,6 +286,19 @@ describe("SectionsFeed", () => {
     SectionsManager.initialized = false;
     feed = new SectionsFeed();
     feed.store = {dispatch: sinon.spy()};
+    feed.store = {
+      dispatch: sinon.spy(),
+      getState() { return this.state; },
+      state: {
+        Prefs: {
+          values: {
+            sectionOrder: "topsites,topstories,highlights",
+            showTopSites: true
+          }
+        },
+        Sections: [{initialized: false}]
+      }
+    };
   });
   afterEach(() => {
     feed.uninit();
@@ -326,17 +360,26 @@ describe("SectionsFeed", () => {
   describe("#onAddSection", () => {
     it("should broadcast a SECTION_REGISTER action with the correct data", () => {
       feed.onAddSection(null, FAKE_ID, FAKE_OPTIONS);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       assert.equal(action.type, "SECTION_REGISTER");
       assert.deepEqual(action.data, Object.assign({id: FAKE_ID}, FAKE_OPTIONS));
       assert.equal(action.meta.from, MAIN_MESSAGE_TYPE);
       assert.equal(action.meta.to, CONTENT_MESSAGE_TYPE);
     });
+    it("should prepend id to sectionOrder pref if not already included", () => {
+      feed.store.state.Sections = [{id: "topstories", enabled: true}, {id: "highlights", enabled: true}];
+      feed.onAddSection(null, FAKE_ID, FAKE_OPTIONS);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: `${FAKE_ID},topsites,topstories,highlights`},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+    });
   });
   describe("#onRemoveSection", () => {
     it("should broadcast a SECTION_DEREGISTER action with the correct data", () => {
       feed.onRemoveSection(null, FAKE_ID);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       assert.equal(action.type, "SECTION_DEREGISTER");
       assert.deepEqual(action.data, FAKE_ID);
       // Should be broadcast
@@ -351,7 +394,7 @@ describe("SectionsFeed", () => {
     });
     it("should dispatch a SECTION_UPDATE action with the correct data", () => {
       feed.onUpdateSection(null, FAKE_ID, {rows: FAKE_ROWS});
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       assert.equal(action.type, "SECTION_UPDATE");
       assert.deepEqual(action.data, {id: FAKE_ID, rows: FAKE_ROWS});
       // Should be not broadcast by default, but should update the preloaded tab, so check meta
@@ -360,7 +403,7 @@ describe("SectionsFeed", () => {
     });
     it("should broadcast the action only if shouldBroadcast is true", () => {
       feed.onUpdateSection(null, FAKE_ID, {rows: FAKE_ROWS}, true);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       // Should be broadcast
       assert.equal(action.meta.from, MAIN_MESSAGE_TYPE);
       assert.equal(action.meta.to, CONTENT_MESSAGE_TYPE);
@@ -373,7 +416,7 @@ describe("SectionsFeed", () => {
     });
     it("should dispatch a SECTION_UPDATE_CARD action with the correct data", () => {
       feed.onUpdateSectionCard(null, FAKE_ID, FAKE_URL, FAKE_CARD_OPTIONS);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       assert.equal(action.type, "SECTION_UPDATE_CARD");
       assert.deepEqual(action.data, {id: FAKE_ID, url: FAKE_URL, options: FAKE_CARD_OPTIONS});
       // Should be not broadcast by default, but should update the preloaded tab, so check meta
@@ -382,7 +425,7 @@ describe("SectionsFeed", () => {
     });
     it("should broadcast the action only if shouldBroadcast is true", () => {
       feed.onUpdateSectionCard(null, FAKE_ID, FAKE_URL, FAKE_CARD_OPTIONS, true);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       // Should be broadcast
       assert.equal(action.meta.from, MAIN_MESSAGE_TYPE);
       assert.equal(action.meta.to, CONTENT_MESSAGE_TYPE);
@@ -410,7 +453,7 @@ describe("SectionsFeed", () => {
     it("should fire SECTION_OPTIONS_UPDATED on suitable PREF_CHANGED events", () => {
       feed.onAction({type: "PREF_CHANGED", data: {name: "feeds.section.topstories.options", value: "foo"}});
       assert.calledOnce(feed.store.dispatch);
-      const action = feed.store.dispatch.firstCall.args[0];
+      const [action] = feed.store.dispatch.firstCall.args;
       assert.equal(action.type, "SECTION_OPTIONS_CHANGED");
       assert.equal(action.data, "topstories");
     });
@@ -463,6 +506,79 @@ describe("SectionsFeed", () => {
       feed.onAction({type: "PLACES_BOOKMARK_ADDED", data: {}});
 
       assert.calledOnce(stub);
+    });
+    it("should call SectionManager.removeSectionCard on WEBEXT_DISMISS", () => {
+      const stub = sinon.stub(SectionsManager, "removeSectionCard");
+
+      feed.onAction(ac.WebExtEvent(at.WEBEXT_DISMISS, {source: "Foo", url: "bar.com"}));
+
+      assert.calledOnce(stub);
+      assert.calledWith(stub, "Foo", "bar.com");
+    });
+    it("should call the feed's moveSection on SECTION_MOVE", () => {
+      sinon.stub(feed, "moveSection");
+      const id = "topsites";
+      const direction = +1;
+      feed.onAction({type: "SECTION_MOVE", data: {id, direction}});
+
+      assert.calledOnce(feed.moveSection);
+      assert.calledWith(feed.moveSection, id, direction);
+    });
+  });
+  describe("#moveSection", () => {
+    it("should Move Down correctly", () => {
+      feed.store.state.Sections = [{id: "topstories", enabled: true}, {id: "highlights", enabled: true}];
+      feed.moveSection("topsites", +1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "topstories,topsites,highlights"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+      feed.store.dispatch.reset();
+      feed.moveSection("topstories", +1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "topsites,highlights,topstories"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+    });
+    it("should Move Up correctly", () => {
+      feed.store.state.Sections = [{id: "topstories", enabled: true}, {id: "highlights", enabled: true}];
+      feed.moveSection("topstories", -1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "topstories,topsites,highlights"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+      feed.store.dispatch.reset();
+      feed.moveSection("highlights", -1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "topsites,highlights,topstories"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+    });
+    it("should skip over sections that aren't enabled", () => {
+      feed.store.state.Sections = [{id: "topstories", enabled: false}, {id: "highlights", enabled: true}];
+      feed.moveSection("highlights", -1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "highlights,topsites,topstories"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
+      feed.store.dispatch.reset();
+      feed.moveSection("topsites", +1);
+      assert.calledOnce(feed.store.dispatch);
+      assert.calledWith(feed.store.dispatch, {
+        data: {name: "sectionOrder", value: "topstories,highlights,topsites"},
+        meta: {from: "ActivityStream:Content", to: "ActivityStream:Main"},
+        type: "SET_PREF"
+      });
     });
   });
 });

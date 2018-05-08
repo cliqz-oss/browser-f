@@ -15,17 +15,15 @@
 #include "vm/Debugger.h"
 #include "vm/TypedArrayObject.h"
 
-#include "jsobjinlines.h"
-
 #include "gc/Nursery-inl.h"
 #include "vm/ArrayObject-inl.h"
 #include "vm/EnvironmentObject-inl.h"
+#include "vm/JSObject-inl.h"
 #include "vm/Shape-inl.h"
 
 using namespace js;
 
 using JS::AutoCheckCannotGC;
-using JS::GenericNaN;
 using mozilla::ArrayLength;
 using mozilla::CheckedInt;
 using mozilla::DebugOnly;
@@ -190,7 +188,7 @@ js::NativeObject::checkShapeConsistency()
                           shape->slot() < slotSpan());
             if (!prev) {
                 MOZ_ASSERT(lastProperty() == shape);
-                MOZ_ASSERT(shape->listp == &shape_);
+                MOZ_ASSERT(shape->listp == &shapeRef());
             } else {
                 MOZ_ASSERT(shape->listp == &prev->parent);
             }
@@ -326,7 +324,7 @@ NativeObject::setLastPropertyShrinkFixedSlots(Shape* shape)
     MOZ_ASSERT(dynamicSlotsCount(oldFixed, shape->slotSpan(), getClass()) == 0);
     MOZ_ASSERT(dynamicSlotsCount(newFixed, shape->slotSpan(), getClass()) == 0);
 
-    shape_ = shape;
+    setShape(shape);
 }
 
 void
@@ -345,7 +343,7 @@ NativeObject::setLastPropertyMakeNonNative(Shape* shape)
         slots_ = nullptr;
     }
 
-    shape_ = shape;
+    setShape(shape);
 }
 
 void
@@ -358,7 +356,7 @@ NativeObject::setLastPropertyMakeNative(JSContext* cx, Shape* shape)
     // This method is used to convert unboxed objects into native objects. In
     // this case, the shape_ field was previously used to store other data and
     // this should be treated as an initialization.
-    shape_.init(shape);
+    initShape(shape);
 
     slots_ = nullptr;
     elements_ = emptyObjectElements;
@@ -1355,7 +1353,7 @@ PurgeProtoChain(JSContext* cx, JSObject* objArg, HandleId id)
 
         shape = obj->as<NativeObject>().lookup(cx, id);
         if (shape)
-            return NativeObject::shadowingShapeChange(cx, obj.as<NativeObject>(), *shape);
+            return NativeObject::reshapeForShadowedProp(cx, obj.as<NativeObject>());
 
         obj = obj->staticPrototype();
     }
@@ -1397,18 +1395,30 @@ PurgeEnvironmentChainHelper(JSContext* cx, HandleObject objArg, HandleId id)
 }
 
 /*
- * PurgeEnvironmentChain does nothing if obj is not itself a prototype or
+ * ReshapeForShadowedProp does nothing if obj is not itself a prototype or
  * parent environment, else it reshapes the scope and prototype chains it
  * links. It calls PurgeEnvironmentChainHelper, which asserts that obj is
  * flagged as a delegate (i.e., obj has ever been on a prototype or parent
  * chain).
  */
 static MOZ_ALWAYS_INLINE bool
-PurgeEnvironmentChain(JSContext* cx, HandleObject obj, HandleId id)
+ReshapeForShadowedProp(JSContext* cx, HandleObject obj, HandleId id)
 {
     if (obj->isDelegate() && obj->isNative())
         return PurgeEnvironmentChainHelper(cx, obj, id);
     return true;
+}
+
+/* static */ bool
+NativeObject::reshapeForShadowedProp(JSContext* cx, HandleNativeObject obj)
+{
+    return generateOwnShape(cx, obj);
+}
+
+/* static */ bool
+NativeObject::reshapeForProtoMutation(JSContext* cx, HandleNativeObject obj)
+{
+    return generateOwnShape(cx, obj);
 }
 
 enum class IsAddOrChange { Add, AddOrChange };
@@ -1420,7 +1430,7 @@ AddOrChangeProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
 {
     desc.assertComplete();
 
-    if (!PurgeEnvironmentChain(cx, obj, id))
+    if (!ReshapeForShadowedProp(cx, obj, id))
         return false;
 
     // Use dense storage for new indexed properties where possible.
@@ -1496,7 +1506,7 @@ AddDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id, HandleValue 
 {
     MOZ_ASSERT(!JSID_IS_INT(id));
 
-    if (!PurgeEnvironmentChain(cx, obj, id))
+    if (!ReshapeForShadowedProp(cx, obj, id))
         return false;
 
     Shape* shape = NativeObject::addEnumerableDataProperty(cx, obj, id);
@@ -2275,8 +2285,7 @@ enum IsNameLookup { NotNameLookup = false, NameLookup = true };
  *     Gecko code.)
  */
 static bool
-GetNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
-                       HandleValue receiver, IsNameLookup nameLookup, MutableHandleValue vp)
+GetNonexistentProperty(JSContext* cx, HandleId id, IsNameLookup nameLookup, MutableHandleValue vp)
 {
     vp.setUndefined();
 
@@ -2326,8 +2335,8 @@ GetNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
 
 /* The NoGC version of GetNonexistentProperty, present only to make types line up. */
 bool
-GetNonexistentProperty(JSContext* cx, NativeObject* const& obj, const jsid& id, const Value& receiver,
-                       IsNameLookup nameLookup, FakeMutableHandle<Value> vp)
+GetNonexistentProperty(JSContext* cx, const jsid& id, IsNameLookup nameLookup,
+                       FakeMutableHandle<Value> vp)
 {
     return false;
 }
@@ -2414,7 +2423,7 @@ NativeGetPropertyInline(JSContext* cx,
         // Step 4.c. The spec algorithm simply returns undefined if proto is
         // null, but see the comment on GetNonexistentProperty.
         if (!proto)
-            return GetNonexistentProperty(cx, obj, id, receiver, nameLookup, vp);
+            return GetNonexistentProperty(cx, id, nameLookup, vp);
 
         // Step 4.d. If the prototype is also native, this step is a
         // recursive tail call, and we don't need to go through all the
@@ -2501,7 +2510,7 @@ MaybeReportUndeclaredVarAssignment(JSContext* cx, HandleString propname)
  */
 static bool
 NativeSetExistingDataProperty(JSContext* cx, HandleNativeObject obj, HandleShape shape,
-                              HandleValue v, HandleValue receiver, ObjectOpResult& result)
+                              HandleValue v, ObjectOpResult& result)
 {
     MOZ_ASSERT(obj->isNative());
     MOZ_ASSERT(shape->isDataDescriptor());
@@ -2569,7 +2578,7 @@ js::SetPropertyByDefining(JSContext* cx, HandleId id, HandleValue v, HandleValue
     }
 
     // Purge the property cache of now-shadowed id in receiver's environment chain.
-    if (!PurgeEnvironmentChain(cx, receiver, id))
+    if (!ReshapeForShadowedProp(cx, receiver, id))
         return false;
 
     // Steps 5.e.iii-iv. and 5.f.i. Define the new data property.
@@ -2633,7 +2642,7 @@ SetNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id, Handl
 
         if (DefinePropertyOp op = obj->getOpsDefineProperty()) {
             // Purge the property cache of now-shadowed id in receiver's environment chain.
-            if (!PurgeEnvironmentChain(cx, obj, id))
+            if (!ReshapeForShadowedProp(cx, obj, id))
                 return false;
 
             Rooted<PropertyDescriptor> desc(cx);
@@ -2726,7 +2735,7 @@ SetExistingProperty(JSContext* cx, HandleNativeObject obj, HandleId id, HandleVa
                 Rooted<ArrayObject*> arr(cx, &pobj->as<ArrayObject>());
                 return ArraySetLength(cx, arr, id, shape->attributes(), v, result);
             }
-            return NativeSetExistingDataProperty(cx, pobj, shape, v, receiver, result);
+            return NativeSetExistingDataProperty(cx, pobj, shape, v, result);
         }
 
         // SpiderMonkey special case: assigning to an inherited slotless

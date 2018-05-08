@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "NetUtil",
 ];
 
@@ -15,15 +15,10 @@ this.EXPORTED_SYMBOLS = [
 ////////////////////////////////////////////////////////////////////////////////
 //// Constants
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cr = Components.results;
-const Cu = Components.utils;
-
 const PR_UINT32_MAX = 0xffffffff;
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream;1",
                                                  "nsIBinaryInputStream", "setInputStream");
@@ -31,7 +26,7 @@ const BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream
 ////////////////////////////////////////////////////////////////////////////////
 //// NetUtil Object
 
-this.NetUtil = {
+var NetUtil = {
     /**
      * Function to perform simple async copying from aSource (an input stream)
      * to aSink (an output stream).  The copy will happen on some background
@@ -340,9 +335,15 @@ this.NetUtil = {
         }
 
         if (securityFlags === undefined) {
-            securityFlags = loadUsingSystemPrincipal
-                            ? Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL
-                            : Ci.nsILoadInfo.SEC_NORMAL;
+            if (!loadUsingSystemPrincipal) {
+                throw new Components.Exception(
+                    "newChannel requires the 'securityFlags' property on" +
+                    " the options object unless loading from system principal.",
+                    Cr.NS_ERROR_INVALID_ARG,
+                    Components.stack.caller
+                );
+            }
+            securityFlags = Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL;
         }
 
         if (contentPolicyType === undefined) {

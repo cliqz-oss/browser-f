@@ -57,23 +57,21 @@
  * @see nsINavBookmarkObserver
  */
 
-this.EXPORTED_SYMBOLS = [ "Bookmarks" ];
-
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = [ "Bookmarks" ];
 
 Cu.importGlobalProperties(["URL"]);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
-                                  "resource://gre/modules/Sqlite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesSyncUtils",
-                                  "resource://gre/modules/PlacesSyncUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "Sqlite",
+                               "resource://gre/modules/Sqlite.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesSyncUtils",
+                               "resource://gre/modules/PlacesSyncUtils.jsm");
 
 // This is an helper to temporarily cover the need to know the tags folder
 // itemId until bug 424160 is fixed.  This exists so that startup paths won't
@@ -137,22 +135,75 @@ var Bookmarks = Object.freeze({
    * Special GUIDs associated with bookmark roots.
    * It's guaranteed that the roots will always have these guids.
    */
+  rootGuid:    "root________",
+  menuGuid:    "menu________",
+  toolbarGuid: "toolbar_____",
+  unfiledGuid: "unfiled_____",
+  mobileGuid:  "mobile______",
 
-   rootGuid:    "root________",
-   menuGuid:    "menu________",
-   toolbarGuid: "toolbar_____",
-   unfiledGuid: "unfiled_____",
-   mobileGuid:  "mobile______",
+  // With bug 424160, tags will stop being bookmarks, thus this root will
+  // be removed.  Do not rely on this, rather use the tagging service API.
+  tagsGuid:    "tags________",
 
-   // With bug 424160, tags will stop being bookmarks, thus this root will
-   // be removed.  Do not rely on this, rather use the tagging service API.
-   tagsGuid:    "tags________",
+  /**
+   * The GUIDs of the user content root folders that we support, for easy access
+   * as a set.
+   */
+  userContentRoots: ["toolbar_____", "menu________", "unfiled_____", "mobile______"],
 
-   /**
-    * The GUIDs of the user content root folders that we support, for easy access
-    * as a set.
-    */
-   userContentRoots: ["toolbar_____", "menu________", "unfiled_____", "mobile______"],
+  /**
+   * GUIDs associated with virtual queries that are used for display in the left
+   * pane.
+   */
+  virtualMenuGuid: "menu_______v",
+  virtualToolbarGuid: "toolbar____v",
+  virtualUnfiledGuid: "unfiled___v",
+  virtualMobileGuid: "mobile____v",
+
+  /**
+   * Checks if a guid is a virtual root.
+   *
+   * @param {String} guid The guid of the item to look for.
+   * @returns {Boolean} true if guid is a virtual root, false otherwise.
+   */
+  isVirtualRootItem(guid) {
+    return guid == PlacesUtils.bookmarks.virtualMenuGuid ||
+           guid == PlacesUtils.bookmarks.virtualToolbarGuid ||
+           guid == PlacesUtils.bookmarks.virtualUnfiledGuid ||
+           guid == PlacesUtils.bookmarks.virtualMobileGuid;
+  },
+
+  /**
+   * Returns the title to use on the UI for a bookmark item. Root folders
+   * in the database don't store fully localised versions of the title. To
+   * get those this function should be called.
+   *
+   * Hence, this function should only be called if a root folder object is
+   * likely to be displayed to the user.
+   *
+   * @param {Object} info An object representing a bookmark-item.
+   * @returns {String} The correct string.
+   * @throws {Error} If the guid in PlacesUtils.bookmarks.userContentRoots is
+   *                 not supported.
+   */
+  getLocalizedTitle(info) {
+    if (!PlacesUtils.bookmarks.userContentRoots.includes(info.guid)) {
+      return info.title;
+    }
+
+    switch (info.guid) {
+      case PlacesUtils.bookmarks.toolbarGuid:
+        return PlacesUtils.getString("BookmarksToolbarFolderTitle");
+      case PlacesUtils.bookmarks.menuGuid:
+        return PlacesUtils.getString("BookmarksMenuFolderTitle");
+      case PlacesUtils.bookmarks.unfiledGuid:
+        return PlacesUtils.getString("OtherBookmarksFolderTitle");
+      case PlacesUtils.bookmarks.mobileGuid:
+        return PlacesUtils.getString("MobileBookmarksFolderTitle");
+      default:
+        throw new Error(`Unsupported guid ${info.guid} passed to getLocalizedTitle!`);
+    }
+  },
 
   /**
    * Inserts a bookmark-item into the bookmarks tree.
@@ -715,6 +766,8 @@ var Bookmarks = Object.freeze({
           }
         }
         if (updateInfo.hasOwnProperty("url")) {
+          await PlacesUtils.keywords.reassign(item.url, updatedItem.url,
+                                              updatedItem.source);
           notify(observers, "onItemChanged", [ updatedItem._id, "uri",
                                                false, updatedItem.url.href,
                                                PlacesUtils.toPRTime(updatedItem.lastModified),
@@ -869,6 +922,7 @@ var Bookmarks = Object.freeze({
 
         // We don't wait for the frecency calculation.
         if (urls && urls.length) {
+          await PlacesUtils.keywords.eraseEverything();
           updateFrecency(db, urls, true).catch(Cu.reportError);
         }
       }
@@ -918,6 +972,10 @@ var Bookmarks = Object.freeze({
    *      retrieves the most recent bookmark having the given URL.
    *      To retrieve ALL of the bookmarks for that URL, you must pass in an
    *      onResult callback, that will be invoked once for each found bookmark.
+   *  - guidPrefix
+   *      retrieves the most recent item with the specified guid prefix.
+   *      To retrieve ALL of the bookmarks for that guid prefix, you must pass
+   *      in an onResult callback, that will be invoked once for each bookmark.
    *
    * @param guidOrInfo
    *        The globally unique identifier of the item to fetch, or an
@@ -953,14 +1011,15 @@ var Bookmarks = Object.freeze({
       info = { guid: guidOrInfo };
     } else if (Object.keys(info).length == 1) {
       // Just a faster code path.
-      if (!["url", "guid", "parentGuid", "index"].includes(Object.keys(info)[0]))
+      if (!["url", "guid", "parentGuid", "index", "guidPrefix"].includes(Object.keys(info)[0]))
         throw new Error(`Unexpected number of conditions provided: 0`);
     } else {
       // Only one condition at a time can be provided.
       let conditionsCount = [
         v => v.hasOwnProperty("guid"),
         v => v.hasOwnProperty("parentGuid") && v.hasOwnProperty("index"),
-        v => v.hasOwnProperty("url")
+        v => v.hasOwnProperty("url"),
+        v => v.hasOwnProperty("guidPrefix")
       ].reduce((old, fn) => old + fn(info) | 0, 0);
       if (conditionsCount != 1)
         throw new Error(`Unexpected number of conditions provided: ${conditionsCount}`);
@@ -989,6 +1048,8 @@ var Bookmarks = Object.freeze({
         results = await fetchBookmark(fetchInfo, options && options.concurrent);
       else if (fetchInfo.hasOwnProperty("parentGuid") && fetchInfo.hasOwnProperty("index"))
         results = await fetchBookmarkByPosition(fetchInfo, options && options.concurrent);
+      else if (fetchInfo.hasOwnProperty("guidPrefix"))
+        results = await fetchBookmarksByGUIDPrefix(fetchInfo, options && options.concurrent);
 
       if (!results)
         return null;
@@ -1731,6 +1792,32 @@ async function fetchBookmarkByPosition(info, concurrent) {
                                            query);
 }
 
+async function fetchBookmarksByGUIDPrefix(info, concurrent) {
+  let query = async function(db) {
+    let rows = await db.executeCached(
+      `SELECT b.guid, IFNULL(p.guid, "") AS parentGuid, b.position AS 'index',
+              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, "") AS title,
+              h.url AS url, b.id AS _id, b.parent AS _parentId,
+              NULL AS _childCount,
+              p.parent AS _grandParentId, b.syncStatus AS _syncStatus
+       FROM moz_bookmarks b
+       LEFT JOIN moz_bookmarks p ON p.id = b.parent
+       LEFT JOIN moz_places h ON h.id = b.fk
+       WHERE b.guid LIKE :guidPrefix
+       ORDER BY b.lastModified DESC
+      `, { guidPrefix: info.guidPrefix + "%" });
+
+    return rows.length ? rowsToItemsArray(rows) : null;
+  };
+
+  if (concurrent) {
+    let db = await PlacesUtils.promiseDBConnection();
+    return query(db);
+  }
+  return PlacesUtils.withConnectionWrapper("Bookmarks.jsm: fetchBookmarksByGUIDPrefix",
+                                           query);
+}
+
 async function fetchBookmarksByURL(info, concurrent) {
   let query = async function(db) {
     let tagsFolderId = await promiseTagsFolderId();
@@ -1867,24 +1954,20 @@ function removeBookmarks(items, options) {
         await setAncestorsLastModified(db, guid, new Date(), syncChangeDelta);
       }
 
-      // Write a tombstone for the removed item.
+      // Write tombstones for the removed items.
       await insertTombstones(db, items, syncChangeDelta);
     });
 
-    // Update the frecencies outside of the transaction, so that the updates
-    // can progress in the background.
-    for (let item of items) {
+    // Update the frecencies outside of the transaction, excluding tags, so that
+    // the updates can progress in the background.
+    urls = urls.concat(items.filter(item => {
       let isUntagging = item._grandParentId == PlacesUtils.tagsFolderId;
-
-      // If not a tag recalculate frecency...
-      if (item.type == Bookmarks.TYPE_BOOKMARK && !isUntagging) {
-        // ...though we don't wait for the calculation.
-        updateFrecency(db, [item.url]).catch(Cu.reportError);
-      }
-    }
+      return !isUntagging && "url" in item;
+    }).map(item => item.url));
 
     if (urls.length) {
-      updateFrecency(db, urls, true).catch(Cu.reportError);
+      await PlacesUtils.keywords.removeFromURLsIfNotBookmarked(urls);
+      updateFrecency(db, urls, urls.length > 1).catch(Cu.reportError);
     }
   });
 }
@@ -2394,21 +2477,6 @@ async function maybeInsertManyPlaces(db, urls) {
 // with the server.
 function needsTombstone(item) {
   return item._syncStatus == Bookmarks.SYNC_STATUS.NORMAL;
-}
-
-// Inserts a tombstone for a removed synced item. Tombstones are stored as rows
-// in the `moz_bookmarks_deleted` table, and only written for "NORMAL" items.
-// After each sync, `PlacesSyncUtils.bookmarks.pushChanges` drops successfully
-// uploaded tombstones.
-function insertTombstone(db, item, syncChangeDelta) {
-  if (!syncChangeDelta || !needsTombstone(item)) {
-    return Promise.resolve();
-  }
-  return db.executeCached(`
-    INSERT INTO moz_bookmarks_deleted (guid, dateRemoved)
-    VALUES (:guid, :dateRemoved)`,
-    { guid: item.guid,
-      dateRemoved: PlacesUtils.toPRTime(Date.now()) });
 }
 
 // Inserts tombstones for removed synced items.

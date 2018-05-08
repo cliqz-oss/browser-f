@@ -126,8 +126,8 @@ nsTreeColFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
 
   WrapListsInRedirector(aBuilder, set, aLists);
 
-  aLists.Content()->AppendToTop(new (aBuilder)
-    nsDisplayXULTreeColSplitterTarget(aBuilder, this));
+  aLists.Content()->AppendToTop(
+    MakeDisplayItem<nsDisplayXULTreeColSplitterTarget>(aBuilder, this));
 }
 
 nsresult
@@ -172,8 +172,8 @@ nsTreeColFrame::GetTreeBoxObject()
     RefPtr<nsXULElement> treeElement =
       nsXULElement::FromContentOrNull(grandParent);
     if (treeElement) {
-      IgnoredErrorResult ignored;
-      nsCOMPtr<nsIBoxObject> boxObject = treeElement->GetBoxObject(ignored);
+      nsCOMPtr<nsIBoxObject> boxObject =
+        treeElement->GetBoxObject(IgnoreErrors());
 
       nsCOMPtr<nsITreeBoxObject> treeBoxObject = do_QueryInterface(boxObject);
       result = treeBoxObject.get();

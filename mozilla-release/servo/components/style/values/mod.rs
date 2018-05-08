@@ -12,10 +12,15 @@ use Atom;
 pub use cssparser::{RGBA, Token, Parser, serialize_identifier, CowRcStr, SourceLocation};
 use parser::{Parse, ParserContext};
 use selectors::parser::SelectorParseErrorKind;
-#[allow(unused_imports)] use std::ascii::AsciiExt;
 use std::fmt::{self, Debug, Write};
 use std::hash;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
+use values::distance::{ComputeSquaredDistance, SquaredDistance};
+
+#[cfg(feature = "servo")]
+pub use servo::url::CssUrl;
+#[cfg(feature = "gecko")]
+pub use gecko::url::CssUrl;
 
 pub mod animated;
 pub mod computed;
@@ -33,6 +38,25 @@ define_keyword_type!(None_, "none");
 define_keyword_type!(Auto, "auto");
 define_keyword_type!(Normal, "normal");
 
+/// Serialize an identifier which is represented as an atom.
+#[cfg(feature = "gecko")]
+pub fn serialize_atom_identifier<W>(ident: &Atom, dest: &mut W) -> fmt::Result
+where
+    W: Write,
+{
+    ident.with_str(|s| serialize_identifier(s, dest))
+}
+
+/// Serialize an identifier which is represented as an atom.
+#[cfg(feature = "servo")]
+pub fn serialize_atom_identifier<Static, W>(ident: &::string_cache::Atom<Static>, dest: &mut W) -> fmt::Result
+where
+    Static: ::string_cache::StaticAtomSet,
+    W: Write,
+{
+    serialize_identifier(&ident, dest)
+}
+
 /// Serialize a normalized value into percentage.
 pub fn serialize_percentage<W>(value: CSSFloat, dest: &mut CssWriter<W>) -> fmt::Result
 where
@@ -44,8 +68,20 @@ where
 
 /// Convenience void type to disable some properties and values through types.
 #[cfg_attr(feature = "servo", derive(Deserialize, MallocSizeOf, Serialize))]
-#[derive(Clone, Copy, Debug, PartialEq, ToComputedValue, ToCss)]
+#[derive(Clone, Copy, Debug, PartialEq, ToAnimatedValue, ToComputedValue, ToCss)]
 pub enum Impossible {}
+
+// FIXME(nox): This should be derived but the derive code cannot cope
+// with uninhabited enums.
+impl ComputeSquaredDistance for Impossible {
+    #[inline]
+    fn compute_squared_distance(
+        &self,
+        _other: &Self,
+    ) -> Result<SquaredDistance, ()> {
+        match *self {}
+    }
+}
 
 impl Parse for Impossible {
     fn parse<'i, 't>(
@@ -114,7 +150,7 @@ impl ToCss for CustomIdent {
     where
         W: Write,
     {
-        serialize_identifier(&self.0.to_string(), dest)
+        serialize_atom_identifier(&self.0, dest)
     }
 }
 
@@ -195,10 +231,3 @@ impl ToCss for KeyframesName {
     }
 }
 
-// A type for possible values for min- and max- flavors of width,
-// height, block-size, and inline-size.
-define_css_keyword_enum!(ExtremumLength:
-                         "-moz-max-content" => MaxContent,
-                         "-moz-min-content" => MinContent,
-                         "-moz-fit-content" => FitContent,
-                         "-moz-available" => FillAvailable);

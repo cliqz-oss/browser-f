@@ -1,10 +1,10 @@
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AppMenuNotifications",
-                                  "resource://gre/modules/AppMenuNotifications.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateListener",
-                                  "resource://gre/modules/UpdateListener.jsm");
+ChromeUtils.defineModuleGetter(this, "AppMenuNotifications",
+                               "resource://gre/modules/AppMenuNotifications.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateListener",
+                               "resource://gre/modules/UpdateListener.jsm");
 
 const IS_MACOSX = ("nsILocalFileMac" in Ci);
 const IS_WIN = ("@mozilla.org/windows-registry-key;1" in Cc);
@@ -36,7 +36,7 @@ var gURLData = URL_HOST + "/" + REL_PATH_DATA;
 const URL_MANUAL_UPDATE = gURLData + "downloadPage.html";
 
 const gEnv = Cc["@mozilla.org/process/environment;1"].
-             getService(Components.interfaces.nsIEnvironment);
+             getService(Ci.nsIEnvironment);
 
 const NOTIFICATIONS = [
   "update-available",

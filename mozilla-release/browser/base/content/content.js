@@ -8,10 +8,8 @@
 
 /* eslint-env mozilla/frame-script */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
@@ -110,7 +108,9 @@ function getSiteBlockedErrorDetails(docShell) {
 
       // Remove the query to avoid leaking sensitive data
       if (reportUri instanceof Ci.nsIURL) {
-        reportUri.query = "";
+        reportUri = reportUri.mutate()
+                             .setQuery("")
+                             .finalize();
       }
 
       blockedInfo = { list: classifiedChannel.matchedList,
@@ -406,10 +406,14 @@ var AboutNetAndCertErrorListener = {
     // Values for telemtery bins: see TLS_ERROR_REPORT_UI in Histograms.json
     const TLS_ERROR_REPORT_TELEMETRY_UI_SHOWN = 0;
 
+    let hideAddExceptionButton = false;
+
     if (this.isAboutCertError) {
       let originalTarget = evt.originalTarget;
       let ownerDoc = originalTarget.ownerDocument;
       ClickEventHandler.onCertError(originalTarget, ownerDoc);
+      hideAddExceptionButton =
+        Services.prefs.getBoolPref("security.certerror.hideAddException", false);
     }
 
     let automatic = Services.prefs.getBoolPref("security.ssl.errorReporting.automatic");
@@ -417,7 +421,8 @@ var AboutNetAndCertErrorListener = {
       detail: JSON.stringify({
         enabled: Services.prefs.getBoolPref("security.ssl.errorReporting.enabled"),
         changedCertPrefs: this.changedCertPrefs(),
-        automatic
+        automatic,
+        hideAddExceptionButton,
       })
     }));
 
@@ -749,6 +754,7 @@ var LightWeightThemeWebInstallListener = {
       case "InstallBrowserTheme": {
         sendAsyncMessage("LightWeightThemeWebInstaller:Install", {
           baseURI: event.target.baseURI,
+          principal: event.target.nodePrincipal,
           themeData: event.target.getAttribute("data-browsertheme"),
         });
         break;
@@ -756,6 +762,7 @@ var LightWeightThemeWebInstallListener = {
       case "PreviewBrowserTheme": {
         sendAsyncMessage("LightWeightThemeWebInstaller:Preview", {
           baseURI: event.target.baseURI,
+          principal: event.target.nodePrincipal,
           themeData: event.target.getAttribute("data-browsertheme"),
         });
         this._previewWindow = event.target.ownerGlobal;
@@ -770,7 +777,7 @@ var LightWeightThemeWebInstallListener = {
       case "ResetBrowserThemePreview": {
         if (this._previewWindow) {
           sendAsyncMessage("LightWeightThemeWebInstaller:ResetPreview",
-                           {baseURI: event.target.baseURI});
+                           {principal: event.target.nodePrincipal});
           this._resetPreviewWindow();
         }
         break;

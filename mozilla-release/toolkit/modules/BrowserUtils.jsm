@@ -5,60 +5,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "BrowserUtils" ];
+var EXPORTED_SYMBOLS = [ "BrowserUtils" ];
 
-const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
-let reflowObservers = new WeakMap();
-
-function ReflowObserver(doc) {
-  this._doc = doc;
-
-  doc.docShell.addWeakReflowObserver(this);
-  reflowObservers.set(this._doc, this);
-
-  this.callbacks = [];
-}
-
-ReflowObserver.prototype = {
-  QueryInterface: XPCOMUtils.generateQI(["nsIReflowObserver", "nsISupportsWeakReference"]),
-
-  _onReflow() {
-    reflowObservers.delete(this._doc);
-    this._doc.docShell.removeWeakReflowObserver(this);
-
-    for (let callback of this.callbacks) {
-      try {
-        callback();
-      } catch (e) {
-        Cu.reportError(e);
-      }
-    }
-  },
-
-  reflow() {
-    this._onReflow();
-  },
-
-  reflowInterruptible() {
-    this._onReflow();
-  },
-};
-
-const FLUSH_TYPES = {
-  "style": Ci.nsIDOMWindowUtils.FLUSH_STYLE,
-  "layout": Ci.nsIDOMWindowUtils.FLUSH_LAYOUT,
-  "display": Ci.nsIDOMWindowUtils.FLUSH_DISPLAY,
-};
-
-this.BrowserUtils = {
+var BrowserUtils = {
 
   /**
    * Prints arguments separated by a space and appends a new line.
@@ -313,7 +269,7 @@ this.BrowserUtils = {
     // The HTML spec says that rel should be split on spaces before looking
     // for particular rel values.
     let values = rel.split(/[ \t\r\n\f]/);
-    return values.indexOf("noreferrer") != -1;
+    return values.includes("noreferrer");
   },
 
   /**
@@ -430,8 +386,7 @@ this.BrowserUtils = {
     }
     let bounds = dwu.getBoundsWithoutFlushing(toolbarItem);
     if (!bounds.height) {
-      let document = element.ownerDocument;
-      await BrowserUtils.promiseLayoutFlushed(document, "layout", () => {
+      await window.promiseDocumentFlushed(() => {
         bounds = dwu.getBoundsWithoutFlushing(toolbarItem);
       });
     }
@@ -690,61 +645,68 @@ this.BrowserUtils = {
   },
 
   /**
-   * Calls the given function when the given document has just reflowed,
-   * and returns a promise which resolves to its return value after it
-   * has been called.
-   *
-   * The function *must not trigger any reflows*, or make any changes
-   * which would require a layout flush.
+   * Generate a document fragment for a localized string that has DOM
+   * node replacements. This avoids using getFormattedString followed
+   * by assigning to innerHTML. Fluent can probably replace this when
+   * it is in use everywhere.
    *
    * @param {Document} doc
-   * @param {function} callback
-   * @returns {Promise}
+   * @param {String}   msg
+   *                   The string to put replacements in. Fetch from
+   *                   a stringbundle using getString or GetStringFromName,
+   *                   or even an inserted dtd string.
+   * @param {Node|String} nodesOrStrings
+   *                   The replacement items. Can be a mix of Nodes
+   *                   and Strings. However, for correct behaviour, the
+   *                   number of items provided needs to exactly match
+   *                   the number of replacement strings in the l10n string.
+   * @returns {DocumentFragment}
+   *                   A document fragment. In the trivial case (no
+   *                   replacements), this will simply be a fragment with 1
+   *                   child, a text node containing the localized string.
    */
-  promiseReflowed(doc, callback) {
-    let observer = reflowObservers.get(doc);
-    if (!observer) {
-      observer = new ReflowObserver(doc);
-      reflowObservers.set(doc, observer);
+  getLocalizedFragment(doc, msg, ...nodesOrStrings) {
+    // Ensure replacement points are indexed:
+    for (let i = 1; i <= nodesOrStrings.length; i++) {
+      if (!msg.includes("%" + i + "$S")) {
+        msg = msg.replace(/%S/, "%" + i + "$S");
+      }
+    }
+    let numberOfInsertionPoints = msg.match(/%\d+\$S/g).length;
+    if (numberOfInsertionPoints != nodesOrStrings.length) {
+      Cu.reportError(`Message has ${numberOfInsertionPoints} insertion points, ` +
+                     `but got ${nodesOrStrings.length} replacement parameters!`);
     }
 
-    return new Promise((resolve, reject) => {
-      observer.callbacks.push(() => {
-        try {
-          resolve(callback());
-        } catch (e) {
-          reject(e);
+    let fragment = doc.createDocumentFragment();
+    let parts = [msg];
+    let insertionPoint = 1;
+    for (let replacement of nodesOrStrings) {
+      let insertionString = "%" + (insertionPoint++) + "$S";
+      let partIndex = parts.findIndex(part => typeof part == "string" && part.includes(insertionString));
+      if (partIndex == -1) {
+        fragment.appendChild(doc.createTextNode(msg));
+        return fragment;
+      }
+
+      if (typeof replacement == "string") {
+        parts[partIndex] = parts[partIndex].replace(insertionString, replacement);
+      } else {
+        let [firstBit, lastBit] = parts[partIndex].split(insertionString);
+        parts.splice(partIndex, 1, firstBit, replacement, lastBit);
+      }
+    }
+
+    // Put everything in a document fragment:
+    for (let part of parts) {
+      if (typeof part == "string") {
+        if (part) {
+          fragment.appendChild(doc.createTextNode(part));
         }
-      });
-    });
-  },
-
-  /**
-   * Calls the given function as soon as a layout flush of the given
-   * type is not necessary, and returns a promise which resolves to the
-   * callback's return value after it executes.
-   *
-   * The function *must not trigger any reflows*, or make any changes
-   * which would require a layout flush.
-   *
-   * @param {Document} doc
-   * @param {string} flushType
-   *        The flush type required. Must be one of:
-   *
-   *          - "style"
-   *          - "layout"
-   *          - "display"
-   * @param {function} callback
-   * @returns {Promise}
-   */
-  async promiseLayoutFlushed(doc, flushType, callback) {
-    let utils = doc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils);
-
-    if (!utils.needsFlush(FLUSH_TYPES[flushType])) {
-      return callback();
+      } else {
+        fragment.appendChild(part);
+      }
     }
-
-    return this.promiseReflowed(doc, callback);
+    return fragment;
   },
 };

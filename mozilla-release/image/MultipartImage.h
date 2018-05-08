@@ -25,6 +25,8 @@ class MultipartImage
 {
 public:
   MOZ_DECLARE_REFCOUNTED_TYPENAME(MultipartImage)
+  // We need to always declare refcounting here, because
+  // IProgressObserver has pure-virtual refcounting.
   NS_DECL_ISUPPORTS_INHERITED
 
   void BeginTransitionToPart(Image* aNextPart);
@@ -59,7 +61,8 @@ public:
   virtual void OnLoadComplete(bool aLastPart) override;
   virtual void SetHasImage() override;
   virtual bool NotificationsDeferred() const override;
-  virtual void SetNotificationsDeferred(bool aDeferNotifications) override;
+  virtual void MarkPendingNotify() override;
+  virtual void ClearPendingNotify() override;
 
 protected:
   virtual ~MultipartImage();
@@ -76,7 +79,7 @@ private:
   RefPtr<ProgressTracker> mTracker;
   RefPtr<NextPartObserver> mNextPartObserver;
   RefPtr<Image> mNextPart;
-  bool mDeferNotifications : 1;
+  bool mPendingNotify : 1;
 };
 
 } // namespace image

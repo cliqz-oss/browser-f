@@ -22,6 +22,7 @@
 // to be able to hold on to a GLContext.
 #include "mozilla/GenericRefCounted.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Path.h"
 
 // This RefPtr class isn't ideal for usage in Azure, as it doesn't allow T**
 // outparams using the &-operator. But it will have to do as there's no easy
@@ -369,6 +370,9 @@ public:
 
   virtual SurfaceType GetType() const = 0;
   virtual IntSize GetSize() const = 0;
+  virtual IntRect GetRect() const {
+    return IntRect(IntPoint(0, 0), GetSize());
+  }
   virtual SurfaceFormat GetFormat() const = 0;
 
   /** This returns false if some event has made this source surface invalid for
@@ -556,7 +560,8 @@ public:
    */
   virtual void AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
                                       size_t& aHeapSizeOut,
-                                      size_t& aNonHeapSizeOut) const
+                                      size_t& aNonHeapSizeOut,
+                                      size_t& aExtHandlesOut) const
   {
   }
 
@@ -937,7 +942,10 @@ public:
   // based on the RGB values.
   virtual already_AddRefed<SourceSurface> IntoLuminanceSource(LuminanceType aLuminanceType,
                                                               float aOpacity);
-  virtual IntSize GetSize() = 0;
+  virtual IntSize GetSize() const = 0;
+  virtual IntRect GetRect() const {
+    return IntRect(IntPoint(0, 0), GetSize());
+  }
 
   /**
    * If possible returns the bits to this DrawTarget for direct manipulation. While
@@ -1217,6 +1225,30 @@ public:
                          bool aCopyBackground = false) { MOZ_CRASH("GFX: PushLayer"); }
 
   /**
+   * Push a 'layer' to the DrawTarget, a layer is a temporary surface that all
+   * drawing will be redirected to, this is used for example to support group
+   * opacity or the masking of groups. Clips must be balanced within a layer,
+   * i.e. between a matching PushLayer/PopLayer pair there must be as many
+   * PushClip(Rect) calls as there are PopClip calls.
+   *
+   * @param aOpaque Whether the layer will be opaque
+   * @param aOpacity Opacity of the layer
+   * @param aMask Mask applied to the layer
+   * @param aMaskTransform Transform applied to the layer mask
+   * @param aBounds Optional bounds in device space to which the layer is
+   *                limited in size.
+   * @param aCopyBackground Whether to copy the background into the layer, this
+   *                        is only supported when aOpaque is true.
+   */
+  virtual void PushLayerWithBlend(bool aOpaque, Float aOpacity,
+                         SourceSurface* aMask,
+                         const Matrix& aMaskTransform,
+                         const IntRect& aBounds = IntRect(),
+                         bool aCopyBackground = false,
+                         CompositionOp = CompositionOp::OP_OVER) { MOZ_CRASH("GFX: PushLayerWithBlend"); }
+
+
+  /**
    * This balances a call to PushLayer and proceeds to blend the layer back
    * onto the background. This blend will blend the temporary surface back
    * onto the target in device space using POINT sampling and operator over.
@@ -1227,9 +1259,7 @@ public:
    * Perform an in-place blur operation. This is only supported on data draw
    * targets.
    */
-  virtual void Blur(const AlphaBoxBlur& aBlur) {
-    MOZ_CRASH("GFX: DoBlur");
-  }
+  virtual void Blur(const AlphaBoxBlur& aBlur);
 
   /**
    * Create a SourceSurface optimized for use with this DrawTarget from
@@ -1279,6 +1309,17 @@ public:
                            float aSigma) const
   {
     return CreateSimilarDrawTarget(aSize, aFormat);
+  }
+
+  /**
+   * Create a similar DrawTarget whose requested size may be clipped based
+   * on this DrawTarget's rect transformed to the new target's space.
+   */
+  virtual RefPtr<DrawTarget> CreateClippedDrawTarget(const IntSize& aMaxSize,
+                                                     const Matrix& aTransform,
+                                                     SurfaceFormat aFormat) const
+  {
+    return CreateSimilarDrawTarget(aMaxSize, aFormat);
   }
 
   /**
@@ -1447,6 +1488,8 @@ class DrawTargetCapture : public DrawTarget
 public:
   virtual bool IsCaptureDT() const override { return true; }
 
+  virtual void Dump() = 0;
+
   /**
    * Returns true if the recording only contains FillGlyph calls with
    * a single font and color. Returns the list of Glyphs along with
@@ -1491,6 +1534,7 @@ struct Config {
 
 class GFX2D_API Factory
 {
+  using char_type = filesystem::Path::value_type;
 public:
   static void Init(const Config& aConfig);
   static void ShutDown();
@@ -1655,7 +1699,7 @@ public:
 
 
   static already_AddRefed<DrawEventRecorder>
-    CreateEventRecorderForFile(const char *aFilename);
+    CreateEventRecorderForFile(const char_type* aFilename);
 
   static void SetGlobalEventRecorder(DrawEventRecorder *aRecorder);
 

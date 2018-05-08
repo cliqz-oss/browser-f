@@ -3,18 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "FxAccountsStorageManagerCanStoreField",
   "FxAccountsStorageManager",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
 
 // A helper function so code can check what fields are able to be stored by
 // the storage manager without having a reference to a manager instance.
@@ -25,7 +23,7 @@ function FxAccountsStorageManagerCanStoreField(fieldName) {
 }
 
 // The storage manager object.
-this.FxAccountsStorageManager = function(options = {}) {
+var FxAccountsStorageManager = function(options = {}) {
   this.options = {
     filename: options.filename || DEFAULT_STORAGE_FILENAME,
     baseDir: options.baseDir || OS.Constants.Path.profileDir,
@@ -214,21 +212,18 @@ this.FxAccountsStorageManager.prototype = {
     log.debug("_updateAccountData with items", Object.keys(newFields));
     // work out what bucket.
     for (let [name, value] of Object.entries(newFields)) {
-      if (FXA_PWDMGR_MEMORY_FIELDS.has(name)) {
-        if (value == null) {
-          delete this.cachedMemory[name];
-        } else {
-          this.cachedMemory[name] = value;
-        }
+      if (value == null) {
+        delete this.cachedMemory[name];
+        delete this.cachedPlain[name];
+        // no need to do the "delete on null" thing for this.cachedSecure -
+        // we need to keep it until we have managed to read so we can nuke
+        // it on write.
+        this.cachedSecure[name] = null;
+      } else if (FXA_PWDMGR_MEMORY_FIELDS.has(name)) {
+        this.cachedMemory[name] = value;
       } else if (FXA_PWDMGR_PLAINTEXT_FIELDS.has(name)) {
-        if (value == null) {
-          delete this.cachedPlain[name];
-        } else {
-          this.cachedPlain[name] = value;
-        }
+        this.cachedPlain[name] = value;
       } else if (FXA_PWDMGR_SECURE_FIELDS.has(name)) {
-        // don't do the "delete on null" thing here - we need to keep it until
-        // we have managed to read so we can nuke it on write.
         this.cachedSecure[name] = value;
       } else {
         // Throwing seems reasonable here as some client code has explicitly

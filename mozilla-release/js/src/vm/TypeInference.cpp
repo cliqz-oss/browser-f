@@ -13,13 +13,9 @@
 #include "mozilla/Sprintf.h"
 
 #include "jsapi.h"
-#include "jscntxt.h"
-#include "jshashutil.h"
-#include "jsobj.h"
-#include "jsprf.h"
-#include "jsscript.h"
-#include "jsstr.h"
+#include "builtin/String.h"
 
+#include "gc/HashUtil.h"
 #include "jit/BaselineJIT.h"
 #include "jit/CompileInfo.h"
 #include "jit/Ion.h"
@@ -28,17 +24,19 @@
 #include "jit/OptimizationTracking.h"
 #include "js/MemoryMetrics.h"
 #include "vm/HelperThreads.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/Opcodes.h"
 #include "vm/Printer.h"
 #include "vm/Shape.h"
 #include "vm/Time.h"
 #include "vm/UnboxedObject.h"
 
-#include "jsatominlines.h"
-#include "jsscriptinlines.h"
-
-#include "gc/Iteration-inl.h"
 #include "gc/Marking-inl.h"
+#include "gc/PrivateIterators-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -3331,6 +3329,8 @@ js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc, StackType
 
     AutoEnterAnalysis enter(cx);
 
+    script->maybeSweepTypes(nullptr);
+
     MOZ_ASSERT(types == TypeScript::BytecodeTypes(script, pc));
     MOZ_ASSERT(!types->hasType(type));
 
@@ -3949,6 +3949,10 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
     group->detachNewScript();
     initialGroup->setNewScript(this);
 
+    // prefixShape was read via a weak pointer, so we need a read barrier before
+    // we store it into the heap.
+    Shape::readBarrier(prefixShape);
+
     initializedShape_ = prefixShape;
     initializedGroup_ = group;
 
@@ -4305,6 +4309,8 @@ ObjectGroup::sweep(AutoClearTypeInferenceStateOnOOM* oom)
     Maybe<AutoClearTypeInferenceStateOnOOM> fallbackOOM;
     EnsureHasAutoClearTypeInferenceStateOnOOM(oom, zone(), fallbackOOM);
 
+    AutoTouchingGrayThings tgt;
+
     if (maybeUnboxedLayout()) {
         // Remove unboxed layouts that are about to be finalized from the
         // compartment wide list while we are still on the active thread.
@@ -4517,7 +4523,7 @@ TypeZone::~TypeZone()
 }
 
 void
-TypeZone::beginSweep(FreeOp* fop, bool releaseTypes, AutoClearTypeInferenceStateOnOOM& oom)
+TypeZone::beginSweep(bool releaseTypes, AutoClearTypeInferenceStateOnOOM& oom)
 {
     MOZ_ASSERT(zone()->isGCSweepingOrCompacting());
     MOZ_ASSERT(!sweepCompilerOutputs);

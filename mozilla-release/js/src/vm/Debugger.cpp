@@ -11,24 +11,22 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/TypeTraits.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
 #include "jsfriendapi.h"
-#include "jshashutil.h"
 #include "jsnum.h"
-#include "jsobj.h"
-#include "jsprf.h"
-#include "jswrapper.h"
 
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/Parser.h"
+#include "gc/FreeOp.h"
+#include "gc/HashUtil.h"
 #include "gc/Marking.h"
 #include "gc/Policy.h"
+#include "gc/PublicIterators.h"
 #include "jit/BaselineDebugModeOSR.h"
 #include "jit/BaselineJIT.h"
 #include "js/Date.h"
 #include "js/UbiNodeBreadthFirst.h"
 #include "js/Vector.h"
+#include "js/Wrapper.h"
 #include "proxy/ScriptedProxyHandler.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/AsyncFunction.h"
@@ -36,16 +34,18 @@
 #include "vm/DebuggerMemory.h"
 #include "vm/GeckoProfiler.h"
 #include "vm/GeneratorObject.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/TraceLogging.h"
 #include "vm/WrapperObject.h"
 #include "wasm/WasmInstance.h"
 
-#include "jsgcinlines.h"
-#include "jsobjinlines.h"
-#include "jsopcodeinlines.h"
-#include "jsscriptinlines.h"
-
+#include "gc/GC-inl.h"
+#include "vm/BytecodeUtil-inl.h"
 #include "vm/GeckoProfiler-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/Stack-inl.h"
 
@@ -54,13 +54,11 @@ using namespace js;
 using JS::dbg::AutoEntryMonitor;
 using JS::dbg::Builder;
 using js::frontend::IsIdentifier;
-using mozilla::ArrayLength;
 using mozilla::DebugOnly;
 using mozilla::MakeScopeExit;
 using mozilla::Maybe;
 using mozilla::Some;
 using mozilla::Nothing;
-using mozilla::Variant;
 using mozilla::AsVariant;
 using mozilla::TimeDuration;
 using mozilla::TimeStamp;
@@ -7121,6 +7119,12 @@ class DebuggerSourceGetURLMatcher
         return Nothing();
     }
     ReturnType match(Handle<WasmInstanceObject*> wasmInstance) {
+        if (wasmInstance->instance().metadata().baseURL) {
+            JSString* str = NewStringCopyZ<CanGC>(cx_, wasmInstance->instance().metadata().baseURL.get());
+            if (!str)
+                return Nothing();
+            return Some(str);
+        }
         if (JSString* str = wasmInstance->instance().debug().debugDisplayURL(cx_))
             return Some(str);
         return Nothing();

@@ -54,29 +54,10 @@
       </property>
 
       <field name="labelElement"/>
-    </implementation>      
-  </binding>
-
-  <binding id="root-element">
-    <implementation>
-      <field name="_lightweightTheme">null</field>
-      <constructor><![CDATA[
-        if (this.hasAttribute("lightweightthemes")) {
-          let temp = {};
-          Components.utils.import("resource://gre/modules/LightweightThemeConsumer.jsm", temp);
-          this._lightweightTheme = new temp.LightweightThemeConsumer(this.ownerDocument);
-        }
-      ]]></constructor>
-      <destructor><![CDATA[
-        if (this._lightweightTheme) {
-          this._lightweightTheme.destroy();
-          this._lightweightTheme = null;
-        }
-      ]]></destructor>
     </implementation>
   </binding>
 
-  <binding id="iframe" role="outerdoc">
+  <binding id="iframe">
     <implementation>
       <property name="docShell" readonly="true">
         <getter><![CDATA[
@@ -132,7 +113,7 @@
     </implementation>
   </binding>
 
-  <binding id="dropmarker" extends="xul:button" role="xul:dropmarker">
+  <binding id="dropmarker" extends="xul:button">
     <resources>
       <stylesheet src="chrome://global/skin/dropmarker.css"/>
     </resources>
@@ -140,25 +121,6 @@
     <content>
       <xul:image class="dropmarker-icon"/>
     </content>
-  </binding>
-
-  <binding id="windowdragbox">
-    <implementation>
-      <field name="_dragBindingAlive">true</field>
-      <constructor>
-        if (!this._draggableStarted) {
-          this._draggableStarted = true;
-          try {
-            let tmp = {};
-            Components.utils.import("resource://gre/modules/WindowDraggingUtils.jsm", tmp);
-            let draghandle = new tmp.WindowDraggingElement(this);
-            draghandle.mouseDownCheck = function() {
-              return this._dragBindingAlive;
-            };
-          } catch (e) {}
-        }
-      </constructor>
-    </implementation>
   </binding>
 
 </bindings>

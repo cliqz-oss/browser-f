@@ -559,6 +559,8 @@ TileClient::ValidateBackBufferFromFront(const nsIntRegion& aDirtyRegion,
           if (CopyFrontToBack(mFrontBufferOnWhite, mBackBufferOnWhite, gfxRectToCopy, aFlags, aCopies, aClients)) {
             mInvalidBack.SetEmpty();
           }
+        } else {
+          mInvalidBack.SetEmpty();
         }
       }
     }
@@ -639,8 +641,6 @@ CreateBackBufferTexture(TextureClient* aCurrentTexture,
     gfxCriticalError() << "[Tiling:Client] Failed to allocate a TextureClient";
     return nullptr;
   }
-
-  texture->EnableReadLock();
 
   if (!aCompositable.AddTextureClient(texture)) {
     gfxCriticalError() << "[Tiling:Client] Failed to connect a TextureClient";
@@ -752,18 +752,17 @@ TileClient::GetTileDescriptor()
   bool wasPlaceholder = mWasPlaceholder;
   mWasPlaceholder = false;
 
-  ReadLockDescriptor lock;
-  mFrontBuffer->SerializeReadLock(lock);
+  bool readLocked = mFrontBuffer->OnForwardedToHost();
+  bool readLockedOnWhite = false;
 
-  ReadLockDescriptor lockOnWhite = null_t();
   if (mFrontBufferOnWhite) {
-    mFrontBufferOnWhite->SerializeReadLock(lockOnWhite);
+    readLockedOnWhite = mFrontBufferOnWhite->OnForwardedToHost();
   }
 
   return TexturedTileDescriptor(nullptr, mFrontBuffer->GetIPDLActor(),
                                 mFrontBufferOnWhite ? MaybeTexture(mFrontBufferOnWhite->GetIPDLActor()) : MaybeTexture(null_t()),
                                 mUpdateRect,
-                                lock, lockOnWhite,
+                                readLocked, readLockedOnWhite,
                                 wasPlaceholder);
 }
 
@@ -1117,7 +1116,7 @@ ClientMultiTiledLayerBuffer::ValidateTile(TileClient& aTile,
     aTile.SetTextureAllocator(mManager->GetCompositorBridgeChild()->GetTexturePool(
       mManager->AsShadowForwarder(),
       gfxPlatform::GetPlatform()->Optimal2DFormatForContent(content),
-      TextureFlags::DISALLOW_BIGIMAGE | TextureFlags::IMMEDIATE_UPLOAD));
+      TextureFlags::DISALLOW_BIGIMAGE | TextureFlags::IMMEDIATE_UPLOAD | TextureFlags::NON_BLOCKING_READ_LOCK));
     MOZ_ASSERT(aTile.mAllocator);
   }
 

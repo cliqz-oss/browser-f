@@ -2,18 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["MockPermissionPrompt"];
+var EXPORTED_SYMBOLS = ["MockPermissionPrompt"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
 const Cm = Components.manager;
-const Cu = Components.utils;
 
 const CONTRACT_ID = "@mozilla.org/content-permission/prompt;1";
 
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var registrar = Cm.QueryInterface(Ci.nsIComponentRegistrar);
 var oldClassID, oldFactory;
@@ -21,16 +18,16 @@ var newClassID = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenera
 var newFactory = {
   createInstance(aOuter, aIID) {
     if (aOuter)
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     return new MockPermissionPromptInstance().QueryInterface(aIID);
   },
   lockFactory(aLock) {
-    throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
 };
 
-this.MockPermissionPrompt = {
+var MockPermissionPrompt = {
   init() {
     this.reset();
     if (!registrar.isCIDRegistered(newClassID)) {

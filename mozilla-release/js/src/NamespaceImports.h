@@ -30,9 +30,9 @@ class TwoByteCharsZ;
 class UTF8Chars;
 class UTF8CharsZ;
 
-class AutoValueVector;
-class AutoIdVector;
-class AutoObjectVector;
+using AutoValueVector = AutoVector<Value>;
+using AutoIdVector = AutoVector<jsid>;
+using AutoObjectVector = AutoVector<JSObject*>;
 
 using ValueVector = JS::GCVector<JS::Value>;
 using IdVector = JS::GCVector<jsid>;
@@ -48,7 +48,6 @@ class HandleValueArray;
 class ObjectOpResult;
 class PropertyResult;
 
-class Symbol;
 enum class SymbolCode: uint32_t;
 
 } // namespace JS

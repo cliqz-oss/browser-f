@@ -12,6 +12,7 @@
 #include "gfxPlatform.h"
 #include "nsComponentManagerUtils.h"
 #include "nsError.h"
+#include "DecodePool.h"
 #include "Decoder.h"
 #include "prenv.h"
 #include "prsystem.h"
@@ -577,12 +578,7 @@ RasterImage::GetFrameAtSize(const IntSize& aSize,
 #endif
 
   auto result = GetFrameInternal(aSize, Nothing(), aWhichFrame, aFlags);
-  RefPtr<SourceSurface> surf = mozilla::Get<2>(result).forget();
-
-  // If we are here, it suggests the image is embedded in a canvas or some
-  // other path besides layers, and we won't need the file handle.
-  MarkSurfaceShared(surf);
-  return surf.forget();
+  return mozilla::Get<2>(result).forget();
 }
 
 Tuple<ImgDrawResult, IntSize, RefPtr<SourceSurface>>
@@ -873,7 +869,8 @@ RasterImage::ResetAnimation()
   }
 
   MOZ_ASSERT(mAnimationState, "Should have AnimationState");
-  mAnimationState->ResetAnimation();
+  MOZ_ASSERT(mFrameAnimator, "Should have FrameAnimator");
+  mFrameAnimator->ResetAnimation(*mAnimationState);
 
   NotifyProgress(NoProgress, mAnimationState->FirstFrameRefreshArea());
 
@@ -1249,10 +1246,31 @@ RasterImage::Decode(const IntSize& aSize,
 
   // Create a decoder.
   RefPtr<IDecodingTask> task;
-  if (mAnimationState && aPlaybackType == PlaybackType::eAnimated) {
-    task = DecoderFactory::CreateAnimationDecoder(mDecoderType, WrapNotNull(this),
-                                                  mSourceBuffer, mSize,
-                                                  decoderFlags, surfaceFlags);
+  nsresult rv;
+  bool animated = mAnimationState && aPlaybackType == PlaybackType::eAnimated;
+  if (animated) {
+    size_t currentFrame = mAnimationState->GetCurrentAnimationFrameIndex();
+    rv = DecoderFactory::CreateAnimationDecoder(mDecoderType, WrapNotNull(this),
+                                                mSourceBuffer, mSize,
+                                                decoderFlags, surfaceFlags,
+                                                currentFrame,
+                                                getter_AddRefs(task));
+  } else {
+    rv = DecoderFactory::CreateDecoder(mDecoderType, WrapNotNull(this),
+                                       mSourceBuffer, mSize, aSize,
+                                       decoderFlags, surfaceFlags,
+                                       getter_AddRefs(task));
+  }
+
+  if (rv == NS_ERROR_ALREADY_INITIALIZED) {
+    // We raced with an already pending decoder, and it finished before we
+    // managed to insert the new decoder. Pretend we did a sync call to make
+    // the caller lookup in the surface cache again.
+    MOZ_ASSERT(!task);
+    return true;
+  }
+
+  if (animated) {
     // We pass false for aAllowInvalidation because we may be asked to use
     // async notifications. Any potential invalidation here will be sent when
     // RequestRefresh is called, or NotifyDecodeComplete.
@@ -1261,17 +1279,15 @@ RasterImage::Decode(const IntSize& aSize,
 #endif
       mAnimationState->UpdateState(mAnimationFinished, this, mSize, false);
     MOZ_ASSERT(rect.IsEmpty());
-  } else {
-    task = DecoderFactory::CreateDecoder(mDecoderType, WrapNotNull(this),
-                                         mSourceBuffer, mSize, aSize,
-                                         decoderFlags, surfaceFlags);
   }
 
   // Make sure DecoderFactory was able to create a decoder successfully.
-  if (!task) {
+  if (NS_FAILED(rv)) {
+    MOZ_ASSERT(!task);
     return false;
   }
 
+  MOZ_ASSERT(task);
   mDecodeCount++;
 
   // We're ready to decode; start the decoder.

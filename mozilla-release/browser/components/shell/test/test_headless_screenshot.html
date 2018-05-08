@@ -9,16 +9,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1378010
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
-  Components.utils.import("resource://gre/modules/Services.jsm");
-  Components.utils.import("resource://gre/modules/Subprocess.jsm");
-  Components.utils.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Subprocess.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
   SimpleTest.requestLongerTimeout(2);
 
   const screenshotPath = OS.Path.join(OS.Constants.Path.tmpDir, "headless_test_screenshot.png");
 
   async function runFirefox(args) {
-    const Ci = Components.interfaces;
     const XRE_EXECUTABLE_FILE = "XREExeF";
     const firefoxExe = Services.dirsvc.get(XRE_EXECUTABLE_FILE, Ci.nsIFile).path;
     const NS_APP_PREFS_50_FILE = "PrefF";

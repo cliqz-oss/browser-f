@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { interfaces: Ci, classes: Cc, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var cps;
 var asyncRunner;
@@ -27,7 +25,7 @@ function runAsyncTests(tests, dontResetBefore = false) {
         getService(Ci.nsIContentPrefService2);
 
   let s = {};
-  Cu.import("resource://test/AsyncRunner.jsm", s);
+  ChromeUtils.import("resource://test/AsyncRunner.jsm", s);
   asyncRunner = new s.AsyncRunner({
     done: do_test_finished,
     error(err) {

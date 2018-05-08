@@ -9,12 +9,10 @@
 
 var EXPORTED_SYMBOLS = ["Preference"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 const WEAVE_PREF_PREFIX = "services.sync.prefs.sync.";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://tps/logger.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://tps/logger.jsm");
 
 /**
  * Preference class constructor

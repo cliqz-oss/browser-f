@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "onSpellCheck",
 ];
 
 const SPELL_CHECK_ENDED_TOPIC = "inlineSpellChecker-spellCheck-ended";
 const SPELL_CHECK_STARTED_TOPIC = "inlineSpellChecker-spellCheck-started";
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 /**
  * Waits until spell checking has stopped on the given element.

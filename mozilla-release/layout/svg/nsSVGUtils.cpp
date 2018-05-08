@@ -47,6 +47,7 @@
 #include "nsSVGOuterSVGFrame.h"
 #include "mozilla/dom/SVGClipPathElement.h"
 #include "mozilla/dom/SVGPathElement.h"
+#include "mozilla/dom/SVGUnitTypesBinding.h"
 #include "SVGGeometryElement.h"
 #include "SVGGeometryFrame.h"
 #include "nsSVGPaintServerFrame.h"
@@ -58,6 +59,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::dom::SVGUnitTypesBinding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 
@@ -1181,8 +1183,7 @@ nsSVGUtils::GetBBox(nsIFrame* aFrame, uint32_t aFlags,
       if (clipPathFrame) {
         SVGClipPathElement *clipContent =
           static_cast<SVGClipPathElement*>(clipPathFrame->GetContent());
-        RefPtr<SVGAnimatedEnumeration> units = clipContent->ClipPathUnits();
-        if (units->AnimVal() == SVG_UNIT_TYPE_OBJECTBOUNDINGBOX) {
+        if (clipContent->IsUnitsObjectBoundingBox()) {
           matrix.PreTranslate(gfxPoint(x, y));
           matrix.PreScale(width, height);
         } else if (aFrame->IsSVGForeignObjectFrame()) {
@@ -1685,110 +1686,26 @@ nsSVGUtils::GetStrokeWidth(nsIFrame* aFrame, SVGContextPaint* aContextPaint)
   return SVGContentUtils::CoordToFloat(ctx, style->mStrokeWidth);
 }
 
-static bool
-GetStrokeDashData(nsIFrame* aFrame,
-                  nsTArray<gfxFloat>& aDashes,
-                  gfxFloat* aDashOffset,
-                  SVGContextPaint* aContextPaint)
-{
-  const nsStyleSVG* style = aFrame->StyleSVG();
-  nsIContent *content = aFrame->GetContent();
-  nsSVGElement *ctx = static_cast<nsSVGElement*>
-    (content->IsNodeOfType(nsINode::eTEXT) ?
-     content->GetParent() : content);
-
-  gfxFloat totalLength = 0.0;
-  if (aContextPaint && style->StrokeDasharrayFromObject()) {
-    aDashes = aContextPaint->GetStrokeDashArray();
-
-    for (uint32_t i = 0; i < aDashes.Length(); i++) {
-      if (aDashes[i] < 0.0) {
-        return false;
-      }
-      totalLength += aDashes[i];
-    }
-
-  } else {
-    uint32_t count = style->mStrokeDasharray.Length();
-    if (!count || !aDashes.SetLength(count, fallible)) {
-      return false;
-    }
-
-    gfxFloat pathScale = 1.0;
-
-    if (content->IsSVGElement(nsGkAtoms::path)) {
-      pathScale = static_cast<SVGPathElement*>(content)->
-        GetPathLengthScale(SVGPathElement::eForStroking);
-      if (pathScale <= 0) {
-        return false;
-      }
-    }
-
-    const nsTArray<nsStyleCoord>& dasharray = style->mStrokeDasharray;
-
-    for (uint32_t i = 0; i < count; i++) {
-      aDashes[i] = SVGContentUtils::CoordToFloat(ctx,
-                                                 dasharray[i]) * pathScale;
-      if (aDashes[i] < 0.0) {
-        return false;
-      }
-      totalLength += aDashes[i];
-    }
-  }
-
-  if (aContextPaint && style->StrokeDashoffsetFromObject()) {
-    *aDashOffset = aContextPaint->GetStrokeDashOffset();
-  } else {
-    *aDashOffset = SVGContentUtils::CoordToFloat(ctx,
-                                                 style->mStrokeDashoffset);
-  }
-
-  return (totalLength > 0.0);
-}
-
 void
 nsSVGUtils::SetupStrokeGeometry(nsIFrame* aFrame,
                                 gfxContext *aContext,
                                 SVGContextPaint* aContextPaint)
 {
-  float width = GetStrokeWidth(aFrame, aContextPaint);
-  if (width <= 0)
+  SVGContentUtils::AutoStrokeOptions strokeOptions;
+  SVGContentUtils::GetStrokeOptions(
+    &strokeOptions, static_cast<nsSVGElement*>(aFrame->GetContent()),
+    aFrame->StyleContext(), aContextPaint);
+
+  if (strokeOptions.mLineWidth <= 0) {
     return;
-  aContext->SetLineWidth(width);
-
-  const nsStyleSVG* style = aFrame->StyleSVG();
-
-  switch (style->mStrokeLinecap) {
-  case NS_STYLE_STROKE_LINECAP_BUTT:
-    aContext->SetLineCap(CapStyle::BUTT);
-    break;
-  case NS_STYLE_STROKE_LINECAP_ROUND:
-    aContext->SetLineCap(CapStyle::ROUND);
-    break;
-  case NS_STYLE_STROKE_LINECAP_SQUARE:
-    aContext->SetLineCap(CapStyle::SQUARE);
-    break;
   }
 
-  aContext->SetMiterLimit(style->mStrokeMiterlimit);
-
-  switch (style->mStrokeLinejoin) {
-  case NS_STYLE_STROKE_LINEJOIN_MITER:
-    aContext->SetLineJoin(JoinStyle::MITER_OR_BEVEL);
-    break;
-  case NS_STYLE_STROKE_LINEJOIN_ROUND:
-    aContext->SetLineJoin(JoinStyle::ROUND);
-    break;
-  case NS_STYLE_STROKE_LINEJOIN_BEVEL:
-    aContext->SetLineJoin(JoinStyle::BEVEL);
-    break;
-  }
-
-  AutoTArray<gfxFloat, 10> dashes;
-  gfxFloat dashOffset;
-  if (GetStrokeDashData(aFrame, dashes, &dashOffset, aContextPaint)) {
-    aContext->SetDash(dashes.Elements(), dashes.Length(), dashOffset);
-  }
+  aContext->SetLineWidth(strokeOptions.mLineWidth);
+  aContext->SetLineCap(strokeOptions.mLineCap);
+  aContext->SetMiterLimit(strokeOptions.mMiterLimit);
+  aContext->SetLineJoin(strokeOptions.mLineJoin);
+  aContext->SetDash(strokeOptions.mDashPattern, strokeOptions.mDashLength,
+                    strokeOptions.mDashOffset);
 }
 
 uint16_t

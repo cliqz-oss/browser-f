@@ -3,9 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+/* eslint-disable mozilla/use-chromeutils-import */
 
 Cu.import("resource://gre/modules/Services.jsm");
 
@@ -58,9 +56,7 @@ function do_check_measurement_eq(m1, m2) {
 }
 
 function getObserver() {
-  let bridge = Cc["@mozilla.org/android/bridge;1"]
-                 .getService(Ci.nsIAndroidBridge);
-  let obsXPCOM = bridge.browserApp.getUITelemetryObserver();
+  let obsXPCOM = Services.androidBridge.browserApp.getUITelemetryObserver();
   do_check_true(!!obsXPCOM);
   return obsXPCOM.wrappedJSObject;
 }

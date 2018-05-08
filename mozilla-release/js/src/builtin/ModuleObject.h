@@ -10,12 +10,12 @@
 #include "mozilla/Maybe.h"
 
 #include "jsapi.h"
-#include "jsatom.h"
 
 #include "builtin/SelfHostingDefines.h"
 #include "js/GCVector.h"
 #include "js/Id.h"
 #include "js/UniquePtr.h"
+#include "vm/JSAtom.h"
 #include "vm/NativeObject.h"
 #include "vm/ProxyObject.h"
 
@@ -391,6 +391,10 @@ class MOZ_STACK_CLASS ModuleBuilder
     RootedExportEntryVector starExportEntries_;
 
     ImportEntryObject* importEntryFor(JSAtom* localName) const;
+
+    bool processExportBinding(frontend::ParseNode* pn);
+    bool processExportArrayBinding(frontend::ParseNode* pn);
+    bool processExportObjectBinding(frontend::ParseNode* pn);
 
     bool appendExportEntry(HandleAtom exportName, HandleAtom localName,
                            frontend::ParseNode* node = nullptr);

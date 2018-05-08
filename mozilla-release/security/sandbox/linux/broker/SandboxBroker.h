@@ -53,6 +53,8 @@ class SandboxBroker final
     // Applies to everything below this path, including subdirs created
     // at runtime
     RECURSIVE     = 1 << 5,
+    // Allow Unix-domain socket connections to a path
+    MAY_CONNECT   = 1 << 6,
   };
   // Bitwise operations on enum values return ints, so just use int in
   // the hash table type (and below) to avoid cluttering code with casts.
@@ -132,6 +134,7 @@ class SandboxBroker final
   int mFileDesc;
   const int mChildPid;
   const UniquePtr<const Policy> mPolicy;
+  nsCString mTempPath;
 
   typedef nsDataHashtable<nsCStringHashKey, nsCString> PathMap;
   PathMap mSymlinkMap;
@@ -142,7 +145,10 @@ class SandboxBroker final
   void AuditPermissive(int aOp, int aFlags, int aPerms, const char* aPath);
   void AuditDenial(int aOp, int aFlags, int aPerms, const char* aPath);
   // Remap relative paths to absolute paths.
-  size_t ConvertToRealPath(char* aPath, size_t aBufSize, size_t aPathLen);
+  size_t ConvertRelativePath(char* aPath, size_t aBufSize, size_t aPathLen);
+  size_t RealPath(char* aPath, size_t aBufSize, size_t aPathLen);
+  // Remap references to /tmp and friends to the content process tempdir
+  size_t RemapTempDirs(char* aPath, size_t aBufSize, size_t aPathLen);
   nsCString ReverseSymlinks(const nsACString& aPath);
   // Retrieves permissions for the path the original symlink sits in.
   int SymlinkPermissions(const char* aPath, const size_t aPathLen);

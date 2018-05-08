@@ -4,10 +4,9 @@
 
 "use strict";
 
-const {utils: Cu, classes: Cc, interfaces: Ci} = Components;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 XPCOMUtils.defineLazyGetter(this, "DevtoolsStartup", () => {
   return Cc["@mozilla.org/devtools/startup-clh;1"]
             .getService(Ci.nsICommandLineHandler)
@@ -15,6 +14,7 @@ XPCOMUtils.defineLazyGetter(this, "DevtoolsStartup", () => {
 });
 
 const DEVTOOLS_ENABLED_PREF = "devtools.enabled";
+const DEVTOOLS_POLICY_DISABLED_PREF = "devtools.policy.disabled";
 
 this.EXPORTED_SYMBOLS = [
   "DevToolsShim",
@@ -62,7 +62,16 @@ this.DevToolsShim = {
    * should no-op in this case.
    */
   isEnabled: function () {
-    return Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF);
+    let enabled = Services.prefs.getBoolPref(DEVTOOLS_ENABLED_PREF);
+    return enabled && !this.isDisabledByPolicy();
+  },
+
+  /**
+   * Returns true if the devtools are completely disabled and can not be enabled. All
+   * entry points should return without throwing, initDevTools should never be called.
+   */
+  isDisabledByPolicy: function () {
+    return Services.prefs.getBoolPref(DEVTOOLS_POLICY_DISABLED_PREF, false);
   },
 
   /**
@@ -153,8 +162,9 @@ this.DevToolsShim = {
       return;
     }
 
-    let {scratchpads, browserConsole} = session;
-    let hasDevToolsData = browserConsole || (scratchpads && scratchpads.length);
+    let {scratchpads, browserConsole, browserToolbox} = session;
+    let hasDevToolsData = browserConsole || browserToolbox ||
+                          (scratchpads && scratchpads.length);
     if (!hasDevToolsData) {
       // Do not initialize DevTools unless there is DevTools specific data in the session.
       return;
@@ -172,14 +182,16 @@ this.DevToolsShim = {
    *        The browser tab on which inspect node was used.
    * @param {Array} selectors
    *        An array of CSS selectors to find the target node. Several selectors can be
-   *        needed if the element is nested in frames and not directly in the root
-   *        document.
+   *        document. The selectors are ordered starting with the root document and
+   *        ending with the deepest nested frame.
    * @return {Promise} a promise that resolves when the node is selected in the inspector
    *         markup view or that resolves immediately if DevTools are not installed.
    */
   inspectNode: function (tab, selectors) {
     if (!this.isEnabled()) {
-      DevtoolsStartup.openInstallPage("ContextMenu");
+      if (!this.isDisabledByPolicy()) {
+        DevtoolsStartup.openInstallPage("ContextMenu");
+      }
       return Promise.resolve();
     }
 

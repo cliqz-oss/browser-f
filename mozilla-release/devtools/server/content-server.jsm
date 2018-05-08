@@ -4,8 +4,6 @@
 
 "use strict";
 
-const { utils: Cu, interfaces: Ci } = Components;
-
 /* exported init */
 this.EXPORTED_SYMBOLS = ["init"];
 
@@ -20,7 +18,7 @@ function setupServer(mm) {
 
   // Lazy load Loader.jsm to prevent loading any devtools dependency too early.
   let { DevToolsLoader } =
-    Cu.import("resource://devtools/shared/Loader.jsm", {});
+    ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
   // Init a custom, invisible DebuggerServer, in order to not pollute the
   // debugger with all devtools modules, nor break the debugger itself with

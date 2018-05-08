@@ -16,21 +16,16 @@
  * to the child side of frame and process message manager and removing them
  * when needed.
  */
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
+var EXPORTED_SYMBOLS = ["DOMRequestIpcHelper"];
 
-this.EXPORTED_SYMBOLS = ["DOMRequestIpcHelper"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "cpmm",
                                    "@mozilla.org/childprocessmessagemanager;1",
                                    "nsIMessageListenerManager");
 
-this.DOMRequestIpcHelper = function DOMRequestIpcHelper() {
+function DOMRequestIpcHelper() {
   // _listeners keeps a list of messages for which we added a listener and the
   // kind of listener that we added (strong or weak). It's an object of this
   // form:

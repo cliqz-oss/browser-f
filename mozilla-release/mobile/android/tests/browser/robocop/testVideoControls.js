@@ -5,7 +5,7 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+/* eslint-disable mozilla/use-chromeutils-import */
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/SimpleServiceDiscovery.jsm");
@@ -89,7 +89,7 @@ function testLoad() {
 function testPlay(aEvent) {
   video.removeEventListener("play", testPlay);
   let playButton = getButtonByAttribute("class", "playButton");
-  ok(playButton.hasAttribute("paused") == false, "Play button is not paused");
+  ok(!playButton.hasAttribute("paused"), "Play button is not paused");
 
   // Let the video play for 2 seconds, then pause it
   chromeWin.setTimeout(function() {

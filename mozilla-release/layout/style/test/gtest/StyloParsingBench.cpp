@@ -34,6 +34,7 @@ static void ServoParsingBench() {
     RefPtr<RawServoStyleSheetContents> stylesheet =
       Servo_StyleSheet_FromUTF8Bytes(nullptr,
                                      nullptr,
+                                     nullptr,
                                      css.Elements(),
                                      css.Length(),
                                      eAuthorSheetFeatures,
@@ -49,6 +50,8 @@ MOZ_GTEST_BENCH(Stylo, Servo_StyleSheet_FromUTF8Bytes_Bench, ServoParsingBench);
 
 #endif
 
+
+#ifdef MOZ_OLD_STYLE
 
 static void GeckoParsingBench() {
   // Don’t use NS_LITERAL_STRING to work around
@@ -67,6 +70,8 @@ static void GeckoParsingBench() {
 }
 
 MOZ_GTEST_BENCH(Stylo, Gecko_nsCSSParser_ParseSheet_Bench, GeckoParsingBench);
+
+#endif
 
 
 #ifdef MOZ_STYLO

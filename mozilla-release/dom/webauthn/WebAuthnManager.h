@@ -57,10 +57,12 @@ public:
   WebAuthnTransaction(const RefPtr<Promise>& aPromise,
                       const nsTArray<uint8_t>& aRpIdHash,
                       const nsCString& aClientData,
+                      bool aDirectAttestation,
                       AbortSignal* aSignal)
     : mPromise(aPromise)
     , mRpIdHash(aRpIdHash)
     , mClientData(aClientData)
+    , mDirectAttestation(aDirectAttestation)
     , mSignal(aSignal)
     , mId(NextId())
   {
@@ -75,6 +77,10 @@ public:
 
   // Client data used to assemble reply objects.
   nsCString mClientData;
+
+  // The RP might request direct attestation.
+  // Only used by the MakeCredential operation.
+  bool mDirectAttestation;
 
   // An optional AbortSignal instance.
   RefPtr<AbortSignal> mSignal;
@@ -103,7 +109,7 @@ public:
   { }
 
   already_AddRefed<Promise>
-  MakeCredential(const MakePublicKeyCredentialOptions& aOptions,
+  MakeCredential(const PublicKeyCredentialCreationOptions& aOptions,
                  const Optional<OwningNonNull<AbortSignal>>& aSignal);
 
   already_AddRefed<Promise>
@@ -117,12 +123,11 @@ public:
 
   void
   FinishMakeCredential(const uint64_t& aTransactionId,
-                       nsTArray<uint8_t>& aRegBuffer) override;
+                       const WebAuthnMakeCredentialResult& aResult) override;
 
   void
   FinishGetAssertion(const uint64_t& aTransactionId,
-                     nsTArray<uint8_t>& aCredentialId,
-                     nsTArray<uint8_t>& aSigBuffer) override;
+                     const WebAuthnGetAssertionResult& aResult) override;
 
   void
   RequestAborted(const uint64_t& aTransactionId,

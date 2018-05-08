@@ -2,17 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Panel",
 ];
 
-const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Timer.jsm");
-
-this.Panel = function(panelElt, iframeURL) {
+var Panel = function(panelElt, iframeURL) {
   this.p = panelElt;
   this.iframeURL = iframeURL;
   this._initPanel();
@@ -99,7 +95,7 @@ this.Panel.prototype = {
     let controller = this.p.mInput.controller;
     for (let i = 0; i < this.p.maxResults; i++) {
       let idx = this._currentIndex;
-      if (idx >= this.p._matchCount) {
+      if (idx >= this.p.matchCount) {
         break;
       }
       let url = controller.getValueAt(idx);

@@ -1,9 +1,8 @@
 'use strict';
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 function scopedCuImport(path) {
   const scope = {};
-  Cu.import(path, scope);
+  ChromeUtils.import(path, scope);
   return scope;
 }
 const {loader, require} = scopedCuImport("resource://devtools/shared/Loader.jsm");

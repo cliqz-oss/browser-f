@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/nsFormAutoCompleteResult.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SearchSuggestionController",
-                                  "resource://gre/modules/SearchSuggestionController.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/nsFormAutoCompleteResult.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "SearchSuggestionController",
+                               "resource://gre/modules/SearchSuggestionController.jsm");
 
 /**
  * SuggestAutoComplete is a base class that implements nsIAutoCompleteSearch
@@ -26,13 +24,6 @@ SuggestAutoComplete.prototype = {
   _init() {
     this._suggestionController = new SearchSuggestionController(obj => this.onResultsReturned(obj));
     this._suggestionController.maxLocalResults = this._historyLimit;
-  },
-
-  get _suggestionLabel() {
-    let bundle = Services.strings.createBundle("chrome://global/locale/search/search.properties");
-    let label = bundle.GetStringFromName("suggestion_label");
-    Object.defineProperty(SuggestAutoComplete.prototype, "_suggestionLabel", {value: label});
-    return label;
   },
 
   /**
@@ -66,9 +57,8 @@ SuggestAutoComplete.prototype = {
 
     // If there are remote matches, add them.
     if (results.remote.length) {
-      // "comments" column values for suggestions starts as empty strings
-      let comments = new Array(results.remote.length).fill("", 1);
-      comments[0] = this._suggestionLabel;
+      // "comments" column values for suggestions are empty strings
+      let comments = new Array(results.remote.length).fill("");
       // now put the history results above the suggestions
       finalResults = finalResults.concat(results.remote);
       finalComments = finalComments.concat(comments);

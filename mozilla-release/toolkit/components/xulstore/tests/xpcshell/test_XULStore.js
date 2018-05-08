@@ -4,12 +4,7 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 var XULStore = null;
 var browserURI = "chrome://browser/content/browser.xul";

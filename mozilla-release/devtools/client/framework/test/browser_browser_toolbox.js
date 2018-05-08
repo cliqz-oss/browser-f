@@ -2,11 +2,16 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+// There are shutdown issues for which multiple rejections are left uncaught.
+// See bug 1018184 for resolving these issues.
+const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
+
 // On debug test slave, it takes about 50s to run the test.
 requestLongerTimeout(4);
 
-add_task(function* runTest() {
-  yield new Promise(done => {
+add_task(async function() {
+  await new Promise(done => {
     let options = {"set": [
       ["devtools.debugger.prompt-connection", false],
       ["devtools.debugger.remote-enabled", true],
@@ -32,7 +37,7 @@ add_task(function* runTest() {
 
   // Be careful, this JS function is going to be executed in the addon toolbox,
   // which lives in another process. So do not try to use any scope variable!
-  let env = Components.classes["@mozilla.org/process/environment;1"].getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
   let testScript = function () {
     toolbox.selectTool("webconsole")
       .then(console => {
@@ -47,19 +52,23 @@ add_task(function* runTest() {
     env.set("MOZ_TOOLBOX_TEST_SCRIPT", "");
   });
 
-  let { BrowserToolboxProcess } = Cu.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
+  let { BrowserToolboxProcess } = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
+  is(BrowserToolboxProcess.getBrowserToolboxSessionState(), false, "No session state initially");
+
   let closePromise;
-  yield new Promise(onRun => {
+  await new Promise(onRun => {
     closePromise = new Promise(onClose => {
       info("Opening the browser toolbox\n");
       BrowserToolboxProcess.init(onClose, onRun);
     });
   });
   ok(true, "Browser toolbox started\n");
+  is(BrowserToolboxProcess.getBrowserToolboxSessionState(), true, "Has session state");
 
-  yield onCustomMessage;
+  await onCustomMessage;
   ok(true, "Received the custom message");
 
-  yield closePromise;
+  await closePromise;
   ok(true, "Browser toolbox process just closed");
+  is(BrowserToolboxProcess.getBrowserToolboxSessionState(), false, "No session state after closing");
 });

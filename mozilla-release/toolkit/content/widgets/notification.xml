@@ -46,8 +46,8 @@
       <property name="_allowAnimation">
         <getter>
           <![CDATA[
-            var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                                  .getService(Components.interfaces.nsIPrefBranch);
+            var prefs = Cc["@mozilla.org/preferences-service;1"]
+                          .getService(Ci.nsIPrefBranch);
             return prefs.getBoolPref("toolkit.cosmeticAnimations.enabled");
           ]]>
         </getter>
@@ -219,8 +219,8 @@
             this.removeChild(aChild);
 
             // make sure focus doesn't get lost (workaround for bug 570835)
-            let fm = Components.classes["@mozilla.org/focus-manager;1"]
-                               .getService(Components.interfaces.nsIFocusManager);
+            let fm = Cc["@mozilla.org/focus-manager;1"]
+                       .getService(Ci.nsIFocusManager);
             if (!fm.getFocusedElementForWindow(window, false, {}))
               fm.moveFocus(window, this, fm.MOVEFOCUS_FORWARD, 0);
           ]]>
@@ -365,8 +365,8 @@
 
               var bgcolor = "white";
               try {
-                var prefService = Components.classes["@mozilla.org/preferences-service;1"].
-                                    getService(Components.interfaces.nsIPrefBranch);
+                var prefService = Cc["@mozilla.org/preferences-service;1"].
+                                    getService(Ci.nsIPrefBranch);
                 bgcolor = prefService.getCharPref("browser.display.background_color");
 
                 var win = content.contentWindow;
@@ -398,7 +398,7 @@
 
   </binding>
 
-  <binding id="notification" role="xul:alert">
+  <binding id="notification">
     <content>
       <xul:hbox anonid="details" align="center" flex="1"
                 oncommand="this.parentNode._doButtonCommand(event);">
@@ -512,11 +512,12 @@
               <xul:label class="popup-notification-origin header"
                          xbl:inherits="value=origin,tooltiptext=origin"
                          crop="center"/>
-              <xul:description class="popup-notification-description"
-                               xbl:inherits="popupid">
-                <!-- These need to be on the same line to avoid creating whitespace between them (whitespace is added in the localization file, if necessary). -->
-                <html:span xbl:inherits="xbl:text=label,popupid"/><html:b xbl:inherits="xbl:text=hostname,popupid"/><html:span xbl:inherits="xbl:text=endlabel,popupid"/>
-              </xul:description>
+              <!-- These need to be on the same line to avoid creating
+                   whitespace between them (whitespace is added in the
+                   localization file, if necessary). -->
+              <xul:description class="popup-notification-description" xbl:inherits="popupid"><html:span
+                xbl:inherits="xbl:text=label,popupid"/><html:b xbl:inherits="xbl:text=name,popupid"/><html:span
+              xbl:inherits="xbl:text=endlabel,popupid"/></xul:description>
             </xul:vbox>
             <xul:toolbarbutton anonid="closebutton"
                                class="messageCloseButton close-icon popup-notification-closebutton tabbable"

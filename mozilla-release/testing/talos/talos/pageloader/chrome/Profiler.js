@@ -43,8 +43,10 @@ var Profiler;
     netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
   } catch (e) {}
 
+  /* eslint-disable mozilla/use-chromeutils-import */
   try {
-    _profiler = Components.classes["@mozilla.org/tools/profiler;1"].getService(Components.interfaces.nsIProfiler);
+    // eslint-disable-next-line mozilla/use-services
+    _profiler = Cc["@mozilla.org/tools/profiler;1"].getService(Ci.nsIProfiler);
   } catch (ex) { (typeof(dumpLog) == "undefined" ? dump : dumpLog)(ex + "\n"); }
 
   // Parses an url query string into a JS object.
@@ -112,17 +114,17 @@ var Profiler;
         Services.profiler.getProfileDataAsync().then((profile) => {
           let profileFile = profiler_dir + "/" + currentTest + ".profile";
 
-          Components.utils.import("resource://gre/modules/NetUtil.jsm");
-          Components.utils.import("resource://gre/modules/FileUtils.jsm");
+          Cu.import("resource://gre/modules/NetUtil.jsm");
+          Cu.import("resource://gre/modules/FileUtils.jsm");
 
-          var file = Components.classes["@mozilla.org/file/local;1"].
-           createInstance(Components.interfaces.nsIFile);
+          var file = Cc["@mozilla.org/file/local;1"].
+           createInstance(Ci.nsIFile);
           file.initWithPath(profileFile);
 
           var ostream = FileUtils.openSafeFileOutputStream(file);
 
-          var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"].
-              createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+          var converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"].
+              createInstance(Ci.nsIScriptableUnicodeConverter);
           converter.charset = "UTF-8";
           var istream = converter.convertToInputStream(JSON.stringify(profile));
 

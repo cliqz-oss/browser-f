@@ -4,27 +4,24 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "DownloadsSubview",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-                                  "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadsCommon",
-                                  "resource:///modules/DownloadsCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadsViewUI",
-                                  "resource:///modules/DownloadsViewUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "Downloads",
+                               "resource://gre/modules/Downloads.jsm");
+ChromeUtils.defineModuleGetter(this, "DownloadsCommon",
+                               "resource:///modules/DownloadsCommon.jsm");
+ChromeUtils.defineModuleGetter(this, "DownloadsViewUI",
+                               "resource:///modules/DownloadsViewUI.jsm");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
 
 let gPanelViewInstances = new WeakMap();
-const kEvents = ["ViewShowing", "ViewHiding", "click", "command"];
 const kRefreshBatchSize = 10;
 const kMaxWaitForIdleMs = 200;
 XPCOMUtils.defineLazyGetter(this, "kButtonLabels", () => {
@@ -198,26 +195,14 @@ class DownloadsSubview extends DownloadsViewUI.BaseView {
   // ----- Static methods. -----
 
   /**
-   * Perform all tasks necessary to be able to show a Downloads Subview.
-   *
-   * @param  {DOMWindow} window  Global window object.
-   * @return {Promise}   Will resolve when all tasks are done.
-   */
-  static init(window) {
-    return new Promise(resolve =>
-      window.DownloadsOverlayLoader.ensureOverlayLoaded(window.DownloadsPanel.kDownloadsOverlay, resolve));
-  }
-
-  /**
    * Show the Downloads subview panel and listen for events that will trigger
    * building the dynamic part of the view.
    *
    * @param {DOMNode} anchor The button that was commanded to trigger this function.
    */
-  static async show(anchor) {
+  static show(anchor) {
     let document = anchor.ownerDocument;
     let window = anchor.ownerGlobal;
-    await DownloadsSubview.init(window);
 
     let panelview = document.getElementById("PanelUI-downloads");
     anchor.setAttribute("closemenu", "none");

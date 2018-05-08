@@ -8,8 +8,6 @@
 
 // Constants
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 const MS_PER_DAY = 86400000; // 24 * 60 * 60 * 1000
 
 // Match type constants.
@@ -50,7 +48,7 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["maxHistoricalSearchSuggestions", 0],
   ["usepreloadedtopurls.enabled", true],
   ["usepreloadedtopurls.expire_days", 14],
-  ["matchBuckets", "general:5,suggestion:Infinity"],
+  ["matchBuckets", "suggestion:4,general:Infinity"],
   ["matchBucketsSearch", ""],
   ["insertMethod", INSERTMETHOD.MERGE_RELATED],
 ]);
@@ -309,8 +307,8 @@ const SQL_BOOKMARKED_TYPED_URL_QUERY = urlQuery("AND bookmarked AND h.typed = 1"
 
 // Getters
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 Cu.importGlobalProperties(["fetch"]);
 
@@ -326,10 +324,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ProfileAge: "resource://gre/modules/ProfileAge.jsm",
 });
 
-XPCOMUtils.defineLazyServiceGetter(this, "textURIService",
-                                   "@mozilla.org/intl/texttosuburi;1",
-                                   "nsITextToSubURI");
-
 XPCOMUtils.defineLazyPreferenceGetter(this, "syncUsernamePref",
                                       "services.sync.username");
 
@@ -337,14 +331,6 @@ function setTimeout(callback, ms) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   timer.initWithCallback(callback, ms, timer.TYPE_ONE_SHOT);
   return timer;
-}
-
-function convertBucketsCharPrefToArray(str) {
-  return str.split(",")
-            .map(v => {
-              let bucket = v.split(":");
-              return [ bucket[0].trim().toLowerCase(), Number(bucket[1]) ];
-            });
 }
 
 /**
@@ -488,9 +474,9 @@ XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
         // Convert from pref char format to an array and add the default buckets.
         let val = readPref(pref);
         try {
-          val = convertBucketsCharPrefToArray(val);
+          val = PlacesUtils.convertMatchBucketsStringToArray(val);
         } catch (ex) {
-          val = convertBucketsCharPrefToArray(PREF_URLBAR_DEFAULTS.get(pref));
+          val = PlacesUtils.convertMatchBucketsStringToArray(PREF_URLBAR_DEFAULTS.get(pref));
         }
         return [ ...DEFAULT_BUCKETS_BEFORE,
                 ...val,
@@ -502,7 +488,7 @@ XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
         if (val) {
           // Convert from pref char format to an array and add the default buckets.
           try {
-            val = convertBucketsCharPrefToArray(val);
+            val = PlacesUtils.convertMatchBucketsStringToArray(val);
             return [ ...DEFAULT_BUCKETS_BEFORE,
                     ...val,
                     ...DEFAULT_BUCKETS_AFTER ];
@@ -727,40 +713,18 @@ function stripHttpAndTrim(spec, trimSlash = true) {
  * and return a key based on the wrapped URL.
  */
 function makeKeyForURL(match) {
-  let actionUrl = match.value;
-
+  let url = match.value;
+  let action = PlacesUtils.parseActionUrl(url);
   // At this stage we only consider moz-action URLs.
-  if (!actionUrl.startsWith("moz-action:")) {
+  if (!action || !("url" in action.params)) {
     // For autofill entries, we need to have a key based on the comment rather
     // than the value field, because the latter may have been trimmed.
     if (match.hasOwnProperty("style") && match.style.includes("autofill")) {
-      return stripHttpAndTrim(match.comment);
+      url = match.comment;
     }
-    return stripHttpAndTrim(actionUrl);
+    return [stripHttpAndTrim(url), null];
   }
-  let [, type, params] = actionUrl.match(/^moz-action:([^,]+),(.*)$/);
-  try {
-    params = JSON.parse(params);
-  } catch (ex) {
-    // This is unexpected in this context, so just return the input.
-    return stripHttpAndTrim(actionUrl);
-  }
-  // For now we only handle these 2 action types and treat them as the same.
-  switch (type) {
-    case "remotetab":
-    case "switchtab":
-      if (params.url) {
-        return "moz-action:tab:" + stripHttpAndTrim(params.url);
-      }
-      break;
-      // TODO (bug 1222435) - "switchtab" should be handled as an "autofill"
-      // entry.
-    default:
-      // do nothing.
-      // TODO (bug 1222436) - extend this method so it can be used instead of
-      // the |placeId| that's also used to remove duplicate entries.
-  }
-  return stripHttpAndTrim(actionUrl);
+  return [stripHttpAndTrim(action.params.url), action];
 }
 
 /**
@@ -810,7 +774,7 @@ function Search(searchString, searchParam, autocompleteListener,
   let strippedOriginalSearchString =
     stripPrefix(this._trimmedOriginalSearchString.toLowerCase());
   this._searchString =
-    textURIService.unEscapeURIForUI("UTF-8", strippedOriginalSearchString);
+    Services.textToSubURI.unEscapeURIForUI("UTF-8", strippedOriginalSearchString);
 
   // The protocol and the host are lowercased by nsIURI, so it's fine to
   // lowercase the typed prefix, to add it back to the results later.
@@ -882,7 +846,7 @@ function Search(searchString, searchParam, autocompleteListener,
   this._currentMatchCount = 0;
 
   // These are used to avoid adding duplicate entries to the results.
-  this._usedURLs = new Set();
+  this._usedURLs = [];
   this._usedPlaceIds = new Set();
 
   // Counters for the number of matches per MATCHTYPE.
@@ -1074,8 +1038,7 @@ Search.prototype = {
     // are not enabled).
 
     // Get the final query, based on the tokens found in the search string.
-    let queries = [ this._adaptiveQuery ];
-
+    let queries = [];
     // "openpage" behavior is supported by the default query.
     // _switchToTabQuery instead returns only pages not supported by history.
     if (this.hasBehavior("openpage")) {
@@ -1146,14 +1109,22 @@ Search.prototype = {
       this._cleanUpNonCurrentMatches(MATCHTYPE.SUGGESTION);
     });
 
-    for (let [query, params] of queries) {
-      await conn.executeCached(query, params, this._onResultRow.bind(this));
+    // Run the adaptive query first.
+    await conn.executeCached(this._adaptiveQuery[0], this._adaptiveQuery[1],
+                             this._onResultRow.bind(this));
+    if (!this.pending)
+      return;
+
+    // Then fetch remote tabs.
+    if (this._enableActions && this.hasBehavior("openpage")) {
+      await this._matchRemoteTabs();
       if (!this.pending)
         return;
     }
 
-    if (this._enableActions && this.hasBehavior("openpage")) {
-      await this._matchRemoteTabs();
+    // Finally run all the other queries.
+    for (let [query, params] of queries) {
+      await conn.executeCached(query, params, this._onResultRow.bind(this));
       if (!this.pending)
         return;
     }
@@ -1517,7 +1488,7 @@ Search.prototype = {
       value = PlacesUtils.mozActionURI("keyword", {
         url,
         input: this._originalSearchString,
-        postData,
+        postData
       });
     }
     // The title will end up being "host: queryString"
@@ -1570,8 +1541,8 @@ Search.prototype = {
     // match the search string.  If this happens there is some case we
     // are not handling properly yet.
     if (!value.startsWith(this._originalSearchString)) {
-      Components.utils.reportError(`Trying to inline complete in-the-middle
-                                    ${this._originalSearchString} to ${value}`);
+      Cu.reportError(`Trying to inline complete in-the-middle
+                      ${this._originalSearchString} to ${value}`);
       return false;
     }
 
@@ -1763,7 +1734,7 @@ Search.prototype = {
     // to be displayed to the user, and in any case the front-end should not
     // rely on it being canonical.
     let escapedURL = uri.displaySpec;
-    let displayURL = textURIService.unEscapeURIForUI("UTF-8", uri.displaySpec);
+    let displayURL = Services.textToSubURI.unEscapeURIForUI("UTF-8", escapedURL);
 
     let value = PlacesUtils.mozActionURI("visiturl", {
       url: escapedURL,
@@ -1873,23 +1844,6 @@ Search.prototype = {
                                        !this._searchString.includes("/"));
     }
 
-    // Must check both id and url, cause keywords dynamically modify the url.
-    let urlMapKey = makeKeyForURL(match);
-    if ((match.placeId && this._usedPlaceIds.has(match.placeId)) ||
-        this._usedURLs.has(urlMapKey)) {
-      return;
-    }
-
-    // Add this to our internal tracker to ensure duplicates do not end up in
-    // the result.
-    // Not all entries have a place id, thus we fallback to the url for them.
-    // We cannot use only the url since keywords entries are modified to
-    // include the search string, and would be returned multiple times.  Ids
-    // are faster too.
-    if (match.placeId)
-      this._usedPlaceIds.add(match.placeId);
-    this._usedURLs.add(urlMapKey);
-
     match.style = match.style || "favicon";
 
     // Restyle past searches, unless they are bookmarks or special results.
@@ -1905,6 +1859,8 @@ Search.prototype = {
     match.finalCompleteValue = match.finalCompleteValue || "";
 
     let {index, replace} = this._getInsertIndexForMatch(match);
+    if (index == -1)
+      return;
     if (replace) { // Replacing an existing match from the previous search.
       this._result.removeMatchAt(index);
     }
@@ -1925,6 +1881,57 @@ Search.prototype = {
   },
 
   _getInsertIndexForMatch(match) {
+    // Check for duplicates and either discard (by returning -1) the duplicate
+    // or suggest to replace the original match, in case the new one is more
+    // specific (for example a Remote Tab wins over History, and a Switch to Tab
+    // wins over a Remote Tab).
+    // Must check both id and url, cause keywords dynamically modify the url.
+    // Note: this partially fixes Bug 1222435,  but not if the urls differ more
+    // than just by "http://". We should still evaluate www and other schemes
+    // equivalences.
+    let [urlMapKey, action] = makeKeyForURL(match);
+    if ((match.placeId && this._usedPlaceIds.has(match.placeId)) ||
+        this._usedURLs.map(e => e.key).includes(urlMapKey)) {
+      let isDupe = true;
+      if (action && ["switchtab", "remotetab"].includes(action.type)) {
+        // The new entry is a switch/remote tab entry, look for the duplicate
+        // among current matches.
+        for (let i = 0; i < this._usedURLs.length; ++i) {
+          let {key: matchKey, action: matchAction, type: matchType} = this._usedURLs[i];
+          if (matchKey == urlMapKey) {
+            isDupe = true;
+            // Don't replace the match if the existing one is heuristic and the
+            // new one is a switchtab, instead also add the switchtab match.
+            if (matchType == MATCHTYPE.HEURISTIC && action.type == "switchtab") {
+              isDupe = false;
+              // Since we allow to insert a dupe in this case, we must continue
+              // checking the next matches to be sure we won't insert more than
+              // one dupe. For this same reason we must reset isDupe = true for
+              // each found dupe.
+              continue;
+            }
+            if (!matchAction || action.type == "switchtab") {
+              this._usedURLs[i] = {key: urlMapKey, action, type: match.type};
+              return { index:  i, replace: true };
+            }
+            break; // Found the duplicate, no reason to continue.
+          }
+        }
+      }
+      if (isDupe) {
+        return { index: -1, replace: false };
+      }
+    }
+
+    // Add this to our internal tracker to ensure duplicates do not end up in
+    // the result.
+    // Not all entries have a place id, thus we fallback to the url for them.
+    // We cannot use only the url since keywords entries are modified to
+    // include the search string, and would be returned multiple times.  Ids
+    // are faster too.
+    if (match.placeId)
+      this._usedPlaceIds.add(match.placeId);
+
     let index = 0;
     // The buckets change depending on the context, that is currently decided by
     // the first added match (the heuristic one).
@@ -1961,7 +1968,7 @@ Search.prototype = {
       }
     }
 
-    let replace = false;
+    let replace = 0;
     for (let bucket of this._buckets) {
       // Move to the next bucket if the match type is incompatible, or if there
       // is no available space or if the frecency is below the threshold.
@@ -1980,6 +1987,7 @@ Search.prototype = {
       bucket.insertIndex++;
       break;
     }
+    this._usedURLs[index] = {key: urlMapKey, action, type: match.type};
     return { index, replace };
   },
 

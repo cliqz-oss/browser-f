@@ -29,16 +29,12 @@ add_task(async function test_manageCreditCardsInitialState() {
 });
 
 add_task(async function test_cancelManageCreditCardsDialogWithESC() {
-  await new Promise(resolve => {
-    let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL);
-    win.addEventListener("FormReady", () => {
-      win.addEventListener("unload", () => {
-        ok(true, "Manage credit cards dialog is closed with ESC key");
-        resolve();
-      }, {once: true});
-      EventUtils.synthesizeKey("VK_ESCAPE", {}, win);
-    }, {once: true});
-  });
+  let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL);
+  await waitForFocusAndFormReady(win);
+  let unloadPromise = BrowserTestUtils.waitForEvent(win, "unload");
+  EventUtils.synthesizeKey("VK_ESCAPE", {}, win);
+  await unloadPromise;
+  ok(true, "Manage credit cards dialog is closed with ESC key");
 });
 
 add_task(async function test_removingSingleAndMultipleCreditCards() {
@@ -48,7 +44,7 @@ add_task(async function test_removingSingleAndMultipleCreditCards() {
   await saveCreditCard(TEST_CREDIT_CARD_3);
 
   let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL, null, DIALOG_SIZE);
-  await BrowserTestUtils.waitForEvent(win, "FormReady");
+  await waitForFocusAndFormReady(win);
 
   let selRecords = win.document.querySelector(TEST_SELECTORS.selRecords);
   let btnRemove = win.document.querySelector(TEST_SELECTORS.btnRemove);
@@ -80,7 +76,7 @@ add_task(async function test_removingSingleAndMultipleCreditCards() {
 
 add_task(async function test_creditCardsDialogWatchesStorageChanges() {
   let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL, null, DIALOG_SIZE);
-  await BrowserTestUtils.waitForEvent(win, "FormReady");
+  await waitForFocusAndFormReady(win);
 
   let selRecords = win.document.querySelector(TEST_SELECTORS.selRecords);
 
@@ -101,7 +97,7 @@ add_task(async function test_showCreditCards() {
   await saveCreditCard(TEST_CREDIT_CARD_3);
 
   let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL, null, DIALOG_SIZE);
-  await BrowserTestUtils.waitForEvent(win, "FormReady");
+  await waitForFocusAndFormReady(win);
 
   let selRecords = win.document.querySelector(TEST_SELECTORS.selRecords);
   let btnShowHideCreditCards = win.document.querySelector(TEST_SELECTORS.btnShowHideCreditCards);
@@ -150,7 +146,7 @@ add_task(async function test_hasMasterPassword() {
   LoginTestUtils.masterPassword.enable();
 
   let win = window.openDialog(MANAGE_CREDIT_CARDS_DIALOG_URL, null, DIALOG_SIZE);
-  await BrowserTestUtils.waitForEvent(win, "FormReady");
+  await waitForFocusAndFormReady(win);
 
   let selRecords = win.document.querySelector(TEST_SELECTORS.selRecords);
   let btnRemove = win.document.querySelector(TEST_SELECTORS.btnRemove);

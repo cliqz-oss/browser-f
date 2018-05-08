@@ -66,7 +66,7 @@
 // Helper Classes
 #include "nsJSUtils.h"
 #include "jsapi.h"              // for JSAutoRequest
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsReadableUtils.h"
 #include "nsDOMClassInfo.h"
@@ -82,7 +82,7 @@
 #include "nsContentCID.h"
 #include "nsLayoutStatics.h"
 #include "nsCCUncollectableMarker.h"
-#include "mozilla/dom/workers/Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "nsJSPrincipals.h"
 #include "mozilla/Attributes.h"
@@ -108,7 +108,6 @@
 #include "nsIDeviceSensors.h"
 #include "nsIContent.h"
 #include "nsIDocShell.h"
-#include "nsIDocCharset.h"
 #include "nsIDocument.h"
 #include "Crypto.h"
 #include "nsIDOMDocument.h"
@@ -182,10 +181,6 @@
 #include "nsNetCID.h"
 #include "nsIArray.h"
 
-// XXX An unfortunate dependency exists here (two XUL files).
-#include "nsIDOMXULDocument.h"
-#include "nsIDOMXULCommandDispatcher.h"
-
 #include "nsBindingManager.h"
 #include "nsXBLService.h"
 
@@ -228,7 +223,6 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "prrng.h"
 #include "nsSandboxFlags.h"
-#include "TimeChangeObserver.h"
 #include "mozilla/dom/AudioContext.h"
 #include "mozilla/dom/BrowserElementDictionariesBinding.h"
 #include "mozilla/dom/cache/CacheStorage.h"
@@ -247,7 +241,9 @@
 #include "mozilla/dom/NavigatorBinding.h"
 #include "mozilla/dom/ImageBitmap.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
+#include "mozilla/dom/ServiceWorker.h"
 #include "mozilla/dom/ServiceWorkerRegistration.h"
+#include "mozilla/dom/ServiceWorkerRegistrationDescriptor.h"
 #include "mozilla/dom/U2F.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
 #include "mozilla/dom/Worklet.h"
@@ -860,6 +856,41 @@ nsGlobalWindowInner::IsBackgroundInternal() const
   return !mOuterWindow || mOuterWindow->IsBackground();
 }
 
+class PromiseDocumentFlushedResolver final {
+public:
+  PromiseDocumentFlushedResolver(Promise* aPromise,
+                                 PromiseDocumentFlushedCallback& aCallback)
+  : mPromise(aPromise)
+  , mCallback(&aCallback)
+  {
+  }
+
+  virtual ~PromiseDocumentFlushedResolver() = default;
+
+  void Call()
+  {
+    MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
+
+    ErrorResult error;
+    JS::Rooted<JS::Value> returnVal(RootingCx());
+    mCallback->Call(&returnVal, error);
+
+    if (error.Failed()) {
+      mPromise->MaybeReject(error);
+    } else {
+      mPromise->MaybeResolve(returnVal);
+    }
+  }
+
+  void Cancel()
+  {
+    mPromise->MaybeReject(NS_ERROR_ABORT);
+  }
+
+  RefPtr<Promise> mPromise;
+  RefPtr<PromiseDocumentFlushedCallback> mCallback;
+};
+
 //*****************************************************************************
 //***    nsGlobalWindowInner: Object Management
 //*****************************************************************************
@@ -893,6 +924,8 @@ nsGlobalWindowInner::nsGlobalWindowInner(nsGlobalWindowOuter *aOuterWindow)
     mCleanedUp(false),
     mDialogAbuseCount(0),
     mAreDialogsEnabled(true),
+    mObservingDidRefresh(false),
+    mIteratingDocumentFlushedResolvers(false),
     mCanSkipCCGeneration(0),
     mBeforeUnloadListenerCount(0)
 {
@@ -1106,29 +1139,6 @@ nsGlobalWindowInner::~nsGlobalWindowInner()
   nsLayoutStatics::Release();
 }
 
-void
-nsGlobalWindowInner::AddEventTargetObject(DOMEventTargetHelper* aObject)
-{
-  mEventTargetObjects.PutEntry(aObject);
-}
-
-void
-nsGlobalWindowInner::RemoveEventTargetObject(DOMEventTargetHelper* aObject)
-{
-  mEventTargetObjects.RemoveEntry(aObject);
-}
-
-void
-nsGlobalWindowInner::DisconnectEventTargetObjects()
-{
-  for (auto iter = mEventTargetObjects.ConstIter(); !iter.Done();
-       iter.Next()) {
-    RefPtr<DOMEventTargetHelper> target = iter.Get()->GetKey();
-    target->DisconnectFromOwner();
-  }
-  mEventTargetObjects.Clear();
-}
-
 // static
 void
 nsGlobalWindowInner::ShutDown()
@@ -1253,8 +1263,6 @@ nsGlobalWindowInner::CleanUp()
     mIdleTimer = nullptr;
   }
 
-  mServiceWorkerRegistrationTable.Clear();
-
   mIntlUtils = nullptr;
 }
 
@@ -1272,7 +1280,7 @@ nsGlobalWindowInner::FreeInnerObjects()
   mInnerObjectsFreed = true;
 
   // Kill all of the workers for this window.
-  mozilla::dom::workers::CancelWorkersForWindow(this);
+  CancelWorkersForWindow(this);
 
   if (mTimeoutManager) {
     mTimeoutManager->ClearAllTimeouts();
@@ -1320,6 +1328,13 @@ nsGlobalWindowInner::FreeInnerObjects()
     while (mDoc->EventHandlingSuppressed()) {
       mDoc->UnsuppressEventHandlingAndFireEvents(false);
     }
+
+    if (mObservingDidRefresh) {
+      nsIPresShell* shell = mDoc->GetShell();
+      if (shell) {
+        Unused << shell->RemovePostRefreshObserver(this);
+      }
+    }
   }
 
   // Remove our reference to the document and the document principal.
@@ -1361,6 +1376,28 @@ nsGlobalWindowInner::FreeInnerObjects()
     }
     mBeforeUnloadListenerCount = 0;
   }
+
+  // If we have any promiseDocumentFlushed callbacks, fire them now so
+  // that the Promises can resolve.
+  CallDocumentFlushedResolvers();
+  mObservingDidRefresh = false;
+
+  // Disconnect service worker objects in FreeInnerObjects().  This is normally
+  // done from CleanUp().  In the future we plan to unify CleanUp() and
+  // FreeInnerObjects().  See bug 1450266.
+  ForEachEventTargetObject([&] (DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aTarget);
+    if (swr) {
+      aTarget->DisconnectFromOwner();
+      return;
+    }
+
+    RefPtr<ServiceWorker> sw = do_QueryObject(aTarget);
+    if (sw) {
+      aTarget->DisconnectFromOwner();
+      return;
+    }
+  });
 }
 
 //*****************************************************************************
@@ -1446,8 +1483,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGlobalWindowInner)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPerformance)
 
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mServiceWorkerRegistrationTable)
-
 #ifdef MOZ_WEBSPEECH
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSpeechSynthesis)
 #endif
@@ -1516,6 +1551,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGlobalWindowInner)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChromeFields.mGroupMessageManagers)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPendingPromises)
+
+  for (size_t i = 0; i < tmp->mDocumentFlushedResolvers.Length(); i++) {
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocumentFlushedResolvers[i]->mPromise);
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocumentFlushedResolvers[i]->mCallback);
+  }
+
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGlobalWindowInner)
@@ -1525,7 +1566,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGlobalWindowInner)
 
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mPerformance)
 
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mServiceWorkerRegistrationTable)
 
 #ifdef MOZ_WEBSPEECH
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSpeechSynthesis)
@@ -1610,6 +1650,11 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGlobalWindowInner)
   }
 
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mPendingPromises)
+  for (size_t i = 0; i < tmp->mDocumentFlushedResolvers.Length(); i++) {
+    NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocumentFlushedResolvers[i]->mPromise);
+    NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocumentFlushedResolvers[i]->mCallback);
+  }
+  tmp->mDocumentFlushedResolvers.Clear();
 
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -1750,11 +1795,14 @@ nsGlobalWindowInner::EnsureClientSource()
 
   bool newClientSource = false;
 
-  // Get the load info for the document if we performed a load.  Be careful
-  // not to look at about:blank or about:srcdoc loads, though. They will have
-  // a channel and loadinfo, but their loadinfo will never be controlled.  This
-  // would in turn inadvertantly trigger the logic below to clear the inherited
-  // controller.
+  // Get the load info for the document if we performed a load.  Be careful not
+  // to look at local URLs, though. Local URLs are those that have a scheme of:
+  //  * about:
+  //  * data:
+  //  * blob:
+  // We also do an additional check here so that we only treat about:blank
+  // and about:srcdoc as local URLs.  Other internal firefox about: URLs should
+  // not be treated this way.
   nsCOMPtr<nsILoadInfo> loadInfo;
   nsCOMPtr<nsIChannel> channel = mDoc->GetChannel();
   if (channel) {
@@ -1770,6 +1818,12 @@ nsGlobalWindowInner::EnsureClientSource()
       nsCString spec = uri->GetSpecOrDefault();
       ignoreLoadInfo = spec.EqualsLiteral("about:blank") ||
                        spec.EqualsLiteral("about:srcdoc");
+    } else {
+      // Its not an about: URL, so now check for our other URL types.
+      bool isData = false;
+      bool isBlob = false;
+      ignoreLoadInfo = (NS_SUCCEEDED(uri->SchemeIs("data", &isData)) && isData) ||
+                       (NS_SUCCEEDED(uri->SchemeIs("blob", &isBlob)) && isBlob);
     }
 
     if (!ignoreLoadInfo) {
@@ -2255,19 +2309,13 @@ nsGlobalWindowInner::Self()
 }
 
 Navigator*
-nsGlobalWindowInner::Navigator()
+nsPIDOMWindowInner::Navigator()
 {
   if (!mNavigator) {
     mNavigator = new mozilla::dom::Navigator(this);
   }
 
   return mNavigator;
-}
-
-nsIDOMNavigator*
-nsGlobalWindowInner::GetNavigator()
-{
-  return Navigator();
 }
 
 nsScreen*
@@ -2335,7 +2383,7 @@ nsPIDOMWindowInner::CreatePerformanceObjectIfNeeded()
     timedChannel = nullptr;
   }
   if (timing) {
-    mPerformance = Performance::CreateForMainThread(this, timing, timedChannel);
+    mPerformance = Performance::CreateForMainThread(this, mDoc->NodePrincipal(), timing, timedChannel);
   }
 }
 
@@ -2391,6 +2439,12 @@ Maybe<ServiceWorkerDescriptor>
 nsPIDOMWindowInner::GetController() const
 {
   return Move(nsGlobalWindowInner::Cast(this)->GetController());
+}
+
+RefPtr<mozilla::dom::ServiceWorker>
+nsPIDOMWindowInner::GetOrCreateServiceWorker(const mozilla::dom::ServiceWorkerDescriptor& aDescriptor)
+{
+  return Move(nsGlobalWindowInner::Cast(this)->GetOrCreateServiceWorker(aDescriptor));
 }
 
 void
@@ -2969,11 +3023,31 @@ nsGlobalWindowInner::IsPrivilegedChromeWindow(JSContext* aCx, JSObject* aObj)
 }
 
 /* static */ bool
+nsGlobalWindowInner::OfflineCacheAllowedForContext(JSContext* aCx, JSObject* aObj)
+{
+  return IsSecureContextOrObjectIsFromSecureContext(aCx, aObj) ||
+         Preferences::GetBool("browser.cache.offline.insecure.enable");
+}
+
+/* static */ bool
 nsGlobalWindowInner::IsRequestIdleCallbackEnabled(JSContext* aCx, JSObject* aObj)
 {
   // The requestIdleCallback should always be enabled for system code.
   return nsContentUtils::RequestIdleCallbackEnabled() ||
          nsContentUtils::IsSystemCaller(aCx);
+}
+
+/* static */ bool
+nsGlobalWindowInner::RegisterProtocolHandlerAllowedForContext(JSContext* aCx, JSObject* aObj)
+{
+  return IsSecureContextOrObjectIsFromSecureContext(aCx, aObj) ||
+         Preferences::GetBool("dom.registerProtocolHandler.insecure.enabled");
+}
+
+/* static */ bool
+nsGlobalWindowInner::DeviceSensorsEnabled(JSContext* aCx, JSObject* aObj)
+{
+  return Preferences::GetBool("device.sensors.enabled");
 }
 
 nsIDOMOfflineResourceList*
@@ -3021,8 +3095,7 @@ Crypto*
 nsGlobalWindowInner::GetCrypto(ErrorResult& aError)
 {
   if (!mCrypto) {
-    mCrypto = new Crypto();
-    mCrypto->Init(this);
+    mCrypto = new Crypto(this);
   }
   return mCrypto;
 }
@@ -4295,15 +4368,14 @@ nsGlobalWindowInner::ConvertDialogOptions(const nsAString& aOptions,
   }
 }
 
-nsresult
+void
 nsGlobalWindowInner::UpdateCommands(const nsAString& anAction,
                                     nsISelection* aSel,
                                     int16_t aReason)
 {
   if (GetOuterWindowInternal()) {
-    return GetOuterWindowInternal()->UpdateCommands(anAction, aSel, aReason);
+    GetOuterWindowInternal()->UpdateCommands(anAction, aSel, aReason);
   }
-  return NS_OK;
 }
 
 Selection*
@@ -4381,12 +4453,7 @@ nsGlobalWindowInner::DispatchEvent(nsIDOMEvent* aEvent, bool* aRetVal)
   }
 
   // Obtain a presentation shell
-  nsIPresShell *shell = mDoc->GetShell();
-  RefPtr<nsPresContext> presContext;
-  if (shell) {
-    // Retrieve the context
-    presContext = shell->GetPresContext();
-  }
+  RefPtr<nsPresContext> presContext = mDoc->GetPresContext();
 
   nsEventStatus status = nsEventStatus_eIgnore;
   nsresult rv = EventDispatcher::DispatchDOMEvent(ToSupports(this), nullptr,
@@ -4776,12 +4843,6 @@ nsGlobalWindowInner::FireHashchange(const nsAString &aOldURL,
   // Get a presentation shell for use in creating the hashchange event.
   NS_ENSURE_STATE(IsCurrentInnerWindow());
 
-  nsIPresShell *shell = mDoc->GetShell();
-  RefPtr<nsPresContext> presContext;
-  if (shell) {
-    presContext = shell->GetPresContext();
-  }
-
   HashChangeEventInit init;
   init.mBubbles = true;
   init.mCancelable = false;
@@ -4817,13 +4878,6 @@ nsGlobalWindowInner::DispatchSyncPopState()
   nsCOMPtr<nsIVariant> stateObj;
   rv = mDoc->GetStateObject(getter_AddRefs(stateObj));
   NS_ENSURE_SUCCESS(rv, rv);
-
-  // Obtain a presentation shell for use in creating a popstate event.
-  nsIPresShell *shell = mDoc->GetShell();
-  RefPtr<nsPresContext> presContext;
-  if (shell) {
-    presContext = shell->GetPresContext();
-  }
 
   bool result = true;
   AutoJSAPI jsapi;
@@ -5161,25 +5215,6 @@ nsGlobalWindowInner::GetCaches(ErrorResult& aRv)
 
   RefPtr<CacheStorage> ref = mCacheStorage;
   return ref.forget();
-}
-
-already_AddRefed<ServiceWorkerRegistration>
-nsPIDOMWindowInner::GetServiceWorkerRegistration(const nsAString& aScope)
-{
-  RefPtr<ServiceWorkerRegistration> registration;
-  if (!mServiceWorkerRegistrationTable.Get(aScope,
-                                           getter_AddRefs(registration))) {
-    registration =
-      ServiceWorkerRegistration::CreateForMainThread(this, aScope);
-    mServiceWorkerRegistrationTable.Put(aScope, registration);
-  }
-  return registration.forget();
-}
-
-void
-nsPIDOMWindowInner::InvalidateServiceWorkerRegistration(const nsAString& aScope)
-{
-  mServiceWorkerRegistrationTable.Remove(aScope);
 }
 
 void
@@ -6089,7 +6124,7 @@ nsGlobalWindowInner::Suspend()
   DisableGamepadUpdates();
   DisableVRUpdates();
 
-  mozilla::dom::workers::SuspendWorkersForWindow(this);
+  SuspendWorkersForWindow(this);
 
   SuspendIdleRequests();
 
@@ -6151,7 +6186,7 @@ nsGlobalWindowInner::Resume()
   // Resume all of the workers for this window.  We must do this
   // after timeouts since workers may have queued events that can trigger
   // a setTimeout().
-  mozilla::dom::workers::ResumeWorkersForWindow(this);
+  ResumeWorkersForWindow(this);
 }
 
 bool
@@ -6184,7 +6219,7 @@ nsGlobalWindowInner::FreezeInternal()
     return;
   }
 
-  mozilla::dom::workers::FreezeWorkersForWindow(this);
+  FreezeWorkersForWindow(this);
 
   mTimeoutManager->Freeze();
   if (mClientSource) {
@@ -6223,7 +6258,7 @@ nsGlobalWindowInner::ThawInternal()
   }
   mTimeoutManager->Thaw();
 
-  mozilla::dom::workers::ThawWorkersForWindow(this);
+  ThawWorkersForWindow(this);
 
   NotifyDOMWindowThawed(this);
 }
@@ -6368,6 +6403,50 @@ nsGlobalWindowInner::GetController() const
     controller = mClientSource->GetController();
   }
   return Move(controller);
+}
+
+RefPtr<ServiceWorker>
+nsGlobalWindowInner::GetOrCreateServiceWorker(const ServiceWorkerDescriptor& aDescriptor)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<ServiceWorker> ref;
+  ForEachEventTargetObject([&] (DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorker> sw = do_QueryObject(aTarget);
+    if (!sw || !sw->Descriptor().Matches(aDescriptor)) {
+      return;
+    }
+
+    ref = sw.forget();
+    *aDoneOut = true;
+  });
+
+  if (!ref) {
+    ref = ServiceWorker::Create(this, aDescriptor);
+  }
+
+  return ref.forget();
+}
+
+RefPtr<ServiceWorkerRegistration>
+nsGlobalWindowInner::GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<ServiceWorkerRegistration> ref;
+  ForEachEventTargetObject([&] (DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aTarget);
+    if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
+      return;
+    }
+
+    ref = swr.forget();
+    *aDoneOut = true;
+  });
+
+  if (!ref) {
+    ref = ServiceWorkerRegistration::CreateForMainThread(this, aDescriptor);
+  }
+
+  return ref.forget();
 }
 
 nsresult
@@ -6656,12 +6735,6 @@ nsGlobalWindowInner::RunTimeoutHandler(Timeout* aTimeout,
   // point anyway, and the script context should have already reported
   // the script error in the usual way - so we just drop it.
 
-  // Since we might be processing more timeouts, go ahead and flush the promise
-  // queue now before we do that.  We need to do that while we're still in our
-  // "running JS is safe" state (e.g. mRunningTimeout is set, timeout->mRunning
-  // is false).
-  Promise::PerformMicroTaskCheckpoint();
-
   if (trackNestingLevel) {
     TimeoutManager::SetNestingLevel(nestingLevel);
   }
@@ -6871,21 +6944,11 @@ nsGlobalWindowInner::IsVRContentPresenting() const
 }
 
 void
-nsGlobalWindowInner::EnableTimeChangeNotifications()
-{
-  mozilla::time::AddWindowListener(this);
-}
-
-void
-nsGlobalWindowInner::DisableTimeChangeNotifications()
-{
-  mozilla::time::RemoveWindowListener(this);
-}
-
-void
 nsGlobalWindowInner::AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const
 {
   aWindowSizes.mDOMOtherSize += aWindowSizes.mState.mMallocSizeOf(this);
+  aWindowSizes.mDOMOtherSize +=
+    nsIGlobalObject::ShallowSizeOfExcludingThis(aWindowSizes.mState.mMallocSizeOf);
 
   EventListenerManager* elm = GetExistingListenerManager();
   if (elm) {
@@ -6908,12 +6971,7 @@ nsGlobalWindowInner::AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const
       mNavigator->SizeOfIncludingThis(aWindowSizes.mState.mMallocSizeOf);
   }
 
-  aWindowSizes.mDOMEventTargetsSize +=
-    mEventTargetObjects.ShallowSizeOfExcludingThis(
-      aWindowSizes.mState.mMallocSizeOf);
-
-  for (auto iter = mEventTargetObjects.ConstIter(); !iter.Done(); iter.Next()) {
-    DOMEventTargetHelper* et = iter.Get()->GetKey();
+  ForEachEventTargetObject([&] (DOMEventTargetHelper* et, bool* aDoneOut) {
     if (nsCOMPtr<nsISizeOfEventTarget> iSizeOf = do_QueryObject(et)) {
       aWindowSizes.mDOMEventTargetsSize +=
         iSizeOf->SizeOfEventTargetIncludingThis(
@@ -6923,7 +6981,7 @@ nsGlobalWindowInner::AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const
       aWindowSizes.mDOMEventListenersCount += elm->ListenerCount();
     }
     ++aWindowSizes.mDOMEventTargetsCount;
-  }
+  });
 
   if (mPerformance) {
     aWindowSizes.mDOMPerformanceUserEntries =
@@ -7339,6 +7397,166 @@ nsGlobalWindowInner::BeginWindowMove(Event& aMouseDownEvent, Element* aPanel,
   aError = widget->BeginMoveDrag(mouseEvent);
 }
 
+already_AddRefed<Promise>
+nsGlobalWindowInner::PromiseDocumentFlushed(PromiseDocumentFlushedCallback& aCallback,
+                                            ErrorResult& aError)
+{
+  MOZ_RELEASE_ASSERT(IsChromeWindow());
+
+  if (!IsCurrentInnerWindow()) {
+    aError.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  if (mIteratingDocumentFlushedResolvers) {
+    aError.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  if (!mDoc) {
+    aError.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  nsIPresShell* shell = mDoc->GetShell();
+  if (!shell) {
+    aError.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  // We need to associate the lifetime of the Promise to the lifetime
+  // of the caller's global. That way, if the window we're observing
+  // refresh driver ticks on goes away before our observer is fired,
+  // we can still resolve the Promise.
+  nsIGlobalObject* global = GetIncumbentGlobal();
+  if (!global) {
+    aError.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  RefPtr<Promise> resultPromise = Promise::Create(global, aError);
+  if (aError.Failed()) {
+    return nullptr;
+  }
+
+  UniquePtr<PromiseDocumentFlushedResolver> flushResolver(
+    new PromiseDocumentFlushedResolver(resultPromise, aCallback));
+
+  if (!shell->NeedStyleFlush() && !shell->NeedLayoutFlush()) {
+    flushResolver->Call();
+    return resultPromise.forget();
+  }
+
+  if (!mObservingDidRefresh) {
+    bool success = shell->AddPostRefreshObserver(this);
+    if (!success) {
+      aError.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
+    mObservingDidRefresh = true;
+  }
+
+  mDocumentFlushedResolvers.AppendElement(Move(flushResolver));
+  return resultPromise.forget();
+}
+
+template<bool call>
+void
+nsGlobalWindowInner::CallOrCancelDocumentFlushedResolvers()
+{
+  MOZ_ASSERT(!mIteratingDocumentFlushedResolvers);
+
+  while (true) {
+    {
+      // To coalesce MicroTask checkpoints inside callback call, enclose the
+      // inner loop with nsAutoMicroTask, and perform a MicroTask checkpoint
+      // after the loop.
+      nsAutoMicroTask mt;
+
+      mIteratingDocumentFlushedResolvers = true;
+      for (const auto& documentFlushedResolver : mDocumentFlushedResolvers) {
+        if (call) {
+          documentFlushedResolver->Call();
+        } else {
+          documentFlushedResolver->Cancel();
+        }
+      }
+      mDocumentFlushedResolvers.Clear();
+      mIteratingDocumentFlushedResolvers = false;
+    }
+
+    // Leaving nsAutoMicroTask above will perform MicroTask checkpoint, and
+    // Promise callbacks there may create mDocumentFlushedResolvers items.
+
+    // If there's no new item, there's nothing to do here.
+    if (!mDocumentFlushedResolvers.Length()) {
+      break;
+    }
+
+    // If there are new items, the observer is not added for them when calling
+    // PromiseDocumentFlushed.  Add here and leave.
+    // FIXME: Handle this case inside PromiseDocumentFlushed (bug 1442824).
+    if (mDoc) {
+      nsIPresShell* shell = mDoc->GetShell();
+      if (shell) {
+        (void) shell->AddPostRefreshObserver(this);
+        break;
+      }
+    }
+
+    // If we fail adding observer, keep looping to resolve or reject all
+    // promises.  This case happens while destroying window.
+    // This violates the constraint that the promiseDocumentFlushed callback
+    // only ever run when no flush needed, but it's necessary to resolve
+    // Promise returned by that.
+  }
+}
+
+void
+nsGlobalWindowInner::CallDocumentFlushedResolvers()
+{
+  CallOrCancelDocumentFlushedResolvers<true>();
+}
+
+void
+nsGlobalWindowInner::CancelDocumentFlushedResolvers()
+{
+  CallOrCancelDocumentFlushedResolvers<false>();
+}
+
+void
+nsGlobalWindowInner::DidRefresh()
+{
+  auto rejectionGuard = MakeScopeExit([&] {
+    CancelDocumentFlushedResolvers();
+    mObservingDidRefresh = false;
+  });
+
+  MOZ_ASSERT(mDoc);
+
+  nsIPresShell* shell = mDoc->GetShell();
+  MOZ_ASSERT(shell);
+
+  if (shell->NeedStyleFlush() || shell->NeedLayoutFlush()) {
+    // By the time our observer fired, something has already invalidated
+    // style or layout - or perhaps we're still in the middle of a flush that
+    // was interrupted. In either case, we'll wait until the next refresh driver
+    // tick instead and try again.
+    rejectionGuard.release();
+    return;
+  }
+
+  bool success = shell->RemovePostRefreshObserver(this);
+  if (!success) {
+    return;
+  }
+
+  rejectionGuard.release();
+
+  CallDocumentFlushedResolvers();
+  mObservingDidRefresh = false;
+}
+
 already_AddRefed<nsWindowRoot>
 nsGlobalWindowInner::GetWindowRoot(mozilla::ErrorResult& aError)
 {
@@ -7490,10 +7708,10 @@ nsGlobalWindowInner::Orientation(CallerType aCallerType) const
 #endif
 
 already_AddRefed<Console>
-nsGlobalWindowInner::GetConsole(ErrorResult& aRv)
+nsGlobalWindowInner::GetConsole(JSContext* aCx, ErrorResult& aRv)
 {
   if (!mConsole) {
-    mConsole = Console::Create(this, aRv);
+    mConsole = Console::Create(aCx, this, aRv);
     if (NS_WARN_IF(aRv.Failed())) {
       return nullptr;
     }
@@ -7951,6 +8169,18 @@ nsPIDOMWindowInner::GetDocGroup() const
     return doc->GetDocGroup();
   }
   return nullptr;
+}
+
+nsIGlobalObject*
+nsPIDOMWindowInner::AsGlobal()
+{
+  return nsGlobalWindowInner::Cast(this);
+}
+
+const nsIGlobalObject*
+nsPIDOMWindowInner::AsGlobal() const
+{
+  return nsGlobalWindowInner::Cast(this);
 }
 
 // XXX: Can we define this in a header instead of here?

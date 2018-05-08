@@ -4,25 +4,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifdef MOZ_VALGRIND
-# include <valgrind/memcheck.h>
-#endif
-
 #include "mozilla/DebugOnly.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Sprintf.h"
 
-#include "jscntxt.h"
-#include "jsprf.h"
+#ifdef MOZ_VALGRIND
+# include <valgrind/memcheck.h>
+#endif
 
 #include "gc/GCInternals.h"
+#include "gc/PublicIterators.h"
 #include "gc/Zone.h"
 #include "js/HashTable.h"
+#include "vm/JSContext.h"
 
-#include "jscntxtinlines.h"
-#include "jsgcinlines.h"
-
+#include "gc/ArenaList-inl.h"
+#include "gc/GC-inl.h"
 #include "gc/Marking-inl.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -195,7 +194,7 @@ gc::GCRuntime::startVerifyPreBarriers()
         return;
 
     JSContext* cx = TlsContext.get();
-    AutoPrepareForTracing prep(cx, WithAtoms);
+    AutoPrepareForTracing prep(cx);
 
     {
         AutoLockGC lock(cx->runtime());
@@ -221,7 +220,7 @@ gc::GCRuntime::startVerifyPreBarriers()
     incrementalState = State::MarkRoots;
 
     /* Make all the roots be edges emanating from the root node. */
-    traceRuntime(trc, prep.session().lock);
+    traceRuntime(trc, prep.session());
 
     VerifyNode* node;
     node = trc->curnode;
@@ -251,7 +250,7 @@ gc::GCRuntime::startVerifyPreBarriers()
     for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
         MOZ_ASSERT(!zone->usedByHelperThread());
         zone->setNeedsIncrementalBarrier(true);
-        zone->arenas.purge();
+        zone->arenas.clearFreeLists();
     }
 
     return;
@@ -265,7 +264,7 @@ oom:
 static bool
 IsMarkedOrAllocated(TenuredCell* cell)
 {
-    return cell->isMarkedAny() || cell->arena()->allocatedDuringIncremental;
+    return cell->isMarkedAny();
 }
 
 struct CheckEdgeTracer : public JS::CallbackTracer {
@@ -335,7 +334,7 @@ gc::GCRuntime::endVerifyPreBarriers()
 
     MOZ_ASSERT(!JS::IsGenerationalGCEnabled(rt));
 
-    AutoPrepareForTracing prep(rt->activeContextFromOwnThread(), SkipAtoms);
+    AutoPrepareForTracing prep(rt->activeContextFromOwnThread());
 
     bool compartmentCreated = false;
 
@@ -458,7 +457,7 @@ class HeapCheckTracerBase : public JS::CallbackTracer
   public:
     explicit HeapCheckTracerBase(JSRuntime* rt, WeakMapTraceKind weakTraceKind);
     bool init();
-    bool traceHeap(AutoLockForExclusiveAccess& lock);
+    bool traceHeap(AutoTraceSession& session);
     virtual void checkCell(Cell* cell) = 0;
 
   protected:
@@ -529,7 +528,14 @@ HeapCheckTracerBase::onChild(const JS::GCCellPtr& thing)
         return;
 
     // Don't trace into GC in zones being used by helper threads.
-    Zone* zone = thing.is<JSObject>() ? thing.as<JSObject>().zone() : cell->asTenured().zone();
+    Zone* zone;
+    if (thing.is<JSObject>())
+        zone = thing.as<JSObject>().zone();
+    else if (thing.is<JSString>())
+        zone = thing.as<JSString>().zone();
+    else
+        zone = cell->asTenured().zone();
+
     if (zone->group() && zone->group()->usedByHelperThread())
         return;
 
@@ -539,12 +545,12 @@ HeapCheckTracerBase::onChild(const JS::GCCellPtr& thing)
 }
 
 bool
-HeapCheckTracerBase::traceHeap(AutoLockForExclusiveAccess& lock)
+HeapCheckTracerBase::traceHeap(AutoTraceSession& session)
 {
     // The analysis thinks that traceRuntime might GC by calling a GC callback.
     JS::AutoSuppressGCAnalysis nogc;
     if (!rt->isBeingDestroyed())
-        rt->gc.traceRuntime(this, lock);
+        rt->gc.traceRuntime(this, session);
 
     while (!stack.empty() && !oom) {
         WorkItem item = stack.back();
@@ -607,7 +613,7 @@ class CheckHeapTracer final : public HeapCheckTracerBase
 {
   public:
     explicit CheckHeapTracer(JSRuntime* rt);
-    void check(AutoLockForExclusiveAccess& lock);
+    void check(AutoTraceSession& session);
 
   private:
     void checkCell(Cell* cell) override;
@@ -634,9 +640,9 @@ CheckHeapTracer::checkCell(Cell* cell)
 }
 
 void
-CheckHeapTracer::check(AutoLockForExclusiveAccess& lock)
+CheckHeapTracer::check(AutoTraceSession& session)
 {
-    if (!traceHeap(lock))
+    if (!traceHeap(session))
         return;
 
     if (failures)
@@ -650,7 +656,7 @@ js::gc::CheckHeapAfterGC(JSRuntime* rt)
     AutoTraceSession session(rt, JS::HeapState::Tracing);
     CheckHeapTracer tracer(rt);
     if (tracer.init())
-        tracer.check(session.lock);
+        tracer.check(session);
 }
 
 #endif /* JSGC_HASH_TABLE_CHECKS */
@@ -661,7 +667,7 @@ class CheckGrayMarkingTracer final : public HeapCheckTracerBase
 {
   public:
     explicit CheckGrayMarkingTracer(JSRuntime* rt);
-    bool check(AutoLockForExclusiveAccess& lock);
+    bool check(AutoTraceSession& session);
 
   private:
     void checkCell(Cell* cell) override;
@@ -699,9 +705,9 @@ CheckGrayMarkingTracer::checkCell(Cell* cell)
 }
 
 bool
-CheckGrayMarkingTracer::check(AutoLockForExclusiveAccess& lock)
+CheckGrayMarkingTracer::check(AutoTraceSession& session)
 {
-    if (!traceHeap(lock))
+    if (!traceHeap(session))
         return true; // Ignore failure.
 
     return failures == 0;
@@ -721,7 +727,7 @@ js::CheckGrayMarkingState(JSRuntime* rt)
     if (!tracer.init())
         return true; // Ignore failure
 
-    return tracer.check(session.lock);
+    return tracer.check(session);
 }
 
 #endif // defined(JS_GC_ZEAL) || defined(DEBUG)

@@ -14,6 +14,7 @@
 #include "mozilla/RangeBoundary.h"      // for RawRangeBoundary, RangeBoundary
 #include "mozilla/SelectionState.h"     // for RangeUpdater, etc.
 #include "mozilla/StyleSheet.h"         // for StyleSheet
+#include "mozilla/TextEditRules.h"      // for TextEditRules
 #include "mozilla/WeakPtr.h"            // for WeakPtr
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Text.h"
@@ -25,6 +26,7 @@
 #include "nsIObserver.h"                // for NS_DECL_NSIOBSERVER, etc.
 #include "nsIPlaintextEditor.h"         // for nsIPlaintextEditor, etc.
 #include "nsISelectionController.h"     // for nsISelectionController constants
+#include "nsISelectionListener.h"       // for nsISelectionListener
 #include "nsISupportsImpl.h"            // for EditorBase::Release, etc.
 #include "nsIWeakReferenceUtils.h"      // for nsWeakPtr
 #include "nsLiteralString.h"            // for NS_LITERAL_STRING
@@ -33,6 +35,7 @@
 #include "nsWeakReference.h"            // for nsSupportsWeakReference
 #include "nscore.h"                     // for nsresult, nsAString, etc.
 
+class mozInlineSpellChecker;
 class nsAtom;
 class nsIContent;
 class nsIDOMDocument;
@@ -42,7 +45,6 @@ class nsIDOMNode;
 class nsIDocumentStateListener;
 class nsIEditActionListener;
 class nsIEditorObserver;
-class nsIInlineSpellChecker;
 class nsINode;
 class nsIPresShell;
 class nsISupports;
@@ -50,57 +52,6 @@ class nsITransaction;
 class nsIWidget;
 class nsRange;
 class nsTransactionManager;
-
-// This is int32_t instead of int16_t because nsIInlineSpellChecker.idl's
-// spellCheckAfterEditorChange is defined to take it as a long.
-// XXX EditAction causes unnecessary include of EditorBase from some places.
-//     Why don't you move this to nsIEditor.idl?
-enum class EditAction : int32_t
-{
-  ignore = -1,
-  none = 0,
-  undo,
-  redo,
-  insertNode,
-  createNode,
-  deleteNode,
-  splitNode,
-  joinNode,
-  deleteText = 1003,
-
-  // text commands
-  insertText         = 2000,
-  insertIMEText      = 2001,
-  deleteSelection    = 2002,
-  setTextProperty    = 2003,
-  removeTextProperty = 2004,
-  outputText         = 2005,
-  setText            = 2006,
-
-  // html only action
-  insertBreak         = 3000,
-  makeList            = 3001,
-  indent              = 3002,
-  outdent             = 3003,
-  align               = 3004,
-  makeBasicBlock      = 3005,
-  removeList          = 3006,
-  makeDefListItem     = 3007,
-  insertElement       = 3008,
-  insertQuotation     = 3009,
-  htmlPaste           = 3012,
-  loadHTML            = 3013,
-  resetTextProperties = 3014,
-  setAbsolutePosition = 3015,
-  removeAbsolutePosition = 3016,
-  decreaseZIndex      = 3017,
-  increaseZIndex      = 3018
-};
-
-inline bool operator!(const EditAction& aOp)
-{
-  return aOp == EditAction::none;
-}
 
 namespace mozilla {
 class AddStyleSheetTransaction;
@@ -117,6 +68,7 @@ class EditorEventListener;
 class EditTransactionBase;
 class ErrorResult;
 class HTMLEditor;
+class IMEContentObserver;
 class InsertNodeTransaction;
 class InsertTextTransaction;
 class JoinNodeTransaction;
@@ -126,6 +78,9 @@ class SplitNodeResult;
 class SplitNodeTransaction;
 class TextComposition;
 class TextEditor;
+class TextInputListener;
+class TextServicesDocument;
+enum class EditAction : int32_t;
 
 namespace dom {
 class DataTransfer;
@@ -234,6 +189,7 @@ enum class SplitAtEdges
  * implementation.
  */
 class EditorBase : public nsIEditor
+                 , public nsISelectionListener
                  , public nsSupportsWeakReference
 {
 public:
@@ -264,13 +220,33 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(EditorBase, nsIEditor)
 
+  /**
+   * Init is to tell the implementation of nsIEditor to begin its services
+   * @param aDoc          The dom document interface being observed
+   * @param aRoot         This is the root of the editable section of this
+   *                      document. If it is null then we get root
+   *                      from document body.
+   * @param aSelCon       this should be used to get the selection location
+   *                      (will be null for HTML editors)
+   * @param aFlags        A bitmask of flags for specifying the behavior
+   *                      of the editor.
+   */
+  virtual nsresult Init(nsIDocument& doc,
+                        Element* aRoot,
+                        nsISelectionController* aSelCon,
+                        uint32_t aFlags,
+                        const nsAString& aInitialValue);
+
   bool IsInitialized() const { return !!mDocument; }
   already_AddRefed<nsIDOMDocument> GetDOMDocument();
-  already_AddRefed<nsIDocument> GetDocument();
-  already_AddRefed<nsIPresShell> GetPresShell();
-  nsPresContext* GetPresContext()
+  nsIDocument* GetDocument() const { return mDocument; }
+  nsIPresShell* GetPresShell() const
   {
-    RefPtr<nsIPresShell> presShell = GetPresShell();
+    return mDocument ? mDocument->GetShell() : nullptr;
+  }
+  nsPresContext* GetPresContext() const
+  {
+    nsIPresShell* presShell = GetPresShell();
     return presShell ? presShell->GetPresContext() : nullptr;
   }
   already_AddRefed<nsIWidget> GetWidget();
@@ -299,6 +275,21 @@ public:
 
   // nsIEditor methods
   NS_DECL_NSIEDITOR
+
+  // nsISelectionListener method
+  NS_DECL_NSISELECTIONLISTENER
+
+  /**
+   * Set or unset TextInputListener.  If setting non-nullptr when the editor
+   * already has a TextInputListener, this will crash in debug build.
+   */
+  void SetTextInputListener(TextInputListener* aTextInputListener);
+
+  /**
+   * Set or unset IMEContentObserver.  If setting non-nullptr when the editor
+   * already has an IMEContentObserver, this will crash in debug build.
+   */
+  void SetIMEContentObserver(IMEContentObserver* aIMEContentObserver);
 
 public:
   virtual bool IsModifiableNode(nsINode* aNode);
@@ -487,6 +478,11 @@ public:
   void EndIMEComposition();
 
   /**
+   * Get preferred IME status of current widget.
+   */
+  virtual nsresult GetPreferredIMEState(widget::IMEState* aState);
+
+  /**
    * Commit composition if there is.
    * Note that when there is a composition, this requests to commit composition
    * to native IME.  Therefore, when there is composition, this can do anything.
@@ -498,6 +494,11 @@ public:
   void SwitchTextDirectionTo(uint32_t aDirection);
 
   RangeUpdater& RangeUpdaterRef() { return mRangeUpdater; }
+
+  /**
+   * Finalizes selection and caret for the editor.
+   */
+  nsresult FinalizeSelection();
 
 protected:
   nsresult DetermineCurrentDirection();
@@ -634,12 +635,15 @@ protected:
   nsIContent* FindNode(nsINode* aCurrentNode,
                        bool aGoForward,
                        bool aEditableNode,
+                       bool aFindAnyDataNode,
                        bool bNoBlockCrossing);
 
   /**
    * Get the node immediately previous node of aNode.
    * @param atNode               The node from which we start the search.
    * @param aFindEditableNode    If true, only return an editable node.
+   * @param aFindAnyDataNode     If true, may return invisible data node
+   *                             like Comment.
    * @param aNoBlockCrossing     If true, don't move across "block" nodes,
    *                             whatever that means.
    * @return                     The node that occurs before aNode in
@@ -649,6 +653,7 @@ protected:
    */
   nsIContent* GetPreviousNodeInternal(nsINode& aNode,
                                       bool aFindEditableNode,
+                                      bool aFindAnyDataNode,
                                       bool aNoBlockCrossing);
 
   /**
@@ -656,12 +661,15 @@ protected:
    */
   nsIContent* GetPreviousNodeInternal(const EditorRawDOMPoint& aPoint,
                                       bool aFindEditableNode,
+                                      bool aFindAnyDataNode,
                                       bool aNoBlockCrossing);
 
   /**
    * Get the node immediately next node of aNode.
    * @param aNode                The node from which we start the search.
    * @param aFindEditableNode    If true, only return an editable node.
+   * @param aFindAnyDataNode     If true, may return invisible data node
+   *                             like Comment.
    * @param aNoBlockCrossing     If true, don't move across "block" nodes,
    *                             whatever that means.
    * @return                     The node that occurs after aNode in the
@@ -671,6 +679,7 @@ protected:
    */
   nsIContent* GetNextNodeInternal(nsINode& aNode,
                                   bool aFindEditableNode,
+                                  bool aFindAnyDataNode,
                                   bool bNoBlockCrossing);
 
   /**
@@ -678,6 +687,7 @@ protected:
    */
   nsIContent* GetNextNodeInternal(const EditorRawDOMPoint& aPoint,
                                   bool aFindEditableNode,
+                                  bool aFindAnyDataNode,
                                   bool aNoBlockCrossing);
 
 
@@ -725,6 +735,19 @@ protected:
    */
   void BeginPlaceholderTransaction(nsAtom* aTransactionName);
   void EndPlaceholderTransaction();
+
+  /**
+   * InitializeSelectionAncestorLimit() is called by InitializeSelection().
+   * When this is called, each implementation has to call
+   * aSelection.SetAncestorLimiter() with aAnotherLimit.
+   *
+   * @param aSelection          The selection.
+   * @param aAncestorLimit      New ancestor limit of aSelection.  This always
+   *                            has parent node.  So, it's always safe to
+   *                            call SetAncestorLimit() with this node.
+   */
+  virtual void InitializeSelectionAncestorLimit(Selection& aSelection,
+                                                nsIContent& aAncestorLimit);
 
 public:
   /**
@@ -800,54 +823,59 @@ public:
    * Set outOffset to the offset of aChild in the parent.
    * Returns the parent of aChild.
    */
-  static already_AddRefed<nsIDOMNode> GetNodeLocation(nsIDOMNode* aChild,
-                                                      int32_t* outOffset);
   static nsINode* GetNodeLocation(nsINode* aChild, int32_t* aOffset);
-
-  /**
-   * Returns the number of things inside aNode in the out-param aCount.
-   * @param  aNode is the node to get the length of.
-   *         If aNode is text, returns number of characters.
-   *         If not, returns number of children nodes.
-   * @param  aCount [OUT] the result of the above calculation.
-   */
-  static nsresult GetLengthOfDOMNode(nsIDOMNode *aNode, uint32_t &aCount);
 
   /**
    * Get the previous node.
    */
   nsIContent* GetPreviousNode(const EditorRawDOMPoint& aPoint)
   {
-    return GetPreviousNodeInternal(aPoint, false, false);
+    return GetPreviousNodeInternal(aPoint, false, true, false);
+  }
+  nsIContent* GetPreviousElementOrText(const EditorRawDOMPoint& aPoint)
+  {
+    return GetPreviousNodeInternal(aPoint, false, false, false);
   }
   nsIContent* GetPreviousEditableNode(const EditorRawDOMPoint& aPoint)
   {
-    return GetPreviousNodeInternal(aPoint, true, false);
+    return GetPreviousNodeInternal(aPoint, true, true, false);
   }
   nsIContent* GetPreviousNodeInBlock(const EditorRawDOMPoint& aPoint)
   {
-    return GetPreviousNodeInternal(aPoint, false, true);
+    return GetPreviousNodeInternal(aPoint, false, true, true);
+  }
+  nsIContent* GetPreviousElementOrTextInBlock(const EditorRawDOMPoint& aPoint)
+  {
+    return GetPreviousNodeInternal(aPoint, false, false, true);
   }
   nsIContent* GetPreviousEditableNodeInBlock(
                 const EditorRawDOMPoint& aPoint)
   {
-    return GetPreviousNodeInternal(aPoint, true, true);
+    return GetPreviousNodeInternal(aPoint, true, true, true);
   }
   nsIContent* GetPreviousNode(nsINode& aNode)
   {
-    return GetPreviousNodeInternal(aNode, false, false);
+    return GetPreviousNodeInternal(aNode, false, true, false);
+  }
+  nsIContent* GetPreviousElementOrText(nsINode& aNode)
+  {
+    return GetPreviousNodeInternal(aNode, false, false, false);
   }
   nsIContent* GetPreviousEditableNode(nsINode& aNode)
   {
-    return GetPreviousNodeInternal(aNode, true, false);
+    return GetPreviousNodeInternal(aNode, true, true, false);
   }
   nsIContent* GetPreviousNodeInBlock(nsINode& aNode)
   {
-    return GetPreviousNodeInternal(aNode, false, true);
+    return GetPreviousNodeInternal(aNode, false, true, true);
+  }
+  nsIContent* GetPreviousElementOrTextInBlock(nsINode& aNode)
+  {
+    return GetPreviousNodeInternal(aNode, false, false, true);
   }
   nsIContent* GetPreviousEditableNodeInBlock(nsINode& aNode)
   {
-    return GetPreviousNodeInternal(aNode, true, true);
+    return GetPreviousNodeInternal(aNode, true, true, true);
   }
 
   /**
@@ -878,36 +906,52 @@ public:
    */
   nsIContent* GetNextNode(const EditorRawDOMPoint& aPoint)
   {
-    return GetNextNodeInternal(aPoint, false, false);
+    return GetNextNodeInternal(aPoint, false, true, false);
+  }
+  nsIContent* GetNextElementOrText(const EditorRawDOMPoint& aPoint)
+  {
+    return GetNextNodeInternal(aPoint, false, false, false);
   }
   nsIContent* GetNextEditableNode(const EditorRawDOMPoint& aPoint)
   {
-    return GetNextNodeInternal(aPoint, true, false);
+    return GetNextNodeInternal(aPoint, true, true, false);
   }
   nsIContent* GetNextNodeInBlock(const EditorRawDOMPoint& aPoint)
   {
-    return GetNextNodeInternal(aPoint, false, true);
+    return GetNextNodeInternal(aPoint, false, true, true);
+  }
+  nsIContent* GetNextElementOrTextInBlock(const EditorRawDOMPoint& aPoint)
+  {
+    return GetNextNodeInternal(aPoint, false, false, true);
   }
   nsIContent* GetNextEditableNodeInBlock(
                 const EditorRawDOMPoint& aPoint)
   {
-    return GetNextNodeInternal(aPoint, true, true);
+    return GetNextNodeInternal(aPoint, true, true, true);
   }
   nsIContent* GetNextNode(nsINode& aNode)
   {
-    return GetNextNodeInternal(aNode, false, false);
+    return GetNextNodeInternal(aNode, false, true, false);
+  }
+  nsIContent* GetNextElementOrText(nsINode& aNode)
+  {
+    return GetNextNodeInternal(aNode, false, false, false);
   }
   nsIContent* GetNextEditableNode(nsINode& aNode)
   {
-    return GetNextNodeInternal(aNode, true, false);
+    return GetNextNodeInternal(aNode, true, true, false);
   }
   nsIContent* GetNextNodeInBlock(nsINode& aNode)
   {
-    return GetNextNodeInternal(aNode, false, true);
+    return GetNextNodeInternal(aNode, false, true, true);
+  }
+  nsIContent* GetNextElementOrTextInBlock(nsINode& aNode)
+  {
+    return GetNextNodeInternal(aNode, false, false, true);
   }
   nsIContent* GetNextEditableNodeInBlock(nsINode& aNode)
   {
-    return GetNextNodeInternal(aNode, true, true);
+    return GetNextNodeInternal(aNode, true, true, true);
   }
 
   /**
@@ -973,16 +1017,30 @@ public:
     }
 
     switch (aNode->NodeType()) {
-      case nsIDOMNode::ELEMENT_NODE:
+      case nsINode::ELEMENT_NODE:
         // In HTML editors, if we're dealing with an element, then ask it
         // whether it's editable.
         return mIsHTMLEditorClass ? aNode->IsEditable() : true;
-      case nsIDOMNode::TEXT_NODE:
+      case nsINode::TEXT_NODE:
         // Text nodes are considered to be editable by both typed of editors.
         return true;
       default:
         return false;
     }
+  }
+
+  /**
+   * Returns true if aNode is a usual element node (not bogus node) or
+   * a text node.  In other words, returns true if aNode is a usual element
+   * node or visible data node.
+   */
+  bool IsElementOrText(const nsINode& aNode) const
+  {
+    if (!aNode.IsContent() || IsMozEditorBogusNode(&aNode)) {
+      return false;
+    }
+    return aNode.NodeType() == nsINode::ELEMENT_NODE ||
+           aNode.NodeType() == nsINode::TEXT_NODE;
   }
 
   /**
@@ -996,7 +1054,7 @@ public:
   /**
    * Returns true if aNode is a MozEditorBogus node.
    */
-  bool IsMozEditorBogusNode(nsINode* aNode)
+  bool IsMozEditorBogusNode(const nsINode* aNode) const
   {
     return aNode && aNode->IsElement() &&
            aNode->AsElement()->AttrValueIs(kNameSpaceID_None,
@@ -1047,7 +1105,7 @@ public:
   static bool IsTextNode(nsIDOMNode* aNode);
   static bool IsTextNode(nsINode* aNode)
   {
-    return aNode->NodeType() == nsIDOMNode::TEXT_NODE;
+    return aNode->NodeType() == nsINode::TEXT_NODE;
   }
 
   /**
@@ -1063,15 +1121,9 @@ public:
   static nsIContent* GetNodeAtRangeOffsetPoint(const RawRangeBoundary& aPoint);
 
   static nsresult GetStartNodeAndOffset(Selection* aSelection,
-                                        nsIDOMNode** outStartNode,
-                                        int32_t* outStartOffset);
-  static nsresult GetStartNodeAndOffset(Selection* aSelection,
                                         nsINode** aStartContainer,
                                         int32_t* aStartOffset);
   static EditorRawDOMPoint GetStartPoint(Selection* aSelection);
-  static nsresult GetEndNodeAndOffset(Selection* aSelection,
-                                      nsIDOMNode** outEndNode,
-                                      int32_t* outEndOffset);
   static nsresult GetEndNodeAndOffset(Selection* aSelection,
                                       nsINode** aEndContainer,
                                       int32_t* aEndOffset);
@@ -1080,9 +1132,6 @@ public:
   static nsresult GetEndChildNode(Selection* aSelection,
                                   nsIContent** aEndNode);
 
-#if DEBUG_JOE
-  static void DumpNode(nsIDOMNode* aNode, int32_t indent = 0);
-#endif
   Selection* GetSelection(SelectionType aSelectionType =
                                           SelectionType::eNormal)
   {
@@ -1331,6 +1380,17 @@ public:
   }
 
   /**
+   * Returns true if markNodeDirty() has any effect.  Returns false if
+   * markNodeDirty() is a no-op.
+   */
+  bool OutputsMozDirty() const
+  {
+    // Return true for Composer (!IsInteractionAllowed()) or mail
+    // (IsMailEditor()), but false for webpages.
+    return !IsInteractionAllowed() || IsMailEditor();
+  }
+
+  /**
    * GetTransactionManager() returns transaction manager associated with the
    * editor.  This may return nullptr if undo/redo hasn't been enabled.
    */
@@ -1442,7 +1502,9 @@ protected:
   // MIME type of the doc we are editing.
   nsCString mContentMIMEType;
 
-  nsCOMPtr<nsIInlineSpellChecker> mInlineSpellChecker;
+  RefPtr<mozInlineSpellChecker> mInlineSpellChecker;
+  // Reference to text services document for mInlineSpellChecker.
+  RefPtr<TextServicesDocument> mTextServicesDocument;
 
   RefPtr<nsTransactionManager> mTxnMgr;
   // Cached root node.
@@ -1459,6 +1521,12 @@ protected:
   // IME composition this is not null between compositionstart and
   // compositionend.
   RefPtr<TextComposition> mComposition;
+
+  RefPtr<TextEditRules> mRules;
+
+  RefPtr<TextInputListener> mTextInputListener;
+
+  RefPtr<IMEContentObserver> mIMEContentObserver;
 
   // Listens to all low level actions on the doc.
   typedef AutoTArray<OwningNonNull<nsIEditActionListener>, 5>

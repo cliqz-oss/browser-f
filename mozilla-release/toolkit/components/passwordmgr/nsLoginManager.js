@@ -4,24 +4,22 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 const PERMISSION_SAVE_LOGINS = "login-saving";
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/LoginManagerContent.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/LoginManagerContent.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginFormFactory",
-                                  "resource://gre/modules/LoginManagerContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "InsecurePasswordUtils",
-                                  "resource://gre/modules/InsecurePasswordUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginFormFactory",
+                               "resource://gre/modules/LoginManagerContent.jsm");
+ChromeUtils.defineModuleGetter(this, "InsecurePasswordUtils",
+                               "resource://gre/modules/InsecurePasswordUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let logger = LoginHelper.createLogger("nsLoginManager");
@@ -245,26 +243,13 @@ LoginManager.prototype = {
   },
 
 
-
-
-
-  /* ---------- Primary Public interfaces ---------- */
-
-
-
-
   /**
-   * @type Promise
-   * This promise is resolved when initialization is complete, and is rejected
-   * in case the asynchronous part of initialization failed.
+   * Ensures that a login isn't missing any necessary fields.
+   *
+   * @param login
+   *        The login to check.
    */
-  initializationPromise: null,
-
-
-  /**
-   * Add a new login to login storage.
-   */
-  addLogin(login) {
+  _checkLogin(login) {
     // Sanity check the login
     if (login.hostname == null || login.hostname.length == 0) {
       throw new Error("Can't add a login with a null or empty hostname.");
@@ -293,7 +278,29 @@ LoginManager.prototype = {
       // Need one or the other!
       throw new Error("Can't add a login without a httpRealm or formSubmitURL.");
     }
+  },
 
+
+
+
+  /* ---------- Primary Public interfaces ---------- */
+
+
+
+
+  /**
+   * @type Promise
+   * This promise is resolved when initialization is complete, and is rejected
+   * in case the asynchronous part of initialization failed.
+   */
+  initializationPromise: null,
+
+
+  /**
+   * Add a new login to login storage.
+   */
+  addLogin(login) {
+    this._checkLogin(login);
 
     // Look for an existing entry.
     var logins = this.findLogins({}, login.hostname, login.formSubmitURL,
@@ -305,6 +312,39 @@ LoginManager.prototype = {
 
     log.debug("Adding login");
     return this._storage.addLogin(login);
+  },
+
+  async addLogins(logins) {
+    let crypto = Cc["@mozilla.org/login-manager/crypto/SDR;1"].
+                 getService(Ci.nsILoginManagerCrypto);
+    let plaintexts = logins.map(l => l.username).concat(logins.map(l => l.password));
+    let ciphertexts = await crypto.encryptMany(plaintexts);
+    let usernames = ciphertexts.slice(0, logins.length);
+    let passwords = ciphertexts.slice(logins.length);
+    let resultLogins = [];
+    for (let i = 0; i < logins.length; i++) {
+      try {
+        this._checkLogin(logins[i]);
+      } catch (e) {
+        Cu.reportError(e);
+        continue;
+      }
+
+      let plaintextUsername = logins[i].username;
+      let plaintextPassword = logins[i].password;
+      logins[i].username = usernames[i];
+      logins[i].password = passwords[i];
+      log.debug("Adding login");
+      let resultLogin = this._storage.addLogin(logins[i], true);
+      // Reset the username and password to keep the same guarantees as addLogin
+      logins[i].username = plaintextUsername;
+      logins[i].password = plaintextPassword;
+
+      resultLogin.username = plaintextUsername;
+      resultLogin.password = plaintextPassword;
+      resultLogins.push(resultLogin);
+    }
+    return resultLogins;
   },
 
   /**

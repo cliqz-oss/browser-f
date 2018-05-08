@@ -7,6 +7,7 @@
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/ISurfaceAllocator.h"     // for GfxMemoryImageReporter
+#include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/webrender/webrender_ffi.h"
@@ -305,7 +306,8 @@ class LogForwarderEvent : public Runnable
 {
   ~LogForwarderEvent() override = default;
 
-  NS_DECL_ISUPPORTS_INHERITED
+public:
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(LogForwarderEvent, Runnable)
 
   explicit LogForwarderEvent(const nsCString& aMessage)
     : mozilla::Runnable("LogForwarderEvent")
@@ -330,8 +332,6 @@ class LogForwarderEvent : public Runnable
 protected:
   nsCString mMessage;
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(LogForwarderEvent, Runnable);
 
 void CrashStatsLogForwarder::Log(const std::string& aString)
 {
@@ -363,7 +363,8 @@ class CrashTelemetryEvent : public Runnable
 {
   ~CrashTelemetryEvent() override = default;
 
-  NS_DECL_ISUPPORTS_INHERITED
+public:
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(CrashTelemetryEvent, Runnable)
 
   explicit CrashTelemetryEvent(uint32_t aReason)
     : mozilla::Runnable("CrashTelemetryEvent")
@@ -380,8 +381,6 @@ class CrashTelemetryEvent : public Runnable
 protected:
   uint32_t mReason;
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(CrashTelemetryEvent, Runnable);
 
 void
 CrashStatsLogForwarder::CrashAction(LogReason aReason)
@@ -567,7 +566,7 @@ void RecordingPrefChanged(const char *aPrefName, void *aClosure)
     nsAutoString prefFileName;
     nsresult rv = Preferences::GetString("gfx.2d.recordingfile", prefFileName);
     if (NS_SUCCEEDED(rv)) {
-      fileName.Append(NS_ConvertUTF16toUTF8(prefFileName));
+      CopyUTF16toUTF8(prefFileName, fileName);
     } else {
       nsCOMPtr<nsIFile> tmpFile;
       if (NS_FAILED(NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(tmpFile)))) {
@@ -579,12 +578,21 @@ void RecordingPrefChanged(const char *aPrefName, void *aClosure)
       if (NS_FAILED(rv))
         return;
 
+#ifdef XP_WIN
+      rv = tmpFile->GetPath(prefFileName);
+      CopyUTF16toUTF8(prefFileName, fileName);
+#else
       rv = tmpFile->GetNativePath(fileName);
+#endif
       if (NS_FAILED(rv))
         return;
     }
 
+#ifdef XP_WIN
+    gPlatform->mRecorder = Factory::CreateEventRecorderForFile(prefFileName.BeginReading());
+#else
     gPlatform->mRecorder = Factory::CreateEventRecorderForFile(fileName.BeginReading());
+#endif
     printf_stderr("Recording to %s\n", fileName.get());
     Factory::SetGlobalEventRecorder(gPlatform->mRecorder);
   } else {
@@ -607,12 +615,11 @@ WebRenderDebugPrefChangeCallback(const char* aPrefName, void*)
   GFX_WEBRENDER_DEBUG(".profiler",           1 << 0)
   GFX_WEBRENDER_DEBUG(".render-targets",     1 << 1)
   GFX_WEBRENDER_DEBUG(".texture-cache",      1 << 2)
-  GFX_WEBRENDER_DEBUG(".alpha-primitives",   1 << 3)
-  GFX_WEBRENDER_DEBUG(".gpu-time-queries",   1 << 4)
-  GFX_WEBRENDER_DEBUG(".gpu-sample-queries", 1 << 5)
-  GFX_WEBRENDER_DEBUG(".disable-batching",   1 << 6)
-  GFX_WEBRENDER_DEBUG(".epochs",             1 << 7)
-  GFX_WEBRENDER_DEBUG(".compact-profiler",   1 << 8)
+  GFX_WEBRENDER_DEBUG(".gpu-time-queries",   1 << 3)
+  GFX_WEBRENDER_DEBUG(".gpu-sample-queries", 1 << 4)
+  GFX_WEBRENDER_DEBUG(".disable-batching",   1 << 5)
+  GFX_WEBRENDER_DEBUG(".epochs",             1 << 6)
+  GFX_WEBRENDER_DEBUG(".compact-profiler",   1 << 7)
 #undef GFX_WEBRENDER_DEBUG
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags);
@@ -677,11 +684,11 @@ gfxPlatform::Init()
       nsCOMPtr<nsIFile> file;
       nsresult rv = NS_GetSpecialDirectory(NS_GRE_DIR, getter_AddRefs(file));
       if (NS_FAILED(rv)) {
-        gfxVars::SetGREDirectory(nsCString());
+        gfxVars::SetGREDirectory(nsString());
       } else {
-        nsAutoCString nativePath;
-        file->GetNativePath(nativePath);
-        gfxVars::SetGREDirectory(nsCString(nativePath));
+        nsAutoString path;
+        file->GetPath(path);
+        gfxVars::SetGREDirectory(nsString(path));
       }
     }
 
@@ -1022,6 +1029,7 @@ gfxPlatform::InitLayersIPC()
   } else if (XRE_IsParentProcess()) {
     if (gfxVars::UseWebRender()) {
       wr::RenderThread::Start();
+      layers::SharedSurfacesParent::Initialize();
     }
 
     layers::CompositorThreadHolder::Start();
@@ -1055,7 +1063,10 @@ gfxPlatform::ShutdownLayersIPC()
         // This has to happen after shutting down the child protocols.
         layers::CompositorThreadHolder::Shutdown();
         gfx::VRListenerThreadHolder::Shutdown();
-        if (gfxVars::UseWebRender()) {
+        // There is a case that RenderThread exists when gfxVars::UseWebRender() is false.
+        // This could happen when WebRender was fallbacked to compositor.
+        if (wr::RenderThread::Get()) {
+          layers::SharedSurfacesParent::Shutdown();
           wr::RenderThread::ShutDown();
 
           Preferences::UnregisterCallback(WebRenderDebugPrefChangeCallback, WR_DEBUG_PREF);
@@ -2166,10 +2177,21 @@ gfxPlatform::FlushFontAndWordCaches()
 /* static */ void
 gfxPlatform::ForceGlobalReflow()
 {
-    // modify a preference that will trigger reflow everywhere
-    static const char kPrefName[] = "font.internaluseonly.changed";
-    bool fontInternalChange = Preferences::GetBool(kPrefName, false);
-    Preferences::SetBool(kPrefName, !fontInternalChange);
+    MOZ_ASSERT(NS_IsMainThread());
+    if (XRE_IsParentProcess()) {
+        // Modify a preference that will trigger reflow everywhere (in all
+        // content processes, as well as the parent).
+        static const char kPrefName[] = "font.internaluseonly.changed";
+        bool fontInternalChange = Preferences::GetBool(kPrefName, false);
+        Preferences::SetBool(kPrefName, !fontInternalChange);
+    } else {
+        // Send a notification that will be observed by PresShells in this
+        // process only.
+        nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+        if (obs) {
+            obs->NotifyObservers(nullptr, "font-info-updated", nullptr);
+        }
+    }
 }
 
 void
@@ -2576,13 +2598,14 @@ gfxPlatform::InitOMTPConfig()
   ScopedGfxFeatureReporter reporter("OMTP");
 
   FeatureState& omtp = gfxConfig::GetFeature(Feature::OMTP);
+  int32_t paintWorkerCount = PaintThread::CalculatePaintWorkerCount();
 
   if (!XRE_IsParentProcess()) {
     // The parent process runs through all the real decision-making code
     // later in this function. For other processes we still want to report
     // the state of the feature for crash reports.
     if (gfxVars::UseOMTP()) {
-      reporter.SetSuccessful();
+      reporter.SetSuccessful(paintWorkerCount);
     }
     return;
   }
@@ -2607,7 +2630,7 @@ gfxPlatform::InitOMTPConfig()
 
   if (omtp.IsEnabled()) {
     gfxVars::SetUseOMTP(true);
-    reporter.SetSuccessful();
+    reporter.SetSuccessful(paintWorkerCount);
   }
 }
 

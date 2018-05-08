@@ -3,14 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+var EXPORTED_SYMBOLS = ["sendMessageToJava", "Messaging", "EventDispatcher"];
 
-this.EXPORTED_SYMBOLS = ["sendMessageToJava", "Messaging", "EventDispatcher"];
-
-XPCOMUtils.defineLazyModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
+ChromeUtils.defineModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "UUIDGen",
                                    "@mozilla.org/uuid-generator;1",

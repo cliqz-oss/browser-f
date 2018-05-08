@@ -4,16 +4,18 @@
 
 /**
  * <rich-select>
- *  <address-option addressLine="1234 Anywhere St"
- *                  city="Some City"
+ *  <address-option guid="98hgvnbmytfc"
+ *                  address-level1="MI"
+ *                  address-level2="Some City"
+ *                  email="foo@example.com"
  *                  country="USA"
- *                  dependentLocality=""
- *                  languageCode="en-US"
- *                  phone=""
- *                  postalCode="90210"
- *                  recipient="Jared Wein"
- *                  region="MI"></address-option>
+ *                  name="Jared Wein"
+ *                  postal-code="90210"
+ *                  street-address="1234 Anywhere St"
+ *                  tel="+1 650 555-5555"></address-option>
  * </rich-select>
+ *
+ * Attribute names follow FormAutofillStorage.jsm.
  */
 
 /* global ObservedPropertiesMixin, RichOption */
@@ -21,48 +23,41 @@
 class AddressOption extends ObservedPropertiesMixin(RichOption) {
   static get observedAttributes() {
     return RichOption.observedAttributes.concat([
-      "addressLine",
-      "city",
+      "address-level1",
+      "address-level2",
       "country",
-      "dependentLocality",
       "email",
-      "languageCode",
-      "organization",
-      "phone",
-      "postalCode",
-      "recipient",
-      "region",
-      "sortingCode",
+      "guid",
+      "name",
+      "postal-code",
+      "street-address",
+      "tel",
     ]);
   }
 
-  connectedCallback() {
-    for (let child of this.children) {
-      child.remove();
+  constructor() {
+    super();
+
+    for (let name of ["name", "street-address", "email", "tel"]) {
+      this[`_${name}`] = document.createElement("span");
+      this[`_${name}`].classList.add(name);
     }
+  }
 
-    let fragment = document.createDocumentFragment();
-    RichOption._createElement(fragment, "recipient");
-    RichOption._createElement(fragment, "addressLine");
-    RichOption._createElement(fragment, "email");
-    RichOption._createElement(fragment, "phone");
-    this.appendChild(fragment);
-
+  connectedCallback() {
+    for (let name of ["name", "street-address", "email", "tel"]) {
+      this.appendChild(this[`_${name}`]);
+    }
     super.connectedCallback();
   }
 
   render() {
-    if (!this.parentNode) {
-      return;
-    }
-
-    this.querySelector(".recipient").textContent = this.recipient;
-    this.querySelector(".addressLine").textContent =
-      `${this.addressLine} ${this.city} ${this.region} ${this.postalCode} ${this.country}`;
-    this.querySelector(".email").textContent = this.email;
-    this.querySelector(".phone").textContent = this.phone;
+    this._name.textContent = this.name;
+    this["_street-address"].textContent = `${this.streetAddress} ` +
+      `${this.addressLevel2} ${this.addressLevel1} ${this.postalCode} ${this.country}`;
+    this._email.textContent = this.email;
+    this._tel.textContent = this.tel;
   }
 }
 
 customElements.define("address-option", AddressOption);
-

@@ -9,6 +9,7 @@
 
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
+#include "mozilla/ServoStyleRuleMap.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIdentifierMapEntry.h"
@@ -60,12 +61,17 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
 
-  ShadowRoot(Element* aElement, bool aClosed,
-             already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
-             nsXBLPrototypeBinding* aProtoBinding);
+  ShadowRoot(Element* aElement, ShadowRootMode aMode,
+             already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
   // Shadow DOM v1
-  Element* Host();
+  Element* Host() const
+  {
+    MOZ_ASSERT(GetHost(), "ShadowRoot always has a host, how did we create "
+                          "this ShadowRoot?");
+    return GetHost();
+  }
+
   ShadowRootMode Mode() const
   {
     return mMode;
@@ -78,19 +84,15 @@ public:
   // [deprecated] Shadow DOM v0
   void InsertSheet(StyleSheet* aSheet, nsIContent* aLinkingContent);
   void RemoveSheet(StyleSheet* aSheet);
-  bool ApplyAuthorStyles();
-  void SetApplyAuthorStyles(bool aApplyAuthorStyles);
   StyleSheetList* StyleSheets()
   {
     return &DocumentOrShadowRoot::EnsureDOMStyleSheets();
   }
 
   /**
-   * Distributes all the explicit children of the pool host to the content
-   * insertion points in this ShadowRoot.
+   * Clones internal state, for example stylesheets, of aOther to 'this'.
    */
-  void DistributeAllNodes();
-
+  void CloneInternalDataFrom(ShadowRoot* aOther);
 private:
 
   /**
@@ -115,20 +117,24 @@ private:
   const HTMLSlotElement* UnassignSlotFor(nsIContent* aContent,
                                          const nsAString& aSlotName);
 
-  /**
-   * Called when we redistribute content after insertion points have changed.
-   */
-  void DistributionChanged();
-
-  bool IsPooledNode(nsIContent* aChild) const;
-
 public:
   void AddSlot(HTMLSlotElement* aSlot);
   void RemoveSlot(HTMLSlotElement* aSlot);
 
-  void SetInsertionPointChanged() { mInsertionPointChanged = true; }
+  const RawServoAuthorStyles* ServoStyles() const
+  {
+    return mServoStyles.get();
+  }
 
-  void SetAssociatedBinding(nsXBLBinding* aBinding) { mAssociatedBinding = aBinding; }
+  RawServoAuthorStyles* ServoStyles()
+  {
+    return mServoStyles.get();
+  }
+
+  // FIXME(emilio): This will need to become more fine-grained.
+  void StyleSheetChanged();
+
+  mozilla::ServoStyleRuleMap& ServoStyleRuleMap();
 
   JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
@@ -141,9 +147,12 @@ public:
   Element* GetActiveElement();
   void GetInnerHTML(nsAString& aInnerHTML);
   void SetInnerHTML(const nsAString& aInnerHTML, ErrorResult& aError);
-  void StyleSheetChanged();
 
-  bool IsComposedDocParticipant() { return mIsComposedDocParticipant; }
+  bool IsComposedDocParticipant() const
+  {
+    return mIsComposedDocParticipant;
+  }
+
   void SetIsComposedDocParticipant(bool aIsComposedDocParticipant)
   {
     mIsComposedDocParticipant = aIsComposedDocParticipant;
@@ -154,24 +163,19 @@ public:
 protected:
   virtual ~ShadowRoot();
 
-  ShadowRootMode mMode;
+  void SyncServoStyles();
 
+  const ShadowRootMode mMode;
+
+  // The computed data from the style sheets.
+  UniquePtr<RawServoAuthorStyles> mServoStyles;
+  UniquePtr<mozilla::ServoStyleRuleMap> mStyleRuleMap;
+
+  using SlotArray = AutoTArray<HTMLSlotElement*, 1>;
   // Map from name of slot to an array of all slots in the shadow DOM with with
   // the given name. The slots are stored as a weak pointer because the elements
   // are in the shadow tree and should be kept alive by its parent.
-  nsClassHashtable<nsStringHashKey, nsTArray<mozilla::dom::HTMLSlotElement*>> mSlotMap;
-  nsXBLPrototypeBinding* mProtoBinding;
-
-  // It is necessary to hold a reference to the associated nsXBLBinding
-  // because the binding holds a reference on the nsXBLDocumentInfo that
-  // owns |mProtoBinding|.
-  RefPtr<nsXBLBinding> mAssociatedBinding;
-
-  // A boolean that indicates that an insertion point was added or removed
-  // from this ShadowRoot and that the nodes need to be redistributed into
-  // the insertion points. After this flag is set, nodes will be distributed
-  // on the next mutation event.
-  bool mInsertionPointChanged;
+  nsClassHashtable<nsStringHashKey, SlotArray> mSlotMap;
 
   // Flag to indicate whether the descendants of this shadow root are part of the
   // composed document. Ideally, we would use a node flag on nodes to
@@ -179,7 +183,7 @@ protected:
   // so instead we track it here.
   bool mIsComposedDocParticipant;
 
-  nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
+  nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
                  bool aPreallocateChildren) const override;
 };
 

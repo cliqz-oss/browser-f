@@ -18,6 +18,7 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
+#include FT_MULTIPLE_MASTERS_H
 #include <cairo.h>
 #include <cairo-ft.h>
 
@@ -115,6 +116,12 @@ public:
 
     FT_Face GetFTFace();
 
+    FT_MM_Var* GetMMVar();
+
+    bool HasVariations() override;
+    void GetVariationAxes(nsTArray<gfxFontVariationAxis>& aAxes) override;
+    void GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) override;
+
     hb_blob_t* GetFontTable(uint32_t aTableTag) override;
 
     void ForgetHBFace() override;
@@ -185,6 +192,11 @@ protected:
     };
 
     UnscaledFontCache mUnscaledFontCache;
+
+    // Because of FreeType bug 52955, we keep the FT_MM_Var struct when it is
+    // first loaded, rather than releasing it and re-fetching it as needed.
+    FT_MM_Var* mMMVar = nullptr;
+    bool mMMVarInitialized = false;
 };
 
 class gfxFontconfigFontFamily : public gfxFontFamily {
@@ -217,7 +229,7 @@ public:
                          bool aIgnoreSizeTolerance) override;
 
     bool FilterForFontList(nsAtom* aLangGroup,
-                           const nsACString& aGeneric) const final override {
+                           const nsACString& aGeneric) const final {
         return SupportsLangGroup(aLangGroup);
     }
 

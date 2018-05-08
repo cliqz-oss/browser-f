@@ -8,7 +8,9 @@
 
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/EditorBase.h"         // for EditorBase
+#include "mozilla/ErrorResult.h"
 #include "mozilla/HTMLEditor.h"         // for HTMLEditor
+#include "mozilla/dom/Element.h"
 #include "nsAString.h"
 #include "nsCOMPtr.h"                   // for nsCOMPtr, do_QueryInterface, etc
 #include "nsComponentManagerUtils.h"    // for do_CreateInstance
@@ -29,6 +31,8 @@
 #include "nsStringFwd.h"                // for nsString
 
 class nsISupports;
+using mozilla::dom::Element;
+using mozilla::ErrorResult;
 
 //prototype
 nsresult GetListState(mozilla::HTMLEditor* aHTMLEditor,
@@ -70,8 +74,6 @@ nsBaseStateUpdatingCommand::nsBaseStateUpdatingCommand(nsAtom* aTagName)
 nsBaseStateUpdatingCommand::~nsBaseStateUpdatingCommand()
 {
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsBaseStateUpdatingCommand, nsBaseComposerCommand)
 
 NS_IMETHODIMP
 nsBaseStateUpdatingCommand::IsCommandEnabled(const char *aCommandName,
@@ -581,8 +583,6 @@ nsMultiStateCommand::~nsMultiStateCommand()
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(nsMultiStateCommand, nsBaseComposerCommand)
-
 NS_IMETHODIMP
 nsMultiStateCommand::IsCommandEnabled(const char * aCommandName,
                                       nsISupports *refCon,
@@ -1041,19 +1041,10 @@ nsAbsolutePositioningCommand::GetCurrentState(mozilla::HTMLEditor* aHTMLEditor,
     return NS_OK;
   }
 
-  nsCOMPtr<nsINode> container;
-  nsresult rv =
-    aHTMLEditor->GetAbsolutelyPositionedSelectionContainer(
-                   getter_AddRefs(container));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsAutoString outStateString;
-  if (container) {
-    outStateString.AssignLiteral("absolute");
-  }
-
-  aParams->SetBooleanValue(STATE_MIXED,false);
-  aParams->SetCStringValue(STATE_ATTRIBUTE, NS_ConvertUTF16toUTF8(outStateString).get());
+  RefPtr<Element> container =
+    aHTMLEditor->GetAbsolutelyPositionedSelectionContainer();
+  aParams->SetBooleanValue(STATE_MIXED,  false);
+  aParams->SetCStringValue(STATE_ATTRIBUTE, container ? "absolute" : "");
   return NS_OK;
 }
 
@@ -1064,13 +1055,9 @@ nsAbsolutePositioningCommand::ToggleState(mozilla::HTMLEditor* aHTMLEditor)
     return NS_ERROR_INVALID_ARG;
   }
 
-  nsCOMPtr<nsINode> container;
-  nsresult rv =
-    aHTMLEditor->GetAbsolutelyPositionedSelectionContainer(
-                   getter_AddRefs(container));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return aHTMLEditor->AbsolutePositionSelection(!container);
+  RefPtr<Element> container =
+    aHTMLEditor->GetAbsolutelyPositionedSelectionContainer();
+  return aHTMLEditor->SetSelectionToAbsoluteOrStatic(!container);
 }
 
 
@@ -1098,11 +1085,7 @@ nsDecreaseZIndexCommand::IsCommandEnabled(const char * aCommandName,
     return NS_OK;
   }
 
-  int32_t z;
-  nsresult rv = htmlEditor->GetElementZIndex(positionedElement, &z);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  int32_t z = htmlEditor->GetZIndex(*positionedElement);
   *outCmdEnabled = (z > 0);
   return NS_OK;
 }
@@ -1119,7 +1102,7 @@ nsDecreaseZIndexCommand::DoCommand(const char *aCommandName,
   if (NS_WARN_IF(!htmlEditor)) {
     return NS_ERROR_FAILURE;
   }
-  return htmlEditor->RelativeChangeZIndex(-1);
+  return htmlEditor->AddZIndex(-1);
 }
 
 NS_IMETHODIMP
@@ -1179,7 +1162,7 @@ nsIncreaseZIndexCommand::DoCommand(const char *aCommandName,
   if (NS_WARN_IF(!htmlEditor)) {
     return NS_ERROR_FAILURE;
   }
-  return htmlEditor->RelativeChangeZIndex(1);
+  return htmlEditor->AddZIndex(1);
 }
 
 NS_IMETHODIMP
@@ -1429,8 +1412,6 @@ nsInsertHTMLCommand::GetCommandStateParams(const char *aCommandName,
   return aParams->SetBooleanValue(STATE_ENABLED, outCmdEnabled);
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(nsInsertTagCommand, nsBaseComposerCommand)
-
 nsInsertTagCommand::nsInsertTagCommand(nsAtom* aTagName)
 : nsBaseComposerCommand()
 , mTagName(aTagName)
@@ -1530,8 +1511,12 @@ nsInsertTagCommand::DoCommandParams(const char *aCommandName,
                                              getter_AddRefs(domElem));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = domElem->SetAttribute(attributeType, attrib);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<Element> elem = do_QueryInterface(domElem);
+  ErrorResult err;
+  elem->SetAttribute(attributeType, attrib, err);
+  if (NS_WARN_IF(err.Failed())) {
+    return err.StealNSResult();
+  }
 
   // do actual insertion
   if (mTagName == nsGkAtoms::a) {

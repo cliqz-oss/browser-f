@@ -10,20 +10,18 @@
 #include "mozilla/CheckedInt.h"
 
 #include "jsfriendapi.h"
-#include "jsprf.h"
-#include "jswrapper.h"
 
+#include "gc/FreeOp.h"
 #include "jit/AtomicOperations.h"
+#include "js/Wrapper.h"
 #include "vm/SharedMem.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmTypes.h"
 
-#include "jsobjinlines.h"
-
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
-using mozilla::Some;
 using mozilla::Maybe;
 using mozilla::Nothing;
 using mozilla::CheckedInt;

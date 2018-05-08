@@ -3,6 +3,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head.js */
+
 // Test that the autocomplete popup closes on switching tabs. See bug 900448.
 
 "use strict";
@@ -17,7 +19,7 @@ add_task(async function () {
   let popupShown = once(popup, "popup-opened");
 
   hud.jsterm.setInputValue("sc");
-  EventUtils.synthesizeKey("r", {});
+  EventUtils.sendString("r");
 
   await popupShown;
 

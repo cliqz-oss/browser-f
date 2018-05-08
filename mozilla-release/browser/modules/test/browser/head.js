@@ -1,6 +1,6 @@
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
-                                  "resource://testing-common/PlacesTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
+                               "resource://testing-common/PlacesTestUtils.jsm");
 
 const SINGLE_TRY_TIMEOUT = 100;
 const NUMBER_OF_TRIES = 30;
@@ -168,8 +168,14 @@ function checkEvents(events, expectedEvents) {
  * @returns A nsIContentPermissionRequest-ish object.
  */
 function makeMockPermissionRequest(browser) {
+  let type = {
+    options: [],
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionType]),
+  };
+  let types = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+  types.appendElement(type);
   let result = {
-    types: null,
+    types,
     principal: browser.contentPrincipal,
     requester: null,
     _cancelled: false,

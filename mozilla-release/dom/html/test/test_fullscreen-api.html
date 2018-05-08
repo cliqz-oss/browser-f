@@ -38,6 +38,7 @@ var gTestWindows = [
   "file_fullscreen-navigation.html",
   "file_fullscreen-scrollbar.html",
   "file_fullscreen-selector.html",
+  "file_fullscreen-shadowdom.html",
   "file_fullscreen-top-layer.html",
   "file_fullscreen-backdrop.html",
   "file_fullscreen-nested.html",
@@ -73,8 +74,15 @@ function shouldSkipTest(test) {
     todo(false, `${test} skipped due to bug 1409805`);
     return true;
   }
+
+  if (!SpecialPowers.DOMWindowUtils.isStyledByServo &&
+      test == "file_fullscreen-shadowdom.html") {
+    // Shadow DOM is stylo-only.
+    return true;
+  }
+
   if (!SpecialPowers.isMainProcess() &&
-      navigator.platform.indexOf('Linux') >= 0) {
+      navigator.platform.includes('Linux')) {
     for (let item of gLinuxE10sSkipList) {
       if (item.test == test) {
         todo(false, `${test} skipped due to ${item.reason}`);
@@ -146,7 +154,8 @@ addLoadEvent(function() {
         ["full-screen-api.unprefix.enabled", true],
         ["full-screen-api.allow-trusted-requests-only", false],
         ["full-screen-api.transition-duration.enter", "0 0"],
-        ["full-screen-api.transition-duration.leave", "0 0"]
+        ["full-screen-api.transition-duration.leave", "0 0"],
+        ["dom.webcomponents.shadowdom.enabled", true]
       ]}, nextTest);
 });
 SimpleTest.waitForExplicitFinish();

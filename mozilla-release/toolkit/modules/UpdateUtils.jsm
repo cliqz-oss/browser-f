@@ -2,18 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["UpdateUtils"];
+var EXPORTED_SYMBOLS = ["UpdateUtils"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
 Cu.importGlobalProperties(["fetch"]); /* globals fetch */
 
-XPCOMUtils.defineLazyModuleGetter(this, "WindowsRegistry",
-                                  "resource://gre/modules/WindowsRegistry.jsm");
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 const FILE_UPDATE_LOCALE                  = "update.locale";
 const PREF_APP_DISTRIBUTION               = "distribution.id";
@@ -21,7 +19,7 @@ const PREF_APP_DISTRIBUTION_VERSION       = "distribution.version";
 const PREF_APP_UPDATE_CUSTOM              = "app.update.custom";
 
 
-this.UpdateUtils = {
+var UpdateUtils = {
   _locale: undefined,
 
   /**
@@ -261,6 +259,12 @@ XPCOMUtils.defineLazyGetter(UpdateUtils, "ABI", function() {
     // Windows build should report the CPU architecture that it's running on.
     abi += "-" + gWinCPUArch;
   }
+
+  if (AppConstants.ASAN) {
+    // Allow ASan builds to receive their own updates
+    abi += "-asan";
+  }
+
   return abi;
 });
 

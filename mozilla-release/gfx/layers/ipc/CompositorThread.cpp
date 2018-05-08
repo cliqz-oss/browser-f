@@ -7,8 +7,8 @@
 #include "MainThreadUtils.h"
 #include "nsThreadUtils.h"
 #include "CompositorBridgeParent.h"
+#include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
-#include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/media/MediaSystemResourceService.h"
 
 namespace mozilla {
@@ -70,7 +70,6 @@ CompositorThreadHolder::DestroyCompositorThread(base::Thread* aCompositorThread)
   MOZ_ASSERT(!sCompositorThreadHolder, "We shouldn't be destroying the compositor thread yet.");
 
   CompositorBridgeParent::Shutdown();
-  SharedSurfacesParent::Shutdown();
   delete aCompositorThread;
   sFinishedCompositorShutDown = true;
 }
@@ -105,7 +104,6 @@ CompositorThreadHolder::CreateCompositorThread()
     return nullptr;
   }
 
-  SharedSurfacesParent::Initialize();
   CompositorBridgeParent::Setup();
   ImageBridgeParent::Setup();
 

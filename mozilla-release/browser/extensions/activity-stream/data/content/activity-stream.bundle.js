@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 10);
+/******/ 	return __webpack_require__(__webpack_require__.s = 14);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -106,7 +106,7 @@ const actionTypes = {};
 /* harmony export (immutable) */ __webpack_exports__["b"] = actionTypes;
 
 
-for (const type of ["BLOCK_URL", "BOOKMARK_URL", "DELETE_BOOKMARK_BY_ID", "DELETE_HISTORY_URL", "DELETE_HISTORY_URL_CONFIRM", "DIALOG_CANCEL", "DIALOG_OPEN", "DISABLE_ONBOARDING", "INIT", "MIGRATION_CANCEL", "MIGRATION_COMPLETED", "MIGRATION_START", "NEW_TAB_INIT", "NEW_TAB_INITIAL_STATE", "NEW_TAB_LOAD", "NEW_TAB_REHYDRATED", "NEW_TAB_STATE_REQUEST", "NEW_TAB_UNLOAD", "OPEN_LINK", "OPEN_NEW_WINDOW", "OPEN_PRIVATE_WINDOW", "PAGE_PRERENDERED", "PLACES_BOOKMARK_ADDED", "PLACES_BOOKMARK_CHANGED", "PLACES_BOOKMARK_REMOVED", "PLACES_HISTORY_CLEARED", "PLACES_LINKS_DELETED", "PLACES_LINK_BLOCKED", "PREFS_INITIAL_VALUES", "PREF_CHANGED", "RICH_ICON_MISSING", "SAVE_SESSION_PERF_DATA", "SAVE_TO_POCKET", "SCREENSHOT_UPDATED", "SECTION_DEREGISTER", "SECTION_DISABLE", "SECTION_ENABLE", "SECTION_OPTIONS_CHANGED", "SECTION_REGISTER", "SECTION_UPDATE", "SECTION_UPDATE_CARD", "SETTINGS_CLOSE", "SETTINGS_OPEN", "SET_PREF", "SHOW_FIREFOX_ACCOUNTS", "SNIPPETS_BLOCKLIST_UPDATED", "SNIPPETS_DATA", "SNIPPETS_RESET", "SNIPPET_BLOCKED", "SYSTEM_TICK", "TELEMETRY_IMPRESSION_STATS", "TELEMETRY_PERFORMANCE_EVENT", "TELEMETRY_UNDESIRED_EVENT", "TELEMETRY_USER_EVENT", "TOP_SITES_CANCEL_EDIT", "TOP_SITES_EDIT", "TOP_SITES_INSERT", "TOP_SITES_PIN", "TOP_SITES_UNPIN", "TOP_SITES_UPDATED", "UNINIT"]) {
+for (const type of ["ARCHIVE_FROM_POCKET", "BLOCK_URL", "BOOKMARK_URL", "DELETE_BOOKMARK_BY_ID", "DELETE_FROM_POCKET", "DELETE_HISTORY_URL", "DELETE_HISTORY_URL_CONFIRM", "DIALOG_CANCEL", "DIALOG_OPEN", "DISABLE_ONBOARDING", "INIT", "MIGRATION_CANCEL", "MIGRATION_COMPLETED", "MIGRATION_START", "NEW_TAB_INIT", "NEW_TAB_INITIAL_STATE", "NEW_TAB_LOAD", "NEW_TAB_REHYDRATED", "NEW_TAB_STATE_REQUEST", "NEW_TAB_UNLOAD", "OPEN_LINK", "OPEN_NEW_WINDOW", "OPEN_PRIVATE_WINDOW", "PAGE_PRERENDERED", "PLACES_BOOKMARK_ADDED", "PLACES_BOOKMARK_CHANGED", "PLACES_BOOKMARK_REMOVED", "PLACES_HISTORY_CLEARED", "PLACES_LINKS_DELETED", "PLACES_LINK_BLOCKED", "PLACES_SAVED_TO_POCKET", "PREFS_INITIAL_VALUES", "PREF_CHANGED", "RICH_ICON_MISSING", "SAVE_SESSION_PERF_DATA", "SAVE_TO_POCKET", "SCREENSHOT_UPDATED", "SECTION_DEREGISTER", "SECTION_DISABLE", "SECTION_ENABLE", "SECTION_MOVE", "SECTION_OPTIONS_CHANGED", "SECTION_REGISTER", "SECTION_UPDATE", "SECTION_UPDATE_CARD", "SETTINGS_CLOSE", "SETTINGS_OPEN", "SET_PREF", "SHOW_FIREFOX_ACCOUNTS", "SNIPPETS_BLOCKLIST_CLEARED", "SNIPPETS_BLOCKLIST_UPDATED", "SNIPPETS_DATA", "SNIPPETS_RESET", "SNIPPET_BLOCKED", "SYSTEM_TICK", "TELEMETRY_IMPRESSION_STATS", "TELEMETRY_PERFORMANCE_EVENT", "TELEMETRY_UNDESIRED_EVENT", "TELEMETRY_USER_EVENT", "TOP_SITES_CANCEL_EDIT", "TOP_SITES_EDIT", "TOP_SITES_INSERT", "TOP_SITES_PIN", "TOP_SITES_UNPIN", "TOP_SITES_UPDATED", "TOTAL_BOOKMARKS_REQUEST", "TOTAL_BOOKMARKS_RESPONSE", "UNINIT", "WEBEXT_CLICK", "WEBEXT_DISMISS"]) {
   actionTypes[type] = type;
 }
 
@@ -119,7 +119,7 @@ function _RouteMessage(action, options) {
   }
   // For each of these fields, if they are passed as an option,
   // add them to the action. If they are not defined, remove them.
-  ["from", "to", "toTarget", "fromTarget", "skipOrigin"].forEach(o => {
+  ["from", "to", "toTarget", "fromTarget", "skipMain", "skipLocal"].forEach(o => {
     if (typeof options[o] !== "undefined") {
       meta[o] = options[o];
     } else if (meta[o]) {
@@ -130,23 +130,37 @@ function _RouteMessage(action, options) {
 }
 
 /**
- * SendToMain - Creates a message that will be sent to the Main process.
+ * AlsoToMain - Creates a message that will be dispatched locally and also sent to the Main process.
+ *
+ * @param  {object} action Any redux action (required)
+ * @param  {object} options
+ * @param  {bool}   skipLocal Used by OnlyToMain to skip the main reducer
+ * @param  {string} fromTarget The id of the content port from which the action originated. (optional)
+ * @return {object} An action with added .meta properties
+ */
+function AlsoToMain(action, fromTarget, skipLocal) {
+  return _RouteMessage(action, {
+    from: CONTENT_MESSAGE_TYPE,
+    to: MAIN_MESSAGE_TYPE,
+    fromTarget,
+    skipLocal
+  });
+}
+
+/**
+ * OnlyToMain - Creates a message that will be sent to the Main process and skip the local reducer.
  *
  * @param  {object} action Any redux action (required)
  * @param  {object} options
  * @param  {string} fromTarget The id of the content port from which the action originated. (optional)
  * @return {object} An action with added .meta properties
  */
-function SendToMain(action, fromTarget) {
-  return _RouteMessage(action, {
-    from: CONTENT_MESSAGE_TYPE,
-    to: MAIN_MESSAGE_TYPE,
-    fromTarget
-  });
+function OnlyToMain(action, fromTarget) {
+  return AlsoToMain(action, fromTarget, true);
 }
 
 /**
- * BroadcastToContent - Creates a message that will be sent to ALL content processes.
+ * BroadcastToContent - Creates a message that will be dispatched to main and sent to ALL content processes.
  *
  * @param  {object} action Any redux action (required)
  * @return {object} An action with added .meta properties
@@ -159,30 +173,45 @@ function BroadcastToContent(action) {
 }
 
 /**
- * SendToContent - Creates a message that will be sent to a particular Content process.
+ * AlsoToOneContent - Creates a message that will be will be dispatched to the main store
+ *                    and also sent to a particular Content process.
+ *
+ * @param  {object} action Any redux action (required)
+ * @param  {string} target The id of a content port
+ * @param  {bool} skipMain Used by OnlyToOneContent to skip the main process
+ * @return {object} An action with added .meta properties
+ */
+function AlsoToOneContent(action, target, skipMain) {
+  if (!target) {
+    throw new Error("You must provide a target ID as the second parameter of AlsoToOneContent. If you want to send to all content processes, use BroadcastToContent");
+  }
+  return _RouteMessage(action, {
+    from: MAIN_MESSAGE_TYPE,
+    to: CONTENT_MESSAGE_TYPE,
+    toTarget: target,
+    skipMain
+  });
+}
+
+/**
+ * OnlyToOneContent - Creates a message that will be sent to a particular Content process
+ *                    and skip the main reducer.
  *
  * @param  {object} action Any redux action (required)
  * @param  {string} target The id of a content port
  * @return {object} An action with added .meta properties
  */
-function SendToContent(action, target) {
-  if (!target) {
-    throw new Error("You must provide a target ID as the second parameter of SendToContent. If you want to send to all content processes, use BroadcastToContent");
-  }
-  return _RouteMessage(action, {
-    from: MAIN_MESSAGE_TYPE,
-    to: CONTENT_MESSAGE_TYPE,
-    toTarget: target
-  });
+function OnlyToOneContent(action, target) {
+  return AlsoToOneContent(action, target, true);
 }
 
 /**
- * SendToPreloaded - Creates a message that will be sent to the preloaded tab.
+ * AlsoToPreloaded - Creates a message that dispatched to the main reducer and also sent to the preloaded tab.
  *
  * @param  {object} action Any redux action (required)
  * @return {object} An action with added .meta properties
  */
-function SendToPreloaded(action) {
+function AlsoToPreloaded(action) {
   return _RouteMessage(action, {
     from: MAIN_MESSAGE_TYPE,
     to: PRELOAD_MESSAGE_TYPE
@@ -194,10 +223,10 @@ function SendToPreloaded(action) {
  *                   be sent from the UI during a user session.
  *
  * @param  {object} data Fields to include in the ping (source, etc.)
- * @return {object} An SendToMain action
+ * @return {object} An AlsoToMain action
  */
 function UserEvent(data) {
-  return SendToMain({
+  return AlsoToMain({
     type: actionTypes.TELEMETRY_USER_EVENT,
     data
   });
@@ -208,14 +237,14 @@ function UserEvent(data) {
  *
  * @param  {object} data Fields to include in the ping (value, etc.)
  * @param  {int} importContext (For testing) Override the import context for testing.
- * @return {object} An action. For UI code, a SendToMain action.
+ * @return {object} An action. For UI code, a AlsoToMain action.
  */
 function UndesiredEvent(data, importContext = globalImportContext) {
   const action = {
     type: actionTypes.TELEMETRY_UNDESIRED_EVENT,
     data
   };
-  return importContext === UI_CODE ? SendToMain(action) : action;
+  return importContext === UI_CODE ? AlsoToMain(action) : action;
 }
 
 /**
@@ -223,14 +252,14 @@ function UndesiredEvent(data, importContext = globalImportContext) {
  *
  * @param  {object} data Fields to include in the ping (value, etc.)
  * @param  {int} importContext (For testing) Override the import context for testing.
- * @return {object} An action. For UI code, a SendToMain action.
+ * @return {object} An action. For UI code, a AlsoToMain action.
  */
 function PerfEvent(data, importContext = globalImportContext) {
   const action = {
     type: actionTypes.TELEMETRY_PERFORMANCE_EVENT,
     data
   };
-  return importContext === UI_CODE ? SendToMain(action) : action;
+  return importContext === UI_CODE ? AlsoToMain(action) : action;
 }
 
 /**
@@ -238,19 +267,27 @@ function PerfEvent(data, importContext = globalImportContext) {
  *
  * @param  {object} data Fields to include in the ping
  * @param  {int} importContext (For testing) Override the import context for testing.
- * #return {object} An action. For UI code, a SendToMain action.
+ * #return {object} An action. For UI code, a AlsoToMain action.
  */
 function ImpressionStats(data, importContext = globalImportContext) {
   const action = {
     type: actionTypes.TELEMETRY_IMPRESSION_STATS,
     data
   };
-  return importContext === UI_CODE ? SendToMain(action) : action;
+  return importContext === UI_CODE ? AlsoToMain(action) : action;
 }
 
 function SetPref(name, value, importContext = globalImportContext) {
   const action = { type: actionTypes.SET_PREF, data: { name, value } };
-  return importContext === UI_CODE ? SendToMain(action) : action;
+  return importContext === UI_CODE ? AlsoToMain(action) : action;
+}
+
+function WebExtEvent(type, data, importContext = globalImportContext) {
+  if (!data || !data.source) {
+    throw new Error("WebExtEvent actions should include a property \"source\", the id of the webextension that should receive the event.");
+  }
+  const action = { type, data };
+  return importContext === UI_CODE ? AlsoToMain(action) : action;
 }
 
 var actionCreators = {
@@ -259,10 +296,13 @@ var actionCreators = {
   UndesiredEvent,
   PerfEvent,
   ImpressionStats,
-  SendToContent,
-  SendToMain,
-  SendToPreloaded,
-  SetPref
+  AlsoToOneContent,
+  OnlyToOneContent,
+  AlsoToMain,
+  OnlyToMain,
+  AlsoToPreloaded,
+  SetPref,
+  WebExtEvent
 };
 
 // These are helpers to test for certain kinds of actions
@@ -283,7 +323,7 @@ var actionUtils = {
     }
     return false;
   },
-  isSendToContent(action) {
+  isSendToOneContent(action) {
     if (!action.meta) {
       return false;
     }
@@ -326,12 +366,6 @@ module.exports = ReactIntl;
 /* 3 */
 /***/ (function(module, exports) {
 
-module.exports = ReactRedux;
-
-/***/ }),
-/* 4 */
-/***/ (function(module, exports) {
-
 var g;
 
 // This works in non-strict mode
@@ -356,7 +390,33 @@ module.exports = g;
 
 
 /***/ }),
+/* 4 */
+/***/ (function(module, exports) {
+
+module.exports = ReactRedux;
+
+/***/ }),
 /* 5 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+const TOP_SITES_SOURCE = "TOP_SITES";
+/* harmony export (immutable) */ __webpack_exports__["d"] = TOP_SITES_SOURCE;
+
+const TOP_SITES_CONTEXT_MENU_OPTIONS = ["CheckPinTopSite", "EditTopSite", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl", "DeleteUrl"];
+/* harmony export (immutable) */ __webpack_exports__["c"] = TOP_SITES_CONTEXT_MENU_OPTIONS;
+
+// minimum size necessary to show a rich icon instead of a screenshot
+const MIN_RICH_FAVICON_SIZE = 96;
+/* harmony export (immutable) */ __webpack_exports__["b"] = MIN_RICH_FAVICON_SIZE;
+
+// minimum size necessary to show any icon in the top left corner with a screenshot
+const MIN_CORNER_FAVICON_SIZE = 16;
+/* harmony export (immutable) */ __webpack_exports__["a"] = MIN_CORNER_FAVICON_SIZE;
+
+
+/***/ }),
+/* 6 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -399,7 +459,7 @@ class Dedupe {
 }
 // CONCATENATED MODULE: ./system-addon/common/Reducers.jsm
 /* unused harmony export insertPinned */
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "c", function() { return reducers; });
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "b", function() { return reducers; });
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -407,11 +467,11 @@ class Dedupe {
 
 
 
-const TOP_SITES_DEFAULT_LENGTH = 6;
-/* harmony export (immutable) */ __webpack_exports__["a"] = TOP_SITES_DEFAULT_LENGTH;
+const TOP_SITES_DEFAULT_ROWS = 1;
+/* unused harmony export TOP_SITES_DEFAULT_ROWS */
 
-const TOP_SITES_SHOWMORE_LENGTH = 12;
-/* harmony export (immutable) */ __webpack_exports__["b"] = TOP_SITES_SHOWMORE_LENGTH;
+const TOP_SITES_MAX_SITES_PER_ROW = 8;
+/* harmony export (immutable) */ __webpack_exports__["a"] = TOP_SITES_MAX_SITES_PER_ROW;
 
 
 
@@ -430,12 +490,8 @@ const INITIAL_STATE = {
     initialized: false,
     // The history (and possibly default) links
     rows: [],
-    // Used in content only to dispatch action from
-    // context menu to TopSitesEdit.
-    editForm: {
-      visible: false,
-      index: -1
-    }
+    // Used in content only to dispatch action to TopSiteForm.
+    editForm: null
   },
   Prefs: {
     initialized: false,
@@ -507,9 +563,9 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
       }
       return Object.assign({}, prevState, { initialized: true, rows: action.data });
     case Actions["b" /* actionTypes */].TOP_SITES_EDIT:
-      return Object.assign({}, prevState, { editForm: { visible: true, index: action.data.index } });
+      return Object.assign({}, prevState, { editForm: { index: action.data.index } });
     case Actions["b" /* actionTypes */].TOP_SITES_CANCEL_EDIT:
-      return Object.assign({}, prevState, { editForm: { visible: false } });
+      return Object.assign({}, prevState, { editForm: null });
     case Actions["b" /* actionTypes */].SCREENSHOT_UPDATED:
       newRows = prevState.rows.map(row => {
         if (row && row.url === action.data.url) {
@@ -593,28 +649,11 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
         }
         return section;
       });
-
-      // Invariant: Sections array sorted in increasing order of property `order`.
-      // If section doesn't exist in prevState, create a new section object. If
-      // the section has an order, insert it at the correct place in the array.
-      // Otherwise, prepend it and set the order to be minimal.
+      // Otherwise, append it
       if (!hasMatch) {
         const initialized = !!(action.data.rows && action.data.rows.length > 0);
-        let order;
-        let index;
-        if (prevState.length > 0) {
-          order = action.data.order !== undefined ? action.data.order : prevState[0].order - 1;
-          index = newState.findIndex(section => section.order >= order);
-          if (index === -1) {
-            index = newState.length;
-          }
-        } else {
-          order = action.data.order !== undefined ? action.data.order : 0;
-          index = 0;
-        }
-
-        const section = Object.assign({ title: "", rows: [], order, enabled: false }, action.data, { initialized });
-        newState.splice(index, 0, section);
+        const section = Object.assign({ title: "", rows: [], enabled: false }, action.data, { initialized });
+        newState.push(section);
       }
       return newState;
     case Actions["b" /* actionTypes */].SECTION_UPDATE:
@@ -623,6 +662,19 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
           // If the action is updating rows, we should consider initialized to be true.
           // This can be overridden if initialized is defined in the action.data
           const initialized = action.data.rows ? { initialized: true } : {};
+
+          // Make sure pinned cards stay at their current position when rows are updated.
+          // Disabling a section (SECTION_UPDATE with empty rows) does not retain pinned cards.
+          if (action.data.rows && action.data.rows.length > 0 && section.rows.find(card => card.pinned)) {
+            const rows = Array.from(action.data.rows);
+            section.rows.forEach((card, index) => {
+              if (card.pinned) {
+                rows.splice(index, 0, card);
+              }
+            });
+            return Object.assign({}, section, initialized, Object.assign({}, action.data, { rows }));
+          }
+
           return Object.assign({}, section, initialized, action.data);
         }
         return section;
@@ -681,6 +733,23 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
           return item;
         })
       }));
+    case Actions["b" /* actionTypes */].PLACES_SAVED_TO_POCKET:
+      if (!action.data) {
+        return prevState;
+      }
+      return prevState.map(section => Object.assign({}, section, {
+        rows: section.rows.map(item => {
+          if (item.url === action.data.url) {
+            return Object.assign({}, item, {
+              open_url: action.data.open_url,
+              pocket_id: action.data.pocket_id,
+              title: action.data.title,
+              type: "pocket"
+            });
+          }
+          return item;
+        })
+      }));
     case Actions["b" /* actionTypes */].PLACES_BOOKMARK_REMOVED:
       if (!action.data) {
         return prevState;
@@ -705,6 +774,9 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
       return prevState.map(section => Object.assign({}, section, { rows: section.rows.filter(site => !action.data.includes(site.url)) }));
     case Actions["b" /* actionTypes */].PLACES_LINK_BLOCKED:
       return prevState.map(section => Object.assign({}, section, { rows: section.rows.filter(site => site.url !== action.data.url) }));
+    case Actions["b" /* actionTypes */].DELETE_FROM_POCKET:
+    case Actions["b" /* actionTypes */].ARCHIVE_FROM_POCKET:
+      return prevState.map(section => Object.assign({}, section, { rows: section.rows.filter(site => site.pocket_id !== action.data.pocket_id) }));
     default:
       return prevState;
   }
@@ -714,6 +786,10 @@ function Snippets(prevState = INITIAL_STATE.Snippets, action) {
   switch (action.type) {
     case Actions["b" /* actionTypes */].SNIPPETS_DATA:
       return Object.assign({}, prevState, { initialized: true }, action.data);
+    case Actions["b" /* actionTypes */].SNIPPET_BLOCKED:
+      return Object.assign({}, prevState, { blockList: prevState.blockList.concat(action.data) });
+    case Actions["b" /* actionTypes */].SNIPPETS_BLOCKLIST_CLEARED:
+      return Object.assign({}, prevState, { blockList: [] });
     case Actions["b" /* actionTypes */].SNIPPETS_RESET:
       return INITIAL_STATE.Snippets;
     default:
@@ -735,7 +811,95 @@ function PreferencesPane(prevState = INITIAL_STATE.PreferencesPane, action) {
 var reducers = { TopSites, App, Snippets, Prefs, Dialog, Sections, PreferencesPane };
 
 /***/ }),
-/* 6 */
+/* 7 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react_intl__ = __webpack_require__(2);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_react_intl__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react__ = __webpack_require__(1);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_react__);
+
+
+
+class ErrorBoundaryFallback extends __WEBPACK_IMPORTED_MODULE_1_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.windowObj = this.props.windowObj || window;
+    this.onClick = this.onClick.bind(this);
+  }
+
+  /**
+   * Since we only get here if part of the page has crashed, do a
+   * forced reload to give us the best chance at recovering.
+   */
+  onClick() {
+    this.windowObj.location.reload(true);
+  }
+
+  render() {
+    const defaultClass = "as-error-fallback";
+    let className;
+    if ("className" in this.props) {
+      className = `${this.props.className} ${defaultClass}`;
+    } else {
+      className = defaultClass;
+    }
+
+    // href="#" to force normal link styling stuff (eg cursor on hover)
+    return __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(
+      "div",
+      { className: className },
+      __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(
+        "div",
+        null,
+        __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_react_intl__["FormattedMessage"], {
+          defaultMessage: "Oops, something went wrong loading this content.",
+          id: "error_fallback_default_info" })
+      ),
+      __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(
+        "span",
+        null,
+        __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(
+          "a",
+          { href: "#", className: "reload-button", onClick: this.onClick },
+          __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_react_intl__["FormattedMessage"], {
+            defaultMessage: "Refresh page to try again.",
+            id: "error_fallback_default_refresh_suggestion" })
+        )
+      )
+    );
+  }
+}
+/* unused harmony export ErrorBoundaryFallback */
+
+ErrorBoundaryFallback.defaultProps = { className: "as-error-fallback" };
+
+class ErrorBoundary extends __WEBPACK_IMPORTED_MODULE_1_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  componentDidCatch(error, info) {
+    this.setState({ hasError: true });
+  }
+
+  render() {
+    if (!this.state.hasError) {
+      return this.props.children;
+    }
+
+    return __WEBPACK_IMPORTED_MODULE_1_react___default.a.createElement(this.props.FallbackComponent, { className: this.props.className });
+  }
+}
+/* harmony export (immutable) */ __webpack_exports__["a"] = ErrorBoundary;
+
+
+ErrorBoundary.defaultProps = { FallbackComponent: ErrorBoundaryFallback };
+
+/***/ }),
+/* 8 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -743,60 +907,303 @@ var reducers = { TopSites, App, Snippets, Prefs, Dialog, Sections, PreferencesPa
 // EXTERNAL MODULE: ./system-addon/common/Actions.jsm
 var Actions = __webpack_require__(0);
 
+// EXTERNAL MODULE: external "ReactRedux"
+var external__ReactRedux_ = __webpack_require__(4);
+var external__ReactRedux__default = /*#__PURE__*/__webpack_require__.n(external__ReactRedux_);
+
+// EXTERNAL MODULE: ./system-addon/content-src/components/ContextMenu/ContextMenu.jsx
+var ContextMenu = __webpack_require__(9);
+
+// EXTERNAL MODULE: external "ReactIntl"
+var external__ReactIntl_ = __webpack_require__(2);
+var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
+
+// CONCATENATED MODULE: ./system-addon/content-src/lib/link-menu-options.js
+
+
+const _OpenInPrivateWindow = site => ({
+  id: "menu_action_open_private_window",
+  icon: "new-window-private",
+  action: Actions["a" /* actionCreators */].OnlyToMain({
+    type: Actions["b" /* actionTypes */].OPEN_PRIVATE_WINDOW,
+    data: { url: site.url, referrer: site.referrer }
+  }),
+  userEvent: "OPEN_PRIVATE_WINDOW"
+});
+
+/**
+ * List of functions that return items that can be included as menu options in a
+ * LinkMenu. All functions take the site as the first parameter, and optionally
+ * the index of the site.
+ */
+const LinkMenuOptions = {
+  Separator: () => ({ type: "separator" }),
+  EmptyItem: () => ({ type: "empty" }),
+  RemoveBookmark: site => ({
+    id: "menu_action_remove_bookmark",
+    icon: "bookmark-added",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].DELETE_BOOKMARK_BY_ID,
+      data: site.bookmarkGuid
+    }),
+    userEvent: "BOOKMARK_DELETE"
+  }),
+  AddBookmark: site => ({
+    id: "menu_action_bookmark",
+    icon: "bookmark-hollow",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].BOOKMARK_URL,
+      data: { url: site.url, title: site.title, type: site.type }
+    }),
+    userEvent: "BOOKMARK_ADD"
+  }),
+  OpenInNewWindow: site => ({
+    id: "menu_action_open_new_window",
+    icon: "new-window",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].OPEN_NEW_WINDOW,
+      data: { url: site.url, referrer: site.referrer }
+    }),
+    userEvent: "OPEN_NEW_WINDOW"
+  }),
+  BlockUrl: (site, index, eventSource) => ({
+    id: "menu_action_dismiss",
+    icon: "dismiss",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].BLOCK_URL,
+      data: { url: site.url, pocket_id: site.pocket_id }
+    }),
+    impression: Actions["a" /* actionCreators */].ImpressionStats({
+      source: eventSource,
+      block: 0,
+      tiles: [{ id: site.guid, pos: index }]
+    }),
+    userEvent: "BLOCK"
+  }),
+
+  // This is an option for web extentions which will result in remove items from
+  // memory and notify the web extenion, rather than using the built-in block list.
+  WebExtDismiss: (site, index, eventSource) => ({
+    id: "menu_action_webext_dismiss",
+    string_id: "menu_action_dismiss",
+    icon: "dismiss",
+    action: Actions["a" /* actionCreators */].WebExtEvent(Actions["b" /* actionTypes */].WEBEXT_DISMISS, {
+      source: eventSource,
+      url: site.url,
+      action_position: index
+    })
+  }),
+  DeleteUrl: (site, index, eventSource, isEnabled, siteInfo) => ({
+    id: "menu_action_delete",
+    icon: "delete",
+    action: {
+      type: Actions["b" /* actionTypes */].DIALOG_OPEN,
+      data: {
+        onConfirm: [Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].DELETE_HISTORY_URL, data: { url: site.url, pocket_id: site.pocket_id, forceBlock: site.bookmarkGuid } }), Actions["a" /* actionCreators */].UserEvent(Object.assign({ event: "DELETE", source: eventSource, action_position: index }, siteInfo))],
+        eventSource,
+        body_string_id: ["confirm_history_delete_p1", "confirm_history_delete_notice_p2"],
+        confirm_button_string_id: "menu_action_delete",
+        cancel_button_string_id: "topsites_form_cancel_button",
+        icon: "modal-delete"
+      }
+    },
+    userEvent: "DIALOG_OPEN"
+  }),
+  PinTopSite: (site, index) => ({
+    id: "menu_action_pin",
+    icon: "pin",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].TOP_SITES_PIN,
+      data: { site: { url: site.url }, index }
+    }),
+    userEvent: "PIN"
+  }),
+  UnpinTopSite: site => ({
+    id: "menu_action_unpin",
+    icon: "unpin",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].TOP_SITES_UNPIN,
+      data: { site: { url: site.url } }
+    }),
+    userEvent: "UNPIN"
+  }),
+  SaveToPocket: (site, index, eventSource) => ({
+    id: "menu_action_save_to_pocket",
+    icon: "pocket",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].SAVE_TO_POCKET,
+      data: { site: { url: site.url, title: site.title } }
+    }),
+    impression: Actions["a" /* actionCreators */].ImpressionStats({
+      source: eventSource,
+      pocket: 0,
+      tiles: [{ id: site.guid, pos: index }]
+    }),
+    userEvent: "SAVE_TO_POCKET"
+  }),
+  DeleteFromPocket: site => ({
+    id: "menu_action_delete_pocket",
+    icon: "delete",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].DELETE_FROM_POCKET,
+      data: { pocket_id: site.pocket_id }
+    }),
+    userEvent: "DELETE_FROM_POCKET"
+  }),
+  ArchiveFromPocket: site => ({
+    id: "menu_action_archive_pocket",
+    icon: "check",
+    action: Actions["a" /* actionCreators */].AlsoToMain({
+      type: Actions["b" /* actionTypes */].ARCHIVE_FROM_POCKET,
+      data: { pocket_id: site.pocket_id }
+    }),
+    userEvent: "ARCHIVE_FROM_POCKET"
+  }),
+  EditTopSite: (site, index) => ({
+    id: "edit_topsites_button_text",
+    icon: "edit",
+    action: {
+      type: Actions["b" /* actionTypes */].TOP_SITES_EDIT,
+      data: { index }
+    }
+  }),
+  CheckBookmark: site => site.bookmarkGuid ? LinkMenuOptions.RemoveBookmark(site) : LinkMenuOptions.AddBookmark(site),
+  CheckPinTopSite: (site, index) => site.isPinned ? LinkMenuOptions.UnpinTopSite(site) : LinkMenuOptions.PinTopSite(site, index),
+  CheckSavedToPocket: (site, index) => site.pocket_id ? LinkMenuOptions.DeleteFromPocket(site) : LinkMenuOptions.SaveToPocket(site, index),
+  CheckBookmarkOrArchive: site => site.pocket_id ? LinkMenuOptions.ArchiveFromPocket(site) : LinkMenuOptions.CheckBookmark(site),
+  CheckDeleteHistoryOrEmpty: (site, index, eventSource, isEnabled, siteInfo) => site.pocket_id ? LinkMenuOptions.EmptyItem() : LinkMenuOptions.DeleteUrl(site, index, eventSource, isEnabled, siteInfo),
+  OpenInPrivateWindow: (site, index, eventSource, isEnabled) => isEnabled ? _OpenInPrivateWindow(site) : LinkMenuOptions.EmptyItem()
+};
 // EXTERNAL MODULE: external "React"
 var external__React_ = __webpack_require__(1);
 var external__React__default = /*#__PURE__*/__webpack_require__.n(external__React_);
 
-// CONCATENATED MODULE: ./system-addon/content-src/components/ContextMenu/ContextMenu.jsx
+// CONCATENATED MODULE: ./system-addon/content-src/components/LinkMenu/LinkMenu.jsx
 
 
-class ContextMenu_ContextMenu extends external__React__default.a.PureComponent {
+
+
+
+
+
+const DEFAULT_SITE_MENU_OPTIONS = ["CheckPinTopSite", "EditTopSite", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl"];
+
+class LinkMenu__LinkMenu extends external__React__default.a.PureComponent {
+  getOptions() {
+    const { props } = this;
+    const { site, index, source, isPrivateBrowsingEnabled, siteInfo } = props;
+
+    // Handle special case of default site
+    const propOptions = !site.isDefault ? props.options : DEFAULT_SITE_MENU_OPTIONS;
+
+    const options = propOptions.map(o => LinkMenuOptions[o](site, index, source, isPrivateBrowsingEnabled, siteInfo)).map(option => {
+      const { action, impression, id, string_id, type, userEvent } = option;
+      if (!type && id) {
+        option.label = props.intl.formatMessage({ id: string_id || id });
+        option.onClick = () => {
+          props.dispatch(action);
+          if (userEvent) {
+            const userEventData = Object.assign({
+              event: userEvent,
+              source,
+              action_position: index
+            }, siteInfo);
+            props.dispatch(Actions["a" /* actionCreators */].UserEvent(userEventData));
+          }
+          if (impression && props.shouldSendImpressionStats) {
+            props.dispatch(impression);
+          }
+        };
+      }
+      return option;
+    });
+
+    // This is for accessibility to support making each item tabbable.
+    // We want to know which item is the first and which item
+    // is the last, so we can close the context menu accordingly.
+    options[0].first = true;
+    options[options.length - 1].last = true;
+    return options;
+  }
+
+  render() {
+    return external__React__default.a.createElement(ContextMenu["a" /* ContextMenu */], {
+      onUpdate: this.props.onUpdate,
+      options: this.getOptions() });
+  }
+}
+/* unused harmony export _LinkMenu */
+
+
+const getState = state => ({ isPrivateBrowsingEnabled: state.Prefs.values.isPrivateBrowsingEnabled });
+const LinkMenu = Object(external__ReactRedux_["connect"])(getState)(Object(external__ReactIntl_["injectIntl"])(LinkMenu__LinkMenu));
+/* harmony export (immutable) */ __webpack_exports__["a"] = LinkMenu;
+
+
+/***/ }),
+/* 9 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react__ = __webpack_require__(1);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_react__);
+
+
+class ContextMenu extends __WEBPACK_IMPORTED_MODULE_0_react___default.a.PureComponent {
   constructor(props) {
     super(props);
     this.hideContext = this.hideContext.bind(this);
+    this.onClick = this.onClick.bind(this);
   }
+
   hideContext() {
     this.props.onUpdate(false);
   }
-  componentWillMount() {
-    this.hideContext();
+
+  componentDidMount() {
+    setTimeout(() => {
+      global.addEventListener("click", this.hideContext);
+    }, 0);
   }
-  componentDidUpdate(prevProps) {
-    if (this.props.visible && !prevProps.visible) {
-      setTimeout(() => {
-        window.addEventListener("click", this.hideContext);
-      }, 0);
-    }
-    if (!this.props.visible && prevProps.visible) {
-      window.removeEventListener("click", this.hideContext);
-    }
-  }
+
   componentWillUnmount() {
-    window.removeEventListener("click", this.hideContext);
+    global.removeEventListener("click", this.hideContext);
   }
+
+  onClick(event) {
+    // Eat all clicks on the context menu so they don't bubble up to window.
+    // This prevents the context menu from closing when clicking disabled items
+    // or the separators.
+    event.stopPropagation();
+  }
+
   render() {
-    return external__React__default.a.createElement(
+    return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
       "span",
-      { hidden: !this.props.visible, className: "context-menu" },
-      external__React__default.a.createElement(
+      { className: "context-menu", onClick: this.onClick },
+      __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
         "ul",
         { role: "menu", className: "context-menu-list" },
-        this.props.options.map((option, i) => option.type === "separator" ? external__React__default.a.createElement("li", { key: i, className: "separator" }) : external__React__default.a.createElement(ContextMenu_ContextMenuItem, { key: i, option: option, hideContext: this.hideContext }))
+        this.props.options.map((option, i) => option.type === "separator" ? __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement("li", { key: i, className: "separator" }) : option.type !== "empty" && __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(ContextMenuItem, { key: i, option: option, hideContext: this.hideContext }))
       )
     );
   }
 }
+/* harmony export (immutable) */ __webpack_exports__["a"] = ContextMenu;
 
-class ContextMenu_ContextMenuItem extends external__React__default.a.PureComponent {
+
+class ContextMenuItem extends __WEBPACK_IMPORTED_MODULE_0_react___default.a.PureComponent {
   constructor(props) {
     super(props);
     this.onClick = this.onClick.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
   }
+
   onClick() {
     this.props.hideContext();
     this.props.option.onClick();
   }
+
   onKeyDown(event) {
     const { option } = this.props;
     switch (event.key) {
@@ -814,212 +1221,38 @@ class ContextMenu_ContextMenuItem extends external__React__default.a.PureCompone
         break;
     }
   }
+
   render() {
     const { option } = this.props;
-    return external__React__default.a.createElement(
+    return __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
       "li",
       { role: "menuitem", className: "context-menu-item" },
-      external__React__default.a.createElement(
+      __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement(
         "a",
-        { onClick: this.onClick, onKeyDown: this.onKeyDown, tabIndex: "0" },
-        option.icon && external__React__default.a.createElement("span", { className: `icon icon-spacer icon-${option.icon}` }),
+        { onClick: this.onClick, onKeyDown: this.onKeyDown, tabIndex: "0", className: option.disabled ? "disabled" : "" },
+        option.icon && __WEBPACK_IMPORTED_MODULE_0_react___default.a.createElement("span", { className: `icon icon-spacer icon-${option.icon}` }),
         option.label
       )
     );
   }
 }
-// EXTERNAL MODULE: external "ReactIntl"
-var external__ReactIntl_ = __webpack_require__(2);
-var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
+/* unused harmony export ContextMenuItem */
 
-// CONCATENATED MODULE: ./system-addon/content-src/lib/link-menu-options.js
-
-
-/**
- * List of functions that return items that can be included as menu options in a
- * LinkMenu. All functions take the site as the first parameter, and optionally
- * the index of the site.
- */
-const LinkMenuOptions = {
-  Separator: () => ({ type: "separator" }),
-  RemoveBookmark: site => ({
-    id: "menu_action_remove_bookmark",
-    icon: "bookmark-added",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].DELETE_BOOKMARK_BY_ID,
-      data: site.bookmarkGuid
-    }),
-    userEvent: "BOOKMARK_DELETE"
-  }),
-  AddBookmark: site => ({
-    id: "menu_action_bookmark",
-    icon: "bookmark-hollow",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].BOOKMARK_URL,
-      data: { url: site.url, title: site.title, type: site.type }
-    }),
-    userEvent: "BOOKMARK_ADD"
-  }),
-  OpenInNewWindow: site => ({
-    id: "menu_action_open_new_window",
-    icon: "new-window",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].OPEN_NEW_WINDOW,
-      data: { url: site.url, referrer: site.referrer }
-    }),
-    userEvent: "OPEN_NEW_WINDOW"
-  }),
-  OpenInPrivateWindow: site => ({
-    id: "menu_action_open_private_window",
-    icon: "new-window-private",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].OPEN_PRIVATE_WINDOW,
-      data: { url: site.url, referrer: site.referrer }
-    }),
-    userEvent: "OPEN_PRIVATE_WINDOW"
-  }),
-  BlockUrl: (site, index, eventSource) => ({
-    id: "menu_action_dismiss",
-    icon: "dismiss",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].BLOCK_URL,
-      data: site.url
-    }),
-    impression: Actions["a" /* actionCreators */].ImpressionStats({
-      source: eventSource,
-      block: 0,
-      tiles: [{ id: site.guid, pos: index }]
-    }),
-    userEvent: "BLOCK"
-  }),
-  DeleteUrl: site => ({
-    id: "menu_action_delete",
-    icon: "delete",
-    action: {
-      type: Actions["b" /* actionTypes */].DIALOG_OPEN,
-      data: {
-        onConfirm: [Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].DELETE_HISTORY_URL, data: { url: site.url, forceBlock: site.bookmarkGuid } }), Actions["a" /* actionCreators */].UserEvent({ event: "DELETE" })],
-        body_string_id: ["confirm_history_delete_p1", "confirm_history_delete_notice_p2"],
-        confirm_button_string_id: "menu_action_delete",
-        cancel_button_string_id: "topsites_form_cancel_button",
-        icon: "modal-delete"
-      }
-    },
-    userEvent: "DIALOG_OPEN"
-  }),
-  PinTopSite: (site, index) => ({
-    id: "menu_action_pin",
-    icon: "pin",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].TOP_SITES_PIN,
-      data: { site: { url: site.url }, index }
-    }),
-    userEvent: "PIN"
-  }),
-  UnpinTopSite: site => ({
-    id: "menu_action_unpin",
-    icon: "unpin",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].TOP_SITES_UNPIN,
-      data: { site: { url: site.url } }
-    }),
-    userEvent: "UNPIN"
-  }),
-  SaveToPocket: (site, index, eventSource) => ({
-    id: "menu_action_save_to_pocket",
-    icon: "pocket",
-    action: Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].SAVE_TO_POCKET,
-      data: { site: { url: site.url, title: site.title } }
-    }),
-    impression: Actions["a" /* actionCreators */].ImpressionStats({
-      source: eventSource,
-      pocket: 0,
-      tiles: [{ id: site.guid, pos: index }]
-    }),
-    userEvent: "SAVE_TO_POCKET"
-  }),
-  EditTopSite: (site, index) => ({
-    id: "edit_topsites_button_text",
-    icon: "edit",
-    action: {
-      type: Actions["b" /* actionTypes */].TOP_SITES_EDIT,
-      data: { index }
-    }
-  }),
-  CheckBookmark: site => site.bookmarkGuid ? LinkMenuOptions.RemoveBookmark(site) : LinkMenuOptions.AddBookmark(site),
-  CheckPinTopSite: (site, index) => site.isPinned ? LinkMenuOptions.UnpinTopSite(site) : LinkMenuOptions.PinTopSite(site, index)
-};
-// CONCATENATED MODULE: ./system-addon/content-src/components/LinkMenu/LinkMenu.jsx
-
-
-
-
-
-
-const DEFAULT_SITE_MENU_OPTIONS = ["CheckPinTopSite", "EditTopSite", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl"];
-
-class LinkMenu__LinkMenu extends external__React__default.a.PureComponent {
-  getOptions() {
-    const props = this.props;
-    const { site, index, source } = props;
-
-    // Handle special case of default site
-    const propOptions = !site.isDefault ? props.options : DEFAULT_SITE_MENU_OPTIONS;
-
-    const options = propOptions.map(o => LinkMenuOptions[o](site, index, source)).map(option => {
-      const { action, impression, id, type, userEvent } = option;
-      if (!type && id) {
-        option.label = props.intl.formatMessage(option);
-        option.onClick = () => {
-          props.dispatch(action);
-          if (userEvent) {
-            props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-              event: userEvent,
-              source,
-              action_position: index
-            }));
-          }
-          if (impression && props.shouldSendImpressionStats) {
-            props.dispatch(impression);
-          }
-        };
-      }
-      return option;
-    });
-
-    // This is for accessibility to support making each item tabbable.
-    // We want to know which item is the first and which item
-    // is the last, so we can close the context menu accordingly.
-    options[0].first = true;
-    options[options.length - 1].last = true;
-    return options;
-  }
-  render() {
-    return external__React__default.a.createElement(ContextMenu_ContextMenu, {
-      visible: this.props.visible,
-      onUpdate: this.props.onUpdate,
-      options: this.getOptions() });
-  }
-}
-/* unused harmony export _LinkMenu */
-
-
-const LinkMenu = Object(external__ReactIntl_["injectIntl"])(LinkMenu__LinkMenu);
-/* harmony export (immutable) */ __webpack_exports__["a"] = LinkMenu;
-
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 7 */
+/* 10 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl__ = __webpack_require__(2);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_react_intl__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react__ = __webpack_require__(1);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_2_react__);
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react_intl__ = __webpack_require__(2);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_react_intl__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_common_Actions_jsm__ = __webpack_require__(0);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_content_src_components_ErrorBoundary_ErrorBoundary__ = __webpack_require__(7);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react__ = __webpack_require__(1);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_3_react__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_content_src_components_SectionMenu_SectionMenu__ = __webpack_require__(20);
+
 
 
 
@@ -1029,133 +1262,43 @@ const VISIBLE = "visible";
 const VISIBILITY_CHANGE_EVENT = "visibilitychange";
 
 function getFormattedMessage(message) {
-  return typeof message === "string" ? __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+  return typeof message === "string" ? __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
     "span",
     null,
     message
-  ) : __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_1_react_intl__["FormattedMessage"], message);
+  ) : __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_react_intl__["FormattedMessage"], message);
 }
 function getCollapsed(props) {
   return props.prefName in props.Prefs.values ? props.Prefs.values[props.prefName] : false;
 }
 
-class Info extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.onInfoEnter = this.onInfoEnter.bind(this);
-    this.onInfoLeave = this.onInfoLeave.bind(this);
-    this.onManageClick = this.onManageClick.bind(this);
-    this.state = { infoActive: false };
-  }
-
-  /**
-   * Take a truthy value to conditionally change the infoActive state.
-   */
-  _setInfoState(nextActive) {
-    const infoActive = !!nextActive;
-    if (infoActive !== this.state.infoActive) {
-      this.setState({ infoActive });
-    }
-  }
-  onInfoEnter() {
-    // We're getting focus or hover, so info state should be true if not yet.
-    this._setInfoState(true);
-  }
-  onInfoLeave(event) {
-    // We currently have an active (true) info state, so keep it true only if we
-    // have a related event target that is contained "within" the current target
-    // (section-info-option) as itself or a descendant. Set to false otherwise.
-    this._setInfoState(event && event.relatedTarget && (event.relatedTarget === event.currentTarget || event.relatedTarget.compareDocumentPosition(event.currentTarget) & Node.DOCUMENT_POSITION_CONTAINS));
-  }
-  onManageClick() {
-    this.props.dispatch({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SETTINGS_OPEN });
-    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].UserEvent({ event: "OPEN_NEWTAB_PREFS" }));
-  }
-  render() {
-    const { infoOption, intl } = this.props;
-    const infoOptionIconA11yAttrs = {
-      "aria-haspopup": "true",
-      "aria-controls": "info-option",
-      "aria-expanded": this.state.infoActive ? "true" : "false",
-      "role": "note",
-      "tabIndex": 0
-    };
-    const sectionInfoTitle = intl.formatMessage({ id: "section_info_option" });
-
-    return __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-      "span",
-      { className: "section-info-option",
-        onBlur: this.onInfoLeave,
-        onFocus: this.onInfoEnter,
-        onMouseOut: this.onInfoLeave,
-        onMouseOver: this.onInfoEnter },
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement("img", _extends({ className: "info-option-icon", title: sectionInfoTitle
-      }, infoOptionIconA11yAttrs)),
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-        "div",
-        { className: "info-option" },
-        infoOption.header && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-          "div",
-          { className: "info-option-header", role: "heading" },
-          getFormattedMessage(infoOption.header)
-        ),
-        __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-          "p",
-          { className: "info-option-body" },
-          infoOption.body && getFormattedMessage(infoOption.body),
-          infoOption.link && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-            "a",
-            { href: infoOption.link.href, target: "_blank", rel: "noopener noreferrer", className: "info-option-link" },
-            getFormattedMessage(infoOption.link.title || infoOption.link)
-          )
-        ),
-        __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-          "div",
-          { className: "info-option-manage" },
-          __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-            "button",
-            { onClick: this.onManageClick },
-            __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_1_react_intl__["FormattedMessage"], { id: "settings_pane_header" })
-          )
-        )
-      )
-    );
-  }
-}
-/* unused harmony export Info */
-
-
-const InfoIntl = Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(Info);
-/* unused harmony export InfoIntl */
-
-
-class Disclaimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.PureComponent {
+class Disclaimer extends __WEBPACK_IMPORTED_MODULE_3_react___default.a.PureComponent {
   constructor(props) {
     super(props);
     this.onAcknowledge = this.onAcknowledge.bind(this);
   }
 
   onAcknowledge() {
-    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SetPref(this.props.disclaimerPref, false));
-    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].UserEvent({ event: "SECTION_DISCLAIMER_ACKNOWLEDGED", source: this.props.eventSource }));
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_1_common_Actions_jsm__["a" /* actionCreators */].SetPref(this.props.disclaimerPref, false));
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_1_common_Actions_jsm__["a" /* actionCreators */].UserEvent({ event: "SECTION_DISCLAIMER_ACKNOWLEDGED", source: this.props.eventSource }));
   }
 
   render() {
-    const disclaimer = this.props.disclaimer;
-    return __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+    const { disclaimer } = this.props;
+    return __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
       "div",
       { className: "section-disclaimer" },
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+      __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
         "div",
         { className: "section-disclaimer-text" },
         getFormattedMessage(disclaimer.text),
-        disclaimer.link && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+        disclaimer.link && __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
           "a",
           { href: disclaimer.link.href, target: "_blank", rel: "noopener noreferrer" },
           getFormattedMessage(disclaimer.link.title || disclaimer.link)
         )
       ),
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+      __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
         "button",
         { onClick: this.onAcknowledge },
         getFormattedMessage(disclaimer.button)
@@ -1166,25 +1309,28 @@ class Disclaimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.PureCompo
 /* unused harmony export Disclaimer */
 
 
-const DisclaimerIntl = Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(Disclaimer);
+const DisclaimerIntl = Object(__WEBPACK_IMPORTED_MODULE_0_react_intl__["injectIntl"])(Disclaimer);
 /* unused harmony export DisclaimerIntl */
 
 
-class _CollapsibleSection extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.PureComponent {
+class _CollapsibleSection extends __WEBPACK_IMPORTED_MODULE_3_react___default.a.PureComponent {
   constructor(props) {
     super(props);
     this.onBodyMount = this.onBodyMount.bind(this);
-    this.onInfoEnter = this.onInfoEnter.bind(this);
-    this.onInfoLeave = this.onInfoLeave.bind(this);
     this.onHeaderClick = this.onHeaderClick.bind(this);
     this.onTransitionEnd = this.onTransitionEnd.bind(this);
     this.enableOrDisableAnimation = this.enableOrDisableAnimation.bind(this);
-    this.state = { enableAnimation: true, isAnimating: false, infoActive: false };
+    this.onMenuButtonClick = this.onMenuButtonClick.bind(this);
+    this.onMenuButtonMouseEnter = this.onMenuButtonMouseEnter.bind(this);
+    this.onMenuButtonMouseLeave = this.onMenuButtonMouseLeave.bind(this);
+    this.onMenuUpdate = this.onMenuUpdate.bind(this);
+    this.state = { enableAnimation: true, isAnimating: false, menuButtonHover: false, showContextMenu: false };
   }
 
   componentWillMount() {
     this.props.document.addEventListener(VISIBILITY_CHANGE_EVENT, this.enableOrDisableAnimation);
   }
+
   componentWillUpdate(nextProps) {
     // Check if we're about to go from expanded to collapsed
     if (!getCollapsed(this.props) && getCollapsed(nextProps)) {
@@ -1195,9 +1341,11 @@ class _CollapsibleSection extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.
       this.sectionBody.scrollHeight; // eslint-disable-line no-unused-expressions
     }
   }
+
   componentWillUnmount() {
     this.props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this.enableOrDisableAnimation);
   }
+
   enableOrDisableAnimation() {
     // Only animate the collapse/expand for visible tabs.
     const visible = this.props.document.visibilityState === VISIBLE;
@@ -1205,83 +1353,128 @@ class _CollapsibleSection extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.
       this.setState({ enableAnimation: visible });
     }
   }
-  _setInfoState(nextActive) {
-    // Take a truthy value to conditionally change the infoActive state.
-    const infoActive = !!nextActive;
-    if (infoActive !== this.state.infoActive) {
-      this.setState({ infoActive });
-    }
-  }
+
   onBodyMount(node) {
     this.sectionBody = node;
   }
-  onInfoEnter() {
-    // We're getting focus or hover, so info state should be true if not yet.
-    this._setInfoState(true);
-  }
-  onInfoLeave(event) {
-    // We currently have an active (true) info state, so keep it true only if we
-    // have a related event target that is contained "within" the current target
-    // (section-info-option) as itself or a descendant. Set to false otherwise.
-    this._setInfoState(event && event.relatedTarget && (event.relatedTarget === event.currentTarget || event.relatedTarget.compareDocumentPosition(event.currentTarget) & Node.DOCUMENT_POSITION_CONTAINS));
-  }
+
   onHeaderClick() {
+    // If this.sectionBody is unset, it means that we're in some sort of error
+    // state, probably displaying the error fallback, so we won't be able to
+    // compute the height, and we don't want to persist the preference.
+    if (!this.sectionBody) {
+      return;
+    }
+
     // Get the current height of the body so max-height transitions can work
     this.setState({
       isAnimating: true,
       maxHeight: `${this.sectionBody.scrollHeight}px`
     });
-    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SetPref(this.props.prefName, !getCollapsed(this.props)));
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_1_common_Actions_jsm__["a" /* actionCreators */].SetPref(this.props.prefName, !getCollapsed(this.props)));
   }
+
   onTransitionEnd(event) {
     // Only update the animating state for our own transition (not a child's)
     if (event.target === event.currentTarget) {
       this.setState({ isAnimating: false });
     }
   }
+
   renderIcon() {
-    const icon = this.props.icon;
+    const { icon } = this.props;
     if (icon && icon.startsWith("moz-extension://")) {
-      return __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement("span", { className: "icon icon-small-spacer", style: { backgroundImage: `url('${icon}')` } });
+      return __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement("span", { className: "icon icon-small-spacer", style: { backgroundImage: `url('${icon}')` } });
     }
-    return __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement("span", { className: `icon icon-small-spacer icon-${icon || "webextension"}` });
+    return __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement("span", { className: `icon icon-small-spacer icon-${icon || "webextension"}` });
   }
+
+  onMenuButtonClick(event) {
+    event.preventDefault();
+    this.setState({ showContextMenu: true });
+  }
+
+  onMenuButtonMouseEnter() {
+    this.setState({ menuButtonHover: true });
+  }
+
+  onMenuButtonMouseLeave() {
+    this.setState({ menuButtonHover: false });
+  }
+
+  onMenuUpdate(showContextMenu) {
+    this.setState({ showContextMenu });
+  }
+
   render() {
     const isCollapsible = this.props.prefName in this.props.Prefs.values;
     const isCollapsed = getCollapsed(this.props);
-    const { enableAnimation, isAnimating, maxHeight } = this.state;
-    const { id, infoOption, eventSource, disclaimer } = this.props;
+    const { enableAnimation, isAnimating, maxHeight, menuButtonHover, showContextMenu } = this.state;
+    const { id, eventSource, disclaimer, title, extraMenuOptions, prefName, showPrefName, privacyNoticeURL, dispatch, isFirst, isLast } = this.props;
     const disclaimerPref = `section.${id}.showDisclaimer`;
     const needsDisclaimer = disclaimer && this.props.Prefs.values[disclaimerPref];
+    const active = menuButtonHover || showContextMenu;
 
-    return __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+    return __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
       "section",
-      { className: `collapsible-section ${this.props.className}${enableAnimation ? " animation-enabled" : ""}${isCollapsed ? " collapsed" : ""}` },
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+      { className: `collapsible-section ${this.props.className}${enableAnimation ? " animation-enabled" : ""}${isCollapsed ? " collapsed" : ""}${active ? " active" : ""}` },
+      __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
         "div",
         { className: "section-top-bar" },
-        __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+        __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
           "h3",
           { className: "section-title" },
-          __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
+          __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
             "span",
             { className: "click-target", onClick: isCollapsible && this.onHeaderClick },
             this.renderIcon(),
-            this.props.title,
-            isCollapsible && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement("span", { className: `collapsible-arrow icon ${isCollapsed ? "icon-arrowhead-forward" : "icon-arrowhead-down"}` })
+            title,
+            isCollapsible && __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement("span", { className: `collapsible-arrow icon ${isCollapsed ? "icon-arrowhead-forward-small" : "icon-arrowhead-down-small"}` })
           )
         ),
-        infoOption && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(InfoIntl, { infoOption: infoOption, dispatch: this.props.dispatch })
+        __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
+          "div",
+          null,
+          __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
+            "button",
+            {
+              className: "context-menu-button icon",
+              onClick: this.onMenuButtonClick,
+              onMouseEnter: this.onMenuButtonMouseEnter,
+              onMouseLeave: this.onMenuButtonMouseLeave },
+            __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
+              "span",
+              { className: "sr-only" },
+              __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_react_intl__["FormattedMessage"], { id: "section_context_menu_button_sr" })
+            )
+          ),
+          showContextMenu && __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_4_content_src_components_SectionMenu_SectionMenu__["a" /* SectionMenu */], {
+            id: id,
+            extraOptions: extraMenuOptions,
+            eventSource: eventSource,
+            showPrefName: showPrefName,
+            collapsePrefName: prefName,
+            privacyNoticeURL: privacyNoticeURL,
+            isCollapsed: isCollapsed,
+            onUpdate: this.onMenuUpdate,
+            isFirst: isFirst,
+            isLast: isLast,
+            dispatch: dispatch })
+        )
       ),
-      __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(
-        "div",
-        {
-          className: `section-body${isAnimating ? " animating" : ""}`,
-          onTransitionEnd: this.onTransitionEnd,
-          ref: this.onBodyMount,
-          style: isAnimating && !isCollapsed ? { maxHeight } : null },
-        needsDisclaimer && __WEBPACK_IMPORTED_MODULE_2_react___default.a.createElement(DisclaimerIntl, { disclaimerPref: disclaimerPref, disclaimer: disclaimer, eventSource: eventSource, dispatch: this.props.dispatch }),
-        this.props.children
+      __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
+        __WEBPACK_IMPORTED_MODULE_2_content_src_components_ErrorBoundary_ErrorBoundary__["a" /* ErrorBoundary */],
+        { className: "section-body-fallback" },
+        __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(
+          "div",
+          {
+            className: `section-body${isAnimating ? " animating" : ""}`,
+            onTransitionEnd: this.onTransitionEnd,
+            ref: this.onBodyMount,
+            style: isAnimating && !isCollapsed ? { maxHeight } : null },
+          needsDisclaimer && __WEBPACK_IMPORTED_MODULE_3_react___default.a.createElement(DisclaimerIntl, { disclaimerPref: disclaimerPref, disclaimer: disclaimer, eventSource: eventSource, dispatch: this.props.dispatch }),
+          this.props.children
+        )
       )
     );
   }
@@ -1298,18 +1491,18 @@ _CollapsibleSection.defaultProps = {
   Prefs: { values: {} }
 };
 
-const CollapsibleSection = Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(_CollapsibleSection);
+const CollapsibleSection = Object(__WEBPACK_IMPORTED_MODULE_0_react_intl__["injectIntl"])(_CollapsibleSection);
 /* harmony export (immutable) */ __webpack_exports__["a"] = CollapsibleSection;
 
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 8 */
+/* 11 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_common_PerfService_jsm__ = __webpack_require__(9);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_common_PerfService_jsm__ = __webpack_require__(12);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react__ = __webpack_require__(1);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_2_react__);
 
@@ -1430,7 +1623,7 @@ class ComponentPerfTimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.C
       const firstRenderKey = `${this.props.id}_first_render_ts`;
       // value has to be Int32.
       const value = parseInt(this.perfSvc.getMostRecentAbsMarkStartByName(dataReadyKey) - this.perfSvc.getMostRecentAbsMarkStartByName(firstRenderKey), 10);
-      this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({
+      this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].OnlyToMain({
         type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SAVE_SESSION_PERF_DATA,
         // highlights_data_late_by_ms, topsites_data_late_by_ms.
         data: { [`${this.props.id}_data_late_by_ms`]: value }
@@ -1455,7 +1648,7 @@ class ComponentPerfTimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.C
       const data = {};
       data[key] = this.perfSvc.getMostRecentAbsMarkStartByName(key);
 
-      this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({
+      this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].OnlyToMain({
         type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SAVE_SESSION_PERF_DATA,
         data
       }));
@@ -1478,7 +1671,7 @@ class ComponentPerfTimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.C
 
 
 /***/ }),
-/* 9 */
+/* 12 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -1488,11 +1681,9 @@ class ComponentPerfTimer extends __WEBPACK_IMPORTED_MODULE_2_react___default.a.C
 
 
 /* istanbul ignore if */
-// Note: normally we would just feature detect Components.utils here, but
-// unfortunately that throws an ugly warning in content if we do.
 
-if (typeof Window === "undefined" && typeof Components !== "undefined" && Components.utils) {
-  Components.utils.import("resource://gre/modules/Services.jsm");
+if (typeof ChromeUtils !== "undefined") {
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 }
 
 let usablePerfObj;
@@ -1614,23 +1805,457 @@ _PerfService.prototype = {
 var perfService = new _PerfService();
 
 /***/ }),
-/* 10 */
+/* 13 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl__ = __webpack_require__(2);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_react_intl__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__ = __webpack_require__(5);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_components_LinkMenu_LinkMenu__ = __webpack_require__(8);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react__ = __webpack_require__(1);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_4_react__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_common_Reducers_jsm__ = __webpack_require__(6);
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+
+
+
+
+
+
+
+class TopSiteLink extends __WEBPACK_IMPORTED_MODULE_4_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onDragEvent = this.onDragEvent.bind(this);
+  }
+
+  /*
+   * Helper to determine whether the drop zone should allow a drop. We only allow
+   * dropping top sites for now.
+   */
+  _allowDrop(e) {
+    return e.dataTransfer.types.includes("text/topsite-index");
+  }
+
+  onDragEvent(event) {
+    switch (event.type) {
+      case "click":
+        // Stop any link clicks if we started any dragging
+        if (this.dragged) {
+          event.preventDefault();
+        }
+        break;
+      case "dragstart":
+        this.dragged = true;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/topsite-index", this.props.index);
+        event.target.blur();
+        this.props.onDragEvent(event, this.props.index, this.props.link, this.props.title);
+        break;
+      case "dragend":
+        this.props.onDragEvent(event);
+        break;
+      case "dragenter":
+      case "dragover":
+      case "drop":
+        if (this._allowDrop(event)) {
+          event.preventDefault();
+          this.props.onDragEvent(event, this.props.index);
+        }
+        break;
+      case "mousedown":
+        // Reset at the first mouse event of a potential drag
+        this.dragged = false;
+        break;
+    }
+  }
+
+  render() {
+    const { children, className, isDraggable, link, onClick, title } = this.props;
+    const topSiteOuterClassName = `top-site-outer${className ? ` ${className}` : ""}${link.isDragged ? " dragged" : ""}`;
+    const { tippyTopIcon, faviconSize } = link;
+    const [letterFallback] = title;
+    let imageClassName;
+    let imageStyle;
+    let showSmallFavicon = false;
+    let smallFaviconStyle;
+    let smallFaviconFallback;
+    if (tippyTopIcon || faviconSize >= __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["b" /* MIN_RICH_FAVICON_SIZE */]) {
+      // styles and class names for top sites with rich icons
+      imageClassName = "top-site-icon rich-icon";
+      imageStyle = {
+        backgroundColor: link.backgroundColor,
+        backgroundImage: `url(${tippyTopIcon || link.favicon})`
+      };
+    } else {
+      // styles and class names for top sites with screenshot + small icon in top left corner
+      imageClassName = `screenshot${link.screenshot ? " active" : ""}`;
+      imageStyle = { backgroundImage: link.screenshot ? `url(${link.screenshot})` : "none" };
+
+      // only show a favicon in top left if it's greater than 16x16
+      if (faviconSize >= __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["a" /* MIN_CORNER_FAVICON_SIZE */]) {
+        showSmallFavicon = true;
+        smallFaviconStyle = { backgroundImage: `url(${link.favicon})` };
+      } else if (link.screenshot) {
+        // Don't show a small favicon if there is no screenshot, because that
+        // would result in two fallback icons
+        showSmallFavicon = true;
+        smallFaviconFallback = true;
+      }
+    }
+    let draggableProps = {};
+    if (isDraggable) {
+      draggableProps = {
+        onClick: this.onDragEvent,
+        onDragEnd: this.onDragEvent,
+        onDragStart: this.onDragEvent,
+        onMouseDown: this.onDragEvent
+      };
+    }
+    return __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+      "li",
+      _extends({ className: topSiteOuterClassName, onDrop: this.onDragEvent, onDragOver: this.onDragEvent, onDragEnter: this.onDragEvent, onDragLeave: this.onDragEvent }, draggableProps),
+      __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+        "div",
+        { className: "top-site-inner" },
+        __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+          "a",
+          { href: link.url, onClick: onClick },
+          __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+            "div",
+            { className: "tile", "aria-hidden": true, "data-fallback": letterFallback },
+            __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement("div", { className: imageClassName, style: imageStyle }),
+            showSmallFavicon && __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement("div", {
+              className: "top-site-icon default-icon",
+              "data-fallback": smallFaviconFallback && letterFallback,
+              style: smallFaviconStyle })
+          ),
+          __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+            "div",
+            { className: `title ${link.isPinned ? "pinned" : ""}` },
+            link.isPinned && __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement("div", { className: "icon icon-pin-small" }),
+            __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+              "span",
+              { dir: "auto" },
+              title
+            )
+          )
+        ),
+        children
+      )
+    );
+  }
+}
+/* harmony export (immutable) */ __webpack_exports__["a"] = TopSiteLink;
+
+TopSiteLink.defaultProps = {
+  title: "",
+  link: {},
+  isDraggable: true
+};
+
+class TopSite extends __WEBPACK_IMPORTED_MODULE_4_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.state = { showContextMenu: false };
+    this.onLinkClick = this.onLinkClick.bind(this);
+    this.onMenuButtonClick = this.onMenuButtonClick.bind(this);
+    this.onMenuUpdate = this.onMenuUpdate.bind(this);
+  }
+
+  /**
+   * Report to telemetry additional information about the item.
+   */
+  _getTelemetryInfo() {
+    const value = { icon_type: this.props.link.iconType };
+    // Filter out "not_pinned" type for being the default
+    if (this.props.link.isPinned) {
+      value.card_type = "pinned";
+    }
+    return { value };
+  }
+
+  userEvent(event) {
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].UserEvent(Object.assign({
+      event,
+      source: __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["d" /* TOP_SITES_SOURCE */],
+      action_position: this.props.index
+    }, this._getTelemetryInfo())));
+  }
+
+  onLinkClick(ev) {
+    this.userEvent("CLICK");
+  }
+
+  onMenuButtonClick(event) {
+    event.preventDefault();
+    this.props.onActivate(this.props.index);
+    this.setState({ showContextMenu: true });
+  }
+
+  onMenuUpdate(showContextMenu) {
+    this.setState({ showContextMenu });
+  }
+
+  render() {
+    const { props } = this;
+    const { link } = props;
+    const isContextMenuOpen = this.state.showContextMenu && props.activeIndex === props.index;
+    const title = link.label || link.hostname;
+    return __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+      TopSiteLink,
+      _extends({}, props, { onClick: this.onLinkClick, onDragEvent: this.props.onDragEvent, className: `${props.className || ""}${isContextMenuOpen ? " active" : ""}`, title: title }),
+      __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+        "div",
+        null,
+        __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+          "button",
+          { className: "context-menu-button icon", onClick: this.onMenuButtonClick },
+          __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+            "span",
+            { className: "sr-only" },
+            __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_1_react_intl__["FormattedMessage"], { id: "context_menu_button_sr", values: { title } })
+          )
+        ),
+        isContextMenuOpen && __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_3_content_src_components_LinkMenu_LinkMenu__["a" /* LinkMenu */], {
+          dispatch: props.dispatch,
+          index: props.index,
+          onUpdate: this.onMenuUpdate,
+          options: __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["c" /* TOP_SITES_CONTEXT_MENU_OPTIONS */],
+          site: link,
+          siteInfo: this._getTelemetryInfo(),
+          source: __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["d" /* TOP_SITES_SOURCE */] })
+      )
+    );
+  }
+}
+/* unused harmony export TopSite */
+
+TopSite.defaultProps = {
+  link: {},
+  onActivate() {}
+};
+
+class TopSitePlaceholder extends __WEBPACK_IMPORTED_MODULE_4_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onEditButtonClick = this.onEditButtonClick.bind(this);
+  }
+
+  onEditButtonClick() {
+    this.props.dispatch({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].TOP_SITES_EDIT, data: { index: this.props.index } });
+  }
+
+  render() {
+    return __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+      TopSiteLink,
+      _extends({}, this.props, { className: `placeholder ${this.props.className || ""}`, isDraggable: false }),
+      __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement("button", { className: "context-menu-button edit-button icon",
+        title: this.props.intl.formatMessage({ id: "edit_topsites_edit_button" }),
+        onClick: this.onEditButtonClick })
+    );
+  }
+}
+/* unused harmony export TopSitePlaceholder */
+
+
+class _TopSiteList extends __WEBPACK_IMPORTED_MODULE_4_react___default.a.PureComponent {
+  static get DEFAULT_STATE() {
+    return {
+      activeIndex: null,
+      draggedIndex: null,
+      draggedSite: null,
+      draggedTitle: null,
+      topSitesPreview: null
+    };
+  }
+
+  constructor(props) {
+    super(props);
+    this.state = _TopSiteList.DEFAULT_STATE;
+    this.onDragEvent = this.onDragEvent.bind(this);
+    this.onActivate = this.onActivate.bind(this);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (this.state.draggedSite) {
+      const prevTopSites = this.props.TopSites && this.props.TopSites.rows;
+      const newTopSites = nextProps.TopSites && nextProps.TopSites.rows;
+      if (prevTopSites && prevTopSites[this.state.draggedIndex] && prevTopSites[this.state.draggedIndex].url === this.state.draggedSite.url && (!newTopSites[this.state.draggedIndex] || newTopSites[this.state.draggedIndex].url !== this.state.draggedSite.url)) {
+        // We got the new order from the redux store via props. We can clear state now.
+        this.setState(_TopSiteList.DEFAULT_STATE);
+      }
+    }
+  }
+
+  userEvent(event, index) {
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].UserEvent({
+      event,
+      source: __WEBPACK_IMPORTED_MODULE_2__TopSitesConstants__["d" /* TOP_SITES_SOURCE */],
+      action_position: index
+    }));
+  }
+
+  onDragEvent(event, index, link, title) {
+    switch (event.type) {
+      case "dragstart":
+        this.dropped = false;
+        this.setState({
+          draggedIndex: index,
+          draggedSite: link,
+          draggedTitle: title,
+          activeIndex: null
+        });
+        this.userEvent("DRAG", index);
+        break;
+      case "dragend":
+        if (!this.dropped) {
+          // If there was no drop event, reset the state to the default.
+          this.setState(_TopSiteList.DEFAULT_STATE);
+        }
+        break;
+      case "dragenter":
+        if (index === this.state.draggedIndex) {
+          this.setState({ topSitesPreview: null });
+        } else {
+          this.setState({ topSitesPreview: this._makeTopSitesPreview(index) });
+        }
+        break;
+      case "drop":
+        if (index !== this.state.draggedIndex) {
+          this.dropped = true;
+          this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({
+            type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].TOP_SITES_INSERT,
+            data: { site: { url: this.state.draggedSite.url, label: this.state.draggedTitle }, index, draggedFromIndex: this.state.draggedIndex }
+          }));
+          this.userEvent("DROP", index);
+        }
+        break;
+    }
+  }
+
+  _getTopSites() {
+    // Make a copy of the sites to truncate or extend to desired length
+    let topSites = this.props.TopSites.rows.slice();
+    topSites.length = this.props.TopSitesRows * __WEBPACK_IMPORTED_MODULE_5_common_Reducers_jsm__["a" /* TOP_SITES_MAX_SITES_PER_ROW */];
+    return topSites;
+  }
+
+  /**
+   * Make a preview of the topsites that will be the result of dropping the currently
+   * dragged site at the specified index.
+   */
+  _makeTopSitesPreview(index) {
+    const topSites = this._getTopSites();
+    topSites[this.state.draggedIndex] = null;
+    const pinnedOnly = topSites.map(site => site && site.isPinned ? site : null);
+    const unpinned = topSites.filter(site => site && !site.isPinned);
+    const siteToInsert = Object.assign({}, this.state.draggedSite, { isPinned: true, isDragged: true });
+    if (!pinnedOnly[index]) {
+      pinnedOnly[index] = siteToInsert;
+    } else {
+      // Find the hole to shift the pinned site(s) towards. We shift towards the
+      // hole left by the site being dragged.
+      let holeIndex = index;
+      const indexStep = index > this.state.draggedIndex ? -1 : 1;
+      while (pinnedOnly[holeIndex]) {
+        holeIndex += indexStep;
+      }
+
+      // Shift towards the hole.
+      const shiftingStep = index > this.state.draggedIndex ? 1 : -1;
+      while (holeIndex !== index) {
+        const nextIndex = holeIndex + shiftingStep;
+        pinnedOnly[holeIndex] = pinnedOnly[nextIndex];
+        holeIndex = nextIndex;
+      }
+      pinnedOnly[index] = siteToInsert;
+    }
+
+    // Fill in the remaining holes with unpinned sites.
+    const preview = pinnedOnly;
+    for (let i = 0; i < preview.length; i++) {
+      if (!preview[i]) {
+        preview[i] = unpinned.shift() || null;
+      }
+    }
+
+    return preview;
+  }
+
+  onActivate(index) {
+    this.setState({ activeIndex: index });
+  }
+
+  render() {
+    const { props } = this;
+    const topSites = this.state.topSitesPreview || this._getTopSites();
+    const topSitesUI = [];
+    const commonProps = {
+      onDragEvent: this.onDragEvent,
+      dispatch: props.dispatch,
+      intl: props.intl
+    };
+    // We assign a key to each placeholder slot. We need it to be independent
+    // of the slot index (i below) so that the keys used stay the same during
+    // drag and drop reordering and the underlying DOM nodes are reused.
+    // This mostly (only?) affects linux so be sure to test on linux before changing.
+    let holeIndex = 0;
+
+    // On narrow viewports, we only show 6 sites per row. We'll mark the rest as
+    // .hide-for-narrow to hide in CSS via @media query.
+    const maxNarrowVisibleIndex = props.TopSitesRows * 6;
+
+    for (let i = 0, l = topSites.length; i < l; i++) {
+      const link = topSites[i] && Object.assign({}, topSites[i], { iconType: this.props.topSiteIconType(topSites[i]) });
+      const slotProps = {
+        key: link ? link.url : holeIndex++,
+        index: i
+      };
+      if (i >= maxNarrowVisibleIndex) {
+        slotProps.className = "hide-for-narrow";
+      }
+      topSitesUI.push(!link ? __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(TopSitePlaceholder, _extends({}, slotProps, commonProps)) : __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(TopSite, _extends({
+        link: link,
+        activeIndex: this.state.activeIndex,
+        onActivate: this.onActivate
+      }, slotProps, commonProps)));
+    }
+    return __WEBPACK_IMPORTED_MODULE_4_react___default.a.createElement(
+      "ul",
+      { className: `top-sites-list${this.state.draggedSite ? " dnd-active" : ""}` },
+      topSitesUI
+    );
+  }
+}
+/* unused harmony export _TopSiteList */
+
+
+const TopSiteList = Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(_TopSiteList);
+/* harmony export (immutable) */ __webpack_exports__["b"] = TopSiteList;
+
+
+/***/ }),
+/* 14 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 /* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_content_src_lib_snippets__ = __webpack_require__(11);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_content_src_components_Base_Base__ = __webpack_require__(12);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_lib_detect_user_session_start__ = __webpack_require__(17);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_content_src_lib_init_store__ = __webpack_require__(18);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux__ = __webpack_require__(3);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_content_src_lib_snippets__ = __webpack_require__(15);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_content_src_components_Base_Base__ = __webpack_require__(16);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_lib_detect_user_session_start__ = __webpack_require__(24);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_content_src_lib_init_store__ = __webpack_require__(25);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux__ = __webpack_require__(4);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_react_redux__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react__ = __webpack_require__(1);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6_react__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_react_dom__ = __webpack_require__(20);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_react_dom__ = __webpack_require__(27);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_react_dom___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_7_react_dom__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8_common_Reducers_jsm__ = __webpack_require__(5);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8_common_Reducers_jsm__ = __webpack_require__(6);
 
 
 
@@ -1641,7 +2266,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 
 
 
-const store = Object(__WEBPACK_IMPORTED_MODULE_4_content_src_lib_init_store__["a" /* initStore */])(__WEBPACK_IMPORTED_MODULE_8_common_Reducers_jsm__["c" /* reducers */], global.gActivityStreamPrerenderedState);
+const store = Object(__WEBPACK_IMPORTED_MODULE_4_content_src_lib_init_store__["a" /* initStore */])(__WEBPACK_IMPORTED_MODULE_8_common_Reducers_jsm__["b" /* reducers */], global.gActivityStreamPrerenderedState);
 
 new __WEBPACK_IMPORTED_MODULE_3_content_src_lib_detect_user_session_start__["a" /* DetectUserSessionStart */](store).sendEventOrAddListener();
 
@@ -1649,10 +2274,10 @@ new __WEBPACK_IMPORTED_MODULE_3_content_src_lib_detect_user_session_start__["a" 
 // to request state rehydration (see Base.jsx). If we are NOT in a prerendered state,
 // we can request it immedately.
 if (!global.gActivityStreamPrerenderedState) {
-  store.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
+  store.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
 }
 
-__WEBPACK_IMPORTED_MODULE_7_react_dom___default.a.render(__WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+__WEBPACK_IMPORTED_MODULE_7_react_dom___default.a.hydrate(__WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
   __WEBPACK_IMPORTED_MODULE_5_react_redux__["Provider"],
   { store: store },
   __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_2_content_src_components_Base_Base__["a" /* Base */], {
@@ -1662,10 +2287,10 @@ __WEBPACK_IMPORTED_MODULE_7_react_dom___default.a.render(__WEBPACK_IMPORTED_MODU
 ), document.getElementById("root"));
 
 Object(__WEBPACK_IMPORTED_MODULE_1_content_src_lib_snippets__["a" /* addSnippetsSubscriber */])(store);
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 11 */
+/* 15 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -1710,6 +2335,7 @@ class SnippetsMap extends Map {
 
   clear() {
     super.clear();
+    this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].OnlyToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SNIPPETS_BLOCKLIST_CLEARED }));
     return this._dbTransaction(db => db.clear());
   }
 
@@ -1728,20 +2354,32 @@ class SnippetsMap extends Map {
     if (!id) {
       return;
     }
-    let blockList = this.blockList;
+    const { blockList } = this;
     if (!blockList.includes(id)) {
       blockList.push(id);
-      this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SNIPPETS_BLOCKLIST_UPDATED, data: blockList }));
+      this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SNIPPETS_BLOCKLIST_UPDATED, data: id }));
       await this.set("blockList", blockList);
     }
   }
 
   disableOnboarding() {
-    this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].DISABLE_ONBOARDING }));
+    this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].DISABLE_ONBOARDING }));
   }
 
   showFirefoxAccounts() {
-    this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SHOW_FIREFOX_ACCOUNTS }));
+    this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SHOW_FIREFOX_ACCOUNTS }));
+  }
+
+  getTotalBookmarksCount() {
+    return new Promise(resolve => {
+      this._dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].OnlyToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].TOTAL_BOOKMARKS_REQUEST }));
+      global.addMessageListener("ActivityStream:MainToContent", function onMessage({ data: action }) {
+        if (action.type === __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].TOTAL_BOOKMARKS_RESPONSE) {
+          resolve(action.data);
+          global.removeMessageListener("ActivityStream:MainToContent", onMessage);
+        }
+      });
+    });
   }
 
   /**
@@ -1835,7 +2473,9 @@ class SnippetsMap extends Map {
         let cursor = event.target.result;
         // Populate the cache from the persistent storage.
         if (cursor) {
-          this.set(cursor.key, cursor.value);
+          if (cursor.value !== "blockList") {
+            this.set(cursor.key, cursor.value);
+          }
           cursor.continue();
         } else {
           // We are done.
@@ -1938,8 +2578,10 @@ class SnippetsProvider {
 
   _onAction(msg) {
     if (msg.data.type === __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SNIPPET_BLOCKED) {
-      this.snippetsMap.set("blockList", msg.data.data);
-      document.getElementById("snippets-container").style.display = "none";
+      if (!this.snippetsMap.blockList.includes(msg.data.data)) {
+        this.snippetsMap.set("blockList", this.snippetsMap.blockList.concat(msg.data.data));
+        document.getElementById("snippets-container").style.display = "none";
+      }
     }
   }
 
@@ -1976,7 +2618,11 @@ class SnippetsProvider {
 
     // Cache app data values so they can be accessible from gSnippetsMap
     for (const key of Object.keys(this.appData)) {
-      this.snippetsMap.set(`appData.${key}`, this.appData[key]);
+      if (key === "blockList") {
+        this.snippetsMap.set("blockList", this.appData[key]);
+      } else {
+        this.snippetsMap.set(`appData.${key}`, this.appData[key]);
+      }
     }
 
     // Refresh snippets, if enough time has passed.
@@ -2039,10 +2685,10 @@ function addSnippetsSubscriber(store) {
   // These values are returned for testing purposes
   return snippets;
 }
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 12 */
+/* 16 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -2055,7 +2701,7 @@ var external__ReactIntl_ = __webpack_require__(2);
 var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
 
 // EXTERNAL MODULE: external "ReactRedux"
-var external__ReactRedux_ = __webpack_require__(3);
+var external__ReactRedux_ = __webpack_require__(4);
 var external__ReactRedux__default = /*#__PURE__*/__webpack_require__.n(external__ReactRedux_);
 
 // EXTERNAL MODULE: external "React"
@@ -2077,7 +2723,7 @@ var external__React__default = /*#__PURE__*/__webpack_require__.n(external__Reac
  * data: {
  *   // Any sort of data needed to be passed around by actions.
  *   payload: site.url,
- *   // Primary button SendToMain action.
+ *   // Primary button AlsoToMain action.
  *   action: "DELETE_HISTORY_URL",
  *   // Primary button USerEvent action.
  *   userEvent: "DELETE",
@@ -2096,7 +2742,7 @@ class ConfirmDialog__ConfirmDialog extends external__React__default.a.PureCompon
 
   _handleCancelBtn() {
     this.props.dispatch({ type: Actions["b" /* actionTypes */].DIALOG_CANCEL });
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: Actions["b" /* actionTypes */].DIALOG_CANCEL }));
+    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: Actions["b" /* actionTypes */].DIALOG_CANCEL, source: this.props.data.eventSource }));
   }
 
   _handleConfirmBtn() {
@@ -2159,6 +2805,9 @@ class ConfirmDialog__ConfirmDialog extends external__React__default.a.PureCompon
 }
 
 const ConfirmDialog = Object(external__ReactRedux_["connect"])(state => state.Dialog)(ConfirmDialog__ConfirmDialog);
+// EXTERNAL MODULE: ./system-addon/content-src/components/ErrorBoundary/ErrorBoundary.jsx
+var ErrorBoundary = __webpack_require__(7);
+
 // CONCATENATED MODULE: ./system-addon/content-src/components/ManualMigration/ManualMigration.jsx
 
 
@@ -2179,13 +2828,14 @@ class ManualMigration__ManualMigration extends external__React__default.a.PureCo
     this.onLaunchTour = this.onLaunchTour.bind(this);
     this.onCancelTour = this.onCancelTour.bind(this);
   }
+
   onLaunchTour() {
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].MIGRATION_START }));
+    this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].MIGRATION_START }));
     this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: Actions["b" /* actionTypes */].MIGRATION_START }));
   }
 
   onCancelTour() {
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].MIGRATION_CANCEL }));
+    this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].MIGRATION_CANCEL }));
     this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: Actions["b" /* actionTypes */].MIGRATION_CANCEL }));
   }
 
@@ -2218,11 +2868,7 @@ class ManualMigration__ManualMigration extends external__React__default.a.PureCo
 }
 
 const ManualMigration = Object(external__ReactRedux_["connect"])()(ManualMigration__ManualMigration);
-// EXTERNAL MODULE: ./system-addon/common/Reducers.jsm + 1 modules
-var Reducers = __webpack_require__(5);
-
 // CONCATENATED MODULE: ./system-addon/content-src/components/PreferencesPane/PreferencesPane.jsx
-
 
 
 
@@ -2264,6 +2910,7 @@ class PreferencesPane__PreferencesPane extends external__React__default.a.PureCo
     this.togglePane = this.togglePane.bind(this);
     this.onWrapperMount = this.onWrapperMount.bind(this);
   }
+
   componentDidUpdate(prevProps, prevState) {
     if (prevProps.PreferencesPane.visible !== this.props.PreferencesPane.visible) {
       // While the sidebar is open, listen for all document clicks.
@@ -2274,30 +2921,32 @@ class PreferencesPane__PreferencesPane extends external__React__default.a.PureCo
       }
     }
   }
+
   isSidebarOpen() {
     return this.props.PreferencesPane.visible;
   }
+
   handleClickOutside(event) {
     // if we are showing the sidebar and there is a click outside, close it.
     if (this.isSidebarOpen() && !this.wrapper.contains(event.target)) {
       this.togglePane();
     }
   }
-  handlePrefChange(event) {
-    const target = event.target;
-    const { name, checked } = target;
+
+  handlePrefChange({ target: { name, checked } }) {
     let value = checked;
-    if (name === "topSitesCount") {
-      value = checked ? Reducers["b" /* TOP_SITES_SHOWMORE_LENGTH */] : Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */];
+    if (name === "topSitesRows") {
+      value = checked ? 2 : 1;
     }
     this.props.dispatch(Actions["a" /* actionCreators */].SetPref(name, value));
   }
-  handleSectionChange(event) {
-    const target = event.target;
+
+  handleSectionChange({ target }) {
     const id = target.name;
     const type = target.checked ? Actions["b" /* actionTypes */].SECTION_ENABLE : Actions["b" /* actionTypes */].SECTION_DISABLE;
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type, data: id }));
+    this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type, data: id }));
   }
+
   togglePane() {
     if (this.isSidebarOpen()) {
       this.props.dispatch({ type: Actions["b" /* actionTypes */].SETTINGS_CLOSE });
@@ -2307,11 +2956,13 @@ class PreferencesPane__PreferencesPane extends external__React__default.a.PureCo
       this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: "OPEN_NEWTAB_PREFS" }));
     }
   }
+
   onWrapperMount(wrapper) {
     this.wrapper = wrapper;
   }
+
   render() {
-    const props = this.props;
+    const { props } = this;
     const prefs = props.Prefs.values;
     const sections = props.Sections;
     const isVisible = this.isSidebarOpen();
@@ -2364,9 +3015,9 @@ class PreferencesPane__PreferencesPane extends external__React__default.a.PureCo
                 descString: { id: "settings_pane_topsites_body" } },
               external__React__default.a.createElement(PreferencesInput, {
                 className: "showMoreTopSites",
-                prefName: "topSitesCount",
+                prefName: "topSitesRows",
                 disabled: !prefs.showTopSites,
-                value: prefs.topSitesCount !== Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */],
+                value: prefs.topSitesRows === 2,
                 onChange: this.handlePrefChange,
                 titleString: { id: "settings_pane_topsites_options_showmore" },
                 labelClassName: "icon icon-topsites" })
@@ -2469,12 +3120,14 @@ var PrerenderData = new _PrerenderData({
     "migrationExpired": true,
     "showTopSites": true,
     "showSearch": true,
-    "topSitesCount": 6,
+    "topSitesRows": 1,
     "collapseTopSites": false,
     "section.highlights.collapsed": false,
     "section.topstories.collapsed": false,
     "feeds.section.topstories": true,
-    "feeds.section.highlights": true
+    "feeds.section.highlights": true,
+    "enableWideLayout": true,
+    "sectionOrder": "topsites,topstories,highlights"
   },
   // Prefs listed as invalidating will prevent the prerendered version
   // of AS from being used if their value is something other than what is listed
@@ -2482,7 +3135,7 @@ var PrerenderData = new _PrerenderData({
   // too different for the prerendered version to be used. Unfortunately, this
   // will result in users who have modified some of their preferences not being
   // able to get the benefits of prerendering.
-  validation: ["showTopSites", "showSearch", "topSitesCount", "collapseTopSites", "section.highlights.collapsed", "section.topstories.collapsed",
+  validation: ["showTopSites", "showSearch", "topSitesRows", "collapseTopSites", "section.highlights.collapsed", "section.topstories.collapsed", "enableWideLayout", "sectionOrder",
   // This means if either of these are set to their default values,
   // prerendering can be used.
   { oneOf: ["feeds.section.topstories", "feeds.section.highlights"] }],
@@ -2501,7 +3154,7 @@ var PrerenderData = new _PrerenderData({
   }]
 });
 // EXTERNAL MODULE: ./system-addon/content-src/lib/constants.js
-var constants = __webpack_require__(13);
+var constants = __webpack_require__(17);
 
 // CONCATENATED MODULE: ./system-addon/content-src/components/Search/Search.jsx
 /* globals ContentSearchUIController */
@@ -2526,12 +3179,15 @@ class Search__Search extends external__React__default.a.PureComponent {
       this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({ event: "SEARCH" }));
     }
   }
+
   onClick(event) {
     window.gContentSearchController.search(event);
   }
+
   componentWillUnmount() {
     delete window.gContentSearchController;
   }
+
   onInputMount(input) {
     if (input) {
       // The "healthReportKey" and needs to be "newtab" or "abouthome" so that
@@ -2603,900 +3259,8 @@ class Search__Search extends external__React__default.a.PureComponent {
 
 const Search = Object(external__ReactRedux_["connect"])()(Object(external__ReactIntl_["injectIntl"])(Search__Search));
 // EXTERNAL MODULE: ./system-addon/content-src/components/Sections/Sections.jsx
-var Sections = __webpack_require__(14);
+var Sections = __webpack_require__(18);
 
-// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSitesConstants.js
-const TOP_SITES_SOURCE = "TOP_SITES";
-const TOP_SITES_CONTEXT_MENU_OPTIONS = ["CheckPinTopSite", "EditTopSite", "Separator", "OpenInNewWindow", "OpenInPrivateWindow", "Separator", "BlockUrl", "DeleteUrl"];
-// minimum size necessary to show a rich icon instead of a screenshot
-const MIN_RICH_FAVICON_SIZE = 96;
-// minimum size necessary to show any icon in the top left corner with a screenshot
-const MIN_CORNER_FAVICON_SIZE = 16;
-// EXTERNAL MODULE: ./system-addon/content-src/components/CollapsibleSection/CollapsibleSection.jsx
-var CollapsibleSection = __webpack_require__(7);
-
-// EXTERNAL MODULE: ./system-addon/content-src/components/ComponentPerfTimer/ComponentPerfTimer.jsx
-var ComponentPerfTimer = __webpack_require__(8);
-
-// EXTERNAL MODULE: ./system-addon/content-src/components/LinkMenu/LinkMenu.jsx + 2 modules
-var LinkMenu = __webpack_require__(6);
-
-// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSite.jsx
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
-
-
-
-
-
-
-class TopSite_TopSiteLink extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.onDragEvent = this.onDragEvent.bind(this);
-  }
-
-  /*
-   * Helper to determine whether the drop zone should allow a drop. We only allow
-   * dropping top sites for now.
-   */
-  _allowDrop(e) {
-    return e.dataTransfer.types.includes("text/topsite-index");
-  }
-
-  onDragEvent(event) {
-    switch (event.type) {
-      case "click":
-        // Stop any link clicks if we started any dragging
-        if (this.dragged) {
-          event.preventDefault();
-        }
-        break;
-      case "dragstart":
-        this.dragged = true;
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/topsite-index", this.props.index);
-        event.target.blur();
-        this.props.onDragEvent(event, this.props.index, this.props.link, this.props.title);
-        break;
-      case "dragend":
-        this.props.onDragEvent(event);
-        break;
-      case "dragenter":
-      case "dragover":
-      case "drop":
-        if (this._allowDrop(event)) {
-          event.preventDefault();
-          this.props.onDragEvent(event, this.props.index);
-        }
-        break;
-      case "mousedown":
-        // Reset at the first mouse event of a potential drag
-        this.dragged = false;
-        break;
-    }
-  }
-  render() {
-    const { children, className, isDraggable, link, onClick, title } = this.props;
-    const topSiteOuterClassName = `top-site-outer${className ? ` ${className}` : ""}`;
-    const { tippyTopIcon, faviconSize } = link;
-    const letterFallback = title[0];
-    let imageClassName;
-    let imageStyle;
-    let showSmallFavicon = false;
-    let smallFaviconStyle;
-    let smallFaviconFallback;
-    if (tippyTopIcon || faviconSize >= MIN_RICH_FAVICON_SIZE) {
-      // styles and class names for top sites with rich icons
-      imageClassName = "top-site-icon rich-icon";
-      imageStyle = {
-        backgroundColor: link.backgroundColor,
-        backgroundImage: `url(${tippyTopIcon || link.favicon})`
-      };
-    } else {
-      // styles and class names for top sites with screenshot + small icon in top left corner
-      imageClassName = `screenshot${link.screenshot ? " active" : ""}`;
-      imageStyle = { backgroundImage: link.screenshot ? `url(${link.screenshot})` : "none" };
-
-      // only show a favicon in top left if it's greater than 16x16
-      if (faviconSize >= MIN_CORNER_FAVICON_SIZE) {
-        showSmallFavicon = true;
-        smallFaviconStyle = { backgroundImage: `url(${link.favicon})` };
-      } else if (link.screenshot) {
-        // Don't show a small favicon if there is no screenshot, because that
-        // would result in two fallback icons
-        showSmallFavicon = true;
-        smallFaviconFallback = true;
-      }
-    }
-    let draggableProps = {};
-    if (isDraggable) {
-      draggableProps = {
-        onClick: this.onDragEvent,
-        onDragEnd: this.onDragEvent,
-        onDragStart: this.onDragEvent,
-        onMouseDown: this.onDragEvent
-      };
-    }
-    return external__React__default.a.createElement(
-      "li",
-      _extends({ className: topSiteOuterClassName, onDrop: this.onDragEvent, onDragOver: this.onDragEvent, onDragEnter: this.onDragEvent, onDragLeave: this.onDragEvent }, draggableProps),
-      external__React__default.a.createElement(
-        "div",
-        { className: "top-site-inner" },
-        external__React__default.a.createElement(
-          "a",
-          { href: link.url, onClick: onClick },
-          external__React__default.a.createElement(
-            "div",
-            { className: "tile", "aria-hidden": true, "data-fallback": letterFallback },
-            external__React__default.a.createElement("div", { className: imageClassName, style: imageStyle }),
-            showSmallFavicon && external__React__default.a.createElement("div", {
-              className: "top-site-icon default-icon",
-              "data-fallback": smallFaviconFallback && letterFallback,
-              style: smallFaviconStyle })
-          ),
-          external__React__default.a.createElement(
-            "div",
-            { className: `title ${link.isPinned ? "pinned" : ""}` },
-            link.isPinned && external__React__default.a.createElement("div", { className: "icon icon-pin-small" }),
-            external__React__default.a.createElement(
-              "span",
-              { dir: "auto" },
-              title
-            )
-          )
-        ),
-        children
-      )
-    );
-  }
-}
-TopSite_TopSiteLink.defaultProps = {
-  title: "",
-  link: {},
-  isDraggable: true
-};
-
-class TopSite_TopSite extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.state = { showContextMenu: false };
-    this.onLinkClick = this.onLinkClick.bind(this);
-    this.onMenuButtonClick = this.onMenuButtonClick.bind(this);
-    this.onMenuUpdate = this.onMenuUpdate.bind(this);
-    this.onDismissButtonClick = this.onDismissButtonClick.bind(this);
-    this.onPinButtonClick = this.onPinButtonClick.bind(this);
-    this.onEditButtonClick = this.onEditButtonClick.bind(this);
-  }
-  userEvent(event) {
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      event,
-      source: TOP_SITES_SOURCE,
-      action_position: this.props.index
-    }));
-  }
-  onLinkClick(ev) {
-    if (this.props.onEdit) {
-      // Ignore clicks if we are in the edit modal.
-      ev.preventDefault();
-      return;
-    }
-    this.userEvent("CLICK");
-  }
-  onMenuButtonClick(event) {
-    event.preventDefault();
-    this.props.onActivate(this.props.index);
-    this.setState({ showContextMenu: true });
-  }
-  onMenuUpdate(showContextMenu) {
-    this.setState({ showContextMenu });
-  }
-  onDismissButtonClick() {
-    const { link } = this.props;
-    if (link.isPinned) {
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-        type: Actions["b" /* actionTypes */].TOP_SITES_UNPIN,
-        data: { site: { url: link.url } }
-      }));
-    }
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].BLOCK_URL,
-      data: link.url
-    }));
-    this.userEvent("BLOCK");
-  }
-  onPinButtonClick() {
-    const { link, index } = this.props;
-    if (link.isPinned) {
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-        type: Actions["b" /* actionTypes */].TOP_SITES_UNPIN,
-        data: { site: { url: link.url } }
-      }));
-      this.userEvent("UNPIN");
-    } else {
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-        type: Actions["b" /* actionTypes */].TOP_SITES_PIN,
-        data: { site: { url: link.url }, index }
-      }));
-      this.userEvent("PIN");
-    }
-  }
-  onEditButtonClick() {
-    this.props.onEdit(this.props.index);
-  }
-  render() {
-    const { props } = this;
-    const { link } = props;
-    const isContextMenuOpen = this.state.showContextMenu && props.activeIndex === props.index;
-    const title = link.label || link.hostname;
-    return external__React__default.a.createElement(
-      TopSite_TopSiteLink,
-      _extends({}, props, { onClick: this.onLinkClick, onDragEvent: this.props.onDragEvent, className: isContextMenuOpen ? "active" : "", title: title }),
-      !props.onEdit && external__React__default.a.createElement(
-        "div",
-        null,
-        external__React__default.a.createElement(
-          "button",
-          { className: "context-menu-button icon", onClick: this.onMenuButtonClick },
-          external__React__default.a.createElement(
-            "span",
-            { className: "sr-only" },
-            `Open context menu for ${title}`
-          )
-        ),
-        external__React__default.a.createElement(LinkMenu["a" /* LinkMenu */], {
-          dispatch: props.dispatch,
-          index: props.index,
-          onUpdate: this.onMenuUpdate,
-          options: TOP_SITES_CONTEXT_MENU_OPTIONS,
-          site: link,
-          source: TOP_SITES_SOURCE,
-          visible: isContextMenuOpen })
-      ),
-      props.onEdit && external__React__default.a.createElement(
-        "div",
-        { className: "edit-menu" },
-        external__React__default.a.createElement("button", {
-          className: `icon icon-${link.isPinned ? "unpin" : "pin"}`,
-          title: this.props.intl.formatMessage({ id: `edit_topsites_${link.isPinned ? "unpin" : "pin"}_button` }),
-          onClick: this.onPinButtonClick }),
-        external__React__default.a.createElement("button", {
-          className: "icon icon-edit",
-          title: this.props.intl.formatMessage({ id: "edit_topsites_edit_button" }),
-          onClick: this.onEditButtonClick }),
-        external__React__default.a.createElement("button", {
-          className: "icon icon-dismiss",
-          title: this.props.intl.formatMessage({ id: "edit_topsites_dismiss_button" }),
-          onClick: this.onDismissButtonClick })
-      )
-    );
-  }
-}
-TopSite_TopSite.defaultProps = {
-  link: {},
-  onActivate() {}
-};
-
-class TopSite_TopSitePlaceholder extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.onEditButtonClick = this.onEditButtonClick.bind(this);
-  }
-
-  onEditButtonClick() {
-    if (this.props.onEdit) {
-      this.props.onEdit(this.props.index);
-      return;
-    }
-
-    this.props.dispatch({ type: Actions["b" /* actionTypes */].TOP_SITES_EDIT, data: { index: this.props.index } });
-  }
-
-  render() {
-    return external__React__default.a.createElement(
-      TopSite_TopSiteLink,
-      _extends({ className: "placeholder", isDraggable: false }, this.props),
-      external__React__default.a.createElement("button", { className: "context-menu-button edit-button icon",
-        title: this.props.intl.formatMessage({ id: "edit_topsites_edit_button" }),
-        onClick: this.onEditButtonClick })
-    );
-  }
-}
-
-class TopSite__TopSiteList extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.state = this.DEFAULT_STATE = {
-      draggedIndex: null,
-      draggedSite: null,
-      draggedTitle: null,
-      topSitesPreview: null,
-      activeIndex: null
-    };
-    this.onDragEvent = this.onDragEvent.bind(this);
-    this.onActivate = this.onActivate.bind(this);
-  }
-  componentWillUpdate(nextProps) {
-    if (this.state.draggedSite) {
-      const prevTopSites = this.props.TopSites && this.props.TopSites.rows;
-      const newTopSites = nextProps.TopSites && nextProps.TopSites.rows;
-      if (prevTopSites && prevTopSites[this.state.draggedIndex] && prevTopSites[this.state.draggedIndex].url === this.state.draggedSite.url && (!newTopSites[this.state.draggedIndex] || newTopSites[this.state.draggedIndex].url !== this.state.draggedSite.url)) {
-        // We got the new order from the redux store via props. We can clear state now.
-        this.setState(this.DEFAULT_STATE);
-      }
-    }
-  }
-  userEvent(event, index) {
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      event,
-      source: TOP_SITES_SOURCE,
-      action_position: index
-    }));
-  }
-  onDragEvent(event, index, link, title) {
-    switch (event.type) {
-      case "dragstart":
-        this.dropped = false;
-        this.setState({
-          draggedIndex: index,
-          draggedSite: link,
-          draggedTitle: title,
-          activeIndex: null
-        });
-        this.userEvent("DRAG", index);
-        break;
-      case "dragend":
-        if (!this.dropped) {
-          // If there was no drop event, reset the state to the default.
-          this.setState(this.DEFAULT_STATE);
-        }
-        break;
-      case "dragenter":
-        if (index === this.state.draggedIndex) {
-          this.setState({ topSitesPreview: null });
-        } else {
-          this.setState({ topSitesPreview: this._makeTopSitesPreview(index) });
-        }
-        break;
-      case "drop":
-        if (index !== this.state.draggedIndex) {
-          this.dropped = true;
-          this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-            type: Actions["b" /* actionTypes */].TOP_SITES_INSERT,
-            data: { site: { url: this.state.draggedSite.url, label: this.state.draggedTitle }, index, draggedFromIndex: this.state.draggedIndex }
-          }));
-          this.userEvent("DROP", index);
-        }
-        break;
-    }
-  }
-  _getTopSites() {
-    // Make a copy of the sites to truncate or extend to desired length
-    let topSites = this.props.TopSites.rows.slice();
-    topSites.length = this.props.TopSitesCount;
-    return topSites;
-  }
-
-  /**
-   * Make a preview of the topsites that will be the result of dropping the currently
-   * dragged site at the specified index.
-   */
-  _makeTopSitesPreview(index) {
-    const topSites = this._getTopSites();
-    topSites[this.state.draggedIndex] = null;
-    const pinnedOnly = topSites.map(site => site && site.isPinned ? site : null);
-    const unpinned = topSites.filter(site => site && !site.isPinned);
-    const siteToInsert = Object.assign({}, this.state.draggedSite, { isPinned: true });
-    if (!pinnedOnly[index]) {
-      pinnedOnly[index] = siteToInsert;
-    } else {
-      // Find the hole to shift the pinned site(s) towards. We shift towards the
-      // hole left by the site being dragged.
-      let holeIndex = index;
-      const indexStep = index > this.state.draggedIndex ? -1 : 1;
-      while (pinnedOnly[holeIndex]) {
-        holeIndex += indexStep;
-      }
-
-      // Shift towards the hole.
-      const shiftingStep = index > this.state.draggedIndex ? 1 : -1;
-      while (holeIndex !== index) {
-        const nextIndex = holeIndex + shiftingStep;
-        pinnedOnly[holeIndex] = pinnedOnly[nextIndex];
-        holeIndex = nextIndex;
-      }
-      pinnedOnly[index] = siteToInsert;
-    }
-
-    // Fill in the remaining holes with unpinned sites.
-    const preview = pinnedOnly;
-    for (let i = 0; i < preview.length; i++) {
-      if (!preview[i]) {
-        preview[i] = unpinned.shift() || null;
-      }
-    }
-
-    return preview;
-  }
-  onActivate(index) {
-    this.setState({ activeIndex: index });
-  }
-  render() {
-    const { props } = this;
-    const topSites = this.state.topSitesPreview || this._getTopSites();
-    const topSitesUI = [];
-    const commonProps = {
-      onDragEvent: this.onDragEvent,
-      dispatch: props.dispatch,
-      intl: props.intl
-    };
-    // We assign a key to each placeholder slot. We need it to be independent
-    // of the slot index (i below) so that the keys used stay the same during
-    // drag and drop reordering and the underlying DOM nodes are reused.
-    // This mostly (only?) affects linux so be sure to test on linux before changing.
-    let holeIndex = 0;
-    for (let i = 0, l = topSites.length; i < l; i++) {
-      const link = topSites[i];
-      const slotProps = {
-        key: link ? link.url : holeIndex++,
-        index: i
-      };
-      topSitesUI.push(!link ? external__React__default.a.createElement(TopSite_TopSitePlaceholder, _extends({
-        onEdit: props.onEdit
-      }, slotProps, commonProps)) : external__React__default.a.createElement(TopSite_TopSite, _extends({
-        link: link,
-        onEdit: props.onEdit,
-        activeIndex: this.state.activeIndex,
-        onActivate: this.onActivate
-      }, slotProps, commonProps)));
-    }
-    return external__React__default.a.createElement(
-      "ul",
-      { className: "top-sites-list" },
-      topSitesUI
-    );
-  }
-}
-
-const TopSiteList = Object(external__ReactIntl_["injectIntl"])(TopSite__TopSiteList);
-// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSiteForm.jsx
-
-
-
-
-
-class TopSiteForm_TopSiteForm extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.state = {
-      label: props.label || "",
-      url: props.url || "",
-      validationError: false
-    };
-    this.onLabelChange = this.onLabelChange.bind(this);
-    this.onUrlChange = this.onUrlChange.bind(this);
-    this.onCancelButtonClick = this.onCancelButtonClick.bind(this);
-    this.onAddButtonClick = this.onAddButtonClick.bind(this);
-    this.onSaveButtonClick = this.onSaveButtonClick.bind(this);
-    this.onUrlInputMount = this.onUrlInputMount.bind(this);
-  }
-  onLabelChange(event) {
-    this.resetValidation();
-    this.setState({ "label": event.target.value });
-  }
-  onUrlChange(event) {
-    this.resetValidation();
-    this.setState({ "url": event.target.value });
-  }
-  onCancelButtonClick(ev) {
-    ev.preventDefault();
-    this.props.onClose();
-  }
-  onAddButtonClick(ev) {
-    ev.preventDefault();
-    if (this.validateForm()) {
-      let site = { url: this.cleanUrl() };
-      if (this.state.label !== "") {
-        site.label = this.state.label;
-      }
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-        type: Actions["b" /* actionTypes */].TOP_SITES_INSERT,
-        data: { site }
-      }));
-      this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-        source: TOP_SITES_SOURCE,
-        event: "TOP_SITES_ADD"
-      }));
-      this.props.onClose();
-    }
-  }
-  onSaveButtonClick(ev) {
-    ev.preventDefault();
-    if (this.validateForm()) {
-      let site = { url: this.cleanUrl() };
-      if (this.state.label !== "") {
-        site.label = this.state.label;
-      }
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-        type: Actions["b" /* actionTypes */].TOP_SITES_PIN,
-        data: { site, index: this.props.index }
-      }));
-      this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-        source: TOP_SITES_SOURCE,
-        event: "TOP_SITES_EDIT",
-        action_position: this.props.index
-      }));
-      this.props.onClose();
-    }
-  }
-  cleanUrl() {
-    let url = this.state.url;
-    // If we are missing a protocol, prepend http://
-    if (!url.startsWith("http:") && !url.startsWith("https:")) {
-      url = `http://${url}`;
-    }
-    return url;
-  }
-  resetValidation() {
-    if (this.state.validationError) {
-      this.setState({ validationError: false });
-    }
-  }
-  validateUrl() {
-    try {
-      return !!new URL(this.cleanUrl());
-    } catch (e) {
-      return false;
-    }
-  }
-  validateForm() {
-    this.resetValidation();
-    // Only the URL is required and must be valid.
-    if (!this.state.url || !this.validateUrl()) {
-      this.setState({ validationError: true });
-      this.inputUrl.focus();
-      return false;
-    }
-    return true;
-  }
-  onUrlInputMount(input) {
-    this.inputUrl = input;
-  }
-  render() {
-    return external__React__default.a.createElement(
-      "form",
-      { className: "topsite-form" },
-      external__React__default.a.createElement(
-        "section",
-        { className: "edit-topsites-inner-wrapper" },
-        external__React__default.a.createElement(
-          "div",
-          { className: "form-wrapper" },
-          external__React__default.a.createElement(
-            "h3",
-            { className: "section-title" },
-            external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: this.props.editMode ? "topsites_form_edit_header" : "topsites_form_add_header" })
-          ),
-          external__React__default.a.createElement(
-            "div",
-            { className: "field title" },
-            external__React__default.a.createElement("input", {
-              type: "text",
-              value: this.state.label,
-              onChange: this.onLabelChange,
-              placeholder: this.props.intl.formatMessage({ id: "topsites_form_title_placeholder" }) })
-          ),
-          external__React__default.a.createElement(
-            "div",
-            { className: `field url${this.state.validationError ? " invalid" : ""}` },
-            external__React__default.a.createElement("input", {
-              type: "text",
-              ref: this.onUrlInputMount,
-              value: this.state.url,
-              onChange: this.onUrlChange,
-              placeholder: this.props.intl.formatMessage({ id: "topsites_form_url_placeholder" }) }),
-            this.state.validationError && external__React__default.a.createElement(
-              "aside",
-              { className: "error-tooltip" },
-              external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "topsites_form_url_validation" })
-            )
-          )
-        )
-      ),
-      external__React__default.a.createElement(
-        "section",
-        { className: "actions" },
-        external__React__default.a.createElement(
-          "button",
-          { className: "cancel", type: "button", onClick: this.onCancelButtonClick },
-          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "topsites_form_cancel_button" })
-        ),
-        this.props.editMode && external__React__default.a.createElement(
-          "button",
-          { className: "done save", type: "submit", onClick: this.onSaveButtonClick },
-          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "topsites_form_save_button" })
-        ),
-        !this.props.editMode && external__React__default.a.createElement(
-          "button",
-          { className: "done add", type: "submit", onClick: this.onAddButtonClick },
-          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "topsites_form_add_button" })
-        )
-      )
-    );
-  }
-}
-
-TopSiteForm_TopSiteForm.defaultProps = {
-  label: "",
-  url: "",
-  index: 0,
-  editMode: false // by default we are in "Add New Top Site" mode
-};
-// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSitesEdit.jsx
-
-
-
-
-
-
-
-
-class TopSitesEdit__TopSitesEdit extends external__React__default.a.PureComponent {
-  constructor(props) {
-    super(props);
-    this.state = {
-      showEditModal: false,
-      showAddForm: false,
-      showEditForm: false,
-      editIndex: -1 // Index of top site being edited
-    };
-    this.onEditButtonClick = this.onEditButtonClick.bind(this);
-    this.onShowMoreLessClick = this.onShowMoreLessClick.bind(this);
-    this.onModalOverlayClick = this.onModalOverlayClick.bind(this);
-    this.onAddButtonClick = this.onAddButtonClick.bind(this);
-    this.onFormClose = this.onFormClose.bind(this);
-    this.onEdit = this.onEdit.bind(this);
-  }
-  onEditButtonClick() {
-    this.setState({ showEditModal: !this.state.showEditModal });
-    const event = this.state.showEditModal ? "TOP_SITES_EDIT_OPEN" : "TOP_SITES_EDIT_CLOSE";
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      source: TOP_SITES_SOURCE,
-      event
-    }));
-  }
-  onModalOverlayClick() {
-    this.setState({ showEditModal: false, showAddForm: false, showEditForm: false });
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      source: TOP_SITES_SOURCE,
-      event: "TOP_SITES_EDIT_CLOSE"
-    }));
-    this.props.dispatch({ type: Actions["b" /* actionTypes */].TOP_SITES_CANCEL_EDIT });
-  }
-  onShowMoreLessClick() {
-    const prefIsSetToDefault = this.props.TopSitesCount === Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */];
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].SET_PREF,
-      data: { name: "topSitesCount", value: prefIsSetToDefault ? Reducers["b" /* TOP_SITES_SHOWMORE_LENGTH */] : Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */] }
-    }));
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      source: TOP_SITES_SOURCE,
-      event: prefIsSetToDefault ? "TOP_SITES_EDIT_SHOW_MORE" : "TOP_SITES_EDIT_SHOW_LESS"
-    }));
-  }
-  onAddButtonClick() {
-    this.setState({ showAddForm: true });
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      source: TOP_SITES_SOURCE,
-      event: "TOP_SITES_ADD_FORM_OPEN"
-    }));
-  }
-  onFormClose() {
-    this.setState({ showAddForm: false, showEditForm: false });
-    this.props.dispatch({ type: Actions["b" /* actionTypes */].TOP_SITES_CANCEL_EDIT });
-  }
-  onEdit(index) {
-    this.setState({ showEditForm: true, editIndex: index });
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      source: TOP_SITES_SOURCE,
-      event: "TOP_SITES_EDIT_FORM_OPEN"
-    }));
-  }
-  render() {
-    const { editForm } = this.props.TopSites;
-    const showEditForm = editForm && editForm.visible || this.state.showEditModal && this.state.showEditForm;
-    let editIndex = this.state.editIndex;
-    if (editIndex < 0 && editForm) {
-      editIndex = editForm.index;
-    }
-    const editSite = this.props.TopSites.rows[editIndex] || {};
-    return external__React__default.a.createElement(
-      "div",
-      { className: "edit-topsites-wrapper" },
-      external__React__default.a.createElement(
-        "div",
-        { className: "edit-topsites-button" },
-        external__React__default.a.createElement(
-          "button",
-          {
-            className: "edit",
-            title: this.props.intl.formatMessage({ id: "edit_topsites_button_label" }),
-            onClick: this.onEditButtonClick },
-          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "edit_topsites_button_text" })
-        )
-      ),
-      this.state.showEditModal && !this.state.showAddForm && !this.state.showEditForm && external__React__default.a.createElement(
-        "div",
-        { className: "edit-topsites" },
-        external__React__default.a.createElement("div", { className: "modal-overlay", onClick: this.onModalOverlayClick }),
-        external__React__default.a.createElement(
-          "div",
-          { className: "modal" },
-          external__React__default.a.createElement(
-            "section",
-            { className: "edit-topsites-inner-wrapper" },
-            external__React__default.a.createElement(
-              "div",
-              { className: "section-top-bar" },
-              external__React__default.a.createElement(
-                "h3",
-                { className: "section-title" },
-                external__React__default.a.createElement("span", { className: `icon icon-small-spacer icon-topsites` }),
-                external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "header_top_sites" })
-              )
-            ),
-            external__React__default.a.createElement(TopSiteList, { TopSites: this.props.TopSites, TopSitesCount: this.props.TopSitesCount, onEdit: this.onEdit, dispatch: this.props.dispatch, intl: this.props.intl })
-          ),
-          external__React__default.a.createElement(
-            "section",
-            { className: "actions" },
-            external__React__default.a.createElement(
-              "button",
-              { className: "add", onClick: this.onAddButtonClick },
-              external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "edit_topsites_add_button" })
-            ),
-            external__React__default.a.createElement(
-              "button",
-              { className: `icon icon-topsites show-${this.props.TopSitesCount === Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */] ? "more" : "less"}`, onClick: this.onShowMoreLessClick },
-              external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: `edit_topsites_show${this.props.TopSitesCount === Reducers["a" /* TOP_SITES_DEFAULT_LENGTH */] ? "more" : "less"}_button` })
-            ),
-            external__React__default.a.createElement(
-              "button",
-              { className: "done", onClick: this.onEditButtonClick },
-              external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "edit_topsites_done_button" })
-            )
-          )
-        )
-      ),
-      this.state.showEditModal && this.state.showAddForm && external__React__default.a.createElement(
-        "div",
-        { className: "edit-topsites" },
-        external__React__default.a.createElement("div", { className: "modal-overlay", onClick: this.onModalOverlayClick }),
-        external__React__default.a.createElement(
-          "div",
-          { className: "modal" },
-          external__React__default.a.createElement(TopSiteForm_TopSiteForm, { onClose: this.onFormClose, dispatch: this.props.dispatch, intl: this.props.intl })
-        )
-      ),
-      showEditForm && external__React__default.a.createElement(
-        "div",
-        { className: "edit-topsites" },
-        external__React__default.a.createElement("div", { className: "modal-overlay", onClick: this.onModalOverlayClick }),
-        external__React__default.a.createElement(
-          "div",
-          { className: "modal" },
-          external__React__default.a.createElement(TopSiteForm_TopSiteForm, {
-            label: editSite.label || editSite.hostname || "",
-            url: editSite.url || "",
-            index: editIndex,
-            editMode: true,
-            onClose: this.onFormClose,
-            dispatch: this.props.dispatch,
-            intl: this.props.intl })
-        )
-      )
-    );
-  }
-}
-
-const TopSitesEdit = Object(external__ReactIntl_["injectIntl"])(TopSitesEdit__TopSitesEdit);
-// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSites.jsx
-
-
-
-
-
-
-
-
-
-
-/**
- * Iterates through TopSites and counts types of images.
- * @param acc Accumulator for reducer.
- * @param topsite Entry in TopSites.
- */
-function countTopSitesIconsTypes(topSites) {
-  const countTopSitesTypes = (acc, link) => {
-    if (link.tippyTopIcon || link.faviconRef === "tippytop") {
-      acc.tippytop++;
-    } else if (link.faviconSize >= MIN_RICH_FAVICON_SIZE) {
-      acc.rich_icon++;
-    } else if (link.screenshot && link.faviconSize >= MIN_CORNER_FAVICON_SIZE) {
-      acc.screenshot_with_icon++;
-    } else if (link.screenshot) {
-      acc.screenshot++;
-    } else {
-      acc.no_image++;
-    }
-
-    return acc;
-  };
-
-  return topSites.reduce(countTopSitesTypes, {
-    "screenshot_with_icon": 0,
-    "screenshot": 0,
-    "tippytop": 0,
-    "rich_icon": 0,
-    "no_image": 0
-  });
-}
-
-class TopSites__TopSites extends external__React__default.a.PureComponent {
-  /**
-   * Dispatch session statistics about the quality of TopSites icons and pinned count.
-   */
-  _dispatchTopSitesStats() {
-    const topSites = this._getTopSites();
-    const topSitesIconsStats = countTopSitesIconsTypes(topSites);
-    const topSitesPinned = topSites.filter(site => !!site.isPinned).length;
-    // Dispatch telemetry event with the count of TopSites images types.
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
-      type: Actions["b" /* actionTypes */].SAVE_SESSION_PERF_DATA,
-      data: { topsites_icon_stats: topSitesIconsStats, topsites_pinned: topSitesPinned }
-    }));
-  }
-
-  /**
-   * Return the TopSites to display based on prefs.
-   */
-  _getTopSites() {
-    return this.props.TopSites.rows.slice(0, this.props.TopSitesCount);
-  }
-
-  componentDidUpdate() {
-    this._dispatchTopSitesStats();
-  }
-
-  componentDidMount() {
-    this._dispatchTopSitesStats();
-  }
-
-  render() {
-    const props = this.props;
-    const infoOption = {
-      header: { id: "settings_pane_topsites_header" },
-      body: { id: "settings_pane_topsites_body" }
-    };
-    return external__React__default.a.createElement(
-      ComponentPerfTimer["a" /* ComponentPerfTimer */],
-      { id: "topsites", initialized: props.TopSites.initialized, dispatch: props.dispatch },
-      external__React__default.a.createElement(
-        CollapsibleSection["a" /* CollapsibleSection */],
-        { className: "top-sites", icon: "topsites", title: external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "header_top_sites" }), infoOption: infoOption, prefName: "collapseTopSites", Prefs: props.Prefs, dispatch: props.dispatch },
-        external__React__default.a.createElement(TopSiteList, { TopSites: props.TopSites, TopSitesCount: props.TopSitesCount, dispatch: props.dispatch, intl: props.intl }),
-        external__React__default.a.createElement(TopSitesEdit, props)
-      )
-    );
-  }
-}
-
-const TopSites = Object(external__ReactRedux_["connect"])(state => ({
-  TopSites: state.TopSites,
-  Prefs: state.Prefs,
-  TopSitesCount: state.Prefs.values.topSitesCount
-}))(TopSites__TopSites);
 // CONCATENATED MODULE: ./system-addon/content-src/components/Base/Base.jsx
 
 
@@ -3529,8 +3293,8 @@ class Base__Base extends external__React__default.a.PureComponent {
     // prerendered DOM to be unmounted. Otherwise, NEW_TAB_STATE_REQUEST is
     // dispatched right after the store is ready.
     if (this.props.isPrerendered) {
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].PAGE_PRERENDERED }));
+      this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
+      this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].PAGE_PRERENDERED }));
     }
   }
 
@@ -3543,20 +3307,15 @@ class Base__Base extends external__React__default.a.PureComponent {
   // have rendered that data.
   sendNewTabRehydrated(App) {
     if (App && App.initialized && !this.renderNotified) {
-      this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({ type: Actions["b" /* actionTypes */].NEW_TAB_REHYDRATED, data: {} }));
+      this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({ type: Actions["b" /* actionTypes */].NEW_TAB_REHYDRATED, data: {} }));
       this.renderNotified = true;
     }
   }
 
   render() {
-    const props = this.props;
+    const { props } = this;
     const { App, locale, strings } = props;
     const { initialized } = App;
-    const prefs = props.Prefs.values;
-
-    const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
-
-    const outerClassName = `outer-wrapper${shouldBeFixedToTop ? " fixed-to-top" : ""}`;
 
     if (!props.isPrerendered && !initialized) {
       return null;
@@ -3566,22 +3325,9 @@ class Base__Base extends external__React__default.a.PureComponent {
       external__ReactIntl_["IntlProvider"],
       { locale: locale, messages: strings },
       external__React__default.a.createElement(
-        "div",
-        { className: outerClassName },
-        external__React__default.a.createElement(
-          "main",
-          null,
-          prefs.showSearch && external__React__default.a.createElement(Search, null),
-          external__React__default.a.createElement(
-            "div",
-            { className: `body-wrapper${initialized ? " on" : ""}` },
-            !prefs.migrationExpired && external__React__default.a.createElement(ManualMigration, null),
-            prefs.showTopSites && external__React__default.a.createElement(TopSites, null),
-            external__React__default.a.createElement(Sections["a" /* Sections */], null)
-          ),
-          external__React__default.a.createElement(ConfirmDialog, null)
-        ),
-        initialized && external__React__default.a.createElement(PreferencesPane, null)
+        ErrorBoundary["a" /* ErrorBoundary */],
+        { className: "base-content-fallback" },
+        external__React__default.a.createElement(Base_BaseContent, this.props)
       )
     );
   }
@@ -3589,37 +3335,94 @@ class Base__Base extends external__React__default.a.PureComponent {
 /* unused harmony export _Base */
 
 
+class Base_BaseContent extends external__React__default.a.PureComponent {
+  render() {
+    const { props } = this;
+    const { App } = props;
+    const { initialized } = App;
+    const prefs = props.Prefs.values;
+
+    const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
+
+    const outerClassName = `outer-wrapper${shouldBeFixedToTop ? " fixed-to-top" : ""} ${prefs.enableWideLayout ? "wide-layout-enabled" : "wide-layout-disabled"}`;
+
+    return external__React__default.a.createElement(
+      "div",
+      { className: outerClassName },
+      external__React__default.a.createElement(
+        "main",
+        null,
+        prefs.showSearch && external__React__default.a.createElement(
+          "div",
+          { className: "non-collapsible-section" },
+          external__React__default.a.createElement(
+            ErrorBoundary["a" /* ErrorBoundary */],
+            null,
+            external__React__default.a.createElement(Search, null)
+          )
+        ),
+        external__React__default.a.createElement(
+          "div",
+          { className: `body-wrapper${initialized ? " on" : ""}` },
+          !prefs.migrationExpired && external__React__default.a.createElement(
+            "div",
+            { className: "non-collapsible-section" },
+            external__React__default.a.createElement(ManualMigration, null)
+          ),
+          external__React__default.a.createElement(Sections["a" /* Sections */], null)
+        ),
+        external__React__default.a.createElement(ConfirmDialog, null)
+      ),
+      initialized && external__React__default.a.createElement(
+        "div",
+        { className: "prefs-pane" },
+        external__React__default.a.createElement(
+          ErrorBoundary["a" /* ErrorBoundary */],
+          { className: "sidebar" },
+          " ",
+          external__React__default.a.createElement(PreferencesPane, null),
+          " "
+        )
+      )
+    );
+  }
+}
+/* unused harmony export BaseContent */
+
+
 const Base = Object(external__ReactRedux_["connect"])(state => ({ App: state.App, Prefs: state.Prefs }))(Base__Base);
 /* harmony export (immutable) */ __webpack_exports__["a"] = Base;
 
 
 /***/ }),
-/* 13 */
+/* 17 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* WEBPACK VAR INJECTION */(function(global) {const IS_NEWTAB = global.document && global.document.documentURI === "about:newtab";
 /* harmony export (immutable) */ __webpack_exports__["a"] = IS_NEWTAB;
 
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 14 */
+/* 18 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_content_src_components_Card_Card__ = __webpack_require__(15);
+/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_content_src_components_Card_Card__ = __webpack_require__(19);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl__ = __webpack_require__(2);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_react_intl__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_components_CollapsibleSection_CollapsibleSection__ = __webpack_require__(7);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_content_src_components_ComponentPerfTimer_ComponentPerfTimer__ = __webpack_require__(8);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux__ = __webpack_require__(3);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_components_CollapsibleSection_CollapsibleSection__ = __webpack_require__(10);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_content_src_components_ComponentPerfTimer_ComponentPerfTimer__ = __webpack_require__(11);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux__ = __webpack_require__(4);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_redux___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_react_redux__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react__ = __webpack_require__(1);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6_react__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_content_src_components_Topics_Topics__ = __webpack_require__(16);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_content_src_components_Topics_Topics__ = __webpack_require__(21);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8_content_src_components_TopSites_TopSites__ = __webpack_require__(22);
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
 
 
 
@@ -3676,7 +3479,7 @@ class Section extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponen
         props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
       }
 
-      // When the page becoems visible, send the impression stats ping if the section isn't collapsed.
+      // When the page becomes visible, send the impression stats ping if the section isn't collapsed.
       this._onVisibilityChange = () => {
         if (props.document.visibilityState === VISIBLE) {
           const { id, Prefs } = this.props;
@@ -3717,6 +3520,12 @@ class Section extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponen
     }
   }
 
+  componentWillUnmount() {
+    if (this._onVisibilityChange) {
+      this.props.document.removeEventListener(VISIBILITY_CHANGE_EVENT, this._onVisibilityChange);
+    }
+  }
+
   needsImpressionStats(cards) {
     if (!this.impressionCardGuids || this.impressionCardGuids.length !== cards.length) {
       return true;
@@ -3745,8 +3554,9 @@ class Section extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponen
   render() {
     const {
       id, eventSource, title, icon, rows,
-      infoOption, emptyState, dispatch, maxRows,
-      contextMenuOptions, initialized, disclaimer
+      emptyState, dispatch, maxRows,
+      contextMenuOptions, initialized, disclaimer,
+      pref, privacyNoticeURL, isFirst, isLast
     } = this.props;
     const maxCards = CARDS_PER_ROW * maxRows;
 
@@ -3768,19 +3578,23 @@ class Section extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponen
       this.props,
       __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
         __WEBPACK_IMPORTED_MODULE_3_content_src_components_CollapsibleSection_CollapsibleSection__["a" /* CollapsibleSection */],
-        { className: "section", icon: icon, title: getFormattedMessage(title),
-          infoOption: infoOption,
+        { className: "section", icon: icon,
+          title: getFormattedMessage(title),
           id: id,
           eventSource: eventSource,
           disclaimer: disclaimer,
           prefName: `section.${id}.collapsed`,
+          showPrefName: pref && pref.feed || id,
+          privacyNoticeURL: privacyNoticeURL,
           Prefs: this.props.Prefs,
+          isFirst: isFirst,
+          isLast: isLast,
           dispatch: this.props.dispatch },
         !shouldShowEmptyState && __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
           "ul",
           { className: "section-list", style: { padding: 0 } },
           realRows.map((link, index) => link && __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_content_src_components_Card_Card__["a" /* Card */], { key: index, index: index, dispatch: dispatch, link: link, contextMenuOptions: contextMenuOptions,
-            eventSource: eventSource, shouldSendImpressionStats: this.props.shouldSendImpressionStats })),
+            eventSource: eventSource, shouldSendImpressionStats: this.props.shouldSendImpressionStats, isWebExtension: this.props.isWebExtension })),
           placeholders > 0 && [...new Array(placeholders)].map((_, i) => __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_0_content_src_components_Card_Card__["b" /* PlaceholderCard */], { key: i }))
         ),
         shouldShowEmptyState && __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
@@ -3812,17 +3626,41 @@ Section.defaultProps = {
   title: ""
 };
 
-const SectionIntl = Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(Section);
+const SectionIntl = Object(__WEBPACK_IMPORTED_MODULE_5_react_redux__["connect"])(state => ({ Prefs: state.Prefs }))(Object(__WEBPACK_IMPORTED_MODULE_1_react_intl__["injectIntl"])(Section));
 /* unused harmony export SectionIntl */
 
 
 class _Sections extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponent {
+  renderSections() {
+    const sections = [];
+    const enabledSections = this.props.Sections.filter(section => section.enabled);
+    const { sectionOrder, showTopSites } = this.props.Prefs.values;
+    // Enabled sections doesn't include Top Sites, so we add it if enabled.
+    const expectedCount = enabledSections.length + ~~showTopSites;
+
+    for (const sectionId of sectionOrder.split(",")) {
+      const commonProps = {
+        key: sectionId,
+        isFirst: sections.length === 0,
+        isLast: sections.length === expectedCount - 1
+      };
+      if (sectionId === "topsites" && showTopSites) {
+        sections.push(__WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_8_content_src_components_TopSites_TopSites__["a" /* TopSites */], commonProps));
+      } else {
+        const section = enabledSections.find(s => s.id === sectionId);
+        if (section) {
+          sections.push(__WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(SectionIntl, _extends({}, section, commonProps)));
+        }
+      }
+    }
+    return sections;
+  }
+
   render() {
-    const sections = this.props.Sections;
     return __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
       "div",
       { className: "sections-list" },
-      sections.filter(section => section.enabled).map(section => __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(SectionIntl, _extends({ key: section.id }, section, { Prefs: this.props.Prefs, dispatch: this.props.dispatch })))
+      this.renderSections()
     );
   }
 }
@@ -3832,10 +3670,10 @@ class _Sections extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureCompon
 const Sections = Object(__WEBPACK_IMPORTED_MODULE_5_react_redux__["connect"])(state => ({ Sections: state.Sections, Prefs: state.Prefs }))(_Sections);
 /* harmony export (immutable) */ __webpack_exports__["a"] = Sections;
 
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 15 */
+/* 19 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -3860,14 +3698,18 @@ const cardContextTypes = {
   now: {
     intlID: "type_label_now",
     icon: "now"
+  },
+  pocket: {
+    intlID: "type_label_pocket",
+    icon: "pocket-small"
   }
 };
 // EXTERNAL MODULE: external "ReactIntl"
 var external__ReactIntl_ = __webpack_require__(2);
 var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
 
-// EXTERNAL MODULE: ./system-addon/content-src/components/LinkMenu/LinkMenu.jsx + 2 modules
-var LinkMenu = __webpack_require__(6);
+// EXTERNAL MODULE: ./system-addon/content-src/components/LinkMenu/LinkMenu.jsx + 1 modules
+var LinkMenu = __webpack_require__(8);
 
 // EXTERNAL MODULE: external "React"
 var external__React_ = __webpack_require__(1);
@@ -3943,41 +3785,69 @@ class Card_Card extends external__React__default.a.PureComponent {
       showContextMenu: true
     });
   }
+
+  /**
+   * Report to telemetry additional information about the item.
+   */
+  _getTelemetryInfo() {
+    // Filter out "history" type for being the default
+    if (this.props.link.type !== "history") {
+      return { value: { card_type: this.props.link.type } };
+    }
+
+    return null;
+  }
+
   onLinkClick(event) {
     event.preventDefault();
     const { altKey, button, ctrlKey, metaKey, shiftKey } = event;
-    this.props.dispatch(Actions["a" /* actionCreators */].SendToMain({
+    this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({
       type: Actions["b" /* actionTypes */].OPEN_LINK,
       data: Object.assign(this.props.link, { event: { altKey, button, ctrlKey, metaKey, shiftKey } })
     }));
-    this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
-      event: "CLICK",
-      source: this.props.eventSource,
-      action_position: this.props.index
-    }));
-    if (this.props.shouldSendImpressionStats) {
-      this.props.dispatch(Actions["a" /* actionCreators */].ImpressionStats({
+
+    if (this.props.isWebExtension) {
+      this.props.dispatch(Actions["a" /* actionCreators */].WebExtEvent(Actions["b" /* actionTypes */].WEBEXT_CLICK, {
         source: this.props.eventSource,
-        click: 0,
-        tiles: [{ id: this.props.link.guid, pos: this.props.index }]
+        url: this.props.link.url,
+        action_position: this.props.index
       }));
+    } else {
+      this.props.dispatch(Actions["a" /* actionCreators */].UserEvent(Object.assign({
+        event: "CLICK",
+        source: this.props.eventSource,
+        action_position: this.props.index
+      }, this._getTelemetryInfo())));
+
+      if (this.props.shouldSendImpressionStats) {
+        this.props.dispatch(Actions["a" /* actionCreators */].ImpressionStats({
+          source: this.props.eventSource,
+          click: 0,
+          tiles: [{ id: this.props.link.guid, pos: this.props.index }]
+        }));
+      }
     }
   }
+
   onMenuUpdate(showContextMenu) {
     this.setState({ showContextMenu });
   }
+
   componentDidMount() {
     this.maybeLoadImage();
   }
+
   componentDidUpdate() {
     this.maybeLoadImage();
   }
+
   componentWillReceiveProps(nextProps) {
     // Clear the image state if changing images
     if (nextProps.link.image !== this.props.link.image) {
       this.setState({ imageLoaded: false });
     }
   }
+
   render() {
     const { index, link, dispatch, contextMenuOptions, eventSource, shouldSendImpressionStats } = this.props;
     const { props } = this;
@@ -3992,7 +3862,7 @@ class Card_Card extends external__React__default.a.PureComponent {
       { className: `card-outer${isContextMenuOpen ? " active" : ""}${props.placeholder ? " placeholder" : ""}` },
       external__React__default.a.createElement(
         "a",
-        { href: link.url, onClick: !props.placeholder && this.onLinkClick },
+        { href: link.type === "pocket" ? link.open_url : link.url, onClick: !props.placeholder ? this.onLinkClick : undefined },
         external__React__default.a.createElement(
           "div",
           { className: "card" },
@@ -4052,14 +3922,14 @@ class Card_Card extends external__React__default.a.PureComponent {
           `Open context menu for ${link.title}`
         )
       ),
-      !props.placeholder && external__React__default.a.createElement(LinkMenu["a" /* LinkMenu */], {
+      isContextMenuOpen && external__React__default.a.createElement(LinkMenu["a" /* LinkMenu */], {
         dispatch: dispatch,
         index: index,
         source: eventSource,
         onUpdate: this.onMenuUpdate,
         options: link.contextMenuOptions || contextMenuOptions,
         site: link,
-        visible: isContextMenuOpen,
+        siteInfo: this._getTelemetryInfo(),
         shouldSendImpressionStats: shouldSendImpressionStats })
     );
   }
@@ -4073,7 +3943,158 @@ const PlaceholderCard = () => external__React__default.a.createElement(Card_Card
 
 
 /***/ }),
-/* 16 */
+/* 20 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+
+// EXTERNAL MODULE: ./system-addon/common/Actions.jsm
+var Actions = __webpack_require__(0);
+
+// EXTERNAL MODULE: ./system-addon/content-src/components/ContextMenu/ContextMenu.jsx
+var ContextMenu = __webpack_require__(9);
+
+// EXTERNAL MODULE: external "ReactIntl"
+var external__ReactIntl_ = __webpack_require__(2);
+var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
+
+// EXTERNAL MODULE: external "React"
+var external__React_ = __webpack_require__(1);
+var external__React__default = /*#__PURE__*/__webpack_require__.n(external__React_);
+
+// CONCATENATED MODULE: ./system-addon/content-src/lib/section-menu-options.js
+
+
+/**
+ * List of functions that return items that can be included as menu options in a
+ * SectionMenu. All functions take the section as the only parameter.
+ */
+const SectionMenuOptions = {
+  Separator: () => ({ type: "separator" }),
+  MoveUp: section => ({
+    id: "section_menu_action_move_up",
+    icon: "arrowhead-up",
+    action: Actions["a" /* actionCreators */].OnlyToMain({
+      type: Actions["b" /* actionTypes */].SECTION_MOVE,
+      data: { id: section.id, direction: -1 }
+    }),
+    userEvent: "SECTION_MENU_MOVE_UP",
+    disabled: !!section.isFirst
+  }),
+  MoveDown: section => ({
+    id: "section_menu_action_move_down",
+    icon: "arrowhead-down",
+    action: Actions["a" /* actionCreators */].OnlyToMain({
+      type: Actions["b" /* actionTypes */].SECTION_MOVE,
+      data: { id: section.id, direction: +1 }
+    }),
+    userEvent: "SECTION_MENU_MOVE_DOWN",
+    disabled: !!section.isLast
+  }),
+  RemoveSection: section => ({
+    id: "section_menu_action_remove_section",
+    icon: "dismiss",
+    action: Actions["a" /* actionCreators */].SetPref(section.showPrefName, false),
+    userEvent: "SECTION_MENU_REMOVE"
+  }),
+  CollapseSection: section => ({
+    id: "section_menu_action_collapse_section",
+    icon: "minimize",
+    action: Actions["a" /* actionCreators */].SetPref(section.collapsePrefName, true),
+    userEvent: "SECTION_MENU_COLLAPSE"
+  }),
+  ExpandSection: section => ({
+    id: "section_menu_action_expand_section",
+    icon: "maximize",
+    action: Actions["a" /* actionCreators */].SetPref(section.collapsePrefName, false),
+    userEvent: "SECTION_MENU_EXPAND"
+  }),
+  ManageSection: section => ({
+    id: "section_menu_action_manage_section",
+    icon: "settings",
+    action: { type: Actions["b" /* actionTypes */].SETTINGS_OPEN },
+    userEvent: "SECTION_MENU_MANAGE"
+  }),
+  AddTopSite: section => ({
+    id: "section_menu_action_add_topsite",
+    icon: "add",
+    action: { type: Actions["b" /* actionTypes */].TOP_SITES_EDIT, data: { index: -1 } },
+    userEvent: "SECTION_MENU_ADD_TOPSITE"
+  }),
+  PrivacyNotice: section => ({
+    id: "section_menu_action_privacy_notice",
+    icon: "info",
+    action: Actions["a" /* actionCreators */].OnlyToMain({
+      type: Actions["b" /* actionTypes */].OPEN_LINK,
+      data: { url: section.privacyNoticeURL }
+    }),
+    userEvent: "SECTION_MENU_PRIVACY_NOTICE"
+  }),
+  CheckCollapsed: section => section.isCollapsed ? SectionMenuOptions.ExpandSection(section) : SectionMenuOptions.CollapseSection(section)
+};
+// CONCATENATED MODULE: ./system-addon/content-src/components/SectionMenu/SectionMenu.jsx
+
+
+
+
+
+
+const DEFAULT_SECTION_MENU_OPTIONS = ["MoveUp", "MoveDown", "Separator", "RemoveSection", "CheckCollapsed", "Separator", "ManageSection"];
+
+class SectionMenu__SectionMenu extends external__React__default.a.PureComponent {
+  getOptions() {
+    const { props } = this;
+
+    const propOptions = Array.from(DEFAULT_SECTION_MENU_OPTIONS);
+    // Prepend custom options and a separator
+    if (props.extraOptions) {
+      propOptions.splice(0, 0, ...props.extraOptions, "Separator");
+    }
+    // Insert privacy notice before the last option ("ManageSection")
+    if (props.privacyNoticeURL) {
+      propOptions.splice(-1, 0, "PrivacyNotice");
+    }
+
+    const options = propOptions.map(o => SectionMenuOptions[o](props)).map(option => {
+      const { action, id, type, userEvent } = option;
+      if (!type && id) {
+        option.label = props.intl.formatMessage({ id });
+        option.onClick = () => {
+          props.dispatch(action);
+          if (userEvent) {
+            props.dispatch(Actions["a" /* actionCreators */].UserEvent({
+              event: userEvent,
+              source: props.source
+            }));
+          }
+        };
+      }
+      return option;
+    });
+
+    // This is for accessibility to support making each item tabbable.
+    // We want to know which item is the first and which item
+    // is the last, so we can close the context menu accordingly.
+    options[0].first = true;
+    options[options.length - 1].last = true;
+    return options;
+  }
+
+  render() {
+    return external__React__default.a.createElement(ContextMenu["a" /* ContextMenu */], {
+      onUpdate: this.props.onUpdate,
+      options: this.getOptions() });
+  }
+}
+/* unused harmony export _SectionMenu */
+
+
+const SectionMenu = Object(external__ReactIntl_["injectIntl"])(SectionMenu__SectionMenu);
+/* harmony export (immutable) */ __webpack_exports__["a"] = SectionMenu;
+
+
+/***/ }),
+/* 21 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -4129,12 +4150,416 @@ class Topics extends __WEBPACK_IMPORTED_MODULE_1_react___default.a.PureComponent
 
 
 /***/ }),
-/* 17 */
+/* 22 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_common_PerfService_jsm__ = __webpack_require__(9);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__TopSitesConstants__ = __webpack_require__(5);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_content_src_components_CollapsibleSection_CollapsibleSection__ = __webpack_require__(10);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_content_src_components_ComponentPerfTimer_ComponentPerfTimer__ = __webpack_require__(11);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react_redux__ = __webpack_require__(4);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_react_redux___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_4_react_redux__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_intl__ = __webpack_require__(2);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_react_intl___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_react_intl__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react__ = __webpack_require__(1);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_react___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6_react__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7_common_Reducers_jsm__ = __webpack_require__(6);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8__TopSiteForm__ = __webpack_require__(23);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__TopSite__ = __webpack_require__(13);
+
+
+
+
+
+
+
+
+
+
+
+function topSiteIconType(link) {
+  if (link.tippyTopIcon || link.faviconRef === "tippytop") {
+    return "tippytop";
+  }
+  if (link.faviconSize >= __WEBPACK_IMPORTED_MODULE_1__TopSitesConstants__["b" /* MIN_RICH_FAVICON_SIZE */]) {
+    return "rich_icon";
+  }
+  if (link.screenshot && link.faviconSize >= __WEBPACK_IMPORTED_MODULE_1__TopSitesConstants__["a" /* MIN_CORNER_FAVICON_SIZE */]) {
+    return "screenshot_with_icon";
+  }
+  if (link.screenshot) {
+    return "screenshot";
+  }
+  return "no_image";
+}
+
+/**
+ * Iterates through TopSites and counts types of images.
+ * @param acc Accumulator for reducer.
+ * @param topsite Entry in TopSites.
+ */
+function countTopSitesIconsTypes(topSites) {
+  const countTopSitesTypes = (acc, link) => {
+    acc[topSiteIconType(link)]++;
+    return acc;
+  };
+
+  return topSites.reduce(countTopSitesTypes, {
+    "screenshot_with_icon": 0,
+    "screenshot": 0,
+    "tippytop": 0,
+    "rich_icon": 0,
+    "no_image": 0
+  });
+}
+
+class _TopSites extends __WEBPACK_IMPORTED_MODULE_6_react___default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onFormClose = this.onFormClose.bind(this);
+  }
+
+  /**
+   * Dispatch session statistics about the quality of TopSites icons and pinned count.
+   */
+  _dispatchTopSitesStats() {
+    const topSites = this._getVisibleTopSites();
+    const topSitesIconsStats = countTopSitesIconsTypes(topSites);
+    const topSitesPinned = topSites.filter(site => !!site.isPinned).length;
+    // Dispatch telemetry event with the count of TopSites images types.
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({
+      type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SAVE_SESSION_PERF_DATA,
+      data: { topsites_icon_stats: topSitesIconsStats, topsites_pinned: topSitesPinned }
+    }));
+  }
+
+  /**
+   * Return the TopSites that are visible based on prefs and window width.
+   */
+  _getVisibleTopSites() {
+    // We hide 2 sites per row when not in the wide layout.
+    let sitesPerRow = __WEBPACK_IMPORTED_MODULE_7_common_Reducers_jsm__["a" /* TOP_SITES_MAX_SITES_PER_ROW */];
+    // $break-point-widest = 1072px (from _variables.scss)
+    if (!global.matchMedia(`(min-width: 1072px)`).matches) {
+      sitesPerRow -= 2;
+    }
+    return this.props.TopSites.rows.slice(0, this.props.TopSitesRows * sitesPerRow);
+  }
+
+  componentDidUpdate() {
+    this._dispatchTopSitesStats();
+  }
+
+  componentDidMount() {
+    this._dispatchTopSitesStats();
+  }
+
+  onFormClose() {
+    this.props.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].UserEvent({
+      source: __WEBPACK_IMPORTED_MODULE_1__TopSitesConstants__["d" /* TOP_SITES_SOURCE */],
+      event: "TOP_SITES_EDIT_CLOSE"
+    }));
+    this.props.dispatch({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].TOP_SITES_CANCEL_EDIT });
+  }
+
+  render() {
+    const { props } = this;
+    const { editForm } = props.TopSites;
+
+    return __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+      __WEBPACK_IMPORTED_MODULE_3_content_src_components_ComponentPerfTimer_ComponentPerfTimer__["a" /* ComponentPerfTimer */],
+      { id: "topsites", initialized: props.TopSites.initialized, dispatch: props.dispatch },
+      __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+        __WEBPACK_IMPORTED_MODULE_2_content_src_components_CollapsibleSection_CollapsibleSection__["a" /* CollapsibleSection */],
+        {
+          className: "top-sites",
+          icon: "topsites",
+          id: "topsites",
+          title: props.intl.formatMessage({ id: "header_top_sites" }),
+          extraMenuOptions: ["AddTopSite"],
+          prefName: "collapseTopSites",
+          showPrefName: "showTopSites",
+          eventSource: __WEBPACK_IMPORTED_MODULE_1__TopSitesConstants__["d" /* TOP_SITES_SOURCE */],
+          Prefs: props.Prefs,
+          isFirst: props.isFirst,
+          isLast: props.isLast,
+          dispatch: props.dispatch },
+        __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_9__TopSite__["b" /* TopSiteList */], { TopSites: props.TopSites, TopSitesRows: props.TopSitesRows, dispatch: props.dispatch, intl: props.intl, topSiteIconType: topSiteIconType }),
+        __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+          "div",
+          { className: "edit-topsites-wrapper" },
+          editForm && __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+            "div",
+            { className: "edit-topsites" },
+            __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement("div", { className: "modal-overlay", onClick: this.onFormClose }),
+            __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(
+              "div",
+              { className: "modal" },
+              __WEBPACK_IMPORTED_MODULE_6_react___default.a.createElement(__WEBPACK_IMPORTED_MODULE_8__TopSiteForm__["a" /* TopSiteForm */], {
+                site: props.TopSites.rows[editForm.index],
+                index: editForm.index,
+                onClose: this.onFormClose,
+                dispatch: this.props.dispatch,
+                intl: this.props.intl })
+            )
+          )
+        )
+      )
+    );
+  }
+}
+/* unused harmony export _TopSites */
+
+
+const TopSites = Object(__WEBPACK_IMPORTED_MODULE_4_react_redux__["connect"])(state => ({
+  TopSites: state.TopSites,
+  Prefs: state.Prefs,
+  TopSitesRows: state.Prefs.values.topSitesRows
+}))(Object(__WEBPACK_IMPORTED_MODULE_5_react_intl__["injectIntl"])(_TopSites));
+/* harmony export (immutable) */ __webpack_exports__["a"] = TopSites;
+
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
+
+/***/ }),
+/* 23 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+
+// EXTERNAL MODULE: ./system-addon/common/Actions.jsm
+var Actions = __webpack_require__(0);
+
+// EXTERNAL MODULE: external "ReactIntl"
+var external__ReactIntl_ = __webpack_require__(2);
+var external__ReactIntl__default = /*#__PURE__*/__webpack_require__.n(external__ReactIntl_);
+
+// EXTERNAL MODULE: external "React"
+var external__React_ = __webpack_require__(1);
+var external__React__default = /*#__PURE__*/__webpack_require__.n(external__React_);
+
+// EXTERNAL MODULE: ./system-addon/content-src/components/TopSites/TopSitesConstants.js
+var TopSitesConstants = __webpack_require__(5);
+
+// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSiteFormInput.jsx
+
+
+
+class TopSiteFormInput_TopSiteFormInput extends external__React__default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    this.onMount = this.onMount.bind(this);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (nextProps.validationError && !this.props.validationError) {
+      this.input.focus();
+    }
+  }
+
+  onMount(input) {
+    this.input = input;
+  }
+
+  render() {
+    const showClearButton = this.props.value && this.props.onClear;
+    const { validationError, typeUrl } = this.props;
+
+    return external__React__default.a.createElement(
+      "label",
+      null,
+      external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: this.props.titleId }),
+      external__React__default.a.createElement(
+        "div",
+        { className: `field ${typeUrl ? "url" : ""}${validationError ? " invalid" : ""}` },
+        showClearButton && external__React__default.a.createElement("div", { className: "icon icon-clear-input", onClick: this.props.onClear }),
+        external__React__default.a.createElement("input", { type: "text",
+          value: this.props.value,
+          ref: this.onMount,
+          onChange: this.props.onChange,
+          placeholder: this.props.intl.formatMessage({ id: this.props.placeholderId }) }),
+        validationError && external__React__default.a.createElement(
+          "aside",
+          { className: "error-tooltip" },
+          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: this.props.errorMessageId })
+        )
+      )
+    );
+  }
+}
+
+TopSiteFormInput_TopSiteFormInput.defaultProps = {
+  showClearButton: false,
+  value: "",
+  validationError: false
+};
+// EXTERNAL MODULE: ./system-addon/content-src/components/TopSites/TopSite.jsx
+var TopSite = __webpack_require__(13);
+
+// CONCATENATED MODULE: ./system-addon/content-src/components/TopSites/TopSiteForm.jsx
+
+
+
+
+
+
+
+class TopSiteForm_TopSiteForm extends external__React__default.a.PureComponent {
+  constructor(props) {
+    super(props);
+    const { site } = props;
+    this.state = {
+      label: site ? site.label || site.hostname : "",
+      url: site ? site.url : "",
+      validationError: false
+    };
+    this.onLabelChange = this.onLabelChange.bind(this);
+    this.onUrlChange = this.onUrlChange.bind(this);
+    this.onCancelButtonClick = this.onCancelButtonClick.bind(this);
+    this.onClearUrlClick = this.onClearUrlClick.bind(this);
+    this.onDoneButtonClick = this.onDoneButtonClick.bind(this);
+  }
+
+  onLabelChange(event) {
+    this.setState({ "label": event.target.value });
+  }
+
+  onUrlChange(event) {
+    this.setState({
+      url: event.target.value,
+      validationError: false
+    });
+  }
+
+  onClearUrlClick() {
+    this.setState({
+      url: "",
+      validationError: false
+    });
+  }
+
+  onCancelButtonClick(ev) {
+    ev.preventDefault();
+    this.props.onClose();
+  }
+
+  onDoneButtonClick(ev) {
+    ev.preventDefault();
+
+    if (this.validateForm()) {
+      const site = { url: this.cleanUrl(this.state.url) };
+      const { index } = this.props;
+      if (this.state.label !== "") {
+        site.label = this.state.label;
+      }
+
+      this.props.dispatch(Actions["a" /* actionCreators */].AlsoToMain({
+        type: Actions["b" /* actionTypes */].TOP_SITES_PIN,
+        data: { site, index }
+      }));
+      this.props.dispatch(Actions["a" /* actionCreators */].UserEvent({
+        source: TopSitesConstants["d" /* TOP_SITES_SOURCE */],
+        event: "TOP_SITES_EDIT",
+        action_position: index
+      }));
+
+      this.props.onClose();
+    }
+  }
+
+  cleanUrl(url) {
+    // If we are missing a protocol, prepend http://
+    if (!url.startsWith("http:") && !url.startsWith("https:")) {
+      return `http://${url}`;
+    }
+    return url;
+  }
+
+  validateUrl(url) {
+    try {
+      return !!new URL(this.cleanUrl(url));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  validateForm() {
+    const validate = this.validateUrl(this.state.url);
+    this.setState({ validationError: !validate });
+    return validate;
+  }
+
+  render() {
+    // For UI purposes, editing without an existing link is "add"
+    const showAsAdd = !this.props.site;
+
+    return external__React__default.a.createElement(
+      "form",
+      { className: "topsite-form" },
+      external__React__default.a.createElement(
+        "div",
+        { className: "form-input-container" },
+        external__React__default.a.createElement(
+          "h3",
+          { className: "section-title" },
+          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: showAsAdd ? "topsites_form_add_header" : "topsites_form_edit_header" })
+        ),
+        external__React__default.a.createElement(
+          "div",
+          { className: "fields-and-preview" },
+          external__React__default.a.createElement(
+            "div",
+            { className: "form-wrapper" },
+            external__React__default.a.createElement(TopSiteFormInput_TopSiteFormInput, { onChange: this.onLabelChange,
+              value: this.state.label,
+              titleId: "topsites_form_title_label",
+              placeholderId: "topsites_form_title_placeholder",
+              intl: this.props.intl }),
+            external__React__default.a.createElement(TopSiteFormInput_TopSiteFormInput, { onChange: this.onUrlChange,
+              value: this.state.url,
+              onClear: this.onClearUrlClick,
+              validationError: this.state.validationError,
+              titleId: "topsites_form_url_label",
+              typeUrl: true,
+              placeholderId: "topsites_form_url_placeholder",
+              errorMessageId: "topsites_form_url_validation",
+              intl: this.props.intl })
+          ),
+          external__React__default.a.createElement(TopSite["a" /* TopSiteLink */], { link: this.props.site || {}, title: this.state.label })
+        )
+      ),
+      external__React__default.a.createElement(
+        "section",
+        { className: "actions" },
+        external__React__default.a.createElement(
+          "button",
+          { className: "cancel", type: "button", onClick: this.onCancelButtonClick },
+          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: "topsites_form_cancel_button" })
+        ),
+        external__React__default.a.createElement(
+          "button",
+          { className: "done", type: "submit", onClick: this.onDoneButtonClick },
+          external__React__default.a.createElement(external__ReactIntl_["FormattedMessage"], { id: showAsAdd ? "topsites_form_add_button" : "topsites_form_save_button" })
+        )
+      )
+    );
+  }
+}
+/* harmony export (immutable) */ __webpack_exports__["a"] = TopSiteForm_TopSiteForm;
+
+
+TopSiteForm_TopSiteForm.defaultProps = {
+  TopSite: null,
+  index: -1
+};
+
+/***/ }),
+/* 24 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(global) {/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_common_PerfService_jsm__ = __webpack_require__(12);
 
 
 
@@ -4178,7 +4603,7 @@ class DetectUserSessionStart {
     try {
       let visibility_event_rcvd_ts = this._perfService.getMostRecentAbsMarkStartByName("visibility_event_rcvd_ts");
 
-      this._store.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({
+      this._store.dispatch(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({
         type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].SAVE_SESSION_PERF_DATA,
         data: { visibility_event_rcvd_ts }
       }));
@@ -4201,16 +4626,16 @@ class DetectUserSessionStart {
 }
 /* harmony export (immutable) */ __webpack_exports__["a"] = DetectUserSessionStart;
 
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 18 */
+/* 25 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* WEBPACK VAR INJECTION */(function(global) {/* harmony export (immutable) */ __webpack_exports__["a"] = initStore;
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__ = __webpack_require__(0);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_redux__ = __webpack_require__(19);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_redux__ = __webpack_require__(26);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_redux___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_redux__);
 /* eslint-env mozilla/frame-script */
 
@@ -4260,10 +4685,13 @@ function mergeStateReducer(mainReducer) {
  * messageMiddleware - Middleware that looks for SentToMain type actions, and sends them if necessary
  */
 const messageMiddleware = store => next => action => {
+  const skipLocal = action.meta && action.meta.skipLocal;
   if (__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isSendToMain(action)) {
     sendAsyncMessage(OUTGOING_MESSAGE_NAME, action);
   }
-  next(action);
+  if (!skipLocal) {
+    next(action);
+  }
 };
 
 const rehydrationMiddleware = store => next => action => {
@@ -4286,10 +4714,10 @@ const rehydrationMiddleware = store => next => action => {
 
   // If init happened after our request was made, we need to re-request
   if (store._didRequestInitialState && action.type === __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].INIT) {
-    return next(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].SendToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
+    return next(__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["a" /* actionCreators */].AlsoToMain({ type: __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["b" /* actionTypes */].NEW_TAB_STATE_REQUEST }));
   }
 
-  if (__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isBroadcastToContent(action) || __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isSendToContent(action) || __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isSendToPreloaded(action)) {
+  if (__WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isBroadcastToContent(action) || __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isSendToOneContent(action) || __WEBPACK_IMPORTED_MODULE_0_common_Actions_jsm__["c" /* actionUtils */].isSendToPreloaded(action)) {
     // Note that actions received before didRehydrate will not be dispatched
     // because this could negatively affect preloading and the the state
     // will be replaced by rehydration anyway.
@@ -4356,19 +4784,20 @@ function initStore(reducers, initialState) {
 
   return store;
 }
-/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(4)))
+/* WEBPACK VAR INJECTION */}.call(__webpack_exports__, __webpack_require__(3)))
 
 /***/ }),
-/* 19 */
+/* 26 */
 /***/ (function(module, exports) {
 
 module.exports = Redux;
 
 /***/ }),
-/* 20 */
+/* 27 */
 /***/ (function(module, exports) {
 
 module.exports = ReactDOM;
 
 /***/ })
 /******/ ]);
+//# sourceMappingURL=activity-stream.bundle.js.map

@@ -11,7 +11,8 @@ const { ChromeActor } = require("./chrome");
 const makeDebugger = require("./utils/make-debugger");
 
 loader.lazyRequireGetter(this, "mapURIToAddonID", "devtools/server/actors/utils/map-uri-to-addon-id");
-loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/script", true);
+loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/thread", true);
+loader.lazyRequireGetter(this, "ChromeUtils");
 
 const FALLBACK_DOC_MESSAGE = "Your addon does not have any document opened yet.";
 
@@ -58,6 +59,18 @@ function WebExtensionChildActor(conn, chromeGlobal, prefix, addonId) {
   this._chromeGlobal = chromeGlobal;
   this._prefix = prefix;
   this.id = addonId;
+
+  // Redefine the messageManager getter to return the chromeGlobal
+  // as the messageManager for this actor (which is the browser XUL
+  // element used by the parent actor running in the main process to
+  // connect to the extension process).
+  Object.defineProperty(this, "messageManager", {
+    enumerable: true,
+    configurable: true,
+    get: () => {
+      return this._chromeGlobal;
+    }
+  });
 
   // Bind the _allowSource helper to this, it is used in the
   // TabActor to lazily create the TabSources instance.
@@ -347,7 +360,7 @@ WebExtensionChildActor.prototype._shouldAddNewGlobalAsDebuggee = function (newGl
     }
 
     // Filter out any global which contains a XUL document.
-    if (global.document instanceof Ci.nsIDOMXULDocument) {
+    if (ChromeUtils.getClassName(global.document) == "XULDocument") {
       return false;
     }
 

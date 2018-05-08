@@ -9,7 +9,7 @@
 // TODO: Get rid of this code once the marionette server loads transport.js as
 // an SDK module (see bug 1000814)
 (function (factory) {
-  if (this.module && module.id.indexOf("transport") >= 0) {
+  if (this.module && module.id.includes("transport")) {
     // require
     factory.call(this, require, exports);
   } else if (this.require) {
@@ -17,8 +17,7 @@
     factory.call(this, require, this);
   } else {
     // Cu.import
-    const Cu = Components.utils;
-    const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     factory.call(this, require, this);
   }
 }).call(this, function (require, exports) {
@@ -31,7 +30,7 @@
   require("devtools/shared/transport/packets");
   const promise = require("promise");
   const defer = require("devtools/shared/defer");
-  const EventEmitter = require("devtools/shared/old-event-emitter");
+  const EventEmitter = require("devtools/shared/event-emitter");
 
   DevToolsUtils.defineLazyGetter(this, "Pipe", () => {
     return CC("@mozilla.org/pipe;1", "nsIPipe", "init");

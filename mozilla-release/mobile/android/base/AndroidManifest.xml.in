@@ -1,6 +1,7 @@
 #filter substitution
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:tools="http://schemas.android.com/tools"
       package="@ANDROID_PACKAGE_NAME@"
       android:installLocation="internalOnly"
       android:versionCode="@ANDROID_VERSION_CODE@"
@@ -29,24 +30,14 @@
                  android:hardwareAccelerated="true"
                  android:supportsRtl="true"
                  android:allowBackup="false"
-# The preprocessor does not yet support arbitrary parentheses, so this cannot
-# be parenthesized thus to clarify that the logical AND operator has precedence:
-#   !defined(MOZILLA_OFFICIAL) || (defined(NIGHTLY_BUILD) && defined(MOZ_DEBUG))
-#if !defined(MOZILLA_OFFICIAL) || defined(NIGHTLY_BUILD) && defined(MOZ_DEBUG)
-                 android:debuggable="true">
-#else
-                 android:debuggable="false">
-#endif
+                 >
 
         <meta-data android:name="com.sec.android.support.multiwindow" android:value="true"/>
 
         <meta-data android:name="android.max_aspect" android:value="2.1"/>
 
 #ifdef MOZ_NATIVE_DEVICES
-        <!-- This resources comes from Google Play Services. Required for casting support. -->
-        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version" />
         <service android:name="org.mozilla.gecko.RemotePresentationService" android:exported="false"/>
-
 #endif
 
         <!-- This activity handles all incoming Intents and dispatches them to other activities. -->
@@ -133,7 +124,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <intent-filter>
+            <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.WEB_SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -159,7 +150,7 @@
                 android:resource="@integer/assist_launch_icon_res"/>
 
             <!-- For XPI installs from websites and the download manager. -->
-            <intent-filter>
+            <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" />
@@ -169,7 +160,7 @@
             </intent-filter>
 
             <!-- For XPI installs from file: URLs. -->
-            <intent-filter>
+            <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:host="" />
@@ -473,6 +464,11 @@
 
 #ifdef MOZ_ANDROID_MMA
 #include MmaAndroidManifest_services.xml.in
+#endif
+
+#ifdef MOZ_ANDROID_GOOGLE_PLAY_SERVICES
+        <!-- This resources comes from Google Play Services. Required for casting support. -->
+        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version" />
 #endif
 
     </application>

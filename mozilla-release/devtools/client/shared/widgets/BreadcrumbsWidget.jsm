@@ -5,13 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Cu = Components.utils;
-
 const ENSURE_SELECTION_VISIBLE_DELAY = 50; // ms
 
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { ViewHelpers, setNamedTimeout } = require("devtools/client/shared/widgets/view-helpers");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 
 this.EXPORTED_SYMBOLS = ["BreadcrumbsWidget"];
 
@@ -38,7 +36,7 @@ this.BreadcrumbsWidget = function BreadcrumbsWidget(aNode, aOptions = {}) {
   this._list.setAttribute("orient", "horizontal");
   this._list.setAttribute("clicktoscroll", "true");
   this._list.setAttribute("smoothscroll", !!aOptions.smoothScroll);
-  this._list.addEventListener("keypress", e => this.emit("keyPress", e));
+  this._list.addEventListener("keydown", e => this.emit("keyDown", e));
   this._list.addEventListener("mousedown", e => this.emit("mousePress", e));
   this._parent.appendChild(this._list);
 

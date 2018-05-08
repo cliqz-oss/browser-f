@@ -4,10 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["TabStateFlusher"];
-
-const Cu = Components.utils;
-
+var EXPORTED_SYMBOLS = ["TabStateFlusher"];
 
 /**
  * A module that enables async flushes. Updates from frame scripts are
@@ -16,7 +13,7 @@ const Cu = Components.utils;
  * wait until the frame scripts reported back. At this point the parent has the
  * latest data and the action can continue.
  */
-this.TabStateFlusher = Object.freeze({
+var TabStateFlusher = Object.freeze({
   /**
    * Requests an async flush for the given browser. Returns a promise that will
    * resolve when we heard back from the content process and the parent has

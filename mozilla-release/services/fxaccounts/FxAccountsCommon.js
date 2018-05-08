@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 // loglevel should be one of "Fatal", "Error", "Warn", "Info", "Config",
 // "Debug", "Trace" or "All". If none is specified, "Debug" will be used by
@@ -205,6 +203,8 @@ exports.ERROR_INVALID_PARAMETER              = "INVALID_PARAMETER";
 exports.ERROR_CODE_METHOD_NOT_ALLOWED        = 405;
 exports.ERROR_MSG_METHOD_NOT_ALLOWED         = "METHOD_NOT_ALLOWED";
 
+exports.DERIVED_KEYS_NAMES = ["kSync", "kXCS", "kExtSync", "kExtKbHash"];
+
 // FxAccounts has the ability to "split" the credentials between a plain-text
 // JSON file in the profile dir and in the login manager.
 // In order to prevent new fields accidentally ending up in the "wrong" place,
@@ -218,7 +218,7 @@ exports.FXA_PWDMGR_PLAINTEXT_FIELDS = new Set(
 
 // Fields we store in secure storage if it exists.
 exports.FXA_PWDMGR_SECURE_FIELDS = new Set(
-  ["kA", "kB", "keyFetchToken", "unwrapBKey", "assertion"]);
+  [...exports.DERIVED_KEYS_NAMES, "keyFetchToken", "unwrapBKey", "assertion"]);
 
 // Fields we keep in memory and don't persist anywhere.
 exports.FXA_PWDMGR_MEMORY_FIELDS = new Set(
@@ -245,7 +245,7 @@ for (let id in exports) {
 }
 
 // Allow this file to be imported via Components.utils.import().
-this.EXPORTED_SYMBOLS = Object.keys(exports);
+var EXPORTED_SYMBOLS = Object.keys(exports);
 
 // Set these up now that everything has been loaded into |this|.
 exports.SERVER_ERRNO_TO_ERROR[exports.ERRNO_ACCOUNT_ALREADY_EXISTS]         = exports.ERROR_ACCOUNT_ALREADY_EXISTS;

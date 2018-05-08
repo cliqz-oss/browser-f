@@ -5,10 +5,10 @@
 
 'use strict';
 
-const { classes: Cc, interfaces: Ci, manager: Cm, utils: Cu, results: Cr } = Components;
+const Cm = Components.manager;
 
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-Cu.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
+ChromeUtils.import('resource://gre/modules/Services.jsm');
 
 const uuidGenerator = Cc["@mozilla.org/uuid-generator;1"]
                       .getService(Ci.nsIUUIDGenerator);
@@ -182,7 +182,7 @@ const mockDevicePrompt = {
                                          Ci.nsIFactory]),
   createInstance: function(aOuter, aIID) {
     if (aOuter) {
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     }
     return this.QueryInterface(aIID);
   },
@@ -215,7 +215,7 @@ const mockRequestUIGlue = {
   },
   createInstance: function(aOuter, aIID) {
     if (aOuter) {
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     }
     return this.QueryInterface(aIID);
   },

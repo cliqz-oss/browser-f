@@ -4,9 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_WindowsDllServices_h
-#define mozilla_WindowsDllServices_h
+#ifndef mozilla_glue_WindowsDllServices_h
+#define mozilla_glue_WindowsDllServices_h
 
+#include "mozilla/Authenticode.h"
 #include "mozilla/WindowsDllBlocklist.h"
 
 #if defined(MOZILLA_INTERNAL_API)
@@ -22,9 +23,10 @@
 #include <winternl.h>
 
 namespace mozilla {
+namespace glue {
 namespace detail {
 
-class DllServicesBase
+class DllServicesBase : public Authenticode
 {
 public:
   /**
@@ -34,6 +36,20 @@ public:
    *          event loop so that it may be handled in a safe context.
    */
   virtual void DispatchDllLoadNotification(PCUNICODE_STRING aDllName) = 0;
+
+  void SetAuthenticodeImpl(Authenticode* aAuthenticode)
+  {
+    mAuthenticode = aAuthenticode;
+  }
+
+  UniquePtr<wchar_t[]> GetBinaryOrgName(const wchar_t* aFilePath) final
+  {
+    if (!mAuthenticode) {
+      return nullptr;
+    }
+
+    return mAuthenticode->GetBinaryOrgName(aFilePath);
+  }
 
   void Disable()
   {
@@ -46,13 +62,20 @@ public:
   DllServicesBase& operator=(DllServicesBase&&) = delete;
 
 protected:
-  DllServicesBase() = default;
+  DllServicesBase()
+    : mAuthenticode(nullptr)
+  {
+  }
+
   virtual ~DllServicesBase() = default;
 
   void Enable()
   {
     DllBlocklist_SetDllServices(this);
   }
+
+private:
+  Authenticode* mAuthenticode;
 };
 
 } // namespace detail
@@ -62,7 +85,7 @@ protected:
 class DllServices : public detail::DllServicesBase
 {
 public:
-  virtual void DispatchDllLoadNotification(PCUNICODE_STRING aDllName) override final
+  void DispatchDllLoadNotification(PCUNICODE_STRING aDllName) final
   {
     nsDependentSubstring strDllName(aDllName->Buffer,
                                     aDllName->Length / sizeof(wchar_t));
@@ -84,8 +107,27 @@ protected:
   virtual void NotifyDllLoad(const bool aIsMainThread, const nsString& aDllName) = 0;
 };
 
+#else
+
+class BasicDllServices : public detail::DllServicesBase
+{
+public:
+  BasicDllServices()
+  {
+    Enable();
+  }
+
+  ~BasicDllServices()
+  {
+    Disable();
+  }
+
+  virtual void DispatchDllLoadNotification(PCUNICODE_STRING aDllName) override {}
+};
+
 #endif // defined(MOZILLA_INTERNAL_API)
 
+} // namespace glue
 } // namespace mozilla
 
-#endif // mozilla_WindowsDllServices_h
+#endif // mozilla_glue_WindowsDllServices_h

@@ -5,15 +5,14 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SimpleServiceDiscovery"];
+var EXPORTED_SYMBOLS = ["SimpleServiceDiscovery"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 var log = Cu.reportError;
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 XPCOMUtils.defineLazyGetter(this, "converter", function() {
   let conv = Cc["@mozilla.org/intl/scriptableunicodeconverter"].createInstance(Ci.nsIScriptableUnicodeConverter);
@@ -348,7 +347,7 @@ var SimpleServiceDiscovery = {
 
   _processService: function _processService(aService) {
     // Use the REST api to request more information about this service
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("GET", aService.location, true);
     xhr.channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
     xhr.overrideMimeType("text/xml");

@@ -7,11 +7,13 @@
 DIRS += [
     'emulation',
     'highlighters',
+    'inspector',
     'utils',
     'webconsole',
 ]
 
 DevToolsModules(
+    'accessibility-parent.js',
     'accessibility.js',
     'actor-registry.js',
     'addon.js',
@@ -21,9 +23,9 @@ DevToolsModules(
     'call-watcher.js',
     'canvas.js',
     'child-process.js',
-    'childtab.js',
     'chrome.js',
     'common.js',
+    'content.js',
     'css-properties.js',
     'csscoverage.js',
     'device.js',
@@ -37,11 +39,10 @@ DevToolsModules(
     'heap-snapshot-file.js',
     'highlighters.css',
     'highlighters.js',
-    'inspector.js',
     'layout.js',
     'memory.js',
-    'monitor.js',
     'object.js',
+    'pause-scoped.js',
     'perf.js',
     'performance-recording.js',
     'performance.js',
@@ -51,13 +52,13 @@ DevToolsModules(
     'promises.js',
     'reflow.js',
     'root.js',
-    'script.js',
     'source.js',
     'storage.js',
     'string.js',
     'styles.js',
     'stylesheets.js',
     'tab.js',
+    'thread.js',
     'timeline.js',
     'webaudio.js',
     'webbrowser.js',
@@ -83,14 +84,8 @@ with Files('css-properties.js'):
 with Files('csscoverage.js'):
     BUG_COMPONENT = ('Firefox', 'Developer Tools: Graphics Commandline and Toolbar')
 
-with Files('inspector.js'):
-    BUG_COMPONENT = ('Firefox', 'Developer Tools: Inspector')
-
 with Files('memory.js'):
     BUG_COMPONENT = ('Firefox', 'Developer Tools: Memory')
-
-with Files('monitor.js'):
-    BUG_COMPONENT = ('Firefox', 'Developer Tools')
 
 with Files('performance*'):
     BUG_COMPONENT = ('Firefox', 'Developer Tools: Performance Tools (Profiler/Timeline)')

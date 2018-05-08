@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Extension", "ExtensionData", "Langpack"];
+var EXPORTED_SYMBOLS = ["Extension", "ExtensionData", "Langpack"];
 
 /* exported Extension, ExtensionData */
 /* globals Extension ExtensionData */
@@ -32,13 +32,8 @@ this.EXPORTED_SYMBOLS = ["Extension", "ExtensionData", "Langpack"];
  * to run in the same process of the existing addon debugging browser element).
  */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
@@ -72,8 +67,8 @@ XPCOMUtils.defineLazyGetter(
   () => Services.io.getProtocolHandler("resource")
           .QueryInterface(Ci.nsIResProtocolHandler));
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   aomStartup: ["@mozilla.org/addons/addon-manager-startup;1", "amIAddonManagerStartup"],
@@ -428,12 +423,51 @@ class ExtensionData {
     });
   }
 
-  // This method should return a structured representation of any
-  // capabilities this extension has access to, as derived from the
-  // manifest.  The current implementation just returns the contents
-  // of the permissions attribute, if we add things like url_overrides,
-  // they should also be added here.
-  get userPermissions() {
+  /**
+   * Returns an object representing any capabilities that the extension
+   * has access to based on fixed properties in the manifest.  The result
+   * includes the contents of the "permissions" property as well as other
+   * capabilities that are derived from manifest fields that users should
+   * be informed of (e.g., origins where content scripts are injected).
+   */
+  get manifestPermissions() {
+    if (this.type !== "extension") {
+      return null;
+    }
+
+    let permissions = new Set();
+    let origins = new Set();
+    for (let perm of this.manifest.permissions || []) {
+      let type = classifyPermission(perm);
+      if (type.origin) {
+        origins.add(perm);
+      } else if (!type.api) {
+        permissions.add(perm);
+      }
+    }
+
+    if (this.manifest.devtools_page) {
+      permissions.add("devtools");
+    }
+
+    for (let entry of this.manifest.content_scripts || []) {
+      for (let origin of entry.matches) {
+        origins.add(origin);
+      }
+    }
+
+    return {
+      permissions: Array.from(permissions),
+      origins: Array.from(origins),
+    };
+  }
+
+  /**
+   * Returns an object representing all capabilities this extension has
+   * access to, including fixed ones from the manifest as well as dynamically
+   * granted permissions.
+   */
+  get activePermissions() {
     if (this.type !== "extension") {
       return null;
     }
@@ -443,11 +477,6 @@ class ExtensionData {
       apis: [...this.apiNames],
     };
 
-    if (Array.isArray(this.manifest.content_scripts)) {
-      for (let entry of this.manifest.content_scripts) {
-        result.origins.push(...entry.matches);
-      }
-    }
     const EXP_PATTERN = /^experiments\.\w+/;
     result.permissions = [...this.permissions]
       .filter(p => !result.origins.includes(p) && !EXP_PATTERN.test(p));
@@ -547,10 +576,6 @@ class ExtensionData {
     };
 
     if (this.type === "extension") {
-      if (this.manifest.devtools_page) {
-        permissions.add("devtools");
-      }
-
       for (let perm of manifest.permissions) {
         if (perm === "geckoProfiler" && !this.isPrivileged) {
           const acceptedExtensions = Services.prefs.getStringPref("extensions.geckoProfiler.acceptedExtensionIds", "");
@@ -636,8 +661,11 @@ class ExtensionData {
           .map(path => path.replace(/^\/*/, "/")));
       }
     } else if (this.type == "langpack") {
-      // Compute the chrome resources to be registered for this langpack
-      // and stash them in startupData
+      // Langpack startup is performance critical, so we want to compute as much
+      // as possible here to make startup not trigger async DB reads.
+      // We'll store the four items below in the startupData.
+
+      // 1. Compute the chrome resources to be registered for this langpack.
       const platform = AppConstants.platform;
       const chromeEntries = [];
       for (const [language, entry] of Object.entries(manifest.languages)) {
@@ -652,7 +680,39 @@ class ExtensionData {
         }
       }
 
-      this.startupData = {chromeEntries};
+
+      // 2. Compute langpack ID.
+      const productCodeName = AppConstants.MOZ_BUILD_APP.replace("/", "-");
+
+      // The result path looks like this:
+      //   Firefox - `langpack-pl-browser`
+      //   Fennec - `langpack-pl-mobile-android`
+      const langpackId =
+        `langpack-${manifest.langpack_id}-${productCodeName}`;
+
+
+      // 3. Compute L10nRegistry sources for this langpack.
+      const l10nRegistrySources = {};
+
+      // Check if there's a root directory `/localization` in the langpack.
+      // If there is one, add it with the name `toolkit` as a FileSource.
+      const entries = await this.readDirectory("localization");
+      if (entries.length > 0) {
+        l10nRegistrySources.toolkit = "";
+      }
+
+      // Add any additional sources listed in the manifest
+      if (manifest.sources) {
+        for (const [sourceName, {base_path}] of Object.entries(manifest.sources)) {
+          l10nRegistrySources[sourceName] = base_path;
+        }
+      }
+
+      // 4. Save the list of languages handled by this langpack.
+      const languages = Object.keys(manifest.languages);
+
+
+      this.startupData = {chromeEntries, langpackId, l10nRegistrySources, languages};
     }
 
     if (schemaPromises.size) {
@@ -1778,41 +1838,9 @@ class Langpack extends ExtensionData {
       });
   }
 
-  async _parseManifest() {
-    let data = await super.parseManifest();
-
-    const productCodeName = AppConstants.MOZ_BUILD_APP.replace("/", "-");
-
-    // The result path looks like this:
-    //   Firefox - `langpack-pl-browser`
-    //   Fennec - `langpack-pl-mobile-android`
-    data.langpackId =
-      `langpack-${data.manifest.langpack_id}-${productCodeName}`;
-
-    const l10nRegistrySources = {};
-
-    // Check if there's a root directory `/localization` in the langpack.
-    // If there is one, add it with the name `toolkit` as a FileSource.
-    const entries = await this.readDirectory("localization");
-    if (entries.length > 0) {
-      l10nRegistrySources.toolkit = "";
-    }
-
-    // Add any additional sources listed in the manifest
-    if (data.manifest.sources) {
-      for (const [sourceName, {base_path}] of Object.entries(data.manifest.sources)) {
-        l10nRegistrySources[sourceName] = base_path;
-      }
-    }
-
-    data.l10nRegistrySources = l10nRegistrySources;
-
-    return data;
-  }
-
   parseManifest() {
     return StartupCache.manifests.get(this.manifestCacheKey,
-                                      () => this._parseManifest());
+                                      () => super.parseManifest());
   }
 
   async startup(reason) {
@@ -1823,18 +1851,16 @@ class Langpack extends ExtensionData {
         aomStartup.registerChrome(manifestURI, this.startupData.chromeEntries);
     }
 
-    const data = await this.parseManifest();
-    this.langpackId = data.langpackId;
-    this.l10nRegistrySources = data.l10nRegistrySources;
+    const langpackId = this.startupData.langpackId;
+    const l10nRegistrySources = this.startupData.l10nRegistrySources;
 
-    const languages = Object.keys(data.manifest.languages);
-    resourceProtocol.setSubstitution(this.langpackId, this.rootURI);
+    resourceProtocol.setSubstitution(langpackId, this.rootURI);
 
-    for (const [sourceName, basePath] of Object.entries(this.l10nRegistrySources)) {
+    for (const [sourceName, basePath] of Object.entries(l10nRegistrySources)) {
       L10nRegistry.registerSource(new FileSource(
-        `${sourceName}-${this.langpackId}`,
-        languages,
-        `resource://${this.langpackId}/${basePath}localization/{locale}/`
+        `${sourceName}-${langpackId}`,
+        this.startupData.languages,
+        `resource://${langpackId}/${basePath}localization/{locale}/`
       ));
     }
 
@@ -1843,14 +1869,14 @@ class Langpack extends ExtensionData {
   }
 
   async shutdown(reason) {
-    for (const sourceName of Object.keys(this.l10nRegistrySources)) {
-      L10nRegistry.removeSource(`${sourceName}-${this.langpackId}`);
+    for (const sourceName of Object.keys(this.startupData.l10nRegistrySources)) {
+      L10nRegistry.removeSource(`${sourceName}-${this.startupData.langpackId}`);
     }
     if (this.chromeRegistryHandle) {
       this.chromeRegistryHandle.destruct();
       this.chromeRegistryHandle = null;
     }
 
-    resourceProtocol.setSubstitution(this.langpackId, null);
+    resourceProtocol.setSubstitution(this.startupData.langpackId, null);
   }
 }

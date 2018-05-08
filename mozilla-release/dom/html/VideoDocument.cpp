@@ -108,15 +108,15 @@ VideoDocument::CreateSyntheticVideoDocument(nsIChannel* aChannel,
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::video, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<HTMLMediaElement> element =
     static_cast<HTMLMediaElement*>(NS_NewHTMLVideoElement(nodeInfo.forget(),
                                                           NOT_FROM_PARSER));
   if (!element)
     return NS_ERROR_OUT_OF_MEMORY;
-  element->SetAutoplay(true);
-  element->SetControls(true);
+  element->SetAutoplay(true, IgnoreErrors());
+  element->SetControls(true, IgnoreErrors());
   element->LoadWithChannel(aChannel, aListener);
   UpdateTitle(aChannel);
 
@@ -139,7 +139,8 @@ VideoDocument::UpdateTitle(nsIChannel* aChannel)
 
   nsAutoString fileName;
   GetFileName(fileName, aChannel);
-  SetTitle(fileName);
+  IgnoredErrorResult ignored;
+  SetTitle(fileName, ignored);
 }
 
 } // namespace dom

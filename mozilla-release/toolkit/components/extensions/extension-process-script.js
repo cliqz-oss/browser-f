@@ -10,11 +10,9 @@
  * after startup, in *every* browser process live outside of this file.
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/MessageChannel.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/MessageChannel.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionChild: "resource://gre/modules/ExtensionChild.jsm",
@@ -22,7 +20,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
 });
 
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "console", () => ExtensionUtils.getConsole());
 

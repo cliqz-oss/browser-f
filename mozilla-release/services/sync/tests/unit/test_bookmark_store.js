@@ -1,11 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
+
+const BookmarksToolbarTitle = "toolbar";
 
 add_task(async function test_ignore_specials() {
   _("Ensure that we can't delete bookmark roots.");
@@ -60,7 +62,7 @@ add_task(async function test_bookmark_create() {
     fxrecord.tags          = ["firefox", "awesome", "browser"];
     fxrecord.keyword       = "awesome";
     fxrecord.loadInSidebar = false;
-    fxrecord.parentName    = "Bookmarks Toolbar";
+    fxrecord.parentName    = BookmarksToolbarTitle;
     fxrecord.parentid      = "toolbar";
     await store.applyIncoming(fxrecord);
 
@@ -93,7 +95,7 @@ add_task(async function test_bookmark_create() {
     _("Create a record with some values missing.");
     let tbrecord = new Bookmark("bookmarks", "thunderbird1");
     tbrecord.bmkUri        = "http://getthunderbird.com/";
-    tbrecord.parentName    = "Bookmarks Toolbar";
+    tbrecord.parentName    = BookmarksToolbarTitle;
     tbrecord.parentid      = "toolbar";
     await store.applyIncoming(tbrecord);
 
@@ -195,7 +197,7 @@ add_task(async function test_folder_create() {
   try {
     _("Create a folder.");
     let folder = new BookmarkFolder("bookmarks", "testfolder-1");
-    folder.parentName = "Bookmarks Toolbar";
+    folder.parentName = BookmarksToolbarTitle;
     folder.parentid   = "toolbar";
     folder.title      = "Test Folder";
     await store.applyIncoming(folder);
@@ -251,7 +253,7 @@ add_task(async function test_folder_createRecord() {
     Assert.ok(record instanceof BookmarkFolder);
     Assert.equal(record.title, "Folder1");
     Assert.equal(record.parentid, "toolbar");
-    Assert.equal(record.parentName, "Bookmarks Toolbar");
+    Assert.equal(record.parentName, BookmarksToolbarTitle);
 
     _("Verify the folder's children. Ensures that the bookmarks were given GUIDs.");
     Assert.deepEqual(record.children, [bmk1.guid, bmk2.guid]);
@@ -337,7 +339,7 @@ add_task(async function test_move_order() {
   let tracker = engine._tracker;
 
   // Make sure the tracker is turned on.
-  Svc.Obs.notify("weave:engine:start-tracking");
+  tracker.start();
   try {
     _("Create two bookmarks");
     let bmk1 = await PlacesUtils.bookmarks.insert({
@@ -374,7 +376,7 @@ add_task(async function test_move_order() {
     Assert.deepEqual(newChildIds, [bmk2.guid, bmk1.guid]);
 
   } finally {
-    Svc.Obs.notify("weave:engine:stop-tracking");
+    await tracker.stop();
     _("Clean up.");
     await store.wipe();
     await engine.finalize();
@@ -487,7 +489,7 @@ add_task(async function test_delete_buffering() {
   try {
     _("Create a folder with two bookmarks.");
     let folder = new BookmarkFolder("bookmarks", "testfolder-1");
-    folder.parentName = "Bookmarks Toolbar";
+    folder.parentName = BookmarksToolbarTitle;
     folder.parentid = "toolbar";
     folder.title = "Test Folder";
     await store.applyIncoming(folder);

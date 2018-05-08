@@ -6,7 +6,7 @@
 // Tests exports from Timer.jsm
 
 var imported = {};
-Components.utils.import("resource://gre/modules/Timer.jsm", imported);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", imported);
 
 add_task(async function test_setTimeout() {
   let timeout1 = imported.setTimeout(() => do_throw("Should not be called"), 100);
@@ -98,4 +98,24 @@ add_task(async function test_setIntervalWithTarget() {
       calls++;
     }, 100, target, 15, "hola");
   });
+});
+
+add_task(async function test_setTimeoutNonFunction() {
+  Assert.throws(() => { imported.setTimeout({}, 0); },
+                "callback is not a function in setTimeout");
+});
+
+add_task(async function test_setIntervalNonFunction() {
+  Assert.throws(() => { imported.setInterval({}, 0); },
+                "callback is not a function in setInterval");
+});
+
+add_task(async function test_setTimeoutWithTargetNonFunction() {
+  Assert.throws(() => { imported.setTimeoutWithTarget({}, 0); },
+                "callback is not a function in setTimeout");
+});
+
+add_task(async function test_setIntervalWithTargetNonFunction() {
+  Assert.throws(() => { imported.setIntervalWithTarget({}, 0); },
+                "callback is not a function in setInterval");
 });

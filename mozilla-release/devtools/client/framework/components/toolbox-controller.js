@@ -23,7 +23,7 @@ class ToolboxController extends Component {
       focusedButton: ELEMENT_PICKER_ID,
       currentToolId: null,
       canRender: false,
-      highlightedTool: "",
+      highlightedTools: new Set(),
       areDockButtonsEnabled: true,
       panelDefinitions: [],
       hostTypes: [],
@@ -102,49 +102,48 @@ class ToolboxController extends Component {
   }
 
   setCurrentToolId(currentToolId) {
-    this.setState({currentToolId});
-    // Also set the currently focused button to this tool.
-    this.setFocusedButton(currentToolId);
+    this.setState({currentToolId}, () => {
+      // Also set the currently focused button to this tool.
+      this.setFocusedButton(currentToolId);
+    });
   }
 
   setCanRender() {
-    this.setState({ canRender: true });
-    this.updateButtonIds();
+    this.setState({ canRender: true }, this.updateButtonIds);
   }
 
   setOptionsPanel(optionsPanel) {
-    this.setState({ optionsPanel });
-    this.updateButtonIds();
+    this.setState({ optionsPanel }, this.updateButtonIds);
   }
 
   highlightTool(highlightedTool) {
-    this.setState({ highlightedTool });
+    let { highlightedTools } = this.state;
+    highlightedTools.add(highlightedTool);
+    this.setState({ highlightedTools });
   }
 
   unhighlightTool(id) {
-    if (this.state.highlightedTool === id) {
-      this.setState({ highlightedTool: "" });
+    let { highlightedTools } = this.state;
+    if (highlightedTools.has(id)) {
+      highlightedTools.delete(id);
+      this.setState({ highlightedTools });
     }
   }
 
   setDockButtonsEnabled(areDockButtonsEnabled) {
-    this.setState({ areDockButtonsEnabled });
-    this.updateButtonIds();
+    this.setState({ areDockButtonsEnabled }, this.updateButtonIds);
   }
 
   setHostTypes(hostTypes) {
-    this.setState({ hostTypes });
-    this.updateButtonIds();
+    this.setState({ hostTypes }, this.updateButtonIds);
   }
 
   setCanCloseToolbox(canCloseToolbox) {
-    this.setState({ canCloseToolbox });
-    this.updateButtonIds();
+    this.setState({ canCloseToolbox }, this.updateButtonIds);
   }
 
   setPanelDefinitions(panelDefinitions) {
-    this.setState({ panelDefinitions });
-    this.updateButtonIds();
+    this.setState({ panelDefinitions }, this.updateButtonIds);
   }
 
   get panelDefinitions() {
@@ -160,8 +159,7 @@ class ToolboxController extends Component {
       button.on("updatechecked", this.state.checkedButtonsUpdated);
     });
 
-    this.setState({ toolboxButtons });
-    this.updateButtonIds();
+    this.setState({ toolboxButtons }, this.updateButtonIds);
   }
 
   setCanMinimize(canMinimize) {

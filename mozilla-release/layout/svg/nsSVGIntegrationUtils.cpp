@@ -28,7 +28,9 @@
 #include "mozilla/gfx/Point.h"
 #include "nsCSSRendering.h"
 #include "mozilla/Unused.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/GeckoRestyleManager.h"
+#endif
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -653,7 +655,7 @@ struct EffectOffsets {
   gfxPoint offsetToUserSpaceInDevPx;
 };
 
-EffectOffsets
+static EffectOffsets
 ComputeEffectOffset(nsIFrame* aFrame, const PaintFramesParams& aParams)
 {
   EffectOffsets result;

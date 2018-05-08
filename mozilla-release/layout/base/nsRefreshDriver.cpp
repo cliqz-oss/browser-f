@@ -17,6 +17,8 @@
  * implement things like blocking on vsync.
  */
 
+#include "nsRefreshDriver.h"
+
 #ifdef XP_WIN
 #include <windows.h>
 // mmsystem isn't part of WIN32_LEAN_AND_MEAN, so we have
@@ -25,11 +27,11 @@
 #include "WinUtils.h"
 #endif
 
+#include "mozilla/AnimationEventDispatcher.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/IntegerRange.h"
 #include "nsHostObjectProtocolHandler.h"
-#include "nsRefreshDriver.h"
 #include "nsITimer.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
@@ -48,7 +50,9 @@
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/WindowBinding.h"
+#ifdef MOZ_OLD_STYLE
 #include "mozilla/GeckoRestyleManager.h"
+#endif
 #include "mozilla/RestyleManager.h"
 #include "mozilla/RestyleManagerInlines.h"
 #include "Layers.h"
@@ -70,6 +74,7 @@
 #include "nsAnimationManager.h"
 #include "nsIDOMEvent.h"
 #include "nsDisplayList.h"
+#include "nsTransitionManager.h"
 
 #ifdef MOZ_XUL
 #include "nsXULPopupManager.h"
@@ -296,7 +301,7 @@ protected:
       return;
     }
 
-    nsTArray<RefPtr<nsRefreshDriver> > drivers(aDrivers);
+    nsTArray<RefPtr<nsRefreshDriver>> drivers(aDrivers);
     for (nsRefreshDriver* driver : drivers) {
       // don't poke this driver if it's in test mode
       if (driver->IsTestControllingRefreshesEnabled()) {
@@ -341,8 +346,8 @@ protected:
   TimeStamp mLastFireTime;
   TimeStamp mTargetTime;
 
-  nsTArray<RefPtr<nsRefreshDriver> > mContentRefreshDrivers;
-  nsTArray<RefPtr<nsRefreshDriver> > mRootRefreshDrivers;
+  nsTArray<RefPtr<nsRefreshDriver>> mContentRefreshDrivers;
+  nsTArray<RefPtr<nsRefreshDriver>> mRootRefreshDrivers;
 
   // useful callback for nsITimer-based derived classes, here
   // bacause of c++ protected shenanigans
@@ -947,7 +952,7 @@ protected:
     mLastFireTime = now;
     mLastFireSkipped = false;
 
-    nsTArray<RefPtr<nsRefreshDriver> > drivers(mContentRefreshDrivers);
+    nsTArray<RefPtr<nsRefreshDriver>> drivers(mContentRefreshDrivers);
     drivers.AppendElements(mRootRefreshDrivers);
     size_t index = mNextDriverIndex;
 
@@ -1420,14 +1425,15 @@ uint32_t
 nsRefreshDriver::ObserverCount() const
 {
   uint32_t sum = 0;
-  for (uint32_t i = 0; i < ArrayLength(mObservers); ++i) {
-    sum += mObservers[i].Length();
+  for (const ObserverArray& array : mObservers) {
+    sum += array.Length();
   }
 
   // Even while throttled, we need to process layout and style changes.  Style
   // changes can trigger transitions which fire events when they complete, and
   // layout changes can affect media queries on child documents, triggering
   // style changes, etc.
+  sum += mAnimationEventFlushObservers.Length();
   sum += mResizeEventFlushObservers.Length();
   sum += mStyleFlushObservers.Length();
   sum += mLayoutFlushObservers.Length();
@@ -1439,14 +1445,36 @@ nsRefreshDriver::ObserverCount() const
   return sum;
 }
 
-uint32_t
-nsRefreshDriver::ImageRequestCount() const
+bool
+nsRefreshDriver::HasObservers() const
 {
-  uint32_t count = 0;
-  for (auto iter = mStartTable.ConstIter(); !iter.Done(); iter.Next()) {
-    count += iter.UserData()->mEntries.Count();
+  for (const ObserverArray& array : mObservers) {
+    if (!array.IsEmpty()) {
+      return true;
+    }
   }
-  return count + mRequests.Count();
+
+  return mViewManagerFlushIsPending ||
+         !mStyleFlushObservers.IsEmpty() ||
+         !mLayoutFlushObservers.IsEmpty() ||
+         !mAnimationEventFlushObservers.IsEmpty() ||
+         !mResizeEventFlushObservers.IsEmpty() ||
+         !mPendingEvents.IsEmpty() ||
+         !mFrameRequestCallbackDocs.IsEmpty() ||
+         !mThrottledFrameRequestCallbackDocs.IsEmpty() ||
+         !mEarlyRunners.IsEmpty();
+}
+
+bool
+nsRefreshDriver::HasImageRequests() const
+{
+  for (auto iter = mStartTable.ConstIter(); !iter.Done(); iter.Next()) {
+    if (!iter.UserData()->mEntries.IsEmpty()) {
+      return true;
+    }
+  }
+
+  return !mRequests.IsEmpty();
 }
 
 nsRefreshDriver::ObserverArray&
@@ -1578,13 +1606,26 @@ nsRefreshDriver::DispatchPendingEvents()
   }
 }
 
-static bool
-CollectDocuments(nsIDocument* aDocument, void* aDocArray)
+void
+nsRefreshDriver::UpdateIntersectionObservations()
 {
-  static_cast<AutoTArray<nsCOMPtr<nsIDocument>, 32>*>(aDocArray)->
-    AppendElement(aDocument);
-  aDocument->EnumerateSubDocuments(CollectDocuments, aDocArray);
-  return true;
+  AutoTArray<nsCOMPtr<nsIDocument>, 32> documents;
+
+  if (mPresContext->Document()->HasIntersectionObservers()) {
+    documents.AppendElement(mPresContext->Document());
+  }
+
+  mPresContext->Document()->CollectDescendantDocuments(
+    documents,
+    [](const nsIDocument* document) -> bool {
+      return document->HasIntersectionObservers();
+    });
+
+  for (uint32_t i = 0; i < documents.Length(); ++i) {
+    nsIDocument* doc = documents[i];
+    doc->UpdateIntersectionObservations();
+    doc->ScheduleIntersectionObserverNotification();
+  }
 }
 
 void
@@ -1594,31 +1635,15 @@ nsRefreshDriver::DispatchAnimationEvents()
     return;
   }
 
-  AutoTArray<nsCOMPtr<nsIDocument>, 32> documents;
-  CollectDocuments(mPresContext->Document(), &documents);
+  // Hold all AnimationEventDispatcher in mAnimationEventFlushObservers as
+  // a RefPtr<> array since each AnimationEventDispatcher might be destroyed
+  // during processing the previous dispatcher.
+  AutoTArray<RefPtr<AnimationEventDispatcher>, 16> dispatchers;
+  dispatchers.AppendElements(mAnimationEventFlushObservers);
+  mAnimationEventFlushObservers.Clear();
 
-  for (uint32_t i = 0; i < documents.Length(); ++i) {
-    nsIDocument* doc = documents[i];
-    nsIPresShell* shell = doc->GetShell();
-    if (!shell) {
-      continue;
-    }
-
-    RefPtr<nsPresContext> context = shell->GetPresContext();
-    if (!context || context->RefreshDriver() != this) {
-      continue;
-    }
-
-    context->TransitionManager()->SortEvents();
-    context->AnimationManager()->SortEvents();
-
-    // Dispatch transition events first since transitions conceptually sit
-    // below animations in terms of compositing order.
-    context->TransitionManager()->DispatchEvents();
-    // Check that the presshell has not been destroyed
-    if (context->GetPresShell()) {
-      context->AnimationManager()->DispatchEvents();
-    }
+  for (auto& dispatcher : dispatchers) {
+    dispatcher->DispatchEvents();
   }
 }
 
@@ -1796,7 +1821,8 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
   mWarningThreshold = 1;
 
   nsCOMPtr<nsIPresShell> presShell = mPresContext->GetPresShell();
-  if (!presShell || (ObserverCount() == 0 && ImageRequestCount() == 0 && mScrollEvents.Length() == 0)) {
+  if (!presShell ||
+      (!HasObservers() && !HasImageRequests() && mScrollEvents.IsEmpty())) {
     // Things are being destroyed, or we no longer have any observers.
     // We don't want to stop the timer when observers are initially
     // removed, because sometimes observers can be added and removed
@@ -1827,25 +1853,24 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
 
   AutoTArray<nsCOMPtr<nsIRunnable>, 16> earlyRunners;
   earlyRunners.SwapElements(mEarlyRunners);
-  for (uint32_t i = 0; i < earlyRunners.Length(); ++i) {
-    earlyRunners[i]->Run();
+  for (auto& runner : earlyRunners) {
+    runner->Run();
   }
 
   // Resize events should be fired before layout flushes or
   // calling animation frame callbacks.
   AutoTArray<nsIPresShell*, 16> observers;
   observers.AppendElements(mResizeEventFlushObservers);
-  for (uint32_t i = observers.Length(); i; --i) {
+  for (nsIPresShell* shell : Reversed(observers)) {
     if (!mPresContext || !mPresContext->GetPresShell()) {
-      break;
+      StopTimer();
+      return;
     }
     // Make sure to not process observers which might have been removed
     // during previous iterations.
-    nsIPresShell* shell = observers[i - 1];
-    if (!mResizeEventFlushObservers.Contains(shell)) {
+    if (!mResizeEventFlushObservers.RemoveElement(shell)) {
       continue;
     }
-    mResizeEventFlushObservers.RemoveElement(shell);
     shell->FireResizeEvent();
   }
 
@@ -1870,10 +1895,10 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
     if (i == 1) {
       // This is the FlushType::Style case.
 
+      DispatchScrollEvents();
       DispatchAnimationEvents();
       DispatchPendingEvents();
       RunFrameRequestCallbacks(aNowTime);
-      DispatchScrollEvents();
 
       if (mPresContext && mPresContext->GetPresShell()) {
         AutoTArray<nsIPresShell*, 16> observers;
@@ -1949,19 +1974,12 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
 #ifdef MOZ_XUL
   // Update any popups that may need to be moved or hidden due to their
   // anchor changing.
-  nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
-  if (pm) {
+  if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
     pm->UpdatePopupPositions(this);
   }
 #endif
 
-  AutoTArray<nsCOMPtr<nsIDocument>, 32> documents;
-  CollectDocuments(mPresContext->Document(), &documents);
-  for (uint32_t i = 0; i < documents.Length(); ++i) {
-    nsIDocument* doc = documents[i];
-    doc->UpdateIntersectionObservations();
-    doc->ScheduleIntersectionObserverNotification();
-  }
+  UpdateIntersectionObservations();
 
   /*
    * Perform notification to imgIRequests subscribed to listen
@@ -2081,9 +2099,9 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
   if (dispatchRunnablesAfterTick && sPendingIdleRunnables) {
     AutoTArray<RunnableWithDelay, 8>* runnables = sPendingIdleRunnables;
     sPendingIdleRunnables = nullptr;
-    for (uint32_t i = 0; i < runnables->Length(); ++i) {
-      NS_IdleDispatchToCurrentThread((*runnables)[i].mRunnable.forget(),
-                                     (*runnables)[i].mDelay);
+    for (RunnableWithDelay& runnableWithDelay : *runnables) {
+      NS_IdleDispatchToCurrentThread(runnableWithDelay.mRunnable.forget(),
+                                     runnableWithDelay.mDelay);
     }
     delete runnables;
   }
@@ -2124,7 +2142,7 @@ nsRefreshDriver::Thaw()
   }
 
   if (mFreezeCount == 0) {
-    if (ObserverCount() || ImageRequestCount()) {
+    if (HasObservers() || HasImageRequests()) {
       // FIXME: This isn't quite right, since our EnsureTimerStarted call
       // updates our mMostRecentRefresh, but the DoRefresh call won't run
       // and notify our observers until we get back to the event loop.
@@ -2149,7 +2167,7 @@ nsRefreshDriver::FinishedWaitingForTransaction()
   mWaitingForTransaction = false;
   if (mSkippedPaints &&
       !IsInRefresh() &&
-      (ObserverCount() || ImageRequestCount())) {
+      (HasObservers() || HasImageRequests())) {
     AUTO_PROFILER_TRACING("Paint", "RefreshDriverTick");
     DoRefresh();
   }
@@ -2380,6 +2398,14 @@ nsRefreshDriver::CancelPendingEvents(nsIDocument* aDocument)
       mPendingEvents.RemoveElementAt(i);
     }
   }
+}
+
+void
+nsRefreshDriver::CancelPendingAnimationEvents(AnimationEventDispatcher* aDispatcher)
+{
+  MOZ_ASSERT(aDispatcher);
+  aDispatcher->ClearEventQueue();
+  mAnimationEventFlushObservers.RemoveElement(aDispatcher);
 }
 
 /* static */ TimeStamp

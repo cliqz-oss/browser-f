@@ -2,9 +2,9 @@
 const BASE = getRootDirectory(gTestPath)
   .replace("chrome://mochitests/content/", "https://example.com/");
 
-Cu.import("resource:///modules/ExtensionsUI.jsm");
+ChromeUtils.import("resource:///modules/ExtensionsUI.jsm");
 XPCOMUtils.defineLazyGetter(this, "Management", () => {
-  const {Management} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
+  const {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
   return Management;
 });
 
@@ -139,7 +139,7 @@ function is_hidden(element) {
   if (style.visibility != "visible")
     return true;
   if (style.display == "-moz-popup")
-    return ["hiding", "closed"].indexOf(element.state) != -1;
+    return ["hiding", "closed"].includes(element.state);
 
   // Hiding a parent element will hide all its children
   if (element.parentNode != element.ownerDocument)

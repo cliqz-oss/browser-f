@@ -3,17 +3,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-const { interfaces: Ci, classes: Cc, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
+ChromeUtils.defineModuleGetter(this, "NetUtil",
   "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 function makeURI(url) {

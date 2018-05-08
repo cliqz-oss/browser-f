@@ -3,12 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-
-const {ActivityStreamMessageChannel} = Cu.import("resource://activity-stream/lib/ActivityStreamMessageChannel.jsm", {});
-const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
-const {reducers} = Cu.import("resource://activity-stream/common/Reducers.jsm", {});
-const {redux} = Cu.import("resource://activity-stream/vendor/Redux.jsm", {});
+const {ActivityStreamMessageChannel} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamMessageChannel.jsm", {});
+const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {reducers} = ChromeUtils.import("resource://activity-stream/common/Reducers.jsm", {});
+const {redux} = ChromeUtils.import("resource://activity-stream/vendor/Redux.jsm", {});
 
 /**
  * Store - This has a similar structure to a redux store, but includes some extra
@@ -159,4 +157,4 @@ this.Store = class Store {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["Store"];
+const EXPORTED_SYMBOLS = ["Store"];

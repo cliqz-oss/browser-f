@@ -3,7 +3,7 @@
 
 "use strict";
 
-var Preferences = Cu.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
+var Preferences = ChromeUtils.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
 
 function test() {
   waitForExplicitFinish();
@@ -47,7 +47,7 @@ function test() {
         Services.search.removeEngine(fooEngine);
       }
 
-      EventUtils.synthesizeKey("VK_RETURN", {});
+      EventUtils.synthesizeKey("KEY_Enter");
       executeSoon(() => executeSoon(afterSearch));
   }
 

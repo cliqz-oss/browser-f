@@ -49,9 +49,9 @@ add_task(async function() {
   // Load a custom frame script to avoid using ContentTask which loads Task.jsm
   mm.loadFrameScript("data:text/javascript,(" + function() {
     /* eslint-env mozilla/frame-script */
-    const {classes: Cc, interfaces: Ci, manager: Cm, utils: Cu} = Components;
+    const Cm = Components.manager;
     Cm.QueryInterface(Ci.nsIServiceManager);
-    Cu.import("resource://gre/modules/AppConstants.jsm");
+    ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
     let collectStacks = AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG;
     let loader = Cc["@mozilla.org/moz/jsloader;1"].getService(Ci.xpcIJSModuleLoader);
     let components = {};

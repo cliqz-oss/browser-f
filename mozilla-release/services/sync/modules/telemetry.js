@@ -4,32 +4,30 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["SyncTelemetry"];
 
-this.EXPORTED_SYMBOLS = ["SyncTelemetry"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-common/async.js");
 
 let constants = {};
-Cu.import("resource://services-sync/constants.js", constants);
+ChromeUtils.import("resource://services-sync/constants.js", constants);
 
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
+ChromeUtils.defineModuleGetter(this, "TelemetryController",
                               "resource://gre/modules/TelemetryController.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryUtils",
-                                  "resource://gre/modules/TelemetryUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryEnvironment",
-                                  "resource://gre/modules/TelemetryEnvironment.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryUtils",
+                               "resource://gre/modules/TelemetryUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryEnvironment",
+                               "resource://gre/modules/TelemetryEnvironment.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
                                    "@mozilla.org/base/telemetry;1",
@@ -147,6 +145,12 @@ class EngineRecord {
     }
     if (error) {
       this.failureReason = SyncTelemetry.transformError(error);
+    }
+    // This allows cases like bookmarks-buffered to have a separate name from
+    // the bookmarks engine.
+    let engineImpl = Weave.Service.engineManager.get(this.name);
+    if (engineImpl && engineImpl.overrideTelemetryName) {
+      this.name = engineImpl.overrideTelemetryName;
     }
   }
 
@@ -496,7 +500,7 @@ class SyncTelemetryImpl {
     if (record.syncs.length || numEvents) {
       log.trace(`submitting ${record.syncs.length} sync record(s) and ` +
                 `${numEvents} event(s) to telemetry`);
-      TelemetryController.submitExternalPing("sync", record);
+      TelemetryController.submitExternalPing("sync", record, { usePingSender: true });
       return true;
     }
     return false;
@@ -703,10 +707,6 @@ class SyncTelemetryImpl {
       return { name: "unexpectederror", error };
     }
 
-    if (error.failureCode) {
-      return { name: "othererror", error: error.failureCode };
-    }
-
     if (error instanceof AuthenticationError) {
       return { name: "autherror", from: error.source };
     }
@@ -717,6 +717,10 @@ class SyncTelemetryImpl {
 
     if (httpCode) {
       return { name: "httperror", code: httpCode };
+    }
+
+    if (error.failureCode) {
+      return { name: "othererror", error: error.failureCode };
     }
 
     if (error.result) {
@@ -744,4 +748,4 @@ class SyncTelemetryImpl {
 }
 
 /* global SyncTelemetry */
-this.SyncTelemetry = new SyncTelemetryImpl(ENGINES);
+var SyncTelemetry = new SyncTelemetryImpl(ENGINES);

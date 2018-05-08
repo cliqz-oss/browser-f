@@ -8,15 +8,17 @@
 #include "nsIContentViewer.h"
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMWindow.h"
 #include "nsIFactory.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIXULWindow.h"
+#include "mozilla/dom/Element.h"
 
 #include "nsWindowMediator.h"
+
+using mozilla::dom::Element;
 
 //
 // static helper functions
@@ -34,12 +36,12 @@ nsCOMPtr<nsIDOMNode> GetDOMNodeFromDocShell(nsIDocShell *aShell)
   nsCOMPtr<nsIContentViewer> cv;
   aShell->GetContentViewer(getter_AddRefs(cv));
   if (cv) {
-    nsCOMPtr<nsIDOMDocument> domdoc(do_QueryInterface(cv->GetDocument()));
-    if (domdoc) {
-      nsCOMPtr<nsIDOMElement> element;
-      domdoc->GetDocumentElement(getter_AddRefs(element));
-      if (element)
-        node = element;
+    nsCOMPtr<nsIDocument> doc = cv->GetDocument();
+    if (doc) {
+      Element* element = doc->GetDocumentElement();
+      if (element) {
+        node = element->AsDOMNode();
+      }
     }
   }
 
@@ -54,7 +56,7 @@ void GetAttribute(nsIXULWindow *inWindow, const nsAString &inAttribute,
   if (inWindow && NS_SUCCEEDED(inWindow->GetDocShell(getter_AddRefs(shell)))) {
     nsCOMPtr<nsIDOMNode> node(GetDOMNodeFromDocShell(shell));
     if (node) {
-      nsCOMPtr<nsIDOMElement> webshellElement(do_QueryInterface(node));
+      nsCOMPtr<Element> webshellElement(do_QueryInterface(node));
       if (webshellElement)
         webshellElement->GetAttribute(inAttribute, outValue);
     }

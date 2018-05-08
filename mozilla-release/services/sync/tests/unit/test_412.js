@@ -1,8 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://testing-common/services/sync/rotaryengine.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://testing-common/services/sync/rotaryengine.js");
 
 add_task(async function test_412_not_treated_as_failure() {
   await Service.engineManager.register(RotaryEngine);
@@ -27,7 +27,7 @@ add_task(async function test_412_not_treated_as_failure() {
     // create a new record that should be uploaded and arrange for our lastSync
     // timestamp to be wrong so we get a 412.
     engine._store.items = {new: "new record"};
-    engine._tracker.addChangedID("new", 0);
+    await engine._tracker.addChangedID("new", 0);
 
     let saw412 = false;
     let _uploadOutgoing = engine._uploadOutgoing;

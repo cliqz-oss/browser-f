@@ -4,25 +4,23 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetryArchive"
 ];
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Preferences.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "TelemetryArchive::";
 
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStorage",
-                                  "resource://gre/modules/TelemetryStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryStorage",
+                               "resource://gre/modules/TelemetryStorage.jsm");
 
-this.TelemetryArchive = {
+var TelemetryArchive = {
   /**
    * Get a list of the archived pings, sorted by the creation date.
    * Note that scanning the archived pings on disk is delayed on startup,

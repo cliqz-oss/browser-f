@@ -1,6 +1,9 @@
 buildDir "${topobjdir}/gradle/build/mobile/android/geckoview"
 
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+apply from: "${topsrcdir}/mobile/android/gradle/product_flavors.gradle"
 
 // This converts MOZ_APP_VERSION into an integer
 // version code.
@@ -38,12 +41,8 @@ def computeVersionCode() {
 
 android {
     compileSdkVersion project.ext.compileSdkVersion
-    buildToolsVersion project.ext.buildToolsVersion
 
     defaultConfig {
-        defaultPublishConfig 'release'
-        publishNonDefault true
-
         targetSdkVersion project.ext.targetSdkVersion
         minSdkVersion project.ext.minSdkVersion
         manifestPlaceholders = project.ext.manifestPlaceholders
@@ -52,8 +51,8 @@ android {
         versionName "${mozconfig.substs.MOZ_APP_VERSION}-${mozconfig.substs.MOZ_UPDATE_CHANNEL}"
         consumerProguardFiles 'proguard-rules.txt'
 
-        // TODO: ensure these fields always agree with mobile/android/geckoview/BuildConfig.java.in,
-        // either by diffing the processed files or by generating the output from a single source.
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+
         buildConfigField 'String', "GRE_MILESTONE", "\"${mozconfig.substs.GRE_MILESTONE}\""
         // This should really come from the included binaries, but that's not easy.
         buildConfigField 'String', "MOZ_APP_ABI", mozconfig.substs['COMPILE_ENVIRONMENT'] ? "\"${ mozconfig.substs.TARGET_XPCOM_ABI}\"" : '"arm-eabi-gcc3"';
@@ -103,14 +102,8 @@ android {
         buildConfigField 'boolean', 'MOZILLA_OFFICIAL', mozconfig.substs.MOZILLA_OFFICIAL ? 'true' : 'false';
     }
 
-    buildTypes {
-        withGeckoBinaries {
-            initWith release
-        }
-        withoutGeckoBinaries { // For clarity and consistency throughout the tree.
-            initWith release
-        }
-    }
+    project.configureProductFlavors.delegate = it
+    project.configureProductFlavors()
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_7
@@ -130,8 +123,7 @@ android {
             java {
                 srcDir "${topsrcdir}/mobile/android/geckoview/src/thirdparty/java"
 
-                if (!mozconfig.substs.MOZ_ANDROID_HLS_SUPPORT ||
-                    !mozconfig.substs.get('MOZ_BUILD_MOBILE_ANDROID_WITH_GRADLE')) {
+                if (!mozconfig.substs.MOZ_ANDROID_HLS_SUPPORT) {
                     exclude 'com/google/android/exoplayer2/**'
                     exclude 'org/mozilla/gecko/media/GeckoHlsAudioRenderer.java'
                     exclude 'org/mozilla/gecko/media/GeckoHlsPlayer.java'
@@ -154,21 +146,27 @@ android {
 }
 
 dependencies {
-    compile "com.android.support:support-v4:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
-    compile "com.android.support:palette-v7:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
+    implementation "com.android.support:support-v4:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
+    implementation "com.android.support:palette-v7:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
+
+    testImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.robolectric:robolectric:3.5.1'
+    testImplementation 'org.mockito:mockito-core:1.10.19'
+
+    androidTestImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    androidTestImplementation 'com.android.support.test:runner:0.5'
+    androidTestImplementation 'com.android.support.test:rules:0.5'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:2.2.2'
+    androidTestImplementation "com.android.support:support-annotations:${mozconfig.substs.ANDROID_SUPPORT_LIBRARY_VERSION}"
 }
 
 apply from: "${topsrcdir}/mobile/android/gradle/with_gecko_binaries.gradle"
 
 android.libraryVariants.all { variant ->
-    // Like 'debug', 'release', or 'withGeckoBinaries'.
-    def buildType = variant.buildType.name
-
-    // It would be most natural for :geckoview to always include the Gecko
-    // binaries, but that's difficult; see the notes in
-    // mobile/android/gradle/with_gecko_binaries.gradle.  Instead :app uses
-    // :geckoview:release and handles it's own Gecko binary inclusion.
-    if (buildType.equals('withGeckoBinaries')) {
+    // See the notes in mobile/android/app/build.gradle for details on including
+    // Gecko binaries and the Omnijar.
+    if ((variant.productFlavors*.name).contains('withGeckoBinaries')) {
         configureVariantWithGeckoBinaries(variant)
     }
 
@@ -184,7 +182,8 @@ android.libraryVariants.all { variant ->
         classpath = files(variant.javaCompile.classpath.files)
 
         source = files(variant.javaCompile.source)
-        exclude '**/R.java', '**/BuildConfig.java', 'com/google/**', 'org/webrtc/**'
+        exclude '**/R.java', '**/BuildConfig.java'
+        include 'org/mozilla/geckoview/**'
         options.addPathOption('sourcepath', ':').setValue(
             variant.sourceSets.collect({ it.javaDirectories }).flatten() +
             variant.generateBuildConfig.sourceOutputDir)
@@ -195,6 +194,7 @@ android.libraryVariants.all { variant ->
             file("${System.properties['java.home']}/lib/rt.jar")] + android.bootClasspath
         options.memberLevel = JavadocMemberLevel.PROTECTED
         options.source = 7
+        options.links("https://d.android.com/reference/")
 
         options.docTitle = "GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API"
         options.header = "GeckoView ${mozconfig.substs.MOZ_APP_VERSION} API"
@@ -204,12 +204,12 @@ android.libraryVariants.all { variant ->
         options.tags = ['hide:a:']
     }
 
-    task "javadocJar${name.capitalize()}"(type: Jar, dependsOn: javadoc) {
+    def javadocJar = task("javadocJar${name.capitalize()}", type: Jar, dependsOn: javadoc) {
         classifier = 'javadoc'
         from javadoc.destinationDir
     }
 
-    task "sourcesJar${name.capitalize()}"(type: Jar) {
+    def sourcesJar = task("sourcesJar${name.capitalize()}", type: Jar) {
         classifier 'sources'
         description = "Generate Javadoc for build variant $name"
         destinationDir = new File(destinationDir, variant.baseName)
@@ -218,11 +218,11 @@ android.libraryVariants.all { variant ->
 }
 
 android.libraryVariants.all { variant ->
-    configureVariantWithJNIWrappers(variant, "Generated")
+    configureLibraryVariantWithJNIWrappers(variant, "Generated")
 }
 
 apply plugin: 'maven'
- 
+
 uploadArchives {
     repositories.mavenDeployer {
         pom.groupId = 'org.mozilla'
@@ -247,7 +247,7 @@ afterEvaluate {
     // The bundle tasks are only present when the particular configuration is
     // being built, so this task might not exist.  (This is due to the way the
     // Android Gradle plugin defines things during configuration.)
-    def bundleWithGeckoBinaries = tasks.findByName('bundleWithGeckoBinaries')
+    def bundleWithGeckoBinaries = tasks.findByName('bundleOfficialWithGeckoBinariesNoMinApiRelease')
     if (!bundleWithGeckoBinaries) {
         return
     }
@@ -261,10 +261,22 @@ afterEvaluate {
 
     artifacts {
         // Instead of default (release) configuration, publish one with Gecko binaries.
-        archives bundleWithGeckoBinaries
+        archives bundleOfficialWithGeckoBinariesNoMinApiRelease
         // Javadoc and sources for developer ergononomics.
-        archives javadocJarWithGeckoBinaries
-        archives sourcesJarWithGeckoBinaries
+        archives javadocJarOfficialWithGeckoBinariesNoMinApiRelease
+        archives sourcesJarOfficialWithGeckoBinariesNoMinApiRelease
+    }
+
+    // For now, ensure Kotlin is only used in tests.
+    android.sourceSets.all { sourceSet ->
+        if (sourceSet.name.startsWith('test') || sourceSet.name.startsWith('androidTest')) {
+            return
+        }
+        (sourceSet.java.srcDirs + sourceSet.kotlin.srcDirs).each {
+            if (!fileTree(it, { include '**/*.kt' }).empty) {
+                throw new GradleException("Kotlin used in non-test directory ${it.path}")
+            }
+        }
     }
 }
 

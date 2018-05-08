@@ -39,7 +39,7 @@ https://bugzilla.mozilla.org/enter_bug.cgi?product=Testing&component=General.
 '''.strip()
 
 UNKNOWN_FLAVOR = '''
-I know you are trying to run a %s test. Unfortunately, I can't run those
+I know you are trying to run a %s%s test. Unfortunately, I can't run those
 tests yet. Sorry!
 '''.strip()
 
@@ -111,7 +111,8 @@ class Test(MachCommandBase):
         both harnesses will be invoked.
         """
         from mozlog.commandline import setup_logging
-        from moztest.resolve import TestResolver, TEST_FLAVORS, TEST_SUITES
+        from mozlog.handlers import StreamHandler
+        from moztest.resolve import get_suite_definition, TestResolver, TEST_SUITES
 
         resolver = self._spawn(TestResolver)
         run_suites, run_tests = resolver.resolve_metadata(what)
@@ -125,7 +126,9 @@ class Test(MachCommandBase):
         default_level = self._mach_context.settings['test']['level']
         log = setup_logging('mach-test', log_args, {default_format: sys.stdout},
                             {'level': default_level})
-        log.handlers[0].formatter.inner.summary_on_shutdown = True
+        for handler in log.handlers:
+            if isinstance(handler, StreamHandler):
+                handler.formatter.inner.summary_on_shutdown = True
 
         status = None
         for suite_name in run_suites:
@@ -146,20 +149,15 @@ class Test(MachCommandBase):
             buckets.setdefault(key, []).append(test)
 
         for (flavor, subsuite), tests in sorted(buckets.items()):
-            if flavor not in TEST_FLAVORS:
-                print(UNKNOWN_FLAVOR % flavor)
-                status = 1
-                continue
-
-            m = TEST_FLAVORS[flavor]
+            m = get_suite_definition(flavor, subsuite)
             if 'mach_command' not in m:
-                print(UNKNOWN_FLAVOR % flavor)
+                substr = '-{}'.format(subsuite) if subsuite else ''
+                print(UNKNOWN_FLAVOR % (flavor, substr))
                 status = 1
                 continue
 
             kwargs = dict(m['kwargs'])
             kwargs['log'] = log
-            kwargs['subsuite'] = subsuite
 
             res = self._mach_context.commands.dispatch(
                 m['mach_command'], self._mach_context,

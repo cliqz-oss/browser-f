@@ -3,7 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- * http://dxr.mozilla.org/mozilla-central/source/dom/interfaces/core/nsIDOMDocument.idl
+ * https://dom.spec.whatwg.org/#interface-document
+ * https://html.spec.whatwg.org/multipage/dom.html#the-document-object
  */
 
 interface WindowProxy;
@@ -22,7 +23,7 @@ dictionary ElementCreationOptions {
   DOMString pseudo;
 };
 
-/* http://dom.spec.whatwg.org/#interface-document */
+/* https://dom.spec.whatwg.org/#interface-document */
 [Constructor]
 interface Document : Node {
   [Throws]
@@ -105,7 +106,7 @@ interface Document : Node {
   attribute boolean allowUnsafeHTML;
 };
 
-// http://www.whatwg.org/specs/web-apps/current-work/#the-document-object
+// https://html.spec.whatwg.org/multipage/dom.html#the-document-object
 partial interface Document {
   [PutForwards=href, Unforgeable] readonly attribute Location? location;
   //(HTML only)         attribute DOMString domain;
@@ -120,7 +121,8 @@ partial interface Document {
            attribute DOMString title;
   [CEReactions, Pure]
            attribute DOMString dir;
-  //(HTML only)         attribute HTMLElement? body;
+  [CEReactions, Pure, SetterThrows]
+           attribute HTMLElement? body;
   //(HTML only)readonly attribute HTMLHeadElement? head;
   //(HTML only)readonly attribute HTMLCollection images;
   //(HTML only)readonly attribute HTMLCollection embeds;
@@ -232,7 +234,7 @@ partial interface Document {
 partial interface Document {
   // Note: Per spec the 'S' in these two is lowercase, but the "Moz"
   // versions have it uppercase.
-  [LenientSetter, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
+  [LenientSetter, Unscopable, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
   readonly attribute boolean fullscreen;
   [BinaryName="fullscreen"]
   readonly attribute boolean mozFullScreen;
@@ -240,10 +242,6 @@ partial interface Document {
   readonly attribute boolean fullscreenEnabled;
   [BinaryName="fullscreenEnabled", NeedsCallerType]
   readonly attribute boolean mozFullScreenEnabled;
-  [LenientSetter, Func="nsDocument::IsUnprefixedFullscreenEnabled"]
-  readonly attribute Element? fullscreenElement;
-  [BinaryName="fullscreenElement"]
-  readonly attribute Element? mozFullScreenElement;
 
   [Func="nsDocument::IsUnprefixedFullscreenEnabled"]
   void exitFullscreen();
@@ -260,7 +258,6 @@ partial interface Document {
 // https://w3c.github.io/pointerlock/#extensions-to-the-document-interface
 // https://w3c.github.io/pointerlock/#extensions-to-the-documentorshadowroot-mixin
 partial interface Document {
-  readonly attribute Element? pointerLockElement;
   void exitPointerLock();
 
   // Event handlers
@@ -288,8 +285,6 @@ partial interface Document {
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-document-interface
 partial interface Document {
-    Element? elementFromPoint (float x, float y);
-    sequence<Element> elementsFromPoint (float x, float y);
     CaretPosition? caretPositionFromPoint (float x, float y);
 
     readonly attribute Element? scrollingElement;
@@ -322,7 +317,7 @@ partial interface Document {
 
 //  Mozilla extensions of various sorts
 partial interface Document {
-  // nsIDOMDocumentXBL.  Wish we could make these [ChromeOnly], but
+  // XBL support.  Wish we could make these [ChromeOnly], but
   // that would likely break bindings running with the page principal.
   [Func="IsChromeOrXBL"]
   NodeList? getAnonymousNodes(Element elt);
@@ -387,6 +382,12 @@ partial interface Document {
   // like documentURI, except that for error pages, it returns the URI we were
   // trying to load when we hit an error, rather than the error page's own URI.
   [ChromeOnly] readonly attribute URI? mozDocumentURIIfNotForErrorPages;
+
+  // A promise that is resolved, with this document itself, when we have both
+  // fired DOMContentLoaded and are ready to start layout.  This is used for the
+  // "document_idle" webextension script injection point.
+  [ChromeOnly, Throws]
+  readonly attribute Promise<Document> documentReadyForIdle;
 };
 
 dictionary BlockParsingOptions {
@@ -474,6 +475,11 @@ enum FlashClassification {
 partial interface Document {
   [ChromeOnly]
   readonly attribute FlashClassification documentFlashClassification;
+};
+
+// Allows about: pages to query aboutCapabilities
+partial interface Document {
+  [Throws, Func="nsDocument::CallerIsTrustedAboutPage"] readonly attribute AboutCapabilities aboutCapabilities;
 };
 
 Document implements XPathEvaluator;

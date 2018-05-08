@@ -2,18 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["MockFilePicker"];
+var EXPORTED_SYMBOLS = ["MockFilePicker"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
 const Cm = Components.manager;
-const Cu = Components.utils;
 
 const CONTRACT_ID = "@mozilla.org/filepicker;1";
 
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
 // would crash if used outside of automation.
@@ -26,17 +23,17 @@ var newFactory = function(window) {
   return {
     createInstance(aOuter, aIID) {
       if (aOuter)
-        throw Components.results.NS_ERROR_NO_AGGREGATION;
+        throw Cr.NS_ERROR_NO_AGGREGATION;
       return new MockFilePickerInstance(window).QueryInterface(aIID);
     },
     lockFactory(aLock) {
-      throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+      throw Cr.NS_ERROR_NOT_IMPLEMENTED;
     },
     QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
   };
 };
 
-this.MockFilePicker = {
+var MockFilePicker = {
   returnOK: Ci.nsIFilePicker.returnOK,
   returnCancel: Ci.nsIFilePicker.returnCancel,
   returnReplace: Ci.nsIFilePicker.returnReplace,

@@ -2,16 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { classes: Cc, utils: Cu, interfaces: Ci } = Components;
-
 var reportURL;
 
-Cu.import("resource://gre/modules/CrashReports.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/CrashReports.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "CrashSubmit",
+ChromeUtils.defineModuleGetter(this, "CrashSubmit",
   "resource://gre/modules/CrashSubmit.jsm");
 
 const buildID = Services.appinfo.appBuildID;

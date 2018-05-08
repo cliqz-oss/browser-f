@@ -19,6 +19,7 @@
 #include "mozilla/dom/ElementInlines.h"
 #include "nsBlockFrame.h"
 #include "nsBulletFrame.h"
+#include "nsIFrameInlines.h"
 #include "nsImageFrame.h"
 #include "nsPlaceholderFrame.h"
 #include "nsContentUtils.h"
@@ -26,6 +27,10 @@
 #include "nsPrintfCString.h"
 #include "nsRefreshDriver.h"
 #include "nsStyleChangeList.h"
+
+#ifdef ACCESSIBILITY
+#include "nsAccessibilityService.h"
+#endif
 
 using namespace mozilla::dom;
 
@@ -431,21 +436,19 @@ ServoRestyleManager::PostRebuildAllStyleDataEvent(nsChangeHint aExtraHint,
 /* static */ void
 ServoRestyleManager::ClearServoDataFromSubtree(Element* aElement, IncludeRoot aIncludeRoot)
 {
-  if (!aElement->HasServoData()) {
-    MOZ_ASSERT(!aElement->HasDirtyDescendantsForServo());
-    MOZ_ASSERT(!aElement->HasAnimationOnlyDirtyDescendantsForServo());
-    return;
-  }
-
-  StyleChildrenIterator it(aElement);
-  for (nsIContent* n = it.GetNextChild(); n; n = it.GetNextChild()) {
-    if (n->IsElement()) {
-      ClearServoDataFromSubtree(n->AsElement(), IncludeRoot::Yes);
+  if (aElement->HasServoData()) {
+    StyleChildrenIterator it(aElement);
+    for (nsIContent* n = it.GetNextChild(); n; n = it.GetNextChild()) {
+      if (n->IsElement()) {
+        ClearServoDataFromSubtree(n->AsElement(), IncludeRoot::Yes);
+      }
     }
   }
 
   if (MOZ_LIKELY(aIncludeRoot == IncludeRoot::Yes)) {
     aElement->ClearServoData();
+    MOZ_ASSERT(!aElement->HasAnyOfFlags(Element::kAllServoDescendantBits | NODE_NEEDS_FRAME));
+    MOZ_ASSERT(aElement != aElement->OwnerDoc()->GetServoRestyleRoot());
   }
 }
 
@@ -651,6 +654,11 @@ UpdateOneAdditionalStyleContext(nsIFrame* aFrame,
   }
 
   if (childHint) {
+    if (childHint & nsChangeHint_ReconstructFrame) {
+      // If we generate a reconstruct here, remove any non-reconstruct hints we
+      // may have already generated for this content.
+      aRestyleState.ChangeList().PopChangesForContent(aFrame->GetContent());
+    }
     aRestyleState.ChangeList().AppendChange(
         aFrame, aFrame->GetContent(), childHint);
   }
@@ -1099,7 +1107,13 @@ ServoRestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags)
   nsPresContext* presContext = PresContext();
 
   MOZ_ASSERT(presContext->Document(), "No document?  Pshaw!");
-  MOZ_ASSERT(!presContext->HasPendingMediaQueryUpdates(),
+  // FIXME(emilio): In the "flush animations" case, ideally, we should only
+  // recascade animation styles running on the compositor, so we shouldn't care
+  // about other styles, or new rules that apply to the page...
+  //
+  // However, that's not true as of right now, see bug 1388031 and bug 1388692.
+  MOZ_ASSERT((aFlags & ServoTraversalFlags::FlushThrottledAnimations) ||
+             !presContext->HasPendingMediaQueryUpdates(),
              "Someone forgot to update media queries?");
   MOZ_ASSERT(!nsContentUtils::IsSafeToRunScript(), "Missing a script blocker!");
   MOZ_ASSERT(!mInStyleRefresh, "Reentrant call?");

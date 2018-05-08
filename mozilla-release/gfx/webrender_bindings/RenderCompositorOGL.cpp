@@ -38,12 +38,6 @@ RenderCompositorOGL::~RenderCompositorOGL()
 }
 
 bool
-RenderCompositorOGL::Destroy()
-{
-  return true;
-}
-
-bool
 RenderCompositorOGL::BeginFrame()
 {
   if (!mGL->MakeCurrent()) {
@@ -86,7 +80,7 @@ RenderCompositorOGL::Resume()
 }
 
 LayoutDeviceIntSize
-RenderCompositorOGL::GetClientSize()
+RenderCompositorOGL::GetBufferSize()
 {
   return mWidget->GetClientSize();
 }

@@ -4,21 +4,18 @@
 
 "use strict";
 
-const Services = require("Services");
-const DevToolsUtils = require("devtools/shared/DevToolsUtils");
-
 const {
   apply,
   getNodeTransformationMatrix,
+  getWritingModeMatrix,
   identity,
   isIdentity,
   multiply,
-  reflectAboutY,
-  rotate,
   scale,
   translate,
 } = require("devtools/shared/layout/dom-matrix-2d");
 const { getViewportDimensions } = require("devtools/shared/layout/utils");
+const { getComputedStyle } = require("./markup");
 
 // A set of utility functions for highlighters that render their content to a <canvas>
 // element.
@@ -42,11 +39,6 @@ const CANVAS_SIZE = 4096;
 
 // The default color used for the canvas' font, fill and stroke colors.
 const DEFAULT_COLOR = "#9400FF";
-
-// Boolean pref to enable adjustment for writing mode and RTL content.
-DevToolsUtils.defineLazyGetter(this, "WRITING_MODE_ADJUST_ENABLED", () => {
-  return Services.prefs.getBoolPref("devtools.highlighter.writingModeAdjust");
-});
 
 /**
  * Draws a rect to the context given and applies a transformation matrix if passed.
@@ -176,8 +168,10 @@ function drawLine(ctx, x1, y1, x2, y2, options) {
     }
   }
 
+  ctx.beginPath();
   ctx.moveTo(Math.round(x1), Math.round(y1));
   ctx.lineTo(Math.round(x2), Math.round(y2));
+  ctx.closePath();
 }
 
 /**
@@ -290,7 +284,7 @@ function getBoundsFromPoints(points) {
  *           true if the node has transformed and false otherwise.
  */
 function getCurrentMatrix(element, window) {
-  let computedStyle = element.ownerGlobal.getComputedStyle(element);
+  let computedStyle = getComputedStyle(element);
 
   let paddingTop = parseFloat(computedStyle.paddingTop);
   let paddingLeft = parseFloat(computedStyle.paddingLeft);
@@ -318,12 +312,14 @@ function getCurrentMatrix(element, window) {
   currentMatrix = multiply(currentMatrix,
     translate(paddingLeft + borderLeft, paddingTop + borderTop));
 
-  if (WRITING_MODE_ADJUST_ENABLED) {
-    // Adjust as needed to match the writing mode and text direction of the element.
-    let writingModeMatrix = getWritingModeMatrix(element, computedStyle);
-    if (!isIdentity(writingModeMatrix)) {
-      currentMatrix = multiply(currentMatrix, writingModeMatrix);
-    }
+  // Adjust as needed to match the writing mode and text direction of the element.
+  let size = {
+    width: element.offsetWidth,
+    height: element.offsetHeight,
+  };
+  let writingModeMatrix = getWritingModeMatrix(size, computedStyle);
+  if (!isIdentity(writingModeMatrix)) {
+    currentMatrix = multiply(currentMatrix, writingModeMatrix);
   }
 
   return { currentMatrix, hasNodeTransformations };
@@ -372,72 +368,6 @@ function getPointsFromDiagonal(x1, y1, x2, y2, matrix = identity()) {
 
     return { x: transformedPoint[0], y: transformedPoint[1] };
   });
-}
-
-/**
- * Returns the matrix to rotate, translate, and reflect (if needed) from the element's
- * top-left origin into the actual writing mode and text direction applied to the element.
- *
- * @param  {Element} element
- *         The current element.
- * @param  {CSSStyleDeclaration} computedStyle
- *         The computed style for the element.
- * @return {Array}
- *         The matrix with adjustments for writing mode and text direction, if any.
- */
-function getWritingModeMatrix(element, computedStyle) {
-  let currentMatrix = identity();
-  let { direction, writingMode } = computedStyle;
-
-  switch (writingMode) {
-    case "horizontal-tb":
-      // This is the initial value.  No further adjustment needed.
-      break;
-    case "vertical-rl":
-      currentMatrix = multiply(
-        translate(element.offsetWidth, 0),
-        rotate(-Math.PI / 2)
-      );
-      break;
-    case "vertical-lr":
-      currentMatrix = multiply(
-        reflectAboutY(),
-        rotate(-Math.PI / 2)
-      );
-      break;
-    case "sideways-rl":
-      currentMatrix = multiply(
-        translate(element.offsetWidth, 0),
-        rotate(-Math.PI / 2)
-      );
-      break;
-    case "sideways-lr":
-      currentMatrix = multiply(
-        rotate(Math.PI / 2),
-        translate(-element.offsetHeight, 0)
-      );
-      break;
-    default:
-      console.error(`Unexpected writing-mode: ${writingMode}`);
-  }
-
-  switch (direction) {
-    case "ltr":
-      // This is the initial value.  No further adjustment needed.
-      break;
-    case "rtl":
-      let rowLength = element.offsetWidth;
-      if (writingMode != "horizontal-tb") {
-        rowLength = element.offsetHeight;
-      }
-      currentMatrix = multiply(currentMatrix, translate(rowLength, 0));
-      currentMatrix = multiply(currentMatrix, reflectAboutY());
-      break;
-    default:
-      console.error(`Unexpected direction: ${direction}`);
-  }
-
-  return currentMatrix;
 }
 
 /**

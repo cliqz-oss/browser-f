@@ -15,6 +15,7 @@ namespace layers {
 StackingContextHelper::StackingContextHelper()
   : mBuilder(nullptr)
   , mScale(1.0f, 1.0f)
+  , mAffectsClipPositioning(false)
 {
   // mOrigin remains at 0,0
 }
@@ -22,6 +23,7 @@ StackingContextHelper::StackingContextHelper()
 StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
                                              wr::DisplayListBuilder& aBuilder,
                                              const nsTArray<wr::WrFilterOp>& aFilters,
+                                             const LayoutDeviceRect& aBounds,
                                              const gfx::Matrix4x4* aBoundTransform,
                                              const wr::WrAnimationProperty* aAnimation,
                                              float* aOpacityPtr,
@@ -33,10 +35,6 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
   : mBuilder(&aBuilder)
   , mScale(1.0f, 1.0f)
 {
-  if (aTransformPtr) {
-    mTransform = *aTransformPtr;
-  }
-
   // Compute scale for fallback rendering.
   gfx::Matrix transform2d;
   if (aBoundTransform && aBoundTransform->CanDraw2D(&transform2d)) {
@@ -44,7 +42,7 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
     mScale = mInheritedTransform.ScaleFactors(true);
   }
 
-  mBuilder->PushStackingContext(wr::LayoutRect(),
+  mBuilder->PushStackingContext(wr::ToLayoutRect(aBounds),
                                 aAnimation,
                                 aOpacityPtr,
                                 aTransformPtr,
@@ -53,6 +51,10 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
                                 wr::ToMixBlendMode(aMixBlendMode),
                                 aFilters,
                                 aBackfaceVisible);
+
+  mAffectsClipPositioning =
+      (aTransformPtr && !aTransformPtr->IsIdentity()) ||
+      (aBounds.TopLeft() != LayoutDevicePoint());
 }
 
 StackingContextHelper::~StackingContextHelper()

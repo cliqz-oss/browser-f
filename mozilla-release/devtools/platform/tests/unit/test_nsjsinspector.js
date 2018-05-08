@@ -3,15 +3,12 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
 // Test the basic functionality of the nsIJSInspector component.
 var gCount = 0;
 const MAX = 10;
 
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 var inspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
-var tm = Cc["@mozilla.org/thread-manager;1"].getService(Ci.nsIThreadManager);
 
 // Emulate 10 simultaneously-debugged windows from 3 separate client connections.
 var requestor = (count) => ({
@@ -26,7 +23,7 @@ function run_test() {
 function test_nesting() {
   Assert.equal(inspector.eventLoopNestLevel, 0);
 
-  tm.dispatchToMainThread({ run: enterEventLoop});
+  Services.tm.dispatchToMainThread({ run: enterEventLoop});
 
   Assert.equal(inspector.enterNestedEventLoop(requestor(gCount)), 0);
   Assert.equal(inspector.eventLoopNestLevel, 0);
@@ -35,7 +32,7 @@ function test_nesting() {
 
 function enterEventLoop() {
   if (gCount++ < MAX) {
-    tm.dispatchToMainThread({ run: enterEventLoop});
+    Services.tm.dispatchToMainThread({ run: enterEventLoop});
 
     Object.create(requestor(gCount));
 
@@ -46,7 +43,7 @@ function enterEventLoop() {
     Assert.equal(inspector.enterNestedEventLoop(requestor(gCount)), gCount);
   } else {
     Assert.equal(gCount, MAX + 1);
-    tm.dispatchToMainThread({ run: exitEventLoop});
+    Services.tm.dispatchToMainThread({ run: exitEventLoop});
   }
 }
 
@@ -56,7 +53,7 @@ function exitEventLoop() {
     Assert.equal(inspector.lastNestRequestor.connection,
                  requestor(gCount - 1).connection);
     if (gCount-- > 1) {
-      tm.dispatchToMainThread({ run: exitEventLoop});
+      Services.tm.dispatchToMainThread({ run: exitEventLoop});
     }
 
     Assert.equal(inspector.exitNestedEventLoop(), gCount);

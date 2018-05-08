@@ -5,11 +5,11 @@
 
 /* eslint no-unused-vars: ["error", {vars: "local", args: "none"}] */
 
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var tmp = {};
-Components.utils.import("resource://gre/modules/AddonManager.jsm", tmp);
-Components.utils.import("resource://gre/modules/Log.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/Log.jsm", tmp);
 var AddonManager = tmp.AddonManager;
 var AddonManagerPrivate = tmp.AddonManagerPrivate;
 var Log = tmp.Log;
@@ -106,8 +106,8 @@ function checkOpenWindows(aWindowID) {
 
 // Tools to disable and re-enable the background update and blocklist timers
 // so that tests can protect themselves from unwanted timer events.
-var gCatMan = Components.classes["@mozilla.org/categorymanager;1"]
-                           .getService(Components.interfaces.nsICategoryManager);
+var gCatMan = Cc["@mozilla.org/categorymanager;1"]
+                .getService(Ci.nsICategoryManager);
 // Default values from toolkit/mozapps/extensions/extensions.manifest, but disable*UpdateTimer()
 // records the actual value so we can put it back in enable*UpdateTimer()
 var backgroundUpdateConfig = "@mozilla.org/addons/integration;1,getService,addon-background-update-timer,extensions.update.interval,86400";
@@ -309,7 +309,7 @@ function check_all_in_list(aManager, aIds, aIgnoreExtras) {
   }
 
   for (let id of aIds) {
-    if (inlist.indexOf(id) == -1)
+    if (!inlist.includes(id))
       ok(false, "Should find " + id + " in the list");
   }
 
@@ -317,7 +317,7 @@ function check_all_in_list(aManager, aIds, aIgnoreExtras) {
     return;
 
   for (let inlistItem of inlist) {
-    if (aIds.indexOf(inlistItem) == -1)
+    if (!aIds.includes(inlistItem))
       ok(false, "Shouldn't have seen " + inlistItem + " in the list");
   }
 }
@@ -619,11 +619,11 @@ CertOverrideListener.prototype = {
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.Exception("No interface", Components.results.NS_ERROR_NO_INTERFACE);
+    throw Components.Exception("No interface", Cr.NS_ERROR_NO_INTERFACE);
   },
 
   notifyCertProblem(socketInfo, sslStatus, targetHost) {
-    var cert = sslStatus.QueryInterface(Components.interfaces.nsISSLStatus)
+    var cert = sslStatus.QueryInterface(Ci.nsISSLStatus)
                         .serverCert;
     var cos = Cc["@mozilla.org/security/certoverride;1"].
               getService(Ci.nsICertOverrideService);
@@ -905,7 +905,7 @@ MockProvider.prototype = {
    */
   getAddonsByTypes: function MP_getAddonsByTypes(aTypes, aCallback) {
     var addons = this.addons.filter(function(aAddon) {
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aAddon.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
         return false;
       return true;
     });
@@ -922,7 +922,7 @@ MockProvider.prototype = {
    */
   getAddonsWithOperationsByTypes: function MP_getAddonsWithOperationsByTypes(aTypes, aCallback) {
     var addons = this.addons.filter(function(aAddon) {
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aAddon.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
         return false;
       return aAddon.pendingOperations != 0;
     });
@@ -943,7 +943,7 @@ MockProvider.prototype = {
       if (aInstall.state == AddonManager.STATE_CANCELLED)
         return false;
 
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aInstall.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aInstall.type))
         return false;
 
       return true;

@@ -9,12 +9,13 @@
 #include "nsFocusManager.h"
 
 #include "AccessibleCaretEventHub.h"
+#include "ChildIterator.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsGkAtoms.h"
 #include "nsGlobalWindow.h"
 #include "nsContentUtils.h"
+#include "nsDocument.h"
 #include "nsIContentParent.h"
-#include "nsIDocument.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsIDOMElement.h"
@@ -46,10 +47,12 @@
 #include "nsFrameLoader.h"
 #include "nsNumberControlFrame.h"
 #include "nsNetUtil.h"
+#include "nsRange.h"
 
 #include "mozilla/ContentEvents.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/dom/HTMLSlotElement.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
@@ -1600,7 +1603,7 @@ nsFocusManager::CheckIfFocusable(nsIContent* aContent, uint32_t aFlags)
   }
 
   // Make sure that our frames are up to date while ensuring the presshell is
-  // also initialized in case we come from an autofocus event.
+  // also initialized in case we come from a script calling focus() early.
   mEventHandlingNeedsFlush = false;
   doc->FlushPendingNotifications(FlushType::EnsurePresShellInitAndFrames);
 
@@ -2428,37 +2431,37 @@ nsFocusManager::UpdateCaret(bool aMoveCaretToFocus,
 void
 nsFocusManager::MoveCaretToFocus(nsIPresShell* aPresShell, nsIContent* aContent)
 {
-  // domDoc is a document interface we can create a range with
-  nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(aPresShell->GetDocument());
-  if (domDoc) {
+  nsCOMPtr<nsIDocument> doc = aPresShell->GetDocument();
+  if (doc) {
     RefPtr<nsFrameSelection> frameSelection = aPresShell->FrameSelection();
     nsCOMPtr<nsISelection> domSelection =
       frameSelection->GetSelection(SelectionType::eNormal);
     if (domSelection) {
-      nsCOMPtr<nsIDOMNode> currentFocusNode(do_QueryInterface(aContent));
       // First clear the selection. This way, if there is no currently focused
       // content, the selection will just be cleared.
       domSelection->RemoveAllRanges();
-      if (currentFocusNode) {
-        nsCOMPtr<nsIDOMRange> newRange;
-        nsresult rv = domDoc->CreateRange(getter_AddRefs(newRange));
-        if (NS_SUCCEEDED(rv)) {
-          // Set the range to the start of the currently focused node
-          // Make sure it's collapsed
-          newRange->SelectNodeContents(currentFocusNode);
-          nsCOMPtr<nsIDOMNode> firstChild;
-          currentFocusNode->GetFirstChild(getter_AddRefs(firstChild));
-          if (!firstChild ||
-              aContent->IsNodeOfType(nsINode::eHTML_FORM_CONTROL)) {
-            // If current focus node is a leaf, set range to before the
-            // node by using the parent as a container.
-            // This prevents it from appearing as selected.
-            newRange->SetStartBefore(currentFocusNode);
-            newRange->SetEndBefore(currentFocusNode);
-          }
-          domSelection->AddRange(newRange);
-          domSelection->CollapseToStart();
+      if (aContent) {
+        ErrorResult rv;
+        RefPtr<nsRange> newRange = doc->CreateRange(rv);
+        if (NS_WARN_IF(rv.Failed())) {
+          rv.SuppressException();
+          return;
         }
+
+        // Set the range to the start of the currently focused node
+        // Make sure it's collapsed
+        newRange->SelectNodeContents(*aContent, IgnoreErrors());
+
+        if (!aContent->GetFirstChild() ||
+            aContent->IsNodeOfType(nsINode::eHTML_FORM_CONTROL)) {
+          // If current focus node is a leaf, set range to before the
+          // node by using the parent as a container.
+          // This prevents it from appearing as selected.
+          newRange->SetStartBefore(*aContent, IgnoreErrors());
+          newRange->SetEndBefore(*aContent, IgnoreErrors());
+        }
+        domSelection->AddRange(newRange);
+        domSelection->CollapseToStart();
       }
     }
   }
@@ -2586,7 +2589,7 @@ nsFocusManager::GetSelectionLocation(nsIDocument* aDocument,
       // logical frame's primary node - so for this case we need to
       // change caretContent to that node.
 
-      if (startContent->NodeType() == nsIDOMNode::TEXT_NODE) {
+      if (startContent->NodeType() == nsINode::TEXT_NODE) {
         nsAutoString nodeValue;
         startContent->AppendTextTo(nodeValue);
 
@@ -2603,7 +2606,8 @@ nsFocusManager::GetSelectionLocation(nsIDocument* aDocument,
                                              false, // aVisual
                                              false, // aLockInScrollView
                                              true,  // aFollowOOFs
-                                             false  // aSkipPopupChecks
+                                             false, // aSkipPopupChecks
+                                             false  // aSkipShadow
                                              );
           NS_ENSURE_SUCCESS(rv, rv);
 
@@ -3064,6 +3068,282 @@ nsFocusManager::DetermineElementToMoveFocus(nsPIDOMWindowOuter* aWindow,
   return NS_OK;
 }
 
+// Helper class to iterate contents in scope by traversing flattened tree
+// in tree order
+class MOZ_STACK_CLASS ScopedContentTraversal
+{
+public:
+  ScopedContentTraversal(nsIContent* aStartContent, nsIContent* aOwner)
+    : mCurrent(aStartContent)
+    , mOwner(aOwner)
+  {
+    MOZ_ASSERT(aStartContent);
+  }
+
+  void Next();
+  void Prev();
+
+  void Reset()
+  {
+    SetCurrent(mOwner);
+  }
+
+  nsIContent* GetCurrent()
+  {
+    return mCurrent;
+  }
+
+private:
+  void SetCurrent(nsIContent* aContent)
+  {
+    mCurrent = aContent;
+  }
+
+  nsIContent* mCurrent;
+  nsIContent* mOwner;
+};
+
+void
+ScopedContentTraversal::Next()
+{
+  MOZ_ASSERT(mCurrent);
+
+  // Get mCurrent's first child if it's in the same scope.
+  if (!(mCurrent->GetShadowRoot() || mCurrent->IsHTMLElement(nsGkAtoms::slot)) ||
+      mCurrent == mOwner) {
+    FlattenedChildIterator iter(mCurrent);
+    nsIContent* child = iter.GetNextChild();
+    if (child) {
+      SetCurrent(child);
+      return;
+    }
+  }
+
+  // If mOwner has no children, END traversal
+  if (mCurrent == mOwner) {
+    SetCurrent(nullptr);
+    return;
+  }
+
+  nsIContent* current = mCurrent;
+  while (1) {
+    // Create parent's iterator and move to current
+    nsIContent* parent = current->GetFlattenedTreeParent();
+    FlattenedChildIterator parentIter(parent);
+    parentIter.Seek(current);
+
+    // Get next sibling of current
+    nsIContent* next = parentIter.GetNextChild();
+    if (next) {
+      SetCurrent(next);
+      return;
+    }
+
+    // If no next sibling and parent is mOwner, END traversal
+    if (parent == mOwner) {
+      SetCurrent(nullptr);
+      return;
+    }
+
+    current = parent;
+  }
+}
+
+void
+ScopedContentTraversal::Prev()
+{
+  MOZ_ASSERT(mCurrent);
+
+  nsIContent* parent;
+  nsIContent* last;
+  if (mCurrent == mOwner) {
+    // Get last child of mOwner
+    FlattenedChildIterator ownerIter(mOwner, false /* aStartAtBeginning */);
+    last = ownerIter.GetPreviousChild();
+
+    parent = last;
+  } else {
+    // Create parent's iterator and move to mCurrent
+    parent = mCurrent->GetFlattenedTreeParent();
+    FlattenedChildIterator parentIter(parent);
+    parentIter.Seek(mCurrent);
+
+    // Get previous sibling
+    last = parentIter.GetPreviousChild();
+  }
+
+  while (last) {
+    parent = last;
+    if (parent->GetShadowRoot() ||
+        parent->IsHTMLElement(nsGkAtoms::slot)) {
+      // Skip contents in other scopes
+      break;
+    }
+
+    // Find last child
+    FlattenedChildIterator iter(parent, false /* aStartAtBeginning */);
+    last = iter.GetPreviousChild();
+  }
+
+  // If parent is mOwner and no previous sibling remains, END traversal
+  SetCurrent(parent == mOwner ? nullptr : parent);
+}
+
+nsIContent*
+nsFocusManager::FindOwner(nsIContent* aContent)
+{
+  nsIContent* currentContent = aContent;
+  while (currentContent) {
+    nsIContent* parent = currentContent->GetFlattenedTreeParent();
+    if (!parent) {
+      // Document root
+      nsIDocument* doc = currentContent->GetUncomposedDoc();
+      if (doc && doc->GetRootElement() == currentContent) {
+        return currentContent;
+      }
+
+      break;
+    }
+
+    // Shadow host / Slot
+    if (IsHostOrSlot(parent)) {
+      return parent;
+    }
+
+    currentContent = parent;
+  }
+
+  return nullptr;
+}
+
+bool
+nsFocusManager::IsHostOrSlot(nsIContent* aContent)
+{
+  return aContent->GetShadowRoot() || // shadow host
+         aContent->IsHTMLElement(nsGkAtoms::slot); // slot
+}
+
+nsIContent*
+nsFocusManager::GetNextTabbableContentInScope(nsIContent* aOwner,
+                                              nsIContent* aStartContent,
+                                              bool aForward,
+                                              int32_t aCurrentTabIndex,
+                                              bool aIgnoreTabIndex,
+                                              bool aSkipOwner)
+{
+  // Return shadow host at first for forward navigation if its tabindex
+  // is non-negative
+  bool skipOwner = aSkipOwner || !aOwner->GetShadowRoot();
+  if (!skipOwner && (aForward && aOwner == aStartContent)) {
+    int32_t tabIndex = 0;
+    aOwner->IsFocusable(&tabIndex);
+    if (tabIndex >= 0) {
+      return aOwner;
+    }
+  }
+
+  //
+  // Iterate contents in scope
+  //
+  ScopedContentTraversal contentTraversal(aStartContent, aOwner);
+  nsCOMPtr<nsIContent> iterContent;
+  while (1) {
+    // Iterate tab index to find corresponding contents in scope
+
+    while (1) {
+      // Iterate remaining contents in scope to find next content to focus
+
+      // Get next content
+      aForward ? contentTraversal.Next() : contentTraversal.Prev();
+      iterContent = contentTraversal.GetCurrent();
+      if (!iterContent) {
+        // Reach the end
+        break;
+      }
+
+      // Get tab index of next content
+      int32_t tabIndex = 0;
+      iterContent->IsFocusable(&tabIndex);
+      if (tabIndex < 0 || !(aIgnoreTabIndex || tabIndex == aCurrentTabIndex)) {
+        continue;
+      }
+
+      if (!IsHostOrSlot(iterContent)) {
+        // Found content to focus
+        return iterContent;
+      }
+
+      // Search in scope owned by iterContent
+      nsIContent* contentToFocus =
+        GetNextTabbableContentInScope(iterContent, iterContent, aForward,
+                                      aForward ? 1 : 0, aIgnoreTabIndex,
+                                      false /* aSkipOwner */);
+      if (contentToFocus) {
+        return contentToFocus;
+      }
+    };
+
+    // If already at lowest priority tab (0), end search completely.
+    // A bit counterintuitive but true, tabindex order goes 1, 2, ... 32767, 0
+    if (aCurrentTabIndex == (aForward ? 0 : 1)) {
+      break;
+    }
+
+    // Continue looking for next highest priority tabindex
+    aCurrentTabIndex = GetNextTabIndex(aOwner, aCurrentTabIndex, aForward);
+    contentTraversal.Reset();
+  }
+
+  // Return shadow host at last for backward navigation if its tabindex
+  // is non-negative
+  if (!skipOwner && !aForward) {
+    int32_t tabIndex = 0;
+    aOwner->IsFocusable(&tabIndex);
+    if (tabIndex >= 0) {
+      return aOwner;
+    }
+  }
+
+  return nullptr;
+}
+
+nsIContent*
+nsFocusManager::GetNextTabbableContentInAncestorScopes(
+  nsIContent** aStartContent,
+  bool aForward,
+  int32_t* aCurrentTabIndex,
+  bool aIgnoreTabIndex)
+{
+  nsIContent* startContent = *aStartContent;
+  while (1) {
+    nsIContent* owner = FindOwner(startContent);
+    MOZ_ASSERT(owner, "focus navigation scope owner not in document");
+
+    int32_t tabIndex = 0;
+    startContent->IsFocusable(&tabIndex);
+    nsIContent* contentToFocus =
+      GetNextTabbableContentInScope(owner, startContent, aForward,
+                                    tabIndex, aIgnoreTabIndex,
+                                    false /* aSkipOwner */);
+    if (contentToFocus) {
+      return contentToFocus;
+    }
+
+    // If not found in shadow DOM, search from the shadow host in light DOM
+    if (!owner->IsInShadowTree()) {
+      MOZ_ASSERT(owner->GetShadowRoot());
+
+      *aStartContent = owner;
+      owner->IsFocusable(aCurrentTabIndex);
+      break;
+    }
+
+    startContent = owner;
+  }
+
+  return nullptr;
+}
+
 nsresult
 nsFocusManager::GetNextTabbableContent(nsIPresShell* aPresShell,
                                        nsIContent* aRootContent,
@@ -3083,6 +3363,40 @@ nsFocusManager::GetNextTabbableContent(nsIPresShell* aPresShell,
 
   LOGCONTENTNAVIGATION("GetNextTabbable: %s", aStartContent);
   LOGFOCUSNAVIGATION(("  tabindex: %d", aCurrentTabIndex));
+
+  if (nsDocument::IsShadowDOMEnabled(aRootContent)) {
+    // If aStartContent is a shadow host or slot in forward navigation,
+    // search in scope owned by aStartContent
+    if (aForward && IsHostOrSlot(aStartContent)) {
+      nsIContent* contentToFocus =
+        GetNextTabbableContentInScope(aStartContent, aStartContent, aForward,
+                                      aForward ? 1 : 0, aIgnoreTabIndex,
+                                      true /* aSkipOwner */);
+      if (contentToFocus) {
+        NS_ADDREF(*aResultContent = contentToFocus);
+        return NS_OK;
+      }
+    }
+
+    // If aStartContent is not in scope owned by aRootContent
+    // (e.g., aStartContent is already in shadow DOM),
+    // search from scope including aStartContent
+    if (aRootContent != FindOwner(aStartContent)) {
+      nsIContent* contentToFocus =
+        GetNextTabbableContentInAncestorScopes(&aStartContent, aForward,
+                                               &aCurrentTabIndex,
+                                               aIgnoreTabIndex);
+      if (contentToFocus) {
+        NS_ADDREF(*aResultContent = contentToFocus);
+        return NS_OK;
+      }
+    }
+
+    // If we reach here, it means no next tabbable content in shadow DOM.
+    // We need to continue searching in light DOM, starting at the shadow host
+    // in light DOM (updated aStartContent) and its tabindex
+    // (updated aCurrentTabIndex).
+  }
 
   nsPresContext* presContext = aPresShell->GetPresContext();
 
@@ -3119,7 +3433,8 @@ nsFocusManager::GetNextTabbableContent(nsIPresShell* aPresShell,
                                        false, // aVisual
                                        false, // aLockInScrollView
                                        true,  // aFollowOOFs
-                                       aForDocumentNavigation  // aSkipPopupChecks
+                                       aForDocumentNavigation,  // aSkipPopupChecks
+                                       nsDocument::IsShadowDOMEnabled(aRootContent) // aSkipShadow
                                        );
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -3300,6 +3615,24 @@ nsFocusManager::GetNextTabbableContent(nsIPresShell* aPresShell,
             else if (currentContent == aRootContent ||
                      (currentContent != startContent &&
                       (aForward || !GetRedirectedFocus(currentContent)))) {
+
+              if (nsDocument::IsShadowDOMEnabled(aRootContent)) {
+                // If currentContent is a shadow host in backward
+                // navigation, search in scope owned by currentContent
+                if (!aForward && currentContent->GetShadowRoot()) {
+                  nsIContent* contentToFocus =
+                    GetNextTabbableContentInScope(currentContent,
+                                                  currentContent,
+                                                  aForward, aForward ? 1 : 0,
+                                                  aIgnoreTabIndex,
+                                                  true /* aSkipOwner */);
+                  if (contentToFocus) {
+                    NS_ADDREF(*aResultContent = contentToFocus);
+                    return NS_OK;
+                  }
+                }
+              }
+
               NS_ADDREF(*aResultContent = currentContent);
               return NS_OK;
             }
@@ -3372,7 +3705,7 @@ nsFocusManager::GetNextTabbableMapArea(bool aForward,
     uint32_t count = mapContent->GetChildCount();
     // First see if the the start content is in this map
 
-    int32_t index = mapContent->IndexOf(aStartContent);
+    int32_t index = mapContent->ComputeIndexOf(aStartContent);
     int32_t tabIndex;
     if (index < 0 || (aStartContent->IsFocusable(&tabIndex) &&
                       tabIndex != aCurrentTabIndex)) {
@@ -3402,15 +3735,20 @@ nsFocusManager::GetNextTabIndex(nsIContent* aParent,
                                 bool aForward)
 {
   int32_t tabIndex, childTabIndex;
+  FlattenedChildIterator iter(aParent);
 
   if (aForward) {
     tabIndex = 0;
-    for (nsIContent* child = aParent->GetFirstChild();
+    for (nsIContent* child = iter.GetNextChild();
          child;
-         child = child->GetNextSibling()) {
-      childTabIndex = GetNextTabIndex(child, aCurrentTabIndex, aForward);
-      if (childTabIndex > aCurrentTabIndex && childTabIndex != tabIndex) {
-        tabIndex = (tabIndex == 0 || childTabIndex < tabIndex) ? childTabIndex : tabIndex;
+         child = iter.GetNextChild()) {
+      // Skip child's descendants if child is a shadow host or slot, as they are
+      // in the focus navigation scope owned by child's shadow root
+      if (!(nsDocument::IsShadowDOMEnabled(aParent) && IsHostOrSlot(child))) {
+        childTabIndex = GetNextTabIndex(child, aCurrentTabIndex, aForward);
+        if (childTabIndex > aCurrentTabIndex && childTabIndex != tabIndex) {
+          tabIndex = (tabIndex == 0 || childTabIndex < tabIndex) ? childTabIndex : tabIndex;
+        }
       }
 
       nsAutoString tabIndexStr;
@@ -3426,13 +3764,17 @@ nsFocusManager::GetNextTabIndex(nsIContent* aParent,
   }
   else { /* !aForward */
     tabIndex = 1;
-    for (nsIContent* child = aParent->GetFirstChild();
+    for (nsIContent* child = iter.GetNextChild();
          child;
-         child = child->GetNextSibling()) {
-      childTabIndex = GetNextTabIndex(child, aCurrentTabIndex, aForward);
-      if ((aCurrentTabIndex == 0 && childTabIndex > tabIndex) ||
-          (childTabIndex < aCurrentTabIndex && childTabIndex > tabIndex)) {
-        tabIndex = childTabIndex;
+         child = iter.GetNextChild()) {
+      // Skip child's descendants if child is a shadow host or slot, as they are
+      // in the focus navigation scope owned by child's shadow root
+      if (!(nsDocument::IsShadowDOMEnabled(aParent) && IsHostOrSlot(child))) {
+        childTabIndex = GetNextTabIndex(child, aCurrentTabIndex, aForward);
+        if ((aCurrentTabIndex == 0 && childTabIndex > tabIndex) ||
+            (childTabIndex < aCurrentTabIndex && childTabIndex > tabIndex)) {
+          tabIndex = childTabIndex;
+        }
       }
 
       nsAutoString tabIndexStr;
@@ -3615,13 +3957,12 @@ nsFocusManager::GetFocusInSelection(nsPIDOMWindowOuter* aWindow,
   // We couldn't find an anchor that was an ancestor of the selection start
   // Method #2: look for anchor in selection's primary range (depth first search)
 
-  // Turn into nodes so that we can use GetNextSibling() and GetFirstChild()
-  nsCOMPtr<nsIDOMNode> selectionNode(do_QueryInterface(aStartSelection));
-  nsCOMPtr<nsIDOMNode> endSelectionNode(do_QueryInterface(aEndSelection));
-  nsCOMPtr<nsIDOMNode> testNode;
+  nsCOMPtr<nsIContent> selectionNode = aStartSelection;
+  nsCOMPtr<nsIContent> endSelectionNode = aEndSelection;
+  nsCOMPtr<nsIContent> testNode;
 
   do {
-    testContent = do_QueryInterface(selectionNode);
+    testContent = selectionNode;
 
     // We're looking for any focusable link that could be part of the
     // main document's selection.
@@ -3632,7 +3973,7 @@ nsFocusManager::GetFocusInSelection(nsPIDOMWindowOuter* aWindow,
       return;
     }
 
-    selectionNode->GetFirstChild(getter_AddRefs(testNode));
+    nsIContent* testNode = selectionNode->GetFirstChild();
     if (testNode) {
       selectionNode = testNode;
       continue;
@@ -3640,19 +3981,26 @@ nsFocusManager::GetFocusInSelection(nsPIDOMWindowOuter* aWindow,
 
     if (selectionNode == endSelectionNode)
       break;
-    selectionNode->GetNextSibling(getter_AddRefs(testNode));
+    testNode = selectionNode->GetNextSibling();
     if (testNode) {
       selectionNode = testNode;
       continue;
     }
 
     do {
-      selectionNode->GetParentNode(getter_AddRefs(testNode));
+      // GetParent is OK here, instead of GetParentNode, because the only case
+      // where the latter returns something different from the former is when
+      // GetParentNode is the document.  But in that case we would simply get
+      // null for selectionNode when setting it to testNode->GetNextSibling()
+      // (because a document has no next sibling).  And then the next iteration
+      // of this loop would get null for GetParentNode anyway, and break out of
+      // all the loops.
+      testNode = selectionNode->GetParent();
       if (!testNode || testNode == endSelectionNode) {
         selectionNode = nullptr;
         break;
       }
-      testNode->GetNextSibling(getter_AddRefs(selectionNode));
+      selectionNode = testNode->GetNextSibling();
       if (selectionNode)
         break;
       selectionNode = testNode;

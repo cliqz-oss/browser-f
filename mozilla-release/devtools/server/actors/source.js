@@ -15,7 +15,6 @@ const { ActorClassWithSpec } = require("devtools/shared/protocol");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { assert, fetch } = DevToolsUtils;
 const { joinURI } = require("devtools/shared/path");
-const promise = require("promise");
 const { sourceSpec } = require("devtools/shared/specs/source");
 
 loader.lazyRequireGetter(this, "SourceMapConsumer", "source-map", true);
@@ -213,6 +212,13 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     return this.threadActor.prettyPrintWorker;
   },
 
+  get isCacheEnabled() {
+    if (this.threadActor._parent._getCacheDisabled) {
+      return !this.threadActor._parent._getCacheDisabled();
+    }
+    return true;
+  },
+
   form: function () {
     let source = this.source || this.generatedSource;
     // This might not have a source or a generatedSource because we
@@ -366,7 +372,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
       if (this.source &&
           this.source.text !== "[no source]" &&
           this._contentType &&
-          (this._contentType.indexOf("javascript") !== -1 ||
+          (this._contentType.includes("javascript") ||
            this._contentType === "text/wasm")) {
         return toResolvedContent(this.source.text);
       }
@@ -377,7 +383,10 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
       // fetching the original text for sourcemapped code, and the
       // page hasn't requested it before (if it has, it was a
       // previous debugging session).
-      let loadFromCache = this.isInlineSource;
+      // Additionally, we should only try the cache if it is currently enabled
+      // for the document.  Without this check, the cache may return stale data
+      // that doesn't match the document shown in the browser.
+      let loadFromCache = this.isInlineSource && this.isCacheEnabled;
 
       // Fetch the sources with the same principal as the original document
       let win = this.threadActor._parent.window;
@@ -479,7 +488,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
    * Handler for the "source" packet.
    */
   onSource: function () {
-    return promise.resolve(this._init)
+    return Promise.resolve(this._init)
       .then(this._getSourceText)
       .then(({ content, contentType }) => {
         if (typeof content === "object" && content && content.constructor &&
@@ -788,7 +797,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
         // GCed as well, and no scripts will exist on those lines
         // anymore. We will never slide through a GCed script.
         if (originalLocation.originalColumn || scripts.length === 0) {
-          return promise.resolve(actor);
+          return Promise.resolve(actor);
         }
 
         // Find the script that spans the largest amount of code to
@@ -814,7 +823,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
         // which means there must be valid entry points somewhere
         // within those scripts.
         if (actualLine > maxLine) {
-          return promise.reject({
+          return Promise.reject({
             error: "noCodeAtLineColumn",
             message:
               "Could not find any entry points to set a breakpoint on, " +
@@ -837,7 +846,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
         }
       }
 
-      return promise.resolve(actor);
+      return Promise.resolve(actor);
     }
     return this.sources.getAllGeneratedLocations(originalLocation)
       .then((generatedLocations) => {
@@ -909,16 +918,41 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
         }
       }
     } else {
+      // Compute columnToOffsetMaps for each script so that we can
+      // find matching entrypoints for the column breakpoint.
+      const columnToOffsetMaps = scripts.map(script =>
+        [
+          script,
+          script.getAllColumnOffsets()
+            .filter(({ lineNumber }) => lineNumber === generatedLine)
+        ]
+      );
+
       // This is a column breakpoint, so we are interested in all column
       // offsets that correspond to the given line *and* column number.
-      for (let script of scripts) {
-        let columnToOffsetMap = script.getAllColumnOffsets()
-                                      .filter(({ lineNumber }) => {
-                                        return lineNumber === generatedLine;
-                                      });
+      for (let [script, columnToOffsetMap] of columnToOffsetMaps) {
         for (let { columnNumber: column, offset } of columnToOffsetMap) {
           if (column >= generatedColumn && column <= generatedLastColumn) {
             entryPoints.push({ script, offsets: [offset] });
+          }
+        }
+      }
+
+      // If we don't find any matching entrypoints,
+      // then we should see if the breakpoint comes before or after the column offsets.
+      if (entryPoints.length === 0) {
+        for (let [script, columnToOffsetMap] of columnToOffsetMaps) {
+          if (columnToOffsetMap.length > 0) {
+            const firstColumnOffset = columnToOffsetMap[0];
+            const lastColumnOffset = columnToOffsetMap[columnToOffsetMap.length - 1];
+
+            if (generatedColumn < firstColumnOffset.columnNumber) {
+              entryPoints.push({ script, offsets: [firstColumnOffset.offset] });
+            }
+
+            if (generatedColumn > lastColumnOffset.columnNumber) {
+              entryPoints.push({ script, offsets: [lastColumnOffset.offset] });
+            }
           }
         }
       }
@@ -927,6 +961,7 @@ let SourceActor = ActorClassWithSpec(sourceSpec, {
     if (entryPoints.length === 0) {
       return false;
     }
+
     setBreakpointAtEntryPoints(actor, entryPoints);
     return true;
   }

@@ -1,5 +1,4 @@
-let Cu = Components.utils;
-let {HttpServer} = Cu.import("resource://testing-common/httpd.js", {});
+let {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js", {});
 
 const NUM_USER_CONTEXTS = 3;
 

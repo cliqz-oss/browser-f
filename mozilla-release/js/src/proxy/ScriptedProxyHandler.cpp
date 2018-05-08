@@ -10,13 +10,12 @@
 
 #include "vm/Interpreter.h" // For InstanceOfOperator
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
 
 using JS::IsArrayAnswer;
-using mozilla::ArrayLength;
 
 // ES8 rev 0c1bd3004329336774cbc90de727cd0cf5f11e93
 // 9.1.6.2 IsCompatiblePropertyDescriptor.  BUT that method just calls

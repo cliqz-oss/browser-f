@@ -807,22 +807,18 @@ nsObjectLoadingContent::InstantiatePluginInstance(bool aIsLoading)
     pluginHost->GetPluginTagForInstance(pluginInstance,
                                         getter_AddRefs(pluginTag));
 
-    nsCOMPtr<nsIBlocklistService> blocklist =
-      do_GetService("@mozilla.org/extensions/blocklist;1");
-    if (blocklist) {
-      uint32_t blockState = nsIBlocklistService::STATE_NOT_BLOCKED;
-      blocklist->GetPluginBlocklistState(pluginTag, EmptyString(),
-                                         EmptyString(), &blockState);
-      if (blockState == nsIBlocklistService::STATE_OUTDATED) {
-        // Fire plugin outdated event if necessary
-        LOG(("OBJLC [%p]: Dispatching plugin outdated event for content\n",
-             this));
-        nsCOMPtr<nsIRunnable> ev = new nsSimplePluginEvent(thisContent,
-                                                     NS_LITERAL_STRING("PluginOutdated"));
-        nsresult rv = NS_DispatchToCurrentThread(ev);
-        if (NS_FAILED(rv)) {
-          NS_WARNING("failed to dispatch nsSimplePluginEvent");
-        }
+
+    uint32_t blockState = nsIBlocklistService::STATE_NOT_BLOCKED;
+    pluginTag->GetBlocklistState(&blockState);
+    if (blockState == nsIBlocklistService::STATE_OUTDATED) {
+      // Fire plugin outdated event if necessary
+      LOG(("OBJLC [%p]: Dispatching plugin outdated event for content\n",
+           this));
+      nsCOMPtr<nsIRunnable> ev = new nsSimplePluginEvent(thisContent,
+                                                   NS_LITERAL_STRING("PluginOutdated"));
+      nsresult rv = NS_DispatchToCurrentThread(ev);
+      if (NS_FAILED(rv)) {
+        NS_WARNING("failed to dispatch nsSimplePluginEvent");
       }
     }
 
@@ -2509,6 +2505,7 @@ nsObjectLoadingContent::OpenChannel()
                      thisContent,
                      securityFlags,
                      contentPolicyType,
+                     nullptr, // aPerformanceStorage
                      group, // aLoadGroup
                      shim,  // aCallbacks
                      nsIChannel::LOAD_CALL_CONTENT_SNIFFERS |
@@ -2968,7 +2965,7 @@ nsObjectLoadingContent::LoadFallback(FallbackType aType, bool aNotify) {
       bool skipChildDescendants = false;
       if (aType != eFallbackAlternate &&
           !child->IsHTMLElement(nsGkAtoms::param) &&
-          nsStyleUtil::IsSignificantChild(child, true, false)) {
+          nsStyleUtil::IsSignificantChild(child, false)) {
         aType = eFallbackAlternate;
       }
       if (thisIsObject) {

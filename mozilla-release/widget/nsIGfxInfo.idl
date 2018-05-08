@@ -25,7 +25,9 @@ interface nsIGfxInfo : nsISupports
   readonly attribute DOMString ContentBackend;
   readonly attribute boolean WebRenderEnabled;
   readonly attribute boolean isHeadless;
+  readonly attribute boolean UsesTiling;
   readonly attribute boolean OffMainThreadPaintEnabled;
+  readonly attribute long OffMainThreadPaintWorkerCount;
 
   // XXX: Switch to a list of devices, rather than explicitly numbering them.
 
@@ -166,13 +168,6 @@ interface nsIGfxInfo : nsISupports
    * FEATURE_BLOCKED_DRIVER_VERSION, otherwise return an empty string.
    */
   DOMString getFeatureSuggestedDriverVersion(in long aFeature);
-
-  /**
-   * WebGL info; valid params are "full-renderer", "vendor", "renderer", "version",
-   * "shading_language_version", "extensions".  These return info from
-   * underlying GL impl that's used to implement WebGL.
-   */
-  DOMString getWebGLParameter(in DOMString aParam);
 
   // only useful on X11
   [noscript, notxpcom] void GetData();

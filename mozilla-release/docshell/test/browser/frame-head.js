@@ -4,9 +4,7 @@
 // Functions that are automatically loaded as frame scripts for
 // timeline tests.
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 // Functions that look like mochitest functions but forward to the
 // browser process.
@@ -71,7 +69,7 @@ this.timelineContentTest = function(tests) {
 
       // Cycle collection markers are non-deterministic, and none of these tests
       // expect them to show up.
-      markers = markers.filter(m => m.name.indexOf("nsCycleCollector") === -1);
+      markers = markers.filter(m => !m.name.includes("nsCycleCollector"));
 
       info("Running the test check function");
       check(markers);

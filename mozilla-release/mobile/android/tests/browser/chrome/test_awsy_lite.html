@@ -19,8 +19,6 @@
 
   "use strict";
 
-  const { interfaces: Ci, utils: Cu, classes: Cc } = Components;
-
   var kUrls = [
     "http://mochi.test:8888/chrome/mobile/android/tests/browser/chrome/tp5/baidu.com/www.baidu.com/s@wd=mozilla.html",
     "http://mochi.test:8888/chrome/mobile/android/tests/browser/chrome/tp5/twitter.com/twitter.com/ICHCheezburger.html",
@@ -34,7 +32,7 @@
   var gLastTab = null;
   var gResults = [];
 
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   var BrowserApp = Services.wm.getMostRecentWindow("navigator:browser").BrowserApp;
   SimpleTest.waitForExplicitFinish();
@@ -61,11 +59,10 @@
   };
 
   function doFullGc(aCallback, aIterations) {
-    var threadMan = Cc["@mozilla.org/thread-manager;1"].getService(Ci.nsIThreadManager);
-    var domWindowUtils = gWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIDOMWindowUtils);
+    var domWindowUtils = gWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
 
     function runSoon(f) {
-        threadMan.dispatchToMainThread({ run: f });
+        Services.tm.dispatchToMainThread({ run: f });
     }
 
     function cc() {

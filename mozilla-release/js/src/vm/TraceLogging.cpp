@@ -7,18 +7,18 @@
 #include "vm/TraceLogging.h"
 
 #include "mozilla/DebugOnly.h"
+#include "mozilla/EndianUtils.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ScopeExit.h"
 
 #include <string.h>
 
 #include "jsapi.h"
-#include "jsprf.h"
-#include "jsscript.h"
 
 #include "jit/BaselineJIT.h"
 #include "jit/CompileWrappers.h"
 #include "threading/LockGuard.h"
+#include "vm/JSScript.h"
 #include "vm/Runtime.h"
 #include "vm/Time.h"
 #include "vm/TraceLoggingGraph.h"
@@ -29,7 +29,6 @@ using namespace js;
 using namespace js::jit;
 
 using mozilla::DebugOnly;
-using mozilla::NativeEndian;
 
 TraceLoggerThreadState* traceLoggerState = nullptr;
 

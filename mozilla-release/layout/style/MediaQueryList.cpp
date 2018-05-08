@@ -24,6 +24,7 @@ MediaQueryList::MediaQueryList(nsIDocument* aDocument,
                                const nsAString& aMediaQueryList,
                                CallerType aCallerType)
   : mDocument(aDocument)
+  , mMatches(false)
   , mMatchesValid(false)
 {
   mMediaList =
@@ -138,6 +139,8 @@ MediaQueryList::Disconnect()
 void
 MediaQueryList::RecomputeMatches()
 {
+  mMatches = false;
+
   if (!mDocument) {
     return;
   }
@@ -152,13 +155,7 @@ MediaQueryList::RecomputeMatches()
     }
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    // XXXbz What's the right behavior here?  Spec doesn't say.
-    return;
-  }
-
-  nsPresContext* presContext = shell->GetPresContext();
+  nsPresContext* presContext = mDocument->GetPresContext();
   if (!presContext) {
     // XXXbz What's the right behavior here?  Spec doesn't say.
     return;

@@ -13,9 +13,7 @@ else:
     MINIDUMP_STACKWALK_PATH = "linux32-minidump_stackwalk"
 
 exes = {
-    'tooltool.py': ["/builds/tooltool.py"],
     'python': PYTHON,
-    'virtualenv': [PYTHON, '/usr/local/lib/python2.7/dist-packages/virtualenv.py'],
 }
 ABS_WORK_DIR = os.path.join(os.getcwd(), "build")
 INSTALLER_PATH = os.path.join(ABS_WORK_DIR, "installer.tar.bz2")
@@ -23,7 +21,6 @@ INSTALLER_PATH = os.path.join(ABS_WORK_DIR, "installer.tar.bz2")
 config = {
     "log_name": "talos",
     "buildbot_json_path": "buildprops.json",
-    "download_tooltool": True,
     "installer_path": INSTALLER_PATH,
     "virtualenv_path": VENV_PATH,
     "find_links": [

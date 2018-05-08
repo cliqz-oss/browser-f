@@ -107,6 +107,7 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "nsMemoryInfoDumper.h"
 #include "nsSecurityConsoleMessage.h"
 #include "nsMessageLoop.h"
+#include "nss.h"
 
 #include <locale.h>
 #include "mozilla/Services.h"
@@ -548,8 +549,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
   }
 #endif
 
-  NS_StartupLocalFile();
-
   nsDirectoryService::RealInit();
 
   bool value;
@@ -968,6 +967,11 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
     moduleLoaders = nullptr;
   }
 
+  // Clear the profiler's JS context before cycle collection. The profiler will
+  // notify the JS engine that it can let go of any data it's holding on to for
+  // profiling purposes.
+  PROFILER_CLEAR_JS_CONTEXT();
+
   bool shutdownCollect;
 #ifdef NS_FREE_PERMANENT_DATA
   shutdownCollect = true;
@@ -985,9 +989,6 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
     mozilla::BeginLateWriteChecks();
   }
 
-  // Shutdown nsLocalFile string conversion
-  NS_ShutdownLocalFile();
-
   // Shutdown xpcom. This will release all loaders and cause others holding
   // a refcount to the component manager to release it.
   if (nsComponentManagerImpl::gComponentManager) {
@@ -997,20 +998,26 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
     NS_WARNING("Component Manager was never created ...");
   }
 
-  // In optimized builds we don't do shutdown collections by default, so
-  // uncollected (garbage) objects may keep the nsXPConnect singleton alive,
-  // and its XPCJSContext along with it. However, we still destroy various
-  // bits of state in JS_ShutDown(), so we need to make sure the profiler
-  // can't access them when it shuts down. This call nulls out the
-  // JS pseudo-stack's internal reference to the main thread JSContext,
-  // duplicating the call in XPCJSContext::~XPCJSContext() in case that
-  // never fired.
-  PROFILER_CLEAR_JS_CONTEXT();
-
   if (sInitializedJS) {
     // Shut down the JS engine.
     JS_ShutDown();
     sInitializedJS = false;
+  }
+
+  // After all threads have been joined and the component manager has been shut
+  // down, any remaining objects that could be holding NSS resources (should)
+  // have been released, so we can safely shut down NSS.
+  if (NSS_IsInitialized()) {
+    // It would be nice to enforce that this succeeds, at least on debug builds.
+    // This would alert us to NSS resource leaks. Unfortunately there are some
+    // architectural roadblocks in the way. Some tests (e.g. pkix gtests) need
+    // to be re-worked to release their NSS resources when they're done. In the
+    // meantime, just emit a warning. Chasing down these leaks is tracked in
+    // bug 1230312.
+    if (NSS_Shutdown() != SECSuccess) {
+      NS_WARNING("NSS_Shutdown failed - some NSS resources are still in use "
+                 "(see bugs 1417680 and 1230312)");
+    }
   }
 
   // Release our own singletons

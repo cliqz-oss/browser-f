@@ -8,28 +8,15 @@
 // Check console.group, console.groupCollapsed and console.groupEnd calls
 // behave as expected.
 
-const TEST_URI = "http://example.com/browser/devtools/client/webconsole/new-console-output/test/mochitest/test-console-group.html";
-const { INDENT_WIDTH } = require("devtools/client/webconsole/new-console-output/components/MessageIndent");
+const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
+                 "new-console-output/test/mochitest/test-console-group.html";
+const { INDENT_WIDTH } =
+  require("devtools/client/webconsole/new-console-output/components/MessageIndent");
 
 add_task(async function () {
   const hud = await openNewTabAndConsole(TEST_URI);
-
   const store = hud.ui.newConsoleOutput.getStore();
-  // Adding logging each time the store is modified in order to check
-  // the store state in case of failure.
-  store.subscribe(() => {
-    const messages = [...store.getState().messages.messagesById]
-      .reduce(function (res, [id, message]) {
-        res.push({
-          id,
-          type: message.type,
-          parameters: message.parameters,
-          messageText: message.messageText
-        });
-        return res;
-      }, []);
-    info("messages : " + JSON.stringify(messages));
-  });
+  logAllStoreChanges(hud);
 
   const onMessagesLogged = waitForMessage(hud, "log-6");
   ContentTask.spawn(gBrowser.selectedBrowser, null, function () {
@@ -45,8 +32,8 @@ add_task(async function () {
     node,
     store,
     shouldBeOpen: true,
-    visibleMessageIdsAfterExpand: ["1","2","3","4","6","8","9","12"],
-    visibleMessageIdsAfterCollapse: ["1","8","9","12"],
+    visibleMessageIdsAfterExpand: ["1", "2", "3", "4", "6", "8", "9", "12"],
+    visibleMessageIdsAfterCollapse: ["1", "8", "9", "12"],
   });
 
   info("Test a message in a 1 level deep group");
@@ -62,8 +49,8 @@ add_task(async function () {
     node,
     store,
     shouldBeOpen: true,
-    visibleMessageIdsAfterExpand: ["1","2","3","4","6","8","9","12"],
-    visibleMessageIdsAfterCollapse: ["1","2","3","6","8","9","12"],
+    visibleMessageIdsAfterExpand: ["1", "2", "3", "4", "6", "8", "9", "12"],
+    visibleMessageIdsAfterCollapse: ["1", "2", "3", "6", "8", "9", "12"],
   });
 
   info("Test a message in a 2 level deep group");
@@ -89,8 +76,8 @@ add_task(async function () {
     node,
     store,
     shouldBeOpen: false,
-    visibleMessageIdsAfterExpand: ["1","2","3","4","6","8","9","10","12"],
-    visibleMessageIdsAfterCollapse: ["1","2","3","4","6","8","9","12"]
+    visibleMessageIdsAfterExpand: ["1", "2", "3", "4", "6", "8", "9", "10", "12"],
+    visibleMessageIdsAfterCollapse: ["1", "2", "3", "4", "6", "8", "9", "12"]
   });
 
   info("Test a message at root level, after closing a collapsed group");
@@ -119,23 +106,23 @@ async function testGroupToggle({
   visibleMessageIdsAfterCollapse
 }) {
   let toggleArrow = node.querySelector(".theme-twisty");
-  const isOpen = node => node.classList.contains("open");
+  const isOpen = node2 => node2.classList.contains("open");
   const assertVisibleMessageIds = (expanded) => {
     let visibleMessageIds = store.getState().messages.visibleMessages;
     expanded ? is(visibleMessageIds.toString(), visibleMessageIdsAfterExpand.toString()) :
       is(visibleMessageIds.toString(), visibleMessageIdsAfterCollapse.toString());
-  }
+  };
 
-  await waitFor(() => isOpen(node) === shouldBeOpen)
+  await waitFor(() => isOpen(node) === shouldBeOpen);
   assertVisibleMessageIds(shouldBeOpen);
 
   toggleArrow.click();
   shouldBeOpen = !shouldBeOpen;
-  await waitFor(() => isOpen(node) === shouldBeOpen)
+  await waitFor(() => isOpen(node) === shouldBeOpen);
   assertVisibleMessageIds(shouldBeOpen);
 
   toggleArrow.click();
   shouldBeOpen = !shouldBeOpen;
-  await waitFor(() => isOpen(node) === shouldBeOpen)
+  await waitFor(() => isOpen(node) === shouldBeOpen);
   assertVisibleMessageIds(shouldBeOpen);
 }

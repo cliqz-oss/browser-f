@@ -106,6 +106,7 @@ void write_color(vec4 color0, vec4 color1, int style, vec2 delta, int instance_k
         case SIDE_SECOND:
             color1.a = 0.0;
             break;
+        default: break;
     }
 
     vColor00 = vec4(clamp(color0.rgb * modulate.x, vec3(0.0), vec3(color0.a)), color0.a);
@@ -136,6 +137,8 @@ int select_style(int color_select, vec2 fstyle) {
             return style.x;
         case SIDE_SECOND:
             return style.y;
+        default:
+            return 0;
     }
 }
 
@@ -153,8 +156,9 @@ void main(void) {
     vec4 edge_distances;
     vec4 color0, color1;
     vec2 color_delta;
+    vec4 edge_mask;
 
-    // TODO(gw): Now that all border styles are supported, the switch
+    // TODO(gw): Now that all border styles are supported, the
     //           statement below can be tidied up quite a bit.
 
     switch (sub_part) {
@@ -180,6 +184,7 @@ void main(void) {
             color_delta = vec2(1.0);
             vIsBorderRadiusLessThanBorderWidth = any(lessThan(border.radii[0].xy,
                                                               border.widths.xy)) ? 1.0 : 0.0;
+            edge_mask = vec4(1.0, 1.0, 0.0, 0.0);
             break;
         }
         case 1: {
@@ -206,6 +211,7 @@ void main(void) {
             color_delta = vec2(1.0, -1.0);
             vIsBorderRadiusLessThanBorderWidth = any(lessThan(border.radii[0].zw,
                                                               border.widths.zy)) ? 1.0 : 0.0;
+            edge_mask = vec4(0.0, 1.0, 1.0, 0.0);
             break;
         }
         case 2: {
@@ -232,6 +238,7 @@ void main(void) {
             color_delta = vec2(-1.0);
             vIsBorderRadiusLessThanBorderWidth = any(lessThan(border.radii[1].xy,
                                                               border.widths.zw)) ? 1.0 : 0.0;
+            edge_mask = vec4(0.0, 0.0, 1.0, 1.0);
             break;
         }
         case 3: {
@@ -258,8 +265,17 @@ void main(void) {
             color_delta = vec2(-1.0, 1.0);
             vIsBorderRadiusLessThanBorderWidth = any(lessThan(border.radii[1].zw,
                                                               border.widths.xw)) ? 1.0 : 0.0;
+            edge_mask = vec4(1.0, 0.0, 0.0, 1.0);
             break;
         }
+        default:
+            p0 = p1 = vec2(0.0);
+            color0 = color1 = vec4(1.0);
+            vClipCenter = vClipSign = vec2(0.0);
+            style = 0;
+            edge_distances = edge_mask = vec4(0.0);
+            color_delta = vec2(0.0);
+            vIsBorderRadiusLessThanBorderWidth = 0.0;
     }
 
     switch (style) {
@@ -301,10 +317,11 @@ void main(void) {
     VertexInfo vi = write_transform_vertex(segment_rect,
                                            prim.local_rect,
                                            prim.local_clip_rect,
-                                           vec4(1.0),
+                                           edge_mask,
                                            prim.z,
                                            prim.scroll_node,
-                                           prim.task);
+                                           prim.task,
+                                           true);
 #else
     VertexInfo vi = write_vertex(segment_rect,
                                  prim.local_clip_rect,

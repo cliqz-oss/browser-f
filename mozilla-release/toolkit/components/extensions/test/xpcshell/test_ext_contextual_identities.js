@@ -2,8 +2,8 @@
 
 do_get_profile();
 
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://modules/AddonManager.jsm");
 
 function waitForPrefChange(pref) {
   return new Promise(resolve => {
@@ -243,9 +243,9 @@ add_task(async function test_contextualIdentity_with_permissions() {
   let extension = makeExtension("containers-test@mozilla.org");
 
   extension.onMessage("containers-state-change", (stateBool) => {
-    Components.utils.reportError(`Got message "containers-state-change", ${stateBool}`);
+    Cu.reportError(`Got message "containers-state-change", ${stateBool}`);
     Services.prefs.setBoolPref(CONTAINERS_PREF, stateBool);
-    Components.utils.reportError("Changed pref");
+    Cu.reportError("Changed pref");
     extension.sendMessage("containers-state-change-response");
   });
 

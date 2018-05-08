@@ -12,15 +12,14 @@ debug("loaded");
 
 var BrowserElementIsReady;
 
-var { classes: Cc, interfaces: Ci, results: Cr, utils: Cu }  = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/BrowserElementPromptService.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserElementPromptService.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ManifestFinder",
-                                  "resource://gre/modules/ManifestFinder.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ManifestObtainer",
-                                  "resource://gre/modules/ManifestObtainer.jsm");
+ChromeUtils.defineModuleGetter(this, "ManifestFinder",
+                               "resource://gre/modules/ManifestFinder.jsm");
+ChromeUtils.defineModuleGetter(this, "ManifestObtainer",
+                               "resource://gre/modules/ManifestObtainer.jsm");
 
 
 var kLongestReturnedString = 128;
@@ -868,7 +867,8 @@ BrowserElementChild.prototype = {
     if (ChromeUtils.getClassName(elem) === "HTMLImageElement") {
       return {uri: elem.src, documentURI: documentURI};
     }
-    if (elem instanceof Ci.nsIDOMHTMLMediaElement) {
+    if (ChromeUtils.getClassName(elem) === "HTMLVideoElement" ||
+        ChromeUtils.getClassName(elem) === "HTMLAudioElement") {
       let hasVideo = !(elem.readyState >= elem.HAVE_METADATA &&
                        (elem.videoWidth == 0 || elem.videoHeight == 0));
       return {uri: elem.currentSrc || elem.src,
@@ -1330,7 +1330,7 @@ BrowserElementChild.prototype = {
 
   _initFinder: function() {
     if (!this._finder) {
-      let {Finder} = Components.utils.import("resource://gre/modules/Finder.jsm", {});
+      let {Finder} = ChromeUtils.import("resource://gre/modules/Finder.jsm", {});
       this._finder = new Finder(docShell);
     }
     let listener = {
@@ -1512,6 +1512,9 @@ BrowserElementChild.prototype = {
             return;
           case Cr.NS_ERROR_CORRUPTED_CONTENT :
             sendAsyncMsg('error', { type: 'corruptedContentErrorv2' });
+            return;
+          case Cr.NS_ERROR_BLOCKED_BY_POLICY :
+            sendAsyncMsg('error', { type: 'blockedByPolicy' });
             return;
 
           default:

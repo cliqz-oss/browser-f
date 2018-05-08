@@ -1,8 +1,3 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-
 var callbacks = new Array();
 
 // Expect an existing entry
@@ -93,7 +88,7 @@ OpenCallback.prototype =
         iid.equals(Ci.nsICacheEntryOpenCallback)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onCacheEntryCheck: function(entry, appCache)
   {
@@ -292,7 +287,7 @@ VisitCallback.prototype =
         iid.equals(Ci.nsICacheStorageVisitor)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onCacheStorageInfo: function(num, consumption)
   {
@@ -365,7 +360,7 @@ EvictionCallback.prototype =
         iid.equals(Ci.nsICacheEntryDoomCallback)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
   onCacheEntryDoomed: function(result)
   {

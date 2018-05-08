@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 function LoginManagerCrypto_SDR() {
   this.init();
@@ -96,6 +94,51 @@ LoginManagerCrypto_SDR.prototype = {
         this._notifyObservers("passwordmgr-crypto-loginCanceled");
     }
     return cipherText;
+  },
+
+
+  /*
+   * encryptMany
+   *
+   * Encrypts the specified strings, using the SecretDecoderRing.
+   *
+   * Returns a promise which resolves with the the encrypted strings,
+   * or throws/rejects with an error if there was a problem.
+   */
+  async encryptMany(plaintexts) {
+    if (!Array.isArray(plaintexts) || !plaintexts.length) {
+      throw Components.Exception("Need at least one plaintext to encrypt",
+                                 Cr.NS_ERROR_INVALID_ARG);
+    }
+
+    let cipherTexts;
+
+    let wasLoggedIn = this.isLoggedIn;
+    let canceledMP = false;
+
+    this._uiBusy = true;
+    try {
+      cipherTexts = await this._decoderRing.asyncEncryptStrings(plaintexts.length, plaintexts);
+    } catch (e) {
+      this.log("Failed to encrypt strings. (" + e.name + ")");
+      // If the user clicks Cancel, we get NS_ERROR_FAILURE.
+      // (unlike decrypting, which gets NS_ERROR_NOT_AVAILABLE).
+      if (e.result == Cr.NS_ERROR_FAILURE) {
+        canceledMP = true;
+        throw Components.Exception("User canceled master password entry", Cr.NS_ERROR_ABORT);
+      } else {
+        throw Components.Exception("Couldn't encrypt strings", Cr.NS_ERROR_FAILURE);
+      }
+    } finally {
+      this._uiBusy = false;
+      // If we triggered a master password prompt, notify observers.
+      if (!wasLoggedIn && this.isLoggedIn) {
+        this._notifyObservers("passwordmgr-crypto-login");
+      } else if (canceledMP) {
+        this._notifyObservers("passwordmgr-crypto-loginCanceled");
+      }
+    }
+    return cipherTexts;
   },
 
 

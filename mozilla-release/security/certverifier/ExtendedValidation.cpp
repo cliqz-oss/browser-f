@@ -1002,6 +1002,42 @@ static const struct EVInfo kEVInfos[] = {
     "DBZMdXhUcnVzdCBHbG9iYWwgUm9vdCAy",
     "Cn6m30tEntpqJIWe5rgV0xZ/u7E=",
   },
+  {
+    // CN=GDCA TrustAUTH R5 ROOT,O="GUANG DONG CERTIFICATE AUTHORITY CO.,LTD.",C=CN
+    "1.2.156.112559.1.1.6.1",
+    "GDCA EV OID",
+    { 0xBF, 0xFF, 0x8F, 0xD0, 0x44, 0x33, 0x48, 0x7D, 0x6A, 0x8A, 0xA6,
+      0x0C, 0x1A, 0x29, 0x76, 0x7A, 0x9F, 0xC2, 0xBB, 0xB0, 0x5E, 0x42,
+      0x0F, 0x71, 0x3A, 0x13, 0xB9, 0x92, 0x89, 0x1D, 0x38, 0x93 },
+    "MGIxCzAJBgNVBAYTAkNOMTIwMAYDVQQKDClHVUFORyBET05HIENFUlRJRklDQVRF"
+    "IEFVVEhPUklUWSBDTy4sTFRELjEfMB0GA1UEAwwWR0RDQSBUcnVzdEFVVEggUjUg"
+    "Uk9PVA==",
+    "fQmX/vBH6no=",
+  },
+  {
+    // CN=SSL.com EV Root Certification Authority ECC,O=SSL Corporation,L=Houston,ST=Texas,C=US
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x22, 0xA2, 0xC1, 0xF7, 0xBD, 0xED, 0x70, 0x4C, 0xC1, 0xE7, 0x01,
+      0xB5, 0xF4, 0x08, 0xC3, 0x10, 0x88, 0x0F, 0xE9, 0x56, 0xB5, 0xDE,
+      0x2A, 0x4A, 0x44, 0xF9, 0x9C, 0x87, 0x3A, 0x25, 0xA7, 0xC8 },
+    "MH8xCzAJBgNVBAYTAlVTMQ4wDAYDVQQIDAVUZXhhczEQMA4GA1UEBwwHSG91c3Rv"
+    "bjEYMBYGA1UECgwPU1NMIENvcnBvcmF0aW9uMTQwMgYDVQQDDCtTU0wuY29tIEVW"
+    "IFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgRUND",
+    "LCmcWxbtBZU=",
+  },
+  {
+    // CN=SSL.com EV Root Certification Authority RSA R2,O=SSL Corporation,L=Houston,ST=Texas,C=US
+    "2.23.140.1.1",
+    "CA/Browser Forum EV OID",
+    { 0x2E, 0x7B, 0xF1, 0x6C, 0xC2, 0x24, 0x85, 0xA7, 0xBB, 0xE2, 0xAA,
+      0x86, 0x96, 0x75, 0x07, 0x61, 0xB0, 0xAE, 0x39, 0xBE, 0x3B, 0x2F,
+      0xE9, 0xD0, 0xCC, 0x6D, 0x4E, 0xF7, 0x34, 0x91, 0x42, 0x5C },
+    "MIGCMQswCQYDVQQGEwJVUzEOMAwGA1UECAwFVGV4YXMxEDAOBgNVBAcMB0hvdXN0"
+    "b24xGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjE3MDUGA1UEAwwuU1NMLmNvbSBF"
+    "ViBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IFJTQSBSMg==",
+    "VrYpzTS8ePY=",
+  },
 };
 
 static SECOidTag sEVInfoOIDTags[ArrayLength(kEVInfos)];
@@ -1085,7 +1121,7 @@ CertIsAuthoritativeForEVPolicy(const UniqueCERTCertificate& cert,
 }
 
 nsresult
-LoadExtendedValidationInfo(const nsNSSShutDownPreventionLock& /*proofOfLock*/)
+LoadExtendedValidationInfo()
 {
   static const char* sCABForumOIDString = "2.23.140.1.1";
   static const char* sCABForumOIDDescription = "CA/Browser Forum EV OID";

@@ -3,16 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "AboutReader", "resource://gre/modules/AboutReader.jsm");
+ChromeUtils.defineModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginManagerContent", "resource://gre/modules/LoginManagerContent.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AboutReader", "resource://gre/modules/AboutReader.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerContent", "resource://gre/modules/LoginManagerContent.jsm");
-
-var dump = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "Content");
+var dump = ChromeUtils.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "Content");
 
 var global = this;
 

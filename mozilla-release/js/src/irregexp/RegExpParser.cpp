@@ -33,12 +33,11 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Move.h"
 
-#include "jsgc.h"
-
 #include "frontend/TokenStream.h"
+#include "gc/GC.h"
 #include "irregexp/RegExpCharacters.h"
+#include "util/StringBuffer.h"
 #include "vm/ErrorReporting.h"
-#include "vm/StringBuffer.h"
 
 using namespace js;
 using namespace js::irregexp;

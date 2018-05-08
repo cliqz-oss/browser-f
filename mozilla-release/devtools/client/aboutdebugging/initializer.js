@@ -7,11 +7,11 @@
 
 "use strict";
 
-const { loader } = Components.utils.import(
+const { loader } = ChromeUtils.import(
   "resource://devtools/shared/Loader.jsm", {});
-const { BrowserLoader } = Components.utils.import(
+const { BrowserLoader } = ChromeUtils.import(
   "resource://devtools/client/shared/browser-loader.js", {});
-const { Services } = Components.utils.import(
+const { Services } = ChromeUtils.import(
   "resource://gre/modules/Services.jsm", {});
 
 loader.lazyRequireGetter(this, "Telemetry",
@@ -24,6 +24,7 @@ const { require } = BrowserLoader({
 
 const { createFactory } = require("devtools/client/shared/vendor/react");
 const { render, unmountComponentAtNode } = require("devtools/client/shared/vendor/react-dom");
+const EventEmitter = require("devtools/shared/event-emitter");
 
 const AboutDebuggingApp = createFactory(require("./components/Aboutdebugging"));
 const { createClient } = require("./modules/connect");
@@ -56,6 +57,9 @@ var AboutDebugging = {
     }
   },
 };
+
+// Used to track async requests in tests.  See bug 1444424 for better ideas.
+EventEmitter.decorate(AboutDebugging);
 
 window.addEventListener("DOMContentLoaded", function () {
   AboutDebugging.init();

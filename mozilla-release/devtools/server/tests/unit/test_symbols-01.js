@@ -25,10 +25,10 @@ function run_test() {
   do_test_pending();
 }
 
-function* testSymbols(client, debuggee) {
+async function testSymbols(client, debuggee) {
   const evalCode = () => {
     /* eslint-disable */
-    Components.utils.evalInSandbox(
+    Cu.evalInSandbox(
       "(" + function () {
         var symbolWithName = Symbol("Chris");
         var symbolWithoutName = Symbol();
@@ -43,7 +43,7 @@ function* testSymbols(client, debuggee) {
     /* eslint-enable */
   };
 
-  const packet = yield executeOnNextTickAndWaitForPause(evalCode, client);
+  const packet = await executeOnNextTickAndWaitForPause(evalCode, client);
   const {
     symbolWithName,
     symbolWithoutName,

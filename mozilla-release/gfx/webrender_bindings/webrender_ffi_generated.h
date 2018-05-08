@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Generated with cbindgen:0.3.3 */
+/* Generated with cbindgen:0.5.0 */
 
 /* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/rlhunt/cbindgen` and use a tagged release
+ *   1. Get the latest cbindgen using `cargo +nightly install --force cbindgen`
+ *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
  *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
  */
 
@@ -40,36 +40,26 @@ enum class BoxShadowClipMode : uint32_t {
 };
 
 enum class ClipMode {
-  Clip = 0,
-  ClipOut = 1,
+  Clip,
+  ClipOut,
 
   Sentinel /* this must be last for serialization purposes. */
 };
 
 enum class ExtendMode : uint32_t {
-  Clamp = 0,
-  Repeat = 1,
-
-  Sentinel /* this must be last for serialization purposes. */
-};
-
-enum class ExternalImageType : uint32_t {
-  Texture2DHandle = 0,
-  Texture2DArrayHandle = 1,
-  TextureRectHandle = 2,
-  TextureExternalHandle = 3,
-  ExternalBuffer = 4,
+  Clamp,
+  Repeat,
 
   Sentinel /* this must be last for serialization purposes. */
 };
 
 #if !(defined(XP_MACOSX) || defined(XP_WIN))
 enum class FontHinting : uint8_t {
-  None = 0,
-  Mono = 1,
-  Light = 2,
-  Normal = 3,
-  LCD = 4,
+  None,
+  Mono,
+  Light,
+  Normal,
+  LCD,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -77,10 +67,10 @@ enum class FontHinting : uint8_t {
 
 #if !(defined(XP_MACOSX) || defined(XP_WIN))
 enum class FontLCDFilter : uint8_t {
-  None = 0,
-  Default = 1,
-  Light = 2,
-  Legacy = 3,
+  None,
+  Default,
+  Light,
+  Legacy,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -88,8 +78,8 @@ enum class FontLCDFilter : uint8_t {
 
 enum class FontRenderMode : uint32_t {
   Mono = 0,
-  Alpha = 1,
-  Subpixel = 2,
+  Alpha,
+  Subpixel,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -111,43 +101,43 @@ enum class ImageRendering : uint32_t {
   Sentinel /* this must be last for serialization purposes. */
 };
 
+// An enum representing the available verbosity level filters of the logger.
+//
+// A `LevelFilter` may be compared directly to a [`Level`]. Use this type
+// to get and set the maximum log level with [`max_level()`] and [`set_max_level`].
+//
+// [`Level`]: enum.Level.html
+// [`max_level()`]: fn.max_level.html
+// [`set_max_level`]: fn.set_max_level.html
+enum class LevelFilter : uintptr_t {
+  // A level lower than all log levels.
+  Off,
+  // Corresponds to the `Error` log level.
+  Error,
+  // Corresponds to the `Warn` log level.
+  Warn,
+  // Corresponds to the `Info` log level.
+  Info,
+  // Corresponds to the `Debug` log level.
+  Debug,
+  // Corresponds to the `Trace` log level.
+  Trace,
+
+  Sentinel /* this must be last for serialization purposes. */
+};
+
 enum class LineOrientation : uint8_t {
-  Vertical = 0,
-  Horizontal = 1,
+  Vertical,
+  Horizontal,
 
   Sentinel /* this must be last for serialization purposes. */
 };
 
 enum class LineStyle : uint8_t {
-  Solid = 0,
-  Dotted = 1,
-  Dashed = 2,
-  Wavy = 3,
-
-  Sentinel /* this must be last for serialization purposes. */
-};
-
-// An enum representing the available verbosity level filters of the logging
-// framework.
-//
-// A `LogLevelFilter` may be compared directly to a [`LogLevel`](enum.LogLevel.html).
-// Use this type to [`get()`](struct.MaxLogLevelFilter.html#method.get) and
-// [`set()`](struct.MaxLogLevelFilter.html#method.set) the
-// [`MaxLogLevelFilter`](struct.MaxLogLevelFilter.html), or to match with the getter
-// [`max_log_level()`](fn.max_log_level.html).
-enum class LogLevelFilter : uintptr_t {
-  // A level lower than all log levels.
-  Off = 0,
-  // Corresponds to the `Error` log level.
-  Error = 1,
-  // Corresponds to the `Warn` log level.
-  Warn = 2,
-  // Corresponds to the `Info` log level.
-  Info = 3,
-  // Corresponds to the `Debug` log level.
-  Debug = 4,
-  // Corresponds to the `Trace` log level.
-  Trace = 5,
+  Solid,
+  Dotted,
+  Dashed,
+  Wavy,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -174,18 +164,18 @@ enum class MixBlendMode : uint32_t {
 };
 
 enum class RepeatMode : uint32_t {
-  Stretch = 0,
-  Repeat = 1,
-  Round = 2,
-  Space = 3,
+  Stretch,
+  Repeat,
+  Round,
+  Space,
 
   Sentinel /* this must be last for serialization purposes. */
 };
 
 enum class SubpixelDirection : uint32_t {
   None = 0,
-  Horizontal = 1,
-  Vertical = 2,
+  Horizontal,
+  Vertical,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -204,10 +194,20 @@ enum class WrAnimationType : uint32_t {
   Sentinel /* this must be last for serialization purposes. */
 };
 
+enum class WrExternalImageBufferType {
+  TextureHandle = 0,
+  TextureRectHandle = 1,
+  TextureArrayHandle = 2,
+  TextureExternalHandle = 3,
+  ExternalBuffer = 4,
+
+  Sentinel /* this must be last for serialization purposes. */
+};
+
 enum class WrExternalImageType : uint32_t {
-  RawData = 0,
-  NativeTexture = 1,
-  Invalid = 2,
+  RawData,
+  NativeTexture,
+  Invalid,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -223,6 +223,7 @@ enum class WrFilterOpType : uint32_t {
   Saturate = 7,
   Sepia = 8,
   DropShadow = 9,
+  ColorMatrix = 10,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -273,9 +274,9 @@ struct Vec;
 // Geometry in the document's coordinate space (logical pixels).
 struct WorldPixel;
 
-struct WrProgramCache;
+struct WrPipelineInfo;
 
-struct WrRenderedEpochs;
+struct WrProgramCache;
 
 struct WrState;
 
@@ -325,6 +326,8 @@ struct TypedSize2D {
   }
 };
 
+using DeviceUintSize = TypedSize2D<uint32_t, DevicePixel>;
+
 using LayerSize = TypedSize2D<float, LayerPixel>;
 
 using LayoutSize = LayerSize;
@@ -340,11 +343,14 @@ struct BuiltDisplayListDescriptor {
   uint64_t builder_finish_time;
   // The third IPC time stamp: just before sending
   uint64_t send_start_time;
+  // The amount of clips ids assigned while building this display list.
+  size_t total_clip_ids;
 
   bool operator==(const BuiltDisplayListDescriptor& aOther) const {
     return builder_start_time == aOther.builder_start_time &&
            builder_finish_time == aOther.builder_finish_time &&
-           send_start_time == aOther.send_start_time;
+           send_start_time == aOther.send_start_time &&
+           total_clip_ids == aOther.total_clip_ids;
   }
 };
 
@@ -621,8 +627,8 @@ using LayoutPixel = LayerPixel;
 //
 // Transforms can be parametrized over the source and destination units, to describe a
 // transformation from a space to another.
-// For example, `TypedTransform3D<f32, WordSpace, ScreenSpace>::transform_point3d`
-// takes a `TypedPoint3D<f32, WordSpace>` and returns a `TypedPoint3D<f32, ScreenSpace>`.
+// For example, `TypedTransform3D<f32, WorldSpace, ScreenSpace>::transform_point3d`
+// takes a `TypedPoint3D<f32, WorldSpace>` and returns a `TypedPoint3D<f32, ScreenSpace>`.
 //
 // Transforms expose a set of convenience methods for pre- and post-transformations.
 // A pre-transformation corresponds to adding an operation that is applied before
@@ -674,13 +680,7 @@ struct WrFilterOp {
   float argument;
   LayoutVector2D offset;
   ColorF color;
-
-  bool operator==(const WrFilterOp& aOther) const {
-    return filter_type == aOther.filter_type &&
-           argument == aOther.argument &&
-           offset == aOther.offset &&
-           color == aOther.color;
-  }
+  float matrix[20];
 };
 
 struct FontInstanceKey {
@@ -719,7 +719,7 @@ struct GlyphOptions {
 
 using WrYuvColorSpace = YuvColorSpace;
 
-using WrLogLevelFilter = LogLevelFilter;
+using WrLogLevelFilter = LevelFilter;
 
 struct ByteSlice {
   const uint8_t *buffer;
@@ -843,8 +843,6 @@ struct WrImageDescriptor {
   }
 };
 
-using WrExternalImageBufferType = ExternalImageType;
-
 // Represents RGBA screen colors with one byte per channel.
 //
 // If the alpha value `a` is 255 the color is opaque.
@@ -932,8 +930,8 @@ extern "C" {
 
 /* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/rlhunt/cbindgen` and use a tagged release
+ *   1. Get the latest cbindgen using `cargo +nightly install --force cbindgen`
+ *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
  *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
  */
 
@@ -978,12 +976,29 @@ const VecU8 *wr_add_ref_arc(const ArcVecU8 *aArc)
 WR_FUNC;
 
 WR_INLINE
+void wr_api_capture(DocumentHandle *aDh,
+                    const char *aPath,
+                    uint32_t aBitsRaw)
+WR_FUNC;
+
+WR_INLINE
 void wr_api_clone(DocumentHandle *aDh,
                   DocumentHandle **aOutHandle)
 WR_FUNC;
 
 WR_INLINE
+void wr_api_create_document(DocumentHandle *aRootDh,
+                            DocumentHandle **aOutHandle,
+                            DeviceUintSize aDocSize,
+                            int8_t aLayer)
+WR_FUNC;
+
+WR_INLINE
 void wr_api_delete(DocumentHandle *aDh)
+WR_DESTRUCTOR_SAFE_FUNC;
+
+WR_INLINE
+void wr_api_delete_document(DocumentHandle *aDh)
 WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
@@ -1016,6 +1031,10 @@ void wr_api_send_transaction(DocumentHandle *aDh,
 WR_FUNC;
 
 WR_INLINE
+void wr_api_shut_down(DocumentHandle *aDh)
+WR_DESTRUCTOR_SAFE_FUNC;
+
+WR_INLINE
 void wr_clear_item_tag(WrState *aState)
 WR_FUNC;
 
@@ -1028,34 +1047,34 @@ void wr_dp_clear_save(WrState *aState)
 WR_FUNC;
 
 WR_INLINE
-uint64_t wr_dp_define_clip(WrState *aState,
-                           const uint64_t *aAncestorScrollId,
-                           const uint64_t *aAncestorClipId,
-                           LayoutRect aClipRect,
-                           const ComplexClipRegion *aComplex,
-                           size_t aComplexCount,
-                           const WrImageMask *aMask)
+size_t wr_dp_define_clip(WrState *aState,
+                         const size_t *aAncestorScrollId,
+                         const size_t *aAncestorClipId,
+                         LayoutRect aClipRect,
+                         const ComplexClipRegion *aComplex,
+                         size_t aComplexCount,
+                         const WrImageMask *aMask)
 WR_FUNC;
 
 WR_INLINE
-void wr_dp_define_scroll_layer(WrState *aState,
-                               uint64_t aScrollId,
-                               const uint64_t *aAncestorScrollId,
-                               const uint64_t *aAncestorClipId,
-                               LayoutRect aContentRect,
-                               LayoutRect aClipRect)
+size_t wr_dp_define_scroll_layer(WrState *aState,
+                                 uint64_t aScrollId,
+                                 const size_t *aAncestorScrollId,
+                                 const size_t *aAncestorClipId,
+                                 LayoutRect aContentRect,
+                                 LayoutRect aClipRect)
 WR_FUNC;
 
 WR_INLINE
-uint64_t wr_dp_define_sticky_frame(WrState *aState,
-                                   LayoutRect aContentRect,
-                                   const float *aTopMargin,
-                                   const float *aRightMargin,
-                                   const float *aBottomMargin,
-                                   const float *aLeftMargin,
-                                   StickyOffsetBounds aVerticalBounds,
-                                   StickyOffsetBounds aHorizontalBounds,
-                                   LayoutVector2D aAppliedOffset)
+size_t wr_dp_define_sticky_frame(WrState *aState,
+                                 LayoutRect aContentRect,
+                                 const float *aTopMargin,
+                                 const float *aRightMargin,
+                                 const float *aBottomMargin,
+                                 const float *aLeftMargin,
+                                 StickyOffsetBounds aVerticalBounds,
+                                 StickyOffsetBounds aHorizontalBounds,
+                                 LayoutVector2D aAppliedOffset)
 WR_FUNC;
 
 WR_INLINE
@@ -1153,13 +1172,13 @@ WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_clip(WrState *aState,
-                     uint64_t aClipId)
+                     size_t aClipId)
 WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_clip_and_scroll_info(WrState *aState,
-                                     uint64_t aScrollId,
-                                     const uint64_t *aClipId)
+                                     size_t aScrollId,
+                                     const size_t *aClipId)
 WR_FUNC;
 
 WR_INLINE
@@ -1230,7 +1249,7 @@ WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_scroll_layer(WrState *aState,
-                             uint64_t aScrollId)
+                             size_t aScrollId)
 WR_FUNC;
 
 WR_INLINE
@@ -1335,22 +1354,29 @@ extern void wr_notifier_new_frame_ready(WrWindowId aWindowId);
 extern void wr_notifier_new_scroll_frame_ready(WrWindowId aWindowId,
                                                bool aCompositeNeeded);
 
+extern void wr_notifier_wake_up(WrWindowId aWindowId);
+
+WR_INLINE
+void wr_pipeline_info_delete(WrPipelineInfo *aInfo)
+WR_DESTRUCTOR_SAFE_FUNC;
+
+WR_INLINE
+bool wr_pipeline_info_next_epoch(WrPipelineInfo *aInfo,
+                                 WrPipelineId *aOutPipeline,
+                                 WrEpoch *aOutEpoch)
+WR_FUNC;
+
+WR_INLINE
+bool wr_pipeline_info_next_removed_pipeline(WrPipelineInfo *aInfo,
+                                            WrPipelineId *aOutPipeline)
+WR_FUNC;
+
 WR_INLINE
 void wr_program_cache_delete(WrProgramCache *aProgramCache)
 WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
 WrProgramCache *wr_program_cache_new()
-WR_FUNC;
-
-WR_INLINE
-void wr_rendered_epochs_delete(WrRenderedEpochs *aPipelineEpochs)
-WR_DESTRUCTOR_SAFE_FUNC;
-
-WR_INLINE
-bool wr_rendered_epochs_next(WrRenderedEpochs *aPipelineEpochs,
-                             WrPipelineId *aOutPipeline,
-                             WrEpoch *aOutEpoch)
 WR_FUNC;
 
 WR_INLINE
@@ -1364,7 +1390,7 @@ void wr_renderer_delete(Renderer *aRenderer)
 WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
-WrRenderedEpochs *wr_renderer_flush_rendered_epochs(Renderer *aRenderer)
+WrPipelineInfo *wr_renderer_flush_pipeline_info(Renderer *aRenderer)
 WR_FUNC;
 
 WR_INLINE
@@ -1583,8 +1609,8 @@ WR_FUNC;
 
 WR_INLINE
 void wr_transaction_set_window_parameters(Transaction *aTxn,
-                                          int32_t aWindowWidth,
-                                          int32_t aWindowHeight)
+                                          const DeviceUintSize *aWindowSize,
+                                          const DeviceUintRect *aDocRect)
 WR_FUNC;
 
 WR_INLINE
@@ -1633,7 +1659,7 @@ WR_FUNC;
 
 /* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/rlhunt/cbindgen` and use a tagged release
+ *   1. Get the latest cbindgen using `cargo +nightly install --force cbindgen`
+ *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
  *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
  */

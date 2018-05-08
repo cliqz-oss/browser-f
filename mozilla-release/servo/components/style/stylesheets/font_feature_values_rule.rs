@@ -8,7 +8,7 @@
 
 use Atom;
 use cssparser::{AtRuleParser, AtRuleType, BasicParseErrorKind, DeclarationListParser, DeclarationParser, Parser};
-use cssparser::{CowRcStr, RuleListParser, SourceLocation, QualifiedRuleParser, Token, serialize_identifier};
+use cssparser::{CowRcStr, RuleListParser, SourceLocation, QualifiedRuleParser, Token};
 use error_reporting::{ContextualParseError, ParseErrorReporter};
 #[cfg(feature = "gecko")]
 use gecko_bindings::bindings::Gecko_AppendFeatureValueHashEntry;
@@ -21,6 +21,7 @@ use str::CssStringWriter;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use stylesheets::CssRuleType;
 use values::computed::font::FamilyName;
+use values::serialize_atom_identifier;
 
 /// A @font-feature-values block declaration.
 /// It is `<ident>: <integer>+`.
@@ -41,7 +42,7 @@ impl<T: ToCss> ToCss for FFVDeclaration<T> {
     where
         W: Write,
     {
-        serialize_identifier(&self.name.to_string(), dest)?;
+        serialize_atom_identifier(&self.name, dest)?;
         dest.write_str(": ")?;
         self.value.to_css(dest)?;
         dest.write_str(";")
@@ -79,7 +80,7 @@ impl ToGeckoFontFeatureValues for SingleValue {
 }
 
 /// A @font-feature-values block declaration value that keeps one or two values.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, ToCss)]
 pub struct PairValues(pub u32, pub Option<u32>);
 
 impl Parse for PairValues {
@@ -103,20 +104,6 @@ impl Parse for PairValues {
     }
 }
 
-impl ToCss for PairValues {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        self.0.to_css(dest)?;
-        if let Some(second) = self.1 {
-            dest.write_char(' ')?;
-            second.to_css(dest)?;
-        }
-        Ok(())
-    }
-}
-
 #[cfg(feature = "gecko")]
 impl ToGeckoFontFeatureValues for PairValues {
     fn to_gecko_font_feature_values(&self, array: &mut nsTArray<u32>) {
@@ -131,8 +118,8 @@ impl ToGeckoFontFeatureValues for PairValues {
 }
 
 /// A @font-feature-values block declaration value that keeps a list of values.
-#[derive(Clone, Debug, PartialEq)]
-pub struct VectorValues(pub Vec<u32>);
+#[derive(Clone, Debug, PartialEq, ToCss)]
+pub struct VectorValues(#[css(iterable)] pub Vec<u32>);
 
 impl Parse for VectorValues {
     fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>)
@@ -155,24 +142,6 @@ impl Parse for VectorValues {
         }
 
         Ok(VectorValues(vec))
-    }
-}
-
-impl ToCss for VectorValues {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        let mut iter = self.0.iter();
-        let first = iter.next();
-        if let Some(first) = first {
-            first.to_css(dest)?;
-            for value in iter {
-                dest.write_char(' ')?;
-                value.to_css(dest)?;
-            }
-        }
-        Ok(())
     }
 }
 

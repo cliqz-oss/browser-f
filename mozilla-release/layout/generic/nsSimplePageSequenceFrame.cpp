@@ -440,8 +440,9 @@ nsSimplePageSequenceFrame::StartPrint(nsPresContext*    aPresContext,
   return rv;
 }
 
-void
-GetPrintCanvasElementsInFrame(nsIFrame* aFrame, nsTArray<RefPtr<HTMLCanvasElement> >* aArr)
+static void
+GetPrintCanvasElementsInFrame(nsIFrame* aFrame,
+                              nsTArray<RefPtr<HTMLCanvasElement> >* aArr)
 {
   if (!aFrame) {
     return;
@@ -747,9 +748,9 @@ nsSimplePageSequenceFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 
-  content.AppendToTop(new (aBuilder)
-      nsDisplayTransform(aBuilder, this, &content, content.GetVisibleRect(),
-                         ::ComputePageSequenceTransform));
+  content.AppendToTop(
+      MakeDisplayItem<nsDisplayTransform>(aBuilder, this, &content, content.GetVisibleRect(),
+                                          ::ComputePageSequenceTransform));
 
   aLists.Content()->AppendToTop(&content);
 }

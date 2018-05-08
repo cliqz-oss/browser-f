@@ -2,16 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from contextlib import closing
-import sys
 import logging
 import os
 import psutil
 import signal
-import time
+import sys
 import tempfile
+import time
 import traceback
 import urllib2
+from contextlib import closing
 
 import mozdevice
 import mozinfo
@@ -134,7 +134,7 @@ class ReftestServer:
                 rtncode = self._process.poll()
                 if (rtncode is None):
                     self._process.terminate()
-            except:
+            except Exception:
                 self.automation.log.info("Failed to shutdown server at %s" %
                                          self.shutdownURL)
                 traceback.print_exc()
@@ -147,7 +147,8 @@ class RemoteReftest(RefTest):
     resolver_cls = RemoteReftestResolver
 
     def __init__(self, automation, devicemanager, options, scriptDir):
-        RefTest.__init__(self)
+        RefTest.__init__(self, options.suite)
+        self.run_by_manifest = False
         self.automation = automation
         self._devicemanager = devicemanager
         self.scriptDir = scriptDir
@@ -167,11 +168,11 @@ class RemoteReftest(RefTest):
         self._devicemanager.removeDir(self.remoteCache)
 
         self._populate_logger(options)
-        outputHandler = OutputHandler(self.log, options.utilityPath, options.symbolsPath)
+        self.outputHandler = OutputHandler(self.log, options.utilityPath, options.symbolsPath)
         # RemoteAutomation.py's 'messageLogger' is also used by mochitest. Mimic a mochitest
         # MessageLogger object to re-use this code path.
-        outputHandler.write = outputHandler.__call__
-        self.automation._processArgs['messageLogger'] = outputHandler
+        self.outputHandler.write = self.outputHandler.__call__
+        self.automation._processArgs['messageLogger'] = self.outputHandler
 
     def findPath(self, paths, filename=None):
         for path in paths:
@@ -201,8 +202,7 @@ class RemoteReftest(RefTest):
             localAutomation.BIN_SUFFIX = ".exe"
             localAutomation.IS_WIN32 = True
 
-        paths = [options.xrePath, localAutomation.DIST_BIN, self.automation._product,
-                 os.path.join('..', self.automation._product)]
+        paths = [options.xrePath, localAutomation.DIST_BIN]
         options.xrePath = self.findPath(paths)
         if options.xrePath is None:
             print ("ERROR: unable to find xulrunner path for %s, "
@@ -255,21 +255,17 @@ class RemoteReftest(RefTest):
                             self.log.info("Failed to kill process %d: %s" % (proc.pid, str(e)))
                     else:
                         self.log.info("NOT killing %s (not an orphan?)" % procd)
-            except:
+            except Exception:
                 # may not be able to access process info for all processes
                 continue
 
-    def createReftestProfile(self, options, manifest, startAfter=None):
+    def createReftestProfile(self, options, **kwargs):
         profile = RefTest.createReftestProfile(self,
                                                options,
-                                               manifest,
                                                server=options.remoteWebServer,
-                                               port=options.httpPort)
-        if startAfter is not None:
-            print ("WARNING: Continuing after a crash is not supported for remote "
-                   "reftest yet.")
+                                               port=options.httpPort,
+                                               **kwargs)
         profileDir = profile.profile
-
         prefs = {}
         prefs["app.update.url.android"] = ""
         prefs["browser.firstrun.show.localepicker"] = False
@@ -333,23 +329,33 @@ class RemoteReftest(RefTest):
             del browserEnv["XPCOM_MEM_BLOAT_LOG"]
         return browserEnv
 
-    def runApp(self, profile, binary, cmdargs, env,
-               timeout=None, debuggerInfo=None,
-               symbolsPath=None, options=None,
-               valgrindPath=None, valgrindArgs=None, valgrindSuppFiles=None):
-        status, lastTestSeen = self.automation.runApp(None, env,
-                                                      binary,
-                                                      profile.profile,
-                                                      cmdargs,
-                                                      utilityPath=options.utilityPath,
-                                                      xrePath=options.xrePath,
-                                                      debuggerInfo=debuggerInfo,
-                                                      symbolsPath=symbolsPath,
-                                                      timeout=timeout)
-        if status == 1:
-            # when max run time exceeded, avoid restart
-            lastTestSeen = RefTest.TEST_SEEN_FINAL
-        return status, lastTestSeen
+    def runApp(self, options, cmdargs=None, timeout=None, debuggerInfo=None, symbolsPath=None,
+               valgrindPath=None, valgrindArgs=None, valgrindSuppFiles=None, **profileArgs):
+        if cmdargs is None:
+            cmdargs = []
+
+        if self.use_marionette:
+            cmdargs.append('-marionette')
+
+        binary = options.app
+        profile = self.createReftestProfile(options, **profileArgs)
+
+        # browser environment
+        env = self.buildBrowserEnv(options, profile.profile)
+
+        self.log.info("Running with e10s: {}".format(options.e10s))
+        status, self.lastTestSeen = self.automation.runApp(None, env,
+                                                           binary,
+                                                           profile.profile,
+                                                           cmdargs,
+                                                           utilityPath=options.utilityPath,
+                                                           xrePath=options.xrePath,
+                                                           debuggerInfo=debuggerInfo,
+                                                           symbolsPath=symbolsPath,
+                                                           timeout=timeout)
+
+        self.cleanup(profile.profile)
+        return status
 
     def cleanup(self, profileDir):
         # Pull results back from device
@@ -367,7 +373,7 @@ class RemoteReftest(RefTest):
             try:
                 os.remove(self.pidFile)
                 os.remove(self.pidFile + ".xpcshell.pid")
-            except:
+            except Exception:
                 print ("Warning: cleaning up pidfile '%s' was unsuccessful "
                        "from the test harness" % self.pidFile)
 
@@ -395,9 +401,6 @@ def run_test_harness(parser, options):
 
     automation = RemoteAutomation(None)
     automation.setDeviceManager(dm)
-
-    if options.remoteProductName:
-        automation.setProduct(options.remoteProductName)
 
     # Set up the defaults and ensure options are set
     parser.validate_remote(options, automation)
@@ -453,7 +456,7 @@ def run_test_harness(parser, options):
             retVal = reftest.verifyTests(options.tests, options)
         else:
             retVal = reftest.runTests(options.tests, options)
-    except:
+    except Exception:
         print "Automation Error: Exception caught while running tests"
         traceback.print_exc()
         retVal = 1

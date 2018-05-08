@@ -2,11 +2,9 @@
 // assert is available to chrome scripts loaded via SpecialPowers.loadChromeScript.
 /* global assert */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/FormHistory.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/ContentTaskUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FormHistory.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm");
 
 var gAutocompletePopup = Services.ww.activeWindow
                                     .document
@@ -23,8 +21,10 @@ var ParentUtils = {
     return entries;
   },
 
-  cleanUpFormHist() {
-    FormHistory.update({ op: "remove" });
+  cleanUpFormHist(callback) {
+    FormHistory.update({ op: "remove" }, {
+      handleCompletion: callback,
+    });
   },
 
   updateFormHistory(changes) {
@@ -116,7 +116,9 @@ var ParentUtils = {
 
   cleanup() {
     gAutocompletePopup.removeEventListener("popupshown", this._popupshownListener);
-    this.cleanUpFormHist();
+    this.cleanUpFormHist(() => {
+      sendAsyncMessage("cleanup-done");
+    });
   },
 };
 

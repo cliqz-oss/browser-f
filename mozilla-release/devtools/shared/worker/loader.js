@@ -480,6 +480,7 @@ var {
 
     let rpc = undefined;
 
+    // eslint-disable-next-line mozilla/use-services
     let subScriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
                  .getService(Ci.mozIJSSubScriptLoader);
 
@@ -489,7 +490,7 @@ var {
 
     let reportError = Cu.reportError;
 
-    let Timer = Cu.import("resource://gre/modules/Timer.jsm", {});
+    let Timer = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 
     let setImmediate = function (callback) {
       Timer.setTimeout(callback, 0);

@@ -1,8 +1,5 @@
 
-Components.utils.import("resource://gre/modules/KeyValueParser.jsm");
-
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/KeyValueParser.jsm");
 
 var success = false;
 var observerFired = false;
@@ -40,7 +37,7 @@ var testObserver = {
 
     ok("additional_minidumps" in extraData, "got field for additional minidumps");
     let additionalDumps = extraData.additional_minidumps.split(',');
-    ok(additionalDumps.indexOf('browser') >= 0, "browser in additional_minidumps");
+    ok(additionalDumps.includes('browser'), "browser in additional_minidumps");
 
     for (let name of additionalDumps) {
       let file = profD.clone();
@@ -68,7 +65,7 @@ var testObserver = {
         iid.equals(Ci.nsISupportsWeakReference) ||
         iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_NOINTERFACE;
+    throw Cr.NS_NOINTERFACE;
   }
 };
 

@@ -339,14 +339,6 @@ public:
   virtual void StorePluginWidgetConfigurations(const nsTArray<nsIWidget::Configuration>& aConfigurations) {}
   bool IsSnappingEffectiveTransforms() { return mSnapEffectiveTransforms; }
 
-
-  /**
-   * Returns true if the layer manager can't render component alpha
-   * layers, and layer building should do it's best to avoid
-   * creating them.
-   */
-  virtual bool ShouldAvoidComponentAlphaLayers() { return false; }
-
   /**
    * Returns true if this LayerManager can properly support layers with
    * SurfaceMode::SURFACE_COMPONENT_ALPHA. LayerManagers that can't will use
@@ -1279,8 +1271,8 @@ public:
    * dimension, while that component of the scroll position lies within either
    * interval, the layer should not move relative to its scrolling container.
    */
-  void SetStickyPositionData(FrameMetrics::ViewID aScrollId, LayerRect aOuter,
-                             LayerRect aInner)
+  void SetStickyPositionData(FrameMetrics::ViewID aScrollId,
+                             LayerRectAbsolute aOuter, LayerRectAbsolute aInner)
   {
     if (mSimpleAttrs.SetStickyPositionData(aScrollId, aOuter, aInner)) {
       MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) StickyPositionData", this));
@@ -1368,8 +1360,8 @@ public:
   LayerPoint GetFixedPositionAnchor() { return mSimpleAttrs.FixedPositionAnchor(); }
   int32_t GetFixedPositionSides() { return mSimpleAttrs.FixedPositionSides(); }
   FrameMetrics::ViewID GetStickyScrollContainerId() { return mSimpleAttrs.StickyScrollContainerId(); }
-  const LayerRect& GetStickyScrollRangeOuter() { return mSimpleAttrs.StickyScrollRangeOuter(); }
-  const LayerRect& GetStickyScrollRangeInner() { return mSimpleAttrs.StickyScrollRangeInner(); }
+  const LayerRectAbsolute& GetStickyScrollRangeOuter() { return mSimpleAttrs.StickyScrollRangeOuter(); }
+  const LayerRectAbsolute& GetStickyScrollRangeInner() { return mSimpleAttrs.StickyScrollRangeInner(); }
   FrameMetrics::ViewID GetScrollbarTargetContainerId() { return mSimpleAttrs.ScrollbarTargetContainerId(); }
   const ScrollThumbData& GetScrollThumbData() const { return mSimpleAttrs.ThumbData(); }
   bool IsScrollbarContainer() { return mSimpleAttrs.GetScrollbarContainerDirection().isSome(); }
@@ -1496,9 +1488,9 @@ public:
    * This setter can be used anytime. The user data for all keys is
    * initially null. Ownership pases to the layer manager.
    */
-  void SetUserData(void* aKey, LayerUserData* aData)
+  void SetUserData(void* aKey, LayerUserData* aData, void (*aDestroy)(void*) = LayerManager::LayerUserDataDestroy)
   {
-    mUserData.Add(static_cast<gfx::UserDataKey*>(aKey), aData, LayerManager::LayerUserDataDestroy);
+    mUserData.Add(static_cast<gfx::UserDataKey*>(aKey), aData, aDestroy);
   }
   /**
    * This can be used anytime. Ownership passes to the caller!

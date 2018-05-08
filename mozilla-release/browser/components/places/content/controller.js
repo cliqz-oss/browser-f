@@ -3,13 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
-                                  "resource://gre/modules/ForgetAboutSite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-
 /**
  * Represents an insertion point within a container where we can insert
  * items.
@@ -30,11 +23,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
  *   - dropNearNode
  *     When defined index will be calculated based on this node
  */
-function InsertionPoint({ parentId, parentGuid,
-                          index = PlacesUtils.bookmarks.DEFAULT_INDEX,
-                          orientation = Components.interfaces.nsITreeView.DROP_ON,
-                          tagName = null,
-                          dropNearNode = null }) {
+function PlacesInsertionPoint({ parentId, parentGuid,
+                                index = PlacesUtils.bookmarks.DEFAULT_INDEX,
+                                orientation = Ci.nsITreeView.DROP_ON,
+                                tagName = null,
+                                dropNearNode = null }) {
   this.itemId = parentId;
   this.guid = parentGuid;
   this._index = index;
@@ -43,7 +36,7 @@ function InsertionPoint({ parentId, parentGuid,
   this.dropNearNode = dropNearNode;
 }
 
-InsertionPoint.prototype = {
+PlacesInsertionPoint.prototype = {
   set index(val) {
     return this._index = val;
   },
@@ -85,6 +78,11 @@ PlacesController.prototype = {
    */
   _view: null,
 
+  // This is used in certain views to disable user actions on the places tree
+  // views. This avoids accidental deletion/modification when the user is not
+  // actually organising the trees.
+  disableUserActions: false,
+
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIClipboardOwner
   ]),
@@ -99,6 +97,9 @@ PlacesController.prototype = {
   },
 
   supportsCommand: function PC_supportsCommand(aCommand) {
+    if (this.disableUserActions) {
+      return false;
+    }
     // Non-Places specific commands that we also support
     switch (aCommand) {
     case "cmd_undo":
@@ -120,18 +121,11 @@ PlacesController.prototype = {
   isCommandEnabled: function PC_isCommandEnabled(aCommand) {
     switch (aCommand) {
     case "cmd_undo":
-      if (!PlacesUIUtils.useAsyncTransactions)
-        return PlacesUtils.transactionManager.numberOfUndoItems > 0;
-
       return PlacesTransactions.topUndoEntry != null;
     case "cmd_redo":
-      if (!PlacesUIUtils.useAsyncTransactions)
-        return PlacesUtils.transactionManager.numberOfRedoItems > 0;
-
       return PlacesTransactions.topRedoEntry != null;
     case "cmd_cut":
     case "placesCmd_cut":
-    case "placesCmd_moveBookmarks":
       for (let node of this._view.selectedNodes) {
         // If selection includes history nodes or tags-as-bookmark, disallow
         // cutting.
@@ -202,18 +196,10 @@ PlacesController.prototype = {
   doCommand: function PC_doCommand(aCommand) {
     switch (aCommand) {
     case "cmd_undo":
-      if (!PlacesUIUtils.useAsyncTransactions) {
-        PlacesUtils.transactionManager.undoTransaction();
-        return;
-      }
-      PlacesTransactions.undo().catch(Components.utils.reportError);
+      PlacesTransactions.undo().catch(Cu.reportError);
       break;
     case "cmd_redo":
-      if (!PlacesUIUtils.useAsyncTransactions) {
-        PlacesUtils.transactionManager.redoTransaction();
-        return;
-      }
-      PlacesTransactions.redo().catch(Components.utils.reportError);
+      PlacesTransactions.redo().catch(Cu.reportError);
       break;
     case "cmd_cut":
     case "placesCmd_cut":
@@ -225,11 +211,11 @@ PlacesController.prototype = {
       break;
     case "cmd_paste":
     case "placesCmd_paste":
-      this.paste().catch(Components.utils.reportError);
+      this.paste().catch(Cu.reportError);
       break;
     case "cmd_delete":
     case "placesCmd_delete":
-      this.remove("Remove Selection").catch(Components.utils.reportError);
+      this.remove("Remove Selection").catch(Cu.reportError);
       break;
     case "placesCmd_deleteDataHost":
       var host;
@@ -237,9 +223,9 @@ PlacesController.prototype = {
         var queries = this._view.selectedNode.getQueries();
         host = queries[0].domain;
       } else
-        host = NetUtil.newURI(this._view.selectedNode.uri).host;
+        host = Services.io.newURI(this._view.selectedNode.uri).host;
       ForgetAboutSite.removeDataFromDomain(host)
-                     .catch(Components.utils.reportError);
+                     .catch(Cu.reportError);
       break;
     case "cmd_selectAll":
       this.selectAll();
@@ -257,25 +243,22 @@ PlacesController.prototype = {
       PlacesUIUtils.openNodeIn(this._view.selectedNode, "tab", this._view);
       break;
     case "placesCmd_new:folder":
-      this.newItem("folder").catch(Components.utils.reportError);
+      this.newItem("folder").catch(Cu.reportError);
       break;
     case "placesCmd_new:bookmark":
-      this.newItem("bookmark").catch(Components.utils.reportError);
+      this.newItem("bookmark").catch(Cu.reportError);
       break;
     case "placesCmd_new:separator":
-      this.newSeparator().catch(Components.utils.reportError);
+      this.newSeparator().catch(Cu.reportError);
       break;
     case "placesCmd_show:info":
       this.showBookmarkPropertiesForSelection();
-      break;
-    case "placesCmd_moveBookmarks":
-      this.moveSelectedBookmarks().catch(Components.utils.reportError);
       break;
     case "placesCmd_reload":
       this.reloadSelectedLivemark();
       break;
     case "placesCmd_sortBy:name":
-      this.sortFolderByName().catch(Components.utils.reportError);
+      this.sortFolderByName().catch(Cu.reportError);
       break;
     case "placesCmd_createBookmark":
       let node = this._view.selectedNode;
@@ -285,7 +268,7 @@ PlacesController.prototype = {
                                                         "keyword",
                                                         "location",
                                                         "loadInSidebar" ],
-                                         uri: NetUtil.newURI(node.uri),
+                                         uri: Services.io.newURI(node.uri),
                                          title: node.title
                                        }, window.top);
       break;
@@ -332,7 +315,7 @@ PlacesController.prototype = {
    */
   _canInsert: function PC__canInsert(isPaste) {
     var ip = this._view.insertionPoint;
-    return ip != null && (isPaste || ip.isTag != true);
+    return ip != null && (isPaste || !ip.isTag);
   },
 
   /**
@@ -438,7 +421,7 @@ PlacesController.prototype = {
           break;
         case Ci.nsINavHistoryResultNode.RESULT_TYPE_URI:
           nodeData.link = true;
-          uri = NetUtil.newURI(node.uri);
+          uri = Services.io.newURI(node.uri);
           if (PlacesUtils.nodeIsBookmark(node)) {
             nodeData.bookmark = true;
             var parentNode = node.parent;
@@ -482,6 +465,10 @@ PlacesController.prototype = {
    *         and the item can be displayed, false otherwise.
    */
   _shouldShowMenuItem: function PC__shouldShowMenuItem(aMenuItem, aMetaData) {
+    if (aMenuItem.hasAttribute("hideifprivatebrowsing") && !PrivateBrowsingUtils.enabled) {
+      return false;
+    }
+
     var selectiontype = aMenuItem.getAttribute("selectiontype");
     if (!selectiontype) {
       selectiontype = "single|multiple";
@@ -638,15 +625,16 @@ PlacesController.prototype = {
       }
     }
 
-    // Make sure correct PluralForms are diplayed when multiple pages are selected.
-    var deleteHistoryItem = document.getElementById("placesContext_delete_history");
-    deleteHistoryItem.label = PlacesUIUtils.getPluralString("cmd.deletePages.label",
-                                                            metadata.length);
-    deleteHistoryItem.accessKey = PlacesUIUtils.getString("cmd.deletePages.accesskey");
-    var createBookmarkItem = document.getElementById("placesContext_createBookmark");
-    createBookmarkItem.label = PlacesUIUtils.getPluralString("cmd.bookmarkPages.label",
-                                                             metadata.length);
-    createBookmarkItem.accessKey = PlacesUIUtils.getString("cmd.bookmarkPages.accesskey");
+    // Make sure to display the correct string when multiple pages are selected.
+    let stringId = metadata.length === 1 ? "SinglePage" : "MultiplePages";
+
+    let deleteHistoryItem = document.getElementById("placesContext_delete_history");
+    deleteHistoryItem.label = PlacesUIUtils.getString(`cmd.delete${stringId}.label`);
+    deleteHistoryItem.accessKey = PlacesUIUtils.getString(`cmd.delete${stringId}.accesskey`);
+
+    let createBookmarkItem = document.getElementById("placesContext_createBookmark");
+    createBookmarkItem.label = PlacesUIUtils.getString(`cmd.bookmark${stringId}.label`);
+    createBookmarkItem.accessKey = PlacesUIUtils.getString(`cmd.bookmark${stringId}.accesskey`);
 
     return usableItemCount > 0;
   },
@@ -691,7 +679,7 @@ PlacesController.prototype = {
       PlacesUtils.livemarks.getLivemark({ id: itemId })
         .then(aLivemark => {
           aLivemark.reload(true);
-        }, Components.utils.reportError);
+        }, Cu.reportError);
     }
   },
 
@@ -751,16 +739,6 @@ PlacesController.prototype = {
       throw Cr.NS_ERROR_NOT_AVAILABLE;
 
     let index = await ip.getIndex();
-    if (!PlacesUIUtils.useAsyncTransactions) {
-      let txn = new PlacesCreateSeparatorTransaction(ip.itemId, index);
-      PlacesUtils.transactionManager.doTransaction(txn);
-      // Select the new item.
-      let insertedNodeId = PlacesUtils.bookmarks
-                                      .getIdForItemAt(ip.itemId, index);
-      this._view.selectItems([insertedNodeId], false);
-      return;
-    }
-
     let txn = PlacesTransactions.NewSeparator({ parentGuid: ip.guid, index });
     let guid = await txn.transact();
     // Select the new item.
@@ -768,55 +746,10 @@ PlacesController.prototype = {
   },
 
   /**
-   * Opens a dialog for moving the selected nodes.
-   */
-  async moveSelectedBookmarks() {
-    let args = {
-      // The guid of the folder to move bookmarks to. This will only be
-      // set in the useAsyncTransactions case.
-      moveToGuid: null,
-      // nodes is passed to support !useAsyncTransactions.
-      nodes: this._view.selectedNodes,
-    };
-    window.openDialog("chrome://browser/content/places/moveBookmarks.xul",
-                      "", "chrome, modal",
-                      args);
-
-    if (!args.moveToGuid) {
-      return;
-    }
-
-    let transactions = [];
-
-    for (let node of this._view.selectedNodes) {
-      // Nothing to do if the node is already under the selected folder.
-      if (node.parent.bookmarkGuid == args.moveToGuid) {
-        continue;
-      }
-      transactions.push(PlacesTransactions.Move({
-        guid: node.bookmarkGuid,
-        newParentGuid: args.moveToGuid,
-      }));
-    }
-
-    if (transactions.length) {
-      await PlacesUIUtils.batchUpdatesForNode(this._view.result, transactions.length, async () => {
-        await PlacesTransactions.batch(transactions);
-      });
-    }
-  },
-
-  /**
    * Sort the selected folder by name
    */
   async sortFolderByName() {
-    let itemId = PlacesUtils.getConcreteItemId(this._view.selectedNode);
-    if (!PlacesUIUtils.useAsyncTransactions) {
-      var txn = new PlacesSortFolderByNameTransaction(itemId);
-      PlacesUtils.transactionManager.doTransaction(txn);
-      return;
-    }
-    let guid = await PlacesUtils.promiseItemGuid(itemId);
+    let guid = PlacesUtils.getConcreteItemGuid(this._view.selectedNode);
     await PlacesTransactions.SortByName(guid).transact();
   },
 
@@ -885,19 +818,14 @@ PlacesController.prototype = {
       if (PlacesUtils.nodeIsTagQuery(node.parent)) {
         // This is a uri node inside a tag container.  It needs a special
         // untag transaction.
-        var tagItemId = PlacesUtils.getConcreteItemId(node.parent);
-        var uri = NetUtil.newURI(node.uri);
-        if (PlacesUIUtils.useAsyncTransactions) {
-          let tag = node.parent.title;
-          if (!tag) {
-            let tagGuid = await PlacesUtils.promiseItemGuid(tagItemId);
-            tag = (await PlacesUtils.bookmarks.fetch(tagGuid)).title;
-          }
-          transactions.push(PlacesTransactions.Untag({ urls: [uri], tag }));
-        } else {
-          let txn = new PlacesUntagURITransaction(uri, [tagItemId]);
-          transactions.push(txn);
+        let tag = node.parent.title;
+        if (!tag) {
+          // TODO: Bug 1432405 Try using getConcreteItemGuid.
+          let tagItemId = PlacesUtils.getConcreteItemId(node.parent);
+          let tagGuid = await PlacesUtils.promiseItemGuid(tagItemId);
+          tag = (await PlacesUtils.bookmarks.fetch(tagGuid)).title;
         }
+        transactions.push(PlacesTransactions.Untag({ urls: [node.uri], tag }));
       } else if (PlacesUtils.nodeIsTagQuery(node) && node.parent &&
                PlacesUtils.nodeIsQuery(node.parent) &&
                PlacesUtils.asQuery(node.parent).queryOptions.resultType ==
@@ -908,20 +836,13 @@ PlacesController.prototype = {
         // must only remove the query node.
         let tag = node.title;
         let URIs = PlacesUtils.tagging.getURIsForTag(tag);
-        if (PlacesUIUtils.useAsyncTransactions) {
-          transactions.push(PlacesTransactions.Untag({ tag, urls: URIs }));
-        } else {
-          for (var j = 0; j < URIs.length; j++) {
-            let txn = new PlacesUntagURITransaction(URIs[j], [tag]);
-            transactions.push(txn);
-          }
-        }
+        transactions.push(PlacesTransactions.Untag({ tag, urls: URIs }));
       } else if (PlacesUtils.nodeIsURI(node) &&
                PlacesUtils.nodeIsQuery(node.parent) &&
                PlacesUtils.asQuery(node.parent).queryOptions.queryType ==
                  Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         // This is a uri node inside an history query.
-        PlacesUtils.history.remove(node.uri).catch(Components.utils.reportError);
+        PlacesUtils.history.remove(node.uri).catch(Cu.reportError);
         // History deletes are not undoable, so we don't have a transaction.
       } else if (node.itemId == -1 &&
                PlacesUtils.nodeIsQuery(node) &&
@@ -939,12 +860,7 @@ PlacesController.prototype = {
           // to skip nodes that are children of an already removed folder.
           removedFolders.push(node);
         }
-        if (PlacesUIUtils.useAsyncTransactions) {
-          bmGuidsToRemove.push(node.bookmarkGuid);
-        } else {
-          let txn = new PlacesRemoveItemTransaction(node.itemId);
-          transactions.push(txn);
-        }
+        bmGuidsToRemove.push(node.bookmarkGuid);
       }
     }
     if (bmGuidsToRemove.length) {
@@ -969,14 +885,9 @@ PlacesController.prototype = {
     }
 
     if (transactions.length > 0) {
-      if (PlacesUIUtils.useAsyncTransactions) {
-        await PlacesUIUtils.batchUpdatesForNode(this._view.result, totalItems, async () => {
-          await PlacesTransactions.batch(transactions);
-        });
-      } else {
-        var txn = new PlacesAggregatedTransaction(txnName, transactions);
-        PlacesUtils.transactionManager.doTransaction(txn);
-      }
+      await PlacesUIUtils.batchUpdatesForNode(this._view.result, totalItems, async () => {
+        await PlacesTransactions.batch(transactions);
+      });
     }
   },
 
@@ -999,7 +910,7 @@ PlacesController.prototype = {
       }
     }
 
-    PlacesUtils.history.remove([...URIs]).catch(Components.utils.reportError);
+    PlacesUtils.history.remove([...URIs]).catch(Cu.reportError);
   },
 
   /**
@@ -1043,17 +954,11 @@ PlacesController.prototype = {
     var root = this._view.result.root;
 
     if (PlacesUtils.nodeIsFolder(root)) {
-      if (PlacesUIUtils.useAsyncTransactions)
-        await this._removeRowsFromBookmarks(aTxnName);
-      else
-        this._removeRowsFromBookmarks(aTxnName);
+      await this._removeRowsFromBookmarks(aTxnName);
     } else if (PlacesUtils.nodeIsQuery(root)) {
       var queryType = PlacesUtils.asQuery(root).queryOptions.queryType;
       if (queryType == Ci.nsINavHistoryQueryOptions.QUERY_TYPE_BOOKMARKS) {
-        if (PlacesUIUtils.useAsyncTransactions)
-          await this._removeRowsFromBookmarks(aTxnName);
-        else
-          this._removeRowsFromBookmarks(aTxnName);
+        await this._removeRowsFromBookmarks(aTxnName);
       } else if (queryType == Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         this._removeRowsFromHistory();
       } else {
@@ -1304,50 +1209,8 @@ PlacesController.prototype = {
       return;
     }
 
-    let itemsToSelect = [];
-    if (PlacesUIUtils.useAsyncTransactions) {
-      let doCopy = action == "copy";
-      itemsToSelect = await handleTransferItems(items, ip, doCopy, this._view);
-    } else {
-      let transactions = [];
-      let insertionIndex = await ip.getIndex();
-      for (let index = insertionIndex, i = 0; i < items.length; ++i) {
-        if (ip.isTag) {
-          // Pasting into a tag container means tagging the item, regardless of
-          // the requested action.
-          let tagTxn = new PlacesTagURITransaction(NetUtil.newURI(items[i].uri),
-                                                   [ip.itemId]);
-          transactions.push(tagTxn);
-          continue;
-        }
-
-        // Adjust index to make sure items are pasted in the correct position.
-        // If index is DEFAULT_INDEX, items are just appended.
-        if (index != PlacesUtils.bookmarks.DEFAULT_INDEX)
-          index += i;
-
-        // If this is not a copy, check for safety that we can move the source,
-        // otherwise report an error and fallback to a copy.
-        if (action != "copy" && !PlacesControllerDragHelper.canMoveUnwrappedNode(items[i])) {
-          Components.utils.reportError("Tried to move an unmovable Places " +
-                                       "node, reverting to a copy operation.");
-          action = "copy";
-        }
-        transactions.push(
-          PlacesUIUtils.makeTransaction(items[i], type, ip.itemId,
-                                        index, action == "copy")
-        );
-      }
-
-      let aggregatedTxn = new PlacesAggregatedTransaction("Paste", transactions);
-      PlacesUtils.transactionManager.doTransaction(aggregatedTxn);
-
-      for (let i = 0; i < transactions.length; ++i) {
-        itemsToSelect.push(
-          PlacesUtils.bookmarks.getIdForItemAt(ip.itemId, insertionIndex + i)
-        );
-      }
-    }
+    let doCopy = action == "copy";
+    let itemsToSelect = await PlacesUIUtils.handleTransferItems(items, ip, doCopy, this._view);
 
     // Cut/past operations are not repeatable, so clear the clipboard.
     if (action == "cut") {
@@ -1390,7 +1253,41 @@ PlacesController.prototype = {
    */
   getCachedLivemarkInfo: function PC_getCachedLivemarkInfo(aNode) {
     return this._cachedLivemarkInfoObjects.get(aNode, null);
-  }
+  },
+
+  /**
+   * Checks if we can insert into a container.
+   * @param   container
+   *          The container were we are want to drop
+   */
+  disallowInsertion(container) {
+    NS_ASSERT(container, "empty container");
+    // Allow dropping into Tag containers and editable folders.
+    return !PlacesUtils.nodeIsTagQuery(container) &&
+           (!PlacesUtils.nodeIsFolder(container) ||
+            PlacesUIUtils.isFolderReadOnly(container, this._view));
+  },
+
+  /**
+   * Determines if a node can be moved.
+   *
+   * @param   aNode
+   *          A nsINavHistoryResultNode node.
+   * @return True if the node can be moved, false otherwise.
+   */
+  canMoveNode(node) {
+    // Only bookmark items are movable.
+    if (node.itemId == -1)
+      return false;
+
+    // Once tags and bookmarked are divorced, the tag-query check should be
+    // removed.
+    let parentNode = node.parent;
+    return parentNode != null &&
+           PlacesUtils.nodeIsFolder(parentNode) &&
+           !PlacesUIUtils.isFolderReadOnly(parentNode, this._view) &&
+           !PlacesUtils.nodeIsTagQuery(parentNode);
+  },
 };
 
 /**
@@ -1513,68 +1410,6 @@ var PlacesControllerDragHelper = {
   },
 
   /**
-   * Determines if an unwrapped node can be moved.
-   *
-   * @param unwrappedNode
-   *        A node unwrapped by PlacesUtils.unwrapNodes().
-   * @return True if the node can be moved, false otherwise.
-   */
-  canMoveUnwrappedNode(unwrappedNode) {
-    if (unwrappedNode.id <= 0 || PlacesUtils.isRootItem(unwrappedNode.id)) {
-      return false;
-    }
-    let parentId = unwrappedNode.parent;
-    if (parentId <= 0 ||
-        parentId == PlacesUtils.placesRootId ||
-        parentId == PlacesUtils.tagsFolderId ||
-        unwrappedNode.grandParentId == PlacesUtils.tagsFolderId) {
-      return false;
-    }
-    // leftPaneFolderId and allBookmarksFolderId are lazy getters running
-    // at least a synchronous DB query. Therefore we don't want to invoke
-    // them first, especially because isCommandEnabled may be called way
-    // before the left pane folder is even necessary.
-    if (typeof Object.getOwnPropertyDescriptor(PlacesUIUtils, "leftPaneFolderId").get != "function" &&
-        (parentId == PlacesUIUtils.leftPaneFolderId ||
-          parentId == PlacesUIUtils.allBookmarksFolderId)) {
-      return false;
-    }
-    return true;
-  },
-
-  /**
-   * Determines if a node can be moved.
-   *
-   * @param   aNode
-   *          A nsINavHistoryResultNode node.
-   * @param   aView
-   *          The view originating the request
-   * @param   [optional] aDOMNode
-   *          A XUL DOM node.
-   * @return True if the node can be moved, false otherwise.
-   */
-  canMoveNode(aNode, aView, aDOMNode) {
-    // Only bookmark items are movable.
-    if (aNode.itemId == -1)
-      return false;
-
-    let parentNode = aNode.parent;
-    if (!parentNode) {
-      // Normally parentless places nodes can not be moved,
-      // but simulated bookmarked URI nodes are special.
-      return !!aDOMNode &&
-             aDOMNode.hasAttribute("simulated-places-node") &&
-             PlacesUtils.nodeIsBookmark(aNode);
-    }
-
-    // Once tags and bookmarked are divorced, the tag-query check should be
-    // removed.
-    return PlacesUtils.nodeIsFolder(parentNode) &&
-           !PlacesUIUtils.isFolderReadOnly(parentNode, aView) &&
-           !PlacesUtils.nodeIsTagQuery(parentNode);
-  },
-
-  /**
    * Handles the drop of one or more items onto a view.
    *
    * @param {Object} insertionPoint The insertion point where the items should
@@ -1586,9 +1421,7 @@ var PlacesControllerDragHelper = {
   async onDrop(insertionPoint, dt, view) {
     let doCopy = ["copy", "link"].includes(dt.dropEffect);
 
-    let transactions = [];
     let dropCount = dt.mozItemCount;
-    let parentGuid = insertionPoint.guid;
 
     // Following flavors may contain duplicated data.
     let duplicable = new Map();
@@ -1598,7 +1431,7 @@ var PlacesControllerDragHelper = {
     // Collect all data from the DataTransfer before processing it, as the
     // DataTransfer is only valid during the synchronous handling of the `drop`
     // event handler callback.
-    let dtItems = [];
+    let nodes = [];
     for (let i = 0; i < dropCount; ++i) {
       let flavor = this.getFirstValidFlavor(dt.mozTypesAt(i));
       if (!flavor)
@@ -1611,315 +1444,27 @@ var PlacesControllerDragHelper = {
           continue;
         handled.add(data);
       }
-      dtItems.push({flavor, data});
-    }
 
-    if (PlacesUIUtils.useAsyncTransactions) {
-      let nodes = [];
-      // TODO: When sync transactions are removed, merge the for loop here into the
-      // one above.
-      for (let {flavor, data} of dtItems) {
-        if (flavor != TAB_DROP_TYPE) {
-          nodes = [...nodes, ...PlacesUtils.unwrapNodes(data, flavor)];
-        } else if (data instanceof XULElement && data.localName == "tab" &&
-                 data.ownerGlobal.isChromeWindow) {
-          let uri = data.linkedBrowser.currentURI;
-          let spec = uri ? uri.spec : "about:blank";
-          nodes.push({
-            uri: spec,
-            title: data.label,
-            type: PlacesUtils.TYPE_X_MOZ_URL
-          });
-        } else {
-          throw new Error("bogus data was passed as a tab");
-        }
-      }
-
-      await handleTransferItems(nodes, insertionPoint, doCopy, view);
-    } else {
-      for (let {flavor, data} of dtItems) {
-        let nodes;
-        if (flavor != TAB_DROP_TYPE) {
-          nodes = PlacesUtils.unwrapNodes(data, flavor);
-        } else if (data instanceof XULElement && data.localName == "tab" &&
-                 data.ownerGlobal.isChromeWindow) {
-          let uri = data.linkedBrowser.currentURI;
-          let spec = uri ? uri.spec : "about:blank";
-          nodes = [{ uri: spec,
-                     title: data.label,
-                     type: PlacesUtils.TYPE_X_MOZ_URL}];
-        } else {
-          throw new Error("bogus data was passed as a tab");
-        }
-
-        let movedCount = 0;
-        for (let unwrapped of nodes) {
-          let index = await insertionPoint.getIndex();
-
-          if (index != -1 && unwrapped.itemGuid) {
-            // Note: we use the parent from the existing bookmark as the sidebar
-            // gives us an unwrapped.parent that is actually a query and not the real
-            // parent.
-            let existingBookmark = await PlacesUtils.bookmarks.fetch(unwrapped.itemGuid);
-
-            // If we're dropping on the same folder, then we may need to adjust
-            // the index to insert at the correct place.
-            if (existingBookmark && parentGuid == existingBookmark.parentGuid) {
-              // Sync Transactions. Adjust insertion index to prevent reversal
-              // of dragged items. When you drag multiple elts upward: need to
-              // increment index or each successive elt will be inserted at the
-              // same index, each above the previous.
-              if (index < existingBookmark.index) { // eslint-disable-line no-lonely-if
-                index += movedCount++;
-              }
-            }
-          }
-
-          // If dragging over a tag container we should tag the item.
-          // eslint-disable-next-line no-lonely-if
-          if (insertionPoint.isTag) {
-            let uri = NetUtil.newURI(unwrapped.uri);
-            let tagItemId = insertionPoint.itemId;
-            transactions.push(new PlacesTagURITransaction(uri, [tagItemId]));
-          } else {
-            // If this is not a copy, check for safety that we can move the
-            // source, otherwise report an error and fallback to a copy.
-            if (!doCopy && !PlacesControllerDragHelper.canMoveUnwrappedNode(unwrapped)) {
-              Components.utils.reportError("Tried to move an unmovable Places " +
-                                           "node, reverting to a copy operation.");
-              doCopy = true;
-            }
-            transactions.push(PlacesUIUtils.makeTransaction(unwrapped,
-                                flavor, insertionPoint.itemId,
-                                index, doCopy));
-          }
-        }
-
-        // Check if we actually have something to add, if we don't it probably wasn't
-        // valid, or it was moving to the same location, so just ignore it.
-        if (!transactions.length) {
-          return;
-        }
-
-        let txn = new PlacesAggregatedTransaction("DropItems", transactions);
-        PlacesUtils.transactionManager.doTransaction(txn);
+      if (flavor != TAB_DROP_TYPE) {
+        nodes = [...nodes, ...PlacesUtils.unwrapNodes(data, flavor)];
+      } else if (data instanceof XULElement && data.localName == "tab" &&
+               data.ownerGlobal.isChromeWindow) {
+        let uri = data.linkedBrowser.currentURI;
+        let spec = uri ? uri.spec : "about:blank";
+        nodes.push({
+          uri: spec,
+          title: data.label,
+          type: PlacesUtils.TYPE_X_MOZ_URL
+        });
+      } else {
+        throw new Error("bogus data was passed as a tab");
       }
     }
+
+    await PlacesUIUtils.handleTransferItems(nodes, insertionPoint, doCopy, view);
   },
-
-  /**
-   * Checks if we can insert into a container.
-   * @param   aContainer
-   *          The container were we are want to drop
-   * @param   aView
-   *          The view generating the request
-   */
-  disallowInsertion(aContainer, aView) {
-    NS_ASSERT(aContainer, "empty container");
-    // Allow dropping into Tag containers and editable folders.
-    return !PlacesUtils.nodeIsTagQuery(aContainer) &&
-           (!PlacesUtils.nodeIsFolder(aContainer) ||
-            PlacesUIUtils.isFolderReadOnly(aContainer, aView));
-  }
 };
-
 
 XPCOMUtils.defineLazyServiceGetter(PlacesControllerDragHelper, "dragService",
                                    "@mozilla.org/widget/dragservice;1",
                                    "nsIDragService");
-
-function goUpdatePlacesCommands() {
-  // Get the controller for one of the places commands.
-  var placesController = doGetPlacesControllerForCommand("placesCmd_open");
-  function updatePlacesCommand(aCommand) {
-    goSetCommandEnabled(aCommand, placesController &&
-                                  placesController.isCommandEnabled(aCommand));
-  }
-
-  updatePlacesCommand("placesCmd_open");
-  updatePlacesCommand("placesCmd_open:window");
-  updatePlacesCommand("placesCmd_open:privatewindow");
-  updatePlacesCommand("placesCmd_open:tab");
-  updatePlacesCommand("placesCmd_new:folder");
-  updatePlacesCommand("placesCmd_new:bookmark");
-  updatePlacesCommand("placesCmd_new:separator");
-  updatePlacesCommand("placesCmd_show:info");
-  updatePlacesCommand("placesCmd_moveBookmarks");
-  updatePlacesCommand("placesCmd_reload");
-  updatePlacesCommand("placesCmd_sortBy:name");
-  updatePlacesCommand("placesCmd_cut");
-  updatePlacesCommand("placesCmd_copy");
-  updatePlacesCommand("placesCmd_paste");
-  updatePlacesCommand("placesCmd_delete");
-}
-
-function doGetPlacesControllerForCommand(aCommand) {
-  // A context menu may be built for non-focusable views.  Thus, we first try
-  // to look for a view associated with document.popupNode
-  let popupNode;
-  try {
-    popupNode = document.popupNode;
-  } catch (e) {
-    // The document went away (bug 797307).
-    return null;
-  }
-  if (popupNode) {
-    let view = PlacesUIUtils.getViewForNode(popupNode);
-    if (view && view._contextMenuShown)
-      return view.controllers.getControllerForCommand(aCommand);
-  }
-
-  // When we're not building a context menu, only focusable views
-  // are possible.  Thus, we can safely use the command dispatcher.
-  let controller = top.document.commandDispatcher
-                      .getControllerForCommand(aCommand);
-  if (controller)
-    return controller;
-
-  return null;
-}
-
-function goDoPlacesCommand(aCommand) {
-  let controller = doGetPlacesControllerForCommand(aCommand);
-  if (controller && controller.isCommandEnabled(aCommand))
-    controller.doCommand(aCommand);
-}
-
-/**
- * This gets the most appropriate item for using for batching. In the case of multiple
- * views being related, the method returns the most expensive result to batch.
- * For example, if it detects the left-hand library pane, then it will look for
- * and return the reference to the right-hand pane.
- *
- * @param {Object} viewOrElement The item to check.
- * @return {Object} Will return the best result node to batch, or null
- *                  if one could not be found.
- */
-function getResultForBatching(viewOrElement) {
-  if (viewOrElement && viewOrElement instanceof Ci.nsIDOMElement &&
-      viewOrElement.id === "placesList") {
-    // Note: fall back to the existing item if we can't find the right-hane pane.
-    viewOrElement = document.getElementById("placeContent") || viewOrElement;
-  }
-
-  if (viewOrElement && viewOrElement.result) {
-    return viewOrElement.result;
-  }
-
-  return null;
-}
-
-/**
- * Processes a set of transfer items that have been dropped or pasted.
- * Batching will be applied where necessary.
- *
- * @param {Array} items A list of unwrapped nodes to process.
- * @param {Object} insertionPoint The requested point for insertion.
- * @param {Boolean} doCopy Set to true to copy the items, false will move them
- *                         if possible.
- * @return {Array} Returns an empty array when the insertion point is a tag, else
- *                 returns an array of copied or moved guids.
- */
-async function handleTransferItems(items, insertionPoint, doCopy, view) {
-  let transactions;
-  let itemsCount;
-  if (insertionPoint.isTag) {
-    let urls = items.filter(item => "uri" in item).map(item => item.uri);
-    itemsCount = urls.length;
-    transactions = [PlacesTransactions.Tag({ urls, tag: insertionPoint.tagName })];
-  } else {
-    let insertionIndex = await insertionPoint.getIndex();
-    itemsCount = items.length;
-    transactions = await getTransactionsForTransferItems(
-      items, insertionIndex, insertionPoint.guid, doCopy);
-  }
-
-  // Check if we actually have something to add, if we don't it probably wasn't
-  // valid, or it was moving to the same location, so just ignore it.
-  if (!transactions.length) {
-    return [];
-  }
-
-  let guidsToSelect = [];
-  let resultForBatching = getResultForBatching(view);
-
-  // If we're inserting into a tag, we don't get the guid, so we'll just
-  // pass the transactions direct to the batch function.
-  let batchingItem = transactions;
-  if (!insertionPoint.isTag) {
-    // If we're not a tag, then we need to get the ids of the items to select.
-    batchingItem = async () => {
-      for (let transaction of transactions) {
-        let guid = await transaction.transact();
-        if (guid) {
-          guidsToSelect.push(guid);
-        }
-      }
-    };
-  }
-
-  await PlacesUIUtils.batchUpdatesForNode(resultForBatching, itemsCount, async () => {
-    await PlacesTransactions.batch(batchingItem);
-  });
-
-  return guidsToSelect;
-}
-
-/**
- * Processes a set of transfer items and returns transactions to insert or
- * move them.
- *
- * @param {Array} items A list of unwrapped nodes to get transactions for.
- * @param {Integer} insertionIndex The requested index for insertion.
- * @param {String} insertionParentGuid The guid of the parent folder to insert
- *                                     or move the items to.
- * @param {Boolean} doCopy Set to true to copy the items, false will move them
- *                         if possible.
- * @return {Array} Returns an array of created PlacesTransactions.
- */
-async function getTransactionsForTransferItems(items, insertionIndex,
-                                               insertionParentGuid, doCopy) {
-  let transactions = [];
-  let index = insertionIndex;
-
-  for (let item of items) {
-    if (index != -1 && item.itemGuid) {
-      // Note: we use the parent from the existing bookmark as the sidebar
-      // gives us an unwrapped.parent that is actually a query and not the real
-      // parent.
-      let existingBookmark = await PlacesUtils.bookmarks.fetch(item.itemGuid);
-
-      // If we're dropping on the same folder, then we may need to adjust
-      // the index to insert at the correct place.
-      if (existingBookmark && insertionParentGuid == existingBookmark.parentGuid) {
-        if (index > existingBookmark.index) {
-          // If we're dragging down, we need to go one lower to insert at
-          // the real point as moving the element changes the index of
-          // everything below by 1.
-          index--;
-        } else if (index == existingBookmark.index) {
-          // This isn't moving so we skip it.
-          continue;
-        }
-      }
-    }
-
-    // If this is not a copy, check for safety that we can move the
-    // source, otherwise report an error and fallback to a copy.
-    if (!doCopy && !PlacesControllerDragHelper.canMoveUnwrappedNode(item)) {
-      Components.utils.reportError("Tried to move an unmovable Places " +
-                                   "node, reverting to a copy operation.");
-      doCopy = true;
-    }
-    transactions.push(
-      PlacesUIUtils.getTransactionForData(item,
-                                          insertionParentGuid,
-                                          index,
-                                          doCopy));
-
-    if (index != -1 && item.itemGuid) {
-      index++;
-    }
-  }
-  return transactions;
-}

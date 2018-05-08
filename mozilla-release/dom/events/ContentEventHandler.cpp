@@ -243,23 +243,17 @@ ContentEventHandler::RawRange::SelectNodeContents(
 //    line break caused by the <br> should be included into the flatten text.
 
 ContentEventHandler::ContentEventHandler(nsPresContext* aPresContext)
-  : mPresContext(aPresContext)
-  , mPresShell(aPresContext->GetPresShell())
+  : mDocument(aPresContext->Document())
 {
 }
 
 nsresult
 ContentEventHandler::InitBasic()
 {
-  NS_ENSURE_TRUE(mPresShell, NS_ERROR_NOT_AVAILABLE);
-
+  NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
   // If text frame which has overflowing selection underline is dirty,
   // we need to flush the pending reflow here.
-  mPresShell->FlushPendingNotifications(FlushType::Layout);
-
-  // Flushing notifications can cause mPresShell to be destroyed (bug 577963).
-  NS_ENSURE_TRUE(!mPresShell->IsDestroying(), NS_ERROR_FAILURE);
-
+  mDocument->FlushPendingNotifications(FlushType::Layout);
   return NS_OK;
 }
 
@@ -283,7 +277,7 @@ ContentEventHandler::InitRootContent(Selection* aNormalSelection)
       return NS_ERROR_FAILURE;
     }
     if (!mRootContent) {
-      mRootContent = mPresShell->GetDocument()->GetRootElement();
+      mRootContent = mDocument->GetRootElement();
       if (NS_WARN_IF(!mRootContent)) {
         return NS_ERROR_NOT_AVAILABLE;
       }
@@ -309,14 +303,14 @@ ContentEventHandler::InitRootContent(Selection* aNormalSelection)
   }
 
   // See bug 537041 comment 5, the range could have removed node.
-  if (NS_WARN_IF(startNode->GetComposedDoc() != mPresShell->GetDocument())) {
+  if (NS_WARN_IF(startNode->GetComposedDoc() != mDocument)) {
     return NS_ERROR_FAILURE;
   }
 
   NS_ASSERTION(startNode->GetComposedDoc() == endNode->GetComposedDoc(),
                "firstNormalSelectionRange crosses the document boundary");
 
-  mRootContent = startNode->GetSelectionRootContent(mPresShell);
+  mRootContent = startNode->GetSelectionRootContent(mDocument->GetShell());
   if (NS_WARN_IF(!mRootContent)) {
     return NS_ERROR_FAILURE;
   }
@@ -338,8 +332,10 @@ ContentEventHandler::InitCommon(SelectionType aSelectionType)
   nsresult rv = InitBasic();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsISelectionController> selectionController =
-    mPresShell->GetSelectionControllerForFocusedContent();
+  nsCOMPtr<nsISelectionController> selectionController;
+  if (nsIPresShell* shell = mDocument->GetShell()) {
+    selectionController = shell->GetSelectionControllerForFocusedContent();
+  }
   if (NS_WARN_IF(!selectionController)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -488,11 +484,7 @@ ContentEventHandler::Init(WidgetSelectionEvent* aEvent)
 nsIContent*
 ContentEventHandler::GetFocusedContent()
 {
-  nsIDocument* doc = mPresShell->GetDocument();
-  if (!doc) {
-    return nullptr;
-  }
-  nsCOMPtr<nsPIDOMWindowOuter> window = doc->GetWindow();
+  nsCOMPtr<nsPIDOMWindowOuter> window = mDocument->GetWindow();
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
   return nsFocusManager::GetFocusedDescendant(
                            window,
@@ -521,8 +513,10 @@ ContentEventHandler::QueryContentRect(nsIContent* aContent,
   nsresult rv = ConvertToRootRelativeOffset(frame, resultRect);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  nsPresContext* presContext = frame->PresContext();
+
   // account for any additional frames
-  while ((frame = frame->GetNextContinuation()) != nullptr) {
+  while ((frame = frame->GetNextContinuation())) {
     nsRect frameRect(nsPoint(0, 0), frame->GetRect().Size());
     rv = ConvertToRootRelativeOffset(frame, frameRect);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -530,7 +524,7 @@ ContentEventHandler::QueryContentRect(nsIContent* aContent,
   }
 
   aEvent->mReply.mRect = LayoutDeviceIntRect::FromUnknownRect(
-      resultRect.ToOutsidePixels(mPresContext->AppUnitsPerDevPixel()));
+      resultRect.ToOutsidePixels(presContext->AppUnitsPerDevPixel()));
   // Returning empty rect may cause native IME confused, let's make sure to
   // return non-empty rect.
   EnsureNonEmptyRect(aEvent->mReply.mRect);
@@ -1074,7 +1068,8 @@ ContentEventHandler::ExpandToClusterBoundary(nsIContent* aContent,
   NS_ASSERTION(*aXPOffset <= aContent->TextLength(),
                "offset is out of range.");
 
-  RefPtr<nsFrameSelection> fs = mPresShell->FrameSelection();
+  MOZ_DIAGNOSTIC_ASSERT(mDocument->GetShell());
+  RefPtr<nsFrameSelection> fs = mDocument->GetShell()->FrameSelection();
   int32_t offsetInFrame;
   CaretAssociationHint hint =
     aForward ? CARET_ASSOCIATE_BEFORE : CARET_ASSOCIATE_AFTER;
@@ -1208,7 +1203,7 @@ ContentEventHandler::SetRawRangeFromFlatTextOffset(
         if (NS_WARN_IF(!startNode)) {
           return NS_ERROR_FAILURE;
         }
-        startNodeOffset = startNode->IndexOf(content);
+        startNodeOffset = startNode->ComputeIndexOf(content);
         if (NS_WARN_IF(startNodeOffset == -1)) {
           // The content is being removed from the parent!
           return NS_ERROR_FAILURE;
@@ -1219,7 +1214,7 @@ ContentEventHandler::SetRawRangeFromFlatTextOffset(
         if (NS_WARN_IF(!startNode)) {
           return NS_ERROR_FAILURE;
         }
-        startNodeOffset = startNode->IndexOf(content) + 1;
+        startNodeOffset = startNode->ComputeIndexOf(content) + 1;
         if (NS_WARN_IF(startNodeOffset == 0)) {
           // The content is being removed from the parent!
           return NS_ERROR_FAILURE;
@@ -1312,7 +1307,7 @@ ContentEventHandler::SetRawRangeFromFlatTextOffset(
       if (NS_WARN_IF(!endNode)) {
         return NS_ERROR_FAILURE;
       }
-      int32_t indexInParent = endNode->IndexOf(content);
+      int32_t indexInParent = endNode->ComputeIndexOf(content);
       if (NS_WARN_IF(indexInParent == -1)) {
         // The content is being removed from the parent!
         return NS_ERROR_FAILURE;
@@ -1866,10 +1861,10 @@ ContentEventHandler::GetLineBreakerRectBefore(nsIFrame* aFrame)
         // above of top-right corner of aFrame.
         result.mRect.x = aFrame->GetRect().XMost() - result.mRect.width;
       }
-      result.mRect.y = -mPresContext->AppUnitsPerDevPixel();
+      result.mRect.y = -aFrame->PresContext()->AppUnitsPerDevPixel();
     } else {
       // left of top-left corner of aFrame.
-      result.mRect.x = -mPresContext->AppUnitsPerDevPixel();
+      result.mRect.x = -aFrame->PresContext()->AppUnitsPerDevPixel();
       result.mRect.y = 0;
     }
   }
@@ -1914,6 +1909,7 @@ ContentEventHandler::FrameRelativeRect
 ContentEventHandler::GuessFirstCaretRectIn(nsIFrame* aFrame)
 {
   const WritingMode kWritingMode = aFrame->GetWritingMode();
+  nsPresContext* presContext = aFrame->PresContext();
 
   // Computes the font height, but if it's not available, we should use
   // default font size of Firefox.  The default font size in default settings
@@ -1922,7 +1918,7 @@ ContentEventHandler::GuessFirstCaretRectIn(nsIFrame* aFrame)
     nsLayoutUtils::GetInflatedFontMetricsForFrame(aFrame);
   const nscoord kMaxHeight =
     fontMetrics ? fontMetrics->MaxHeight() :
-                  16 * mPresContext->AppUnitsPerDevPixel();
+                  16 * presContext->AppUnitsPerDevPixel();
 
   nsRect caretRect;
   const nsRect kContentRect = aFrame->GetContentRect() - aFrame->GetPosition();
@@ -1932,7 +1928,7 @@ ContentEventHandler::GuessFirstCaretRectIn(nsIFrame* aFrame)
       caretRect.x = kContentRect.x;
     } else {
       // Move 1px left for the space of caret itself.
-      const nscoord kOnePixel = mPresContext->AppUnitsPerDevPixel();
+      const nscoord kOnePixel = presContext->AppUnitsPerDevPixel();
       caretRect.x = kContentRect.XMost() - kOnePixel;
     }
     caretRect.height = kMaxHeight;
@@ -2182,8 +2178,8 @@ ContentEventHandler::OnQueryTextRectArray(WidgetQueryContentEvent* aEvent)
         return rv;
       }
 
-      rect = LayoutDeviceIntRect::FromUnknownRect(
-               charRect.ToOutsidePixels(mPresContext->AppUnitsPerDevPixel()));
+      rect = LayoutDeviceIntRect::FromUnknownRect(charRect.ToOutsidePixels(
+        baseFrame->PresContext()->AppUnitsPerDevPixel()));
       // Returning empty rect may cause native IME confused, let's make sure to
       // return non-empty rect.
       EnsureNonEmptyRect(rect);
@@ -2334,7 +2330,9 @@ ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent)
     // If there is at least one frame which can be used for computing a rect
     // for a character or a line breaker, we should use it for guessing the
     // caret rect at the end of the contents.
+    nsPresContext* presContext;
     if (lastFrame) {
+      presContext = lastFrame->PresContext();
       if (NS_WARN_IF(!lastFrame->GetContent())) {
         return NS_ERROR_FAILURE;
       }
@@ -2370,6 +2368,7 @@ ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent)
       if (NS_WARN_IF(!rootContentFrame)) {
         return NS_ERROR_FAILURE;
       }
+      presContext = rootContentFrame->PresContext();
       FrameRelativeRect relativeRect = GuessFirstCaretRectIn(rootContentFrame);
       if (NS_WARN_IF(!relativeRect.IsValid())) {
         return NS_ERROR_FAILURE;
@@ -2382,7 +2381,7 @@ ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent)
       aEvent->mReply.mWritingMode = rootContentFrame->GetWritingMode();
     }
     aEvent->mReply.mRect = LayoutDeviceIntRect::FromUnknownRect(
-      rect.ToOutsidePixels(mPresContext->AppUnitsPerDevPixel()));
+      rect.ToOutsidePixels(presContext->AppUnitsPerDevPixel()));
     EnsureNonEmptyRect(aEvent->mReply.mRect);
     aEvent->mSucceeded = true;
     return NS_OK;
@@ -2564,7 +2563,7 @@ ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent)
   }
 
   aEvent->mReply.mRect = LayoutDeviceIntRect::FromUnknownRect(
-      rect.ToOutsidePixels(mPresContext->AppUnitsPerDevPixel()));
+      rect.ToOutsidePixels(lastFrame->PresContext()->AppUnitsPerDevPixel()));
   // Returning empty rect may cause native IME confused, let's make sure to
   // return non-empty rect.
   EnsureNonEmptyRect(aEvent->mReply.mRect);
@@ -2671,11 +2670,8 @@ ContentEventHandler::OnQuerySelectionAsTransferable(
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDocument> doc = mPresShell->GetDocument();
-  NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
-
   rv = nsCopySupport::GetTransferableForSelection(
-         mSelection, doc, getter_AddRefs(aEvent->mReply.mTransferable));
+         mSelection, mDocument, getter_AddRefs(aEvent->mReply.mTransferable));
   NS_ENSURE_SUCCESS(rv, rv);
 
   aEvent->mSucceeded = true;
@@ -2693,7 +2689,9 @@ ContentEventHandler::OnQueryCharacterAtPoint(WidgetQueryContentEvent* aEvent)
   aEvent->mReply.mOffset = aEvent->mReply.mTentativeCaretOffset =
     WidgetQueryContentEvent::NOT_FOUND;
 
-  nsIFrame* rootFrame = mPresShell->GetRootFrame();
+  nsIPresShell* shell = mDocument->GetShell();
+  NS_ENSURE_TRUE(shell, NS_ERROR_FAILURE);
+  nsIFrame* rootFrame = shell->GetRootFrame();
   NS_ENSURE_TRUE(rootFrame, NS_ERROR_FAILURE);
   nsIWidget* rootWidget = rootFrame->GetNearestWidget();
   NS_ENSURE_TRUE(rootWidget, NS_ERROR_FAILURE);
@@ -2806,20 +2804,20 @@ ContentEventHandler::OnQueryDOMWidgetHittest(WidgetQueryContentEvent* aEvent)
 
   NS_ENSURE_TRUE(aEvent->mWidget, NS_ERROR_FAILURE);
 
-  nsIDocument* doc = mPresShell->GetDocument();
-  NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
-  nsIFrame* docFrame = mPresShell->GetRootFrame();
+  nsIPresShell* shell = mDocument->GetShell();
+  NS_ENSURE_TRUE(shell, NS_ERROR_FAILURE);
+  nsIFrame* docFrame = shell->GetRootFrame();
   NS_ENSURE_TRUE(docFrame, NS_ERROR_FAILURE);
 
   LayoutDeviceIntPoint eventLoc =
     aEvent->mRefPoint + aEvent->mWidget->WidgetToScreenOffset();
   CSSIntRect docFrameRect = docFrame->GetScreenRect();
   CSSIntPoint eventLocCSS(
-    mPresContext->DevPixelsToIntCSSPixels(eventLoc.x) - docFrameRect.x,
-    mPresContext->DevPixelsToIntCSSPixels(eventLoc.y) - docFrameRect.y);
+    docFrame->PresContext()->DevPixelsToIntCSSPixels(eventLoc.x) - docFrameRect.x,
+    docFrame->PresContext()->DevPixelsToIntCSSPixels(eventLoc.y) - docFrameRect.y);
 
   Element* contentUnderMouse =
-    doc->ElementFromPointHelper(eventLocCSS.x, eventLocCSS.y, false, false);
+    mDocument->ElementFromPointHelper(eventLocCSS.x, eventLocCSS.y, false, false);
   if (contentUnderMouse) {
     nsIWidget* targetWidget = nullptr;
     nsIFrame* targetFrame = contentUnderMouse->GetPrimaryFrame();
@@ -2871,7 +2869,7 @@ ContentEventHandler::GetFlatTextLengthInRange(
   // array of children of its parent.  So, be careful to handle this case.
   if (aIsRemovingNode) {
     DebugOnly<nsIContent*> parent = aStartPosition.Container()->GetParent();
-    MOZ_ASSERT(parent && parent->IndexOf(aStartPosition.Container()) == -1,
+    MOZ_ASSERT(parent && parent->ComputeIndexOf(aStartPosition.Container()) == -1,
       "At removing the node, the node shouldn't be in the array of children "
       "of its parent");
     MOZ_ASSERT(aStartPosition.Container() == endPosition.Container(),
@@ -2912,7 +2910,7 @@ ContentEventHandler::GetFlatTextLengthInRange(
         if (NS_WARN_IF(!parentContent)) {
           return NS_ERROR_FAILURE;
         }
-        int32_t indexInParent = parentContent->IndexOf(endPosition.Container());
+        int32_t indexInParent = parentContent->ComputeIndexOf(endPosition.Container());
         if (NS_WARN_IF(indexInParent < 0)) {
           return NS_ERROR_FAILURE;
         }
@@ -3077,27 +3075,6 @@ ContentEventHandler::AdjustCollapsedRangeMaybeIntoTextNode(RawRange& aRawRange)
 }
 
 nsresult
-ContentEventHandler::GetStartFrameAndOffset(const RawRange& aRawRange,
-                                            nsIFrame*& aFrame,
-                                            int32_t& aOffsetInFrame)
-{
-  aFrame = nullptr;
-  aOffsetInFrame = -1;
-
-  nsINode* node = aRawRange.GetStartContainer();
-  if (NS_WARN_IF(!node) || NS_WARN_IF(!node->IsContent())) {
-    return NS_ERROR_FAILURE;
-  }
-  RefPtr<nsFrameSelection> fs = mPresShell->FrameSelection();
-  aFrame = fs->GetFrameForNodeOffset(node->AsContent(), aRawRange.StartOffset(),
-                                     fs->GetHint(), &aOffsetInFrame);
-  if (NS_WARN_IF(!aFrame)) {
-    return NS_ERROR_FAILURE;
-  }
-  return NS_OK;
-}
-
-nsresult
 ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
                                                  nsRect& aRect)
 {
@@ -3158,8 +3135,8 @@ static void AdjustRangeForSelection(nsIContent* aRoot,
   }
 
   *aNode = node->GetParent();
-  MOZ_ASSERT((*aNode)->IndexOf(node) != -1);
-  *aNodeOffset = (*aNode)->IndexOf(node) + 1;
+  MOZ_ASSERT((*aNode)->ComputeIndexOf(node) != -1);
+  *aNodeOffset = (*aNode)->ComputeIndexOf(node) + 1;
 }
 
 nsresult

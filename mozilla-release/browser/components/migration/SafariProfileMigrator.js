@@ -4,27 +4,23 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource:///modules/MigrationUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PropertyListUtils",
-                                  "resource://gre/modules/PropertyListUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
-                                  "resource://gre/modules/FormHistory.jsm");
+ChromeUtils.defineModuleGetter(this, "Downloads",
+                               "resource://gre/modules/Downloads.jsm");
+ChromeUtils.defineModuleGetter(this, "PropertyListUtils",
+                               "resource://gre/modules/PropertyListUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "FormHistory",
+                               "resource://gre/modules/FormHistory.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -237,7 +233,7 @@ History.prototype = {
             ignoreResults: true,
             handleCompletion(updatedCount) {
               aCallback(updatedCount > 0);
-            }
+            },
           });
         } else {
           aCallback(false);
@@ -247,7 +243,7 @@ History.prototype = {
         aCallback(false);
       }
     });
-  }
+  },
 };
 
 /**
@@ -288,24 +284,6 @@ MainPreferencesPropertyList.prototype = {
       });
     }
   },
-
-  // Workaround for nsIBrowserProfileMigrator.sourceHomePageURL until
-  // it's replaced with an async method.
-  _readSync: function MPPL__readSync() {
-    if ("_dict" in this)
-      return this._dict;
-
-    let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                      createInstance(Ci.nsIFileInputStream);
-    inputStream.init(this._file, -1, -1, 0);
-    let binaryStream = Cc["@mozilla.org/binaryinputstream;1"].
-                       createInstance(Ci.nsIBinaryInputStream);
-    binaryStream.setInputStream(inputStream);
-    let bytes = binaryStream.readByteArray(inputStream.available());
-    this._dict = PropertyListUtils._readFromArrayBufferSync(
-      new Uint8Array(bytes).buffer);
-    return this._dict;
-  }
 };
 
 function SearchStrings(aMainPreferencesPropertyListInstance) {
@@ -331,7 +309,7 @@ SearchStrings.prototype = {
           }
         }
       }, aCallback));
-  }
+  },
 };
 
 function SafariProfileMigrator() {
@@ -399,18 +377,7 @@ Object.defineProperty(SafariProfileMigrator.prototype, "mainPreferencesPropertyL
       return this._mainPreferencesPropertyList;
     }
     return this._mainPreferencesPropertyList;
-  }
-});
-
-Object.defineProperty(SafariProfileMigrator.prototype, "sourceHomePageURL", {
-  get: function get_sourceHomePageURL() {
-    if (this.mainPreferencesPropertyList) {
-      let dict = this.mainPreferencesPropertyList._readSync();
-      if (dict.has("HomePage"))
-        return dict.get("HomePage");
-    }
-    return "";
-  }
+  },
 });
 
 SafariProfileMigrator.prototype.classDescription = "Safari Profile Migrator";

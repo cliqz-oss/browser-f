@@ -1433,13 +1433,16 @@ Http2Session::ResponseHeadersComplete()
   LOG3(("Http2Session::ResponseHeadersComplete %p for 0x%X fin=%d",
         this, mInputFrameDataStream->StreamID(), mInputFrameFinal));
 
-  // only interpret headers once, afterwards ignore as trailers
+  // Anything prior to AllHeadersReceived() => true is actual headers. After
+  // that, we need to handle them as trailers instead (which are special-cased
+  // so we don't have to use the nasty chunked parser for all h2, just in case).
   if (mInputFrameDataStream->AllHeadersReceived()) {
-    LOG3(("Http2Session::ResponseHeadersComplete extra headers"));
+    LOG3(("Http2Session::ResponseHeadersComplete processing trailers"));
     MOZ_ASSERT(mInputFrameFlags & kFlag_END_STREAM);
-    nsresult rv = UncompressAndDiscard(false);
+    nsresult rv = mInputFrameDataStream->ConvertResponseTrailers(&mDecompressor,
+        mDecompressBuffer);
     if (NS_FAILED(rv)) {
-      LOG3(("Http2Session::ResponseHeadersComplete extra uncompress failed\n"));
+      LOG3(("Http2Session::ResponseHeadersComplete trailer conversion failed\n"));
       return rv;
     }
     mFlatHTTPResponseHeadersOut = 0;
@@ -1763,6 +1766,9 @@ Http2Session::RecvPushPromise(Http2Session *self)
   } else if (!associatedStream) {
     LOG3(("Http2Session::RecvPushPromise %p lookup associated ID failed.\n", self));
     self->GenerateRstStream(PROTOCOL_ERROR, promisedID);
+  } else if (Http2PushedStream::TestOnPush(associatedStream)) {
+    LOG3(("Http2Session::RecvPushPromise %p will be handled by push listener.", self));
+    resetStream = false;
   } else {
     nsIRequestContext *requestContext = associatedStream->RequestContext();
     if (requestContext) {
@@ -1888,7 +1894,7 @@ Http2Session::RecvPushPromise(Http2Session *self)
   // does the pushed origin belong on this connection?
   LOG3(("Http2Session::RecvPushPromise %p origin check %s", self,
         pushedStream->Origin().get()));
-  RefPtr<nsStandardURL> pushedOrigin;
+  nsCOMPtr<nsIURI> pushedOrigin;
   rv = Http2Stream::MakeOriginURL(pushedStream->Origin(), pushedOrigin);
   nsAutoCString pushedHostName;
   int32_t pushedPort = -1;
@@ -1943,7 +1949,7 @@ Http2Session::RecvPushPromise(Http2Session *self)
     nsAutoCString spec;
     spec.Assign(pushedStream->Origin());
     spec.Append(pushedStream->Path());
-    RefPtr<nsStandardURL> pushedURL;
+    nsCOMPtr<nsIURI> pushedURL;
     // Nifty trick: this doesn't actually do anything origin-specific, it's just
     // named that way. So by passing it the full spec here, we get a URL with
     // the full path.
@@ -2651,7 +2657,7 @@ Http2Session::RecvOrigin(Http2Session *self)
     }
 
     nsAutoCString originString;
-    RefPtr<nsStandardURL> originURL;
+    nsCOMPtr<nsIURI> originURL;
     originString.Assign(self->mInputFrameBuffer.get() + kFrameHeaderBytes + offset + 2, originLen);
     offset += originLen + 2;
     if (NS_FAILED(Http2Stream::MakeOriginURL(originString, originURL))){

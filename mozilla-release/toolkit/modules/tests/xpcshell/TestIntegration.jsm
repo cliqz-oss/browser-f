@@ -7,14 +7,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TestIntegration",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-
-this.TestIntegration = {
+var TestIntegration = {
   value: "value",
 
   get valueFromThis() {

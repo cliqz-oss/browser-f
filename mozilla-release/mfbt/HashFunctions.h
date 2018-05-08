@@ -52,23 +52,16 @@
 #include "mozilla/Char16.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Types.h"
+#include "mozilla/WrappingOperations.h"
 
 #include <stdint.h>
 
-#ifdef __cplusplus
 namespace mozilla {
 
 /**
  * The golden ratio as a 32-bit fixed-point value.
  */
 static const uint32_t kGoldenRatioU32 = 0x9E3779B9U;
-
-inline uint32_t
-RotateBitsLeft32(uint32_t aValue, uint8_t aBits)
-{
-  MOZ_ASSERT(aBits < 32);
-  return (aValue << aBits) | (aValue >> (32 - aBits));
-}
 
 namespace detail {
 
@@ -96,25 +89,28 @@ AddU32ToHash(uint32_t aHash, uint32_t aValue)
    * Otherwise, if |aHash| is 0 (as it often is for the beginning of a
    * message), the expression
    *
-   *   (kGoldenRatioU32 * RotateBitsLeft(aHash, 5)) |xor| aValue
+   *   mozilla::WrappingMultiply(kGoldenRatioU32, RotateBitsLeft(aHash, 5))
+   *   |xor|
+   *   aValue
    *
    * evaluates to |aValue|.
    *
    * (Number-theoretic aside: Because any odd number |m| is relatively prime to
-   * our modulus (2^32), the list
+   * our modulus (2**32), the list
    *
-   *    [x * m (mod 2^32) for 0 <= x < 2^32]
+   *    [x * m (mod 2**32) for 0 <= x < 2**32]
    *
    * has no duplicate elements.  This means that multiplying by |m| does not
    * cause us to skip any possible hash values.
    *
-   * It's also nice if |m| has large-ish order mod 2^32 -- that is, if the
-   * smallest k such that m^k == 1 (mod 2^32) is large -- so we can safely
+   * It's also nice if |m| has large-ish order mod 2**32 -- that is, if the
+   * smallest k such that m**k == 1 (mod 2**32) is large -- so we can safely
    * multiply our hash value by |m| a few times without negating the
-   * multiplicative effect.  Our golden ratio constant has order 2^29, which is
+   * multiplicative effect.  Our golden ratio constant has order 2**29, which is
    * more than enough for our purposes.)
    */
-  return kGoldenRatioU32 * (RotateBitsLeft32(aHash, 5) ^ aValue);
+  return mozilla::WrappingMultiply(kGoldenRatioU32,
+                                   RotateLeft(aHash, 5) ^ aValue);
 }
 
 /**
@@ -356,6 +352,7 @@ private:
       return mV0 ^ mV1 ^ mV2 ^ mV3;
     }
 
+    MOZ_NO_SANITIZE_UNSIGNED_OVERFLOW
     void sipRound()
     {
       mV0 += mV1;
@@ -379,6 +376,5 @@ private:
 };
 
 } /* namespace mozilla */
-#endif /* __cplusplus */
 
 #endif /* mozilla_HashFunctions_h */

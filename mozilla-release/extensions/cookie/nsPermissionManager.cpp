@@ -28,6 +28,7 @@
 #include "mozilla/Attributes.h"
 #include "nsXULAppAPI.h"
 #include "nsIPrincipal.h"
+#include "nsIURIMutator.h"
 #include "nsContentUtils.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIEffectiveTLDService.h"
@@ -296,13 +297,10 @@ GetNextSubDomainURI(nsIURI* aURI)
   }
 
   nsCOMPtr<nsIURI> uri;
-  rv = aURI->Clone(getter_AddRefs(uri));
+  rv = NS_MutateURI(aURI)
+         .SetHost(domain)
+         .Finalize(uri);
   if (NS_FAILED(rv) || !uri) {
-    return nullptr;
-  }
-
-  rv = uri->SetHost(domain);
-  if (NS_FAILED(rv)) {
     return nullptr;
   }
 
@@ -380,7 +378,7 @@ public:
   nsresult
   Insert(const nsACString& aOrigin, const nsCString& aType,
          uint32_t aPermission, uint32_t aExpireType, int64_t aExpireTime,
-         int64_t aModificationTime) final override
+         int64_t aModificationTime) final
   {
     nsresult rv = mStmt->BindInt64ByIndex(0, *mID);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -430,7 +428,7 @@ public:
   nsresult
   Insert(const nsACString& aOrigin, const nsCString& aType,
          uint32_t aPermission, uint32_t aExpireType, int64_t aExpireTime,
-         int64_t aModificationTime) final override
+         int64_t aModificationTime) final
   {
     nsCOMPtr<nsIPrincipal> principal;
     nsresult rv = GetPrincipalFromOrigin(aOrigin, getter_AddRefs(principal));
@@ -465,7 +463,7 @@ public:
   nsresult
   Insert(const nsACString& aOrigin, const nsCString& aType,
          uint32_t aPermission, uint32_t aExpireType, int64_t aExpireTime,
-         int64_t aModificationTime) final override
+         int64_t aModificationTime) final
   {
     // Every time the migration code wants to insert an origin into
     // the database we need to check to see if someone has already
@@ -664,7 +662,9 @@ UpgradeHostToOriginAndInsert(const nsACString& aHost, const nsCString& aType,
       if (NS_WARN_IF(NS_FAILED(rv))) continue;
 
       // Use the provided host - this URI may be for a subdomain, rather than the host we care about.
-      rv = uri->SetHost(aHost);
+      rv = NS_MutateURI(uri)
+             .SetHost(aHost)
+             .Finalize(uri);
       if (NS_WARN_IF(NS_FAILED(rv))) continue;
 
       // We now have a URI which we can make a nsIPrincipal out of
@@ -746,6 +746,15 @@ IsExpandedPrincipal(nsIPrincipal* aPrincipal)
 {
   nsCOMPtr<nsIExpandedPrincipal> ep = do_QueryInterface(aPrincipal);
   return !!ep;
+}
+
+// We only want to persist permissions which don't have session or policy
+// expiration.
+static bool
+IsPersistentExpire(uint32_t aExpire)
+{
+  return aExpire != nsIPermissionManager::EXPIRE_SESSION &&
+    aExpire != nsIPermissionManager::EXPIRE_POLICY;
 }
 
 } // namespace
@@ -1688,7 +1697,8 @@ nsPermissionManager::AddFromPrincipal(nsIPrincipal* aPrincipal,
   NS_ENSURE_ARG_POINTER(aType);
   NS_ENSURE_TRUE(aExpireType == nsIPermissionManager::EXPIRE_NEVER ||
                  aExpireType == nsIPermissionManager::EXPIRE_TIME ||
-                 aExpireType == nsIPermissionManager::EXPIRE_SESSION,
+                 aExpireType == nsIPermissionManager::EXPIRE_SESSION ||
+                 aExpireType == nsIPermissionManager::EXPIRE_POLICY,
                  NS_ERROR_INVALID_ARG);
 
   // Skip addition if the permission is already expired. Note that EXPIRE_SESSION only
@@ -1853,7 +1863,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
         sPreloadPermissionCount++;
       }
 
-      if (aDBOperation == eWriteToDB && aExpireType != nsIPermissionManager::EXPIRE_SESSION) {
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType)) {
         UpdateDB(op, mStmtInsert, id, origin, aType, aPermission, aExpireType, aExpireTime, aModificationTime);
       }
 
@@ -1873,6 +1883,14 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
     {
       PermissionEntry oldPermissionEntry = entry->GetPermissions()[index];
       id = oldPermissionEntry.mID;
+
+      // If the type we want to remove is EXPIRE_POLICY, we need to reject
+      // attempts to change the permission.
+      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
+        NS_WARNING("Attempting to remove EXPIRE_POLICY permission");
+        break;
+      }
+
       entry->GetPermissions().RemoveElementAt(index);
 
       // Record a count of the number of preload permissions present in the
@@ -1908,6 +1926,13 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
     {
       id = entry->GetPermissions()[index].mID;
 
+      // If the existing type is EXPIRE_POLICY, we need to reject attempts to
+      // change the permission.
+      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
+        NS_WARNING("Attempting to modify EXPIRE_POLICY permission");
+        break;
+      }
+
       // If the new expireType is EXPIRE_SESSION, then we have to keep a
       // copy of the previous permission/expireType values. This cached value will be
       // used when restoring the permissions of an app.
@@ -1927,7 +1952,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       entry->GetPermissions()[index].mExpireTime = aExpireTime;
       entry->GetPermissions()[index].mModificationTime = aModificationTime;
 
-      if (aDBOperation == eWriteToDB && aExpireType != nsIPermissionManager::EXPIRE_SESSION)
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType))
         // We care only about the id, the permission and expireType/expireTime/modificationTime here.
         // We pass dummy values for all other parameters.
         UpdateDB(op, mStmtUpdate, id, EmptyCString(), EmptyCString(),
@@ -1960,8 +1985,10 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       // in memory doesn't have the magic cIDPermissionIsDefault value.
       id = ++mLargestID;
 
-      // The default permission being replaced can't have session expiry.
+      // The default permission being replaced can't have session expiry or policy expiry.
       NS_ENSURE_TRUE(entry->GetPermissions()[index].mExpireType != nsIPermissionManager::EXPIRE_SESSION,
+                     NS_ERROR_UNEXPECTED);
+      NS_ENSURE_TRUE(entry->GetPermissions()[index].mExpireType != nsIPermissionManager::EXPIRE_POLICY,
                      NS_ERROR_UNEXPECTED);
       // We don't support the new entry having any expiry - supporting that would
       // make things far more complex and none of the permissions we set as a
@@ -1976,7 +2003,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       entry->GetPermissions()[index].mModificationTime = aModificationTime;
 
       // If requested, create the entry in the DB.
-      if (aDBOperation == eWriteToDB) {
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType)) {
         UpdateDB(eOperationAdding, mStmtInsert, id, origin, aType, aPermission,
                  aExpireType, aExpireTime, aModificationTime);
       }

@@ -14,7 +14,7 @@ const EXPECTED_APPMENU_OPEN_REFLOWS = [
   {
     stack: [
       "openPopup@chrome://global/content/bindings/popup.xml",
-      "show/</<@chrome://browser/content/customizableui/panelUI.js",
+      "openPopup/this._openPopupPromise<@resource:///modules/PanelMultiView.jsm",
     ],
   },
 
@@ -40,42 +40,8 @@ const EXPECTED_APPMENU_OPEN_REFLOWS = [
       "handleEvent@resource:///modules/PanelMultiView.jsm",
     ],
 
-    times: 6, // This number should only ever go down - never up.
+    maxCount: 6, // This number should only ever go down - never up.
   },
-];
-
-const EXPECTED_APPMENU_SUBVIEW_REFLOWS = [
-  /**
-   * The synced tabs view has labels that are multiline. Because of bugs in
-   * XUL layout relating to multiline text in scrollable containers, we need
-   * to manually read their height in order to ensure container heights are
-   * correct. Unfortunately this requires 2 sync reflows.
-   *
-   * If we add more views where this is necessary, we may need to duplicate
-   * these expected reflows further. Bug 1392340 is on file to remove the
-   * reflows completely when opening subviews.
-   */
-  {
-    stack: [
-      "descriptionHeightWorkaround@resource:///modules/PanelMultiView.jsm",
-      "hideAllViewsExcept@resource:///modules/PanelMultiView.jsm",
-    ],
-
-    times: 1, // This number should only ever go down - never up.
-  },
-
-  {
-    stack: [
-      "descriptionHeightWorkaround@resource:///modules/PanelMultiView.jsm",
-      "_transitionViews@resource:///modules/PanelMultiView.jsm",
-    ],
-
-    times: 3, // This number should only ever go down - never up.
-  },
-
-  /**
-   * Please don't add anything new!
-   */
 ];
 
 add_task(async function() {
@@ -105,25 +71,27 @@ add_task(async function() {
 
       for (let button of navButtons) {
         info("Click " + button.id);
+        let promiseViewShown = BrowserTestUtils.waitForEvent(PanelUI.panel,
+                                                             "ViewShown");
         button.click();
-        await BrowserTestUtils.waitForEvent(PanelUI.panel, "ViewShown");
+        let viewShownEvent = await promiseViewShown;
 
         // Workaround until bug 1363756 is fixed, then this can be removed.
+        let container = PanelUI.multiView.querySelector(".panel-viewcontainer");
         await BrowserTestUtils.waitForCondition(() => {
-          return !PanelUI.multiView.instance._viewContainer.hasAttribute("width");
+          return !container.hasAttribute("width");
         });
 
-        info("Shown " + PanelUI.multiView.instance._currentSubView.id);
-        // Unfortunately, I can't find a better accessor to the current
-        // subview, so I have to reach the PanelMultiView instance
-        // here.
-        await openSubViewsRecursively(PanelUI.multiView.instance._currentSubView);
+        info("Shown " + viewShownEvent.originalTarget.id);
+        await openSubViewsRecursively(viewShownEvent.originalTarget);
+        promiseViewShown = BrowserTestUtils.waitForEvent(currentView,
+                                                         "ViewShown");
         PanelUI.multiView.goBack();
-        await BrowserTestUtils.waitForEvent(PanelUI.panel, "ViewShown");
+        await promiseViewShown;
 
         // Workaround until bug 1363756 is fixed, then this can be removed.
         await BrowserTestUtils.waitForCondition(() => {
-          return !PanelUI.multiView.instance._viewContainer.hasAttribute("width");
+          return !container.hasAttribute("width");
         });
       }
     }
@@ -133,5 +101,5 @@ add_task(async function() {
     let hidden = BrowserTestUtils.waitForEvent(PanelUI.panel, "popuphidden");
     PanelUI.hide();
     await hidden;
-  }, EXPECTED_APPMENU_SUBVIEW_REFLOWS);
+  }, []);
 });

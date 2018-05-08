@@ -5,8 +5,7 @@
 
 "use strict";
 
-var Cu = Components.utils;
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const {getCssPropertyName} = require("devtools/client/animationinspector/utils");
 
 const TEST_DATA = [{

@@ -4,8 +4,10 @@
 // etc--see HttpBaseChannel::IsSafeMethod).  Since no prompting is possible
 // in xpcshell, we get an error for prompts, and the request fails.
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 var sSame;
 var sOther;
@@ -23,8 +25,7 @@ XPCOMUtils.defineLazyGetter(this, "pOther", function() {
 
 function createXHR(async, method, path)
 {
-  var xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-            .createInstance(Ci.nsIXMLHttpRequest);
+  var xhr = new XMLHttpRequest();
   xhr.open(method, "http://localhost:" + pSame + path, async);
   return xhr;
 }

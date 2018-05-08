@@ -33,7 +33,7 @@ namespace wasm {
 struct CompileArgs;
 
 // LinkData contains all the metadata necessary to patch all the locations
-// that depend on the absolute address of a CodeSegment.
+// that depend on the absolute address of a ModuleSegment.
 //
 // LinkData is built incrementally by ModuleGenerator and then stored immutably
 // in Module. LinkData is distinct from Metadata in that LinkData is owned and
@@ -62,6 +62,9 @@ struct LinkDataTier : LinkDataTierCacheablePod
     struct InternalLink {
         uint32_t patchAtOffset;
         uint32_t targetOffset;
+#ifdef JS_CODELABEL_LINKMODE
+        uint32_t mode;
+#endif
     };
     typedef Vector<InternalLink, 0, SystemAllocPolicy> InternalLinkVector;
 
@@ -79,25 +82,15 @@ typedef UniquePtr<LinkDataTier> UniqueLinkDataTier;
 
 class LinkData
 {
-    SharedMetadata             metadata_;
-    UniqueLinkDataTier         linkData1_;     // Always present
-    mutable UniqueLinkDataTier linkData2_;     // Access only if hasTier2() is true
+    UniqueLinkDataTier         linkData1_; // Always present
+    mutable UniqueLinkDataTier linkData2_; // Access only if hasTier2() is true
 
   public:
-    bool initTier1(Tier tier, const Metadata& metadata);
+    LinkData() {}
+    explicit LinkData(UniqueLinkDataTier linkData) : linkData1_(Move(linkData)) {}
 
-    bool hasTier2() const { return metadata_->hasTier2(); }
     void setTier2(UniqueLinkDataTier linkData) const;
-    Tiers tiers() const;
-
     const LinkDataTier& linkData(Tier tier) const;
-    LinkDataTier& linkData(Tier tier);
-
-    UniquePtr<LinkDataTier> takeLinkData(Tier tier) {
-        MOZ_ASSERT(!hasTier2());
-        MOZ_ASSERT(linkData1_->tier == tier);
-        return Move(linkData1_);
-    }
 
     WASM_DECLARE_SERIALIZABLE(LinkData)
 };
@@ -126,7 +119,7 @@ typedef ExclusiveWaitableData<Tiering> ExclusiveTiering;
 // to produce a new, equivalent Module.
 //
 // Fully linked-and-instantiated code (represented by Code and its owned
-// CodeSegment) can be shared between instances, provided none of those
+// ModuleSegment) can be shared between instances, provided none of those
 // instances are being debugged. If patchable code is needed then each instance
 // must have its own Code. Module eagerly creates a new Code and gives it to the
 // first instance; it then instantiates new Code objects from a copy of the
@@ -193,7 +186,7 @@ class Module : public JS::WasmModule
     ~Module() override { /* Note: can be called on any thread */ }
 
     const Code& code() const { return *code_; }
-    const CodeSegment& codeSegment(Tier t) const { return code_->segment(t); }
+    const ModuleSegment& moduleSegment(Tier t) const { return code_->segment(t); }
     const Metadata& metadata() const { return code_->metadata(); }
     const MetadataTier& metadata(Tier t) const { return code_->metadata(t); }
     const LinkData& linkData() const { return linkData_; }
@@ -220,8 +213,7 @@ class Module : public JS::WasmModule
     // and made visible.
 
     void startTier2(const CompileArgs& args);
-    void finishTier2(UniqueLinkDataTier linkData2, UniqueMetadataTier metadata2,
-                     UniqueCodeSegment code2, ModuleEnvironment* env2);
+    bool finishTier2(UniqueLinkDataTier linkData2, UniqueCodeTier tier2, ModuleEnvironment* env2);
     void blockOnTier2Complete() const;
 
     // JS API and JS::WasmModule implementation:

@@ -9,10 +9,6 @@ ADJUST_MOUSE_AND_SCREEN = False
 #####
 config = {
     "buildbot_json_path": "buildprops.json",
-    "exes": {
-        'virtualenv': '/tools/virtualenv/bin/virtualenv',
-        'tooltool.py': "/tools/tooltool.py",
-    },
     "find_links": [
         "http://pypi.pvt.build.mozilla.org/pub",
         "http://pypi.pub.build.mozilla.org/pub",
@@ -42,16 +38,6 @@ config = {
         "mozbase/*",
         "tools/*",
     ],
-    "specific_tests_zip_dirs": {
-        "mochitest": ["mochitest/*"],
-        "reftest": ["reftest/*", "jsreftest/*"],
-        "xpcshell": ["xpcshell/*"],
-        "cppunittest": ["cppunittest/*"],
-        "gtest": ["gtest/*"],
-        "jittest": ["jit-test/*"],
-        "mozbase": ["mozbase/*"],
-        "mozmill": ["mozmill/*"],
-    },
     "suite_definitions": {
         "cppunittest": {
             "options": [

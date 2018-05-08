@@ -6,9 +6,9 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/Integration.jsm", this);
-Cu.import("resource:///modules/PermissionUI.jsm", this);
-Cu.import("resource:///modules/SitePermissions.jsm", this);
+ChromeUtils.import("resource://gre/modules/Integration.jsm", this);
+ChromeUtils.import("resource:///modules/PermissionUI.jsm", this);
+ChromeUtils.import("resource:///modules/SitePermissions.jsm", this);
 
 // Tests that GeolocationPermissionPrompt works as expected
 add_task(async function test_geo_permission_prompt() {
@@ -23,6 +23,11 @@ add_task(async function test_desktop_notification_permission_prompt() {
 // Tests that PersistentStoragePermissionPrompt works as expected
 add_task(async function test_persistent_storage_permission_prompt() {
   await testPrompt(PermissionUI.PersistentStoragePermissionPrompt);
+});
+
+// Tests that MidiPrompt works as expected
+add_task(async function test_midi_permission_prompt() {
+  await testPrompt(PermissionUI.MIDIPermissionPrompt);
 });
 
 async function testPrompt(Prompt) {

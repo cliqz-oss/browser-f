@@ -29,6 +29,7 @@
 #include "mozilla/gfx/HelpersCairo.h"
 
 #include <fontconfig/fcfreetype.h>
+#include <dlfcn.h>
 #include <unistd.h>
 
 #ifdef MOZ_WIDGET_GTK
@@ -44,6 +45,8 @@
 #include "mozilla/SandboxBrokerPolicyFactory.h"
 #include "mozilla/SandboxSettings.h"
 #endif
+
+#include FT_MULTIPLE_MASTERS_H
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -357,8 +360,42 @@ gfxFontconfigFontEntry::gfxFontconfigFontEntry(const nsAString& aFaceName,
     mIgnoreFcCharmap = true;
 }
 
+typedef FT_Error (*GetVarFunc)(FT_Face, FT_MM_Var**);
+typedef FT_Error (*DoneVarFunc)(FT_Library, FT_MM_Var*);
+static GetVarFunc sGetVar;
+static DoneVarFunc sDoneVar;
+static bool sInitializedVarFuncs = false;
+
+static void
+InitializeVarFuncs()
+{
+    if (sInitializedVarFuncs) {
+        return;
+    }
+    sInitializedVarFuncs = true;
+#if MOZ_TREE_FREETYPE
+    sGetVar = &FT_Get_MM_Var;
+    sDoneVar = &FT_Done_MM_Var;
+#else
+    sGetVar = (GetVarFunc)dlsym(RTLD_DEFAULT, "FT_Get_MM_Var");
+    sDoneVar = (DoneVarFunc)dlsym(RTLD_DEFAULT, "FT_Done_MM_Var");
+#endif
+}
+
 gfxFontconfigFontEntry::~gfxFontconfigFontEntry()
 {
+    if (mMMVar) {
+        // Prior to freetype 2.9, there was no specific function to free the
+        // FT_MM_Var record, and the docs just said to use free().
+        // InitializeVarFuncs must have been called in order for mMMVar to be
+        // non-null here, so we don't need to do it again.
+        if (sDoneVar) {
+            MOZ_ASSERT(mFTFace, "How did mMMVar get set without a face?");
+            (*sDoneVar)(mFTFace->glyph->library, mMMVar);
+        } else {
+            free(mMMVar);
+        }
+    }
 }
 
 nsresult
@@ -466,6 +503,14 @@ gfxFontconfigFontEntry::MaybeReleaseFTFace()
     // only close out FT_Face for system fonts, not for data fonts
     if (!mIsDataUserFont) {
         if (mFTFace) {
+            if (mMMVar) {
+                if (sDoneVar) {
+                    (*sDoneVar)(mFTFace->glyph->library, mMMVar);
+                } else {
+                    free(mMMVar);
+                }
+                mMMVar = nullptr;
+            }
             Factory::ReleaseFTFace(mFTFace);
             mFTFace = nullptr;
         }
@@ -719,11 +764,22 @@ gfxFontconfigFontEntry::CreateScaledFont(FcPattern* aRenderPattern,
     }
 
     AutoTArray<FT_Fixed,8> coords;
-    if (!aStyle->variationSettings.IsEmpty()) {
+    if (!aStyle->variationSettings.IsEmpty() || !mVariationSettings.IsEmpty()) {
         FT_Face ftFace = GetFTFace();
         if (ftFace) {
-            gfxFT2FontBase::SetupVarCoords(ftFace, aStyle->variationSettings,
-                                           &coords);
+            const nsTArray<gfxFontVariation>* settings;
+            AutoTArray<gfxFontVariation,8> mergedSettings;
+            if (mVariationSettings.IsEmpty()) {
+                settings = &aStyle->variationSettings;
+            } else if (aStyle->variationSettings.IsEmpty()) {
+                settings = &mVariationSettings;
+            } else {
+                gfxFontUtils::MergeVariations(mVariationSettings,
+                                              aStyle->variationSettings,
+                                              &mergedSettings);
+                settings = &mergedSettings;
+            }
+            gfxFT2FontBase::SetupVarCoords(ftFace, *settings, &coords);
         }
     }
 
@@ -1002,6 +1058,92 @@ gfxFontconfigFontEntry::GetFTFace()
         mFTFace = CreateFaceForPattern(mFontPattern);
     }
     return mFTFace;
+}
+
+bool
+gfxFontconfigFontEntry::HasVariations()
+{
+    FT_Face face = GetFTFace();
+    if (face) {
+        return face->face_flags & FT_FACE_FLAG_MULTIPLE_MASTERS;
+    }
+    return false;
+}
+
+FT_MM_Var*
+gfxFontconfigFontEntry::GetMMVar()
+{
+    if (mMMVarInitialized) {
+        return mMMVar;
+    }
+    mMMVarInitialized = true;
+    InitializeVarFuncs();
+    if (!sGetVar) {
+        return nullptr;
+    }
+    FT_Face face = GetFTFace();
+    if (!face) {
+        return nullptr;
+    }
+    if (FT_Err_Ok != (*sGetVar)(face, &mMMVar)) {
+        mMMVar = nullptr;
+    }
+    return mMMVar;
+}
+
+void
+gfxFontconfigFontEntry::GetVariationAxes(nsTArray<gfxFontVariationAxis>& aAxes)
+{
+    MOZ_ASSERT(aAxes.IsEmpty());
+    FT_MM_Var* mmVar = GetMMVar();
+    if (!mmVar) {
+        return;
+    }
+    aAxes.SetCapacity(mmVar->num_axis);
+    for (unsigned i = 0; i < mmVar->num_axis; i++) {
+        const auto& a = mmVar->axis[i];
+        gfxFontVariationAxis axis;
+        axis.mMinValue = a.minimum / 65536.0;
+        axis.mMaxValue = a.maximum / 65536.0;
+        axis.mDefaultValue = a.def / 65536.0;
+        axis.mTag = a.tag;
+        axis.mName.Assign(NS_ConvertUTF8toUTF16(a.name));
+        aAxes.AppendElement(axis);
+    }
+}
+
+void
+gfxFontconfigFontEntry::GetVariationInstances(
+    nsTArray<gfxFontVariationInstance>& aInstances)
+{
+    MOZ_ASSERT(aInstances.IsEmpty());
+    FT_MM_Var* mmVar = GetMMVar();
+    if (!mmVar) {
+        return;
+    }
+    hb_blob_t* nameTable = GetFontTable(TRUETYPE_TAG('n','a','m','e'));
+    if (!nameTable) {
+        return;
+    }
+    aInstances.SetCapacity(mmVar->num_namedstyles);
+    for (unsigned i = 0; i < mmVar->num_namedstyles; i++) {
+        const auto& ns = mmVar->namedstyle[i];
+        gfxFontVariationInstance inst;
+        nsresult rv =
+            gfxFontUtils::ReadCanonicalName(nameTable, ns.strid, inst.mName);
+        if (NS_FAILED(rv)) {
+            continue;
+        }
+        inst.mValues.SetCapacity(mmVar->num_axis);
+        for (unsigned j = 0; j < mmVar->num_axis; j++) {
+            gfxFontVariationValue value;
+            value.mAxis = mmVar->axis[j].tag;
+            value.mValue = ns.coords[j] / 65536.0;
+            inst.mValues.AppendElement(value);
+        }
+        aInstances.AppendElement(inst);
+    }
+    hb_blob_destroy(nameTable);
 }
 
 nsresult

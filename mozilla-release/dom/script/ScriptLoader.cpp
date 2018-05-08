@@ -511,6 +511,7 @@ ScriptLoader::CreateModuleScript(ModuleLoadRequest* aRequest)
     }
 
     MOZ_ASSERT(NS_SUCCEEDED(rv) == (module != nullptr));
+
     RefPtr<ModuleScript> moduleScript = new ModuleScript(this, aRequest->mBaseURL);
     aRequest->mModuleScript = moduleScript;
 
@@ -999,7 +1000,7 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
 
   if (aRequest->IsModuleRequest()) {
     // Check whether the module has been fetched or is currently being fetched,
-    // and if so wait for it.
+    // and if so wait for it rather than starting a new fetch.
     ModuleLoadRequest* request = aRequest->AsModuleRequest();
     if (ModuleMapContainsURL(request->mURI)) {
       LOG(("ScriptLoadRequest (%p): Waiting for module fetch", aRequest));
@@ -1009,10 +1010,6 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
                &ModuleLoadRequest::LoadFailed);
       return NS_OK;
     }
-
-    // Otherwise put the URL in the module map and mark it as fetching.
-    SetModuleFetchStarted(request);
-    LOG(("ScriptLoadRequest (%p): Start fetching module", aRequest));
   }
 
   nsContentPolicyType contentPolicyType = aRequest->IsPreload()
@@ -1065,6 +1062,7 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
       aRequest->mTriggeringPrincipal,
       securityFlags,
       contentPolicyType,
+      nullptr, // aPerformanceStorage
       loadGroup,
       prompter,
       nsIRequest::LOAD_NORMAL |
@@ -1174,7 +1172,17 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
   rv = NS_NewIncrementalStreamLoader(getter_AddRefs(loader), handler);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return channel->AsyncOpen2(loader);
+  rv = channel->AsyncOpen2(loader);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (aRequest->IsModuleRequest()) {
+    // We successfully started fetching a module so put its URL in the module
+    // map and mark it as fetching.
+    SetModuleFetchStarted(aRequest->AsModuleRequest());
+    LOG(("ScriptLoadRequest (%p): Start fetching module", aRequest));
+  }
+
+  return NS_OK;
 }
 
 bool
@@ -1225,12 +1233,8 @@ ScriptLoader::CreateLoadRequest(ScriptKind aKind,
   nsIURI* referrer = mDocument->GetDocumentURI();
 
   if (aKind == ScriptKind::eClassic) {
-    ScriptLoadRequest* slr = new ScriptLoadRequest(aKind, aURI, aElement,
-                                                   aCORSMode, aIntegrity,
-                                                   referrer, aReferrerPolicy);
-
-    LOG(("ScriptLoader %p creates ScriptLoadRequest %p", this, slr));
-    return slr;
+    return new ScriptLoadRequest(aKind, aURI, aElement, aCORSMode, aIntegrity,
+                                 referrer, aReferrerPolicy);
   }
 
   MOZ_ASSERT(aKind == ScriptKind::eModule);
@@ -1312,6 +1316,9 @@ ScriptLoader::ProcessExternalScript(nsIScriptElement* aElement,
                                     nsAutoString aTypeAttr,
                                     nsIContent* aScriptContent)
 {
+  LOG(("ScriptLoader (%p): Process external script for element %p",
+       this, aElement));
+
   nsCOMPtr<nsIURI> scriptURI = aElement->GetScriptURI();
   if (!scriptURI) {
     // Asynchronously report the failure to create a URI object
@@ -1326,6 +1333,8 @@ ScriptLoader::ProcessExternalScript(nsIScriptElement* aElement,
 
   if (request && NS_FAILED(CheckContentPolicy(mDocument, aElement, request->mURI,
                                               aTypeAttr, false))) {
+    LOG(("ScriptLoader (%p): content policy check failed for preload", this));
+
     // Probably plans have changed; even though the preload was allowed seems
     // like the actual load is not; let's cancel the preload request.
     request->Cancel();
@@ -1335,6 +1344,8 @@ ScriptLoader::ProcessExternalScript(nsIScriptElement* aElement,
 
   if (request) {
     // Use the preload request.
+
+    LOG(("ScriptLoadRequest (%p): Using preload request", request.get()));
 
     // It's possible these attributes changed since we started the preload so
     // update them here.
@@ -1370,21 +1381,30 @@ ScriptLoader::ProcessExternalScript(nsIScriptElement* aElement,
     // keep request->mScriptFromHead to false so we don't treat non preloaded
     // scripts as blockers for full page load. See bug 792438.
 
+    LOG(("ScriptLoadRequest (%p): Created request for external script",
+         request.get()));
+
     nsresult rv = StartLoad(request);
     if (NS_FAILED(rv)) {
       ReportErrorToConsole(request, rv);
 
       // Asynchronously report the load failure
-      NS_DispatchToCurrentThread(
+      nsCOMPtr<nsIRunnable> runnable =
         NewRunnableMethod("nsIScriptElement::FireErrorEvent",
                           aElement,
-                          &nsIScriptElement::FireErrorEvent));
+                          &nsIScriptElement::FireErrorEvent);
+      if (mDocument) {
+        mDocument->Dispatch(TaskCategory::Other, runnable.forget());
+      } else {
+        NS_DispatchToCurrentThread(runnable);
+      }
       return false;
     }
   }
 
-  // Should still be in loading stage of script.
-  NS_ASSERTION(!request->InCompilingStage(),
+  // We should still be in loading stage of script unless we're loading a
+  // module.
+  NS_ASSERTION(!request->InCompilingStage() || request->IsModuleRequest(),
                "Request should not yet be in compiling stage.");
 
   if (request->IsAsyncScript()) {
@@ -1575,6 +1595,8 @@ ScriptLoadRequest*
 ScriptLoader::LookupPreloadRequest(nsIScriptElement* aElement,
                                    ScriptKind aScriptKind)
 {
+  MOZ_ASSERT(aElement);
+
   nsTArray<PreloadInfo>::index_type i =
     mPreloads.IndexOf(aElement->GetScriptURI(), 0, PreloadURIComparator());
   if (i == nsTArray<PreloadInfo>::NoIndex) {
@@ -1597,6 +1619,7 @@ ScriptLoader::LookupPreloadRequest(nsIScriptElement* aElement,
       mDocument->GetReferrerPolicy() != request->mReferrerPolicy ||
       aScriptKind != request->mKind) {
     // Drop the preload.
+    request->Cancel();
     AccumulateCategorical(LABELS_DOM_SCRIPT_PRELOAD_RESULT::RequestMismatch);
     return nullptr;
   }
@@ -2052,14 +2075,18 @@ ScriptLoader::FillCompileOptionsForRequest(const AutoJSAPI&jsapi,
     aOptions->setMutedErrors(!subsumes);
   }
 
-  JSContext* cx = jsapi.cx();
-  JS::Rooted<JS::Value> elementVal(cx);
-  MOZ_ASSERT(aRequest->mElement);
-  if (NS_SUCCEEDED(nsContentUtils::WrapNative(cx, aRequest->mElement,
-                                              &elementVal,
-                                              /* aAllowWrapping = */ true))) {
-    MOZ_ASSERT(elementVal.isObject());
-    aOptions->setElement(&elementVal.toObject());
+  if (aRequest->IsModuleRequest()) {
+    aOptions->hideScriptFromDebugger = true;
+  } else {
+    JSContext* cx = jsapi.cx();
+    JS::Rooted<JS::Value> elementVal(cx);
+    MOZ_ASSERT(aRequest->mElement);
+    if (NS_SUCCEEDED(nsContentUtils::WrapNative(cx, aRequest->mElement,
+                                                &elementVal,
+                                                /* aAllowWrapping = */ true))) {
+      MOZ_ASSERT(elementVal.isObject());
+      aOptions->setElement(&elementVal.toObject());
+    }
   }
 
   return NS_OK;
@@ -2216,6 +2243,16 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
 
       JS::Rooted<JSObject*> module(cx, moduleScript->ModuleRecord());
       MOZ_ASSERT(module);
+
+      if (!moduleScript->SourceElementAssociated()) {
+        rv = nsJSUtils::InitModuleSourceElement(cx, module, aRequest->mElement);
+        NS_ENSURE_SUCCESS(rv, rv);
+        moduleScript->SetSourceElementAssociated();
+
+        // The script is now ready to be exposed to the debugger.
+        JS::Rooted<JSScript*> script(cx, JS::GetModuleScript(module));
+        JS::ExposeScriptToDebugger(cx, script);
+      }
 
       rv = nsJSUtils::ModuleEvaluate(cx, module);
       MOZ_ASSERT(NS_FAILED(rv) == aes.HasException());
@@ -2952,7 +2989,7 @@ ScriptLoader::HandleLoadError(ScriptLoadRequest *aRequest, nsresult aResult)
       RefPtr<ScriptLoadRequest> req = mXSLTRequests.Steal(aRequest);
       FireScriptAvailable(aResult, req);
     }
-  } else if (aRequest->IsModuleRequest()) {
+  } else if (aRequest->IsModuleRequest() && !aRequest->IsPreload()) {
     ModuleLoadRequest* modReq = aRequest->AsModuleRequest();
     MOZ_ASSERT(!modReq->IsTopLevel());
     MOZ_ASSERT(!modReq->isInList());
@@ -2972,9 +3009,19 @@ ScriptLoader::HandleLoadError(ScriptLoadRequest *aRequest, nsresult aResult)
     FireScriptAvailable(aResult, aRequest);
     ContinueParserAsync(aRequest);
     mCurrentParserInsertedScript = oldParserInsertedScript;
-  } else {
-    mPreloads.RemoveElement(aRequest, PreloadRequestComparator());
+  } else if (aRequest->IsPreload()) {
+    if (aRequest->IsModuleRequest()) {
+      aRequest->Cancel();
+    }
+    if (aRequest->IsTopLevel()) {
+      MOZ_ALWAYS_TRUE(mPreloads.RemoveElement(aRequest, PreloadRequestComparator()));
+    }
+    MOZ_ASSERT(!aRequest->isInList());
     AccumulateCategorical(LABELS_DOM_SCRIPT_PRELOAD_RESULT::LoadError);
+  } else {
+    // This happens for blocking requests cancelled by ParsingComplete().
+    MOZ_ASSERT(aRequest->IsCanceled());
+    MOZ_ASSERT(!aRequest->isInList());
   }
 }
 
@@ -3163,11 +3210,15 @@ ScriptLoader::ParsingComplete(bool aTerminated)
 }
 
 void
-ScriptLoader::PreloadURI(nsIURI* aURI, const nsAString& aCharset,
+ScriptLoader::PreloadURI(nsIURI* aURI,
+                         const nsAString& aCharset,
                          const nsAString& aType,
                          const nsAString& aCrossOrigin,
                          const nsAString& aIntegrity,
-                         bool aScriptFromHead, bool aAsync, bool aDefer,
+                         bool aScriptFromHead,
+                         bool aAsync,
+                         bool aDefer,
+                         bool aNoModule,
                          const mozilla::net::ReferrerPolicy aReferrerPolicy)
 {
   NS_ENSURE_TRUE_VOID(mDocument);
@@ -3176,8 +3227,27 @@ ScriptLoader::PreloadURI(nsIURI* aURI, const nsAString& aCharset,
     return;
   }
 
-  // TODO: Preload module scripts.
-  if (mDocument->ModuleScriptsEnabled() && aType.LowerCaseEqualsASCII("module")) {
+  ScriptKind scriptKind = ScriptKind::eClassic;
+
+  if (mDocument->ModuleScriptsEnabled()) {
+    // Don't load nomodule scripts.
+    if (aNoModule) {
+      return;
+    }
+
+    static const char kASCIIWhitespace[] = "\t\n\f\r ";
+
+    nsAutoString type(aType);
+    type.Trim(kASCIIWhitespace);
+    if (type.LowerCaseEqualsASCII("module")) {
+      scriptKind = ScriptKind::eModule;
+    }
+  }
+
+  if (scriptKind == ScriptKind::eClassic &&
+      !aType.IsEmpty() && !nsContentUtils::IsJavascriptMIMEType(aType))
+  {
+    // Unknown type.  Don't load it.
     return;
   }
 
@@ -3185,13 +3255,20 @@ ScriptLoader::PreloadURI(nsIURI* aURI, const nsAString& aCharset,
   GetSRIMetadata(aIntegrity, &sriMetadata);
 
   RefPtr<ScriptLoadRequest> request =
-    CreateLoadRequest(ScriptKind::eClassic, aURI, nullptr,
+    CreateLoadRequest(scriptKind, aURI, nullptr,
                       Element::StringToCORSMode(aCrossOrigin), sriMetadata,
                       aReferrerPolicy);
   request->mTriggeringPrincipal = mDocument->NodePrincipal();
   request->mIsInline = false;
   request->mScriptFromHead = aScriptFromHead;
   request->SetScriptMode(aDefer, aAsync);
+
+  if (LOG_ENABLED()) {
+    nsAutoCString url;
+    aURI->GetAsciiSpec(url);
+    LOG(("ScriptLoadRequest (%p): Created preload request for %s",
+         request.get(), url.get()));
+  }
 
   nsresult rv = StartLoad(request);
   if (NS_FAILED(rv)) {

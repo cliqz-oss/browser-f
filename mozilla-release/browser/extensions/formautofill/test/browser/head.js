@@ -12,7 +12,7 @@
 
 "use strict";
 
-Cu.import("resource://testing-common/LoginTestUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/LoginTestUtils.jsm", this);
 
 const MANAGE_ADDRESSES_DIALOG_URL = "chrome://formautofill/content/manageAddresses.xhtml";
 const MANAGE_CREDIT_CARDS_DIALOG_URL = "chrome://formautofill/content/manageCreditCards.xhtml";
@@ -137,7 +137,7 @@ async function focusAndWaitForFieldsIdentified(browser, selector) {
   info("expecting the target input being focused and indentified");
   /* eslint no-shadow: ["error", { "allow": ["selector", "previouslyFocused", "previouslyIdentified"] }] */
   const {previouslyFocused, previouslyIdentified} = await ContentTask.spawn(browser, {selector}, async function({selector}) {
-    Components.utils.import("resource://gre/modules/FormLikeFactory.jsm");
+    ChromeUtils.import("resource://gre/modules/FormLikeFactory.jsm");
     const input = content.document.querySelector(selector);
     const rootElement = FormLikeFactory.findRootForField(input);
     const previouslyFocused = content.document.activeElement == input;
@@ -165,7 +165,7 @@ async function focusAndWaitForFieldsIdentified(browser, selector) {
   // Wait 500ms to ensure that "markAsAutofillField" is completely finished.
   await sleep();
   await ContentTask.spawn(browser, {}, async function() {
-    Components.utils.import("resource://gre/modules/FormLikeFactory.jsm");
+    ChromeUtils.import("resource://gre/modules/FormLikeFactory.jsm");
     FormLikeFactory
       .findRootForField(content.document.activeElement)
       .setAttribute("test-formautofill-identified", "true");
@@ -331,17 +331,19 @@ async function removeAllRecords() {
   }
 }
 
-function testDialog(url, testFn, arg) {
-  return new Promise(resolve => {
-    let win = window.openDialog(url, null, null, arg);
-    win.addEventListener("FormReady", () => {
-      win.addEventListener("unload", () => {
-        ok(true, "Dialog is closed");
-        resolve();
-      }, {once: true});
-      testFn(win);
-    }, {once: true});
-  });
+async function waitForFocusAndFormReady(win) {
+  return Promise.all([
+    new Promise(resolve => waitForFocus(resolve, win)),
+    BrowserTestUtils.waitForEvent(win, "FormReady"),
+  ]);
+}
+
+async function testDialog(url, testFn, arg) {
+  let win = window.openDialog(url, null, null, arg);
+  await waitForFocusAndFormReady(win);
+  let unloadPromise = BrowserTestUtils.waitForEvent(win, "unload");
+  testFn(win);
+  return unloadPromise;
 }
 
 registerCleanupFunction(removeAllRecords);

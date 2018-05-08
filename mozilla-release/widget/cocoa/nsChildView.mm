@@ -17,6 +17,7 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "mozilla/dom/SimpleGestureEventBinding.h"
 
 #include "nsArrayUtils.h"
 #include "nsExceptionHandler.h"
@@ -33,7 +34,6 @@
 #include "nsIFile.h"
 #include "nsILocalFileMac.h"
 #include "nsGfxCIID.h"
-#include "nsIDOMSimpleGestureEvent.h"
 #include "nsThemeConstants.h"
 #include "nsIWidgetListener.h"
 #include "nsIPresShell.h"
@@ -2702,8 +2702,8 @@ nsChildView::SendMayStartSwipe(const mozilla::PanGestureInput& aSwipeStartEvent)
   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
 
   uint32_t direction = (aSwipeStartEvent.mPanDisplacement.x > 0.0)
-    ? (uint32_t)nsIDOMSimpleGestureEvent::DIRECTION_RIGHT
-    : (uint32_t)nsIDOMSimpleGestureEvent::DIRECTION_LEFT;
+    ? (uint32_t)dom::SimpleGestureEventBinding::DIRECTION_RIGHT
+    : (uint32_t)dom::SimpleGestureEventBinding::DIRECTION_LEFT;
 
   // We're ready to start the animation. Tell Gecko about it, and at the same
   // time ask it if it really wants to start an animation for this event.
@@ -2736,8 +2736,8 @@ nsChildView::TrackScrollEventAsSwipe(const mozilla::PanGestureInput& aSwipeStart
   }
 
   uint32_t direction = (aSwipeStartEvent.mPanDisplacement.x > 0.0)
-    ? (uint32_t)nsIDOMSimpleGestureEvent::DIRECTION_RIGHT
-    : (uint32_t)nsIDOMSimpleGestureEvent::DIRECTION_LEFT;
+    ? (uint32_t)dom::SimpleGestureEventBinding::DIRECTION_RIGHT
+    : (uint32_t)dom::SimpleGestureEventBinding::DIRECTION_LEFT;
 
   mSwipeTracker = new SwipeTracker(*this, aSwipeStartEvent,
                                    aAllowedDirections, direction);
@@ -4177,15 +4177,15 @@ NSEvent* gLastDragMouseDownEvent = nil;
 
   // Record the left/right direction.
   if (deltaX > 0.0)
-    geckoEvent.mDirection |= nsIDOMSimpleGestureEvent::DIRECTION_LEFT;
+    geckoEvent.mDirection |= dom::SimpleGestureEventBinding::DIRECTION_LEFT;
   else if (deltaX < 0.0)
-    geckoEvent.mDirection |= nsIDOMSimpleGestureEvent::DIRECTION_RIGHT;
+    geckoEvent.mDirection |= dom::SimpleGestureEventBinding::DIRECTION_RIGHT;
 
   // Record the up/down direction.
   if (deltaY > 0.0)
-    geckoEvent.mDirection |= nsIDOMSimpleGestureEvent::DIRECTION_UP;
+    geckoEvent.mDirection |= dom::SimpleGestureEventBinding::DIRECTION_UP;
   else if (deltaY < 0.0)
-    geckoEvent.mDirection |= nsIDOMSimpleGestureEvent::DIRECTION_DOWN;
+    geckoEvent.mDirection |= dom::SimpleGestureEventBinding::DIRECTION_DOWN;
 
   // Send the event.
   mGeckoChild->DispatchWindowEvent(geckoEvent);
@@ -4324,9 +4324,10 @@ NSEvent* gLastDragMouseDownEvent = nil;
   [self convertCocoaMouseEvent:anEvent toGeckoEvent:&geckoEvent];
   geckoEvent.mDelta = -rotation;
   if (rotation > 0.0) {
-    geckoEvent.mDirection = nsIDOMSimpleGestureEvent::ROTATION_COUNTERCLOCKWISE;
+    geckoEvent.mDirection =
+      dom::SimpleGestureEventBinding::ROTATION_COUNTERCLOCKWISE;
   } else {
-    geckoEvent.mDirection = nsIDOMSimpleGestureEvent::ROTATION_CLOCKWISE;
+    geckoEvent.mDirection = dom::SimpleGestureEventBinding::ROTATION_CLOCKWISE;
   }
 
   // Send the event.
@@ -4416,9 +4417,11 @@ NSEvent* gLastDragMouseDownEvent = nil;
       [self convertCocoaMouseEvent:anEvent toGeckoEvent:&geckoEvent];
       geckoEvent.mDelta = -mCumulativeRotation;
       if (mCumulativeRotation > 0.0) {
-        geckoEvent.mDirection = nsIDOMSimpleGestureEvent::ROTATION_COUNTERCLOCKWISE;
+        geckoEvent.mDirection =
+          dom::SimpleGestureEventBinding::ROTATION_COUNTERCLOCKWISE;
       } else {
-        geckoEvent.mDirection = nsIDOMSimpleGestureEvent::ROTATION_CLOCKWISE;
+        geckoEvent.mDirection =
+          dom::SimpleGestureEventBinding::ROTATION_CLOCKWISE;
       }
 
       // Send the event.
@@ -4589,18 +4592,17 @@ NSEvent* gLastDragMouseDownEvent = nil;
   else
     geckoEvent.button = WidgetMouseEvent::eLeftButton;
 
+  // Remember the event's position before calling DispatchInputEvent, because
+  // that call can mutate it and convert it into a different coordinate space.
+  LayoutDeviceIntPoint pos = geckoEvent.mRefPoint;
+
   // This might destroy our widget (and null out mGeckoChild).
   bool defaultPrevented =
     (mGeckoChild->DispatchInputEvent(&geckoEvent) == nsEventStatus_eConsumeNoDefault);
 
-  // Check to see if we are double-clicking in the titlebar.
-  CGFloat locationInTitlebar = [[self window] frame].size.height - [theEvent locationInWindow].y;
-  LayoutDeviceIntPoint pos = geckoEvent.mRefPoint;
+  // Check to see if we are double-clicking in draggable parts of the window.
   if (!defaultPrevented && [theEvent clickCount] == 2 &&
-      !mGeckoChild->GetNonDraggableRegion().Contains(pos.x, pos.y) &&
-      [[self window] isKindOfClass:[ToolbarWindow class]] &&
-      (locationInTitlebar < [(ToolbarWindow*)[self window] titlebarHeight] ||
-       locationInTitlebar < [(ToolbarWindow*)[self window] unifiedToolbarHeight])) {
+      !mGeckoChild->GetNonDraggableRegion().Contains(pos.x, pos.y)) {
     if ([self shouldZoomOnDoubleClick]) {
       [[self window] performZoom:nil];
     } else if ([self shouldMinimizeOnTitlebarDoubleClick]) {

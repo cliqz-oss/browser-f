@@ -24,6 +24,7 @@
 #include "nsBoxLayoutState.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "nsScrollbarFrame.h"
+#include "nsINode.h"
 #include "nsIScrollbarMediator.h"
 #include "nsITextControlFrame.h"
 #include "nsNodeInfoManager.h"
@@ -82,6 +83,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::layout;
 
@@ -869,7 +871,7 @@ GetBrowserRoot(nsIContent* aContent)
 // scrollable overflow by determining the scroll position at which the child
 // becomes completely visible within the scrollport rather than using the union
 // of the overflow areas at their current position.
-void
+static void
 GetScrollableOverflowForPerspective(nsIFrame* aScrolledFrame,
                                     nsIFrame* aCurrentFrame,
                                     const nsRect aScrollPort,
@@ -2529,7 +2531,7 @@ bool ScrollFrameHelper::IsAlwaysActive() const
           styles.mVertical != NS_STYLE_OVERFLOW_HIDDEN);
 }
 
-/*static*/ void
+static void
 RemoveDisplayPortCallback(nsITimer* aTimer, void* aClosure)
 {
   ScrollFrameHelper* helper = static_cast<ScrollFrameHelper*>(aClosure);
@@ -3070,9 +3072,9 @@ AppendToTop(nsDisplayListBuilder* aBuilder, const nsDisplayListSet& aLists,
       flags |= nsDisplayOwnLayerFlags::eScrollbarContainer;
     }
 
-    newItem = new (aBuilder) nsDisplayOwnLayer(aBuilder, aSourceFrame, aSource, asr, flags, scrollTarget);
+    newItem = MakeDisplayItem<nsDisplayOwnLayer>(aBuilder, aSourceFrame, aSource, asr, flags, scrollTarget);
   } else {
-    newItem = new (aBuilder) nsDisplayWrapList(aBuilder, aSourceFrame, aSource, asr);
+    newItem = MakeDisplayItem<nsDisplayWrapList>(aBuilder, aSourceFrame, aSource, asr);
   }
 
   if (aFlags & APPEND_POSITIONED) {
@@ -3341,6 +3343,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 
+  aBuilder->Check();
+
   // It's safe to get this value before the DecideScrollableLayer call below
   // because that call cannot create a displayport for root scroll frames,
   // and hence it cannot create an ignore scroll frame.
@@ -3365,6 +3369,7 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   bool dirtyRectHasBeenOverriden = false;
   Unused << DecideScrollableLayer(aBuilder, &visibleRect, &dirtyRect,
               /* aSetBase = */ !mIsRoot, &dirtyRectHasBeenOverriden);
+  aBuilder->Check();
 
   if (aBuilder->IsForFrameVisibility()) {
     // We expand the dirty rect to catch frames just outside of the scroll port.
@@ -3456,6 +3461,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 
+  aBuilder->Check();
+
   // Now display the scrollbars and scrollcorner. These parts are drawn
   // in the border-background layer, on top of our own background and
   // borders and underneath borders and backgrounds of later elements
@@ -3464,6 +3471,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   // in the positioned-elements layer on top of everything else by the call
   // to AppendScrollPartsTo(..., true) further down.
   AppendScrollPartsTo(aBuilder, aLists, createLayersForScrollbars, false);
+
+  aBuilder->Check();
 
   const nsStyleDisplay* disp = mOuter->StyleDisplay();
   if (disp && (disp->mWillChangeBitField & NS_STYLE_WILL_CHANGE_SCROLL)) {
@@ -3526,6 +3535,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
   }
 
+  aBuilder->Check();
+
   nsDisplayListCollection scrolledContent(aBuilder);
   {
     // Note that setting the current scroll parent id here means that positioned children
@@ -3579,6 +3590,24 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
       aBuilder->SetActiveScrolledRootForRootScrollframe(aBuilder->CurrentActiveScrolledRoot());
     }
 
+    aBuilder->Check();
+
+    if (mWillBuildScrollableLayer) {
+      // Create a hit test info item for the scrolled content that's not
+      // clipped to the displayport. This ensures that within the bounds
+      // of the scroll frame, the scrolled content is always hit, even
+      // if we are checkerboarding.
+      if (aBuilder->BuildCompositorHitTestInfo()) {
+        CompositorHitTestInfo info = mScrolledFrame->GetCompositorHitTestInfo(aBuilder);
+        if (info != CompositorHitTestInfo::eInvisibleToHitTest) {
+          nsDisplayCompositorHitTestInfo* hitInfo =
+              MakeDisplayItem<nsDisplayCompositorHitTestInfo>(aBuilder, mScrolledFrame, info, 1);
+          aBuilder->SetCompositorHitTestInfo(hitInfo);
+          scrolledContent.BorderBackground()->AppendToTop(hitInfo);
+        }
+      }
+    }
+
     {
       // Clip our contents to the unsnapped scrolled rect. This makes sure that
       // we don't have display items over the subpixel seam at the edge of the
@@ -3616,9 +3645,9 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
       if (dirtyRectHasBeenOverriden && gfxPrefs::LayoutDisplayListShowArea()) {
         nsDisplaySolidColor* color =
-          new (aBuilder) nsDisplaySolidColor(aBuilder, mOuter,
-                                             dirtyRect + aBuilder->GetCurrentFrameOffsetToReferenceFrame(),
-                                             NS_RGBA(0, 0, 255, 64), false);
+          MakeDisplayItem<nsDisplaySolidColor>(aBuilder, mOuter,
+                                               dirtyRect + aBuilder->GetCurrentFrameOffsetToReferenceFrame(),
+                                               NS_RGBA(0, 0, 255, 64), false);
         color->SetOverrideZIndex(INT32_MAX);
         scrolledContent.PositionedDescendants()->AppendToTop(color);
       }
@@ -3681,14 +3710,25 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
       if (aBuilder->BuildCompositorHitTestInfo()) {
         CompositorHitTestInfo info = CompositorHitTestInfo::eVisibleToHitTest
                                    | CompositorHitTestInfo::eDispatchToContent;
+        // If the scroll frame has non-default overscroll-behavior, instruct
+        // APZ to require a target confirmation before processing events that
+        // hit this scroll frame (that is, to drop the events if a confirmation
+        // does not arrive within the timeout period). Otherwise, APZ's
+        // fallback behaviour of scrolling the enclosing scroll frame would
+        // violate the specified overscroll-behavior.
+        ScrollbarStyles scrollbarStyles = GetScrollbarStylesFromFrame();
+        if (scrollbarStyles.mOverscrollBehaviorX != StyleOverscrollBehavior::Auto ||
+            scrollbarStyles.mOverscrollBehaviorY != StyleOverscrollBehavior::Auto) {
+          info |= CompositorHitTestInfo::eRequiresTargetConfirmation;
+        }
         nsDisplayCompositorHitTestInfo* hitInfo =
-            new (aBuilder) nsDisplayCompositorHitTestInfo(aBuilder, mScrolledFrame, info, 1,
+            MakeDisplayItem<nsDisplayCompositorHitTestInfo>(aBuilder, mScrolledFrame, info, 1,
                 Some(mScrollPort + aBuilder->ToReferenceFrame(mOuter)));
         AppendInternalItemToTop(scrolledContent, hitInfo, zIndex);
       }
       if (aBuilder->IsBuildingLayerEventRegions()) {
         nsDisplayLayerEventRegions* inactiveRegionItem =
-            new (aBuilder) nsDisplayLayerEventRegions(aBuilder, mScrolledFrame, 1);
+            MakeDisplayItem<nsDisplayLayerEventRegions>(aBuilder, mScrolledFrame, 1);
         inactiveRegionItem->AddInactiveScrollPort(mScrolledFrame, mScrollPort + aBuilder->ToReferenceFrame(mOuter));
         AppendInternalItemToTop(scrolledContent, inactiveRegionItem, zIndex);
       }
@@ -3696,7 +3736,7 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
     if (aBuilder->ShouldBuildScrollInfoItemsForHoisting()) {
       aBuilder->AppendNewScrollInfoItemForHoisting(
-        new (aBuilder) nsDisplayScrollInfoLayer(aBuilder, mScrolledFrame,
+        MakeDisplayItem<nsDisplayScrollInfoLayer>(aBuilder, mScrolledFrame,
                                                 mOuter));
     }
   }
@@ -3851,6 +3891,8 @@ ScrollFrameHelper::DecideScrollableLayer(nsDisplayListBuilder* aBuilder,
   // If the element is marked 'scrollgrab', also force building of a layer
   // so that APZ can implement scroll grabbing.
   mWillBuildScrollableLayer = usingDisplayPort || nsContentUtils::HasScrollgrab(content);
+
+  aBuilder->Check();
 
   // The cached animated geometry root for the display builder is out of
   // date if we just introduced a new animated geometry root.
@@ -4599,12 +4641,11 @@ ScrollFrameHelper::CreateAnonymousContent(
     }
   }
 
-  nsNodeInfoManager *nodeInfoManager =
-    presContext->Document()->NodeInfoManager();
-  RefPtr<NodeInfo> nodeInfo;
-  nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbar, nullptr,
-                                          kNameSpaceID_XUL,
-                                          nsIDOMNode::ELEMENT_NODE);
+  nsNodeInfoManager* nodeInfoManager = presContext->Document()->NodeInfoManager();
+  RefPtr<NodeInfo> nodeInfo =
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbar, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE);
   NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
   if (canHaveHorizontal) {
@@ -4623,6 +4664,9 @@ ScrollFrameHelper::CreateAnonymousContent(
     mHScrollbarContent->SetAttr(kNameSpaceID_None, nsGkAtoms::clickthrough,
                                 NS_LITERAL_STRING("always"), false);
     if (mIsRoot) {
+      mHScrollbarContent->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
+                                      reinterpret_cast<void*>(true));
+
       mHScrollbarContent->SetAttr(kNameSpaceID_None, nsGkAtoms::root_,
                                   NS_LITERAL_STRING("true"), false);
     }
@@ -4646,6 +4690,8 @@ ScrollFrameHelper::CreateAnonymousContent(
     mVScrollbarContent->SetAttr(kNameSpaceID_None, nsGkAtoms::clickthrough,
                                 NS_LITERAL_STRING("always"), false);
     if (mIsRoot) {
+      mVScrollbarContent->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
+                                      reinterpret_cast<void*>(true));
       mVScrollbarContent->SetAttr(kNameSpaceID_None, nsGkAtoms::root_,
                                   NS_LITERAL_STRING("true"), false);
     }
@@ -4657,7 +4703,7 @@ ScrollFrameHelper::CreateAnonymousContent(
     RefPtr<NodeInfo> nodeInfo;
     nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::resizer, nullptr,
                                             kNameSpaceID_XUL,
-                                            nsIDOMNode::ELEMENT_NODE);
+                                            nsINode::ELEMENT_NODE);
     NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
     NS_TrustedNewXULElement(getter_AddRefs(mResizerContent), nodeInfo.forget());
@@ -4684,11 +4730,13 @@ ScrollFrameHelper::CreateAnonymousContent(
     mResizerContent->SetAttr(kNameSpaceID_None, nsGkAtoms::dir, dir, false);
 
     if (mIsRoot) {
+      mResizerContent->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
+                                   reinterpret_cast<void*>(true));
+
       Element* browserRoot = GetBrowserRoot(mOuter->GetContent());
       mCollapsedResizer = !(browserRoot &&
                             browserRoot->HasAttr(kNameSpaceID_None, nsGkAtoms::showresizer));
-    }
-    else {
+    } else {
       mResizerContent->SetAttr(kNameSpaceID_None, nsGkAtoms::element,
                                     NS_LITERAL_STRING("_parent"), false);
     }
@@ -4703,8 +4751,12 @@ ScrollFrameHelper::CreateAnonymousContent(
   if (canHaveHorizontal && canHaveVertical) {
     nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollcorner, nullptr,
                                             kNameSpaceID_XUL,
-                                            nsIDOMNode::ELEMENT_NODE);
+                                            nsINode::ELEMENT_NODE);
     NS_TrustedNewXULElement(getter_AddRefs(mScrollCornerContent), nodeInfo.forget());
+    if (mIsRoot) {
+      mScrollCornerContent->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
+                                        reinterpret_cast<void*>(true));
+    }
     if (!aElements.AppendElement(mScrollCornerContent))
       return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -4950,7 +5002,7 @@ NS_IMETHODIMP
 ScrollFrameHelper::AsyncScrollPortEvent::Run()
 {
   if (mHelper) {
-    mHelper->mOuter->PresContext()->GetPresShell()->
+    mHelper->mOuter->PresContext()->Document()->
       FlushPendingNotifications(FlushType::InterruptibleLayout);
   }
   return mHelper ? mHelper->FireScrollPortEvent() : NS_OK;
@@ -6292,7 +6344,7 @@ nsIScrollableFrame::GetPerceivedScrollingDirections() const
  * Collect the scroll-snap-coordinates of frames in the subtree rooted at
  * |aFrame|, relative to |aScrolledFrame|, into |aOutCoords|.
  */
-void
+static void
 CollectScrollSnapCoordinates(nsIFrame* aFrame, nsIFrame* aScrolledFrame,
                              nsTArray<nsPoint>& aOutCoords)
 {
@@ -6333,7 +6385,7 @@ CollectScrollSnapCoordinates(nsIFrame* aFrame, nsIFrame* aScrolledFrame,
   }
 }
 
-layers::ScrollSnapInfo
+static layers::ScrollSnapInfo
 ComputeScrollSnapInfo(const ScrollFrameHelper& aScrollFrame)
 {
   ScrollSnapInfo result;

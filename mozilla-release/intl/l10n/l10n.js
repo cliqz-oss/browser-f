@@ -1,22 +1,40 @@
 {
   const { DOMLocalization } =
-    Components.utils.import("resource://gre/modules/DOMLocalization.jsm");
+    ChromeUtils.import("resource://gre/modules/DOMLocalization.jsm", {});
 
   /**
    * Polyfill for document.ready polyfill.
    * See: https://github.com/whatwg/html/issues/127 for details.
    *
+   * XXX: The callback is a temporary workaround for bug 1193394. Once Promises in Gecko
+   *      start beeing a microtask and stop pushing translation post-layout, we can
+   *      remove it and start using the returned Promise again.
+   *
+   * @param {Function} callback - function to be called when the document is ready.
    * @returns {Promise}
    */
-  function documentReady() {
-    const rs = document.readyState;
-    if (rs === 'interactive' || rs === 'completed') {
-      return Promise.resolve();
+  function documentReady(callback) {
+    if (document.contentType === "application/vnd.mozilla.xul+xml") {
+      // XUL
+      return new Promise(
+        resolve => document.addEventListener(
+          "MozBeforeInitialXULLayout", () => {
+            resolve(callback());
+          }, { once: true }
+        )
+      );
     }
 
+    // HTML
+    const rs = document.readyState;
+    if (rs === "interactive" || rs === "completed") {
+      return Promise.resolve(callback);
+    }
     return new Promise(
       resolve => document.addEventListener(
-        'readystatechange', resolve, { once: true }
+        "readystatechange", () => {
+          resolve(callback());
+        }, { once: true }
       )
     );
   }
@@ -29,7 +47,7 @@
    */
   function getResourceLinks(elem) {
     return Array.from(elem.querySelectorAll('link[rel="localization"]')).map(
-      el => el.getAttribute('href')
+      el => el.getAttribute("href")
     );
   }
 
@@ -40,9 +58,9 @@
   // trigger first context to be fetched eagerly
   document.l10n.ctxs.touchNext();
 
-  document.l10n.ready = documentReady().then(() => {
+  document.l10n.ready = documentReady(() => {
     document.l10n.registerObservers();
-    window.addEventListener('unload', () => {
+    window.addEventListener("unload", () => {
       document.l10n.unregisterObservers();
     });
     document.l10n.connectRoot(document.documentElement);

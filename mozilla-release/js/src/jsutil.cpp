@@ -18,13 +18,9 @@
 
 #include "jstypes.h"
 
-#include "vm/HelperThreads.h"
-
-#ifdef WIN32
-#    include "jswin.h"
-#endif
-
 #include "js/Utility.h"
+#include "util/Windows.h"
+#include "vm/HelperThreads.h"
 
 using namespace js;
 
@@ -181,7 +177,8 @@ js::InitMallocAllocator()
 void
 js::ShutDownMallocAllocator()
 {
-    moz_dispose_arena(MallocArena);
+    // Until Bug 1364359 is fixed it is unsafe to call moz_dispose_arena.
+    // moz_dispose_arena(MallocArena);
 }
 
 JS_PUBLIC_API(void)

@@ -3,8 +3,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!-- eslint-env mozilla/browser-window -->
-
 <!DOCTYPE bindings [
 <!ENTITY % notificationDTD SYSTEM "chrome://global/locale/notification.dtd">
 %notificationDTD;
@@ -16,7 +14,7 @@
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
           xmlns:xbl="http://www.mozilla.org/xbl">
-  <binding id="translationbar" extends="chrome://global/content/bindings/notification.xml#notification" role="xul:alert">
+  <binding id="translationbar" extends="chrome://global/content/bindings/notification.xml#notification">
     <resources>
       <stylesheet src="chrome://global/skin/notification.css"/>
     </resources>
@@ -377,7 +375,7 @@
             // Check if translation is already disabled for this language:
             let neverForLangs =
               Services.prefs.getCharPref("browser.translation.neverForLanguages");
-            item.disabled = neverForLangs.split(",").indexOf(lang) != -1;
+            item.disabled = neverForLangs.split(",").includes(lang);
 
             // Check if translation is disabled for the domain:
             let uri = this.translation.browser.currentURI;

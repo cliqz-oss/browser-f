@@ -4,27 +4,26 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["TestRunner"];
+var EXPORTED_SYMBOLS = ["TestRunner"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
 const APPLY_CONFIG_TIMEOUT_MS = 60 * 1000;
 const HOME_PAGE = "chrome://mozscreenshots/content/lib/mozscreenshots.html";
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Geometry.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Geometry.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserTestUtils",
-                                  "resource://testing-common/BrowserTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserTestUtils",
+                               "resource://testing-common/BrowserTestUtils.jsm");
 // Screenshot.jsm must be imported this way for xpcshell tests to work
-XPCOMUtils.defineLazyModuleGetter(this, "Screenshot", "chrome://mozscreenshots/content/Screenshot.jsm");
+ChromeUtils.defineModuleGetter(this, "Screenshot", "chrome://mozscreenshots/content/Screenshot.jsm");
 
-this.TestRunner = {
+var TestRunner = {
   combos: null,
   completedCombos: 0,
   currentComboIndex: 0,
@@ -174,8 +173,8 @@ this.TestRunner = {
         restrictions = filteredData.restrictions;
       }
       let imported = {};
-      Cu.import("chrome://mozscreenshots/content/configurations/" + setName + ".jsm",
-                imported);
+      ChromeUtils.import("chrome://mozscreenshots/content/configurations/" + setName + ".jsm",
+                         imported);
       imported[setName].init(this._libDir);
       let configurationNames = Object.keys(imported[setName].configurations);
       if (!configurationNames.length) {

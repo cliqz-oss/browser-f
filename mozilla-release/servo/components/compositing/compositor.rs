@@ -18,10 +18,9 @@ use nonzero::NonZero;
 use profile_traits::time::{self, ProfilerCategory, profile};
 use script_traits::{AnimationState, AnimationTickType, ConstellationMsg, LayoutControlMsg};
 use script_traits::{MouseButton, MouseEventType, ScrollState, TouchEventType, TouchId};
-use script_traits::{TouchpadPressurePhase, UntrustedNodeAddress, WindowSizeData, WindowSizeType};
-use script_traits::CompositorEvent::{MouseMoveEvent, MouseButtonEvent, TouchEvent, TouchpadPressureEvent};
+use script_traits::{UntrustedNodeAddress, WindowSizeData, WindowSizeType};
+use script_traits::CompositorEvent::{MouseMoveEvent, MouseButtonEvent, TouchEvent};
 use servo_config::opts;
-use servo_config::prefs::PREFS;
 use servo_geometry::DeviceIndependentPixel;
 use std::collections::HashMap;
 use std::fs::File;
@@ -70,7 +69,7 @@ impl ConvertPipelineIdFromWebRender for webrender_api::PipelineId {
 
 /// Holds the state when running reftests that determines when it is
 /// safe to save the output image.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum ReadyState {
     Unknown,
     WaitingForConstellationReply,
@@ -495,7 +494,7 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             }
 
             (Msg::IsReadyToSaveImageReply(is_ready), ShutdownState::NotShuttingDown) => {
-                assert!(self.ready_to_save_state == ReadyState::WaitingForConstellationReply);
+                assert_eq!(self.ready_to_save_state, ReadyState::WaitingForConstellationReply);
                 if is_ready {
                     self.ready_to_save_state = ReadyState::ReadyToSaveImage;
                     if opts::get().is_running_problem_test {
@@ -647,10 +646,9 @@ impl<Window: WindowMethods> IOCompositor<Window> {
             device_pixel_ratio: dppx,
             initial_viewport: initial_viewport,
         };
-        let top_level_browsing_context_id = match self.root_pipeline {
-            Some(ref pipeline) => pipeline.top_level_browsing_context_id,
-            None => return warn!("Window resize without root pipeline."),
-        };
+        let top_level_browsing_context_id = self.root_pipeline.as_ref().map(|pipeline| {
+            pipeline.top_level_browsing_context_id
+        });
         let msg = ConstellationMsg::WindowSize(top_level_browsing_context_id, data, size_type);
 
         if let Err(e) = self.constellation_chan.send(msg) {
@@ -862,31 +860,6 @@ impl<Window: WindowMethods> IOCompositor<Window> {
         // Send the event to script.
         self.touch_handler.on_touch_cancel(identifier, point);
         self.send_touch_event(TouchEventType::Cancel, identifier, point);
-    }
-
-    pub fn on_touchpad_pressure_event(&self,
-                                  point: TypedPoint2D<f32, DevicePixel>,
-                                  pressure: f32,
-                                  phase: TouchpadPressurePhase) {
-        match PREFS.get("dom.forcetouch.enabled").as_boolean() {
-            Some(true) => {},
-            _ => return,
-        }
-
-        let results = self.hit_test_at_point(point);
-        if let Some(item) = results.items.first() {
-            let event = TouchpadPressureEvent(
-                item.point_in_viewport.to_untyped(),
-                pressure,
-                phase,
-                Some(UntrustedNodeAddress(item.tag.0 as *const c_void)),
-            );
-            let pipeline_id = PipelineId::from_webrender(item.pipeline);
-            let msg = ConstellationMsg::ForwardEvent(pipeline_id, event);
-            if let Err(e) = self.constellation_chan.send(msg) {
-                warn!("Sending event to constellation failed ({}).", e);
-            }
-        }
     }
 
     /// <http://w3c.github.io/touch-events/#mouse-events>
@@ -1171,19 +1144,15 @@ impl<Window: WindowMethods> IOCompositor<Window> {
     fn send_viewport_rects(&self) {
         let mut scroll_states_per_pipeline = HashMap::new();
         for scroll_layer_state in self.webrender_api.get_scroll_node_state(self.webrender_document) {
-            if scroll_layer_state.id.external_id().is_none() &&
-               !scroll_layer_state.id.is_root_scroll_node() {
-                continue;
-            }
-
             let scroll_state = ScrollState {
-                scroll_root_id: scroll_layer_state.id,
+                scroll_id: scroll_layer_state.id,
                 scroll_offset: scroll_layer_state.scroll_offset.to_untyped(),
             };
 
-            scroll_states_per_pipeline.entry(scroll_layer_state.id.pipeline_id())
-                                     .or_insert(vec![])
-                                     .push(scroll_state);
+            scroll_states_per_pipeline
+                .entry(scroll_layer_state.id.pipeline_id())
+                .or_insert(vec![])
+                .push(scroll_state);
         }
 
         for (pipeline_id, scroll_states) in scroll_states_per_pipeline {
@@ -1408,6 +1377,14 @@ impl<Window: WindowMethods> IOCompositor<Window> {
                 width: usize,
                 height: usize)
                 -> RgbImage {
+        // For some reason, OSMesa fails to render on the 3rd
+        // attempt in headless mode, under some conditions.
+        // I think this can only be some kind of synchronization
+        // bug in OSMesa, but explicitly un-binding any vertex
+        // array here seems to work around that bug.
+        // See https://github.com/servo/servo/issues/18606.
+        self.gl.bind_vertex_array(0);
+
         let mut pixels = self.gl.read_pixels(0, 0,
                                              width as gl::GLsizei,
                                              height as gl::GLsizei,

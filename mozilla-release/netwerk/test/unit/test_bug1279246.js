@@ -1,5 +1,5 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver = new HttpServer();
 var pass = 0;
@@ -21,11 +21,11 @@ Listener.prototype = {
   _buffer: null,
 
   QueryInterface: function(iid) {
-    if (iid.equals(Components.interfaces.nsIStreamListener) ||
-        iid.equals(Components.interfaces.nsIRequestObserver) ||
-        iid.equals(Components.interfaces.nsISupports))
+    if (iid.equals(Ci.nsIStreamListener) ||
+        iid.equals(Ci.nsIRequestObserver) ||
+        iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   onStartRequest: function(request, ctx) {
@@ -90,8 +90,8 @@ function handler(metadata, response) {
   response.setHeader("Content-Encoding", "br", false);
   response.setHeader("Content-Length", "" + responseBody.length, false);
 
-  var bos = Components.classes["@mozilla.org/binaryoutputstream;1"]
-            .createInstance(Components.interfaces.nsIBinaryOutputStream);
+  var bos = Cc["@mozilla.org/binaryoutputstream;1"]
+            .createInstance(Ci.nsIBinaryOutputStream);
   bos.setOutputStream(response.bodyOutputStream);
 
   response.processAsync();

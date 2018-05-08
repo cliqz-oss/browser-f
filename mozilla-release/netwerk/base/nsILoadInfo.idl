@@ -24,6 +24,7 @@ namespace mozilla {
 namespace dom {
 class ClientInfo;
 class ClientSource;
+class PerformanceStorage;
 class ServiceWorkerDescriptor;
 } // namespace dom
 } // namespace mozilla
@@ -41,6 +42,7 @@ native OriginAttributes(mozilla::OriginAttributes);
 [ref] native const_MaybeClientInfoRef(const mozilla::Maybe<mozilla::dom::ClientInfo>);
 [ref] native const_ServiceWorkerDescriptorRef(const mozilla::dom::ServiceWorkerDescriptor);
 [ref] native const_MaybeServiceWorkerDescriptorRef(const mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>);
+[ptr] native PerformanceStoragePtr(mozilla::dom::PerformanceStorage);
 
 typedef unsigned long nsSecurityFlags;
 
@@ -56,14 +58,6 @@ typedef unsigned long nsSecurityFlags;
 [scriptable, builtinclass, uuid(ddc65bf9-2f60-41ab-b22a-4f1ae9efcd36)]
 interface nsILoadInfo : nsISupports
 {
-  /**
-   * *** DEPRECATED ***
-   * No LoadInfo created within Gecko should contain this security flag.
-   * Please use any of the five security flags defined underneath.
-   * We only keep this security flag to provide backwards compatibilty.
-   */
-  const unsigned long SEC_NORMAL = 0;
-
   /**
    * The following five flags determine the security mode and hence what kind of
    * security checks should be performed throughout the lifetime of the channel.
@@ -463,6 +457,15 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute boolean loadErrorPage;
 
   /**
+   * Returns true if this is a non-subresource request that was triggered
+   * by docshell with the LOAD_CMD_RELOAD flag set.  Note, this is more
+   * specific than looking at the load flags which indicate whether to
+   * bypass the http cache.  The load flags can be set for other reasons,
+   * so they can't be used to infer this value.
+   */
+  [infallible] attribute boolean isDocshellReload;
+
+  /**
    * The external contentPolicyType of the channel, used for security checks
    * like Mixed Content Blocking and Content Security Policy.
    *
@@ -506,6 +509,13 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute boolean upgradeInsecureRequests;
 
   /**
+   * Returns true if the the page is https and the content is upgradable from http
+   * requires 'security.mixed_content.upgrade_display_content' pref to be true.
+   * Currently this only upgrades display content but might be expanded to other loads.
+   * This is very similar in implementation to upgradeInsecureRequests but browser set.
+   */
+  [infallible] readonly attribute boolean browserUpgradeInsecureRequests;
+  /**
    * If true, the content of the channel is queued up and checked
    * if it matches a content signature. Note, setting this flag
    * to true will negatively impact performance since the preloader
@@ -525,6 +535,11 @@ interface nsILoadInfo : nsISupports
    * If true, toplevel data: URI navigation is allowed
    */
   [infallible] attribute boolean forceAllowDataURI;
+
+  /**
+   * If true, insecure redirects to a data: URI are allowed.
+   */
+  [infallible] attribute boolean allowInsecureRedirectToDataURI;
 
   /**
    * If true, this is the load of a frame's original src attribute
@@ -572,6 +587,18 @@ interface nsILoadInfo : nsISupports
    * you are doing!!!
    */
   void resetPrincipalToInheritToNullPrincipal();
+
+  /**
+   * Allows certain top-level channels to be agnostic to CSP. If set,
+   * this attribute needs to be set before the CSP is initialized
+   * within nsDocument. If set after, this attribute has no effect.
+   * Please note, that this logic is only available for loads of TYPE_DOCUMENT,
+   * and is discarded for other loads.
+   *
+   * WARNING: Please only use that function if you know exactly what
+   * you are doing!!!
+   */
+  [infallible] attribute boolean allowDocumentToBeAgnosticToCSP;
 
   /**
    * Customized OriginAttributes within LoadInfo to allow overwriting of the
@@ -923,4 +950,18 @@ interface nsILoadInfo : nsISupports
    */
   [noscript, nostdcall, notxpcom]
   const_MaybeServiceWorkerDescriptorRef GetController();
+
+  /**
+   * Set a custom performance storage. This is meant to be executed only for
+   * workers. If a PerformanceStorage is not set, the loadingDocument->Window
+   * Performance object will be used instead.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetPerformanceStorage(in PerformanceStoragePtr aPerformanceStorage);
+
+  /**
+   * Get the PerformanceStorage.
+   */
+  [noscript, nostdcall, notxpcom]
+  PerformanceStoragePtr GetPerformanceStorage();
 };

@@ -6,8 +6,6 @@
 
 #include "jit/BaselineDebugModeOSR.h"
 
-#include "mozilla/DebugOnly.h"
-
 #include "jit/BaselineIC.h"
 #include "jit/JitcodeMap.h"
 #include "jit/Linker.h"
@@ -20,8 +18,6 @@
 
 using namespace js;
 using namespace js::jit;
-
-using mozilla::DebugOnly;
 
 struct DebugModeOSREntry
 {
@@ -646,7 +642,7 @@ PatchBaselineFramesForDebugMode(JSContext* cx, const CooperatingContext& target,
 static void
 SkipInterpreterFrameEntries(const Debugger::ExecutionObservableSet& obs,
                             const ActivationIterator& activation,
-                            DebugModeOSREntryVector& entries, size_t* start)
+                            size_t* start)
 {
     size_t entryIndex = *start;
 
@@ -695,6 +691,7 @@ RecompileBaselineScriptForDebugMode(JSContext* cx, JSScript* script,
 
 #define PATCHABLE_ICSTUB_KIND_LIST(_)           \
     _(CacheIR_Monitored)                        \
+    _(CacheIR_Regular)                          \
     _(CacheIR_Updated)                          \
     _(Call_Scripted)                            \
     _(Call_AnyScripted)                         \
@@ -915,7 +912,7 @@ jit::RecompileOnStackBaselineScriptsForDebugMode(JSContext* cx,
             if (iter->isJit())
                 PatchBaselineFramesForDebugMode(cx, target, obs, iter, entries, &processed);
             else if (iter->isInterpreter())
-                SkipInterpreterFrameEntries(obs, iter, entries, &processed);
+                SkipInterpreterFrameEntries(obs, iter, &processed);
         }
     }
     MOZ_ASSERT(processed == entries.length());
@@ -1171,7 +1168,7 @@ JitRuntime::generateBaselineDebugModeOSRHandler(JSContext* cx, uint32_t* noFrame
 
     Linker linker(masm);
     AutoFlushICache afc("BaselineDebugModeOSRHandler");
-    JitCode* code = linker.newCode<NoGC>(cx, OTHER_CODE);
+    JitCode* code = linker.newCode(cx, CodeKind::Other);
     if (!code)
         return nullptr;
 

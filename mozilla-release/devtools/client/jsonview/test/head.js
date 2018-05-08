@@ -2,7 +2,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 /* import-globals-from ../../framework/test/head.js */
 
 "use strict";
@@ -20,7 +20,7 @@ registerCleanupFunction(() => {
   Services.prefs.clearUserPref(JSON_VIEW_PREF);
 });
 
-// XXX move some API into devtools/framework/test/shared-head.js
+// XXX move some API into devtools/shared/test/shared-head.js
 
 /**
  * Add a new test tab in the browser and load the given url.
@@ -65,13 +65,14 @@ async function addJsonViewTab(url, {
     }, Ci.nsIWebProgress.NOTIFY_LOCATION);
   })]);
 
-  // Load devtools/shared/frame-script-utils.js
-  getFrameScript();
+  // Load devtools/shared/test/frame-script-utils.js
+  loadFrameScriptUtils();
   let rootDir = getRootDirectory(gTestPath);
 
   // Catch RequireJS errors (usually timeouts)
   let error = tabLoaded.then(() => new Promise((resolve, reject) => {
-    let {requirejs} = content.wrappedJSObject;
+    // eslint-disable-next-line mozilla/no-cpows-in-tests
+    let {requirejs} = gBrowser.contentWindowAsCPOW.wrappedJSObject;
     if (requirejs) {
       requirejs.onError = err => {
         info(err);

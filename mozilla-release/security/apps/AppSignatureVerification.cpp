@@ -802,10 +802,6 @@ VerifySignature(AppTrustedRoot trustedRoot, const SECItem& buffer,
                 /*out*/ SECOidTag& digestAlgorithm,
                 /*out*/ UniqueCERTCertList& builtChain)
 {
-  // Currently, this function is only called within the CalculateResult() method
-  // of CryptoTasks. As such, NSS should not be shut down at this point and the
-  // CryptoTask implementation should already hold a nsNSSShutDownPreventionLock.
-
   if (NS_WARN_IF(!buffer.data || buffer.len == 0 || !detachedSHA1Digest.data ||
                  detachedSHA1Digest.len == 0 || !detachedSHA256Digest.data ||
                  detachedSHA256Digest.len == 0)) {
@@ -1483,10 +1479,6 @@ private:
                              getter_AddRefs(mSignerCert));
   }
 
-  // nsNSSCertificate implements nsNSSShutdownObject, so there's nothing that
-  // needs to be released
-  virtual void ReleaseNSSResources() override { }
-
   virtual void CallCallback(nsresult rv) override
   {
     (void) mCallback->OpenSignedAppFileFinished(rv, mZipReader, mSignerCert);
@@ -2028,10 +2020,6 @@ private:
                                  mDirectory,
                                  getter_AddRefs(mSignerCert));
   }
-
-  // This class doesn't directly hold NSS resources so there's nothing that
-  // needs to be released
-  virtual void ReleaseNSSResources() override { }
 
   virtual void CallCallback(nsresult rv) override
   {

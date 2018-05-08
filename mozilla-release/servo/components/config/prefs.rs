@@ -184,7 +184,7 @@ pub fn add_user_prefs() {
             init_user_prefs(&mut path);
         }
         None => {
-            let mut path = default_config_dir().unwrap();
+            let mut path = default_config_dir();
             if path.join("prefs.json").exists() {
                 init_user_prefs(&mut path);
             }
@@ -226,10 +226,6 @@ impl Preferences {
 
     pub fn cloned(&self) -> HashMap<String, Pref> {
         self.0.read().unwrap().clone()
-    }
-
-    pub fn is_mozbrowser_enabled(&self) -> bool {
-        self.get("dom.mozbrowser.enabled").as_boolean().unwrap_or(false)
     }
 
     pub fn set(&self, name: &str, value: PrefValue) {

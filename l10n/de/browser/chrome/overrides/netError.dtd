@@ -197,5 +197,7 @@ was trying to connect. -->
      "NS_ERROR_NET_INADEQUATE_SECURITY". -->
 <!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche du für sicher hieltest. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor du die Seite aufrufen kannst.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">
 
+<!ENTITY blockedByPolicy.title "Blockierte Seite">
+
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 pref("security.tls.version.min", 1);
-pref("security.tls.version.max", 3);
+pref("security.tls.version.max", 4);
 pref("security.tls.version.fallback-limit", 3);
 pref("security.tls.insecure_fallback_hosts", "");
 pref("security.tls.enable_0rtt_data", false);
@@ -115,11 +115,7 @@ pref("security.pki.certificate_transparency.mode", 0);
 
 // Hardware Origin-bound Second Factor Support
 pref("security.webauth.u2f", false);
-#ifdef RELEASE_OR_BETA
-pref("security.webauth.webauthn", false);
-#else
 pref("security.webauth.webauthn", true);
-#endif
 // Only one of "enable_softtoken" and "enable_usbtoken" can be true
 // at a time.
 pref("security.webauth.webauthn_enable_softtoken", false);
@@ -133,3 +129,10 @@ pref("security.ssl.errorReporting.automatic", false);
 // blacking themselves out by setting a bad pin.  (60 days by default)
 // https://tools.ietf.org/html/rfc7469#section-4.1
 pref("security.cert_pinning.max_max_age_seconds", 5184000);
+
+// security.pki.distrust_ca_policy controls what root program distrust policies
+// are enforced at this time:
+// 0: No distrust policies enforced
+// 1: Symantec root distrust policy enforced
+// See https://wiki.mozilla.org/CA/Upcoming_Distrust_Actions for more details.
+pref("security.pki.distrust_ca_policy", 1);

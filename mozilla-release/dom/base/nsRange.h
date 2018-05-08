@@ -257,7 +257,7 @@ public:
     if (!parentNode) {
       return nullptr;
     }
-    int32_t indexInParent = parentNode->IndexOf(aNode);
+    int32_t indexInParent = parentNode->ComputeIndexOf(aNode);
     if (NS_WARN_IF(indexInParent < 0)) {
       return nullptr;
     }
@@ -273,7 +273,7 @@ public:
     if (!parentNode) {
       return nullptr;
     }
-    int32_t indexInParent = parentNode->IndexOf(aNode);
+    int32_t indexInParent = parentNode->ComputeIndexOf(aNode);
     if (NS_WARN_IF(indexInParent < 0)) {
       return nullptr;
     }
@@ -281,8 +281,12 @@ public:
     return parentNode;
   }
 
+  // aMaxRanges is the maximum number of text ranges to record for each face
+  // (pass 0 to just get the list of faces, without recording exact ranges
+  // where each face was used).
   nsresult GetUsedFontFaces(
-      nsTArray<nsAutoPtr<mozilla::dom::InspectorFontFace>>& aResult);
+      nsTArray<nsAutoPtr<mozilla::dom::InspectorFontFace>>& aResult,
+      uint32_t aMaxRanges);
 
   // nsIMutationObserver methods
   NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
@@ -368,7 +372,7 @@ public:
                                   nsIContent* aContainer);
 
   nsINode* GetParentObject() const { return mOwner; }
-  virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto) override final;
+  JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto) final;
   DocGroup* GetDocGroup() const;
 
 private:
@@ -475,8 +479,8 @@ protected:
   /**
    * XXX nsRange should accept 0 - UINT32_MAX as offset.  However, users of
    *     nsRange treat offset as int32_t.  Additionally, some other internal
-   *     APIs like nsINode::IndexOf() use int32_t.  Therefore, nsRange should
-   *     accept only 0 - INT32_MAX as valid offset for now.
+   *     APIs like nsINode::ComputeIndexOf() use int32_t.  Therefore,
+   *     nsRange should accept only 0 - INT32_MAX as valid offset for now.
    */
   static bool IsValidOffset(uint32_t aOffset)
   {

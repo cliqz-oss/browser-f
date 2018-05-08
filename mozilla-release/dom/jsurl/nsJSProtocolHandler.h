@@ -61,7 +61,8 @@ protected:
 };
 
 
-class nsJSURI : public mozilla::net::nsSimpleURI
+class nsJSURI final
+    : public mozilla::net::nsSimpleURI
 {
 public:
     using mozilla::net::nsSimpleURI::Read;
@@ -101,11 +102,13 @@ protected:
     virtual nsresult EqualsInternal(nsIURI* other,
                                     RefHandlingEnum refHandlingMode,
                                     bool* result) override;
+    bool Deserialize(const mozilla::ipc::URIParams&);
+
 private:
     nsCOMPtr<nsIURI> mBaseURI;
 
 public:
-    class Mutator
+    class Mutator final
         : public nsIURIMutator
         , public BaseURIMutator<nsJSURI>
     {
@@ -119,6 +122,8 @@ public:
 
         friend class nsJSURI;
     };
+
+    friend BaseURIMutator<nsJSURI>;
 };
 
 #endif /* nsJSProtocolHandler_h___ */

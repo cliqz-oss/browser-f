@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * http://www.whatwg.org/specs/web-apps/current-work/multipage/workers.html
+ * https://html.spec.whatwg.org/multipage/workers.html
  *
  * © Copyright 2004-2011 Apple Computer, Inc., Mozilla Foundation, and Opera
  * Software ASA.
@@ -13,7 +13,6 @@
  */
 
 [Constructor(USVString scriptURL, optional WorkerOptions options),
- Func="mozilla::dom::workers::WorkerPrivate::WorkerAvailable",
  Exposed=(Window,DedicatedWorker,SharedWorker,System)]
 interface Worker : EventTarget {
   void terminate();
@@ -34,7 +33,7 @@ dictionary WorkerOptions {
 };
 
 [Constructor(USVString scriptURL),
- Func="mozilla::dom::workers::ChromeWorkerPrivate::WorkerAvailable",
+ Func="mozilla::dom::ChromeWorker::WorkerAvailable",
  Exposed=(Window,DedicatedWorker,SharedWorker,System)]
 interface ChromeWorker : Worker {
 };

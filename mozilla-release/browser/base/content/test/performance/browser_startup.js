@@ -50,8 +50,6 @@ const startupPhases = {
   // We are at this phase after creating the first browser window (ie. after final-ui-startup).
   "before opening first browser window": {blacklist: {
     modules: new Set([
-      "resource://gre/modules/PlacesBackups.jsm",
-      "resource://gre/modules/PlacesUtils.jsm",
     ])
   }},
 
@@ -60,7 +58,6 @@ const startupPhases = {
   // before first paint and delayed it.
   "before first paint": {blacklist: {
     components: new Set([
-      "UnifiedComplete.js",
       "nsSearchService.js",
     ]),
     modules: new Set([
@@ -71,9 +68,9 @@ const startupPhases = {
       "resource:///modules/BrowserUITelemetry.jsm",
       "resource:///modules/BrowserUsageTelemetry.jsm",
       "resource:///modules/ContentCrashHandlers.jsm",
-      "resource:///modules/DirectoryLinksProvider.jsm",
       "resource://gre/modules/NewTabUtils.jsm",
       "resource://gre/modules/PageThumbs.jsm",
+      "resource://gre/modules/PlacesUtils.jsm",
       "resource://gre/modules/Promise.jsm", // imported by devtools during _delayedStartup
       "resource://gre/modules/Preferences.jsm",
     ]),
@@ -100,6 +97,7 @@ const startupPhases = {
       "resource://gre/modules/CrashSubmit.jsm",
       "resource://gre/modules/FxAccounts.jsm",
       "resource://gre/modules/FxAccountsStorage.jsm",
+      "resource://gre/modules/PlacesBackups.jsm",
       "resource://gre/modules/PlacesSyncUtils.jsm",
       "resource://gre/modules/Sqlite.jsm",
     ]),
@@ -113,6 +111,9 @@ const startupPhases = {
   // and loaded lazily when used for the first time by the user should
   // be blacklisted here.
   "before becoming idle": {blacklist: {
+    components: new Set([
+      "UnifiedComplete.js",
+    ]),
     modules: new Set([
       "resource://gre/modules/AsyncPrefs.jsm",
       "resource://gre/modules/LoginManagerContextMenu.jsm",

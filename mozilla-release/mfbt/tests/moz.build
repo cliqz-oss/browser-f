@@ -50,6 +50,7 @@ CppUnitTests([
     'TestSmallPointerArray',
     'TestSplayTree',
     'TestTemplateLib',
+    'TestTextUtils',
     'TestThreadSafeWeakPtr',
     'TestTuple',
     'TestTypedEnum',
@@ -58,6 +59,7 @@ CppUnitTests([
     'TestVariant',
     'TestVector',
     'TestWeakPtr',
+    'TestWrappingOperations',
     'TestXorShift128PlusRNG',
 ])
 

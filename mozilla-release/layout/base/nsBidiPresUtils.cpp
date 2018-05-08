@@ -4,11 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsBidiPresUtils.h"
+
 #include "mozilla/IntegerRange.h"
 
 #include "gfxContext.h"
 #include "nsAutoPtr.h"
-#include "nsBidiPresUtils.h"
 #include "nsFontMetrics.h"
 #include "nsGkAtoms.h"
 #include "nsPresContext.h"
@@ -1333,7 +1334,7 @@ nsBidiPresUtils::ChildListMayRequireBidi(nsIFrame*    aFirstChild,
         if (content != *aCurrContent) {
           *aCurrContent = content;
           const nsTextFragment* txt = content->GetText();
-          if (txt->Is2b() && HasRTLChars(txt->Get2b(), txt->GetLength())) {
+          if (txt->Is2b() && HasRTLChars(MakeSpan(txt->Get2b(), txt->GetLength()))) {
             return true;
           }
         }

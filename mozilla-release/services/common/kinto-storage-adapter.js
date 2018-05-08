@@ -11,9 +11,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const { utils: Cu } = Components;
-const { Sqlite } = Cu.import("resource://gre/modules/Sqlite.jsm", {});
-const { Kinto } = Cu.import("resource://services-common/kinto-offline-client.js", {});
+const { Sqlite } = ChromeUtils.import("resource://gre/modules/Sqlite.jsm", {});
+const { Kinto } = ChromeUtils.import("resource://services-common/kinto-offline-client.js", {});
 
 const SQLITE_PATH = "kinto.sqlite";
 
@@ -487,4 +486,4 @@ function transactionProxy(collection, preloaded) {
 }
 this.FirefoxAdapter = FirefoxAdapter;
 
-this.EXPORTED_SYMBOLS = ["FirefoxAdapter"];
+var EXPORTED_SYMBOLS = ["FirefoxAdapter"];

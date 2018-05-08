@@ -1,10 +1,10 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function login_handling(handler) {
   return function(request, response) {
@@ -84,7 +84,7 @@ add_task(async function test_verifyLogin() {
     _("Ensure a network error when finding the cluster sets the right Status bits.");
     Service.status.resetSync();
     Service.clusterURL = "";
-    Service._clusterManager._findCluster = () => "http://localhost:12345/";
+    Service.identity._findCluster = () => "http://localhost:12345/";
     Assert.equal(false, (await Service.verifyLogin()));
     Assert.equal(Service.status.service, LOGIN_FAILED);
     Assert.equal(Service.status.login, LOGIN_FAILED_NETWORK_ERROR);

@@ -4,17 +4,14 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionCookies"];
+var EXPORTED_SYMBOLS = ["SessionCookies"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivacyLevel",
+ChromeUtils.defineModuleGetter(this, "PrivacyLevel",
   "resource://gre/modules/sessionstore/PrivacyLevel.jsm");
 
 const MAX_EXPIRY = Number.MAX_SAFE_INTEGER;
@@ -22,7 +19,7 @@ const MAX_EXPIRY = Number.MAX_SAFE_INTEGER;
 /**
  * The external API implemented by the SessionCookies module.
  */
-this.SessionCookies = Object.freeze({
+var SessionCookies = Object.freeze({
   collect() {
     return SessionCookiesInternal.collect();
   },

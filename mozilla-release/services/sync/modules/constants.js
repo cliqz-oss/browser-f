@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Process each item in the "constants hash" to add to "global" and give a name
-this.EXPORTED_SYMBOLS = [];
+var EXPORTED_SYMBOLS = [];
 for (let [key, val] of Object.entries({
 
 // Don't manually modify this line, as it is automatically replaced on merge day
 // by the gecko_migration.py script.
-WEAVE_VERSION: "1.61.0",
+WEAVE_VERSION: "1.62.0",
 
 // Sync Server API version that the client supports.
 SYNC_API_VERSION:                      "1.5",
@@ -18,12 +18,6 @@ SYNC_API_VERSION:                      "1.5",
 // the per-engine cleartext formats.
 STORAGE_VERSION:                       5,
 PREFS_BRANCH:                          "services.sync.",
-
-// Host "key" to access Weave Identity in the password manager
-PWDMGR_HOST:                           "chrome://weave",
-PWDMGR_PASSWORD_REALM:                 "Mozilla Services Password",
-PWDMGR_PASSPHRASE_REALM:               "Mozilla Services Encryption Passphrase",
-PWDMGR_KEYBUNDLE_REALM:                "Mozilla Services Key Bundles",
 
 // Put in [] because those aren't allowed in a collection name.
 DEFAULT_KEYBUNDLE_NAME:                "[default]",
@@ -112,7 +106,6 @@ CREDENTIALS_CHANGED:                   "error.sync.reason.credentials_changed",
 ABORT_SYNC_COMMAND:                    "aborting sync, process commands said so",
 NO_SYNC_NODE_FOUND:                    "error.sync.reason.no_node_found",
 OVER_QUOTA:                            "error.sync.reason.over_quota",
-PROLONGED_SYNC_FAILURE:                "error.sync.prolonged_failure",
 SERVER_MAINTENANCE:                    "error.sync.reason.serverMaintenance",
 
 RESPONSE_OVER_QUOTA:                   "14",

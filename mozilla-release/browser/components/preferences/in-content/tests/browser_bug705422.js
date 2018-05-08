@@ -26,8 +26,8 @@ function initTest() {
     // matches must correspond to above data
     const matches = 6;
 
-    var cookieSvc = Components.classes["@mozilla.org/cookieService;1"]
-                              .getService(Components.interfaces.nsICookieService);
+    var cookieSvc = Cc["@mozilla.org/cookieService;1"]
+                      .getService(Ci.nsICookieService);
     var v;
     // inject cookies
     for (v in vals) {
@@ -83,7 +83,7 @@ function runTest(win, searchTerm, cookies, matches) {
     // select two adjacent cells and delete
     EventUtils.synthesizeMouse(tree.body, rect.x + rect.width / 2, rect.y + rect.height / 2, {}, win);
     var eventObj = {};
-    if (navigator.platform.indexOf("Mac") >= 0)
+    if (navigator.platform.includes("Mac"))
         eventObj.metaKey = true;
     else
         eventObj.ctrlKey = true;

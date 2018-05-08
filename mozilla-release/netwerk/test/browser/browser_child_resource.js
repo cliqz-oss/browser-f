@@ -8,14 +8,14 @@ const TEST_URL = "http://example.com/browser/netwerk/test/browser/dummy.html";
 
 const expectedRemote = gMultiProcessBrowser ? "true" : "";
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 const resProtocol = Cc["@mozilla.org/network/protocol;1?name=resource"]
                         .getService(Ci.nsIResProtocolHandler);
 
 function frameScript() {
-  Components.utils.import("resource://gre/modules/Services.jsm");
-  let resProtocol = Components.classes["@mozilla.org/network/protocol;1?name=resource"]
-                              .getService(Components.interfaces.nsIResProtocolHandler);
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
+  let resProtocol = Cc["@mozilla.org/network/protocol;1?name=resource"]
+                      .getService(Ci.nsIResProtocolHandler);
 
   addMessageListener("Test:ResolveURI", function({ data: uri }) {
     uri = Services.io.newURI(uri);

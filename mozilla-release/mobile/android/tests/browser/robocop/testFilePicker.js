@@ -5,7 +5,7 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+/* eslint-disable mozilla/use-chromeutils-import */
 
 Cu.import("resource://gre/modules/Services.jsm");
 

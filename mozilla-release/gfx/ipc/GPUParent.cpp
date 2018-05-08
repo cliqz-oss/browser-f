@@ -22,7 +22,7 @@
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/layers/APZThreadUtils.h"
-#include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/APZUtils.h"    // for apz::InitializeGlobalState
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -30,10 +30,12 @@
 #include "mozilla/layers/LayerTreeOwnerTracker.h"
 #include "mozilla/layers/UiCompositorControllerParent.h"
 #include "mozilla/layers/MemoryReportingMLGPU.h"
+#include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/HangDetails.h"
 #include "nsDebugImpl.h"
+#include "nsIGfxInfo.h"
 #include "nsThreadManager.h"
 #include "prenv.h"
 #include "ProcessUtils.h"
@@ -124,7 +126,7 @@ GPUParent::Init(base::ProcessId aParentPid,
   // TODO: Bug 1406327, Start VRListenerThreadHolder when loading VR content.
   VRListenerThreadHolder::Start();
   APZThreadUtils::SetControllerThread(CompositorThreadHolder::Loop());
-  APZCTreeManager::InitializeGlobalState();
+  apz::InitializeGlobalState();
   LayerTreeOwnerTracker::Initialize();
   mozilla::ipc::SetThisProcessName("GPU Process");
 #ifdef XP_WIN
@@ -191,6 +193,10 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
     DeviceManagerDx::Get()->CreateCompositorDevices();
   }
   if (gfxVars::UseWebRender()) {
+    // Ensure to initialize GfxInfo
+    nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
+    Unused << gfxInfo;
+
     Factory::EnsureDWriteFactory();
   }
 #endif
@@ -229,6 +235,7 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
     wr::WebRenderAPI::InitExternalLogHandler();
 
     wr::RenderThread::Start();
+    SharedSurfacesParent::Initialize();
   }
 
   VRManager::ManagerInit();
@@ -457,7 +464,10 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   dom::VideoDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
   VRListenerThreadHolder::Shutdown();
-  if (gfxVars::UseWebRender()) {
+  // There is a case that RenderThread exists when gfxVars::UseWebRender() is false.
+  // This could happen when WebRender was fallbacked to compositor.
+  if (wr::RenderThread::Get()) {
+    SharedSurfacesParent::Shutdown();
     wr::RenderThread::ShutDown();
 
     wr::WebRenderAPI::ShutdownExternalLogHandler();

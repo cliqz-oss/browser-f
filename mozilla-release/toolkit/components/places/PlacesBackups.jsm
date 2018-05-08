@@ -4,28 +4,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PlacesBackups"];
+var EXPORTED_SYMBOLS = ["PlacesBackups"];
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cc = Components.classes;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "BookmarkJSONUtils",
-  "resource://gre/modules/BookmarkJSONUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Deprecated",
-  "resource://gre/modules/Deprecated.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-  "resource://gre/modules/osfile.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "localFileCtor",
-  () => Components.Constructor("@mozilla.org/file/local;1",
-                               "nsIFile", "initWithPath"));
+XPCOMUtils.defineLazyModuleGetters(this, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+  BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+});
 
 XPCOMUtils.defineLazyGetter(this, "filenamesRegex",
   () => /^bookmarks-([0-9-]+)(?:_([0-9]+)){0,1}(?:_([a-z0-9=+-]{24})){0,1}\.(json(lz4)?)$/i
@@ -104,8 +92,7 @@ async function getTopLevelFolderIds() {
   return guids;
 }
 
-
-this.PlacesBackups = {
+var PlacesBackups = {
   /**
    * Matches the backup filename:
    *  0: file name
@@ -116,29 +103,6 @@ this.PlacesBackups = {
    */
   get filenamesRegex() {
     return filenamesRegex;
-  },
-
-  get folder() {
-    Deprecated.warning(
-      "PlacesBackups.folder is deprecated and will be removed in a future version",
-      "https://bugzilla.mozilla.org/show_bug.cgi?id=859695");
-    return this._folder;
-  },
-
-  /**
-   * This exists just to avoid spamming deprecate warnings from internal calls
-   * needed to support deprecated methods themselves.
-   */
-  get _folder() {
-    let bookmarksBackupDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
-    bookmarksBackupDir.append(this.profileRelativeFolderPath);
-    if (!bookmarksBackupDir.exists()) {
-      bookmarksBackupDir.create(Ci.nsIFile.DIRECTORY_TYPE, parseInt("0700", 8));
-      if (!bookmarksBackupDir.exists())
-        throw ("Unable to create bookmarks backup folder");
-    }
-    delete this._folder;
-    return this._folder = bookmarksBackupDir;
   },
 
   /**
@@ -160,45 +124,6 @@ this.PlacesBackups = {
 
   get profileRelativeFolderPath() {
     return "bookmarkbackups";
-  },
-
-  /**
-   * Cache current backups in a sorted (by date DESC) array.
-   */
-  get entries() {
-    Deprecated.warning(
-      "PlacesBackups.entries is deprecated and will be removed in a future version",
-      "https://bugzilla.mozilla.org/show_bug.cgi?id=859695");
-    return this._entries;
-  },
-
-  /**
-   * This exists just to avoid spamming deprecate warnings from internal calls
-   * needed to support deprecated methods themselves.
-   */
-  get _entries() {
-    delete this._entries;
-    this._entries = [];
-    let files = this._folder.directoryEntries;
-    while (files.hasMoreElements()) {
-      let entry = files.getNext().QueryInterface(Ci.nsIFile);
-      // A valid backup is any file that matches either the localized or
-      // not-localized filename (bug 445704).
-      if (!entry.isHidden() && filenamesRegex.test(entry.leafName)) {
-        // Remove bogus backups in future dates.
-        if (this.getDateForFile(entry) > new Date()) {
-          entry.remove(false);
-          continue;
-        }
-        this._entries.push(entry);
-      }
-    }
-    this._entries.sort((a, b) => {
-      let aDate = this.getDateForFile(a);
-      let bDate = this.getDateForFile(b);
-      return bDate - aDate;
-    });
-    return this._entries;
   },
 
   /**
@@ -287,35 +212,15 @@ this.PlacesBackups = {
    * Creates a Date object from a backup file.  The date is the backup
    * creation date.
    *
-   * @param aBackupFile
-   *        nsIFile or string path of the backup.
-   * @return A Date object for the backup's creation time.
+   * @param {Sring} aBackupFile The path of the backup.
+   * @return {Date} A Date object for the backup's creation time.
    */
   getDateForFile: function PB_getDateForFile(aBackupFile) {
-    let filename = (aBackupFile instanceof Ci.nsIFile) ? aBackupFile.leafName
-                                                       : OS.Path.basename(aBackupFile);
+    let filename = OS.Path.basename(aBackupFile);
     let matches = filename.match(filenamesRegex);
     if (!matches)
-      throw ("Invalid backup file name: " + filename);
+      throw new Error(`Invalid backup file name: ${filename}`);
     return new Date(matches[1].replace(/-/g, "/"));
-  },
-
-  /**
-   * Get the most recent backup file.
-   *
-   * @returns nsIFile backup file
-   */
-  getMostRecent: function PB_getMostRecent() {
-    Deprecated.warning(
-      "PlacesBackups.getMostRecent is deprecated and will be removed in a future version",
-      "https://bugzilla.mozilla.org/show_bug.cgi?id=859695");
-
-    for (let i = 0; i < this._entries.length; i++) {
-      let rx = /\.json(lz4)?$/;
-      if (this._entries[i].leafName.match(rx))
-        return this._entries[i];
-    }
-    return null;
   },
 
    /**
@@ -346,64 +251,53 @@ this.PlacesBackups = {
    *        OS.File path for the "bookmarks.json" file to be created.
    * @return {Promise}
    * @resolves the number of serialized uri nodes.
-   * @deprecated passing an nsIFile is deprecated
    */
-  saveBookmarksToJSONFile: function PB_saveBookmarksToJSONFile(aFilePath) {
-    if (aFilePath instanceof Ci.nsIFile) {
-      Deprecated.warning("Passing an nsIFile to PlacesBackups.saveBookmarksToJSONFile " +
-                         "is deprecated. Please use an OS.File path instead.",
-                         "https://developer.mozilla.org/docs/JavaScript_OS.File");
-      aFilePath = aFilePath.path;
-    }
-    return (async () => {
-      let { count: nodeCount, hash: hash } =
-        await BookmarkJSONUtils.exportToFile(aFilePath);
+  async saveBookmarksToJSONFile(aFilePath) {
+    let { count: nodeCount, hash: hash } =
+      await BookmarkJSONUtils.exportToFile(aFilePath);
 
-      let backupFolderPath = await this.getBackupFolder();
-      if (OS.Path.dirname(aFilePath) == backupFolderPath) {
-        // We are creating a backup in the default backups folder,
-        // so just update the internal cache.
-        this._entries.unshift(new localFileCtor(aFilePath));
-        if (!this._backupFiles) {
-          await this.getBackupFiles();
-        }
-        this._backupFiles.unshift(aFilePath);
-      } else {
-        // If we are saving to a folder different than our backups folder, then
-        // we also want to create a new compressed version in it.
-        // This way we ensure the latest valid backup is the same saved by the
-        // user.  See bug 424389.
-        let mostRecentBackupFile = await this.getMostRecentBackup();
-        if (!mostRecentBackupFile ||
-            hash != getHashFromFilename(OS.Path.basename(mostRecentBackupFile))) {
-          let name = this.getFilenameForDate(undefined, true);
-          let newFilename = appendMetaDataToFilename(name,
-                                                     { count: nodeCount,
-                                                       hash });
-          let newFilePath = OS.Path.join(backupFolderPath, newFilename);
-          let backupFile = await getBackupFileForSameDate(name);
-          if (backupFile) {
-            // There is already a backup for today, replace it.
-            await OS.File.remove(backupFile, { ignoreAbsent: true });
-            if (!this._backupFiles)
-              await this.getBackupFiles();
-            else
-              this._backupFiles.shift();
-            this._backupFiles.unshift(newFilePath);
-          } else {
-            // There is no backup for today, add the new one.
-            this._entries.unshift(new localFileCtor(newFilePath));
-            if (!this._backupFiles)
-              await this.getBackupFiles();
-            this._backupFiles.unshift(newFilePath);
-          }
-          let jsonString = await OS.File.read(aFilePath);
-          await OS.File.writeAtomic(newFilePath, jsonString, { compression: "lz4" });
-        }
+    let backupFolderPath = await this.getBackupFolder();
+    if (OS.Path.dirname(aFilePath) == backupFolderPath) {
+      // We are creating a backup in the default backups folder,
+      // so just update the internal cache.
+      if (!this._backupFiles) {
+        await this.getBackupFiles();
       }
+      this._backupFiles.unshift(aFilePath);
+    } else {
+      // If we are saving to a folder different than our backups folder, then
+      // we also want to create a new compressed version in it.
+      // This way we ensure the latest valid backup is the same saved by the
+      // user.  See bug 424389.
+      let mostRecentBackupFile = await this.getMostRecentBackup();
+      if (!mostRecentBackupFile ||
+          hash != getHashFromFilename(OS.Path.basename(mostRecentBackupFile))) {
+        let name = this.getFilenameForDate(undefined, true);
+        let newFilename = appendMetaDataToFilename(name,
+                                                   { count: nodeCount,
+                                                     hash });
+        let newFilePath = OS.Path.join(backupFolderPath, newFilename);
+        let backupFile = await getBackupFileForSameDate(name);
+        if (backupFile) {
+          // There is already a backup for today, replace it.
+          await OS.File.remove(backupFile, { ignoreAbsent: true });
+          if (!this._backupFiles)
+            await this.getBackupFiles();
+          else
+            this._backupFiles.shift();
+          this._backupFiles.unshift(newFilePath);
+        } else {
+          // There is no backup for today, add the new one.
+          if (!this._backupFiles)
+            await this.getBackupFiles();
+          this._backupFiles.unshift(newFilePath);
+        }
+        let jsonString = await OS.File.read(aFilePath);
+        await OS.File.writeAtomic(newFilePath, jsonString, { compression: "lz4" });
+      }
+    }
 
-      return nodeCount;
-    })();
+    return nodeCount;
   },
 
   /**
@@ -428,7 +322,6 @@ this.PlacesBackups = {
           backupFiles.length >= aMaxBackups) {
         let numberOfBackupsToDelete = backupFiles.length - aMaxBackups;
         while (numberOfBackupsToDelete--) {
-          this._entries.pop();
           let oldestBackup = this._backupFiles.pop();
           await OS.File.remove(oldestBackup);
         }
@@ -455,7 +348,6 @@ this.PlacesBackups = {
       if (backupFile) {
         // In case there is a backup for today we should recreate it.
         this._backupFiles.shift();
-        this._entries.shift();
         await OS.File.remove(backupFile, { ignoreAbsent: true });
       }
 
@@ -484,7 +376,6 @@ this.PlacesBackups = {
         // The last backup already contained up-to-date information, just
         // rename it as if it was today's backup.
         this._backupFiles.shift();
-        this._entries.shift();
         newBackupFile = mostRecentBackupFile;
         // Ensure we retain the proper extension when renaming
         // the most recent backup file.
@@ -499,7 +390,6 @@ this.PlacesBackups = {
       // Append metadata to the backup filename.
       let newBackupFileWithMetadata = OS.Path.join(backupFolder, newFilenameWithMetaData);
       await OS.File.move(newBackupFile, newBackupFileWithMetadata);
-      this._entries.unshift(new localFileCtor(newBackupFileWithMetadata));
       this._backupFiles.unshift(newBackupFileWithMetadata);
 
       // Limit the number of backups.
@@ -565,7 +455,7 @@ this.PlacesBackups = {
               .getHistogramById("PLACES_BACKUPS_BOOKMARKSTREE_MS")
               .add(Date.now() - startTime);
     } catch (ex) {
-      Components.utils.reportError("Unable to report telemetry.");
+      Cu.reportError("Unable to report telemetry.");
     }
     return [root, root.itemsCount];
   },

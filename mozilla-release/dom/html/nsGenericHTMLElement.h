@@ -9,7 +9,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "nsMappedAttributeElement.h"
-#include "nsIDOMHTMLElement.h"
+#include "nsIDOMElement.h"
 #include "nsNameSpaceManager.h"  // for kNameSpaceID_None
 #include "nsIFormControl.h"
 #include "nsGkAtoms.h"
@@ -47,7 +47,7 @@ typedef nsMappedAttributeElement nsGenericHTMLElementBase;
  * A common superclass for HTML elements
  */
 class nsGenericHTMLElement : public nsGenericHTMLElementBase,
-                             public nsIDOMHTMLElement
+                             public nsIDOMElement
 {
 public:
   using Element::SetTabIndex;
@@ -268,30 +268,6 @@ public:
    */
   MOZ_CAN_RUN_SCRIPT
   nsSize GetWidthHeightForImage(RefPtr<imgRequestProxy>& aImageRequest);
-
-  // XPIDL methods
-  NS_FORWARD_NSIDOMNODE_TO_NSINODE
-
-  NS_FORWARD_NSIDOMELEMENT_TO_GENERIC
-
-  NS_IMETHOD GetSpellcheck(bool* aSpellcheck) final override {
-    *aSpellcheck = Spellcheck();
-    return NS_OK;
-  }
-  NS_IMETHOD GetOffsetWidth(int32_t* aOffsetWidth) final override {
-    *aOffsetWidth = OffsetWidth();
-    return NS_OK;
-  }
-  NS_IMETHOD GetOffsetHeight(int32_t* aOffsetHeight) final override {
-    *aOffsetHeight = OffsetHeight();
-    return NS_OK;
-  }
-  NS_IMETHOD GetDraggable(bool* aDraggable) final override {
-    *aDraggable = Draggable();
-    return NS_OK;
-  }
-
-  using nsGenericHTMLElementBase::GetOwnerDocument;
 
   virtual nsIDOMNode* AsDOMNode() override { return this; }
 
@@ -648,7 +624,6 @@ public:
   static bool InNavQuirksMode(nsIDocument* aDoc);
 
   /**
-   * Helper method for NS_IMPL_URI_ATTR macro.
    * Gets the absolute URI value of an attribute, by resolving any relative
    * URIs in the attribute against the baseuri of the element. If the attribute
    * isn't a relative URI the value of the attribute is returned as is. Only
@@ -670,9 +645,11 @@ public:
 
   /**
    * Returns the current disabled state of the element.
+   *
+   * TODO(emilio): Consider moving to Element?
    */
-  virtual bool IsDisabled() const {
-    return false;
+  bool IsDisabled() const {
+    return State().HasState(NS_EVENT_STATE_DISABLED);
   }
 
   bool IsHidden() const
@@ -839,18 +816,6 @@ protected:
   }
 
   /**
-   * Helper method for NS_IMPL_STRING_ATTR macro.
-   * Sets the value of an attribute, returns specified default value if the
-   * attribute isn't set. Only works for attributes in null namespace.
-   *
-   * @param aAttr    name of attribute.
-   * @param aDefault default-value to return if attribute isn't set.
-   * @param aResult  result value [out]
-   */
-  nsresult SetAttrHelper(nsAtom* aAttr, const nsAString& aValue);
-
-  /**
-   * Helper method for NS_IMPL_INT_ATTR macro.
    * Gets the integer-value of an attribute, returns specified default value
    * if the attribute isn't set or isn't set to an integer. Only works for
    * attributes in null namespace.
@@ -861,7 +826,6 @@ protected:
   int32_t GetIntAttr(nsAtom* aAttr, int32_t aDefault) const;
 
   /**
-   * Helper method for NS_IMPL_INT_ATTR macro.
    * Sets value of attribute to specified integer. Only works for attributes
    * in null namespace.
    *
@@ -871,7 +835,6 @@ protected:
   nsresult SetIntAttr(nsAtom* aAttr, int32_t aValue);
 
   /**
-   * Helper method for NS_IMPL_UINT_ATTR macro.
    * Gets the unsigned integer-value of an attribute, returns specified default
    * value if the attribute isn't set or isn't set to an integer. Only works for
    * attributes in null namespace.
@@ -882,7 +845,6 @@ protected:
   uint32_t GetUnsignedIntAttr(nsAtom* aAttr, uint32_t aDefault) const;
 
   /**
-   * Helper method for NS_IMPL_UINT_ATTR macro.
    * Sets value of attribute to specified unsigned integer. Only works for
    * attributes in null namespace.
    *
@@ -937,11 +899,6 @@ protected:
    * @param aRect the offset information [OUT]
    */
   mozilla::dom::Element* GetOffsetRect(mozilla::CSSIntRect& aRect);
-
-  /**
-   * Returns true if this is the current document's body element
-   */
-  bool IsCurrentBodyElement();
 
   /**
    * Ensures all editors associated with a subtree are synced, for purposes of
@@ -1086,7 +1043,6 @@ public:
                      mozilla::EventChainPreVisitor& aVisitor) override;
   virtual nsresult PreHandleEvent(
                      mozilla::EventChainVisitor& aVisitor) override;
-  virtual bool IsDisabled() const override;
 
   /**
    * This callback is called by a fieldest on all its elements whenever its
@@ -1127,6 +1083,11 @@ public:
    * Returns if the control can be disabled.
    */
   bool CanBeDisabled() const;
+
+  /**
+   * Returns if the readonly attribute applies.
+   */
+  bool DoesReadOnlyApply() const;
 
   virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
                                  int32_t* aTabIndex) override;
@@ -1263,215 +1224,6 @@ protected:
      GenerateStateKey has been used */
   nsCString mStateKey;
 };
-
-//----------------------------------------------------------------------
-
-/**
- * This macro is similar to NS_IMPL_STRING_ATTR except that the getter method
- * falls back to an alternative method if the content attribute isn't set.
- */
-#define NS_IMPL_STRING_ATTR_WITH_FALLBACK(_class, _method, _atom, _fallback) \
-  NS_IMETHODIMP                                                              \
-  _class::Get##_method(nsAString& aValue)                                    \
-  {                                                                          \
-    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::_atom, aValue)) {             \
-      _fallback(aValue);                                                     \
-    }                                                                        \
-    return NS_OK;                                                            \
-  }                                                                          \
-  NS_IMETHODIMP                                                              \
-  _class::Set##_method(const nsAString& aValue)                              \
-  {                                                                          \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);                          \
-  }
-
-/**
- * A macro to implement the getter and setter for a given integer
- * valued content property. The method uses the generic GetAttr and
- * SetAttr methods.
- */
-#define NS_IMPL_INT_ATTR(_class, _method, _atom)                    \
-  NS_IMPL_INT_ATTR_DEFAULT_VALUE(_class, _method, _atom, 0)
-
-#define NS_IMPL_INT_ATTR_DEFAULT_VALUE(_class, _method, _atom, _default)  \
-  NS_IMETHODIMP                                                           \
-  _class::Get##_method(int32_t* aValue)                                   \
-  {                                                                       \
-    *aValue = GetIntAttr(nsGkAtoms::_atom, _default);                     \
-    return NS_OK;                                                         \
-  }                                                                       \
-  NS_IMETHODIMP                                                           \
-  _class::Set##_method(int32_t aValue)                                    \
-  {                                                                       \
-    return SetIntAttr(nsGkAtoms::_atom, aValue);                          \
-  }
-
-/**
- * A macro to implement the getter and setter for a given unsigned integer
- * valued content property. The method uses GetUnsignedIntAttr and
- * SetUnsignedIntAttr methods.
- */
-#define NS_IMPL_UINT_ATTR(_class, _method, _atom)                         \
-  NS_IMPL_UINT_ATTR_DEFAULT_VALUE(_class, _method, _atom, 0)
-
-#define NS_IMPL_UINT_ATTR_DEFAULT_VALUE(_class, _method, _atom, _default) \
-  NS_IMETHODIMP                                                           \
-  _class::Get##_method(uint32_t* aValue)                                  \
-  {                                                                       \
-    *aValue = GetUnsignedIntAttr(nsGkAtoms::_atom, _default);             \
-    return NS_OK;                                                         \
-  }                                                                       \
-  NS_IMETHODIMP                                                           \
-  _class::Set##_method(uint32_t aValue)                                   \
-  {                                                                       \
-    mozilla::ErrorResult rv;                                              \
-    SetUnsignedIntAttr(nsGkAtoms::_atom, aValue, _default, rv);           \
-    return rv.StealNSResult();                                            \
-  }
-
-/**
- * A macro to implement the getter and setter for a given unsigned integer
- * valued content property. The method uses GetUnsignedIntAttr and
- * SetUnsignedIntAttr methods. This macro is similar to NS_IMPL_UINT_ATTR except
- * that it throws an exception if the set value is null.
- */
-#define NS_IMPL_UINT_ATTR_NON_ZERO(_class, _method, _atom)                \
-  NS_IMPL_UINT_ATTR_NON_ZERO_DEFAULT_VALUE(_class, _method, _atom, 1)
-
-#define NS_IMPL_UINT_ATTR_NON_ZERO_DEFAULT_VALUE(_class, _method, _atom, _default) \
-  NS_IMETHODIMP                                                           \
-  _class::Get##_method(uint32_t* aValue)                                  \
-  {                                                                       \
-    *aValue = GetUnsignedIntAttr(nsGkAtoms::_atom, _default);             \
-    return NS_OK;                                                         \
-  }                                                                       \
-  NS_IMETHODIMP                                                           \
-  _class::Set##_method(uint32_t aValue)                                   \
-  {                                                                       \
-    if (aValue == 0) {                                                    \
-      return NS_ERROR_DOM_INDEX_SIZE_ERR;                                 \
-    }                                                                     \
-    mozilla::ErrorResult rv;                                              \
-    SetUnsignedIntAttr(nsGkAtoms::_atom, aValue, _default, rv);           \
-    return rv.StealNSResult();                                            \
-  }
-
-/**
- * A macro to implement the getter and setter for a given content
- * property that needs to return a URI in string form.  The method
- * uses the generic GetAttr and SetAttr methods.  This macro is much
- * like the NS_IMPL_STRING_ATTR macro, except we make sure the URI is
- * absolute.
- */
-#define NS_IMPL_URI_ATTR(_class, _method, _atom)                    \
-  NS_IMETHODIMP                                                     \
-  _class::Get##_method(nsAString& aValue)                           \
-  {                                                                 \
-    GetURIAttr(nsGkAtoms::_atom, nullptr, aValue);                  \
-    return NS_OK;                                                   \
-  }                                                                 \
-  NS_IMETHODIMP                                                     \
-  _class::Set##_method(const nsAString& aValue)                     \
-  {                                                                 \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);               \
-  }
-
-#define NS_IMPL_URI_ATTR_WITH_BASE(_class, _method, _atom, _base_atom)       \
-  NS_IMETHODIMP                                                              \
-  _class::Get##_method(nsAString& aValue)                                    \
-  {                                                                          \
-    GetURIAttr(nsGkAtoms::_atom, nsGkAtoms::_base_atom, aValue);             \
-    return NS_OK;                                                            \
-  }                                                                          \
-  NS_IMETHODIMP                                                              \
-  _class::Set##_method(const nsAString& aValue)                              \
-  {                                                                          \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);                        \
-  }
-
-/**
- * A macro to implement getter and setter for action and form action content
- * attributes. It's very similar to NS_IMPL_URI_ATTR excepted that if the
- * content attribute is the empty string, the empty string is returned.
- */
-#define NS_IMPL_ACTION_ATTR(_class, _method, _atom)                 \
-  NS_IMETHODIMP                                                     \
-  _class::Get##_method(nsAString& aValue)                           \
-  {                                                                 \
-    GetAttr(kNameSpaceID_None, nsGkAtoms::_atom, aValue);           \
-    if (!aValue.IsEmpty()) {                                        \
-      GetURIAttr(nsGkAtoms::_atom, nullptr, aValue);                 \
-    }                                                               \
-    return NS_OK;                                                   \
-  }                                                                 \
-  NS_IMETHODIMP                                                     \
-  _class::Set##_method(const nsAString& aValue)                     \
-  {                                                                 \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);                 \
-  }
-
-/**
- * A macro to implement the getter and setter for a given content
- * property that needs to set a non-negative integer. The method
- * uses the generic GetAttr and SetAttr methods. This macro is much
- * like the NS_IMPL_INT_ATTR macro except we throw an exception if
- * the set value is negative.
- */
-#define NS_IMPL_NON_NEGATIVE_INT_ATTR(_class, _method, _atom)             \
-  NS_IMPL_NON_NEGATIVE_INT_ATTR_DEFAULT_VALUE(_class, _method, _atom, -1)
-
-#define NS_IMPL_NON_NEGATIVE_INT_ATTR_DEFAULT_VALUE(_class, _method, _atom, _default)  \
-  NS_IMETHODIMP                                                           \
-  _class::Get##_method(int32_t* aValue)                                   \
-  {                                                                       \
-    *aValue = GetIntAttr(nsGkAtoms::_atom, _default);                     \
-    return NS_OK;                                                         \
-  }                                                                       \
-  NS_IMETHODIMP                                                           \
-  _class::Set##_method(int32_t aValue)                                    \
-  {                                                                       \
-    if (aValue < 0) {                                                     \
-      return NS_ERROR_DOM_INDEX_SIZE_ERR;                                 \
-    }                                                                     \
-    return SetIntAttr(nsGkAtoms::_atom, aValue);                          \
-  }
-
-/**
- * A macro to implement the getter and setter for a given content
- * property that needs to set an enumerated string. The method
- * uses a specific GetEnumAttr and the generic SetAttrHelper methods.
- */
-#define NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(_class, _method, _atom, _default) \
-  NS_IMETHODIMP                                                           \
-  _class::Get##_method(nsAString& aValue)                                 \
-  {                                                                       \
-    GetEnumAttr(nsGkAtoms::_atom, _default, aValue);                      \
-    return NS_OK;                                                         \
-  }                                                                       \
-  NS_IMETHODIMP                                                           \
-  _class::Set##_method(const nsAString& aValue)                           \
-  {                                                                       \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);                       \
-  }
-
-/**
- * A macro to implement the getter and setter for a given content
- * property that needs to set an enumerated string that has different
- * default values for missing and invalid values. The method uses a
- * specific GetEnumAttr and the generic SetAttrHelper methods.
- */
-#define NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES(_class, _method, _atom, _defaultMissing, _defaultInvalid) \
-  NS_IMETHODIMP                                                                                   \
-  _class::Get##_method(nsAString& aValue)                                                         \
-  {                                                                                               \
-    GetEnumAttr(nsGkAtoms::_atom, _defaultMissing, _defaultInvalid, aValue);                      \
-    return NS_OK;                                                                                 \
-  }                                                                                               \
-  NS_IMETHODIMP                                                                                   \
-  _class::Set##_method(const nsAString& aValue)                                                   \
-  {                                                                                               \
-    return SetAttrHelper(nsGkAtoms::_atom, aValue);                                               \
-  }
 
 #define NS_INTERFACE_MAP_ENTRY_IF_TAG(_interface, _tag)                       \
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(_interface,                              \

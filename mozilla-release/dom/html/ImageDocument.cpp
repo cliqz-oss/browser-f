@@ -15,7 +15,6 @@
 #include "nsIDocumentInlines.h"
 #include "nsDOMTokenList.h"
 #include "nsIDOMEvent.h"
-#include "nsIDOMKeyEvent.h"
 #include "nsIDOMMouseEvent.h"
 #include "nsIDOMEventListener.h"
 #include "nsIFrame.h"
@@ -32,7 +31,6 @@
 #include "nsContentPolicyUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDOMElement.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsError.h"
 #include "nsURILoader.h"
 #include "nsIDocShell.h"
@@ -157,6 +155,9 @@ ImageDocument::ImageDocument()
   , mFirstResize(false)
   , mObservingImageLoader(false)
   , mOriginalZoomLevel(1.0)
+#if defined(MOZ_WIDGET_ANDROID)
+  , mOriginalResolution(1.0)
+#endif
 {
 }
 
@@ -212,6 +213,9 @@ ImageDocument::StartDocumentLoad(const char*         aCommand,
   }
 
   mOriginalZoomLevel = IsSiteSpecific() ? 1.0 : GetZoomLevel();
+#if defined(MOZ_WIDGET_ANDROID)
+  mOriginalResolution = GetResolution();
+#endif
 
   NS_ASSERTION(aDocListener, "null aDocListener");
   *aDocListener = new ImageListener(this);
@@ -296,6 +300,9 @@ ImageDocument::OnPageShow(bool aPersisted,
 {
   if (aPersisted) {
     mOriginalZoomLevel = IsSiteSpecific() ? 1.0 : GetZoomLevel();
+#if defined(MOZ_WIDGET_ANDROID)
+    mOriginalResolution = GetResolution();
+#endif
   }
   RefPtr<ImageDocument> kungFuDeathGrip(this);
   UpdateSizeFromLayout();
@@ -366,19 +373,21 @@ ImageDocument::ShrinkToFit()
     ignored.SuppressException();
     return;
   }
+#if defined(MOZ_WIDGET_ANDROID)
+  if (GetResolution() != mOriginalResolution && mImageIsResized) {
+    // Don't resize if resolution has changed, e.g., through pinch-zooming on
+    // Android.
+    return;
+  }
+#endif
 
   // Keep image content alive while changing the attributes.
   RefPtr<HTMLImageElement> image = HTMLImageElement::FromContent(mImageContent);
-  {
-    IgnoredErrorResult ignored;
-    image->SetWidth(std::max(1, NSToCoordFloor(GetRatio() * mImageWidth)),
-                    ignored);
-  }
-  {
-    IgnoredErrorResult ignored;
-    image->SetHeight(std::max(1, NSToCoordFloor(GetRatio() * mImageHeight)),
-                     ignored);
-  }
+
+  uint32_t newWidth = std::max(1, NSToCoordFloor(GetRatio() * mImageWidth));
+  uint32_t newHeight = std::max(1, NSToCoordFloor(GetRatio() * mImageHeight));
+  image->SetWidth(newWidth, IgnoreErrors());
+  image->SetHeight(newHeight, IgnoreErrors());
 
   // The view might have been scrolled when zooming in, scroll back to the
   // origin now that we're showing a shrunk-to-window version.
@@ -698,7 +707,7 @@ ImageDocument::CreateSyntheticDocument()
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::img, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   mImageContent = NS_NewHTMLImageElement(nodeInfo.forget());
   if (!mImageContent) {
@@ -730,12 +739,11 @@ ImageDocument::CheckOverflowing(bool changeState)
    * presentation through style resolution is potentially dangerous.
    */
   {
-    nsIPresShell *shell = GetShell();
-    if (!shell) {
+    nsPresContext* context = GetPresContext();
+    if (!context) {
       return NS_OK;
     }
 
-    nsPresContext *context = shell->GetPresContext();
     nsRect visibleArea = context->GetVisibleArea();
 
     mVisibleWidth = nsPresContext::AppUnitsToFloatCSSPixels(visibleArea.width);
@@ -862,6 +870,19 @@ ImageDocument::GetZoomLevel()
   }
   return zoomLevel;
 }
+
+#if defined(MOZ_WIDGET_ANDROID)
+float
+ImageDocument::GetResolution()
+{
+  float resolution = mOriginalResolution;
+  nsCOMPtr<nsIPresShell> shell = GetShell();
+  if (shell) {
+    resolution = shell->GetResolution();
+  }
+  return resolution;
+}
+#endif
 
 } // namespace dom
 } // namespace mozilla

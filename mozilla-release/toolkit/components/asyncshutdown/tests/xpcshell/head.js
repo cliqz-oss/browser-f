@@ -2,13 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 var asyncShutdownService = Cc["@mozilla.org/async-shutdown-service;1"].
   getService(Ci.nsIAsyncShutdownService);

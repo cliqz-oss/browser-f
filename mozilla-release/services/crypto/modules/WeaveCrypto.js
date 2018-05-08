@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["WeaveCrypto"];
+var EXPORTED_SYMBOLS = ["WeaveCrypto"];
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-common/async.js");
 
 Cu.importGlobalProperties(["crypto"]);
 
@@ -23,9 +21,9 @@ const KEY_DERIVATION_HASHING_ALGO = "SHA-1";
 const KEY_DERIVATION_ITERATIONS   = 4096; // PKCS#5 recommends at least 1000.
 const DERIVED_KEY_ALGO            = CRYPT_ALGO;
 
-this.WeaveCrypto = function WeaveCrypto() {
+function WeaveCrypto() {
     this.init();
-};
+}
 
 WeaveCrypto.prototype = {
     prefBranch: null,

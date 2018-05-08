@@ -4,21 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["E10SUtils"];
+var EXPORTED_SYMBOLS = ["E10SUtils"];
 
-const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "useSeparateFileUriProcess",
                                       "browser.tabs.remote.separateFileUriProcess", false);
 XPCOMUtils.defineLazyPreferenceGetter(this, "allowLinkedWebInFileUriProcess",
                                       "browser.tabs.remote.allowLinkedWebInFileUriProcess", false);
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
-                                  "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-                                  "resource://gre/modules/Console.jsm");
+ChromeUtils.defineModuleGetter(this, "Utils",
+                               "resource://gre/modules/sessionstore/Utils.jsm");
 
 function getAboutModule(aURL) {
   // Needs to match NS_GetAboutModuleName
@@ -80,7 +76,7 @@ function validatedWebRemoteType(aPreferredRemoteType, aTargetUri, aCurrentUri) {
   return WEB_REMOTE_TYPE;
 }
 
-this.E10SUtils = {
+var E10SUtils = {
   DEFAULT_REMOTE_TYPE,
   NOT_REMOTE,
   WEB_REMOTE_TYPE,

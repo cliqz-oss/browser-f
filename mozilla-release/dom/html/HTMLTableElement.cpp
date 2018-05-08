@@ -447,12 +447,11 @@ TableRowsCollection::HandleInsert(nsIContent* aContainer,
 // nsIMutationObserver
 
 void
-TableRowsCollection::ContentAppended(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aFirstNewContent)
+TableRowsCollection::ContentAppended(nsIContent* aFirstNewContent)
 {
+  nsIContent* container = aFirstNewContent->GetParent();
   if (!nsContentUtils::IsInSameAnonymousTree(mParent, aFirstNewContent) ||
-      !InterestingContainer(aContainer)) {
+      !InterestingContainer(container)) {
     return;
   }
 
@@ -460,37 +459,33 @@ TableRowsCollection::ContentAppended(nsIDocument* aDocument,
   // appending into mParent, in which case we can provide the guess that we
   // should insert at the end of the body, which can help us avoid potentially
   // expensive work in the common case.
-  int32_t indexGuess = mParent == aContainer ? mFootStart : -1;
+  int32_t indexGuess = mParent == container ? mFootStart : -1;
 
   // Insert each of the newly added content one at a time. The indexGuess should
   // make insertions of a large number of elements cheaper.
   for (nsIContent* content = aFirstNewContent;
        content; content = content->GetNextSibling()) {
-    indexGuess = HandleInsert(aContainer, content, indexGuess);
+    indexGuess = HandleInsert(container, content, indexGuess);
   }
 }
 
 void
-TableRowsCollection::ContentInserted(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aChild)
+TableRowsCollection::ContentInserted(nsIContent* aChild)
 {
   if (!nsContentUtils::IsInSameAnonymousTree(mParent, aChild) ||
-      !InterestingContainer(aContainer)) {
+      !InterestingContainer(aChild->GetParent())) {
     return;
   }
 
-  HandleInsert(aContainer, aChild);
+  HandleInsert(aChild->GetParent(), aChild);
 }
 
 void
-TableRowsCollection::ContentRemoved(nsIDocument* aDocument,
-                                    nsIContent* aContainer,
-                                    nsIContent* aChild,
+TableRowsCollection::ContentRemoved(nsIContent* aChild,
                                     nsIContent* aPreviousSibling)
 {
   if (!nsContentUtils::IsInSameAnonymousTree(mParent, aChild) ||
-      !InterestingContainer(aContainer)) {
+      !InterestingContainer(aChild->GetParent())) {
     return;
   }
 
@@ -642,8 +637,7 @@ HTMLTableElement::CreateTHead()
       }
     }
 
-    IgnoredErrorResult rv;
-    nsINode::InsertBefore(*head, refNode, rv);
+    nsINode::InsertBefore(*head, refNode, IgnoreErrors());
   }
   return head.forget();
 }
@@ -705,9 +699,8 @@ HTMLTableElement::CreateCaption()
       return nullptr;
     }
 
-    IgnoredErrorResult rv;
     nsCOMPtr<nsINode> firsChild = nsINode::GetFirstChild();
-    nsINode::InsertBefore(*caption, firsChild, rv);
+    nsINode::InsertBefore(*caption, firsChild, IgnoreErrors());
   }
   return caption.forget();
 }
@@ -729,7 +722,7 @@ HTMLTableElement::CreateTBody()
   RefPtr<mozilla::dom::NodeInfo> nodeInfo =
     OwnerDoc()->NodeInfoManager()->GetNodeInfo(nsGkAtoms::tbody, nullptr,
                                                kNameSpaceID_XHTML,
-                                               nsIDOMNode::ELEMENT_NODE);
+                                               ELEMENT_NODE);
   MOZ_ASSERT(nodeInfo);
 
   RefPtr<nsGenericHTMLElement> newBody =
@@ -746,8 +739,7 @@ HTMLTableElement::CreateTBody()
     }
   }
 
-  IgnoredErrorResult rv;
-  nsINode::InsertBefore(*newBody, referenceNode, rv);
+  nsINode::InsertBefore(*newBody, referenceNode, IgnoreErrors());
 
   return newBody.forget();
 }

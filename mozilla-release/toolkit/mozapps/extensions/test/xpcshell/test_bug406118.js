@@ -8,12 +8,10 @@ var addonIDs = ["test_bug393285_1@tests.mozilla.org",
                 "test_bug393285_3a@tests.mozilla.org",
                 "test_bug393285_4@tests.mozilla.org"];
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 var testserver = new HttpServer();
 testserver.start(-1);
 gPort = testserver.identity.primaryPort;

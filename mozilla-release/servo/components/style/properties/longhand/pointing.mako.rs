@@ -21,7 +21,7 @@ ${helpers.single_keyword("pointer-events", "auto none", animation_value_type="di
                          flags="APPLIES_TO_PLACEHOLDER",
                          spec="https://www.w3.org/TR/SVG11/interact.html#PointerEventsProperty")}
 
-${helpers.single_keyword("-moz-user-input", "auto none enabled disabled",
+${helpers.single_keyword("-moz-user-input", "auto none",
                          products="gecko", gecko_ffi_name="mUserInput",
                          gecko_enum_prefix="StyleUserInput",
                          animation_value_type="discrete",
@@ -43,11 +43,10 @@ ${helpers.single_keyword("-moz-user-focus",
 
 ${helpers.predefined_type(
     "caret-color",
-    "ColorOrAuto",
-    "Either::Second(Auto)",
+    "CaretColor",
+    "generics::pointing::CaretColor::Auto",
     spec="https://drafts.csswg.org/css-ui/#caret-color",
-    animation_value_type="Either<AnimatedColor, Auto>",
-    boxed=not RUSTC_HAS_PR45225,
+    animation_value_type="AnimatedCaretColor",
     ignored_when_colors_disabled=True,
     products="gecko",
 )}

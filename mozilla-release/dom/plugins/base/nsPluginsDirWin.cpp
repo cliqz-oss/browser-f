@@ -26,41 +26,6 @@
 #include "nsIFile.h"
 #include "nsUnicharUtils.h"
 
-#include <shlwapi.h>
-#define SHOCKWAVE_BASE_FILENAME L"np32dsw"
-/**
- * Determines whether or not SetDllDirectory should be called for this plugin.
- *
- * @param pluginFilePath The full path of the plugin file
- * @return true if SetDllDirectory can be called for the plugin
- */
-bool
-ShouldProtectPluginCurrentDirectory(char16ptr_t pluginFilePath)
-{
-  LPCWSTR passedInFilename = PathFindFileName(pluginFilePath);
-  if (!passedInFilename) {
-    return true;
-  }
-
-  // Somewhere in the middle of 11.6 version of Shockwave, naming of the DLL
-  // after its version number is introduced.
-  if (!wcsicmp(passedInFilename, SHOCKWAVE_BASE_FILENAME L".dll")) {
-    return false;
-  }
-
-  // Shockwave versions before 1202122 will break if you call SetDllDirectory
-  const uint64_t kFixedShockwaveVersion = 1202122;
-  uint64_t version;
-  int found = swscanf(passedInFilename, SHOCKWAVE_BASE_FILENAME L"_%llu.dll",
-                      &version);
-  if (found && version < kFixedShockwaveVersion) {
-    return false;
-  }
-
-  // We always want to call SetDllDirectory otherwise
-  return true;
-}
-
 using namespace mozilla;
 
 /* Local helper functions */
@@ -237,33 +202,25 @@ static bool CanLoadPlugin(char16ptr_t aBinaryPath)
 // The file name must be in the form "np*.dll"
 bool nsPluginsDir::IsPluginFile(nsIFile* file)
 {
-  nsAutoCString path;
-  if (NS_FAILED(file->GetNativePath(path)))
+  nsAutoString path;
+  if (NS_FAILED(file->GetPath(path)))
     return false;
 
-  const char *cPath = path.get();
-
   // this is most likely a path, so skip to the filename
-  const char* filename = PL_strrchr(cPath, '\\');
-  if (filename)
-    ++filename;
-  else
-    filename = cPath;
+  auto filename = Substring(path, path.RFindChar('\\') + 1);
+  // The file name must have at least one character between "np" and ".dll".
+  if (filename.Length() < 7) {
+    return false;
+  }
 
-  char* extension = PL_strrchr(filename, '.');
-  if (extension)
-    ++extension;
-
-  uint32_t fullLength = strlen(filename);
-  uint32_t extLength = extension ? strlen(extension) : 0;
-  if (fullLength >= 7 && extLength == 3) {
-    if (!PL_strncasecmp(filename, "np", 2) && !PL_strncasecmp(extension, "dll", 3)) {
-      // don't load OJI-based Java plugins
-      if (!PL_strncasecmp(filename, "npoji", 5) ||
-          !PL_strncasecmp(filename, "npjava", 6))
-        return false;
-      return true;
-    }
+  ToLowerCase(filename);
+  if (StringBeginsWith(filename, NS_LITERAL_STRING("np")) &&
+      StringEndsWith(filename, NS_LITERAL_STRING(".dll"))) {
+    // don't load OJI-based Java plugins
+    if (StringBeginsWith(filename, NS_LITERAL_STRING("npoji")) ||
+        StringBeginsWith(filename, NS_LITERAL_STRING("npjava")))
+      return false;
+    return true;
   }
 
   return false;
@@ -291,12 +248,8 @@ nsresult nsPluginFile::LoadPlugin(PRLibrary **outLibrary)
   if (!mPlugin)
     return NS_ERROR_NULL_POINTER;
 
-  bool protectCurrentDirectory = true;
-
   nsAutoString pluginFilePath;
   mPlugin->GetPath(pluginFilePath);
-  protectCurrentDirectory =
-    ShouldProtectPluginCurrentDirectory(pluginFilePath.BeginReading());
 
   nsAutoString pluginFolderPath = pluginFilePath;
   int32_t idx = pluginFilePath.RFindChar('\\');
@@ -312,17 +265,14 @@ nsresult nsPluginFile::LoadPlugin(PRLibrary **outLibrary)
     NS_ASSERTION(restoreOrigDir, "Error in Loading plugin");
   }
 
-  if (protectCurrentDirectory) {
-    SetDllDirectory(nullptr);
-  }
+  // Temporarily add the current directory back to the DLL load path.
+  SetDllDirectory(nullptr);
 
   nsresult rv = mPlugin->Load(outLibrary);
   if (NS_FAILED(rv))
       *outLibrary = nullptr;
 
-  if (protectCurrentDirectory) {
-    SetDllDirectory(L"");
-  }
+  SetDllDirectory(L"");
 
   if (restoreOrigDir) {
     DebugOnly<BOOL> bCheck = SetCurrentDirectoryW(aOrigDir);

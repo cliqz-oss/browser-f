@@ -127,12 +127,58 @@ namespace mozilla {
 bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
 {
   std::vector<const char *> params;
-  char *profile = NULL;
-  bool profile_needs_free = false;
-
+  std::string profile;
   std::string macOSMinor = std::to_string(OSXVersion::OSXVersionMinor());
 
-  if (aInfo.type == MacSandboxType_Plugin) {
+  // Used for the Flash sandbox. Declared here so that they
+  // stay in scope until sandbox_init_with_parameters is called.
+  std::string flashCacheDir, flashTempDir, flashPath;
+
+  if (aInfo.type == MacSandboxType_Plugin &&
+      aInfo.pluginInfo.type == MacSandboxPluginType_Flash) {
+    profile = flashPluginSandboxRules;
+
+    params.push_back("SHOULD_LOG");
+    params.push_back(aInfo.shouldLog ? "TRUE" : "FALSE");
+
+    params.push_back("MAC_OS_MINOR");
+    params.push_back(macOSMinor.c_str());
+
+    params.push_back("HOME_PATH");
+    params.push_back(getenv("HOME"));
+
+    params.push_back("PLUGIN_BINARY_PATH");
+    flashPath = realpath(aInfo.pluginInfo.pluginBinaryPath.c_str(), nullptr);
+    if (flashPath.empty()) {
+      return false;
+    }
+    params.push_back(flashPath.c_str());
+
+    // User cache dir
+    params.push_back("DARWIN_USER_CACHE_DIR");
+    char cacheDir[PATH_MAX];
+    if (!confstr(_CS_DARWIN_USER_CACHE_DIR, cacheDir, sizeof(cacheDir))) {
+      return false;
+    }
+    flashCacheDir = realpath(cacheDir, nullptr);
+    if (flashCacheDir.empty()) {
+      return false;
+    }
+    params.push_back(flashCacheDir.c_str());
+
+    // User temp dir
+    params.push_back("DARWIN_USER_TEMP_DIR");
+    char tempDir[PATH_MAX];
+    if (!confstr(_CS_DARWIN_USER_TEMP_DIR, tempDir, sizeof(tempDir))) {
+      return false;
+    }
+    flashTempDir = realpath(tempDir, nullptr);
+    if (flashTempDir.empty()) {
+      return false;
+    }
+    params.push_back(flashTempDir.c_str());
+  }
+  else if (aInfo.type == MacSandboxType_Plugin) {
     profile = const_cast<char *>(pluginSandboxRules);
     params.push_back("SHOULD_LOG");
     params.push_back(aInfo.shouldLog ? "TRUE" : "FALSE");
@@ -144,17 +190,13 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
     params.push_back(aInfo.appBinaryPath.c_str());
 
     if (aInfo.pluginInfo.type == MacSandboxPluginType_GMPlugin_EME_Widevine) {
-      char *widevineProfile = NULL;
-      asprintf(&widevineProfile, "%s%s", profile,
-        widevinePluginSandboxRulesAddend);
-      profile = widevineProfile;
-      profile_needs_free = true;
+      profile.append(widevinePluginSandboxRulesAddend);
     }
   }
   else if (aInfo.type == MacSandboxType_Content) {
     MOZ_ASSERT(aInfo.level >= 1);
     if (aInfo.level >= 1) {
-      profile = const_cast<char *>(contentSandboxRules);
+      profile = contentSandboxRules;
       params.push_back("SHOULD_LOG");
       params.push_back(aInfo.shouldLog ? "TRUE" : "FALSE");
       params.push_back("SANDBOX_LEVEL_1");
@@ -171,8 +213,6 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
       params.push_back(aInfo.appBinaryPath.c_str());
       params.push_back("APP_DIR");
       params.push_back(aInfo.appDir.c_str());
-      params.push_back("APP_TEMP_DIR");
-      params.push_back(aInfo.appTempDir.c_str());
       params.push_back("PROFILE_DIR");
       params.push_back(aInfo.profileDir.c_str());
       params.push_back("HOME_PATH");
@@ -203,11 +243,10 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
 #endif // DEBUG
 
       if (aInfo.hasFilePrivileges) {
-        char *fileContentProfile = NULL;
-        asprintf(&fileContentProfile, "%s%s", profile,
-          fileContentProcessAddend);
-        profile = fileContentProfile;
-        profile_needs_free = true;
+        profile.append(fileContentProcessAddend);
+      }
+      if (aInfo.hasAudio) {
+        profile.append(contentProcessAudioAddend);
       }
     } else {
       fprintf(stderr,
@@ -225,7 +264,7 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
     return false;
   }
 
-  if (!profile) {
+  if (profile.empty()) {
     fprintf(stderr, "Out of memory in StartMacSandbox()!\n");
     return false;
   }
@@ -240,14 +279,14 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
   for (size_t i = 0; i < params.size() / 2; i++) {
     printf("  %s = %s\n", params[i * 2], params[(i * 2) + 1]);
   }
-  printf("Sandbox profile:\n%s\n", profile);
+  printf("Sandbox profile:\n%s\n", profile.c_str());
 #endif
 
   // The parameters array is null terminated.
   params.push_back(nullptr);
 
   char *errorbuf = NULL;
-  int rv = sandbox_init_with_parameters(profile, 0, params.data(),
+  int rv = sandbox_init_with_parameters(profile.c_str(), 0, params.data(),
                                         &errorbuf);
   if (rv) {
     if (errorbuf) {
@@ -257,12 +296,9 @@ bool StartMacSandbox(MacSandboxInfo const &aInfo, std::string &aErrorMessage)
         aErrorMessage.assign(msg);
         free(msg);
       }
-      fprintf(stderr, "profile: %s\n", profile);
+      fprintf(stderr, "profile: %s\n", profile.c_str());
       sandbox_free_error(errorbuf);
     }
-  }
-  if (profile_needs_free) {
-    free(profile);
   }
   if (rv) {
     return false;

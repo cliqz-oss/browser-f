@@ -1,11 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function CanDecryptEngine() {
   SyncEngine.call(this, "CanDecrypt", Service);
@@ -46,7 +46,7 @@ let canDecryptEngine;
 let cannotDecryptEngine;
 
 add_task(async function setup() {
-  Service.engineManager.clear();
+  await Service.engineManager.clear();
 
   await Service.engineManager.register(CanDecryptEngine);
   await Service.engineManager.register(CannotDecryptEngine);

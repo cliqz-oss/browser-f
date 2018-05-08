@@ -56,8 +56,6 @@ HyperTextAccessible::
   mGenericTypes |= eHyperText;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(HyperTextAccessible, Accessible)
-
 role
 HyperTextAccessible::NativeRole()
 {
@@ -428,7 +426,7 @@ HyperTextAccessible::OffsetToDOMPoint(int32_t aOffset)
   nsINode* node = child->GetNode();
   nsINode* parentNode = node->GetParentNode();
   return parentNode ?
-    DOMPoint(parentNode, parentNode->IndexOf(node) + innerOffset) :
+    DOMPoint(parentNode, parentNode->ComputeIndexOf(node) + innerOffset) :
     DOMPoint();
 }
 
@@ -1154,6 +1152,13 @@ HyperTextAccessible::LandmarkRole() const
     nsAutoString name;
     const_cast<HyperTextAccessible*>(this)->Name(name);
     return name.IsEmpty() ? nullptr : nsGkAtoms::region;
+  }
+
+  // Only return xml-roles "form" if the form has an accessible name.
+  if (mContent->IsHTMLElement(nsGkAtoms::form)) {
+    nsAutoString name;
+    const_cast<HyperTextAccessible*>(this)->Name(name);
+    return name.IsEmpty() ? nullptr : nsGkAtoms::form;
   }
 
   return nullptr;
@@ -2081,7 +2086,7 @@ HyperTextAccessible::GetDOMPointByFrameOffset(nsIFrame* aFrame, int32_t aOffset,
 
     nsIContent* parent = content->GetParent();
 
-    aPoint->idx = parent->IndexOf(content) + 1;
+    aPoint->idx = parent->ComputeIndexOf(content) + 1;
     aPoint->node = parent;
 
   } else if (aFrame->IsTextFrame()) {
@@ -2101,7 +2106,7 @@ HyperTextAccessible::GetDOMPointByFrameOffset(nsIFrame* aFrame, int32_t aOffset,
     nsIContent* parent = content->GetParent();
     NS_ENSURE_STATE(parent);
 
-    aPoint->idx = parent->IndexOf(content);
+    aPoint->idx = parent->ComputeIndexOf(content);
     aPoint->node = parent;
   }
 

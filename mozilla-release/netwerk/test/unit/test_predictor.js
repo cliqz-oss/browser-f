@@ -1,12 +1,6 @@
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-var Cc = Components.classes;
-
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/LoadContextInfo.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var running_single_process = false;
 
@@ -40,7 +34,7 @@ ValidityChecker.prototype = {
         iid.equals(Ci.nsICacheEntryOpenCallback)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   onCacheEntryCheck: function(entry, appCache)
@@ -106,7 +100,7 @@ Verifier.prototype = {
     dump("checking validity of entry for " + uri.spec + "\n");
     var checker = new ValidityChecker(this, status);
     asyncOpenCacheEntry(uri.spec, "disk",
-        Ci.nsICacheStorage.OPEN_NORMALLY, LoadContextInfo.default,
+        Ci.nsICacheStorage.OPEN_NORMALLY, Services.loadContextInfo.default,
         checker);
   },
 
@@ -179,7 +173,7 @@ var prepListener = {
 };
 
 function open_and_continue(uris, continueCallback) {
-  var ds = Services.cache2.diskCacheStorage(LoadContextInfo.default, false);
+  var ds = Services.cache2.diskCacheStorage(Services.loadContextInfo.default, false);
 
   prepListener.init(uris.length, continueCallback);
   for (var i = 0; i < uris.length; ++i) {
@@ -381,7 +375,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 
@@ -389,7 +383,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 
@@ -397,7 +391,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 

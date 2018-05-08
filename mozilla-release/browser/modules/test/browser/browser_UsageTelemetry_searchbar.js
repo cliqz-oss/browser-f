@@ -2,8 +2,8 @@
 
 const SCALAR_SEARCHBAR = "browser.engagement.navigation.searchbar";
 
-XPCOMUtils.defineLazyModuleGetter(this, "URLBAR_SELECTED_RESULT_METHODS",
-                                  "resource:///modules/BrowserUsageTelemetry.jsm");
+ChromeUtils.defineModuleGetter(this, "URLBAR_SELECTED_RESULT_METHODS",
+                               "resource:///modules/BrowserUsageTelemetry.jsm");
 
 function checkHistogramResults(resultIndexes, expected, histogram) {
   for (let i = 0; i < resultIndexes.counts.length; i++) {
@@ -40,27 +40,13 @@ let searchInSearchbar = async function(inputText) {
  *        The name of the elemet to click on.
  */
 function clickSearchbarSuggestion(entryName) {
-  let popup = BrowserSearch.searchBar.textbox.popup;
-  let column = popup.tree.columns[0];
+  let richlistbox = BrowserSearch.searchBar.textbox.popup.richlistbox;
+  let richlistitem = Array.prototype.find.call(richlistbox.children,
+                     item => item.getAttribute("ac-value") == entryName);
 
-  for (let rowID = 0; rowID < popup.tree.view.rowCount; rowID++) {
-    const suggestion = popup.tree.view.getValueAt(rowID, column);
-    if (suggestion !== entryName) {
-      continue;
-    }
-
-    // Make sure the suggestion is visible, just in case.
-    let tbo = popup.tree.treeBoxObject;
-    tbo.ensureRowIsVisible(rowID);
-    // Calculate the click coordinates.
-    let rect = tbo.getCoordsForCellItem(rowID, column, "text");
-    let x = rect.x + rect.width / 2;
-    let y = rect.y + rect.height / 2;
-    // Simulate the click.
-    EventUtils.synthesizeMouse(popup.tree.body, x, y, {},
-                               popup.tree.ownerGlobal);
-    break;
-  }
+  // Make sure the suggestion is visible and simulate the click.
+  richlistbox.ensureElementIsVisible(richlistitem);
+  EventUtils.synthesizeMouseAtCenter(richlistitem, {});
 }
 
 add_task(async function setup() {
@@ -115,7 +101,7 @@ add_task(async function test_plainQuery() {
   info("Simulate entering a simple search.");
   let p = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await searchInSearchbar("simple query");
-  EventUtils.sendKey("return");
+  EventUtils.synthesizeKey("KEY_Enter");
   await p;
 
   // Check if the scalars contain the expected values.
@@ -157,8 +143,8 @@ add_task(async function test_oneOff_enter() {
   await searchInSearchbar("query");
 
   info("Pressing Alt+Down to highlight the first one off engine.");
-  EventUtils.synthesizeKey("VK_DOWN", { altKey: true });
-  EventUtils.sendKey("return");
+  EventUtils.synthesizeKey("KEY_ArrowDown", {altKey: true});
+  EventUtils.synthesizeKey("KEY_Enter");
   await p;
 
   // Check if the scalars contain the expected values.
@@ -212,9 +198,9 @@ add_task(async function test_oneOff_enterSelection() {
   await searchInSearchbar("query");
 
   info("Select the second result, press Alt+Down to take us to the first one-off engine.");
-  EventUtils.synthesizeKey("VK_DOWN", {});
-  EventUtils.synthesizeKey("VK_DOWN", { altKey: true });
-  EventUtils.sendKey("return");
+  EventUtils.synthesizeKey("KEY_ArrowDown");
+  EventUtils.synthesizeKey("KEY_ArrowDown", {altKey: true});
+  EventUtils.synthesizeKey("KEY_Enter");
   await p;
 
   let resultMethods = resultMethodHist.snapshot();
@@ -336,8 +322,8 @@ add_task(async function test_suggestion_enterSelection() {
   let p = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await searchInSearchbar("query");
   info("Select the second result and press Return.");
-  EventUtils.synthesizeKey("VK_DOWN", {});
-  EventUtils.sendKey("return");
+  EventUtils.synthesizeKey("KEY_ArrowDown");
+  EventUtils.synthesizeKey("KEY_Enter");
   await p;
 
   let resultMethods = resultMethodHist.snapshot();

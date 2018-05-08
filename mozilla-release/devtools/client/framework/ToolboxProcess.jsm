@@ -6,16 +6,13 @@
 
 "use strict";
 
-const { interfaces: Ci, utils: Cu, results: Cr } = Components;
-
 const DBG_XUL = "chrome://devtools/content/framework/toolbox-process-window.xul";
 const CHROME_DEBUGGER_PROFILE_NAME = "chrome_debugger_profile";
 
-const { console } = Cu.import("resource://gre/modules/Console.jsm", {});
-const { require, DevToolsLoader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require, DevToolsLoader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Subprocess", "resource://gre/modules/Subprocess.jsm");
+ChromeUtils.defineModuleGetter(this, "Subprocess", "resource://gre/modules/Subprocess.jsm");
 XPCOMUtils.defineLazyGetter(this, "Telemetry", function () {
   return require("devtools/client/shared/telemetry");
 });
@@ -93,7 +90,26 @@ EventEmitter.decorate(BrowserToolboxProcess);
  * @return object
  */
 BrowserToolboxProcess.init = function (onClose, onRun, options) {
+  if (!Services.prefs.getBoolPref("devtools.chrome.enabled") ||
+      !Services.prefs.getBoolPref("devtools.debugger.remote-enabled")) {
+    console.error("Could not start Browser Toolbox, you need to enable it.");
+    return null;
+  }
   return new BrowserToolboxProcess(onClose, onRun, options);
+};
+
+/**
+ * Figure out if there are any open Browser Toolboxes that'll need to be restored.
+ * @return bool
+ */
+BrowserToolboxProcess.getBrowserToolboxSessionState = function () {
+  for (let process of processes.values()) {
+    // Don't worry about addon toolboxes, we only want to restore the Browser Toolbox.
+    if (!process._options || !process._options.addonID) {
+      return true;
+    }
+  }
+  return false;
 };
 
 /**
@@ -317,7 +333,7 @@ BrowserToolboxProcess.prototype = {
    * @param {DebuggerServerConnection} connection
    *        The connection that was opened or closed.
    */
-  _onConnectionChange: function (evt, what, connection) {
+  _onConnectionChange: function (what, connection) {
     let wrappedJSObject = { what, connection };
     Services.obs.notifyObservers({ wrappedJSObject }, "toolbox-connection-change");
   },
@@ -330,7 +346,10 @@ BrowserToolboxProcess.prototype = {
       return;
     }
 
+    this.closed = true;
+
     dumpn("Cleaning up the chrome debugging process.");
+
     Services.obs.removeObserver(this.close, "quit-application");
 
     this._dbgProcess.stdout.close();
@@ -344,7 +363,6 @@ BrowserToolboxProcess.prototype = {
     }
 
     dumpn("Chrome toolbox is now closed...");
-    this.closed = true;
     this.emit("close", this);
     processes.delete(this);
 

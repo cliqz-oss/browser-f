@@ -12,10 +12,10 @@
 
 /* globals TabBase, WindowBase, TabTrackerBase, WindowTrackerBase, TabManagerBase, WindowManagerBase */
 
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "RecentWindow",
+                               "resource:///modules/RecentWindow.jsm");
 
 var {
   ExtensionError,
@@ -656,6 +656,10 @@ class Tab extends TabBase {
   }
 
   get active() {
+    return this.nativeTab.selected;
+  }
+
+  get highlighted() {
     return this.nativeTab.selected;
   }
 

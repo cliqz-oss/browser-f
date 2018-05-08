@@ -5,15 +5,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "vm/PIC.h"
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsobj.h"
-#include "gc/Marking.h"
 
+#include "gc/FreeOp.h"
+#include "gc/Marking.h"
 #include "vm/GlobalObject.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/SelfHosting.h"
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -95,7 +96,7 @@ js::ForOfPIC::Chain::tryOptimizeArray(JSContext* cx, HandleArrayObject array, bo
 
     } else if (!disabled_ && !isArrayStateStillSane()) {
         // Otherwise, if array state is no longer sane, reinitialize.
-        reset(cx);
+        reset();
 
         if (!initialize(cx))
             return false;
@@ -174,7 +175,7 @@ js::ForOfPIC::Chain::isArrayStateStillSane()
 }
 
 void
-js::ForOfPIC::Chain::reset(JSContext* cx)
+js::ForOfPIC::Chain::reset()
 {
     // Should never reset a disabled_ stub.
     MOZ_ASSERT(!disabled_);

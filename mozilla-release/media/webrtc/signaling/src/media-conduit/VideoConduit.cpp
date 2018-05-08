@@ -76,6 +76,8 @@ static const char* vcLogTag = "WebrtcVideoSessionConduit";
 #endif
 #define LOGTAG vcLogTag
 
+using LocalDirection = MediaSessionConduitLocalDirection;
+
 static const int kNullPayloadType = -1;
 static const char* kUlpFecPayloadName = "ulpfec";
 static const char* kRedPayloadName = "red";
@@ -320,20 +322,15 @@ WebrtcVideoConduit::~WebrtcVideoConduit()
   Destroy();
 }
 
-void
-WebrtcVideoConduit::SetLocalRTPExtensions(bool aIsSend,
-                                          const RtpExtList & aExtensions)
+MediaConduitErrorCode
+WebrtcVideoConduit::SetLocalRTPExtensions(LocalDirection aDirection,
+                                          const RtpExtList& aExtensions)
 {
-  auto& extList = aIsSend ? mSendStreamConfig.rtp.extensions :
-                  mRecvStreamConfig.rtp.extensions;
+  auto& extList = aDirection == LocalDirection::kSend ?
+                                    mSendStreamConfig.rtp.extensions :
+                                    mRecvStreamConfig.rtp.extensions;
   extList = aExtensions;
-}
-
-RtpExtList
-WebrtcVideoConduit::GetLocalRTPExtensions(bool aIsSend) const
-{
-  return aIsSend ? mSendStreamConfig.rtp.extensions :
-                   mRecvStreamConfig.rtp.extensions;
+  return kMediaConduitNoError;
 }
 
 bool WebrtcVideoConduit::SetLocalSSRCs(const std::vector<unsigned int> & aSSRCs)
@@ -582,7 +579,20 @@ std::vector<webrtc::VideoStream>
 WebrtcVideoConduit::VideoStreamFactory::CreateEncoderStreams(int width, int height,
                                                              const webrtc::VideoEncoderConfig& config)
 {
-  auto streamCount = config.number_of_streams;
+  size_t streamCount = config.number_of_streams;
+
+  // Disallow odd width and height, they will cause aspect ratio checks to
+  // fail in the webrtc.org code. We can hit transient states after window
+  // sharing ends where odd resolutions are requested for the camera.
+  streamCount = std::min(streamCount, static_cast<size_t>(
+                         1 + std::min(CountTrailingZeroes32(width),
+                                      CountTrailingZeroes32(height))));
+
+  // We only allow one layer when screensharing
+  if (mConduit->mCodecMode == webrtc::VideoCodecMode::kScreensharing) {
+    streamCount = 1;
+  }
+
   std::vector<webrtc::VideoStream> streams;
   streams.reserve(streamCount);
   MOZ_ASSERT(mConduit);
@@ -1780,50 +1790,6 @@ WebrtcVideoConduit::SelectSendFrameRate(const VideoCodecConfig* codecConfig,
     }
   }
   return new_framerate;
-}
-
-MediaConduitErrorCode
-WebrtcVideoConduit::SendVideoFrame(const unsigned char* video_buffer,
-                                   unsigned int video_length,
-                                   unsigned short width,
-                                   unsigned short height,
-                                   VideoType video_type,
-                                   uint64_t capture_time)
-{
-  // check for parameter sanity
-  if (!video_buffer || video_length == 0 || width == 0 || height == 0) {
-    CSFLogError(LOGTAG, "%s Invalid Parameters ", __FUNCTION__);
-    MOZ_ASSERT(false);
-    return kMediaConduitMalformedArgument;
-  }
-  MOZ_ASSERT(video_type == VideoType::kVideoI420);
-
-  // Transmission should be enabled before we insert any frames.
-  if (!mEngineTransmitting) {
-    CSFLogError(LOGTAG, "%s Engine not transmitting ", __FUNCTION__);
-    return kMediaConduitSessionNotInited;
-  }
-
-  // insert the frame to video engine in I420 format only
-  const int stride_y = width;
-  const int stride_uv = (width + 1) / 2;
-
-  const uint8_t* buffer_y = video_buffer;
-  const uint8_t* buffer_u = buffer_y + stride_y * height;
-  const uint8_t* buffer_v = buffer_u + stride_uv * ((height + 1) / 2);
-  rtc::Callback0<void> callback_unused;
-  rtc::scoped_refptr<webrtc::WrappedI420Buffer> video_frame_buffer(
-    new rtc::RefCountedObject<webrtc::WrappedI420Buffer>(
-      width, height,
-      buffer_y, stride_y,
-      buffer_u, stride_uv,
-      buffer_v, stride_uv,
-      callback_unused));
-
-  webrtc::VideoFrame video_frame(video_frame_buffer, capture_time,
-                                 capture_time, webrtc::kVideoRotation_0); // XXX
-
-  return SendVideoFrame(video_frame);
 }
 
 void

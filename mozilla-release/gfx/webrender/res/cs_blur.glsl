@@ -21,6 +21,24 @@ in int aBlurRenderTaskAddress;
 in int aBlurSourceTaskAddress;
 in int aBlurDirection;
 
+struct BlurTask {
+    RenderTaskCommonData common_data;
+    float blur_radius;
+    vec4 color;
+};
+
+BlurTask fetch_blur_task(int address) {
+    RenderTaskData task_data = fetch_render_task_data(address);
+
+    BlurTask task = BlurTask(
+        task_data.common_data,
+        task_data.data1.x,
+        task_data.data2
+    );
+
+    return task;
+}
+
 void main(void) {
     BlurTask blur_task = fetch_blur_task(aBlurRenderTaskAddress);
     RenderTaskCommonData src_task = fetch_render_task_common_data(aBlurSourceTaskAddress);
@@ -44,6 +62,8 @@ void main(void) {
         case DIR_VERTICAL:
             vOffsetScale = vec2(0.0, 1.0 / texture_size.y);
             break;
+        default:
+            vOffsetScale = vec2(0.0);
     }
 
     vUvRect = vec4(src_rect.p0 + vec2(0.5),

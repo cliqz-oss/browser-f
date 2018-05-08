@@ -4,26 +4,22 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["StartupPerformance"];
+var EXPORTED_SYMBOLS = ["StartupPerformance"];
 
-const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
+ChromeUtils.defineModuleGetter(this, "setTimeout",
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
+ChromeUtils.defineModuleGetter(this, "clearTimeout",
   "resource://gre/modules/Timer.jsm");
 
 const COLLECT_RESULTS_AFTER_MS = 10000;
 
 const OBSERVED_TOPICS = ["sessionstore-restoring-on-startup", "sessionstore-initiating-manual-restore"];
 
-this.StartupPerformance = {
+var StartupPerformance = {
   /**
    * Once we have finished restoring initial tabs, we broadcast on this topic.
    */

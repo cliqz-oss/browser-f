@@ -6,8 +6,6 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 /**
  * This frame script is only loaded for sessionstore mochitests. It contains
  * a bunch of utility functions used to test form data collection and
@@ -31,7 +29,7 @@ function queryElement(data) {
   }
 
   if (data.hasOwnProperty("xpath")) {
-    let xptype = Ci.nsIDOMXPathResult.FIRST_ORDERED_NODE_TYPE;
+    let xptype = doc.defaultView.XPathResult.FIRST_ORDERED_NODE_TYPE;
     return doc.evaluate(data.xpath, doc, null, xptype, null).singleNodeValue;
   }
 
@@ -49,23 +47,6 @@ function defineListener(type, cb) {
     sendAsyncMessage("ss-test:" + type, cb(data));
   });
 }
-
-defineListener("sendKeyEvent", function(data) {
-  let frame = content;
-  if (data.hasOwnProperty("frame")) {
-    frame = content.frames[data.frame];
-  }
-
-  let ifreq = frame.QueryInterface(Ci.nsIInterfaceRequestor);
-  let utils = ifreq.getInterface(Ci.nsIDOMWindowUtils);
-
-  let keyCode = data.key.charCodeAt(0);
-  let charCode = Ci.nsIDOMKeyEvent.DOM_VK_A + keyCode - "a".charCodeAt(0);
-
-  utils.sendKeyEvent("keydown", keyCode, charCode, null);
-  utils.sendKeyEvent("keypress", keyCode, charCode, null);
-  utils.sendKeyEvent("keyup", keyCode, charCode, null);
-});
 
 defineListener("getInnerHTML", function(data) {
   return queryElement(data).innerHTML;

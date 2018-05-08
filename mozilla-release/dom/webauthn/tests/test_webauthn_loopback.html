@@ -8,7 +8,7 @@
   <script type="text/javascript" src="pkijs/asn1.js"></script>
   <script type="text/javascript" src="pkijs/x509_schema.js"></script>
   <script type="text/javascript" src="pkijs/x509_simpl.js"></script>
-  <script type="text/javascript" src="cbor/cbor.js"></script>
+  <script type="text/javascript" src="cbor.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
@@ -24,7 +24,8 @@ SimpleTest.waitForExplicitFinish();
 
 SpecialPowers.pushPrefEnv({"set": [["security.webauth.webauthn", true],
                                    ["security.webauth.webauthn_enable_softtoken", true],
-                                   ["security.webauth.webauthn_enable_usbtoken", false]]},
+                                   ["security.webauth.webauthn_enable_usbtoken", false],
+                                   ["security.webauth.webauthn_testing_allow_direct_attestation", true]]},
 function() {
   is(navigator.authentication, undefined, "navigator.authentication does not exist any longer");
   isnot(navigator.credentials, undefined, "Credential Management API endpoint must exist");
@@ -65,6 +66,11 @@ function() {
     is(clientData.challenge, bytesToBase64UrlSafe(gCredentialChallenge), "Challenge is correct");
     is(clientData.origin, window.location.origin, "Origin is correct");
     is(clientData.hashAlgorithm, "SHA-256", "Hash algorithm is correct");
+    is(clientData.type, "webauthn.create", "Type is correct");
+
+    let extensions = aCredInfo.getClientExtensionResults();
+    is(extensions.appid, undefined, "appid extension wasn't used");
+    is(clientData.clientExtensions.appid, undefined, "appid extension wasn't sent");
 
     return webAuthnDecodeCBORAttestation(aCredInfo.response.attestationObject)
     .then(function(aAttestationObj) {
@@ -119,6 +125,7 @@ function() {
     is(clientData.challenge, bytesToBase64UrlSafe(gAssertionChallenge), "Challenge is correct");
     is(clientData.origin, window.location.origin, "Origin is correct");
     is(clientData.hashAlgorithm, "SHA-256", "Hash algorithm is correct");
+    is(clientData.type, "webauthn.get", "Type is correct");
 
     return webAuthnDecodeAuthDataArray(aAssertion.response.authenticatorData)
     .then(function(aAttestation) {
@@ -147,7 +154,8 @@ function() {
       rp: rp,
       user: user,
       challenge: gCredentialChallenge,
-      pubKeyCredParams: [param]
+      pubKeyCredParams: [param],
+      attestation: "direct"
     };
     credm.create({publicKey: makeCredentialOptions})
     .then(decodeCreatedCredential)

@@ -2,23 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["Async"];
+var EXPORTED_SYMBOLS = ["Async"];
 
-var {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-// Constants for makeSyncCallback, waitForSyncCallback.
-const CB_READY = {};
-const CB_COMPLETE = {};
-const CB_FAIL = {};
-
-const REASON_ERROR = Ci.mozIStorageStatementCallback.REASON_ERROR;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 /*
  * Helpers for various async operations.
  */
-this.Async = {
+var Async = {
 
   /**
    * Execute an arbitrary number of asynchronous functions one after the
@@ -48,65 +40,6 @@ this.Async = {
         f.apply(thisObj, args);
       }
     };
-  },
-
-  /**
-   * Helpers for making asynchronous calls within a synchronous API possible.
-   *
-   * If you value your sanity, do not look closely at the following functions.
-   */
-
-  /**
-   * Create a sync callback that remembers state, in particular whether it has
-   * been called.
-   * The returned callback can be called directly passing an optional arg which
-   * will be returned by waitForSyncCallback().  The callback also has a
-   * .throw() method, which takes an error object and will cause
-   * waitForSyncCallback to fail with the error object thrown as an exception
-   * (but note that the .throw method *does not* itself throw - it just causes
-   * the wait function to throw).
-   */
-  makeSyncCallback: function makeSyncCallback() {
-    // The main callback remembers the value it was passed, and that it got data.
-    let onComplete = function onComplete(data) {
-      onComplete.state = CB_COMPLETE;
-      onComplete.value = data;
-    };
-
-    // Initialize private callback data in preparation for being called.
-    onComplete.state = CB_READY;
-    onComplete.value = null;
-
-    // Allow an alternate callback to trigger an exception to be thrown.
-    onComplete.throw = function onComplete_throw(data) {
-      onComplete.state = CB_FAIL;
-      onComplete.value = data;
-    };
-
-    return onComplete;
-  },
-
-  /**
-   * Wait for a sync callback to finish.
-   */
-  waitForSyncCallback: function waitForSyncCallback(callback) {
-    // Grab the current thread so we can make it give up priority.
-    let tm = Cc["@mozilla.org/thread-manager;1"].getService();
-
-    // Keep waiting until our callback is triggered (unless the app is quitting).
-    tm.spinEventLoopUntil(() => !Async.checkAppReady || callback.state != CB_READY);
-
-    // Reset the state of the callback to prepare for another call.
-    let state = callback.state;
-    callback.state = CB_READY;
-
-    // Throw the value the callback decided to fail with.
-    if (state == CB_FAIL) {
-      throw callback.value;
-    }
-
-    // Return the value passed to the callback.
-    return callback.value;
   },
 
   /**
@@ -152,32 +85,6 @@ this.Async = {
   },
 
   /**
-   * Return the two things you need to make an asynchronous call synchronous
-   * by spinning the event loop.
-   */
-  makeSpinningCallback: function makeSpinningCallback() {
-    let cb = Async.makeSyncCallback();
-    function callback(error, ret) {
-      if (error)
-        cb.throw(error);
-      else
-        cb(ret);
-    }
-    callback.wait = () => Async.waitForSyncCallback(cb);
-    return callback;
-  },
-
-  promiseSpinningly(promise) {
-    let cb = Async.makeSpinningCallback();
-    promise.then(result => {
-      cb(null, result);
-    }, err => {
-      cb(err || new Error("Promise rejected without explicit error"));
-    });
-    return cb.wait();
-  },
-
-  /**
    * A "tight loop" of promises can still lock up the browser for some time.
    * Periodically waiting for a promise returned by this function will solve
    * that.
@@ -203,5 +110,87 @@ this.Async = {
         await Async.promiseYield();
       }
     };
+  },
+
+  /**
+   * Turn a synchronous iterator/iterable into an async iterator that calls a
+   * Async.jankYielder at each step.
+   *
+   * @param iterable {Iterable}
+   *        Iterable or iterator that should be wrapped. (Anything usable in
+   *        for..of should work)
+   *
+   * @param [maybeYield = 50] {number|() => Promise<void>}
+   *        Either an existing jankYielder to use, or a number to provide as the
+   *        argument to Async.jankYielder.
+   */
+  async* yieldingIterator(iterable, maybeYield = 50) {
+    if (typeof maybeYield == "number") {
+      maybeYield = Async.jankYielder(maybeYield);
+    }
+    for (let item of iterable) {
+      await maybeYield();
+      yield item;
+    }
+  },
+
+  asyncQueueCaller(log) {
+    return new AsyncQueueCaller(log);
+  },
+
+  asyncObserver(log, obj) {
+    return new AsyncObserver(log, obj);
   }
 };
+
+/**
+ * Allows consumers to enqueue asynchronous callbacks to be called in order.
+ * Typically this is used when providing a callback to a caller that doesn't
+ * await on promises.
+ */
+class AsyncQueueCaller {
+  constructor(log) {
+    this._log = log;
+    this._queue = Promise.resolve();
+    this.QueryInterface = XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]);
+  }
+
+  /**
+   * /!\ Never await on another function that calls enqueueCall /!\
+   *     on the same queue or we will deadlock.
+   */
+  enqueueCall(func) {
+    this._queue = (async () => {
+      await this._queue;
+      try {
+        await func();
+      } catch (e) {
+        this._log.error(e);
+      }
+    })();
+  }
+
+  promiseCallsComplete() {
+    return this._queue;
+  }
+}
+
+/*
+ * Subclass of AsyncQueueCaller that can be used with Services.obs directly.
+ * When this observe() is called, it will enqueue a call to the consumers's
+ * observe().
+ */
+class AsyncObserver extends AsyncQueueCaller {
+  constructor(obj, log) {
+    super(log);
+    this.obj = obj;
+  }
+
+  observe(subject, topic, data) {
+    this.enqueueCall(() => this.obj.observe(subject, topic, data));
+  }
+
+  promiseObserversComplete() {
+    return this.promiseCallsComplete();
+  }
+}

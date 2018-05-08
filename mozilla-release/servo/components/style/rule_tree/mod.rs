@@ -55,7 +55,7 @@ impl Drop for RuleTree {
         unsafe { self.gc(); }
 
         // After the GC, the free list should be empty.
-        debug_assert!(self.root.get().next_free.load(Ordering::Relaxed) == FREE_LIST_SENTINEL);
+        debug_assert_eq!(self.root.get().next_free.load(Ordering::Relaxed), FREE_LIST_SENTINEL);
 
         // Remove the sentinel. This indicates that GCs will no longer occur.
         // Any further drops of StrongRuleNodes must occur on the main thread,
@@ -472,22 +472,28 @@ impl RuleTree {
 /// where it likely did not result from a rigorous performance analysis.)
 const RULE_TREE_GC_INTERVAL: usize = 300;
 
-/// The cascade level these rules are relevant at, as per[1].
+/// The cascade level these rules are relevant at, as per[1][2][3].
+///
+/// Presentational hints for SVG and HTML are in the "author-level
+/// zero-specificity" level, that is, right after user rules, and before author
+/// rules.
 ///
 /// The order of variants declared here is significant, and must be in
 /// _ascending_ order of precedence.
 ///
 /// [1]: https://drafts.csswg.org/css-cascade/#cascade-origin
+/// [2]: https://drafts.csswg.org/css-cascade/#preshint
+/// [3]: https://html.spec.whatwg.org/multipage/#presentational-hints
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub enum CascadeLevel {
     /// Normal User-Agent rules.
     UANormal = 0,
-    /// Presentational hints.
-    PresHints,
     /// User normal rules.
     UserNormal,
+    /// Presentational hints.
+    PresHints,
     /// Author normal rules.
     AuthorNormal,
     /// Style attribute normal rules.
@@ -828,6 +834,8 @@ impl MallocSizeOf for RuleNode {
     }
 }
 
+// FIXME: use std::ptr::NonNull when Firefox requires Rust 1.25+
+
 #[derive(Clone)]
 struct WeakRuleNode {
     p: NonZeroPtrMut<RuleNode>,
@@ -844,7 +852,7 @@ malloc_size_of_is_0!(StrongRuleNode);
 
 impl StrongRuleNode {
     fn new(n: Box<RuleNode>) -> Self {
-        debug_assert!(n.parent.is_none() == !n.source.is_some());
+        debug_assert_eq!(n.parent.is_none(), !n.source.is_some());
 
         let ptr = Box::into_raw(n);
         log_new(ptr);
@@ -1072,7 +1080,7 @@ impl StrongRuleNode {
 
         me.free_count().store(0, Ordering::Relaxed);
 
-        debug_assert!(me.next_free.load(Ordering::Relaxed) == FREE_LIST_SENTINEL);
+        debug_assert_eq!(me.next_free.load(Ordering::Relaxed), FREE_LIST_SENTINEL);
     }
 
     unsafe fn maybe_gc(&self) {
@@ -1088,14 +1096,16 @@ impl StrongRuleNode {
     /// Returns true if any properties specified by `rule_type_mask` was set by
     /// an author rule.
     #[cfg(feature = "gecko")]
-    pub fn has_author_specified_rules<E>(&self,
-                                         mut element: E,
-                                         mut pseudo: Option<PseudoElement>,
-                                         guards: &StylesheetGuards,
-                                         rule_type_mask: u32,
-                                         author_colors_allowed: bool)
-        -> bool
-        where E: ::dom::TElement
+    pub fn has_author_specified_rules<E>(
+        &self,
+        mut element: E,
+        mut pseudo: Option<PseudoElement>,
+        guards: &StylesheetGuards,
+        rule_type_mask: u32,
+        author_colors_allowed: bool,
+    ) -> bool
+    where
+        E: ::dom::TElement
     {
         use gecko_bindings::structs::NS_AUTHOR_SPECIFIED_BACKGROUND;
         use gecko_bindings::structs::NS_AUTHOR_SPECIFIED_BORDER;

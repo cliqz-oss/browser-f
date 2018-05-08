@@ -7,7 +7,7 @@
  * to create a two-way communication channel between chrome and content code.
  */
 
-this.EXPORTED_SYMBOLS = ["WebChannel", "WebChannelBroker"];
+var EXPORTED_SYMBOLS = ["WebChannel", "WebChannelBroker"];
 
 const ERRNO_MISSING_PRINCIPAL          = 1;
 const ERRNO_NO_SUCH_CHANNEL            = 2;
@@ -15,10 +15,8 @@ const ERRNO_UNKNOWN_ERROR              = 999;
 const ERROR_UNKNOWN                    = "UNKNOWN_ERROR";
 
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 
 /**
@@ -163,7 +161,7 @@ var WebChannelBroker = Object.create({
  *        permission manager.
  * @constructor
  */
-this.WebChannel = function(id, originOrPermission) {
+var WebChannel = function(id, originOrPermission) {
   if (!id || !originOrPermission) {
     throw new Error("WebChannel id and originOrPermission are required.");
   }

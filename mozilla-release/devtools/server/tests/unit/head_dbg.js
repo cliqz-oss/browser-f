@@ -4,16 +4,12 @@
 /* eslint-disable no-shadow */
 
 "use strict";
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
 var CC = Components.Constructor;
 
 // Populate AppInfo before anything (like the shared loader) accesses
 // System.appinfo, which is a lazy getter.
 const _appInfo = {};
-Cu.import("resource://testing-common/AppInfo.jsm", _appInfo);
+ChromeUtils.import("resource://testing-common/AppInfo.jsm", _appInfo);
 _appInfo.updateAppInfo({
   ID: "devtools@tests.mozilla.org",
   name: "devtools-tests",
@@ -22,12 +18,9 @@ _appInfo.updateAppInfo({
   crashReporter: true,
 });
 
-const { require, loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const { worker } = Cu.import("resource://devtools/shared/worker/loader.js", {});
-const promise = require("promise");
+const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { worker } = ChromeUtils.import("resource://devtools/shared/worker/loader.js", {});
 const defer = require("devtools/shared/defer");
-const { Task } = require("devtools/shared/task");
-const { console } = require("resource://gre/modules/Console.jsm");
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 
 const Services = require("Services");
@@ -44,14 +37,12 @@ const { DebuggerClient } = require("devtools/shared/client/debugger-client");
 const ObjectClient = require("devtools/shared/client/object-client");
 const { MemoryFront } = require("devtools/shared/fronts/memory");
 
-const { addDebuggerToGlobal } = Cu.import("resource://gre/modules/jsdebugger.jsm", {});
+const { addDebuggerToGlobal } = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm", {});
 
 const systemPrincipal = Cc["@mozilla.org/systemprincipal;1"]
                         .createInstance(Ci.nsIPrincipal);
 
-var { loadSubScript, loadSubScriptWithOptions } =
-  Cc["@mozilla.org/moz/jssubscript-loader;1"]
-  .getService(Ci.mozIJSSubScriptLoader);
+var { loadSubScript, loadSubScriptWithOptions } = Services.scriptloader;
 
 /**
  * Initializes any test that needs to work with add-ons.
@@ -97,19 +88,19 @@ function makeMemoryActorTest(testGeneratorFunction) {
           return;
         }
 
-        Task.spawn(function* () {
+        (async function () {
           try {
             const memoryFront = new MemoryFront(client, tabForm, rootForm);
-            yield memoryFront.attach();
-            yield* testGeneratorFunction(client, memoryFront);
-            yield memoryFront.detach();
+            await memoryFront.attach();
+            await testGeneratorFunction(client, memoryFront);
+            await memoryFront.detach();
           } catch (err) {
             DevToolsUtils.reportException("makeMemoryActorTest", err);
             ok(false, "Got an error: " + err);
           }
 
           finishClient(client);
-        });
+        })();
       });
     });
   };
@@ -135,20 +126,20 @@ function makeFullRuntimeMemoryActorTest(testGeneratorFunction) {
           return;
         }
 
-        Task.spawn(function* () {
+        (async function () {
           try {
-            const rootForm = yield listTabs(client);
+            const rootForm = await listTabs(client);
             const memoryFront = new MemoryFront(client, form, rootForm);
-            yield memoryFront.attach();
-            yield* testGeneratorFunction(client, memoryFront);
-            yield memoryFront.detach();
+            await memoryFront.attach();
+            await testGeneratorFunction(client, memoryFront);
+            await memoryFront.detach();
           } catch (err) {
             DevToolsUtils.reportException("makeMemoryActorTest", err);
             ok(false, "Got an error: " + err);
           }
 
           finishClient(client);
-        });
+        })();
       });
     });
   };
@@ -323,8 +314,7 @@ var listener = {
   }
 };
 
-var consoleService = Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
-consoleService.registerListener(listener);
+Services.console.registerListener(listener);
 
 function check_except(func) {
   try {
@@ -353,7 +343,7 @@ function addTestGlobal(name, server = DebuggerServer) {
 // List the DebuggerClient |client|'s tabs, look for one whose title is
 // |title|, and apply |callback| to the packet's entry for that tab.
 function getTestTab(client, title, callback) {
-  client.listTabs(function (response) {
+  client.listTabs().then(function (response) {
     for (let tab of response.tabs) {
       if (tab.title === title) {
         callback(tab, response);
@@ -661,7 +651,7 @@ function executeOnNextTickAndWaitForPause(action, client) {
 }
 
 function evalCallback(debuggeeGlobal, func) {
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "(" + func + ")()",
     debuggeeGlobal,
     "1.8",

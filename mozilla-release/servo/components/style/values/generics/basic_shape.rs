@@ -18,7 +18,7 @@ pub type ClippingShape<BasicShape, Url> = ShapeSource<BasicShape, GeometryBox, U
 
 /// <https://drafts.fxtf.org/css-masking-1/#typedef-geometry-box>
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
+#[derive(Animate, Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum GeometryBox {
     FillBox,
     StrokeBox,
@@ -29,14 +29,17 @@ pub enum GeometryBox {
 /// A float area shape, for `shape-outside`.
 pub type FloatAreaShape<BasicShape, Image> = ShapeSource<BasicShape, ShapeBox, Image>;
 
-// https://drafts.csswg.org/css-shapes-1/#typedef-shape-box
-define_css_keyword_enum!(ShapeBox:
-    "margin-box" => MarginBox,
-    "border-box" => BorderBox,
-    "padding-box" => PaddingBox,
-    "content-box" => ContentBox
-);
-add_impls_for_keyword_enum!(ShapeBox);
+/// https://drafts.csswg.org/css-shapes-1/#typedef-shape-box
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Animate, Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum ShapeBox {
+    MarginBox,
+    BorderBox,
+    PaddingBox,
+    ContentBox,
+}
 
 /// A shape source, for some reference box.
 #[allow(missing_docs)]
@@ -46,7 +49,6 @@ pub enum ShapeSource<BasicShape, ReferenceBox, ImageOrUrl> {
     ImageOrUrl(ImageOrUrl),
     Shape(
         BasicShape,
-        #[animation(constant)]
         Option<ReferenceBox>,
     ),
     #[animation(error)]
@@ -59,9 +61,9 @@ pub enum ShapeSource<BasicShape, ReferenceBox, ImageOrUrl> {
 #[derive(Animate, Clone, ComputeSquaredDistance, Debug, MallocSizeOf, PartialEq)]
 #[derive(ToComputedValue, ToCss)]
 pub enum BasicShape<H, V, LengthOrPercentage> {
-    Inset(InsetRect<LengthOrPercentage>),
-    Circle(Circle<H, V, LengthOrPercentage>),
-    Ellipse(Ellipse<H, V, LengthOrPercentage>),
+    Inset(#[css(field_bound)] InsetRect<LengthOrPercentage>),
+    Circle(#[css(field_bound)] Circle<H, V, LengthOrPercentage>),
+    Ellipse(#[css(field_bound)] Ellipse<H, V, LengthOrPercentage>),
     Polygon(Polygon<LengthOrPercentage>),
 }
 
@@ -117,11 +119,14 @@ pub struct Polygon<LengthOrPercentage> {
 // NOTE: Basic shapes spec says that these are the only two values, however
 // https://www.w3.org/TR/SVG/painting.html#FillRuleProperty
 // says that it can also be `inherit`
-define_css_keyword_enum!(FillRule:
-    "nonzero" => NonZero,
-    "evenodd" => EvenOdd
-);
-add_impls_for_keyword_enum!(FillRule);
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq)]
+#[derive(ToComputedValue, ToCss)]
+pub enum FillRule {
+    Nonzero,
+    Evenodd,
+}
 
 // FIXME(nox): Implement ComputeSquaredDistance for T types and stop
 // using PartialEq here, this will let us derive this impl.
@@ -239,5 +244,5 @@ impl<L: ToCss> ToCss for Polygon<L> {
 
 impl Default for FillRule {
     #[inline]
-    fn default() -> Self { FillRule::NonZero }
+    fn default() -> Self { FillRule::Nonzero }
 }

@@ -4,12 +4,10 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
-
-let {profileStorage} = Cu.import("resource://formautofill/ProfileStorage.jsm", {});
+let {formAutofillStorage} = ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm", {});
 
 const {ADDRESSES_COLLECTION_NAME, CREDITCARDS_COLLECTION_NAME} = FormAutofillUtils;
 
@@ -115,13 +113,13 @@ var ParentUtils = {
   },
 
   _areRecordsMatching(recordA, recordB, collectionName) {
-    for (let field of profileStorage[collectionName].VALID_FIELDS) {
+    for (let field of formAutofillStorage[collectionName].VALID_FIELDS) {
       if (recordA[field] !== recordB[field]) {
         return false;
       }
     }
     // Check the internal field if both addresses have valid value.
-    for (let field of profileStorage.INTERNAL_FIELDS) {
+    for (let field of formAutofillStorage.INTERNAL_FIELDS) {
       if (field in recordA && field in recordB && (recordA[field] !== recordB[field])) {
         return false;
       }

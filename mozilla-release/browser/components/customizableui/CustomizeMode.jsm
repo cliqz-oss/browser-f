@@ -4,9 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["CustomizeMode"];
-
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["CustomizeMode"];
 
 const kPrefCustomizationDebug = "browser.uiCustomization.debug";
 const kPaletteId = "customization-palette";
@@ -14,7 +12,6 @@ const kDragDataTypePrefix = "text/toolbarwrapper-id/";
 const kSkipSourceNodePref = "browser.uiCustomization.skipSourceNodeCheck";
 const kDrawInTitlebarPref = "browser.tabs.drawInTitlebar";
 const kExtraDragSpacePref = "browser.tabs.extraDragSpace";
-const kMaxTransitionDurationMs = 2000;
 const kKeepBroadcastAttributes = "keepbroadcastattributeswhencustomizing";
 
 const kPanelItemContextMenu = "customizationPanelItemContextMenu";
@@ -24,24 +21,24 @@ const kDownloadAutohideCheckboxId = "downloads-button-autohide-checkbox";
 const kDownloadAutohidePanelId = "downloads-button-autohide-panel";
 const kDownloadAutoHidePref = "browser.download.autohideButton";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource:///modules/CustomizableUI.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource:///modules/CustomizableUI.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 Cu.importGlobalProperties(["CSS"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "DragPositionManager",
-                                  "resource:///modules/DragPositionManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
-                                  "resource:///modules/BrowserUITelemetry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
-                                  "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
-                                  "resource:///modules/sessionstore/SessionStore.jsm");
+ChromeUtils.defineModuleGetter(this, "DragPositionManager",
+                               "resource:///modules/DragPositionManager.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUITelemetry",
+                               "resource:///modules/BrowserUITelemetry.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
+                               "resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.defineModuleGetter(this, "SessionStore",
+                               "resource:///modules/sessionstore/SessionStore.jsm");
 XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
   const kUrl = "chrome://browser/locale/customizableui/customizableWidgets.properties";
   return Services.strings.createBundle(kUrl);
@@ -52,7 +49,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "gCosmeticAnimationsEnabled",
 let gDebug;
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let scope = {};
-  Cu.import("resource://gre/modules/Console.jsm", scope);
+  ChromeUtils.import("resource://gre/modules/Console.jsm", scope);
   gDebug = Services.prefs.getBoolPref(kPrefCustomizationDebug, false);
   let consoleOptions = {
     maxLogLevel: gDebug ? "all" : "log",
@@ -531,7 +528,7 @@ CustomizeMode.prototype = {
 
     while (aNode && aNode.parentNode) {
       let parent = aNode.parentNode;
-      if (areas.indexOf(parent.id) != -1) {
+      if (areas.includes(parent.id)) {
         return aNode;
       }
       aNode = parent;
@@ -571,11 +568,7 @@ CustomizeMode.prototype = {
       }
 
       // Wait until the next frame before setting the class to ensure
-      // we do start the animation. We cannot use promiseLayoutFlushed
-      // here because callback is only invoked when any actual reflow
-      // happens, while that may not happen soonish enough. If we have
-      // an observer for style flush, we may be able to replace the
-      // nested rAFs with that.
+      // we do start the animation.
       this.window.requestAnimationFrame(() => {
         this.window.requestAnimationFrame(() => {
           animationNode.classList.add("animate-out");
@@ -2423,7 +2416,8 @@ CustomizeMode.prototype = {
         panelOnTheLeft = true;
       }
     } else {
-      await BrowserUtils.promiseLayoutFlushed(doc, "display", () => {});
+      await this.window.promiseDocumentFlushed(() => {});
+
       if (!this._customizing || !this._wantToBeInCustomizeMode) {
         return;
       }

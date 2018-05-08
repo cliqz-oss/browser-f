@@ -9,19 +9,18 @@
 
 #include "vm/Interpreter.h"
 
-#include "jscompartment.h"
 #include "jsnum.h"
-#include "jsstr.h"
 
+#include "builtin/String.h"
 #include "jit/Ion.h"
 #include "vm/ArgumentsObject.h"
-
-#include "jsatominlines.h"
-#include "jsobjinlines.h"
+#include "vm/JSCompartment.h"
 
 #include "vm/EnvironmentObject-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSObject-inl.h"
 #include "vm/Stack-inl.h"
-#include "vm/String-inl.h"
+#include "vm/StringType-inl.h"
 #include "vm/UnboxedObject-inl.h"
 
 namespace js {
@@ -682,6 +681,24 @@ InitArrayElemOperation(JSContext* cx, jsbytecode* pc, HandleObject obj, uint32_t
             return false;
     }
 
+    return true;
+}
+
+static MOZ_ALWAYS_INLINE bool
+ProcessCallSiteObjOperation(JSContext* cx, HandleObject cso, HandleObject raw)
+{
+    MOZ_ASSERT(cso->is<ArrayObject>());
+    MOZ_ASSERT(raw->is<ArrayObject>());
+
+    if (cso->nonProxyIsExtensible()) {
+        RootedValue rawValue(cx, ObjectValue(*raw));
+        if (!DefineDataProperty(cx, cso, cx->names().raw, rawValue, 0))
+            return false;
+        if (!FreezeObject(cx, raw))
+            return false;
+        if (!FreezeObject(cx, cso))
+            return false;
+    }
     return true;
 }
 

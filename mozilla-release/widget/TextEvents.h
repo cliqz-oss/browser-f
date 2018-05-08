@@ -15,8 +15,8 @@
 #include "mozilla/FontRange.h"
 #include "mozilla/TextRange.h"
 #include "mozilla/WritingModes.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 #include "nsCOMPtr.h"
-#include "nsIDOMKeyEvent.h"
 #include "nsISelectionController.h"
 #include "nsISelectionListener.h"
 #include "nsITransferable.h"
@@ -43,10 +43,10 @@ namespace mozilla {
 
 enum : uint32_t
 {
-  eKeyLocationStandard = nsIDOMKeyEvent::DOM_KEY_LOCATION_STANDARD,
-  eKeyLocationLeft     = nsIDOMKeyEvent::DOM_KEY_LOCATION_LEFT,
-  eKeyLocationRight    = nsIDOMKeyEvent::DOM_KEY_LOCATION_RIGHT,
-  eKeyLocationNumpad   = nsIDOMKeyEvent::DOM_KEY_LOCATION_NUMPAD
+  eKeyLocationStandard = dom::KeyboardEventBinding::DOM_KEY_LOCATION_STANDARD,
+  eKeyLocationLeft     = dom::KeyboardEventBinding::DOM_KEY_LOCATION_LEFT,
+  eKeyLocationRight    = dom::KeyboardEventBinding::DOM_KEY_LOCATION_RIGHT,
+  eKeyLocationNumpad   = dom::KeyboardEventBinding::DOM_KEY_LOCATION_NUMPAD
 };
 
 const nsCString GetDOMKeyCodeName(uint32_t aKeyCode);
@@ -226,6 +226,52 @@ public:
   bool IsKeyEventOnPlugin() const
   {
     return IsKeyEventOnPlugin(mMessage);
+  }
+
+  bool IsInputtingText() const
+  {
+    // NOTE: On some keyboard layout, some characters are inputted with Control
+    //       key or Alt key, but at that time, widget unset the modifier flag
+    //       from eKeyPress event.
+    return mMessage == eKeyPress &&
+           mCharCode &&
+           !(mModifiers & (MODIFIER_ALT |
+                           MODIFIER_CONTROL |
+                           MODIFIER_META |
+                           MODIFIER_OS));
+  }
+
+  bool IsInputtingLineBreak() const
+  {
+    return mMessage == eKeyPress &&
+           mKeyNameIndex == KEY_NAME_INDEX_Enter &&
+           !(mModifiers & (MODIFIER_ALT |
+                           MODIFIER_CONTROL |
+                           MODIFIER_META |
+                           MODIFIER_OS));
+  }
+
+  /**
+   * ShouldKeyPressEventBeFiredOnContent() should be called only when the
+   * instance is eKeyPress event.  This returns true when the eKeyPress
+   * event should be fired even on content in the default event group.
+   */
+  bool ShouldKeyPressEventBeFiredOnContent() const
+  {
+    MOZ_DIAGNOSTIC_ASSERT(mMessage == eKeyPress);
+    if (IsInputtingText() || IsInputtingLineBreak()) {
+      return true;
+    }
+    // Ctrl + Enter won't cause actual input in our editor.
+    // However, the other browsers fire keypress event in any platforms.
+    // So, for compatibility with them, we should fire keypress event for
+    // Ctrl + Enter too.
+    return mMessage == eKeyPress &&
+           mKeyNameIndex == KEY_NAME_INDEX_Enter &&
+           !(mModifiers & (MODIFIER_ALT |
+                           MODIFIER_META |
+                           MODIFIER_OS |
+                           MODIFIER_SHIFT));
   }
 
   virtual WidgetEvent* Duplicate() const override
@@ -412,6 +458,17 @@ public:
     }
     GetDOMCodeName(mCodeNameIndex, aCodeName);
   }
+
+  /**
+   * GetFallbackKeyCodeOfPunctuationKey() returns a DOM keyCode value for
+   * aCodeNameIndex.  This is keyCode value of the key when active keyboard
+   * layout is ANSI (US), JIS or ABNT keyboard layout (the latter 2 layouts
+   * are used only when ANSI doesn't have the key).  The result is useful
+   * if the key doesn't produce ASCII character with active keyboard layout
+   * nor with alternative ASCII capable keyboard layout.
+   */
+  static uint32_t
+  GetFallbackKeyCodeOfPunctuationKey(CodeNameIndex aCodeNameIndex);
 
   bool IsModifierKeyEvent() const
   {

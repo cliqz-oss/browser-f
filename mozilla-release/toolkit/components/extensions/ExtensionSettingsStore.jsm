@@ -40,18 +40,16 @@
  *
  */
 
-this.EXPORTED_SYMBOLS = ["ExtensionSettingsStore"];
+var EXPORTED_SYMBOLS = ["ExtensionSettingsStore"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "JSONFile",
-                                  "resource://gre/modules/JSONFile.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManager",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "JSONFile",
+                               "resource://gre/modules/JSONFile.jsm");
 
 const JSON_FILE_NAME = "extension-settings.json";
 const JSON_FILE_VERSION = 2;
@@ -90,10 +88,12 @@ function initialize() {
 }
 
 // Test-only method to force reloading of the JSON file.
-async function reloadFile(finalize) {
-  if (finalize) {
-    await _store.finalize();
+async function reloadFile(saveChanges) {
+  if (!saveChanges) {
+    // Disarm the saver so that the current changes are dropped.
+    _store._saver.disarm();
   }
+  await _store.finalize();
   _initializePromise = null;
   return initialize();
 }
@@ -241,7 +241,7 @@ function alterSetting(id, type, key, action) {
   return returnItem;
 }
 
-this.ExtensionSettingsStore = {
+var ExtensionSettingsStore = {
   /**
    * Loads the JSON file for the SettingsStore into memory.
    * The promise this returns must be resolved before asking the SettingsStore
@@ -305,7 +305,10 @@ this.ExtensionSettingsStore = {
         {id, installDate: addon.installDate.valueOf(), value, enabled: true});
     } else {
       // Item already exists or this extension, so update it.
-      keyInfo.precedenceList[foundIndex].value = value;
+      let item = keyInfo.precedenceList[foundIndex];
+      item.value = value;
+      // Ensure the item is enabled.
+      item.enabled = true;
     }
 
     // Sort the list.
@@ -508,12 +511,13 @@ this.ExtensionSettingsStore = {
    * Note that this method simply clears the local variable that stores the
    * file, so the next time the file is accessed it will be reloaded.
    *
-   * @param   {boolean} finalize
-   *          When false, skip finalizing the store (writing current state to file).
+   * @param   {boolean} saveChanges
+   *          When false, discard any changes that have been made since the last
+   *          time the store was saved.
    * @returns {Promise}
    *          A promise that resolves once the settings store has been cleared.
    */
-  _reloadFile(finalize = true) {
-    return reloadFile(finalize);
+  _reloadFile(saveChanges = true) {
+    return reloadFile(saveChanges);
   },
 };

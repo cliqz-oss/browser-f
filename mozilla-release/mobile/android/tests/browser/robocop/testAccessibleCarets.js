@@ -4,7 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+/* eslint-disable mozilla/use-chromeutils-import */
+
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Messaging.jsm");
 Cu.import("resource://gre/modules/Geometry.jsm");

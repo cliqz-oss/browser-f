@@ -23,7 +23,7 @@ public class ExpectSuccessRepositorySessionStoreDelegate extends
   }
 
   @Override
-  public void onRecordStoreSucceeded(String guid) {
+  public void onRecordStoreSucceeded(int count) {
     log("Record store succeeded.");
   }
 
@@ -41,6 +41,11 @@ public class ExpectSuccessRepositorySessionStoreDelegate extends
   @Override
   public void onRecordStoreReconciled(String guid, String oldGuid, Integer newVersion) {
     log("Store reconciled record " + guid);
+  }
+
+  @Override
+  public void onBatchCommitted() {
+    log("Batch committed");
   }
 
   @Override

@@ -4,33 +4,28 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+var EXPORTED_SYMBOLS = [ "TabCrashHandler",
+                         "PluginCrashReporter",
+                         "UnsubmittedCrashHandler" ];
 
-this.EXPORTED_SYMBOLS = [ "TabCrashHandler",
-                          "PluginCrashReporter",
-                          "UnsubmittedCrashHandler" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "CrashSubmit",
+ChromeUtils.defineModuleGetter(this, "CrashSubmit",
   "resource://gre/modules/CrashSubmit.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RemotePages",
+ChromeUtils.defineModuleGetter(this, "RemotePages",
   "resource://gre/modules/RemotePageManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
+ChromeUtils.defineModuleGetter(this, "RecentWindow",
   "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
+ChromeUtils.defineModuleGetter(this, "PluralForm",
   "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
+ChromeUtils.defineModuleGetter(this, "setTimeout",
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
+ChromeUtils.defineModuleGetter(this, "clearTimeout",
   "resource://gre/modules/Timer.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gNavigatorBundle", function() {
@@ -79,7 +74,7 @@ class BrowserWeakMap extends WeakMap {
   }
 }
 
-this.TabCrashHandler = {
+var TabCrashHandler = {
   _crashedTabCount: 0,
   childMap: new Map(),
   browserMap: new BrowserWeakMap(),
@@ -304,7 +299,7 @@ this.TabCrashHandler = {
     //    crash reports. If they are, we'll send the crash report
     //    immediately.
     if (childID &&
-        this.unseenCrashedChildIDs.indexOf(childID) != -1) {
+        this.unseenCrashedChildIDs.includes(childID)) {
       if (UnsubmittedCrashHandler.autoSubmit) {
         let dumpID = this.childMap.get(childID);
         if (dumpID) {
@@ -577,7 +572,7 @@ this.TabCrashHandler = {
  * submit those reports automatically without prompting if
  * the user has opted in.
  */
-this.UnsubmittedCrashHandler = {
+var UnsubmittedCrashHandler = {
   get prefs() {
     delete this.prefs;
     return this.prefs =
@@ -936,7 +931,7 @@ this.UnsubmittedCrashHandler = {
   },
 };
 
-this.PluginCrashReporter = {
+var PluginCrashReporter = {
   /**
    * Makes the PluginCrashReporter ready to hear about and
    * submit crash reports.

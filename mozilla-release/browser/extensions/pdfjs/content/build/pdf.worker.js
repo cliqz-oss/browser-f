@@ -92,7 +92,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /******/ 	__w_pdfjs_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __w_pdfjs_require__(__w_pdfjs_require__.s = 18);
+/******/ 	return __w_pdfjs_require__(__w_pdfjs_require__.s = 19);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -105,11 +105,11 @@ return /******/ (function(modules) { // webpackBootstrap
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.unreachable = exports.warn = exports.utf8StringToString = exports.stringToUTF8String = exports.stringToPDFString = exports.stringToBytes = exports.string32 = exports.shadow = exports.setVerbosityLevel = exports.ReadableStream = exports.removeNullCharacters = exports.readUint32 = exports.readUint16 = exports.readInt8 = exports.log2 = exports.loadJpegStream = exports.isEvalSupported = exports.isLittleEndian = exports.createValidAbsoluteUrl = exports.isSameOrigin = exports.isSpace = exports.isString = exports.isNum = exports.isEmptyObj = exports.isBool = exports.isArrayBuffer = exports.info = exports.getVerbosityLevel = exports.getLookupTableFactory = exports.deprecated = exports.createObjectURL = exports.createPromiseCapability = exports.createBlob = exports.bytesToString = exports.assert = exports.arraysToBytes = exports.arrayByteLength = exports.FormatError = exports.XRefParseException = exports.Util = exports.UnknownErrorException = exports.UnexpectedResponseException = exports.TextRenderingMode = exports.StreamType = exports.PasswordResponses = exports.PasswordException = exports.PageViewport = exports.NotImplementedException = exports.NativeImageDecoding = exports.MissingPDFException = exports.MissingDataException = exports.MessageHandler = exports.InvalidPDFException = exports.AbortException = exports.CMapCompressionType = exports.ImageKind = exports.FontType = exports.AnnotationType = exports.AnnotationFlag = exports.AnnotationFieldFlag = exports.AnnotationBorderStyleType = exports.UNSUPPORTED_FEATURES = exports.VERBOSITY_LEVELS = exports.OPS = exports.IDENTITY_MATRIX = exports.FONT_IDENTITY_MATRIX = undefined;
+exports.unreachable = exports.warn = exports.utf8StringToString = exports.stringToUTF8String = exports.stringToPDFString = exports.stringToBytes = exports.string32 = exports.shadow = exports.setVerbosityLevel = exports.ReadableStream = exports.removeNullCharacters = exports.readUint32 = exports.readUint16 = exports.readInt8 = exports.log2 = exports.isEvalSupported = exports.isLittleEndian = exports.createValidAbsoluteUrl = exports.isSameOrigin = exports.isSpace = exports.isString = exports.isNum = exports.isEmptyObj = exports.isBool = exports.isArrayBuffer = exports.info = exports.getVerbosityLevel = exports.getLookupTableFactory = exports.deprecated = exports.createObjectURL = exports.createPromiseCapability = exports.createBlob = exports.bytesToString = exports.assert = exports.arraysToBytes = exports.arrayByteLength = exports.FormatError = exports.XRefParseException = exports.Util = exports.UnknownErrorException = exports.UnexpectedResponseException = exports.TextRenderingMode = exports.StreamType = exports.PasswordResponses = exports.PasswordException = exports.PageViewport = exports.NotImplementedException = exports.NativeImageDecoding = exports.MissingPDFException = exports.MissingDataException = exports.MessageHandler = exports.InvalidPDFException = exports.AbortException = exports.CMapCompressionType = exports.ImageKind = exports.FontType = exports.AnnotationType = exports.AnnotationFlag = exports.AnnotationFieldFlag = exports.AnnotationBorderStyleType = exports.UNSUPPORTED_FEATURES = exports.VerbosityLevel = exports.OPS = exports.IDENTITY_MATRIX = exports.FONT_IDENTITY_MATRIX = undefined;
 
-__w_pdfjs_require__(20);
+__w_pdfjs_require__(21);
 
-var _streams_polyfill = __w_pdfjs_require__(21);
+var _streams_polyfill = __w_pdfjs_require__(22);
 
 var FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
 const NativeImageDecoding = {
@@ -227,10 +227,10 @@ var FontType = {
   TYPE0: 9,
   MMTYPE1: 10
 };
-var VERBOSITY_LEVELS = {
-  errors: 0,
-  warnings: 1,
-  infos: 5
+const VerbosityLevel = {
+  ERRORS: 0,
+  WARNINGS: 1,
+  INFOS: 5
 };
 var CMapCompressionType = {
   NONE: 0,
@@ -330,20 +330,22 @@ var OPS = {
   paintSolidColorImageMask: 90,
   constructPath: 91
 };
-var verbosity = VERBOSITY_LEVELS.warnings;
+let verbosity = VerbosityLevel.WARNINGS;
 function setVerbosityLevel(level) {
-  verbosity = level;
+  if (Number.isInteger(level)) {
+    verbosity = level;
+  }
 }
 function getVerbosityLevel() {
   return verbosity;
 }
 function info(msg) {
-  if (verbosity >= VERBOSITY_LEVELS.infos) {
+  if (verbosity >= VerbosityLevel.INFOS) {
     console.log('Info: ' + msg);
   }
 }
 function warn(msg) {
-  if (verbosity >= VERBOSITY_LEVELS.warnings) {
+  if (verbosity >= VerbosityLevel.WARNINGS) {
     console.log('Warning: ' + msg);
   }
 }
@@ -1310,21 +1312,10 @@ MessageHandler.prototype = {
     this.comObj.removeEventListener('message', this._onComObjOnMessage);
   }
 };
-function loadJpegStream(id, imageUrl, objs) {
-  var img = new Image();
-  img.onload = function loadJpegStream_onloadClosure() {
-    objs.resolve(id, img);
-  };
-  img.onerror = function loadJpegStream_onerrorClosure() {
-    objs.resolve(id, null);
-    warn('Error during JPEG image loading');
-  };
-  img.src = imageUrl;
-}
 exports.FONT_IDENTITY_MATRIX = FONT_IDENTITY_MATRIX;
 exports.IDENTITY_MATRIX = IDENTITY_MATRIX;
 exports.OPS = OPS;
-exports.VERBOSITY_LEVELS = VERBOSITY_LEVELS;
+exports.VerbosityLevel = VerbosityLevel;
 exports.UNSUPPORTED_FEATURES = UNSUPPORTED_FEATURES;
 exports.AnnotationBorderStyleType = AnnotationBorderStyleType;
 exports.AnnotationFieldFlag = AnnotationFieldFlag;
@@ -1371,7 +1362,6 @@ exports.isSameOrigin = isSameOrigin;
 exports.createValidAbsoluteUrl = createValidAbsoluteUrl;
 exports.isLittleEndian = isLittleEndian;
 exports.isEvalSupported = isEvalSupported;
-exports.loadJpegStream = loadJpegStream;
 exports.log2 = log2;
 exports.readInt8 = readInt8;
 exports.readUint16 = readUint16;
@@ -2753,9 +2743,9 @@ var ColorSpace = function ColorSpaceClosure() {
   };
   ColorSpace.parse = function (cs, xref, res, pdfFunctionFactory) {
     let IR = ColorSpace.parseToIR(cs, xref, res, pdfFunctionFactory);
-    return ColorSpace.fromIR(IR, pdfFunctionFactory);
+    return ColorSpace.fromIR(IR);
   };
-  ColorSpace.fromIR = function (IR, pdfFunctionFactory) {
+  ColorSpace.fromIR = function (IR) {
     var name = Array.isArray(IR) ? IR[0] : IR;
     var whitePoint, blackPoint, gamma;
     switch (name) {
@@ -2779,19 +2769,19 @@ var ColorSpace = function ColorSpaceClosure() {
       case 'PatternCS':
         var basePatternCS = IR[1];
         if (basePatternCS) {
-          basePatternCS = ColorSpace.fromIR(basePatternCS, pdfFunctionFactory);
+          basePatternCS = ColorSpace.fromIR(basePatternCS);
         }
         return new PatternCS(basePatternCS);
       case 'IndexedCS':
         var baseIndexedCS = IR[1];
         var hiVal = IR[2];
         var lookup = IR[3];
-        return new IndexedCS(ColorSpace.fromIR(baseIndexedCS, pdfFunctionFactory), hiVal, lookup);
+        return new IndexedCS(ColorSpace.fromIR(baseIndexedCS), hiVal, lookup);
       case 'AlternateCS':
         var numComps = IR[1];
         var alt = IR[2];
-        var tintFnIR = IR[3];
-        return new AlternateCS(numComps, ColorSpace.fromIR(alt, pdfFunctionFactory), pdfFunctionFactory.createFromIR(tintFnIR));
+        var tintFn = IR[3];
+        return new AlternateCS(numComps, ColorSpace.fromIR(alt), tintFn);
       case 'LabCS':
         whitePoint = IR[1];
         blackPoint = IR[2];
@@ -2900,8 +2890,8 @@ var ColorSpace = function ColorSpaceClosure() {
           var name = xref.fetchIfRef(cs[1]);
           numComps = Array.isArray(name) ? name.length : 1;
           alt = ColorSpace.parseToIR(cs[2], xref, res, pdfFunctionFactory);
-          let tintFnIR = pdfFunctionFactory.createIR(xref.fetchIfRef(cs[3]));
-          return ['AlternateCS', numComps, alt, tintFnIR];
+          let tintFn = pdfFunctionFactory.create(xref.fetchIfRef(cs[3]));
+          return ['AlternateCS', numComps, alt, tintFn];
         case 'Lab':
           params = xref.fetchIfRef(cs[1]);
           whitePoint = params.getArray('WhitePoint');
@@ -3616,7 +3606,7 @@ var _util = __w_pdfjs_require__(0);
 
 var _primitives = __w_pdfjs_require__(1);
 
-var _ccitt_stream = __w_pdfjs_require__(25);
+var _ccitt_stream = __w_pdfjs_require__(26);
 
 var _jbig2_stream = __w_pdfjs_require__(27);
 
@@ -3624,7 +3614,21 @@ var _jpeg_stream = __w_pdfjs_require__(6);
 
 var _jpx_stream = __w_pdfjs_require__(30);
 
-var MAX_LENGTH_TO_CACHE = 1000;
+const MAX_LENGTH_TO_CACHE = 1000;
+const MAX_ADLER32_LENGTH = 5552;
+function computeAdler32(bytes) {
+  let bytesLength = bytes.length;
+  if (bytesLength >= MAX_ADLER32_LENGTH) {
+    throw new Error('computeAdler32: The input is too large.');
+  }
+  let a = 1,
+      b = 0;
+  for (let i = 0; i < bytesLength; ++i) {
+    a += bytes[i] & 0xFF;
+    b += a;
+  }
+  return b % 65521 << 16 | a % 65521;
+}
 var Parser = function ParserClosure() {
   function Parser(lexer, allowStreams, xref, recoveryMode) {
     this.lexer = lexer;
@@ -3913,7 +3917,8 @@ var Parser = function ParserClosure() {
     makeInlineImage: function Parser_makeInlineImage(cipherTransform) {
       var lexer = this.lexer;
       var stream = lexer.stream;
-      var dict = new _primitives.Dict(this.xref);
+      let dict = new _primitives.Dict(this.xref),
+          dictLength;
       while (!(0, _primitives.isCmd)(this.buf1, 'ID') && !(0, _primitives.isEOF)(this.buf1)) {
         if (!(0, _primitives.isName)(this.buf1)) {
           throw new _util.FormatError('Dictionary key must be a name object');
@@ -3925,6 +3930,9 @@ var Parser = function ParserClosure() {
         }
         dict.set(key, this.getObj(cipherTransform));
       }
+      if (lexer.beginInlineImagePos !== -1) {
+        dictLength = stream.pos - lexer.beginInlineImagePos;
+      }
       var filter = dict.get('Filter', 'F'),
           filterName;
       if ((0, _primitives.isName)(filter)) {
@@ -3935,10 +3943,8 @@ var Parser = function ParserClosure() {
           filterName = filterZero.name;
         }
       }
-      var startPos = stream.pos,
-          length,
-          i,
-          ii;
+      let startPos = stream.pos,
+          length;
       if (filterName === 'DCTDecode' || filterName === 'DCT') {
         length = this.findDCTDecodeInlineStreamEnd(stream);
       } else if (filterName === 'ASCII85Decode' || filterName === 'A85') {
@@ -3949,18 +3955,16 @@ var Parser = function ParserClosure() {
         length = this.findDefaultInlineStreamEnd(stream);
       }
       var imageStream = stream.makeSubStream(startPos, length, dict);
-      var adler32;
-      if (length < MAX_LENGTH_TO_CACHE) {
+      let cacheKey;
+      if (length < MAX_LENGTH_TO_CACHE && dictLength < MAX_ADLER32_LENGTH) {
         var imageBytes = imageStream.getBytes();
         imageStream.reset();
-        var a = 1;
-        var b = 0;
-        for (i = 0, ii = imageBytes.length; i < ii; ++i) {
-          a += imageBytes[i] & 0xff;
-          b += a;
-        }
-        adler32 = b % 65521 << 16 | a % 65521;
-        let cacheEntry = this.imageCache[adler32];
+        const initialStreamPos = stream.pos;
+        stream.pos = lexer.beginInlineImagePos;
+        let dictBytes = stream.getBytes(dictLength);
+        stream.pos = initialStreamPos;
+        cacheKey = computeAdler32(imageBytes) + '_' + computeAdler32(dictBytes);
+        let cacheEntry = this.imageCache[cacheKey];
         if (cacheEntry !== undefined) {
           this.buf2 = _primitives.Cmd.get('EI');
           this.shift();
@@ -3973,9 +3977,9 @@ var Parser = function ParserClosure() {
       }
       imageStream = this.filter(imageStream, dict, length);
       imageStream.dict = dict;
-      if (adler32 !== undefined) {
-        imageStream.cacheKey = 'inline_' + length + '_' + adler32;
-        this.imageCache[adler32] = imageStream;
+      if (cacheKey !== undefined) {
+        imageStream.cacheKey = 'inline_' + length + '_' + cacheKey;
+        this.imageCache[cacheKey] = imageStream;
       }
       this.buf2 = _primitives.Cmd.get('EI');
       this.shift();
@@ -4148,6 +4152,7 @@ var Lexer = function LexerClosure() {
     this.nextChar();
     this.strBuf = [];
     this.knownCommands = knownCommands;
+    this.beginInlineImagePos = -1;
   }
   var specialChars = [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   function toHexDigit(ch) {
@@ -4501,6 +4506,9 @@ var Lexer = function LexerClosure() {
       }
       if (str === 'null') {
         return null;
+      }
+      if (str === 'BI') {
+        this.beginInlineImagePos = this.stream.pos;
       }
       return _primitives.Cmd.get(str);
     },
@@ -10061,7 +10069,7 @@ var ChunkedStreamManager = function ChunkedStreamManagerClosure() {
         var beginChunk = this.getBeginChunk(ranges[i].begin);
         var endChunk = this.getEndChunk(ranges[i].end);
         for (var chunk = beginChunk; chunk < endChunk; ++chunk) {
-          if (chunksToRequest.indexOf(chunk) < 0) {
+          if (!chunksToRequest.includes(chunk)) {
             chunksToRequest.push(chunk);
           }
         }
@@ -10209,7 +10217,7 @@ var _parser = __w_pdfjs_require__(5);
 
 var _chunked_stream = __w_pdfjs_require__(9);
 
-var _crypto = __w_pdfjs_require__(13);
+var _crypto = __w_pdfjs_require__(14);
 
 var _colorspace = __w_pdfjs_require__(3);
 
@@ -11729,6 +11737,541 @@ exports.FileSpec = FileSpec;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.CCITTFaxDecoder = undefined;
+
+var _util = __w_pdfjs_require__(0);
+
+let CCITTFaxDecoder = function CCITTFaxDecoder() {
+  const ccittEOL = -2;
+  const ccittEOF = -1;
+  const twoDimPass = 0;
+  const twoDimHoriz = 1;
+  const twoDimVert0 = 2;
+  const twoDimVertR1 = 3;
+  const twoDimVertL1 = 4;
+  const twoDimVertR2 = 5;
+  const twoDimVertL2 = 6;
+  const twoDimVertR3 = 7;
+  const twoDimVertL3 = 8;
+  const twoDimTable = [[-1, -1], [-1, -1], [7, twoDimVertL3], [7, twoDimVertR3], [6, twoDimVertL2], [6, twoDimVertL2], [6, twoDimVertR2], [6, twoDimVertR2], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0]];
+  const whiteTable1 = [[-1, -1], [12, ccittEOL], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [11, 1792], [11, 1792], [12, 1984], [12, 2048], [12, 2112], [12, 2176], [12, 2240], [12, 2304], [11, 1856], [11, 1856], [11, 1920], [11, 1920], [12, 2368], [12, 2432], [12, 2496], [12, 2560]];
+  const whiteTable2 = [[-1, -1], [-1, -1], [-1, -1], [-1, -1], [8, 29], [8, 29], [8, 30], [8, 30], [8, 45], [8, 45], [8, 46], [8, 46], [7, 22], [7, 22], [7, 22], [7, 22], [7, 23], [7, 23], [7, 23], [7, 23], [8, 47], [8, 47], [8, 48], [8, 48], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [7, 20], [7, 20], [7, 20], [7, 20], [8, 33], [8, 33], [8, 34], [8, 34], [8, 35], [8, 35], [8, 36], [8, 36], [8, 37], [8, 37], [8, 38], [8, 38], [7, 19], [7, 19], [7, 19], [7, 19], [8, 31], [8, 31], [8, 32], [8, 32], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [8, 53], [8, 53], [8, 54], [8, 54], [7, 26], [7, 26], [7, 26], [7, 26], [8, 39], [8, 39], [8, 40], [8, 40], [8, 41], [8, 41], [8, 42], [8, 42], [8, 43], [8, 43], [8, 44], [8, 44], [7, 21], [7, 21], [7, 21], [7, 21], [7, 28], [7, 28], [7, 28], [7, 28], [8, 61], [8, 61], [8, 62], [8, 62], [8, 63], [8, 63], [8, 0], [8, 0], [8, 320], [8, 320], [8, 384], [8, 384], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [7, 27], [7, 27], [7, 27], [7, 27], [8, 59], [8, 59], [8, 60], [8, 60], [9, 1472], [9, 1536], [9, 1600], [9, 1728], [7, 18], [7, 18], [7, 18], [7, 18], [7, 24], [7, 24], [7, 24], [7, 24], [8, 49], [8, 49], [8, 50], [8, 50], [8, 51], [8, 51], [8, 52], [8, 52], [7, 25], [7, 25], [7, 25], [7, 25], [8, 55], [8, 55], [8, 56], [8, 56], [8, 57], [8, 57], [8, 58], [8, 58], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [8, 448], [8, 448], [8, 512], [8, 512], [9, 704], [9, 768], [8, 640], [8, 640], [8, 576], [8, 576], [9, 832], [9, 896], [9, 960], [9, 1024], [9, 1088], [9, 1152], [9, 1216], [9, 1280], [9, 1344], [9, 1408], [7, 256], [7, 256], [7, 256], [7, 256], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7]];
+  const blackTable1 = [[-1, -1], [-1, -1], [12, ccittEOL], [12, ccittEOL], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [11, 1792], [11, 1792], [11, 1792], [11, 1792], [12, 1984], [12, 1984], [12, 2048], [12, 2048], [12, 2112], [12, 2112], [12, 2176], [12, 2176], [12, 2240], [12, 2240], [12, 2304], [12, 2304], [11, 1856], [11, 1856], [11, 1856], [11, 1856], [11, 1920], [11, 1920], [11, 1920], [11, 1920], [12, 2368], [12, 2368], [12, 2432], [12, 2432], [12, 2496], [12, 2496], [12, 2560], [12, 2560], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [12, 52], [12, 52], [13, 640], [13, 704], [13, 768], [13, 832], [12, 55], [12, 55], [12, 56], [12, 56], [13, 1280], [13, 1344], [13, 1408], [13, 1472], [12, 59], [12, 59], [12, 60], [12, 60], [13, 1536], [13, 1600], [11, 24], [11, 24], [11, 24], [11, 24], [11, 25], [11, 25], [11, 25], [11, 25], [13, 1664], [13, 1728], [12, 320], [12, 320], [12, 384], [12, 384], [12, 448], [12, 448], [13, 512], [13, 576], [12, 53], [12, 53], [12, 54], [12, 54], [13, 896], [13, 960], [13, 1024], [13, 1088], [13, 1152], [13, 1216], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64]];
+  const blackTable2 = [[8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [11, 23], [11, 23], [12, 50], [12, 51], [12, 44], [12, 45], [12, 46], [12, 47], [12, 57], [12, 58], [12, 61], [12, 256], [10, 16], [10, 16], [10, 16], [10, 16], [10, 17], [10, 17], [10, 17], [10, 17], [12, 48], [12, 49], [12, 62], [12, 63], [12, 30], [12, 31], [12, 32], [12, 33], [12, 40], [12, 41], [11, 22], [11, 22], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [12, 128], [12, 192], [12, 26], [12, 27], [12, 28], [12, 29], [11, 19], [11, 19], [11, 20], [11, 20], [12, 34], [12, 35], [12, 36], [12, 37], [12, 38], [12, 39], [11, 21], [11, 21], [12, 42], [12, 43], [10, 0], [10, 0], [10, 0], [10, 0], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12]];
+  const blackTable3 = [[-1, -1], [-1, -1], [-1, -1], [-1, -1], [6, 9], [6, 8], [5, 7], [5, 7], [4, 6], [4, 6], [4, 6], [4, 6], [4, 5], [4, 5], [4, 5], [4, 5], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]];
+  function CCITTFaxDecoder(source, options = {}) {
+    if (!source || typeof source.next !== 'function') {
+      throw new Error('CCITTFaxDecoder - invalid "source" parameter.');
+    }
+    this.source = source;
+    this.eof = false;
+    this.encoding = options['K'] || 0;
+    this.eoline = options['EndOfLine'] || false;
+    this.byteAlign = options['EncodedByteAlign'] || false;
+    this.columns = options['Columns'] || 1728;
+    this.rows = options['Rows'] || 0;
+    let eoblock = options['EndOfBlock'];
+    if (eoblock === null || eoblock === undefined) {
+      eoblock = true;
+    }
+    this.eoblock = eoblock;
+    this.black = options['BlackIs1'] || false;
+    this.codingLine = new Uint32Array(this.columns + 1);
+    this.refLine = new Uint32Array(this.columns + 2);
+    this.codingLine[0] = this.columns;
+    this.codingPos = 0;
+    this.row = 0;
+    this.nextLine2D = this.encoding < 0;
+    this.inputBits = 0;
+    this.inputBuf = 0;
+    this.outputBits = 0;
+    this.rowsDone = false;
+    let code1;
+    while ((code1 = this._lookBits(12)) === 0) {
+      this._eatBits(1);
+    }
+    if (code1 === 1) {
+      this._eatBits(12);
+    }
+    if (this.encoding > 0) {
+      this.nextLine2D = !this._lookBits(1);
+      this._eatBits(1);
+    }
+  }
+  CCITTFaxDecoder.prototype = {
+    readNextChar() {
+      if (this.eof) {
+        return -1;
+      }
+      let refLine = this.refLine;
+      let codingLine = this.codingLine;
+      let columns = this.columns;
+      let refPos, blackPixels, bits, i;
+      if (this.outputBits === 0) {
+        if (this.rowsDone) {
+          this.eof = true;
+        }
+        if (this.eof) {
+          return -1;
+        }
+        this.err = false;
+        let code1, code2, code3;
+        if (this.nextLine2D) {
+          for (i = 0; codingLine[i] < columns; ++i) {
+            refLine[i] = codingLine[i];
+          }
+          refLine[i++] = columns;
+          refLine[i] = columns;
+          codingLine[0] = 0;
+          this.codingPos = 0;
+          refPos = 0;
+          blackPixels = 0;
+          while (codingLine[this.codingPos] < columns) {
+            code1 = this._getTwoDimCode();
+            switch (code1) {
+              case twoDimPass:
+                this._addPixels(refLine[refPos + 1], blackPixels);
+                if (refLine[refPos + 1] < columns) {
+                  refPos += 2;
+                }
+                break;
+              case twoDimHoriz:
+                code1 = code2 = 0;
+                if (blackPixels) {
+                  do {
+                    code1 += code3 = this._getBlackCode();
+                  } while (code3 >= 64);
+                  do {
+                    code2 += code3 = this._getWhiteCode();
+                  } while (code3 >= 64);
+                } else {
+                  do {
+                    code1 += code3 = this._getWhiteCode();
+                  } while (code3 >= 64);
+                  do {
+                    code2 += code3 = this._getBlackCode();
+                  } while (code3 >= 64);
+                }
+                this._addPixels(codingLine[this.codingPos] + code1, blackPixels);
+                if (codingLine[this.codingPos] < columns) {
+                  this._addPixels(codingLine[this.codingPos] + code2, blackPixels ^ 1);
+                }
+                while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                  refPos += 2;
+                }
+                break;
+              case twoDimVertR3:
+                this._addPixels(refLine[refPos] + 3, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  ++refPos;
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVertR2:
+                this._addPixels(refLine[refPos] + 2, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  ++refPos;
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVertR1:
+                this._addPixels(refLine[refPos] + 1, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  ++refPos;
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVert0:
+                this._addPixels(refLine[refPos], blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  ++refPos;
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVertL3:
+                this._addPixelsNeg(refLine[refPos] - 3, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  if (refPos > 0) {
+                    --refPos;
+                  } else {
+                    ++refPos;
+                  }
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVertL2:
+                this._addPixelsNeg(refLine[refPos] - 2, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  if (refPos > 0) {
+                    --refPos;
+                  } else {
+                    ++refPos;
+                  }
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case twoDimVertL1:
+                this._addPixelsNeg(refLine[refPos] - 1, blackPixels);
+                blackPixels ^= 1;
+                if (codingLine[this.codingPos] < columns) {
+                  if (refPos > 0) {
+                    --refPos;
+                  } else {
+                    ++refPos;
+                  }
+                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
+                    refPos += 2;
+                  }
+                }
+                break;
+              case ccittEOF:
+                this._addPixels(columns, 0);
+                this.eof = true;
+                break;
+              default:
+                (0, _util.info)('bad 2d code');
+                this._addPixels(columns, 0);
+                this.err = true;
+            }
+          }
+        } else {
+          codingLine[0] = 0;
+          this.codingPos = 0;
+          blackPixels = 0;
+          while (codingLine[this.codingPos] < columns) {
+            code1 = 0;
+            if (blackPixels) {
+              do {
+                code1 += code3 = this._getBlackCode();
+              } while (code3 >= 64);
+            } else {
+              do {
+                code1 += code3 = this._getWhiteCode();
+              } while (code3 >= 64);
+            }
+            this._addPixels(codingLine[this.codingPos] + code1, blackPixels);
+            blackPixels ^= 1;
+          }
+        }
+        let gotEOL = false;
+        if (this.byteAlign) {
+          this.inputBits &= ~7;
+        }
+        if (!this.eoblock && this.row === this.rows - 1) {
+          this.rowsDone = true;
+        } else {
+          code1 = this._lookBits(12);
+          if (this.eoline) {
+            while (code1 !== ccittEOF && code1 !== 1) {
+              this._eatBits(1);
+              code1 = this._lookBits(12);
+            }
+          } else {
+            while (code1 === 0) {
+              this._eatBits(1);
+              code1 = this._lookBits(12);
+            }
+          }
+          if (code1 === 1) {
+            this._eatBits(12);
+            gotEOL = true;
+          } else if (code1 === ccittEOF) {
+            this.eof = true;
+          }
+        }
+        if (!this.eof && this.encoding > 0 && !this.rowsDone) {
+          this.nextLine2D = !this._lookBits(1);
+          this._eatBits(1);
+        }
+        if (this.eoblock && gotEOL && this.byteAlign) {
+          code1 = this._lookBits(12);
+          if (code1 === 1) {
+            this._eatBits(12);
+            if (this.encoding > 0) {
+              this._lookBits(1);
+              this._eatBits(1);
+            }
+            if (this.encoding >= 0) {
+              for (i = 0; i < 4; ++i) {
+                code1 = this._lookBits(12);
+                if (code1 !== 1) {
+                  (0, _util.info)('bad rtc code: ' + code1);
+                }
+                this._eatBits(12);
+                if (this.encoding > 0) {
+                  this._lookBits(1);
+                  this._eatBits(1);
+                }
+              }
+            }
+            this.eof = true;
+          }
+        } else if (this.err && this.eoline) {
+          while (true) {
+            code1 = this._lookBits(13);
+            if (code1 === ccittEOF) {
+              this.eof = true;
+              return -1;
+            }
+            if (code1 >> 1 === 1) {
+              break;
+            }
+            this._eatBits(1);
+          }
+          this._eatBits(12);
+          if (this.encoding > 0) {
+            this._eatBits(1);
+            this.nextLine2D = !(code1 & 1);
+          }
+        }
+        if (codingLine[0] > 0) {
+          this.outputBits = codingLine[this.codingPos = 0];
+        } else {
+          this.outputBits = codingLine[this.codingPos = 1];
+        }
+        this.row++;
+      }
+      let c;
+      if (this.outputBits >= 8) {
+        c = this.codingPos & 1 ? 0 : 0xFF;
+        this.outputBits -= 8;
+        if (this.outputBits === 0 && codingLine[this.codingPos] < columns) {
+          this.codingPos++;
+          this.outputBits = codingLine[this.codingPos] - codingLine[this.codingPos - 1];
+        }
+      } else {
+        bits = 8;
+        c = 0;
+        do {
+          if (this.outputBits > bits) {
+            c <<= bits;
+            if (!(this.codingPos & 1)) {
+              c |= 0xFF >> 8 - bits;
+            }
+            this.outputBits -= bits;
+            bits = 0;
+          } else {
+            c <<= this.outputBits;
+            if (!(this.codingPos & 1)) {
+              c |= 0xFF >> 8 - this.outputBits;
+            }
+            bits -= this.outputBits;
+            this.outputBits = 0;
+            if (codingLine[this.codingPos] < columns) {
+              this.codingPos++;
+              this.outputBits = codingLine[this.codingPos] - codingLine[this.codingPos - 1];
+            } else if (bits > 0) {
+              c <<= bits;
+              bits = 0;
+            }
+          }
+        } while (bits);
+      }
+      if (this.black) {
+        c ^= 0xFF;
+      }
+      return c;
+    },
+    _addPixels(a1, blackPixels) {
+      let codingLine = this.codingLine;
+      let codingPos = this.codingPos;
+      if (a1 > codingLine[codingPos]) {
+        if (a1 > this.columns) {
+          (0, _util.info)('row is wrong length');
+          this.err = true;
+          a1 = this.columns;
+        }
+        if (codingPos & 1 ^ blackPixels) {
+          ++codingPos;
+        }
+        codingLine[codingPos] = a1;
+      }
+      this.codingPos = codingPos;
+    },
+    _addPixelsNeg(a1, blackPixels) {
+      let codingLine = this.codingLine;
+      let codingPos = this.codingPos;
+      if (a1 > codingLine[codingPos]) {
+        if (a1 > this.columns) {
+          (0, _util.info)('row is wrong length');
+          this.err = true;
+          a1 = this.columns;
+        }
+        if (codingPos & 1 ^ blackPixels) {
+          ++codingPos;
+        }
+        codingLine[codingPos] = a1;
+      } else if (a1 < codingLine[codingPos]) {
+        if (a1 < 0) {
+          (0, _util.info)('invalid code');
+          this.err = true;
+          a1 = 0;
+        }
+        while (codingPos > 0 && a1 < codingLine[codingPos - 1]) {
+          --codingPos;
+        }
+        codingLine[codingPos] = a1;
+      }
+      this.codingPos = codingPos;
+    },
+    _findTableCode(start, end, table, limit) {
+      let limitValue = limit || 0;
+      for (let i = start; i <= end; ++i) {
+        let code = this._lookBits(i);
+        if (code === ccittEOF) {
+          return [true, 1, false];
+        }
+        if (i < end) {
+          code <<= end - i;
+        }
+        if (!limitValue || code >= limitValue) {
+          let p = table[code - limitValue];
+          if (p[0] === i) {
+            this._eatBits(i);
+            return [true, p[1], true];
+          }
+        }
+      }
+      return [false, 0, false];
+    },
+    _getTwoDimCode() {
+      let code = 0;
+      let p;
+      if (this.eoblock) {
+        code = this._lookBits(7);
+        p = twoDimTable[code];
+        if (p && p[0] > 0) {
+          this._eatBits(p[0]);
+          return p[1];
+        }
+      } else {
+        let result = this._findTableCode(1, 7, twoDimTable);
+        if (result[0] && result[2]) {
+          return result[1];
+        }
+      }
+      (0, _util.info)('Bad two dim code');
+      return ccittEOF;
+    },
+    _getWhiteCode() {
+      let code = 0;
+      let p;
+      if (this.eoblock) {
+        code = this._lookBits(12);
+        if (code === ccittEOF) {
+          return 1;
+        }
+        if (code >> 5 === 0) {
+          p = whiteTable1[code];
+        } else {
+          p = whiteTable2[code >> 3];
+        }
+        if (p[0] > 0) {
+          this._eatBits(p[0]);
+          return p[1];
+        }
+      } else {
+        let result = this._findTableCode(1, 9, whiteTable2);
+        if (result[0]) {
+          return result[1];
+        }
+        result = this._findTableCode(11, 12, whiteTable1);
+        if (result[0]) {
+          return result[1];
+        }
+      }
+      (0, _util.info)('bad white code');
+      this._eatBits(1);
+      return 1;
+    },
+    _getBlackCode() {
+      let code, p;
+      if (this.eoblock) {
+        code = this._lookBits(13);
+        if (code === ccittEOF) {
+          return 1;
+        }
+        if (code >> 7 === 0) {
+          p = blackTable1[code];
+        } else if (code >> 9 === 0 && code >> 7 !== 0) {
+          p = blackTable2[(code >> 1) - 64];
+        } else {
+          p = blackTable3[code >> 7];
+        }
+        if (p[0] > 0) {
+          this._eatBits(p[0]);
+          return p[1];
+        }
+      } else {
+        let result = this._findTableCode(2, 6, blackTable3);
+        if (result[0]) {
+          return result[1];
+        }
+        result = this._findTableCode(7, 12, blackTable2, 64);
+        if (result[0]) {
+          return result[1];
+        }
+        result = this._findTableCode(10, 13, blackTable1);
+        if (result[0]) {
+          return result[1];
+        }
+      }
+      (0, _util.info)('bad black code');
+      this._eatBits(1);
+      return 1;
+    },
+    _lookBits(n) {
+      let c;
+      while (this.inputBits < n) {
+        if ((c = this.source.next()) === -1) {
+          if (this.inputBits === 0) {
+            return ccittEOF;
+          }
+          return this.inputBuf << n - this.inputBits & 0xFFFF >> 16 - n;
+        }
+        this.inputBuf = this.inputBuf << 8 | c;
+        this.inputBits += 8;
+      }
+      return this.inputBuf >> this.inputBits - n & 0xFFFF >> 16 - n;
+    },
+    _eatBits(n) {
+      if ((this.inputBits -= n) < 0) {
+        this.inputBits = 0;
+      }
+    }
+  };
+  return CCITTFaxDecoder;
+}();
+exports.CCITTFaxDecoder = CCITTFaxDecoder;
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports, __w_pdfjs_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 var ArithmeticDecoder = function ArithmeticDecoderClosure() {
   var QeTable = [{
     qe: 0x5601,
@@ -12060,7 +12603,7 @@ var ArithmeticDecoder = function ArithmeticDecoderClosure() {
 exports.ArithmeticDecoder = ArithmeticDecoder;
 
 /***/ }),
-/* 12 */
+/* 13 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -12073,7 +12616,7 @@ exports.JpxImage = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
-var _arithmetic_decoder = __w_pdfjs_require__(11);
+var _arithmetic_decoder = __w_pdfjs_require__(12);
 
 let JpxError = function JpxErrorClosure() {
   function JpxError(msg) {
@@ -13988,7 +14531,7 @@ var JpxImage = function JpxImageClosure() {
 exports.JpxImage = JpxImage;
 
 /***/ }),
-/* 13 */
+/* 14 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -14515,55 +15058,36 @@ var NullCipher = function NullCipherClosure() {
   };
   return NullCipher;
 }();
-var AES128Cipher = function AES128CipherClosure() {
-  var rcon = new Uint8Array([0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d]);
-  var s = new Uint8Array([0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75, 0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84, 0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf, 0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8, 0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2, 0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73, 0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb, 0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79, 0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08, 0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a, 0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e, 0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf, 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16]);
-  var inv_s = new Uint8Array([0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb, 0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e, 0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25, 0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92, 0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84, 0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06, 0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b, 0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73, 0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e, 0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b, 0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4, 0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f, 0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef, 0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61, 0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d]);
-  var mixCol = new Uint8Array(256);
-  for (var i = 0; i < 256; i++) {
-    if (i < 128) {
-      mixCol[i] = i << 1;
-    } else {
-      mixCol[i] = i << 1 ^ 0x1b;
+class AESBaseCipher {
+  constructor() {
+    if (this.constructor === AESBaseCipher) {
+      (0, _util.unreachable)('Cannot initialize AESBaseCipher.');
     }
-  }
-  var mix = new Uint32Array([0x00000000, 0x0e090d0b, 0x1c121a16, 0x121b171d, 0x3824342c, 0x362d3927, 0x24362e3a, 0x2a3f2331, 0x70486858, 0x7e416553, 0x6c5a724e, 0x62537f45, 0x486c5c74, 0x4665517f, 0x547e4662, 0x5a774b69, 0xe090d0b0, 0xee99ddbb, 0xfc82caa6, 0xf28bc7ad, 0xd8b4e49c, 0xd6bde997, 0xc4a6fe8a, 0xcaaff381, 0x90d8b8e8, 0x9ed1b5e3, 0x8ccaa2fe, 0x82c3aff5, 0xa8fc8cc4, 0xa6f581cf, 0xb4ee96d2, 0xbae79bd9, 0xdb3bbb7b, 0xd532b670, 0xc729a16d, 0xc920ac66, 0xe31f8f57, 0xed16825c, 0xff0d9541, 0xf104984a, 0xab73d323, 0xa57ade28, 0xb761c935, 0xb968c43e, 0x9357e70f, 0x9d5eea04, 0x8f45fd19, 0x814cf012, 0x3bab6bcb, 0x35a266c0, 0x27b971dd, 0x29b07cd6, 0x038f5fe7, 0x0d8652ec, 0x1f9d45f1, 0x119448fa, 0x4be30393, 0x45ea0e98, 0x57f11985, 0x59f8148e, 0x73c737bf, 0x7dce3ab4, 0x6fd52da9, 0x61dc20a2, 0xad766df6, 0xa37f60fd, 0xb16477e0, 0xbf6d7aeb, 0x955259da, 0x9b5b54d1, 0x894043cc, 0x87494ec7, 0xdd3e05ae, 0xd33708a5, 0xc12c1fb8, 0xcf2512b3, 0xe51a3182, 0xeb133c89, 0xf9082b94, 0xf701269f, 0x4de6bd46, 0x43efb04d, 0x51f4a750, 0x5ffdaa5b, 0x75c2896a, 0x7bcb8461, 0x69d0937c, 0x67d99e77, 0x3daed51e, 0x33a7d815, 0x21bccf08, 0x2fb5c203, 0x058ae132, 0x0b83ec39, 0x1998fb24, 0x1791f62f, 0x764dd68d, 0x7844db86, 0x6a5fcc9b, 0x6456c190, 0x4e69e2a1, 0x4060efaa, 0x527bf8b7, 0x5c72f5bc, 0x0605bed5, 0x080cb3de, 0x1a17a4c3, 0x141ea9c8, 0x3e218af9, 0x302887f2, 0x223390ef, 0x2c3a9de4, 0x96dd063d, 0x98d40b36, 0x8acf1c2b, 0x84c61120, 0xaef93211, 0xa0f03f1a, 0xb2eb2807, 0xbce2250c, 0xe6956e65, 0xe89c636e, 0xfa877473, 0xf48e7978, 0xdeb15a49, 0xd0b85742, 0xc2a3405f, 0xccaa4d54, 0x41ecdaf7, 0x4fe5d7fc, 0x5dfec0e1, 0x53f7cdea, 0x79c8eedb, 0x77c1e3d0, 0x65daf4cd, 0x6bd3f9c6, 0x31a4b2af, 0x3fadbfa4, 0x2db6a8b9, 0x23bfa5b2, 0x09808683, 0x07898b88, 0x15929c95, 0x1b9b919e, 0xa17c0a47, 0xaf75074c, 0xbd6e1051, 0xb3671d5a, 0x99583e6b, 0x97513360, 0x854a247d, 0x8b432976, 0xd134621f, 0xdf3d6f14, 0xcd267809, 0xc32f7502, 0xe9105633, 0xe7195b38, 0xf5024c25, 0xfb0b412e, 0x9ad7618c, 0x94de6c87, 0x86c57b9a, 0x88cc7691, 0xa2f355a0, 0xacfa58ab, 0xbee14fb6, 0xb0e842bd, 0xea9f09d4, 0xe49604df, 0xf68d13c2, 0xf8841ec9, 0xd2bb3df8, 0xdcb230f3, 0xcea927ee, 0xc0a02ae5, 0x7a47b13c, 0x744ebc37, 0x6655ab2a, 0x685ca621, 0x42638510, 0x4c6a881b, 0x5e719f06, 0x5078920d, 0x0a0fd964, 0x0406d46f, 0x161dc372, 0x1814ce79, 0x322bed48, 0x3c22e043, 0x2e39f75e, 0x2030fa55, 0xec9ab701, 0xe293ba0a, 0xf088ad17, 0xfe81a01c, 0xd4be832d, 0xdab78e26, 0xc8ac993b, 0xc6a59430, 0x9cd2df59, 0x92dbd252, 0x80c0c54f, 0x8ec9c844, 0xa4f6eb75, 0xaaffe67e, 0xb8e4f163, 0xb6edfc68, 0x0c0a67b1, 0x02036aba, 0x10187da7, 0x1e1170ac, 0x342e539d, 0x3a275e96, 0x283c498b, 0x26354480, 0x7c420fe9, 0x724b02e2, 0x605015ff, 0x6e5918f4, 0x44663bc5, 0x4a6f36ce, 0x587421d3, 0x567d2cd8, 0x37a10c7a, 0x39a80171, 0x2bb3166c, 0x25ba1b67, 0x0f853856, 0x018c355d, 0x13972240, 0x1d9e2f4b, 0x47e96422, 0x49e06929, 0x5bfb7e34, 0x55f2733f, 0x7fcd500e, 0x71c45d05, 0x63df4a18, 0x6dd64713, 0xd731dcca, 0xd938d1c1, 0xcb23c6dc, 0xc52acbd7, 0xef15e8e6, 0xe11ce5ed, 0xf307f2f0, 0xfd0efffb, 0xa779b492, 0xa970b999, 0xbb6bae84, 0xb562a38f, 0x9f5d80be, 0x91548db5, 0x834f9aa8, 0x8d4697a3]);
-  function expandKey128(cipherKey) {
-    var b = 176,
-        result = new Uint8Array(b);
-    result.set(cipherKey);
-    for (var j = 16, i = 1; j < b; ++i) {
-      var t1 = result[j - 3],
-          t2 = result[j - 2],
-          t3 = result[j - 1],
-          t4 = result[j - 4];
-      t1 = s[t1];
-      t2 = s[t2];
-      t3 = s[t3];
-      t4 = s[t4];
-      t1 = t1 ^ rcon[i];
-      for (var n = 0; n < 4; ++n) {
-        result[j] = t1 ^= result[j - 16];
-        j++;
-        result[j] = t2 ^= result[j - 16];
-        j++;
-        result[j] = t3 ^= result[j - 16];
-        j++;
-        result[j] = t4 ^= result[j - 16];
-        j++;
+    this._s = new Uint8Array([0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75, 0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84, 0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf, 0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8, 0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2, 0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73, 0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb, 0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79, 0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08, 0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a, 0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e, 0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf, 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16]);
+    this._inv_s = new Uint8Array([0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb, 0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e, 0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25, 0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92, 0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84, 0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06, 0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b, 0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73, 0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e, 0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b, 0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4, 0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f, 0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef, 0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61, 0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d]);
+    this._mix = new Uint32Array([0x00000000, 0x0e090d0b, 0x1c121a16, 0x121b171d, 0x3824342c, 0x362d3927, 0x24362e3a, 0x2a3f2331, 0x70486858, 0x7e416553, 0x6c5a724e, 0x62537f45, 0x486c5c74, 0x4665517f, 0x547e4662, 0x5a774b69, 0xe090d0b0, 0xee99ddbb, 0xfc82caa6, 0xf28bc7ad, 0xd8b4e49c, 0xd6bde997, 0xc4a6fe8a, 0xcaaff381, 0x90d8b8e8, 0x9ed1b5e3, 0x8ccaa2fe, 0x82c3aff5, 0xa8fc8cc4, 0xa6f581cf, 0xb4ee96d2, 0xbae79bd9, 0xdb3bbb7b, 0xd532b670, 0xc729a16d, 0xc920ac66, 0xe31f8f57, 0xed16825c, 0xff0d9541, 0xf104984a, 0xab73d323, 0xa57ade28, 0xb761c935, 0xb968c43e, 0x9357e70f, 0x9d5eea04, 0x8f45fd19, 0x814cf012, 0x3bab6bcb, 0x35a266c0, 0x27b971dd, 0x29b07cd6, 0x038f5fe7, 0x0d8652ec, 0x1f9d45f1, 0x119448fa, 0x4be30393, 0x45ea0e98, 0x57f11985, 0x59f8148e, 0x73c737bf, 0x7dce3ab4, 0x6fd52da9, 0x61dc20a2, 0xad766df6, 0xa37f60fd, 0xb16477e0, 0xbf6d7aeb, 0x955259da, 0x9b5b54d1, 0x894043cc, 0x87494ec7, 0xdd3e05ae, 0xd33708a5, 0xc12c1fb8, 0xcf2512b3, 0xe51a3182, 0xeb133c89, 0xf9082b94, 0xf701269f, 0x4de6bd46, 0x43efb04d, 0x51f4a750, 0x5ffdaa5b, 0x75c2896a, 0x7bcb8461, 0x69d0937c, 0x67d99e77, 0x3daed51e, 0x33a7d815, 0x21bccf08, 0x2fb5c203, 0x058ae132, 0x0b83ec39, 0x1998fb24, 0x1791f62f, 0x764dd68d, 0x7844db86, 0x6a5fcc9b, 0x6456c190, 0x4e69e2a1, 0x4060efaa, 0x527bf8b7, 0x5c72f5bc, 0x0605bed5, 0x080cb3de, 0x1a17a4c3, 0x141ea9c8, 0x3e218af9, 0x302887f2, 0x223390ef, 0x2c3a9de4, 0x96dd063d, 0x98d40b36, 0x8acf1c2b, 0x84c61120, 0xaef93211, 0xa0f03f1a, 0xb2eb2807, 0xbce2250c, 0xe6956e65, 0xe89c636e, 0xfa877473, 0xf48e7978, 0xdeb15a49, 0xd0b85742, 0xc2a3405f, 0xccaa4d54, 0x41ecdaf7, 0x4fe5d7fc, 0x5dfec0e1, 0x53f7cdea, 0x79c8eedb, 0x77c1e3d0, 0x65daf4cd, 0x6bd3f9c6, 0x31a4b2af, 0x3fadbfa4, 0x2db6a8b9, 0x23bfa5b2, 0x09808683, 0x07898b88, 0x15929c95, 0x1b9b919e, 0xa17c0a47, 0xaf75074c, 0xbd6e1051, 0xb3671d5a, 0x99583e6b, 0x97513360, 0x854a247d, 0x8b432976, 0xd134621f, 0xdf3d6f14, 0xcd267809, 0xc32f7502, 0xe9105633, 0xe7195b38, 0xf5024c25, 0xfb0b412e, 0x9ad7618c, 0x94de6c87, 0x86c57b9a, 0x88cc7691, 0xa2f355a0, 0xacfa58ab, 0xbee14fb6, 0xb0e842bd, 0xea9f09d4, 0xe49604df, 0xf68d13c2, 0xf8841ec9, 0xd2bb3df8, 0xdcb230f3, 0xcea927ee, 0xc0a02ae5, 0x7a47b13c, 0x744ebc37, 0x6655ab2a, 0x685ca621, 0x42638510, 0x4c6a881b, 0x5e719f06, 0x5078920d, 0x0a0fd964, 0x0406d46f, 0x161dc372, 0x1814ce79, 0x322bed48, 0x3c22e043, 0x2e39f75e, 0x2030fa55, 0xec9ab701, 0xe293ba0a, 0xf088ad17, 0xfe81a01c, 0xd4be832d, 0xdab78e26, 0xc8ac993b, 0xc6a59430, 0x9cd2df59, 0x92dbd252, 0x80c0c54f, 0x8ec9c844, 0xa4f6eb75, 0xaaffe67e, 0xb8e4f163, 0xb6edfc68, 0x0c0a67b1, 0x02036aba, 0x10187da7, 0x1e1170ac, 0x342e539d, 0x3a275e96, 0x283c498b, 0x26354480, 0x7c420fe9, 0x724b02e2, 0x605015ff, 0x6e5918f4, 0x44663bc5, 0x4a6f36ce, 0x587421d3, 0x567d2cd8, 0x37a10c7a, 0x39a80171, 0x2bb3166c, 0x25ba1b67, 0x0f853856, 0x018c355d, 0x13972240, 0x1d9e2f4b, 0x47e96422, 0x49e06929, 0x5bfb7e34, 0x55f2733f, 0x7fcd500e, 0x71c45d05, 0x63df4a18, 0x6dd64713, 0xd731dcca, 0xd938d1c1, 0xcb23c6dc, 0xc52acbd7, 0xef15e8e6, 0xe11ce5ed, 0xf307f2f0, 0xfd0efffb, 0xa779b492, 0xa970b999, 0xbb6bae84, 0xb562a38f, 0x9f5d80be, 0x91548db5, 0x834f9aa8, 0x8d4697a3]);
+    this._mixCol = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+      if (i < 128) {
+        this._mixCol[i] = i << 1;
+      } else {
+        this._mixCol[i] = i << 1 ^ 0x1b;
       }
     }
-    return result;
+    this.buffer = new Uint8Array(16);
+    this.bufferPosition = 0;
   }
-  function decrypt128(input, key) {
-    var state = new Uint8Array(16);
+  _expandKey(cipherKey) {
+    (0, _util.unreachable)('Cannot call `_expandKey` on the base class');
+  }
+  _decrypt(input, key) {
+    let t, u, v;
+    let state = new Uint8Array(16);
     state.set(input);
-    var i, j, k;
-    var t, u, v;
-    for (j = 0, k = 160; j < 16; ++j, ++k) {
+    for (let j = 0, k = this._keySize; j < 16; ++j, ++k) {
       state[j] ^= key[k];
     }
-    for (i = 9; i >= 1; --i) {
+    for (let i = this._cyclesOfRepetition - 1; i >= 1; --i) {
       t = state[13];
       state[13] = state[9];
       state[9] = state[5];
@@ -14582,17 +15106,17 @@ var AES128Cipher = function AES128CipherClosure() {
       state[11] = t;
       state[7] = u;
       state[3] = v;
-      for (j = 0; j < 16; ++j) {
-        state[j] = inv_s[state[j]];
+      for (let j = 0; j < 16; ++j) {
+        state[j] = this._inv_s[state[j]];
       }
-      for (j = 0, k = i * 16; j < 16; ++j, ++k) {
+      for (let j = 0, k = i * 16; j < 16; ++j, ++k) {
         state[j] ^= key[k];
       }
-      for (j = 0; j < 16; j += 4) {
-        var s0 = mix[state[j]],
-            s1 = mix[state[j + 1]],
-            s2 = mix[state[j + 2]],
-            s3 = mix[state[j + 3]];
+      for (let j = 0; j < 16; j += 4) {
+        let s0 = this._mix[state[j]];
+        let s1 = this._mix[state[j + 1]];
+        let s2 = this._mix[state[j + 2]];
+        let s3 = this._mix[state[j + 3]];
         t = s0 ^ s1 >>> 8 ^ s1 << 24 ^ s2 >>> 16 ^ s2 << 16 ^ s3 >>> 24 ^ s3 << 8;
         state[j] = t >>> 24 & 0xFF;
         state[j + 1] = t >> 16 & 0xFF;
@@ -14618,21 +15142,22 @@ var AES128Cipher = function AES128CipherClosure() {
     state[11] = t;
     state[7] = u;
     state[3] = v;
-    for (j = 0; j < 16; ++j) {
-      state[j] = inv_s[state[j]];
+    for (let j = 0; j < 16; ++j) {
+      state[j] = this._inv_s[state[j]];
       state[j] ^= key[j];
     }
     return state;
   }
-  function encrypt128(input, key) {
-    var t, u, v, j, k;
-    var state = new Uint8Array(16);
+  _encrypt(input, key) {
+    const s = this._s;
+    let t, u, v;
+    let state = new Uint8Array(16);
     state.set(input);
-    for (j = 0; j < 16; ++j) {
+    for (let j = 0; j < 16; ++j) {
       state[j] ^= key[j];
     }
-    for (i = 1; i < 10; i++) {
-      for (j = 0; j < 16; ++j) {
+    for (let i = 1; i < this._cyclesOfRepetition; i++) {
+      for (let j = 0; j < 16; ++j) {
         state[j] = s[state[j]];
       }
       v = state[1];
@@ -14653,22 +15178,22 @@ var AES128Cipher = function AES128CipherClosure() {
       state[7] = v;
       state[11] = u;
       state[15] = t;
-      for (j = 0; j < 16; j += 4) {
-        var s0 = state[j + 0],
-            s1 = state[j + 1];
-        var s2 = state[j + 2],
-            s3 = state[j + 3];
+      for (let j = 0; j < 16; j += 4) {
+        let s0 = state[j + 0];
+        let s1 = state[j + 1];
+        let s2 = state[j + 2];
+        let s3 = state[j + 3];
         t = s0 ^ s1 ^ s2 ^ s3;
-        state[j + 0] ^= t ^ mixCol[s0 ^ s1];
-        state[j + 1] ^= t ^ mixCol[s1 ^ s2];
-        state[j + 2] ^= t ^ mixCol[s2 ^ s3];
-        state[j + 3] ^= t ^ mixCol[s3 ^ s0];
+        state[j + 0] ^= t ^ this._mixCol[s0 ^ s1];
+        state[j + 1] ^= t ^ this._mixCol[s1 ^ s2];
+        state[j + 2] ^= t ^ this._mixCol[s2 ^ s3];
+        state[j + 3] ^= t ^ this._mixCol[s3 ^ s0];
       }
-      for (j = 0, k = i * 16; j < 16; ++j, ++k) {
+      for (let j = 0, k = i * 16; j < 16; ++j, ++k) {
         state[j] ^= key[k];
       }
     }
-    for (j = 0; j < 16; ++j) {
+    for (let j = 0; j < 16; ++j) {
       state[j] = s[state[j]];
     }
     v = state[1];
@@ -14689,33 +15214,25 @@ var AES128Cipher = function AES128CipherClosure() {
     state[7] = v;
     state[11] = u;
     state[15] = t;
-    for (j = 0, k = 160; j < 16; ++j, ++k) {
+    for (let j = 0, k = this._keySize; j < 16; ++j, ++k) {
       state[j] ^= key[k];
     }
     return state;
   }
-  function AES128Cipher(key) {
-    this.key = expandKey128(key);
-    this.buffer = new Uint8Array(16);
-    this.bufferPosition = 0;
-  }
-  function decryptBlock2(data, finalize) {
-    var i,
-        j,
-        ii,
-        sourceLength = data.length,
-        buffer = this.buffer,
-        bufferLength = this.bufferPosition,
-        result = [],
+  _decryptBlock2(data, finalize) {
+    let sourceLength = data.length;
+    let buffer = this.buffer,
+        bufferLength = this.bufferPosition;
+    let result = [],
         iv = this.iv;
-    for (i = 0; i < sourceLength; ++i) {
+    for (let i = 0; i < sourceLength; ++i) {
       buffer[bufferLength] = data[i];
       ++bufferLength;
       if (bufferLength < 16) {
         continue;
       }
-      var plain = decrypt128(buffer, this.key);
-      for (j = 0; j < 16; ++j) {
+      let plain = this._decrypt(buffer, this._key);
+      for (let j = 0; j < 16; ++j) {
         plain[j] ^= iv[j];
       }
       iv = buffer;
@@ -14727,14 +15244,14 @@ var AES128Cipher = function AES128CipherClosure() {
     this.bufferLength = bufferLength;
     this.iv = iv;
     if (result.length === 0) {
-      return new Uint8Array([]);
+      return new Uint8Array(0);
     }
-    var outputLength = 16 * result.length;
+    let outputLength = 16 * result.length;
     if (finalize) {
-      var lastBlock = result[result.length - 1];
-      var psLen = lastBlock[15];
+      let lastBlock = result[result.length - 1];
+      let psLen = lastBlock[15];
       if (psLen <= 16) {
-        for (i = 15, ii = 16 - psLen; i >= ii; --i) {
+        for (let i = 15, ii = 16 - psLen; i >= ii; --i) {
           if (lastBlock[i] !== psLen) {
             psLen = 0;
             break;
@@ -14744,92 +15261,124 @@ var AES128Cipher = function AES128CipherClosure() {
         result[result.length - 1] = lastBlock.subarray(0, 16 - psLen);
       }
     }
-    var output = new Uint8Array(outputLength);
-    for (i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
+    let output = new Uint8Array(outputLength);
+    for (let i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
       output.set(result[i], j);
     }
     return output;
   }
-  AES128Cipher.prototype = {
-    decryptBlock: function AES128Cipher_decryptBlock(data, finalize) {
-      var i,
-          sourceLength = data.length;
-      var buffer = this.buffer,
-          bufferLength = this.bufferPosition;
-      for (i = 0; bufferLength < 16 && i < sourceLength; ++i, ++bufferLength) {
+  decryptBlock(data, finalize, iv = null) {
+    let sourceLength = data.length;
+    let buffer = this.buffer,
+        bufferLength = this.bufferPosition;
+    if (iv) {
+      this.iv = iv;
+    } else {
+      for (let i = 0; bufferLength < 16 && i < sourceLength; ++i, ++bufferLength) {
         buffer[bufferLength] = data[i];
       }
       if (bufferLength < 16) {
         this.bufferLength = bufferLength;
-        return new Uint8Array([]);
+        return new Uint8Array(0);
       }
       this.iv = buffer;
-      this.buffer = new Uint8Array(16);
-      this.bufferLength = 0;
-      this.decryptBlock = decryptBlock2;
-      return this.decryptBlock(data.subarray(16), finalize);
-    },
-    encrypt: function AES128Cipher_encrypt(data, iv) {
-      var i,
-          j,
-          ii,
-          sourceLength = data.length,
-          buffer = this.buffer,
-          bufferLength = this.bufferPosition,
-          result = [];
-      if (!iv) {
-        iv = new Uint8Array(16);
-      }
-      for (i = 0; i < sourceLength; ++i) {
-        buffer[bufferLength] = data[i];
-        ++bufferLength;
-        if (bufferLength < 16) {
-          continue;
-        }
-        for (j = 0; j < 16; ++j) {
-          buffer[j] ^= iv[j];
-        }
-        var cipher = encrypt128(buffer, this.key);
-        iv = cipher;
-        result.push(cipher);
-        buffer = new Uint8Array(16);
-        bufferLength = 0;
-      }
-      this.buffer = buffer;
-      this.bufferLength = bufferLength;
-      this.iv = iv;
-      if (result.length === 0) {
-        return new Uint8Array([]);
-      }
-      var outputLength = 16 * result.length;
-      var output = new Uint8Array(outputLength);
-      for (i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
-        output.set(result[i], j);
-      }
-      return output;
+      data = data.subarray(16);
     }
-  };
-  return AES128Cipher;
-}();
-var AES256Cipher = function AES256CipherClosure() {
-  var s = new Uint8Array([0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75, 0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84, 0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf, 0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8, 0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2, 0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73, 0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb, 0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79, 0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08, 0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a, 0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e, 0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf, 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16]);
-  var inv_s = new Uint8Array([0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb, 0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e, 0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25, 0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92, 0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84, 0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06, 0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b, 0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73, 0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e, 0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b, 0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4, 0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f, 0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef, 0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61, 0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d]);
-  var mixCol = new Uint8Array(256);
-  for (var i = 0; i < 256; i++) {
-    if (i < 128) {
-      mixCol[i] = i << 1;
-    } else {
-      mixCol[i] = i << 1 ^ 0x1b;
-    }
+    this.buffer = new Uint8Array(16);
+    this.bufferLength = 0;
+    this.decryptBlock = this._decryptBlock2;
+    return this.decryptBlock(data, finalize);
   }
-  var mix = new Uint32Array([0x00000000, 0x0e090d0b, 0x1c121a16, 0x121b171d, 0x3824342c, 0x362d3927, 0x24362e3a, 0x2a3f2331, 0x70486858, 0x7e416553, 0x6c5a724e, 0x62537f45, 0x486c5c74, 0x4665517f, 0x547e4662, 0x5a774b69, 0xe090d0b0, 0xee99ddbb, 0xfc82caa6, 0xf28bc7ad, 0xd8b4e49c, 0xd6bde997, 0xc4a6fe8a, 0xcaaff381, 0x90d8b8e8, 0x9ed1b5e3, 0x8ccaa2fe, 0x82c3aff5, 0xa8fc8cc4, 0xa6f581cf, 0xb4ee96d2, 0xbae79bd9, 0xdb3bbb7b, 0xd532b670, 0xc729a16d, 0xc920ac66, 0xe31f8f57, 0xed16825c, 0xff0d9541, 0xf104984a, 0xab73d323, 0xa57ade28, 0xb761c935, 0xb968c43e, 0x9357e70f, 0x9d5eea04, 0x8f45fd19, 0x814cf012, 0x3bab6bcb, 0x35a266c0, 0x27b971dd, 0x29b07cd6, 0x038f5fe7, 0x0d8652ec, 0x1f9d45f1, 0x119448fa, 0x4be30393, 0x45ea0e98, 0x57f11985, 0x59f8148e, 0x73c737bf, 0x7dce3ab4, 0x6fd52da9, 0x61dc20a2, 0xad766df6, 0xa37f60fd, 0xb16477e0, 0xbf6d7aeb, 0x955259da, 0x9b5b54d1, 0x894043cc, 0x87494ec7, 0xdd3e05ae, 0xd33708a5, 0xc12c1fb8, 0xcf2512b3, 0xe51a3182, 0xeb133c89, 0xf9082b94, 0xf701269f, 0x4de6bd46, 0x43efb04d, 0x51f4a750, 0x5ffdaa5b, 0x75c2896a, 0x7bcb8461, 0x69d0937c, 0x67d99e77, 0x3daed51e, 0x33a7d815, 0x21bccf08, 0x2fb5c203, 0x058ae132, 0x0b83ec39, 0x1998fb24, 0x1791f62f, 0x764dd68d, 0x7844db86, 0x6a5fcc9b, 0x6456c190, 0x4e69e2a1, 0x4060efaa, 0x527bf8b7, 0x5c72f5bc, 0x0605bed5, 0x080cb3de, 0x1a17a4c3, 0x141ea9c8, 0x3e218af9, 0x302887f2, 0x223390ef, 0x2c3a9de4, 0x96dd063d, 0x98d40b36, 0x8acf1c2b, 0x84c61120, 0xaef93211, 0xa0f03f1a, 0xb2eb2807, 0xbce2250c, 0xe6956e65, 0xe89c636e, 0xfa877473, 0xf48e7978, 0xdeb15a49, 0xd0b85742, 0xc2a3405f, 0xccaa4d54, 0x41ecdaf7, 0x4fe5d7fc, 0x5dfec0e1, 0x53f7cdea, 0x79c8eedb, 0x77c1e3d0, 0x65daf4cd, 0x6bd3f9c6, 0x31a4b2af, 0x3fadbfa4, 0x2db6a8b9, 0x23bfa5b2, 0x09808683, 0x07898b88, 0x15929c95, 0x1b9b919e, 0xa17c0a47, 0xaf75074c, 0xbd6e1051, 0xb3671d5a, 0x99583e6b, 0x97513360, 0x854a247d, 0x8b432976, 0xd134621f, 0xdf3d6f14, 0xcd267809, 0xc32f7502, 0xe9105633, 0xe7195b38, 0xf5024c25, 0xfb0b412e, 0x9ad7618c, 0x94de6c87, 0x86c57b9a, 0x88cc7691, 0xa2f355a0, 0xacfa58ab, 0xbee14fb6, 0xb0e842bd, 0xea9f09d4, 0xe49604df, 0xf68d13c2, 0xf8841ec9, 0xd2bb3df8, 0xdcb230f3, 0xcea927ee, 0xc0a02ae5, 0x7a47b13c, 0x744ebc37, 0x6655ab2a, 0x685ca621, 0x42638510, 0x4c6a881b, 0x5e719f06, 0x5078920d, 0x0a0fd964, 0x0406d46f, 0x161dc372, 0x1814ce79, 0x322bed48, 0x3c22e043, 0x2e39f75e, 0x2030fa55, 0xec9ab701, 0xe293ba0a, 0xf088ad17, 0xfe81a01c, 0xd4be832d, 0xdab78e26, 0xc8ac993b, 0xc6a59430, 0x9cd2df59, 0x92dbd252, 0x80c0c54f, 0x8ec9c844, 0xa4f6eb75, 0xaaffe67e, 0xb8e4f163, 0xb6edfc68, 0x0c0a67b1, 0x02036aba, 0x10187da7, 0x1e1170ac, 0x342e539d, 0x3a275e96, 0x283c498b, 0x26354480, 0x7c420fe9, 0x724b02e2, 0x605015ff, 0x6e5918f4, 0x44663bc5, 0x4a6f36ce, 0x587421d3, 0x567d2cd8, 0x37a10c7a, 0x39a80171, 0x2bb3166c, 0x25ba1b67, 0x0f853856, 0x018c355d, 0x13972240, 0x1d9e2f4b, 0x47e96422, 0x49e06929, 0x5bfb7e34, 0x55f2733f, 0x7fcd500e, 0x71c45d05, 0x63df4a18, 0x6dd64713, 0xd731dcca, 0xd938d1c1, 0xcb23c6dc, 0xc52acbd7, 0xef15e8e6, 0xe11ce5ed, 0xf307f2f0, 0xfd0efffb, 0xa779b492, 0xa970b999, 0xbb6bae84, 0xb562a38f, 0x9f5d80be, 0x91548db5, 0x834f9aa8, 0x8d4697a3]);
-  function expandKey256(cipherKey) {
-    var b = 240,
-        result = new Uint8Array(b);
-    var r = 1;
+  encrypt(data, iv) {
+    let sourceLength = data.length;
+    let buffer = this.buffer,
+        bufferLength = this.bufferPosition;
+    let result = [];
+    if (!iv) {
+      iv = new Uint8Array(16);
+    }
+    for (let i = 0; i < sourceLength; ++i) {
+      buffer[bufferLength] = data[i];
+      ++bufferLength;
+      if (bufferLength < 16) {
+        continue;
+      }
+      for (let j = 0; j < 16; ++j) {
+        buffer[j] ^= iv[j];
+      }
+      let cipher = this._encrypt(buffer, this._key);
+      iv = cipher;
+      result.push(cipher);
+      buffer = new Uint8Array(16);
+      bufferLength = 0;
+    }
+    this.buffer = buffer;
+    this.bufferLength = bufferLength;
+    this.iv = iv;
+    if (result.length === 0) {
+      return new Uint8Array(0);
+    }
+    let outputLength = 16 * result.length;
+    let output = new Uint8Array(outputLength);
+    for (let i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
+      output.set(result[i], j);
+    }
+    return output;
+  }
+}
+class AES128Cipher extends AESBaseCipher {
+  constructor(key) {
+    super();
+    this._cyclesOfRepetition = 10;
+    this._keySize = 160;
+    this._rcon = new Uint8Array([0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d]);
+    this._key = this._expandKey(key);
+  }
+  _expandKey(cipherKey) {
+    const b = 176;
+    const s = this._s;
+    const rcon = this._rcon;
+    let result = new Uint8Array(b);
     result.set(cipherKey);
-    for (var j = 32, i = 1; j < b; ++i) {
-      var t1, t2, t3, t4;
+    for (let j = 16, i = 1; j < b; ++i) {
+      let t1 = result[j - 3];
+      let t2 = result[j - 2];
+      let t3 = result[j - 1];
+      let t4 = result[j - 4];
+      t1 = s[t1];
+      t2 = s[t2];
+      t3 = s[t3];
+      t4 = s[t4];
+      t1 = t1 ^ rcon[i];
+      for (let n = 0; n < 4; ++n) {
+        result[j] = t1 ^= result[j - 16];
+        j++;
+        result[j] = t2 ^= result[j - 16];
+        j++;
+        result[j] = t3 ^= result[j - 16];
+        j++;
+        result[j] = t4 ^= result[j - 16];
+        j++;
+      }
+    }
+    return result;
+  }
+}
+class AES256Cipher extends AESBaseCipher {
+  constructor(key) {
+    super();
+    this._cyclesOfRepetition = 14;
+    this._keySize = 224;
+    this._key = this._expandKey(key);
+  }
+  _expandKey(cipherKey) {
+    const b = 240;
+    const s = this._s;
+    let result = new Uint8Array(b);
+    result.set(cipherKey);
+    let r = 1;
+    let t1, t2, t3, t4;
+    for (let j = 32, i = 1; j < b; ++i) {
       if (j % 32 === 16) {
         t1 = s[t1];
         t2 = s[t2];
@@ -14849,7 +15398,7 @@ var AES256Cipher = function AES256CipherClosure() {
           r = (r ^ 0x1b) & 0xFF;
         }
       }
-      for (var n = 0; n < 4; ++n) {
+      for (let n = 0; n < 4; ++n) {
         result[j] = t1 ^= result[j - 32];
         j++;
         result[j] = t2 ^= result[j - 32];
@@ -14862,267 +15411,7 @@ var AES256Cipher = function AES256CipherClosure() {
     }
     return result;
   }
-  function decrypt256(input, key) {
-    var state = new Uint8Array(16);
-    state.set(input);
-    var i, j, k;
-    var t, u, v;
-    for (j = 0, k = 224; j < 16; ++j, ++k) {
-      state[j] ^= key[k];
-    }
-    for (i = 13; i >= 1; --i) {
-      t = state[13];
-      state[13] = state[9];
-      state[9] = state[5];
-      state[5] = state[1];
-      state[1] = t;
-      t = state[14];
-      u = state[10];
-      state[14] = state[6];
-      state[10] = state[2];
-      state[6] = t;
-      state[2] = u;
-      t = state[15];
-      u = state[11];
-      v = state[7];
-      state[15] = state[3];
-      state[11] = t;
-      state[7] = u;
-      state[3] = v;
-      for (j = 0; j < 16; ++j) {
-        state[j] = inv_s[state[j]];
-      }
-      for (j = 0, k = i * 16; j < 16; ++j, ++k) {
-        state[j] ^= key[k];
-      }
-      for (j = 0; j < 16; j += 4) {
-        var s0 = mix[state[j]],
-            s1 = mix[state[j + 1]],
-            s2 = mix[state[j + 2]],
-            s3 = mix[state[j + 3]];
-        t = s0 ^ s1 >>> 8 ^ s1 << 24 ^ s2 >>> 16 ^ s2 << 16 ^ s3 >>> 24 ^ s3 << 8;
-        state[j] = t >>> 24 & 0xFF;
-        state[j + 1] = t >> 16 & 0xFF;
-        state[j + 2] = t >> 8 & 0xFF;
-        state[j + 3] = t & 0xFF;
-      }
-    }
-    t = state[13];
-    state[13] = state[9];
-    state[9] = state[5];
-    state[5] = state[1];
-    state[1] = t;
-    t = state[14];
-    u = state[10];
-    state[14] = state[6];
-    state[10] = state[2];
-    state[6] = t;
-    state[2] = u;
-    t = state[15];
-    u = state[11];
-    v = state[7];
-    state[15] = state[3];
-    state[11] = t;
-    state[7] = u;
-    state[3] = v;
-    for (j = 0; j < 16; ++j) {
-      state[j] = inv_s[state[j]];
-      state[j] ^= key[j];
-    }
-    return state;
-  }
-  function encrypt256(input, key) {
-    var t, u, v, i, j, k;
-    var state = new Uint8Array(16);
-    state.set(input);
-    for (j = 0; j < 16; ++j) {
-      state[j] ^= key[j];
-    }
-    for (i = 1; i < 14; i++) {
-      for (j = 0; j < 16; ++j) {
-        state[j] = s[state[j]];
-      }
-      v = state[1];
-      state[1] = state[5];
-      state[5] = state[9];
-      state[9] = state[13];
-      state[13] = v;
-      v = state[2];
-      u = state[6];
-      state[2] = state[10];
-      state[6] = state[14];
-      state[10] = v;
-      state[14] = u;
-      v = state[3];
-      u = state[7];
-      t = state[11];
-      state[3] = state[15];
-      state[7] = v;
-      state[11] = u;
-      state[15] = t;
-      for (j = 0; j < 16; j += 4) {
-        var s0 = state[j + 0],
-            s1 = state[j + 1];
-        var s2 = state[j + 2],
-            s3 = state[j + 3];
-        t = s0 ^ s1 ^ s2 ^ s3;
-        state[j + 0] ^= t ^ mixCol[s0 ^ s1];
-        state[j + 1] ^= t ^ mixCol[s1 ^ s2];
-        state[j + 2] ^= t ^ mixCol[s2 ^ s3];
-        state[j + 3] ^= t ^ mixCol[s3 ^ s0];
-      }
-      for (j = 0, k = i * 16; j < 16; ++j, ++k) {
-        state[j] ^= key[k];
-      }
-    }
-    for (j = 0; j < 16; ++j) {
-      state[j] = s[state[j]];
-    }
-    v = state[1];
-    state[1] = state[5];
-    state[5] = state[9];
-    state[9] = state[13];
-    state[13] = v;
-    v = state[2];
-    u = state[6];
-    state[2] = state[10];
-    state[6] = state[14];
-    state[10] = v;
-    state[14] = u;
-    v = state[3];
-    u = state[7];
-    t = state[11];
-    state[3] = state[15];
-    state[7] = v;
-    state[11] = u;
-    state[15] = t;
-    for (j = 0, k = 224; j < 16; ++j, ++k) {
-      state[j] ^= key[k];
-    }
-    return state;
-  }
-  function AES256Cipher(key) {
-    this.key = expandKey256(key);
-    this.buffer = new Uint8Array(16);
-    this.bufferPosition = 0;
-  }
-  function decryptBlock2(data, finalize) {
-    var i,
-        j,
-        ii,
-        sourceLength = data.length,
-        buffer = this.buffer,
-        bufferLength = this.bufferPosition,
-        result = [],
-        iv = this.iv;
-    for (i = 0; i < sourceLength; ++i) {
-      buffer[bufferLength] = data[i];
-      ++bufferLength;
-      if (bufferLength < 16) {
-        continue;
-      }
-      var plain = decrypt256(buffer, this.key);
-      for (j = 0; j < 16; ++j) {
-        plain[j] ^= iv[j];
-      }
-      iv = buffer;
-      result.push(plain);
-      buffer = new Uint8Array(16);
-      bufferLength = 0;
-    }
-    this.buffer = buffer;
-    this.bufferLength = bufferLength;
-    this.iv = iv;
-    if (result.length === 0) {
-      return new Uint8Array([]);
-    }
-    var outputLength = 16 * result.length;
-    if (finalize) {
-      var lastBlock = result[result.length - 1];
-      var psLen = lastBlock[15];
-      if (psLen <= 16) {
-        for (i = 15, ii = 16 - psLen; i >= ii; --i) {
-          if (lastBlock[i] !== psLen) {
-            psLen = 0;
-            break;
-          }
-        }
-        outputLength -= psLen;
-        result[result.length - 1] = lastBlock.subarray(0, 16 - psLen);
-      }
-    }
-    var output = new Uint8Array(outputLength);
-    for (i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
-      output.set(result[i], j);
-    }
-    return output;
-  }
-  AES256Cipher.prototype = {
-    decryptBlock: function AES256Cipher_decryptBlock(data, finalize, iv) {
-      var i,
-          sourceLength = data.length;
-      var buffer = this.buffer,
-          bufferLength = this.bufferPosition;
-      if (iv) {
-        this.iv = iv;
-      } else {
-        for (i = 0; bufferLength < 16 && i < sourceLength; ++i, ++bufferLength) {
-          buffer[bufferLength] = data[i];
-        }
-        if (bufferLength < 16) {
-          this.bufferLength = bufferLength;
-          return new Uint8Array([]);
-        }
-        this.iv = buffer;
-        data = data.subarray(16);
-      }
-      this.buffer = new Uint8Array(16);
-      this.bufferLength = 0;
-      this.decryptBlock = decryptBlock2;
-      return this.decryptBlock(data, finalize);
-    },
-    encrypt: function AES256Cipher_encrypt(data, iv) {
-      var i,
-          j,
-          ii,
-          sourceLength = data.length,
-          buffer = this.buffer,
-          bufferLength = this.bufferPosition,
-          result = [];
-      if (!iv) {
-        iv = new Uint8Array(16);
-      }
-      for (i = 0; i < sourceLength; ++i) {
-        buffer[bufferLength] = data[i];
-        ++bufferLength;
-        if (bufferLength < 16) {
-          continue;
-        }
-        for (j = 0; j < 16; ++j) {
-          buffer[j] ^= iv[j];
-        }
-        var cipher = encrypt256(buffer, this.key);
-        this.iv = cipher;
-        result.push(cipher);
-        buffer = new Uint8Array(16);
-        bufferLength = 0;
-      }
-      this.buffer = buffer;
-      this.bufferLength = bufferLength;
-      this.iv = iv;
-      if (result.length === 0) {
-        return new Uint8Array([]);
-      }
-      var outputLength = 16 * result.length;
-      var output = new Uint8Array(outputLength);
-      for (i = 0, j = 0, ii = result.length; i < ii; ++i, j += 16) {
-        output.set(result[i], j);
-      }
-      return output;
-    }
-  };
-  return AES256Cipher;
-}();
+}
 var PDF17 = function PDF17Closure() {
   function compareByteArrays(array1, array2) {
     if (array1.length !== array2.length) {
@@ -15582,7 +15871,7 @@ exports.calculateSHA384 = calculateSHA384;
 exports.calculateSHA512 = calculateSHA512;
 
 /***/ }),
-/* 14 */
+/* 15 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -17002,7 +17291,7 @@ exports.CFFPrivateDict = CFFPrivateDict;
 exports.CFFCompiler = CFFCompiler;
 
 /***/ }),
-/* 15 */
+/* 16 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -17745,7 +18034,7 @@ exports.getSupplementalGlyphMapForArialBlack = getSupplementalGlyphMapForArialBl
 exports.getSupplementalGlyphMapForCalibri = getSupplementalGlyphMapForCalibri;
 
 /***/ }),
-/* 16 */
+/* 17 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 var getLookupTableFactory = __w_pdfjs_require__(0).getLookupTableFactory;
@@ -19722,7 +20011,7 @@ exports.getNormalizedUnicodes = getNormalizedUnicodes;
 exports.getUnicodeForGlyph = getUnicodeForGlyph;
 
 /***/ }),
-/* 17 */
+/* 18 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -19763,20 +20052,22 @@ class PDFFunctionFactory {
       fnObj
     });
   }
-  createFromIR(IR) {
-    return PDFFunction.fromIR({
-      xref: this.xref,
-      isEvalSupported: this.isEvalSupported,
-      IR
-    });
+}
+function toNumberArray(arr) {
+  if (!Array.isArray(arr)) {
+    return null;
   }
-  createIR(fn) {
-    return PDFFunction.getIR({
-      xref: this.xref,
-      isEvalSupported: this.isEvalSupported,
-      fn
-    });
+  const length = arr.length;
+  for (let i = 0; i < length; i++) {
+    if (typeof arr[i] !== 'number') {
+      const result = new Array(length);
+      for (let i = 0; i < length; i++) {
+        result[i] = +arr[i];
+      }
+      return result;
+    }
   }
+  return arr;
 }
 var PDFFunction = function PDFFunctionClosure() {
   const CONSTRUCT_SAMPLED = 0;
@@ -19901,8 +20192,8 @@ var PDFFunction = function PDFFunctionClosure() {
         }
         return out;
       }
-      var domain = dict.getArray('Domain');
-      var range = dict.getArray('Range');
+      var domain = toNumberArray(dict.getArray('Domain'));
+      var range = toNumberArray(dict.getArray('Range'));
       if (!domain || !range) {
         throw new _util.FormatError('No domain or range');
       }
@@ -19910,22 +20201,22 @@ var PDFFunction = function PDFFunctionClosure() {
       var outputSize = range.length / 2;
       domain = toMultiArray(domain);
       range = toMultiArray(range);
-      var size = dict.get('Size');
+      var size = toNumberArray(dict.get('Size'));
       var bps = dict.get('BitsPerSample');
       var order = dict.get('Order') || 1;
       if (order !== 1) {
         (0, _util.info)('No support for cubic spline interpolation: ' + order);
       }
-      var encode = dict.getArray('Encode');
+      var encode = toNumberArray(dict.getArray('Encode'));
       if (!encode) {
         encode = [];
         for (var i = 0; i < inputSize; ++i) {
-          encode.push(0);
-          encode.push(size[i] - 1);
+          encode.push([0, size[i] - 1]);
         }
+      } else {
+        encode = toMultiArray(encode);
       }
-      encode = toMultiArray(encode);
-      var decode = dict.getArray('Decode');
+      var decode = toNumberArray(dict.getArray('Decode'));
       if (!decode) {
         decode = range;
       } else {
@@ -19991,12 +20282,9 @@ var PDFFunction = function PDFFunctionClosure() {
       };
     },
     constructInterpolated({ xref, isEvalSupported, fn, dict }) {
-      var c0 = dict.getArray('C0') || [0];
-      var c1 = dict.getArray('C1') || [1];
+      var c0 = toNumberArray(dict.getArray('C0')) || [0];
+      var c1 = toNumberArray(dict.getArray('C1')) || [1];
       var n = dict.get('N');
-      if (!Array.isArray(c0) || !Array.isArray(c1)) {
-        throw new _util.FormatError('Illegal dictionary for interpolated function');
-      }
       var length = c0.length;
       var diff = [];
       for (var i = 0; i < length; ++i) {
@@ -20017,7 +20305,7 @@ var PDFFunction = function PDFFunctionClosure() {
       };
     },
     constructStiched({ xref, isEvalSupported, fn, dict }) {
-      var domain = dict.getArray('Domain');
+      var domain = toNumberArray(dict.getArray('Domain'));
       if (!domain) {
         throw new _util.FormatError('No domain');
       }
@@ -20028,30 +20316,22 @@ var PDFFunction = function PDFFunctionClosure() {
       var fnRefs = dict.get('Functions');
       var fns = [];
       for (var i = 0, ii = fnRefs.length; i < ii; ++i) {
-        fns.push(this.getIR({
+        fns.push(this.parse({
           xref,
           isEvalSupported,
           fn: xref.fetchIfRef(fnRefs[i])
         }));
       }
-      var bounds = dict.getArray('Bounds');
-      var encode = dict.getArray('Encode');
+      var bounds = toNumberArray(dict.getArray('Bounds'));
+      var encode = toNumberArray(dict.getArray('Encode'));
       return [CONSTRUCT_STICHED, domain, bounds, encode, fns];
     },
     constructStichedFromIR({ xref, isEvalSupported, IR }) {
       var domain = IR[1];
       var bounds = IR[2];
       var encode = IR[3];
-      var fnsIR = IR[4];
-      var fns = [];
+      var fns = IR[4];
       var tmpBuf = new Float32Array(1);
-      for (var i = 0, ii = fnsIR.length; i < ii; i++) {
-        fns.push(this.fromIR({
-          xref,
-          isEvalSupported,
-          IR: fnsIR[i]
-        }));
-      }
       return function constructStichedFromIRResult(src, srcOffset, dest, destOffset) {
         var clip = function constructStichedFromIRClip(v, min, max) {
           if (v > max) {
@@ -20082,8 +20362,8 @@ var PDFFunction = function PDFFunctionClosure() {
       };
     },
     constructPostScript({ xref, isEvalSupported, fn, dict }) {
-      var domain = dict.getArray('Domain');
-      var range = dict.getArray('Range');
+      var domain = toNumberArray(dict.getArray('Domain'));
+      var range = toNumberArray(dict.getArray('Range'));
       if (!domain) {
         throw new _util.FormatError('No domain.');
       }
@@ -20778,19 +21058,19 @@ exports.PostScriptEvaluator = PostScriptEvaluator;
 exports.PostScriptCompiler = PostScriptCompiler;
 
 /***/ }),
-/* 18 */
+/* 19 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
 
 
-var pdfjsVersion = '2.0.288';
-var pdfjsBuild = 'f0216484';
-var pdfjsCoreWorker = __w_pdfjs_require__(19);
+var pdfjsVersion = '2.0.402';
+var pdfjsBuild = '401f3a9d';
+var pdfjsCoreWorker = __w_pdfjs_require__(20);
 exports.WorkerMessageHandler = pdfjsCoreWorker.WorkerMessageHandler;
 
 /***/ }),
-/* 19 */
+/* 20 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -20803,7 +21083,7 @@ exports.WorkerMessageHandler = exports.WorkerTask = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
-var _pdf_manager = __w_pdfjs_require__(23);
+var _pdf_manager = __w_pdfjs_require__(24);
 
 var _is_node = __w_pdfjs_require__(44);
 
@@ -20986,7 +21266,7 @@ var WorkerMessageHandler = {
     var cancelXHRs = null;
     var WorkerTasks = [];
     let apiVersion = docParams.apiVersion;
-    let workerVersion = '2.0.288';
+    let workerVersion = '2.0.402';
     if (apiVersion !== null && apiVersion !== workerVersion) {
       throw new Error(`The API version "${apiVersion}" does not match ` + `the Worker version "${workerVersion}".`);
     }
@@ -21370,7 +21650,7 @@ exports.WorkerTask = WorkerTask;
 exports.WorkerMessageHandler = WorkerMessageHandler;
 
 /***/ }),
-/* 20 */
+/* 21 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -21379,7 +21659,7 @@ exports.WorkerMessageHandler = WorkerMessageHandler;
 ;
 
 /***/ }),
-/* 21 */
+/* 22 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -21399,11 +21679,11 @@ if (typeof ReadableStream !== 'undefined') {
 if (isReadableStreamSupported) {
   exports.ReadableStream = ReadableStream;
 } else {
-  exports.ReadableStream = __w_pdfjs_require__(22).ReadableStream;
+  exports.ReadableStream = __w_pdfjs_require__(23).ReadableStream;
 }
 
 /***/ }),
-/* 22 */
+/* 23 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -24419,7 +24699,7 @@ if (isReadableStreamSupported) {
 }]));
 
 /***/ }),
-/* 23 */
+/* 24 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -24434,7 +24714,7 @@ var _util = __w_pdfjs_require__(0);
 
 var _chunked_stream = __w_pdfjs_require__(9);
 
-var _document = __w_pdfjs_require__(24);
+var _document = __w_pdfjs_require__(25);
 
 var _stream = __w_pdfjs_require__(2);
 
@@ -24603,7 +24883,7 @@ exports.LocalPdfManager = LocalPdfManager;
 exports.NetworkPdfManager = NetworkPdfManager;
 
 /***/ }),
-/* 24 */
+/* 25 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -24624,7 +24904,7 @@ var _stream = __w_pdfjs_require__(2);
 
 var _annotation = __w_pdfjs_require__(31);
 
-var _crypto = __w_pdfjs_require__(13);
+var _crypto = __w_pdfjs_require__(14);
 
 var _parser = __w_pdfjs_require__(5);
 
@@ -24632,7 +24912,7 @@ var _operator_list = __w_pdfjs_require__(7);
 
 var _evaluator = __w_pdfjs_require__(32);
 
-var _function = __w_pdfjs_require__(17);
+var _function = __w_pdfjs_require__(18);
 
 var Page = function PageClosure() {
   var DEFAULT_USER_UNIT = 1.0;
@@ -25126,7 +25406,7 @@ exports.Page = Page;
 exports.PDFDocument = PDFDocument;
 
 /***/ }),
-/* 25 */
+/* 26 */
 /***/ (function(module, exports, __w_pdfjs_require__) {
 
 "use strict";
@@ -25139,7 +25419,7 @@ exports.CCITTFaxStream = undefined;
 
 var _primitives = __w_pdfjs_require__(1);
 
-var _ccitt = __w_pdfjs_require__(26);
+var _ccitt = __w_pdfjs_require__(11);
 
 var _stream = __w_pdfjs_require__(2);
 
@@ -25181,541 +25461,6 @@ var CCITTFaxStream = function CCITTFaxStreamClosure() {
   return CCITTFaxStream;
 }();
 exports.CCITTFaxStream = CCITTFaxStream;
-
-/***/ }),
-/* 26 */
-/***/ (function(module, exports, __w_pdfjs_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.CCITTFaxDecoder = undefined;
-
-var _util = __w_pdfjs_require__(0);
-
-let CCITTFaxDecoder = function CCITTFaxDecoder() {
-  const ccittEOL = -2;
-  const ccittEOF = -1;
-  const twoDimPass = 0;
-  const twoDimHoriz = 1;
-  const twoDimVert0 = 2;
-  const twoDimVertR1 = 3;
-  const twoDimVertL1 = 4;
-  const twoDimVertR2 = 5;
-  const twoDimVertL2 = 6;
-  const twoDimVertR3 = 7;
-  const twoDimVertL3 = 8;
-  const twoDimTable = [[-1, -1], [-1, -1], [7, twoDimVertL3], [7, twoDimVertR3], [6, twoDimVertL2], [6, twoDimVertL2], [6, twoDimVertR2], [6, twoDimVertR2], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [4, twoDimPass], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimHoriz], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertL1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [3, twoDimVertR1], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0], [1, twoDimVert0]];
-  const whiteTable1 = [[-1, -1], [12, ccittEOL], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [11, 1792], [11, 1792], [12, 1984], [12, 2048], [12, 2112], [12, 2176], [12, 2240], [12, 2304], [11, 1856], [11, 1856], [11, 1920], [11, 1920], [12, 2368], [12, 2432], [12, 2496], [12, 2560]];
-  const whiteTable2 = [[-1, -1], [-1, -1], [-1, -1], [-1, -1], [8, 29], [8, 29], [8, 30], [8, 30], [8, 45], [8, 45], [8, 46], [8, 46], [7, 22], [7, 22], [7, 22], [7, 22], [7, 23], [7, 23], [7, 23], [7, 23], [8, 47], [8, 47], [8, 48], [8, 48], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [6, 13], [7, 20], [7, 20], [7, 20], [7, 20], [8, 33], [8, 33], [8, 34], [8, 34], [8, 35], [8, 35], [8, 36], [8, 36], [8, 37], [8, 37], [8, 38], [8, 38], [7, 19], [7, 19], [7, 19], [7, 19], [8, 31], [8, 31], [8, 32], [8, 32], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 1], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [6, 12], [8, 53], [8, 53], [8, 54], [8, 54], [7, 26], [7, 26], [7, 26], [7, 26], [8, 39], [8, 39], [8, 40], [8, 40], [8, 41], [8, 41], [8, 42], [8, 42], [8, 43], [8, 43], [8, 44], [8, 44], [7, 21], [7, 21], [7, 21], [7, 21], [7, 28], [7, 28], [7, 28], [7, 28], [8, 61], [8, 61], [8, 62], [8, 62], [8, 63], [8, 63], [8, 0], [8, 0], [8, 320], [8, 320], [8, 384], [8, 384], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 10], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [5, 11], [7, 27], [7, 27], [7, 27], [7, 27], [8, 59], [8, 59], [8, 60], [8, 60], [9, 1472], [9, 1536], [9, 1600], [9, 1728], [7, 18], [7, 18], [7, 18], [7, 18], [7, 24], [7, 24], [7, 24], [7, 24], [8, 49], [8, 49], [8, 50], [8, 50], [8, 51], [8, 51], [8, 52], [8, 52], [7, 25], [7, 25], [7, 25], [7, 25], [8, 55], [8, 55], [8, 56], [8, 56], [8, 57], [8, 57], [8, 58], [8, 58], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 192], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [6, 1664], [8, 448], [8, 448], [8, 512], [8, 512], [9, 704], [9, 768], [8, 640], [8, 640], [8, 576], [8, 576], [9, 832], [9, 896], [9, 960], [9, 1024], [9, 1088], [9, 1152], [9, 1216], [9, 1280], [9, 1344], [9, 1408], [7, 256], [7, 256], [7, 256], [7, 256], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 128], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 8], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [5, 9], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 16], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [6, 17], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 4], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [4, 5], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 14], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [6, 15], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [5, 64], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 6], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7], [4, 7]];
-  const blackTable1 = [[-1, -1], [-1, -1], [12, ccittEOL], [12, ccittEOL], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [-1, -1], [11, 1792], [11, 1792], [11, 1792], [11, 1792], [12, 1984], [12, 1984], [12, 2048], [12, 2048], [12, 2112], [12, 2112], [12, 2176], [12, 2176], [12, 2240], [12, 2240], [12, 2304], [12, 2304], [11, 1856], [11, 1856], [11, 1856], [11, 1856], [11, 1920], [11, 1920], [11, 1920], [11, 1920], [12, 2368], [12, 2368], [12, 2432], [12, 2432], [12, 2496], [12, 2496], [12, 2560], [12, 2560], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [10, 18], [12, 52], [12, 52], [13, 640], [13, 704], [13, 768], [13, 832], [12, 55], [12, 55], [12, 56], [12, 56], [13, 1280], [13, 1344], [13, 1408], [13, 1472], [12, 59], [12, 59], [12, 60], [12, 60], [13, 1536], [13, 1600], [11, 24], [11, 24], [11, 24], [11, 24], [11, 25], [11, 25], [11, 25], [11, 25], [13, 1664], [13, 1728], [12, 320], [12, 320], [12, 384], [12, 384], [12, 448], [12, 448], [13, 512], [13, 576], [12, 53], [12, 53], [12, 54], [12, 54], [13, 896], [13, 960], [13, 1024], [13, 1088], [13, 1152], [13, 1216], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64], [10, 64]];
-  const blackTable2 = [[8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [8, 13], [11, 23], [11, 23], [12, 50], [12, 51], [12, 44], [12, 45], [12, 46], [12, 47], [12, 57], [12, 58], [12, 61], [12, 256], [10, 16], [10, 16], [10, 16], [10, 16], [10, 17], [10, 17], [10, 17], [10, 17], [12, 48], [12, 49], [12, 62], [12, 63], [12, 30], [12, 31], [12, 32], [12, 33], [12, 40], [12, 41], [11, 22], [11, 22], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [8, 14], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 10], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [7, 11], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [9, 15], [12, 128], [12, 192], [12, 26], [12, 27], [12, 28], [12, 29], [11, 19], [11, 19], [11, 20], [11, 20], [12, 34], [12, 35], [12, 36], [12, 37], [12, 38], [12, 39], [11, 21], [11, 21], [12, 42], [12, 43], [10, 0], [10, 0], [10, 0], [10, 0], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12], [7, 12]];
-  const blackTable3 = [[-1, -1], [-1, -1], [-1, -1], [-1, -1], [6, 9], [6, 8], [5, 7], [5, 7], [4, 6], [4, 6], [4, 6], [4, 6], [4, 5], [4, 5], [4, 5], [4, 5], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 3], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]];
-  function CCITTFaxDecoder(source, options = {}) {
-    if (!source || typeof source.next !== 'function') {
-      throw new Error('CCITTFaxDecoder - invalid "source" parameter.');
-    }
-    this.source = source;
-    this.eof = false;
-    this.encoding = options['K'] || 0;
-    this.eoline = options['EndOfLine'] || false;
-    this.byteAlign = options['EncodedByteAlign'] || false;
-    this.columns = options['Columns'] || 1728;
-    this.rows = options['Rows'] || 0;
-    let eoblock = options['EndOfBlock'];
-    if (eoblock === null || eoblock === undefined) {
-      eoblock = true;
-    }
-    this.eoblock = eoblock;
-    this.black = options['BlackIs1'] || false;
-    this.codingLine = new Uint32Array(this.columns + 1);
-    this.refLine = new Uint32Array(this.columns + 2);
-    this.codingLine[0] = this.columns;
-    this.codingPos = 0;
-    this.row = 0;
-    this.nextLine2D = this.encoding < 0;
-    this.inputBits = 0;
-    this.inputBuf = 0;
-    this.outputBits = 0;
-    this.rowsDone = false;
-    let code1;
-    while ((code1 = this._lookBits(12)) === 0) {
-      this._eatBits(1);
-    }
-    if (code1 === 1) {
-      this._eatBits(12);
-    }
-    if (this.encoding > 0) {
-      this.nextLine2D = !this._lookBits(1);
-      this._eatBits(1);
-    }
-  }
-  CCITTFaxDecoder.prototype = {
-    readNextChar() {
-      if (this.eof) {
-        return -1;
-      }
-      let refLine = this.refLine;
-      let codingLine = this.codingLine;
-      let columns = this.columns;
-      let refPos, blackPixels, bits, i;
-      if (this.outputBits === 0) {
-        if (this.rowsDone) {
-          this.eof = true;
-        }
-        if (this.eof) {
-          return -1;
-        }
-        this.err = false;
-        let code1, code2, code3;
-        if (this.nextLine2D) {
-          for (i = 0; codingLine[i] < columns; ++i) {
-            refLine[i] = codingLine[i];
-          }
-          refLine[i++] = columns;
-          refLine[i] = columns;
-          codingLine[0] = 0;
-          this.codingPos = 0;
-          refPos = 0;
-          blackPixels = 0;
-          while (codingLine[this.codingPos] < columns) {
-            code1 = this._getTwoDimCode();
-            switch (code1) {
-              case twoDimPass:
-                this._addPixels(refLine[refPos + 1], blackPixels);
-                if (refLine[refPos + 1] < columns) {
-                  refPos += 2;
-                }
-                break;
-              case twoDimHoriz:
-                code1 = code2 = 0;
-                if (blackPixels) {
-                  do {
-                    code1 += code3 = this._getBlackCode();
-                  } while (code3 >= 64);
-                  do {
-                    code2 += code3 = this._getWhiteCode();
-                  } while (code3 >= 64);
-                } else {
-                  do {
-                    code1 += code3 = this._getWhiteCode();
-                  } while (code3 >= 64);
-                  do {
-                    code2 += code3 = this._getBlackCode();
-                  } while (code3 >= 64);
-                }
-                this._addPixels(codingLine[this.codingPos] + code1, blackPixels);
-                if (codingLine[this.codingPos] < columns) {
-                  this._addPixels(codingLine[this.codingPos] + code2, blackPixels ^ 1);
-                }
-                while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                  refPos += 2;
-                }
-                break;
-              case twoDimVertR3:
-                this._addPixels(refLine[refPos] + 3, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  ++refPos;
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVertR2:
-                this._addPixels(refLine[refPos] + 2, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  ++refPos;
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVertR1:
-                this._addPixels(refLine[refPos] + 1, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  ++refPos;
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVert0:
-                this._addPixels(refLine[refPos], blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  ++refPos;
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVertL3:
-                this._addPixelsNeg(refLine[refPos] - 3, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  if (refPos > 0) {
-                    --refPos;
-                  } else {
-                    ++refPos;
-                  }
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVertL2:
-                this._addPixelsNeg(refLine[refPos] - 2, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  if (refPos > 0) {
-                    --refPos;
-                  } else {
-                    ++refPos;
-                  }
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case twoDimVertL1:
-                this._addPixelsNeg(refLine[refPos] - 1, blackPixels);
-                blackPixels ^= 1;
-                if (codingLine[this.codingPos] < columns) {
-                  if (refPos > 0) {
-                    --refPos;
-                  } else {
-                    ++refPos;
-                  }
-                  while (refLine[refPos] <= codingLine[this.codingPos] && refLine[refPos] < columns) {
-                    refPos += 2;
-                  }
-                }
-                break;
-              case ccittEOF:
-                this._addPixels(columns, 0);
-                this.eof = true;
-                break;
-              default:
-                (0, _util.info)('bad 2d code');
-                this._addPixels(columns, 0);
-                this.err = true;
-            }
-          }
-        } else {
-          codingLine[0] = 0;
-          this.codingPos = 0;
-          blackPixels = 0;
-          while (codingLine[this.codingPos] < columns) {
-            code1 = 0;
-            if (blackPixels) {
-              do {
-                code1 += code3 = this._getBlackCode();
-              } while (code3 >= 64);
-            } else {
-              do {
-                code1 += code3 = this._getWhiteCode();
-              } while (code3 >= 64);
-            }
-            this._addPixels(codingLine[this.codingPos] + code1, blackPixels);
-            blackPixels ^= 1;
-          }
-        }
-        let gotEOL = false;
-        if (this.byteAlign) {
-          this.inputBits &= ~7;
-        }
-        if (!this.eoblock && this.row === this.rows - 1) {
-          this.rowsDone = true;
-        } else {
-          code1 = this._lookBits(12);
-          if (this.eoline) {
-            while (code1 !== ccittEOF && code1 !== 1) {
-              this._eatBits(1);
-              code1 = this._lookBits(12);
-            }
-          } else {
-            while (code1 === 0) {
-              this._eatBits(1);
-              code1 = this._lookBits(12);
-            }
-          }
-          if (code1 === 1) {
-            this._eatBits(12);
-            gotEOL = true;
-          } else if (code1 === ccittEOF) {
-            this.eof = true;
-          }
-        }
-        if (!this.eof && this.encoding > 0 && !this.rowsDone) {
-          this.nextLine2D = !this._lookBits(1);
-          this._eatBits(1);
-        }
-        if (this.eoblock && gotEOL && this.byteAlign) {
-          code1 = this._lookBits(12);
-          if (code1 === 1) {
-            this._eatBits(12);
-            if (this.encoding > 0) {
-              this._lookBits(1);
-              this._eatBits(1);
-            }
-            if (this.encoding >= 0) {
-              for (i = 0; i < 4; ++i) {
-                code1 = this._lookBits(12);
-                if (code1 !== 1) {
-                  (0, _util.info)('bad rtc code: ' + code1);
-                }
-                this._eatBits(12);
-                if (this.encoding > 0) {
-                  this._lookBits(1);
-                  this._eatBits(1);
-                }
-              }
-            }
-            this.eof = true;
-          }
-        } else if (this.err && this.eoline) {
-          while (true) {
-            code1 = this._lookBits(13);
-            if (code1 === ccittEOF) {
-              this.eof = true;
-              return -1;
-            }
-            if (code1 >> 1 === 1) {
-              break;
-            }
-            this._eatBits(1);
-          }
-          this._eatBits(12);
-          if (this.encoding > 0) {
-            this._eatBits(1);
-            this.nextLine2D = !(code1 & 1);
-          }
-        }
-        if (codingLine[0] > 0) {
-          this.outputBits = codingLine[this.codingPos = 0];
-        } else {
-          this.outputBits = codingLine[this.codingPos = 1];
-        }
-        this.row++;
-      }
-      let c;
-      if (this.outputBits >= 8) {
-        c = this.codingPos & 1 ? 0 : 0xFF;
-        this.outputBits -= 8;
-        if (this.outputBits === 0 && codingLine[this.codingPos] < columns) {
-          this.codingPos++;
-          this.outputBits = codingLine[this.codingPos] - codingLine[this.codingPos - 1];
-        }
-      } else {
-        bits = 8;
-        c = 0;
-        do {
-          if (this.outputBits > bits) {
-            c <<= bits;
-            if (!(this.codingPos & 1)) {
-              c |= 0xFF >> 8 - bits;
-            }
-            this.outputBits -= bits;
-            bits = 0;
-          } else {
-            c <<= this.outputBits;
-            if (!(this.codingPos & 1)) {
-              c |= 0xFF >> 8 - this.outputBits;
-            }
-            bits -= this.outputBits;
-            this.outputBits = 0;
-            if (codingLine[this.codingPos] < columns) {
-              this.codingPos++;
-              this.outputBits = codingLine[this.codingPos] - codingLine[this.codingPos - 1];
-            } else if (bits > 0) {
-              c <<= bits;
-              bits = 0;
-            }
-          }
-        } while (bits);
-      }
-      if (this.black) {
-        c ^= 0xFF;
-      }
-      return c;
-    },
-    _addPixels(a1, blackPixels) {
-      let codingLine = this.codingLine;
-      let codingPos = this.codingPos;
-      if (a1 > codingLine[codingPos]) {
-        if (a1 > this.columns) {
-          (0, _util.info)('row is wrong length');
-          this.err = true;
-          a1 = this.columns;
-        }
-        if (codingPos & 1 ^ blackPixels) {
-          ++codingPos;
-        }
-        codingLine[codingPos] = a1;
-      }
-      this.codingPos = codingPos;
-    },
-    _addPixelsNeg(a1, blackPixels) {
-      let codingLine = this.codingLine;
-      let codingPos = this.codingPos;
-      if (a1 > codingLine[codingPos]) {
-        if (a1 > this.columns) {
-          (0, _util.info)('row is wrong length');
-          this.err = true;
-          a1 = this.columns;
-        }
-        if (codingPos & 1 ^ blackPixels) {
-          ++codingPos;
-        }
-        codingLine[codingPos] = a1;
-      } else if (a1 < codingLine[codingPos]) {
-        if (a1 < 0) {
-          (0, _util.info)('invalid code');
-          this.err = true;
-          a1 = 0;
-        }
-        while (codingPos > 0 && a1 < codingLine[codingPos - 1]) {
-          --codingPos;
-        }
-        codingLine[codingPos] = a1;
-      }
-      this.codingPos = codingPos;
-    },
-    _findTableCode(start, end, table, limit) {
-      let limitValue = limit || 0;
-      for (let i = start; i <= end; ++i) {
-        let code = this._lookBits(i);
-        if (code === ccittEOF) {
-          return [true, 1, false];
-        }
-        if (i < end) {
-          code <<= end - i;
-        }
-        if (!limitValue || code >= limitValue) {
-          let p = table[code - limitValue];
-          if (p[0] === i) {
-            this._eatBits(i);
-            return [true, p[1], true];
-          }
-        }
-      }
-      return [false, 0, false];
-    },
-    _getTwoDimCode() {
-      let code = 0;
-      let p;
-      if (this.eoblock) {
-        code = this._lookBits(7);
-        p = twoDimTable[code];
-        if (p && p[0] > 0) {
-          this._eatBits(p[0]);
-          return p[1];
-        }
-      } else {
-        let result = this._findTableCode(1, 7, twoDimTable);
-        if (result[0] && result[2]) {
-          return result[1];
-        }
-      }
-      (0, _util.info)('Bad two dim code');
-      return ccittEOF;
-    },
-    _getWhiteCode() {
-      let code = 0;
-      let p;
-      if (this.eoblock) {
-        code = this._lookBits(12);
-        if (code === ccittEOF) {
-          return 1;
-        }
-        if (code >> 5 === 0) {
-          p = whiteTable1[code];
-        } else {
-          p = whiteTable2[code >> 3];
-        }
-        if (p[0] > 0) {
-          this._eatBits(p[0]);
-          return p[1];
-        }
-      } else {
-        let result = this._findTableCode(1, 9, whiteTable2);
-        if (result[0]) {
-          return result[1];
-        }
-        result = this._findTableCode(11, 12, whiteTable1);
-        if (result[0]) {
-          return result[1];
-        }
-      }
-      (0, _util.info)('bad white code');
-      this._eatBits(1);
-      return 1;
-    },
-    _getBlackCode() {
-      let code, p;
-      if (this.eoblock) {
-        code = this._lookBits(13);
-        if (code === ccittEOF) {
-          return 1;
-        }
-        if (code >> 7 === 0) {
-          p = blackTable1[code];
-        } else if (code >> 9 === 0 && code >> 7 !== 0) {
-          p = blackTable2[(code >> 1) - 64];
-        } else {
-          p = blackTable3[code >> 7];
-        }
-        if (p[0] > 0) {
-          this._eatBits(p[0]);
-          return p[1];
-        }
-      } else {
-        let result = this._findTableCode(2, 6, blackTable3);
-        if (result[0]) {
-          return result[1];
-        }
-        result = this._findTableCode(7, 12, blackTable2, 64);
-        if (result[0]) {
-          return result[1];
-        }
-        result = this._findTableCode(10, 13, blackTable1);
-        if (result[0]) {
-          return result[1];
-        }
-      }
-      (0, _util.info)('bad black code');
-      this._eatBits(1);
-      return 1;
-    },
-    _lookBits(n) {
-      let c;
-      while (this.inputBits < n) {
-        if ((c = this.source.next()) === -1) {
-          if (this.inputBits === 0) {
-            return ccittEOF;
-          }
-          return this.inputBuf << n - this.inputBits & 0xFFFF >> 16 - n;
-        }
-        this.inputBuf = this.inputBuf << 8 | c;
-        this.inputBits += 8;
-      }
-      return this.inputBuf >> this.inputBits - n & 0xFFFF >> 16 - n;
-    },
-    _eatBits(n) {
-      if ((this.inputBits -= n) < 0) {
-        this.inputBits = 0;
-      }
-    }
-  };
-  return CCITTFaxDecoder;
-}();
-exports.CCITTFaxDecoder = CCITTFaxDecoder;
 
 /***/ }),
 /* 27 */
@@ -25802,7 +25547,9 @@ exports.Jbig2Image = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
-var _arithmetic_decoder = __w_pdfjs_require__(11);
+var _arithmetic_decoder = __w_pdfjs_require__(12);
+
+var _ccitt = __w_pdfjs_require__(11);
 
 let Jbig2Error = function Jbig2ErrorClosure() {
   function Jbig2Error(msg) {
@@ -26092,7 +25839,8 @@ var Jbig2Image = function Jbig2ImageClosure() {
   }
   function decodeBitmap(mmr, width, height, templateIndex, prediction, skip, at, decodingContext) {
     if (mmr) {
-      throw new Jbig2Error('MMR encoding is not supported');
+      let input = new Reader(decodingContext.data, decodingContext.start, decodingContext.end);
+      return decodeMMRBitmap(input, width, height, false);
     }
     if (templateIndex === 0 && !skip && !prediction && at.length === 4 && at[0].x === 3 && at[0].y === -1 && at[1].x === -3 && at[1].y === -1 && at[2].x === 2 && at[2].y === -2 && at[3].x === -2 && at[3].y === -2) {
       return decodeBitmapTemplate0(width, height, decodingContext);
@@ -26265,30 +26013,39 @@ var Jbig2Image = function Jbig2ImageClosure() {
     }
     return bitmap;
   }
-  function decodeSymbolDictionary(huffman, refinement, symbols, numberOfNewSymbols, numberOfExportedSymbols, huffmanTables, templateIndex, at, refinementTemplateIndex, refinementAt, decodingContext) {
-    if (huffman) {
-      throw new Jbig2Error('huffman is not supported');
+  function decodeSymbolDictionary(huffman, refinement, symbols, numberOfNewSymbols, numberOfExportedSymbols, huffmanTables, templateIndex, at, refinementTemplateIndex, refinementAt, decodingContext, huffmanInput) {
+    if (huffman && refinement) {
+      throw new Jbig2Error('symbol refinement with Huffman is not supported');
     }
     var newSymbols = [];
     var currentHeight = 0;
     var symbolCodeLength = (0, _util.log2)(symbols.length + numberOfNewSymbols);
     var decoder = decodingContext.decoder;
     var contextCache = decodingContext.contextCache;
+    let tableB1, symbolWidths;
+    if (huffman) {
+      tableB1 = getStandardTable(1);
+      symbolWidths = [];
+      symbolCodeLength = Math.max(symbolCodeLength, 1);
+    }
     while (newSymbols.length < numberOfNewSymbols) {
-      var deltaHeight = decodeInteger(contextCache, 'IADH', decoder);
+      var deltaHeight = huffman ? huffmanTables.tableDeltaHeight.decode(huffmanInput) : decodeInteger(contextCache, 'IADH', decoder);
       currentHeight += deltaHeight;
-      var currentWidth = 0;
+      let currentWidth = 0,
+          totalWidth = 0;
+      let firstSymbol = huffman ? symbolWidths.length : 0;
       while (true) {
-        var deltaWidth = decodeInteger(contextCache, 'IADW', decoder);
+        var deltaWidth = huffman ? huffmanTables.tableDeltaWidth.decode(huffmanInput) : decodeInteger(contextCache, 'IADW', decoder);
         if (deltaWidth === null) {
           break;
         }
         currentWidth += deltaWidth;
+        totalWidth += currentWidth;
         var bitmap;
         if (refinement) {
           var numberOfInstances = decodeInteger(contextCache, 'IAAI', decoder);
           if (numberOfInstances > 1) {
-            bitmap = decodeTextRegion(huffman, refinement, currentWidth, currentHeight, 0, numberOfInstances, 1, symbols.concat(newSymbols), symbolCodeLength, 0, 0, 1, 0, huffmanTables, refinementTemplateIndex, refinementAt, decodingContext);
+            bitmap = decodeTextRegion(huffman, refinement, currentWidth, currentHeight, 0, numberOfInstances, 1, symbols.concat(newSymbols), symbolCodeLength, 0, 0, 1, 0, huffmanTables, refinementTemplateIndex, refinementAt, decodingContext, 0, huffmanInput);
           } else {
             var symbolId = decodeIAID(contextCache, decoder, symbolCodeLength);
             var rdx = decodeInteger(contextCache, 'IARDX', decoder);
@@ -26296,10 +26053,49 @@ var Jbig2Image = function Jbig2ImageClosure() {
             var symbol = symbolId < symbols.length ? symbols[symbolId] : newSymbols[symbolId - symbols.length];
             bitmap = decodeRefinement(currentWidth, currentHeight, refinementTemplateIndex, symbol, rdx, rdy, false, refinementAt, decodingContext);
           }
+          newSymbols.push(bitmap);
+        } else if (huffman) {
+          symbolWidths.push(currentWidth);
         } else {
           bitmap = decodeBitmap(false, currentWidth, currentHeight, templateIndex, false, null, at, decodingContext);
+          newSymbols.push(bitmap);
         }
-        newSymbols.push(bitmap);
+      }
+      if (huffman && !refinement) {
+        let bitmapSize = huffmanTables.tableBitmapSize.decode(huffmanInput);
+        huffmanInput.byteAlign();
+        let collectiveBitmap;
+        if (bitmapSize === 0) {
+          collectiveBitmap = readUncompressedBitmap(huffmanInput, totalWidth, currentHeight);
+        } else {
+          let originalEnd = huffmanInput.end;
+          let bitmapEnd = huffmanInput.position + bitmapSize;
+          huffmanInput.end = bitmapEnd;
+          collectiveBitmap = decodeMMRBitmap(huffmanInput, totalWidth, currentHeight, false);
+          huffmanInput.end = originalEnd;
+          huffmanInput.position = bitmapEnd;
+        }
+        let numberOfSymbolsDecoded = symbolWidths.length;
+        if (firstSymbol === numberOfSymbolsDecoded - 1) {
+          newSymbols.push(collectiveBitmap);
+        } else {
+          let i,
+              y,
+              xMin = 0,
+              xMax,
+              bitmapWidth,
+              symbolBitmap;
+          for (i = firstSymbol; i < numberOfSymbolsDecoded; i++) {
+            bitmapWidth = symbolWidths[i];
+            xMax = xMin + bitmapWidth;
+            symbolBitmap = [];
+            for (y = 0; y < currentHeight; y++) {
+              symbolBitmap.push(collectiveBitmap[y].subarray(xMin, xMax));
+            }
+            newSymbols.push(symbolBitmap);
+            xMin = xMax;
+          }
+        }
       }
     }
     var exportedSymbols = [];
@@ -26307,7 +26103,7 @@ var Jbig2Image = function Jbig2ImageClosure() {
         currentFlag = false;
     var totalSymbolsLength = symbols.length + numberOfNewSymbols;
     while (flags.length < totalSymbolsLength) {
-      var runLength = decodeInteger(contextCache, 'IAEX', decoder);
+      var runLength = huffman ? tableB1.decode(huffmanInput) : decodeInteger(contextCache, 'IAEX', decoder);
       while (runLength--) {
         flags.push(currentFlag);
       }
@@ -26325,9 +26121,9 @@ var Jbig2Image = function Jbig2ImageClosure() {
     }
     return exportedSymbols;
   }
-  function decodeTextRegion(huffman, refinement, width, height, defaultPixelValue, numberOfSymbolInstances, stripSize, inputSymbols, symbolCodeLength, transposed, dsOffset, referenceCorner, combinationOperator, huffmanTables, refinementTemplateIndex, refinementAt, decodingContext) {
-    if (huffman) {
-      throw new Jbig2Error('huffman is not supported');
+  function decodeTextRegion(huffman, refinement, width, height, defaultPixelValue, numberOfSymbolInstances, stripSize, inputSymbols, symbolCodeLength, transposed, dsOffset, referenceCorner, combinationOperator, huffmanTables, refinementTemplateIndex, refinementAt, decodingContext, logStripSize, huffmanInput) {
+    if (huffman && refinement) {
+      throw new Jbig2Error('refinement with Huffman is not supported');
     }
     var bitmap = [];
     var i, row;
@@ -26342,20 +26138,23 @@ var Jbig2Image = function Jbig2ImageClosure() {
     }
     var decoder = decodingContext.decoder;
     var contextCache = decodingContext.contextCache;
-    var stripT = -decodeInteger(contextCache, 'IADT', decoder);
+    var stripT = huffman ? -huffmanTables.tableDeltaT.decode(huffmanInput) : -decodeInteger(contextCache, 'IADT', decoder);
     var firstS = 0;
     i = 0;
     while (i < numberOfSymbolInstances) {
-      var deltaT = decodeInteger(contextCache, 'IADT', decoder);
+      var deltaT = huffman ? huffmanTables.tableDeltaT.decode(huffmanInput) : decodeInteger(contextCache, 'IADT', decoder);
       stripT += deltaT;
-      var deltaFirstS = decodeInteger(contextCache, 'IAFS', decoder);
+      var deltaFirstS = huffman ? huffmanTables.tableFirstS.decode(huffmanInput) : decodeInteger(contextCache, 'IAFS', decoder);
       firstS += deltaFirstS;
       var currentS = firstS;
       do {
-        var currentT = stripSize === 1 ? 0 : decodeInteger(contextCache, 'IAIT', decoder);
+        let currentT = 0;
+        if (stripSize > 1) {
+          currentT = huffman ? huffmanInput.readBits(logStripSize) : decodeInteger(contextCache, 'IAIT', decoder);
+        }
         var t = stripSize * stripT + currentT;
-        var symbolId = decodeIAID(contextCache, decoder, symbolCodeLength);
-        var applyRefinement = refinement && decodeInteger(contextCache, 'IARI', decoder);
+        var symbolId = huffman ? huffmanTables.symbolIDTable.decode(huffmanInput) : decodeIAID(contextCache, decoder, symbolCodeLength);
+        var applyRefinement = refinement && (huffman ? huffmanInput.readBit() : decodeInteger(contextCache, 'IARI', decoder));
         var symbolBitmap = inputSymbols[symbolId];
         var symbolWidth = symbolBitmap[0].length;
         var symbolHeight = symbolBitmap.length;
@@ -26420,7 +26219,7 @@ var Jbig2Image = function Jbig2ImageClosure() {
           currentS += symbolWidth - 1;
         }
         i++;
-        var deltaS = decodeInteger(contextCache, 'IADS', decoder);
+        var deltaS = huffman ? huffmanTables.tableDeltaS.decode(huffmanInput) : decodeInteger(contextCache, 'IADS', decoder);
         if (deltaS === null) {
           break;
         }
@@ -26431,23 +26230,25 @@ var Jbig2Image = function Jbig2ImageClosure() {
   }
   function decodePatternDictionary(mmr, patternWidth, patternHeight, maxPatternIndex, template, decodingContext) {
     let at = [];
-    at.push({
-      x: -patternWidth,
-      y: 0
-    });
-    if (template === 0) {
+    if (!mmr) {
       at.push({
-        x: -3,
-        y: -1
+        x: -patternWidth,
+        y: 0
       });
-      at.push({
-        x: 2,
-        y: -2
-      });
-      at.push({
-        x: -2,
-        y: -2
-      });
+      if (template === 0) {
+        at.push({
+          x: -3,
+          y: -1
+        });
+        at.push({
+          x: 2,
+          y: -2
+        });
+        at.push({
+          x: -2,
+          y: -2
+        });
+      }
     }
     let collectiveWidth = (maxPatternIndex + 1) * patternWidth;
     let collectiveBitmap = decodeBitmap(mmr, collectiveWidth, patternHeight, template, false, null, at, decodingContext);
@@ -26494,27 +26295,39 @@ var Jbig2Image = function Jbig2ImageClosure() {
         patternHeight = pattern0.length;
     let bitsPerValue = (0, _util.log2)(numberOfPatterns);
     let at = [];
-    at.push({
-      x: template <= 1 ? 3 : 2,
-      y: -1
-    });
-    if (template === 0) {
+    if (!mmr) {
       at.push({
-        x: -3,
+        x: template <= 1 ? 3 : 2,
         y: -1
       });
-      at.push({
-        x: 2,
-        y: -2
-      });
-      at.push({
-        x: -2,
-        y: -2
-      });
+      if (template === 0) {
+        at.push({
+          x: -3,
+          y: -1
+        });
+        at.push({
+          x: 2,
+          y: -2
+        });
+        at.push({
+          x: -2,
+          y: -2
+        });
+      }
     }
-    let grayScaleBitPlanes = [];
+    let grayScaleBitPlanes = [],
+        mmrInput,
+        bitmap;
+    if (mmr) {
+      mmrInput = new Reader(decodingContext.data, decodingContext.start, decodingContext.end);
+    }
     for (i = bitsPerValue - 1; i >= 0; i--) {
-      grayScaleBitPlanes[i] = decodeBitmap(mmr, gridWidth, gridHeight, template, false, skip, at, decodingContext);
+      if (mmr) {
+        bitmap = decodeMMRBitmap(mmrInput, gridWidth, gridHeight, true);
+      } else {
+        bitmap = decodeBitmap(false, gridWidth, gridHeight, template, false, skip, at, decodingContext);
+      }
+      grayScaleBitPlanes[i] = bitmap;
     }
     let mg, ng, bit, patternIndex, patternBitmap, x, y, patternRow, regionRow;
     for (mg = 0; mg < gridHeight; mg++) {
@@ -26735,7 +26548,8 @@ var Jbig2Image = function Jbig2ImageClosure() {
         position += 2;
         textRegion.huffman = !!(textRegionSegmentFlags & 1);
         textRegion.refinement = !!(textRegionSegmentFlags & 2);
-        textRegion.stripSize = 1 << (textRegionSegmentFlags >> 2 & 3);
+        textRegion.logStripSize = textRegionSegmentFlags >> 2 & 3;
+        textRegion.stripSize = 1 << textRegion.logStripSize;
         textRegion.referenceCorner = textRegionSegmentFlags >> 4 & 3;
         textRegion.transposed = !!(textRegionSegmentFlags & 64);
         textRegion.combinationOperator = textRegionSegmentFlags >> 7 & 3;
@@ -26752,7 +26566,7 @@ var Jbig2Image = function Jbig2ImageClosure() {
           textRegion.huffmanRefinementDH = textRegionHuffmanFlags >> 8 & 3;
           textRegion.huffmanRefinementDX = textRegionHuffmanFlags >> 10 & 3;
           textRegion.huffmanRefinementDY = textRegionHuffmanFlags >> 12 & 3;
-          textRegion.huffmanRefinementSizeSelector = !!(textRegionHuffmanFlags & 14);
+          textRegion.huffmanRefinementSizeSelector = !!(textRegionHuffmanFlags & 0x4000);
         }
         if (textRegion.refinement && !textRegion.refinementTemplate) {
           at = [];
@@ -26767,9 +26581,6 @@ var Jbig2Image = function Jbig2ImageClosure() {
         }
         textRegion.numberOfSymbolInstances = (0, _util.readUint32)(data, position);
         position += 4;
-        if (textRegion.huffman) {
-          throw new Jbig2Error('huffman is not supported');
-        }
         args = [textRegion, header.referredTo, data, position, end];
         break;
       case 16:
@@ -26856,6 +26667,9 @@ var Jbig2Image = function Jbig2ImageClosure() {
       case 50:
         break;
       case 51:
+        break;
+      case 53:
+        args = [header.number, data, position, end];
         break;
       case 62:
         break;
@@ -26953,9 +26767,10 @@ var Jbig2Image = function Jbig2ImageClosure() {
       this.onImmediateGenericRegion.apply(this, arguments);
     },
     onSymbolDictionary: function SimpleSegmentVisitor_onSymbolDictionary(dictionary, currentSegment, referredSegments, data, start, end) {
-      var huffmanTables;
+      let huffmanTables, huffmanInput;
       if (dictionary.huffman) {
-        throw new Jbig2Error('huffman is not supported');
+        huffmanTables = getSymbolDictionaryHuffmanTables(dictionary, referredSegments, this.customTables);
+        huffmanInput = new Reader(data, start, end);
       }
       var symbols = this.symbols;
       if (!symbols) {
@@ -26963,22 +26778,32 @@ var Jbig2Image = function Jbig2ImageClosure() {
       }
       var inputSymbols = [];
       for (var i = 0, ii = referredSegments.length; i < ii; i++) {
-        inputSymbols = inputSymbols.concat(symbols[referredSegments[i]]);
+        let referredSymbols = symbols[referredSegments[i]];
+        if (referredSymbols) {
+          inputSymbols = inputSymbols.concat(referredSymbols);
+        }
       }
       var decodingContext = new DecodingContext(data, start, end);
-      symbols[currentSegment] = decodeSymbolDictionary(dictionary.huffman, dictionary.refinement, inputSymbols, dictionary.numberOfNewSymbols, dictionary.numberOfExportedSymbols, huffmanTables, dictionary.template, dictionary.at, dictionary.refinementTemplate, dictionary.refinementAt, decodingContext);
+      symbols[currentSegment] = decodeSymbolDictionary(dictionary.huffman, dictionary.refinement, inputSymbols, dictionary.numberOfNewSymbols, dictionary.numberOfExportedSymbols, huffmanTables, dictionary.template, dictionary.at, dictionary.refinementTemplate, dictionary.refinementAt, decodingContext, huffmanInput);
     },
     onImmediateTextRegion: function SimpleSegmentVisitor_onImmediateTextRegion(region, referredSegments, data, start, end) {
       var regionInfo = region.info;
-      var huffmanTables;
+      let huffmanTables, huffmanInput;
       var symbols = this.symbols;
       var inputSymbols = [];
       for (var i = 0, ii = referredSegments.length; i < ii; i++) {
-        inputSymbols = inputSymbols.concat(symbols[referredSegments[i]]);
+        let referredSymbols = symbols[referredSegments[i]];
+        if (referredSymbols) {
+          inputSymbols = inputSymbols.concat(referredSymbols);
+        }
       }
       var symbolCodeLength = (0, _util.log2)(inputSymbols.length);
+      if (region.huffman) {
+        huffmanInput = new Reader(data, start, end);
+        huffmanTables = getTextRegionHuffmanTables(region, referredSegments, this.customTables, inputSymbols.length, huffmanInput);
+      }
       var decodingContext = new DecodingContext(data, start, end);
-      var bitmap = decodeTextRegion(region.huffman, region.refinement, regionInfo.width, regionInfo.height, region.defaultPixelValue, region.numberOfSymbolInstances, region.stripSize, inputSymbols, symbolCodeLength, region.transposed, region.dsOffset, region.referenceCorner, region.combinationOperator, huffmanTables, region.refinementTemplate, region.refinementAt, decodingContext);
+      var bitmap = decodeTextRegion(region.huffman, region.refinement, regionInfo.width, regionInfo.height, region.defaultPixelValue, region.numberOfSymbolInstances, region.stripSize, inputSymbols, symbolCodeLength, region.transposed, region.dsOffset, region.referenceCorner, region.combinationOperator, huffmanTables, region.refinementTemplate, region.refinementAt, decodingContext, region.logStripSize, huffmanInput);
       this.drawBitmap(regionInfo, bitmap);
     },
     onImmediateLosslessTextRegion: function SimpleSegmentVisitor_onImmediateLosslessTextRegion() {
@@ -27001,8 +26826,472 @@ var Jbig2Image = function Jbig2ImageClosure() {
     },
     onImmediateLosslessHalftoneRegion() {
       this.onImmediateHalftoneRegion.apply(this, arguments);
+    },
+    onTables(currentSegment, data, start, end) {
+      let customTables = this.customTables;
+      if (!customTables) {
+        this.customTables = customTables = {};
+      }
+      customTables[currentSegment] = decodeTablesSegment(data, start, end);
     }
   };
+  function HuffmanLine(lineData) {
+    if (lineData.length === 2) {
+      this.isOOB = true;
+      this.rangeLow = 0;
+      this.prefixLength = lineData[0];
+      this.rangeLength = 0;
+      this.prefixCode = lineData[1];
+      this.isLowerRange = false;
+    } else {
+      this.isOOB = false;
+      this.rangeLow = lineData[0];
+      this.prefixLength = lineData[1];
+      this.rangeLength = lineData[2];
+      this.prefixCode = lineData[3];
+      this.isLowerRange = lineData[4] === 'lower';
+    }
+  }
+  function HuffmanTreeNode(line) {
+    this.children = [];
+    if (line) {
+      this.isLeaf = true;
+      this.rangeLength = line.rangeLength;
+      this.rangeLow = line.rangeLow;
+      this.isLowerRange = line.isLowerRange;
+      this.isOOB = line.isOOB;
+    } else {
+      this.isLeaf = false;
+    }
+  }
+  HuffmanTreeNode.prototype = {
+    buildTree(line, shift) {
+      let bit = line.prefixCode >> shift & 1;
+      if (shift <= 0) {
+        this.children[bit] = new HuffmanTreeNode(line);
+      } else {
+        let node = this.children[bit];
+        if (!node) {
+          this.children[bit] = node = new HuffmanTreeNode(null);
+        }
+        node.buildTree(line, shift - 1);
+      }
+    },
+    decodeNode(reader) {
+      if (this.isLeaf) {
+        if (this.isOOB) {
+          return null;
+        }
+        let htOffset = reader.readBits(this.rangeLength);
+        return this.rangeLow + (this.isLowerRange ? -htOffset : htOffset);
+      }
+      let node = this.children[reader.readBit()];
+      if (!node) {
+        throw new Jbig2Error('invalid Huffman data');
+      }
+      return node.decodeNode(reader);
+    }
+  };
+  function HuffmanTable(lines, prefixCodesDone) {
+    if (!prefixCodesDone) {
+      this.assignPrefixCodes(lines);
+    }
+    this.rootNode = new HuffmanTreeNode(null);
+    let i,
+        ii = lines.length,
+        line;
+    for (i = 0; i < ii; i++) {
+      line = lines[i];
+      if (line.prefixLength > 0) {
+        this.rootNode.buildTree(line, line.prefixLength - 1);
+      }
+    }
+  }
+  HuffmanTable.prototype = {
+    decode(reader) {
+      return this.rootNode.decodeNode(reader);
+    },
+    assignPrefixCodes(lines) {
+      let linesLength = lines.length,
+          prefixLengthMax = 0,
+          i;
+      for (i = 0; i < linesLength; i++) {
+        prefixLengthMax = Math.max(prefixLengthMax, lines[i].prefixLength);
+      }
+      let histogram = new Uint32Array(prefixLengthMax + 1);
+      for (i = 0; i < linesLength; i++) {
+        histogram[lines[i].prefixLength]++;
+      }
+      let currentLength = 1,
+          firstCode = 0,
+          currentCode,
+          currentTemp,
+          line;
+      histogram[0] = 0;
+      while (currentLength <= prefixLengthMax) {
+        firstCode = firstCode + histogram[currentLength - 1] << 1;
+        currentCode = firstCode;
+        currentTemp = 0;
+        while (currentTemp < linesLength) {
+          line = lines[currentTemp];
+          if (line.prefixLength === currentLength) {
+            line.prefixCode = currentCode;
+            currentCode++;
+          }
+          currentTemp++;
+        }
+        currentLength++;
+      }
+    }
+  };
+  function decodeTablesSegment(data, start, end) {
+    let flags = data[start];
+    let lowestValue = (0, _util.readUint32)(data, start + 1) & 0xFFFFFFFF;
+    let highestValue = (0, _util.readUint32)(data, start + 5) & 0xFFFFFFFF;
+    let reader = new Reader(data, start + 9, end);
+    let prefixSizeBits = (flags >> 1 & 7) + 1;
+    let rangeSizeBits = (flags >> 4 & 7) + 1;
+    let lines = [];
+    let prefixLength,
+        rangeLength,
+        currentRangeLow = lowestValue;
+    do {
+      prefixLength = reader.readBits(prefixSizeBits);
+      rangeLength = reader.readBits(rangeSizeBits);
+      lines.push(new HuffmanLine([currentRangeLow, prefixLength, rangeLength, 0]));
+      currentRangeLow += 1 << rangeLength;
+    } while (currentRangeLow < highestValue);
+    prefixLength = reader.readBits(prefixSizeBits);
+    lines.push(new HuffmanLine([lowestValue - 1, prefixLength, 32, 0, 'lower']));
+    prefixLength = reader.readBits(prefixSizeBits);
+    lines.push(new HuffmanLine([highestValue, prefixLength, 32, 0]));
+    if (flags & 1) {
+      prefixLength = reader.readBits(prefixSizeBits);
+      lines.push(new HuffmanLine([prefixLength, 0]));
+    }
+    return new HuffmanTable(lines, false);
+  }
+  let standardTablesCache = {};
+  function getStandardTable(number) {
+    let table = standardTablesCache[number];
+    if (table) {
+      return table;
+    }
+    let lines;
+    switch (number) {
+      case 1:
+        lines = [[0, 1, 4, 0x0], [16, 2, 8, 0x2], [272, 3, 16, 0x6], [65808, 3, 32, 0x7]];
+        break;
+      case 2:
+        lines = [[0, 1, 0, 0x0], [1, 2, 0, 0x2], [2, 3, 0, 0x6], [3, 4, 3, 0xE], [11, 5, 6, 0x1E], [75, 6, 32, 0x3E], [6, 0x3F]];
+        break;
+      case 3:
+        lines = [[-256, 8, 8, 0xFE], [0, 1, 0, 0x0], [1, 2, 0, 0x2], [2, 3, 0, 0x6], [3, 4, 3, 0xE], [11, 5, 6, 0x1E], [-257, 8, 32, 0xFF, 'lower'], [75, 7, 32, 0x7E], [6, 0x3E]];
+        break;
+      case 4:
+        lines = [[1, 1, 0, 0x0], [2, 2, 0, 0x2], [3, 3, 0, 0x6], [4, 4, 3, 0xE], [12, 5, 6, 0x1E], [76, 5, 32, 0x1F]];
+        break;
+      case 5:
+        lines = [[-255, 7, 8, 0x7E], [1, 1, 0, 0x0], [2, 2, 0, 0x2], [3, 3, 0, 0x6], [4, 4, 3, 0xE], [12, 5, 6, 0x1E], [-256, 7, 32, 0x7F, 'lower'], [76, 6, 32, 0x3E]];
+        break;
+      case 6:
+        lines = [[-2048, 5, 10, 0x1C], [-1024, 4, 9, 0x8], [-512, 4, 8, 0x9], [-256, 4, 7, 0xA], [-128, 5, 6, 0x1D], [-64, 5, 5, 0x1E], [-32, 4, 5, 0xB], [0, 2, 7, 0x0], [128, 3, 7, 0x2], [256, 3, 8, 0x3], [512, 4, 9, 0xC], [1024, 4, 10, 0xD], [-2049, 6, 32, 0x3E, 'lower'], [2048, 6, 32, 0x3F]];
+        break;
+      case 7:
+        lines = [[-1024, 4, 9, 0x8], [-512, 3, 8, 0x0], [-256, 4, 7, 0x9], [-128, 5, 6, 0x1A], [-64, 5, 5, 0x1B], [-32, 4, 5, 0xA], [0, 4, 5, 0xB], [32, 5, 5, 0x1C], [64, 5, 6, 0x1D], [128, 4, 7, 0xC], [256, 3, 8, 0x1], [512, 3, 9, 0x2], [1024, 3, 10, 0x3], [-1025, 5, 32, 0x1E, 'lower'], [2048, 5, 32, 0x1F]];
+        break;
+      case 8:
+        lines = [[-15, 8, 3, 0xFC], [-7, 9, 1, 0x1FC], [-5, 8, 1, 0xFD], [-3, 9, 0, 0x1FD], [-2, 7, 0, 0x7C], [-1, 4, 0, 0xA], [0, 2, 1, 0x0], [2, 5, 0, 0x1A], [3, 6, 0, 0x3A], [4, 3, 4, 0x4], [20, 6, 1, 0x3B], [22, 4, 4, 0xB], [38, 4, 5, 0xC], [70, 5, 6, 0x1B], [134, 5, 7, 0x1C], [262, 6, 7, 0x3C], [390, 7, 8, 0x7D], [646, 6, 10, 0x3D], [-16, 9, 32, 0x1FE, 'lower'], [1670, 9, 32, 0x1FF], [2, 0x1]];
+        break;
+      case 9:
+        lines = [[-31, 8, 4, 0xFC], [-15, 9, 2, 0x1FC], [-11, 8, 2, 0xFD], [-7, 9, 1, 0x1FD], [-5, 7, 1, 0x7C], [-3, 4, 1, 0xA], [-1, 3, 1, 0x2], [1, 3, 1, 0x3], [3, 5, 1, 0x1A], [5, 6, 1, 0x3A], [7, 3, 5, 0x4], [39, 6, 2, 0x3B], [43, 4, 5, 0xB], [75, 4, 6, 0xC], [139, 5, 7, 0x1B], [267, 5, 8, 0x1C], [523, 6, 8, 0x3C], [779, 7, 9, 0x7D], [1291, 6, 11, 0x3D], [-32, 9, 32, 0x1FE, 'lower'], [3339, 9, 32, 0x1FF], [2, 0x0]];
+        break;
+      case 10:
+        lines = [[-21, 7, 4, 0x7A], [-5, 8, 0, 0xFC], [-4, 7, 0, 0x7B], [-3, 5, 0, 0x18], [-2, 2, 2, 0x0], [2, 5, 0, 0x19], [3, 6, 0, 0x36], [4, 7, 0, 0x7C], [5, 8, 0, 0xFD], [6, 2, 6, 0x1], [70, 5, 5, 0x1A], [102, 6, 5, 0x37], [134, 6, 6, 0x38], [198, 6, 7, 0x39], [326, 6, 8, 0x3A], [582, 6, 9, 0x3B], [1094, 6, 10, 0x3C], [2118, 7, 11, 0x7D], [-22, 8, 32, 0xFE, 'lower'], [4166, 8, 32, 0xFF], [2, 0x2]];
+        break;
+      case 11:
+        lines = [[1, 1, 0, 0x0], [2, 2, 1, 0x2], [4, 4, 0, 0xC], [5, 4, 1, 0xD], [7, 5, 1, 0x1C], [9, 5, 2, 0x1D], [13, 6, 2, 0x3C], [17, 7, 2, 0x7A], [21, 7, 3, 0x7B], [29, 7, 4, 0x7C], [45, 7, 5, 0x7D], [77, 7, 6, 0x7E], [141, 7, 32, 0x7F]];
+        break;
+      case 12:
+        lines = [[1, 1, 0, 0x0], [2, 2, 0, 0x2], [3, 3, 1, 0x6], [5, 5, 0, 0x1C], [6, 5, 1, 0x1D], [8, 6, 1, 0x3C], [10, 7, 0, 0x7A], [11, 7, 1, 0x7B], [13, 7, 2, 0x7C], [17, 7, 3, 0x7D], [25, 7, 4, 0x7E], [41, 8, 5, 0xFE], [73, 8, 32, 0xFF]];
+        break;
+      case 13:
+        lines = [[1, 1, 0, 0x0], [2, 3, 0, 0x4], [3, 4, 0, 0xC], [4, 5, 0, 0x1C], [5, 4, 1, 0xD], [7, 3, 3, 0x5], [15, 6, 1, 0x3A], [17, 6, 2, 0x3B], [21, 6, 3, 0x3C], [29, 6, 4, 0x3D], [45, 6, 5, 0x3E], [77, 7, 6, 0x7E], [141, 7, 32, 0x7F]];
+        break;
+      case 14:
+        lines = [[-2, 3, 0, 0x4], [-1, 3, 0, 0x5], [0, 1, 0, 0x0], [1, 3, 0, 0x6], [2, 3, 0, 0x7]];
+        break;
+      case 15:
+        lines = [[-24, 7, 4, 0x7C], [-8, 6, 2, 0x3C], [-4, 5, 1, 0x1C], [-2, 4, 0, 0xC], [-1, 3, 0, 0x4], [0, 1, 0, 0x0], [1, 3, 0, 0x5], [2, 4, 0, 0xD], [3, 5, 1, 0x1D], [5, 6, 2, 0x3D], [9, 7, 4, 0x7D], [-25, 7, 32, 0x7E, 'lower'], [25, 7, 32, 0x7F]];
+        break;
+      default:
+        throw new Jbig2Error(`standard table B.${number} does not exist`);
+    }
+    let length = lines.length,
+        i;
+    for (i = 0; i < length; i++) {
+      lines[i] = new HuffmanLine(lines[i]);
+    }
+    table = new HuffmanTable(lines, true);
+    standardTablesCache[number] = table;
+    return table;
+  }
+  function Reader(data, start, end) {
+    this.data = data;
+    this.start = start;
+    this.end = end;
+    this.position = start;
+    this.shift = -1;
+    this.currentByte = 0;
+  }
+  Reader.prototype = {
+    readBit() {
+      if (this.shift < 0) {
+        if (this.position >= this.end) {
+          throw new Jbig2Error('end of data while reading bit');
+        }
+        this.currentByte = this.data[this.position++];
+        this.shift = 7;
+      }
+      let bit = this.currentByte >> this.shift & 1;
+      this.shift--;
+      return bit;
+    },
+    readBits(numBits) {
+      let result = 0,
+          i;
+      for (i = numBits - 1; i >= 0; i--) {
+        result |= this.readBit() << i;
+      }
+      return result;
+    },
+    byteAlign() {
+      this.shift = -1;
+    },
+    next() {
+      if (this.position >= this.end) {
+        return -1;
+      }
+      return this.data[this.position++];
+    }
+  };
+  function getCustomHuffmanTable(index, referredTo, customTables) {
+    let currentIndex = 0,
+        i,
+        ii = referredTo.length,
+        table;
+    for (i = 0; i < ii; i++) {
+      table = customTables[referredTo[i]];
+      if (table) {
+        if (index === currentIndex) {
+          return table;
+        }
+        currentIndex++;
+      }
+    }
+    throw new Jbig2Error('can\'t find custom Huffman table');
+  }
+  function getTextRegionHuffmanTables(textRegion, referredTo, customTables, numberOfSymbols, reader) {
+    let codes = [],
+        i,
+        codeLength;
+    for (i = 0; i <= 34; i++) {
+      codeLength = reader.readBits(4);
+      codes.push(new HuffmanLine([i, codeLength, 0, 0]));
+    }
+    let runCodesTable = new HuffmanTable(codes, false);
+    codes.length = 0;
+    for (i = 0; i < numberOfSymbols;) {
+      codeLength = runCodesTable.decode(reader);
+      if (codeLength >= 32) {
+        let repeatedLength, numberOfRepeats, j;
+        switch (codeLength) {
+          case 32:
+            if (i === 0) {
+              throw new Jbig2Error('no previous value in symbol ID table');
+            }
+            numberOfRepeats = reader.readBits(2) + 3;
+            repeatedLength = codes[i - 1].prefixLength;
+            break;
+          case 33:
+            numberOfRepeats = reader.readBits(3) + 3;
+            repeatedLength = 0;
+            break;
+          case 34:
+            numberOfRepeats = reader.readBits(7) + 11;
+            repeatedLength = 0;
+            break;
+          default:
+            throw new Jbig2Error('invalid code length in symbol ID table');
+        }
+        for (j = 0; j < numberOfRepeats; j++) {
+          codes.push(new HuffmanLine([i, repeatedLength, 0, 0]));
+          i++;
+        }
+      } else {
+        codes.push(new HuffmanLine([i, codeLength, 0, 0]));
+        i++;
+      }
+    }
+    reader.byteAlign();
+    let symbolIDTable = new HuffmanTable(codes, false);
+    let customIndex = 0,
+        tableFirstS,
+        tableDeltaS,
+        tableDeltaT;
+    switch (textRegion.huffmanFS) {
+      case 0:
+      case 1:
+        tableFirstS = getStandardTable(textRegion.huffmanFS + 6);
+        break;
+      case 3:
+        tableFirstS = getCustomHuffmanTable(customIndex, referredTo, customTables);
+        customIndex++;
+        break;
+      default:
+        throw new Jbig2Error('invalid Huffman FS selector');
+    }
+    switch (textRegion.huffmanDS) {
+      case 0:
+      case 1:
+      case 2:
+        tableDeltaS = getStandardTable(textRegion.huffmanDS + 8);
+        break;
+      case 3:
+        tableDeltaS = getCustomHuffmanTable(customIndex, referredTo, customTables);
+        customIndex++;
+        break;
+      default:
+        throw new Jbig2Error('invalid Huffman DS selector');
+    }
+    switch (textRegion.huffmanDT) {
+      case 0:
+      case 1:
+      case 2:
+        tableDeltaT = getStandardTable(textRegion.huffmanDT + 11);
+        break;
+      case 3:
+        tableDeltaT = getCustomHuffmanTable(customIndex, referredTo, customTables);
+        customIndex++;
+        break;
+      default:
+        throw new Jbig2Error('invalid Huffman DT selector');
+    }
+    if (textRegion.refinement) {
+      throw new Jbig2Error('refinement with Huffman is not supported');
+    }
+    return {
+      symbolIDTable,
+      tableFirstS,
+      tableDeltaS,
+      tableDeltaT
+    };
+  }
+  function getSymbolDictionaryHuffmanTables(dictionary, referredTo, customTables) {
+    let customIndex = 0,
+        tableDeltaHeight,
+        tableDeltaWidth;
+    switch (dictionary.huffmanDHSelector) {
+      case 0:
+      case 1:
+        tableDeltaHeight = getStandardTable(dictionary.huffmanDHSelector + 4);
+        break;
+      case 3:
+        tableDeltaHeight = getCustomHuffmanTable(customIndex, referredTo, customTables);
+        customIndex++;
+        break;
+      default:
+        throw new Jbig2Error('invalid Huffman DH selector');
+    }
+    switch (dictionary.huffmanDWSelector) {
+      case 0:
+      case 1:
+        tableDeltaWidth = getStandardTable(dictionary.huffmanDWSelector + 2);
+        break;
+      case 3:
+        tableDeltaWidth = getCustomHuffmanTable(customIndex, referredTo, customTables);
+        customIndex++;
+        break;
+      default:
+        throw new Jbig2Error('invalid Huffman DW selector');
+    }
+    let tableBitmapSize, tableAggregateInstances;
+    if (dictionary.bitmapSizeSelector) {
+      tableBitmapSize = getCustomHuffmanTable(customIndex, referredTo, customTables);
+      customIndex++;
+    } else {
+      tableBitmapSize = getStandardTable(1);
+    }
+    if (dictionary.aggregationInstancesSelector) {
+      tableAggregateInstances = getCustomHuffmanTable(customIndex, referredTo, customTables);
+    } else {
+      tableAggregateInstances = getStandardTable(1);
+    }
+    return {
+      tableDeltaHeight,
+      tableDeltaWidth,
+      tableBitmapSize,
+      tableAggregateInstances
+    };
+  }
+  function readUncompressedBitmap(reader, width, height) {
+    let bitmap = [],
+        x,
+        y,
+        row;
+    for (y = 0; y < height; y++) {
+      row = new Uint8Array(width);
+      bitmap.push(row);
+      for (x = 0; x < width; x++) {
+        row[x] = reader.readBit();
+      }
+      reader.byteAlign();
+    }
+    return bitmap;
+  }
+  function decodeMMRBitmap(input, width, height, endOfBlock) {
+    let params = {
+      K: -1,
+      Columns: width,
+      Rows: height,
+      BlackIs1: true,
+      EndOfBlock: endOfBlock
+    };
+    let decoder = new _ccitt.CCITTFaxDecoder(input, params);
+    let bitmap = [],
+        x,
+        y,
+        row,
+        currentByte,
+        shift,
+        eof = false;
+    for (y = 0; y < height; y++) {
+      row = new Uint8Array(width);
+      bitmap.push(row);
+      shift = -1;
+      for (x = 0; x < width; x++) {
+        if (shift < 0) {
+          currentByte = decoder.readNextChar();
+          if (currentByte === -1) {
+            currentByte = 0;
+            eof = true;
+          }
+          shift = 7;
+        }
+        row[x] = currentByte >> shift & 1;
+        shift--;
+      }
+    }
+    if (endOfBlock && !eof) {
+      const lookForEOFLimit = 5;
+      for (let i = 0; i < lookForEOFLimit; i++) {
+        if (decoder.readNextChar() === -1) {
+          break;
+        }
+      }
+    }
+    return bitmap;
+  }
   function Jbig2Image() {}
   Jbig2Image.prototype = {
     parseChunks: function Jbig2Image_parseChunks(chunks) {
@@ -27035,6 +27324,16 @@ let JpegError = function JpegErrorClosure() {
   JpegError.prototype.name = 'JpegError';
   JpegError.constructor = JpegError;
   return JpegError;
+}();
+let DNLMarkerError = function DNLMarkerErrorClosure() {
+  function DNLMarkerError(message, scanLines) {
+    this.message = message;
+    this.scanLines = scanLines;
+  }
+  DNLMarkerError.prototype = new Error();
+  DNLMarkerError.prototype.name = 'DNLMarkerError';
+  DNLMarkerError.constructor = DNLMarkerError;
+  return DNLMarkerError;
 }();
 var JpegImage = function JpegImageClosure() {
   var dctZigZag = new Uint8Array([0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63]);
@@ -27098,7 +27397,7 @@ var JpegImage = function JpegImageClosure() {
   function getBlockBufferOffset(component, row, col) {
     return 64 * ((component.blocksPerLine + 1) * row + col);
   }
-  function decodeScan(data, offset, frame, components, resetInterval, spectralStart, spectralEnd, successivePrev, successive) {
+  function decodeScan(data, offset, frame, components, resetInterval, spectralStart, spectralEnd, successivePrev, successive, parseDNLMarker = false) {
     var mcusPerLine = frame.mcusPerLine;
     var progressive = frame.progressive;
     var startOffset = offset,
@@ -27113,6 +27412,13 @@ var JpegImage = function JpegImageClosure() {
       if (bitsData === 0xFF) {
         var nextByte = data[offset++];
         if (nextByte) {
+          if (nextByte === 0xDC && parseDNLMarker) {
+            offset += 2;
+            const scanLines = data[offset++] << 8 | data[offset++];
+            if (scanLines > 0 && scanLines !== frame.scanLines) {
+              throw new DNLMarkerError('Found DNL marker (0xFFDC) while parsing scan data', scanLines);
+            }
+          }
           throw new JpegError(`unexpected marker ${(bitsData << 8 | nextByte).toString(16)}`);
         }
       }
@@ -27336,7 +27642,7 @@ var JpegImage = function JpegImageClosure() {
       bitsCount = 0;
       fileMarker = findNextFileMarker(data, offset);
       if (fileMarker && fileMarker.invalid) {
-        (0, _util.warn)('decodeScan - unexpected MCU data, next marker is: ' + fileMarker.invalid);
+        (0, _util.warn)('decodeScan - unexpected MCU data, current marker is: ' + fileMarker.invalid);
         offset = fileMarker.offset;
       }
       var marker = fileMarker && fileMarker.marker;
@@ -27351,7 +27657,7 @@ var JpegImage = function JpegImageClosure() {
     }
     fileMarker = findNextFileMarker(data, offset);
     if (fileMarker && fileMarker.invalid) {
-      (0, _util.warn)('decodeScan - unexpected Scan data, next marker is: ' + fileMarker.invalid);
+      (0, _util.warn)('decodeScan - unexpected Scan data, current marker is: ' + fileMarker.invalid);
       offset = fileMarker.offset;
     }
     return offset - startOffset;
@@ -27517,11 +27823,11 @@ var JpegImage = function JpegImageClosure() {
     }
     return component.blockData;
   }
-  function findNextFileMarker(data, currentPos, startPos) {
+  function findNextFileMarker(data, currentPos, startPos = currentPos) {
     function peekUint16(pos) {
       return data[pos] << 8 | data[pos + 1];
     }
-    var maxPos = data.length - 1;
+    const maxPos = data.length - 1;
     var newPos = startPos < currentPos ? startPos : currentPos;
     if (currentPos >= maxPos) {
       return null;
@@ -27548,7 +27854,9 @@ var JpegImage = function JpegImageClosure() {
     };
   }
   JpegImage.prototype = {
-    parse: function parse(data) {
+    parse(data, {
+      dnlScanLines = null
+    } = {}) {
       function readUint16() {
         var value = data[offset] << 8 | data[offset + 1];
         offset += 2;
@@ -27559,7 +27867,7 @@ var JpegImage = function JpegImageClosure() {
         var endOffset = offset + length - 2;
         var fileMarker = findNextFileMarker(data, endOffset, offset);
         if (fileMarker && fileMarker.invalid) {
-          (0, _util.warn)('readDataBlock - incorrect length, next marker is: ' + fileMarker.invalid);
+          (0, _util.warn)('readDataBlock - incorrect length, current marker is: ' + fileMarker.invalid);
           endOffset = fileMarker.offset;
         }
         var array = data.subarray(offset, endOffset);
@@ -27587,6 +27895,7 @@ var JpegImage = function JpegImageClosure() {
       var jfif = null;
       var adobe = null;
       var frame, resetInterval;
+      let numSOSMarkers = 0;
       var quantizationTables = [];
       var huffmanTablesAC = [],
           huffmanTablesDC = [];
@@ -27677,7 +27986,8 @@ var JpegImage = function JpegImageClosure() {
             frame.extended = fileMarker === 0xFFC1;
             frame.progressive = fileMarker === 0xFFC2;
             frame.precision = data[offset++];
-            frame.scanLines = readUint16();
+            const sofScanLines = readUint16();
+            frame.scanLines = dnlScanLines || sofScanLines;
             frame.samplesPerLine = readUint16();
             frame.components = [];
             frame.componentIds = {};
@@ -27731,6 +28041,7 @@ var JpegImage = function JpegImageClosure() {
             resetInterval = readUint16();
             break;
           case 0xFFDA:
+            const parseDNLMarker = ++numSOSMarkers === 1 && !dnlScanLines;
             readUint16();
             var selectorsCount = data[offset++];
             var components = [],
@@ -27746,8 +28057,19 @@ var JpegImage = function JpegImageClosure() {
             var spectralStart = data[offset++];
             var spectralEnd = data[offset++];
             var successiveApproximation = data[offset++];
-            var processed = decodeScan(data, offset, frame, components, resetInterval, spectralStart, spectralEnd, successiveApproximation >> 4, successiveApproximation & 15);
-            offset += processed;
+            try {
+              var processed = decodeScan(data, offset, frame, components, resetInterval, spectralStart, spectralEnd, successiveApproximation >> 4, successiveApproximation & 15, parseDNLMarker);
+              offset += processed;
+            } catch (ex) {
+              if (ex instanceof DNLMarkerError) {
+                (0, _util.warn)('Attempting to re-parse JPEG image using "scanLines" ' + 'parameter found in DNL marker (0xFFDC) segment.');
+                return this.parse(data, { dnlScanLines: ex.scanLines });
+              }
+              throw ex;
+            }
+            break;
+          case 0xFFDC:
+            offset += 4;
             break;
           case 0xFFFF:
             if (data[offset] !== 0xFF) {
@@ -27757,6 +28079,12 @@ var JpegImage = function JpegImageClosure() {
           default:
             if (data[offset - 3] === 0xFF && data[offset - 2] >= 0xC0 && data[offset - 2] <= 0xFE) {
               offset -= 3;
+              break;
+            }
+            let nextFileMarker = findNextFileMarker(data, offset - 2);
+            if (nextFileMarker && nextFileMarker.invalid) {
+              (0, _util.warn)('JpegImage.parse - unexpected data, current marker is: ' + nextFileMarker.invalid);
+              offset = nextFileMarker.offset;
               break;
             }
             throw new JpegError('unknown marker ' + fileMarker.toString(16));
@@ -27866,7 +28194,7 @@ var JpegImage = function JpegImageClosure() {
         data[offset++] = 107.268039397724 + Cb * (2.19927104525741e-5 * Cb - 0.000640992018297945 * Cr + 0.000659397001245577 * Y + 0.000426105652938837 * k - 0.176491792462875) + Cr * (-0.000778269941513683 * Cr + 0.00130872261408275 * Y + 0.000770482631801132 * k - 0.151051492775562) + Y * (0.00126935368114843 * Y - 0.00265090189010898 * k + 0.25802910206845) + k * (-0.000318913117588328 * k - 0.213742400323665);
         data[offset++] = -20.810012546947 + Cb * (-0.000570115196973677 * Cb - 2.63409051004589e-5 * Cr + 0.0020741088115012 * Y - 0.00288260236853442 * k + 0.814272968359295) + Cr * (-1.53496057440975e-5 * Cr - 0.000132689043961446 * Y + 0.000560833691242812 * k - 0.195152027534049) + Y * (0.00174418132927582 * Y - 0.00255243321439347 * k + 0.116935020465145) + k * (-0.000343531996510555 * k + 0.24165260232407);
       }
-      return data;
+      return data.subarray(0, offset);
     },
     _convertYcckToCmyk: function convertYcckToCmyk(data) {
       var Y, Cb, Cr;
@@ -27893,7 +28221,7 @@ var JpegImage = function JpegImageClosure() {
         data[offset++] = 255 + c * (8.841041422036149 * c + 60.118027045597366 * m + 6.871425592049007 * y + 31.159100130055922 * k - 79.2970844816548) + m * (-15.310361306967817 * m + 17.575251261109482 * y + 131.35250912493976 * k - 190.9453302588951) + y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) - k * (20.737325471181034 * k + 187.80453709719578);
         data[offset++] = 255 + c * (0.8842522430003296 * c + 8.078677503112928 * m + 30.89978309703729 * y - 0.23883238689178934 * k - 14.183576799673286) + m * (10.49593273432072 * m + 63.02378494754052 * y + 50.606957656360734 * k - 112.23884253719248) + y * (0.03296041114873217 * y + 115.60384449646641 * k - 193.58209356861505) - k * (22.33816807309886 * k + 180.12613974708367);
       }
-      return data;
+      return data.subarray(0, offset);
     },
     getData: function getData(width, height, forceRGBoutput) {
       if (this.numComponents > 4) {
@@ -27944,7 +28272,7 @@ exports.JpxStream = undefined;
 
 var _stream = __w_pdfjs_require__(2);
 
-var _jpx = __w_pdfjs_require__(12);
+var _jpx = __w_pdfjs_require__(13);
 
 var _util = __w_pdfjs_require__(0);
 
@@ -28699,9 +29027,9 @@ var _fonts = __w_pdfjs_require__(34);
 
 var _encodings = __w_pdfjs_require__(4);
 
-var _unicode = __w_pdfjs_require__(16);
+var _unicode = __w_pdfjs_require__(17);
 
-var _standard_fonts = __w_pdfjs_require__(15);
+var _standard_fonts = __w_pdfjs_require__(16);
 
 var _pattern = __w_pdfjs_require__(38);
 
@@ -28715,7 +29043,7 @@ var _glyphlist = __w_pdfjs_require__(8);
 
 var _metrics = __w_pdfjs_require__(40);
 
-var _function = __w_pdfjs_require__(17);
+var _function = __w_pdfjs_require__(18);
 
 var _jpeg_stream = __w_pdfjs_require__(6);
 
@@ -28749,10 +29077,7 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
       var dict = image.dict;
       var colorSpace = dict.get('ColorSpace', 'CS');
       colorSpace = _colorspace.ColorSpace.parse(colorSpace, this.xref, this.resources, this.pdfFunctionFactory);
-      var numComps = colorSpace.numComps;
-      var decodePromise = this.handler.sendWithPromise('JpegDecode', [image.getIR(this.forceDataSchema), numComps]);
-      return decodePromise.then(function (message) {
-        var data = message.data;
+      return this.handler.sendWithPromise('JpegDecode', [image.getIR(this.forceDataSchema), colorSpace.numComps]).then(function ({ data, width, height }) {
         return new _stream.Stream(data, 0, data.length, image.dict);
       });
     }
@@ -28966,18 +29291,18 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
         }
       });
     },
-    buildPaintImageXObject: function PartialEvaluator_buildPaintImageXObject(resources, image, inline, operatorList, cacheKey, imageCache) {
+    buildPaintImageXObject({ resources, image, isInline = false, operatorList, cacheKey, imageCache, forceDisableNativeImageDecoder = false }) {
       var dict = image.dict;
       var w = dict.get('Width', 'W');
       var h = dict.get('Height', 'H');
       if (!(w && (0, _util.isNum)(w)) || !(h && (0, _util.isNum)(h))) {
         (0, _util.warn)('Image dimensions are missing, or not numbers.');
-        return;
+        return Promise.resolve();
       }
       var maxImageSize = this.options.maxImageSize;
       if (maxImageSize !== -1 && w * h > maxImageSize) {
         (0, _util.warn)('Image exceeded maximum allowed size and was removed.');
-        return;
+        return Promise.resolve();
       }
       var imageMask = dict.get('ImageMask', 'IM') || false;
       var imgData, args;
@@ -29003,37 +29328,48 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
             args
           };
         }
-        return;
+        return Promise.resolve();
       }
       var softMask = dict.get('SMask', 'SM') || false;
       var mask = dict.get('Mask') || false;
       var SMALL_IMAGE_DIMENSIONS = 200;
-      if (inline && !softMask && !mask && !(image instanceof _jpeg_stream.JpegStream) && w + h < SMALL_IMAGE_DIMENSIONS) {
+      if (isInline && !softMask && !mask && !(image instanceof _jpeg_stream.JpegStream) && w + h < SMALL_IMAGE_DIMENSIONS) {
         let imageObj = new _image.PDFImage({
           xref: this.xref,
           res: resources,
           image,
-          isInline: inline,
+          isInline,
           pdfFunctionFactory: this.pdfFunctionFactory
         });
         imgData = imageObj.createImageData(true);
         operatorList.addOp(_util.OPS.paintInlineImageXObject, [imgData]);
-        return;
+        return Promise.resolve();
       }
-      var nativeImageDecoderSupport = this.options.nativeImageDecoderSupport;
+      const nativeImageDecoderSupport = forceDisableNativeImageDecoder ? _util.NativeImageDecoding.NONE : this.options.nativeImageDecoderSupport;
       var objId = 'img_' + this.idFactory.createObjId();
-      operatorList.addDependency(objId);
-      args = [objId, w, h];
       if (nativeImageDecoderSupport !== _util.NativeImageDecoding.NONE && !softMask && !mask && image instanceof _jpeg_stream.JpegStream && NativeImageDecoder.isSupported(image, this.xref, resources, this.pdfFunctionFactory)) {
-        operatorList.addOp(_util.OPS.paintJpegXObject, args);
-        this.handler.send('obj', [objId, this.pageIndex, 'JpegStream', image.getIR(this.options.forceDataSchema)]);
-        if (cacheKey) {
-          imageCache[cacheKey] = {
-            fn: _util.OPS.paintJpegXObject,
-            args
-          };
-        }
-        return;
+        return this.handler.sendWithPromise('obj', [objId, this.pageIndex, 'JpegStream', image.getIR(this.options.forceDataSchema)]).then(function () {
+          operatorList.addDependency(objId);
+          args = [objId, w, h];
+          operatorList.addOp(_util.OPS.paintJpegXObject, args);
+          if (cacheKey) {
+            imageCache[cacheKey] = {
+              fn: _util.OPS.paintJpegXObject,
+              args
+            };
+          }
+        }, reason => {
+          (0, _util.warn)('Native JPEG decoding failed -- trying to recover: ' + (reason && reason.message));
+          return this.buildPaintImageXObject({
+            resources,
+            image,
+            isInline,
+            operatorList,
+            cacheKey,
+            imageCache,
+            forceDisableNativeImageDecoder: true
+          });
+        });
       }
       var nativeImageDecoder = null;
       if (nativeImageDecoderSupport === _util.NativeImageDecoding.DECODE && (image instanceof _jpeg_stream.JpegStream || mask instanceof _jpeg_stream.JpegStream || softMask instanceof _jpeg_stream.JpegStream)) {
@@ -29045,12 +29381,14 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
           pdfFunctionFactory: this.pdfFunctionFactory
         });
       }
+      operatorList.addDependency(objId);
+      args = [objId, w, h];
       _image.PDFImage.buildImage({
         handler: this.handler,
         xref: this.xref,
         res: resources,
         image,
-        isInline: inline,
+        isInline,
         nativeDecoder: nativeImageDecoder,
         pdfFunctionFactory: this.pdfFunctionFactory
       }).then(imageObj => {
@@ -29067,6 +29405,7 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
           args
         };
       }
+      return Promise.resolve();
     },
     handleSMask: function PartialEvaluator_handleSmask(smask, resources, operatorList, task, stateManager) {
       var smaskContent = smask.get('G');
@@ -29440,7 +29779,14 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
                   }, rejectXObject);
                   return;
                 } else if (type.name === 'Image') {
-                  self.buildPaintImageXObject(resources, xobj, false, operatorList, name, imageCache);
+                  self.buildPaintImageXObject({
+                    resources,
+                    image: xobj,
+                    operatorList,
+                    cacheKey: name,
+                    imageCache
+                  }).then(resolveXObject, rejectXObject);
+                  return;
                 } else if (type.name === 'PS') {
                   (0, _util.info)('Ignored XObject subtype PS');
                 } else {
@@ -29473,9 +29819,15 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
                   continue;
                 }
               }
-              self.buildPaintImageXObject(resources, args[0], true, operatorList, cacheKey, imageCache);
-              args = null;
-              continue;
+              next(self.buildPaintImageXObject({
+                resources,
+                image: args[0],
+                isInline: true,
+                operatorList,
+                cacheKey,
+                imageCache
+              }));
+              return;
             case _util.OPS.showText:
               args[0] = self.handleText(args[0], stateManager.state);
               break;
@@ -32013,7 +32365,7 @@ var CMapFactory = function CMapFactoryClosure() {
     } else if (name === 'Identity-V') {
       return Promise.resolve(new IdentityCMap(true, 2));
     }
-    if (BUILT_IN_CMAPS.indexOf(name) === -1) {
+    if (!BUILT_IN_CMAPS.includes(name)) {
       return Promise.reject(new Error('Unknown CMap name: ' + name));
     }
     if (!fetchBuiltInCMap) {
@@ -32074,15 +32426,15 @@ exports.getFontType = exports.ProblematicCharRanges = exports.IdentityToUnicodeM
 
 var _util = __w_pdfjs_require__(0);
 
-var _cff_parser = __w_pdfjs_require__(14);
+var _cff_parser = __w_pdfjs_require__(15);
 
 var _glyphlist = __w_pdfjs_require__(8);
 
 var _encodings = __w_pdfjs_require__(4);
 
-var _standard_fonts = __w_pdfjs_require__(15);
+var _standard_fonts = __w_pdfjs_require__(16);
 
-var _unicode = __w_pdfjs_require__(16);
+var _unicode = __w_pdfjs_require__(17);
 
 var _font_renderer = __w_pdfjs_require__(36);
 
@@ -32950,7 +33302,7 @@ var Font = function FontClosure() {
         tables['post'] = null;
         for (let i = 0; i < numTables; i++) {
           let table = readTableEntry(font);
-          if (VALID_TABLES.indexOf(table.tag) < 0) {
+          if (!VALID_TABLES.includes(table.tag)) {
             continue;
           }
           if (table.length === 0) {
@@ -33595,7 +33947,7 @@ var Font = function FontClosure() {
               ttContext.functionsUsed[funcId] = true;
               if (funcId in ttContext.functionsStackDeltas) {
                 stack.length += ttContext.functionsStackDeltas[funcId];
-              } else if (funcId in ttContext.functionsDefined && functionsCalled.indexOf(funcId) < 0) {
+              } else if (funcId in ttContext.functionsDefined && !functionsCalled.includes(funcId)) {
                 callstack.push({
                   data,
                   i,
@@ -33812,7 +34164,7 @@ var Font = function FontClosure() {
         }
         font.pos += 4;
         maxFunctionDefs = font.getUint16();
-        font.pos += 6;
+        font.pos += 4;
         maxSizeOfInstructions = font.getUint16();
       }
       var dupFirstEntry = false;
@@ -34638,7 +34990,7 @@ exports.FontRendererFactory = undefined;
 
 var _util = __w_pdfjs_require__(0);
 
-var _cff_parser = __w_pdfjs_require__(14);
+var _cff_parser = __w_pdfjs_require__(15);
 
 var _glyphlist = __w_pdfjs_require__(8);
 
@@ -40260,12 +40612,15 @@ var _stream = __w_pdfjs_require__(2);
 
 var _jpeg_stream = __w_pdfjs_require__(6);
 
-var _jpx = __w_pdfjs_require__(12);
+var _jpx = __w_pdfjs_require__(13);
 
 var PDFImage = function PDFImageClosure() {
   function handleImageData(image, nativeDecoder) {
     if (nativeDecoder && nativeDecoder.canDecode(image)) {
-      return nativeDecoder.decode(image);
+      return nativeDecoder.decode(image).catch(reason => {
+        (0, _util.warn)('Native image decoding failed -- trying to recover: ' + (reason && reason.message));
+        return image;
+      });
     }
     return Promise.resolve(image);
   }

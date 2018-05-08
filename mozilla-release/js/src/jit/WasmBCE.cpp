@@ -60,13 +60,23 @@ jit::EliminateBoundsChecks(MIRGenerator* mir, MIRGraph& graph)
                     uint32_t(addr->toConstant()->toInt32()) < mir->minWasmHeapLength())
                 {
                     bc->setRedundant();
+                    if (JitOptions.spectreIndexMasking)
+                        bc->replaceAllUsesWith(addr);
+                    else
+                        MOZ_ASSERT(!bc->hasUses());
                 }
                 else
                 {
                     LastSeenMap::AddPtr ptr = lastSeen.lookupForAdd(addr->id());
                     if (ptr) {
-                        if (ptr->value()->block()->dominates(block))
+                        MDefinition* prevCheckOrPhi = ptr->value();
+                        if (prevCheckOrPhi->block()->dominates(block)) {
                             bc->setRedundant();
+                            if (JitOptions.spectreIndexMasking)
+                                bc->replaceAllUsesWith(prevCheckOrPhi);
+                            else
+                                MOZ_ASSERT(!bc->hasUses());
+                        }
                     } else {
                         if (!lastSeen.add(ptr, addr->id(), def))
                             return false;
@@ -89,6 +99,13 @@ jit::EliminateBoundsChecks(MIRGenerator* mir, MIRGraph& graph)
                 // cannot be in lastSeen because its block hasn't been traversed yet.
                 for (int i = 0, nOps = phi->numOperands(); i < nOps; i++) {
                     MDefinition* src = phi->getOperand(i);
+
+                    if (JitOptions.spectreIndexMasking) {
+                        if (src->isWasmBoundsCheck())
+                            src = src->toWasmBoundsCheck()->index();
+                    } else {
+                        MOZ_ASSERT(!src->isWasmBoundsCheck());
+                    }
 
                     LastSeenMap::Ptr checkPtr = lastSeen.lookup(src->id());
                     if (!checkPtr || !checkPtr->value()->block()->dominates(block)) {

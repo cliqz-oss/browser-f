@@ -23,15 +23,10 @@
 // set to true and stay userDisabled. This add-on is not used in tests that
 // start with add-ons blocked as it would be identical to softblock3
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 // Allow insecure updates
 Services.prefs.setBoolPref("extensions.checkUpdateSecurity", false);
@@ -324,12 +319,12 @@ var InstallConfirm = {
 var InstallConfirmFactory = {
   createInstance: function createInstance(outer, iid) {
     if (outer != null)
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     return InstallConfirm.QueryInterface(iid);
   }
 };
 
-var registrar = Components.manager.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+var registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
 registrar.registerFactory(Components.ID("{f0863905-4dde-42e2-991c-2dc8209bc9ca}"),
                           "Fake Install Prompt",
                           "@mozilla.org/addons/web-install-prompt;1", InstallConfirmFactory);

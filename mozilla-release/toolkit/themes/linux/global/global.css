@@ -8,7 +8,6 @@
 
 /* all localizable skin settings shall live here */
 @import url("chrome://global/locale/intl.css");
-@import url("chrome://global/skin/menu.css");
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
@@ -23,7 +22,7 @@ progressmeter[mode="undetermined"] {
 }
 
 @media (-moz-menubar-drag) {
-  toolbar[type="menubar"]:not([autohide="true"]):not(:-moz-lwtheme) {
+  toolbar[type="menubar"]:not([autohide="true"]) {
     -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbar-drag");
   }
 }
@@ -89,6 +88,14 @@ iframe {
   min-height: 10px;
 }
 
+@supports -moz-bool-pref("layout.css.emulate-moz-box-with-flex") {
+  /* In emulation, <iframe> is block instead of inline, so reset the width/height */
+  iframe {
+    width: auto;
+    height: auto;
+  }
+}
+
 /* XXXBlake yeah, shoot me -- these don't belong here.  I'll move them later. */
 
 sidebarheader {
@@ -115,11 +122,11 @@ toolbar[mode="text"] .toolbarbutton-text {
   -moz-appearance: none;
 }
 
-:root:-moz-lwtheme-darktext {
+:root[lwtheme-image]:-moz-lwtheme-darktext {
   text-shadow: 0 -0.5px 1.5px white;
 }
 
-:root:-moz-lwtheme-brighttext {
+:root[lwtheme-image]:-moz-lwtheme-brighttext {
   text-shadow: 1px 1px 1.5px black;
 }
 

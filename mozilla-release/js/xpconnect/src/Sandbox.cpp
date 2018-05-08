@@ -14,6 +14,7 @@
 #include "js/StructuredClone.h"
 #include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
+#include "nsIException.h" // for nsIStackFrame
 #include "nsIScriptContext.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIURI.h"
@@ -40,6 +41,7 @@
 #include "mozilla/dom/InspectorUtilsBinding.h"
 #include "mozilla/dom/MessageChannelBinding.h"
 #include "mozilla/dom/MessagePortBinding.h"
+#include "mozilla/dom/NodeFilterBinding.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/ResponseBinding.h"
@@ -54,6 +56,7 @@
 #include "mozilla/dom/URLBinding.h"
 #include "mozilla/dom/URLSearchParamsBinding.h"
 #include "mozilla/dom/XMLHttpRequest.h"
+#include "mozilla/dom/FormDataBinding.h"
 #include "mozilla/DeferredFinalize.h"
 
 using namespace mozilla;
@@ -232,8 +235,7 @@ SandboxCreateCrypto(JSContext* cx, JS::HandleObject obj)
     nsIGlobalObject* native = xpc::NativeGlobal(obj);
     MOZ_ASSERT(native);
 
-    dom::Crypto* crypto = new dom::Crypto();
-    crypto->Init(native);
+    dom::Crypto* crypto = new dom::Crypto(native);
     JS::RootedObject wrapped(cx, crypto->WrapObject(cx, nullptr));
     return JS_DefineProperty(cx, obj, "crypto", wrapped, JSPROP_ENUMERATE);
 }
@@ -313,12 +315,11 @@ SandboxFetch(JSContext* cx, JS::HandleObject scope, const CallArgs& args)
 static bool SandboxFetchPromise(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject callee(cx, &args.callee());
     RootedObject scope(cx, JS::CurrentGlobalOrNull(cx));
     if (SandboxFetch(cx, scope, args)) {
         return true;
     }
-    return ConvertExceptionToPromise(cx, scope, args.rval());
+    return ConvertExceptionToPromise(cx, args.rval());
 }
 
 
@@ -622,11 +623,9 @@ nsXPCComponents_utils_Sandbox::~nsXPCComponents_utils_Sandbox()
 {
 }
 
-NS_INTERFACE_MAP_BEGIN(nsXPCComponents_utils_Sandbox)
-  NS_INTERFACE_MAP_ENTRY(nsIXPCComponents_utils_Sandbox)
-  NS_INTERFACE_MAP_ENTRY(nsIXPCScriptable)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIXPCComponents_utils_Sandbox)
-NS_INTERFACE_MAP_END
+NS_IMPL_QUERY_INTERFACE(nsXPCComponents_utils_Sandbox,
+                        nsIXPCComponents_utils_Sandbox,
+                        nsIXPCScriptable)
 
 NS_IMPL_ADDREF(nsXPCComponents_utils_Sandbox)
 NS_IMPL_RELEASE(nsXPCComponents_utils_Sandbox)
@@ -926,50 +925,54 @@ xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj)
         JSAutoByteString name;
         if (!name.encodeUtf8(cx, nameStr))
             return false;
-        if (!strcmp(name.ptr(), "CSS")) {
+        if (!strcmp(name.ptr(), "Blob")) {
+            Blob = true;
+        } else if (!strcmp(name.ptr(), "ChromeUtils")) {
+            ChromeUtils = true;
+        } else if (!strcmp(name.ptr(), "CSS")) {
             CSS = true;
         } else if (!strcmp(name.ptr(), "CSSRule")) {
             CSSRule = true;
-        } else if (!strcmp(name.ptr(), "indexedDB")) {
-            indexedDB = true;
-        } else if (!strcmp(name.ptr(), "XMLHttpRequest")) {
-            XMLHttpRequest = true;
-        } else if (!strcmp(name.ptr(), "TextEncoder")) {
-            TextEncoder = true;
-        } else if (!strcmp(name.ptr(), "TextDecoder")) {
-            TextDecoder = true;
-        } else if (!strcmp(name.ptr(), "URL")) {
-            URL = true;
-        } else if (!strcmp(name.ptr(), "URLSearchParams")) {
-            URLSearchParams = true;
-        } else if (!strcmp(name.ptr(), "atob")) {
-            atob = true;
-        } else if (!strcmp(name.ptr(), "btoa")) {
-            btoa = true;
-        } else if (!strcmp(name.ptr(), "Blob")) {
-            Blob = true;
         } else if (!strcmp(name.ptr(), "Directory")) {
             Directory = true;
         } else if (!strcmp(name.ptr(), "File")) {
             File = true;
+        } else if (!strcmp(name.ptr(), "FileReader")) {
+            FileReader = true;
+        } else if (!strcmp(name.ptr(), "FormData")) {
+            FormData = true;
+        } else if (!strcmp(name.ptr(), "InspectorUtils")) {
+            InspectorUtils = true;
+        } else if (!strcmp(name.ptr(), "MessageChannel")) {
+            MessageChannel = true;
+        } else if (!strcmp(name.ptr(), "NodeFilter")) {
+            NodeFilter = true;
+        } else if (!strcmp(name.ptr(), "TextDecoder")) {
+            TextDecoder = true;
+        } else if (!strcmp(name.ptr(), "TextEncoder")) {
+            TextEncoder = true;
+        } else if (!strcmp(name.ptr(), "URL")) {
+            URL = true;
+        } else if (!strcmp(name.ptr(), "URLSearchParams")) {
+            URLSearchParams = true;
+        } else if (!strcmp(name.ptr(), "XMLHttpRequest")) {
+            XMLHttpRequest = true;
+        } else if (!strcmp(name.ptr(), "atob")) {
+            atob = true;
+        } else if (!strcmp(name.ptr(), "btoa")) {
+            btoa = true;
+        } else if (!strcmp(name.ptr(), "caches")) {
+            caches = true;
         } else if (!strcmp(name.ptr(), "crypto")) {
             crypto = true;
+        } else if (!strcmp(name.ptr(), "fetch")) {
+            fetch = true;
+        } else if (!strcmp(name.ptr(), "indexedDB")) {
+            indexedDB = true;
 #ifdef MOZ_WEBRTC
         } else if (!strcmp(name.ptr(), "rtcIdentityProvider")) {
             rtcIdentityProvider = true;
 #endif
-        } else if (!strcmp(name.ptr(), "fetch")) {
-            fetch = true;
-        } else if (!strcmp(name.ptr(), "caches")) {
-            caches = true;
-        } else if (!strcmp(name.ptr(), "FileReader")) {
-            fileReader = true;
-        } else if (!strcmp(name.ptr(), "MessageChannel")) {
-            messageChannel = true;
-        } else if (!strcmp(name.ptr(), "InspectorUtils")) {
-            inspectorUtils = true;
-        } else if (!strcmp(name.ptr(), "ChromeUtils")) {
-            ChromeUtils = true;
         } else {
             JS_ReportErrorUTF8(cx, "Unknown property name: %s", name.ptr());
             return false;
@@ -987,42 +990,17 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
     // This function holds common properties not exposed automatically but able
     // to be requested either in |Cu.importGlobalProperties| or
     // |wantGlobalProperties| of a sandbox.
+    if (Blob &&
+        !dom::BlobBinding::GetConstructorObject(cx))
+        return false;
+
+    if (ChromeUtils && !dom::ChromeUtilsBinding::GetConstructorObject(cx))
+        return false;
+
     if (CSS && !dom::CSSBinding::GetConstructorObject(cx))
         return false;
 
     if (CSSRule && !dom::CSSRuleBinding::GetConstructorObject(cx))
-        return false;
-
-    if (XMLHttpRequest &&
-        !dom::XMLHttpRequestBinding::GetConstructorObject(cx))
-        return false;
-
-    if (TextEncoder &&
-        !dom::TextEncoderBinding::GetConstructorObject(cx))
-        return false;
-
-    if (TextDecoder &&
-        !dom::TextDecoderBinding::GetConstructorObject(cx))
-        return false;
-
-    if (URL &&
-        !dom::URLBinding::GetConstructorObject(cx))
-        return false;
-
-    if (URLSearchParams &&
-        !dom::URLSearchParamsBinding::GetConstructorObject(cx))
-        return false;
-
-    if (atob &&
-        !JS_DefineFunction(cx, obj, "atob", Atob, 1, 0))
-        return false;
-
-    if (btoa &&
-        !JS_DefineFunction(cx, obj, "btoa", Btoa, 1, 0))
-        return false;
-
-    if (Blob &&
-        !dom::BlobBinding::GetConstructorObject(cx))
         return false;
 
     if (Directory &&
@@ -1033,34 +1011,66 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
         !dom::FileBinding::GetConstructorObject(cx))
         return false;
 
+    if (FileReader && !dom::FileReaderBinding::GetConstructorObject(cx))
+        return false;
+
+    if (FormData &&
+        !dom::FormDataBinding::GetConstructorObject(cx))
+        return false;
+
+    if (InspectorUtils &&
+        !dom::InspectorUtilsBinding::GetConstructorObject(cx))
+        return false;
+
+    if (MessageChannel &&
+        (!dom::MessageChannelBinding::GetConstructorObject(cx) ||
+         !dom::MessagePortBinding::GetConstructorObject(cx)))
+        return false;
+
+    if (NodeFilter && !dom::NodeFilterBinding::GetConstructorObject(cx))
+        return false;
+
+    if (TextDecoder &&
+        !dom::TextDecoderBinding::GetConstructorObject(cx))
+        return false;
+
+    if (TextEncoder &&
+        !dom::TextEncoderBinding::GetConstructorObject(cx))
+        return false;
+
+    if (URL &&
+        !dom::URLBinding::GetConstructorObject(cx))
+        return false;
+
+    if (URLSearchParams &&
+        !dom::URLSearchParamsBinding::GetConstructorObject(cx))
+        return false;
+
+    if (XMLHttpRequest &&
+        !dom::XMLHttpRequestBinding::GetConstructorObject(cx))
+        return false;
+
+    if (atob &&
+        !JS_DefineFunction(cx, obj, "atob", Atob, 1, 0))
+        return false;
+
+    if (btoa &&
+        !JS_DefineFunction(cx, obj, "btoa", Btoa, 1, 0))
+        return false;
+
+    if (caches && !dom::cache::CacheStorage::DefineCaches(cx, obj))
+        return false;
+
     if (crypto && !SandboxCreateCrypto(cx, obj))
+        return false;
+
+    if (fetch && !SandboxCreateFetch(cx, obj))
         return false;
 
 #ifdef MOZ_WEBRTC
     if (rtcIdentityProvider && !SandboxCreateRTCIdentityProvider(cx, obj))
         return false;
 #endif
-
-    if (fetch && !SandboxCreateFetch(cx, obj))
-        return false;
-
-    if (caches && !dom::cache::CacheStorage::DefineCaches(cx, obj))
-        return false;
-
-    if (fileReader && !dom::FileReaderBinding::GetConstructorObject(cx))
-        return false;
-
-    if (messageChannel &&
-        (!dom::MessageChannelBinding::GetConstructorObject(cx) ||
-         !dom::MessagePortBinding::GetConstructorObject(cx)))
-        return false;
-
-    if (inspectorUtils &&
-        !dom::InspectorUtilsBinding::GetConstructorObject(cx))
-        return false;
-
-    if (ChromeUtils && !dom::ChromeUtilsBinding::GetConstructorObject(cx))
-        return false;
 
     return true;
 }
@@ -1114,6 +1124,9 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
     // [SecureContext] API (bug 1273687).  In that case we'd call
     // creationOptions.setSecureContext(true).
 
+    if (principal == nsXPConnect::SystemPrincipal())
+        creationOptions.setClampAndJitterTime(false);
+
     if (xpc::SharedMemoryEnabled())
         creationOptions.setSharedMemoryAndAtomicsEnabled(true);
 
@@ -1134,9 +1147,11 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
     if (options.addonId) {
         addonId = JS::NewAddonId(cx, options.addonId);
         NS_ENSURE_TRUE(addonId, NS_ERROR_FAILURE);
-    } else if (JSObject* obj = JS::CurrentGlobalOrNull(cx)) {
-        if (JSAddonId* id = JS::AddonIdOfObject(obj))
-            addonId = id;
+    } else if (principal == nsXPConnect::SystemPrincipal()) {
+        if (JSObject* obj = JS::CurrentGlobalOrNull(cx)) {
+            if (JSAddonId* id = JS::AddonIdOfObject(obj))
+                addonId = id;
+        }
     }
 
     creationOptions.setAddonId(addonId);
@@ -1158,7 +1173,6 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
     CompartmentPrivate* priv = CompartmentPrivate::Get(sandbox);
     priv->allowWaivers = options.allowWaivers;
     priv->isWebExtensionContentScript = options.isWebExtensionContentScript;
-    priv->waiveInterposition = options.waiveInterposition;
     priv->isContentXBLCompartment = options.isContentXBLScope;
 
     // Set up the wantXrays flag, which indicates whether xrays are desired even
@@ -1721,7 +1735,6 @@ SandboxOptions::Parse()
               ParseBoolean("wantComponents", &wantComponents) &&
               ParseBoolean("wantExportHelpers", &wantExportHelpers) &&
               ParseBoolean("isWebExtensionContentScript", &isWebExtensionContentScript) &&
-              ParseBoolean("waiveInterposition", &waiveInterposition) &&
               ParseString("sandboxName", sandboxName) &&
               ParseObject("sameZoneAs", &sameZoneAs) &&
               ParseBoolean("freshZone", &freshZone) &&
@@ -1767,9 +1780,8 @@ AssembleSandboxMemoryReporterName(JSContext* cx, nsCString& sandboxName)
     // Append the caller's location information.
     if (frame) {
         nsString location;
-        int32_t lineNumber = 0;
         frame->GetFilename(cx, location);
-        frame->GetLineNumber(cx, &lineNumber);
+        int32_t lineNumber = frame->GetLineNumber(cx);
 
         sandboxName.AppendLiteral(" (from: ");
         sandboxName.Append(NS_ConvertUTF16toUTF8(location));

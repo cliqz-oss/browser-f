@@ -41,7 +41,7 @@
 // EGL_ANGLE_keyed_mutex
 #define LOCAL_EGL_DXGI_KEYED_MUTEX_ANGLE                     0x33A2
 
-// EGL_ANGLE_stream_producer_d3d_texture_nv12
+// EGL_ANGLE_stream_producer_d3d_texture
 #define LOCAL_EGL_D3D_TEXTURE_SUBRESOURCE_ID_ANGLE           0x33AB
 
 // EGL_ANGLE_platform_angle_d3d
@@ -52,6 +52,12 @@
 #define LOCAL_EGL_PLATFORM_ANGLE_DEVICE_TYPE_WARP_ANGLE       0x320B
 #define LOCAL_EGL_PLATFORM_ANGLE_DEVICE_TYPE_REFERENCE_ANGLE  0x320C
 #define LOCAL_EGL_PLATFORM_ANGLE_ENABLE_AUTOMATIC_TRIM_ANGLE  0x320F
+
+// EGL_ANGLE_d3d_texture_client_buffer
+#define LOCAL_EGL_D3D_TEXTURE_ANGLE                          0x33A3
+
+// EGL_ANGLE_flexible_surface_compatibility
+#define LOCAL_EGL_FLEXIBLE_SURFACE_COMPATIBILITY_SUPPORTED_ANGLE 0x33A6
 
 // EGL_ANGLE_experimental_present_path
 #define LOCAL_EGL_EXPERIMENTAL_PRESENT_PATH_ANGLE             0x33A4

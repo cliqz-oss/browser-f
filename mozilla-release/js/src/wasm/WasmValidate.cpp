@@ -20,11 +20,10 @@
 
 #include "mozilla/CheckedInt.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsprf.h"
-
 #include "jit/JitOptions.h"
+#include "js/Printf.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "wasm/WasmBinaryIterator.h"
 
 using namespace js;
@@ -265,6 +264,9 @@ Decoder::finishNameSubsection(uint32_t endOffset)
 bool
 wasm::EncodeLocalEntries(Encoder& e, const ValTypeVector& locals)
 {
+    if (locals.length() > MaxLocals)
+        return false;
+
     uint32_t numLocalEntries = 0;
     ValType prev = ValType(TypeCode::Limit);
     for (ValType t : locals) {
@@ -717,6 +719,29 @@ DecodeFunctionBodyExprs(const ModuleEnvironment& env, const Sig& sig, const ValT
             CHECK(iter.readReturn(&nothing));
           case uint16_t(Op::Unreachable):
             CHECK(iter.readUnreachable());
+          case uint16_t(Op::NumericPrefix): {
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+            switch (op.b1) {
+              case uint16_t(NumericOp::I32TruncSSatF32):
+              case uint16_t(NumericOp::I32TruncUSatF32):
+                CHECK(iter.readConversion(ValType::F32, ValType::I32, &nothing));
+              case uint16_t(NumericOp::I32TruncSSatF64):
+              case uint16_t(NumericOp::I32TruncUSatF64):
+                CHECK(iter.readConversion(ValType::F64, ValType::I32, &nothing));
+              case uint16_t(NumericOp::I64TruncSSatF32):
+              case uint16_t(NumericOp::I64TruncUSatF32):
+                CHECK(iter.readConversion(ValType::F32, ValType::I64, &nothing));
+              case uint16_t(NumericOp::I64TruncSSatF64):
+              case uint16_t(NumericOp::I64TruncUSatF64):
+                CHECK(iter.readConversion(ValType::F64, ValType::I64, &nothing));
+              default:
+                return iter.unrecognizedOpcode(&op);
+            }
+            break;
+#else
+            return iter.unrecognizedOpcode(&op);
+#endif
+          }
           case uint16_t(Op::ThreadPrefix): {
 #ifdef ENABLE_WASM_THREAD_OPS
             switch (op.b1) {
@@ -1722,6 +1747,9 @@ wasm::DecodeModuleEnvironment(Decoder& d, ModuleEnvironment* env)
     if (!d.startSection(SectionId::Code, env, &env->codeSection, "code"))
         return false;
 
+    if (env->codeSection && env->codeSection->size > MaxCodeSectionBytes)
+        return d.fail("code section too big");
+
     return true;
 }
 
@@ -1818,7 +1846,7 @@ DecodeDataSection(Decoder& d, ModuleEnvironment* env)
 }
 
 static bool
-DecodeModuleNameSubsection(Decoder& d, ModuleEnvironment* env)
+DecodeModuleNameSubsection(Decoder& d)
 {
     Maybe<uint32_t> endOffset;
     if (!d.startNameSubsection(NameType::Module, &endOffset))
@@ -1905,7 +1933,7 @@ DecodeNameSection(Decoder& d, ModuleEnvironment* env)
 
     // Once started, custom sections do not report validation errors.
 
-    if (!DecodeModuleNameSubsection(d, env))
+    if (!DecodeModuleNameSubsection(d))
         goto finish;
 
     if (!DecodeFunctionNameSubsection(d, env))

@@ -19,10 +19,9 @@
 #include "wasm/WasmBinaryToText.h"
 
 #include "jsnum.h"
-#include "jsprf.h"
 
+#include "util/StringBuffer.h"
 #include "vm/ArrayBufferObject.h"
-#include "vm/StringBuffer.h"
 #include "wasm/WasmAST.h"
 #include "wasm/WasmBinaryToAST.h"
 #include "wasm/WasmDebug.h"
@@ -750,6 +749,33 @@ RenderConversionOperator(WasmRenderContext& c, AstConversionOperator& conv)
     return c.buffer.append(opStr, strlen(opStr));
 }
 
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+static bool
+RenderExtraConversionOperator(WasmRenderContext& c, AstExtraConversionOperator& conv)
+{
+    if (!RenderExpr(c, *conv.operand()))
+        return false;
+
+    if (!RenderIndent(c))
+        return false;
+
+    MAP_AST_EXPR(c, conv);
+    const char* opStr;
+    switch (conv.op()) {
+      case NumericOp::I32TruncSSatF32:   opStr = "i32.trunc_s:sat/f32"; break;
+      case NumericOp::I32TruncUSatF32:   opStr = "i32.trunc_u:sat/f32"; break;
+      case NumericOp::I32TruncSSatF64:   opStr = "i32.trunc_s:sat/f64"; break;
+      case NumericOp::I32TruncUSatF64:   opStr = "i32.trunc_u:sat/f64"; break;
+      case NumericOp::I64TruncSSatF32:   opStr = "i64.trunc_s:sat/f32"; break;
+      case NumericOp::I64TruncUSatF32:   opStr = "i64.trunc_u:sat/f32"; break;
+      case NumericOp::I64TruncSSatF64:   opStr = "i64.trunc_s:sat/f64"; break;
+      case NumericOp::I64TruncUSatF64:   opStr = "i64.trunc_u:sat/f64"; break;
+      default:                      return Fail(c, "unexpected extra conversion operator");
+    }
+    return c.buffer.append(opStr, strlen(opStr));
+}
+#endif
+
 static bool
 RenderIf(WasmRenderContext& c, AstIf& if_)
 {
@@ -1327,6 +1353,12 @@ RenderExpr(WasmRenderContext& c, AstExpr& expr, bool newLine /* = true */)
         if (!RenderConversionOperator(c, expr.as<AstConversionOperator>()))
             return false;
         break;
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+      case AstExprKind::ExtraConversionOperator:
+        if (!RenderExtraConversionOperator(c, expr.as<AstExtraConversionOperator>()))
+            return false;
+        break;
+#endif
       case AstExprKind::Load:
         if (!RenderLoad(c, expr.as<AstLoad>()))
             return false;
@@ -1630,8 +1662,13 @@ RenderResizableMemory(WasmRenderContext& c, const Limits& memory)
     resizedMemory.initial /= PageSize;
 
     if (resizedMemory.maximum) {
-        MOZ_ASSERT(*resizedMemory.maximum % PageSize == 0);
-        *resizedMemory.maximum /= PageSize;
+        if (*resizedMemory.maximum == UINT32_MAX) {
+            // See special casing in DecodeMemoryLimits.
+            *resizedMemory.maximum = MaxMemoryMaximumPages;
+        } else {
+            MOZ_ASSERT(*resizedMemory.maximum % PageSize == 0);
+            *resizedMemory.maximum /= PageSize;
+        }
     }
 
     if (!RenderLimits(c, resizedMemory))

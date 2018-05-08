@@ -33,6 +33,7 @@ stubPreparedMessages.set("GET request", new NetworkEventMessage({
   "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
+  "private": false,
   "url": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/inexistent.html",
   "urlDetails": {
     "baseNameWithQuery": "inexistent.html",
@@ -111,6 +112,7 @@ stubPreparedMessages.set("XHR GET request", new NetworkEventMessage({
   "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
+  "private": false,
   "url": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/inexistent.html",
   "urlDetails": {
     "baseNameWithQuery": "inexistent.html",
@@ -189,6 +191,7 @@ stubPreparedMessages.set("XHR POST request", new NetworkEventMessage({
   "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
+  "private": false,
   "url": "http://example.com/browser/devtools/client/webconsole/new-console-output/test/fixtures/stub-generators/inexistent.html",
   "urlDetails": {
     "baseNameWithQuery": "inexistent.html",
@@ -247,7 +250,7 @@ stubPreparedMessages.set("XHR POST request update", new NetworkEventMessage({
   "method": "POST"
 }));
 
-stubPackets.set("GET request", {
+stubPackets.set(`GET request`, {
   "_type": "NetworkEvent",
   "timeStamp": 1487022056850,
   "node": null,
@@ -272,7 +275,7 @@ stubPackets.set("GET request", {
   "from": "server1.conn0.child1/consoleActor2"
 });
 
-stubPackets.set("GET request update", {
+stubPackets.set(`GET request update`, {
   "networkInfo": {
     "_type": "NetworkEvent",
     "actor": "server1.conn0.child1/netEvent30",
@@ -298,7 +301,7 @@ stubPackets.set("GET request update", {
   }
 });
 
-stubPackets.set("XHR GET request", {
+stubPackets.set(`XHR GET request`, {
   "_type": "NetworkEvent",
   "timeStamp": 1487022057746,
   "node": null,
@@ -323,7 +326,7 @@ stubPackets.set("XHR GET request", {
   "from": "server1.conn1.child1/consoleActor2"
 });
 
-stubPackets.set("XHR GET request update", {
+stubPackets.set(`XHR GET request update`, {
   "networkInfo": {
     "_type": "NetworkEvent",
     "actor": "server1.conn0.child1/netEvent31",
@@ -349,7 +352,7 @@ stubPackets.set("XHR GET request update", {
   }
 });
 
-stubPackets.set("XHR POST request", {
+stubPackets.set(`XHR POST request`, {
   "_type": "NetworkEvent",
   "timeStamp": 1487022058414,
   "node": null,
@@ -374,7 +377,7 @@ stubPackets.set("XHR POST request", {
   "from": "server1.conn2.child1/consoleActor2"
 });
 
-stubPackets.set("XHR POST request update", {
+stubPackets.set(`XHR POST request update`, {
   "networkInfo": {
     "_type": "NetworkEvent",
     "actor": "server1.conn0.child1/netEvent32",

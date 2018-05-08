@@ -4,9 +4,9 @@ const gHttpTestRoot = rootDir.replace("chrome://mochitests/content/", "http://12
 
 var gTestBrowser = null;
 var gNextTest = null;
-var gPluginHost = Components.classes["@mozilla.org/plugin/host;1"].getService(Components.interfaces.nsIPluginHost);
+var gPluginHost = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var gPrivateWindow = null;
 var gPrivateBrowser = null;

@@ -95,7 +95,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=803225
 
   // Test 6: mailto protocol
   let mm = SpecialPowers.loadChromeScript(function launchHandler() {
-    var { classes: Cc, interfaces: Ci } = Components;
     var ioService = Cc["@mozilla.org/network/io-service;1"].
                       getService(Ci.nsIIOService);
 
@@ -104,7 +103,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=803225
     webHandler.name = "Web Handler";
     webHandler.uriTemplate = "http://example.com/tests/dom/security/test/mixedcontentblocker/file_bug803225_test_mailto.html?s=%";
 
-    Components.utils.import("resource://gre/modules/Services.jsm");
+    ChromeUtils.import("resource://gre/modules/Services.jsm");
     Services.ppmm.addMessageListener("Test:content-ready", function contentReadyListener() {
       Services.ppmm.removeMessageListener("Test:content-ready", contentReadyListener);
       sendAsyncMessage("Test:content-ready-forward");
@@ -112,8 +111,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=803225
     })
 
     var pScript = "data:,new " + function () {
-      var os = Components.classes["@mozilla.org/observer-service;1"]
-        .getService(Components.interfaces.nsIObserverService);
+      var os = Cc["@mozilla.org/observer-service;1"]
+        .getService(Ci.nsIObserverService);
       var observer = {
         observe: function(subject, topic, data) {
           if (topic == "content-document-global-created" && data == "http://example.com") {

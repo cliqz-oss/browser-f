@@ -6,35 +6,30 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
+ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
   "resource://gre/modules/TelemetryStopwatch.jsm");
 
 function debug(msg) {
   Services.console.logStringMessage("SessionStoreContent: " + msg);
 }
 
-XPCOMUtils.defineLazyModuleGetter(this, "FormData",
+ChromeUtils.defineModuleGetter(this, "FormData",
   "resource://gre/modules/FormData.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "DocShellCapabilities",
+ChromeUtils.defineModuleGetter(this, "DocShellCapabilities",
   "resource:///modules/sessionstore/DocShellCapabilities.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ScrollPosition",
+ChromeUtils.defineModuleGetter(this, "ScrollPosition",
   "resource://gre/modules/ScrollPosition.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionHistory",
+ChromeUtils.defineModuleGetter(this, "SessionHistory",
   "resource://gre/modules/sessionstore/SessionHistory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStorage",
+ChromeUtils.defineModuleGetter(this, "SessionStorage",
   "resource:///modules/sessionstore/SessionStorage.jsm");
 
-Cu.import("resource:///modules/sessionstore/ContentRestore.jsm", this);
+ChromeUtils.import("resource:///modules/sessionstore/ContentRestore.jsm", this);
 XPCOMUtils.defineLazyGetter(this, "gContentRestore",
                             () => { return new ContentRestore(this); });
 
@@ -620,7 +615,6 @@ var SessionStorageListener = {
     let usage = content.QueryInterface(Ci.nsIInterfaceRequestor)
                        .getInterface(Ci.nsIDOMWindowUtils)
                        .getStorageUsage(event.storageArea);
-    Services.telemetry.getHistogramById("FX_SESSION_RESTORE_DOM_STORAGE_SIZE_ESTIMATE_CHARS").add(usage);
 
     // Don't store any data if we exceed the limit. Wipe any data we previously
     // collected so that we don't confuse websites with partial state.

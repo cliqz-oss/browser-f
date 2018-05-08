@@ -3,30 +3,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std::io;
-use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use consts::PARAMETER_SIZE;
 use statemachine::StateMachine;
 use runloop::RunLoop;
-use util::{to_io_err, OnceCallback};
+use util::OnceCallback;
 
 enum QueueAction {
     Register {
         flags: ::RegisterFlags,
         timeout: u64,
         challenge: Vec<u8>,
-        application: Vec<u8>,
+        application: ::AppId,
         key_handles: Vec<::KeyHandle>,
-        callback: OnceCallback<Vec<u8>>,
+        callback: OnceCallback<::RegisterResult>,
     },
     Sign {
         flags: ::SignFlags,
         timeout: u64,
         challenge: Vec<u8>,
-        application: Vec<u8>,
+        app_ids: Vec<::AppId>,
         key_handles: Vec<::KeyHandle>,
-        callback: OnceCallback<(Vec<u8>, Vec<u8>)>,
+        callback: OnceCallback<::SignResult>,
     },
     Cancel,
 }
@@ -47,13 +47,13 @@ impl U2FManager {
             while alive() {
                 match rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(QueueAction::Register {
-                           flags,
-                           timeout,
-                           challenge,
-                           application,
-                           key_handles,
-                           callback,
-                       }) => {
+                        flags,
+                        timeout,
+                        challenge,
+                        application,
+                        key_handles,
+                        callback,
+                    }) => {
                         // This must not block, otherwise we can't cancel.
                         sm.register(
                             flags,
@@ -65,22 +65,15 @@ impl U2FManager {
                         );
                     }
                     Ok(QueueAction::Sign {
-                           flags,
-                           timeout,
-                           challenge,
-                           application,
-                           key_handles,
-                           callback,
-                       }) => {
+                        flags,
+                        timeout,
+                        challenge,
+                        app_ids,
+                        key_handles,
+                        callback,
+                    }) => {
                         // This must not block, otherwise we can't cancel.
-                        sm.sign(
-                            flags,
-                            timeout,
-                            challenge,
-                            application,
-                            key_handles,
-                            callback,
-                        );
+                        sm.sign(flags, timeout, challenge, app_ids, key_handles, callback);
                     }
                     Ok(QueueAction::Cancel) => {
                         // Cancelling must block so that we don't start a new
@@ -109,27 +102,21 @@ impl U2FManager {
         flags: ::RegisterFlags,
         timeout: u64,
         challenge: Vec<u8>,
-        application: Vec<u8>,
+        application: ::AppId,
         key_handles: Vec<::KeyHandle>,
         callback: F,
-    ) -> io::Result<()>
+    ) -> Result<(), ::Error>
     where
-        F: FnOnce(io::Result<Vec<u8>>),
+        F: FnOnce(Result<::RegisterResult, ::Error>),
         F: Send + 'static,
     {
         if challenge.len() != PARAMETER_SIZE || application.len() != PARAMETER_SIZE {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid parameter sizes",
-            ));
+            return Err(::Error::Unknown);
         }
 
         for key_handle in &key_handles {
             if key_handle.credential.len() > 256 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Key handle too large",
-                ));
+                return Err(::Error::Unknown);
             }
         }
 
@@ -142,7 +129,7 @@ impl U2FManager {
             key_handles,
             callback,
         };
-        self.tx.send(action).map_err(to_io_err)
+        self.tx.send(action).map_err(|_| ::Error::Unknown)
     }
 
     pub fn sign<F>(
@@ -150,34 +137,31 @@ impl U2FManager {
         flags: ::SignFlags,
         timeout: u64,
         challenge: Vec<u8>,
-        application: Vec<u8>,
+        app_ids: Vec<::AppId>,
         key_handles: Vec<::KeyHandle>,
         callback: F,
-    ) -> io::Result<()>
+    ) -> Result<(), ::Error>
     where
-        F: FnOnce(io::Result<(Vec<u8>, Vec<u8>)>),
+        F: FnOnce(Result<::SignResult, ::Error>),
         F: Send + 'static,
     {
-        if challenge.len() != PARAMETER_SIZE || application.len() != PARAMETER_SIZE {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid parameter sizes",
-            ));
+        if challenge.len() != PARAMETER_SIZE {
+            return Err(::Error::Unknown);
         }
 
-        if key_handles.len() < 1 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "No key handles given",
-            ));
+        if app_ids.len() < 1 {
+            return Err(::Error::Unknown);
+        }
+
+        for app_id in &app_ids {
+            if app_id.len() != PARAMETER_SIZE {
+                return Err(::Error::Unknown);
+            }
         }
 
         for key_handle in &key_handles {
             if key_handle.credential.len() > 256 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Key handle too large",
-                ));
+                return Err(::Error::Unknown);
             }
         }
 
@@ -186,15 +170,17 @@ impl U2FManager {
             flags,
             timeout,
             challenge,
-            application,
+            app_ids,
             key_handles,
             callback,
         };
-        self.tx.send(action).map_err(to_io_err)
+        self.tx.send(action).map_err(|_| ::Error::Unknown)
     }
 
-    pub fn cancel(&self) -> io::Result<()> {
-        self.tx.send(QueueAction::Cancel).map_err(to_io_err)
+    pub fn cancel(&self) -> Result<(), ::Error> {
+        self.tx
+            .send(QueueAction::Cancel)
+            .map_err(|_| ::Error::Unknown)
     }
 }
 

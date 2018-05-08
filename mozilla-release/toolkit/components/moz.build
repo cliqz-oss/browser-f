@@ -16,7 +16,6 @@ DIRS += [
     'aboutcheckerboard',
     'aboutmemory',
     'aboutperformance',
-    'addoncompat',
     'alerts',
     'apppicker',
     'asyncshutdown',
@@ -30,11 +29,11 @@ DIRS += [
     'crashmonitor',
     'diskspacewatcher',
     'downloads',
+    'enterprisepolicies',
     'extensions',
     'filewatcher',
     'finalizationwitness',
     'find',
-    'jsdownloads',
     'jsoncpp/src/lib_json',
     'lz4',
     'mediasniffer',
@@ -69,6 +68,7 @@ DIRS += [
     'url-classifier',
     'urlformatter',
     'viewconfig',
+    'viewsource',
     'windowcreator',
     'windowwatcher',
     'workerloader',
@@ -76,7 +76,7 @@ DIRS += [
 ]
 
 if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
-    DIRS += ['narrate', 'viewsource'];
+    DIRS += ['narrate'];
 
     if CONFIG['NS_PRINTING']:
         DIRS += ['printing']
@@ -111,3 +111,6 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
 
 if CONFIG['NIGHTLY_BUILD'] and CONFIG['MOZ_BUILD_APP'] == 'browser':
     DIRS += ['payments']
+
+if CONFIG['MOZ_BUILD_APP'] == 'browser':
+    DIRS += ['normandy']

@@ -4,11 +4,8 @@
  */
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 var ADDONS = [{
   id: "test_bug449027_1@tests.mozilla.org",
@@ -244,7 +241,7 @@ var PluginHost = {
      || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -272,7 +269,7 @@ var WindowWatcher = {
      || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -302,8 +299,8 @@ function create_addon(addon) {
   target.append(addon.id);
   target.append("install.rdf");
   target.create(target.NORMAL_FILE_TYPE, 0o644);
-  var stream = Components.classes["@mozilla.org/network/file-output-stream;1"]
-                         .createInstance(Ci.nsIFileOutputStream);
+  var stream = Cc["@mozilla.org/network/file-output-stream;1"]
+                 .createInstance(Ci.nsIFileOutputStream);
   stream.init(target, 0x04 | 0x08 | 0x20, 0o664, 0); // write, create, truncate
   stream.write(installrdf, installrdf.length);
   stream.close();
@@ -331,7 +328,7 @@ function check_state(test, lastTest, callback) {
       var expected = 0;
       for (i = 0; i < ADDONS.length; i++) {
         if (ADDONS[i][test] && !ADDONS[i][lastTest]) {
-          if (gNewBlocks.indexOf(ADDONS[i].name + " " + ADDONS[i].version) < 0)
+          if (!gNewBlocks.includes(ADDONS[i].name + " " + ADDONS[i].version))
             do_throw("Addon " + (i + 1) + " should have been listed in the blocklist notification for test " + test);
           expected++;
         }
@@ -339,7 +336,7 @@ function check_state(test, lastTest, callback) {
 
       for (i = 0; i < PLUGINS.length; i++) {
         if (PLUGINS[i][test] && !PLUGINS[i][lastTest]) {
-          if (gNewBlocks.indexOf(PLUGINS[i].name + " " + PLUGINS[i].version) < 0)
+          if (!gNewBlocks.includes(PLUGINS[i].name + " " + PLUGINS[i].version))
             do_throw("Plugin " + (i + 1) + " should have been listed in the blocklist notification for test " + test);
           expected++;
         }
@@ -353,8 +350,8 @@ function check_state(test, lastTest, callback) {
 
 function load_blocklist(file) {
   Services.prefs.setCharPref("extensions.blocklist.url", "http://localhost:" + gPort + "/data/" + file);
-  var blocklist = Components.classes["@mozilla.org/extensions/blocklist;1"]
-                            .getService(Ci.nsITimerCallback);
+  var blocklist = Cc["@mozilla.org/extensions/blocklist;1"]
+                    .getService(Ci.nsITimerCallback);
   blocklist.notify(null);
 }
 

@@ -10,10 +10,7 @@
 #include "ds/OrderedHashTable.h"
 #include "js/SliceBudget.h"
 #include "js/TracingAPI.h"
-
-namespace JS {
-class Symbol;
-}
+#include "js/TypeDecls.h"
 
 namespace js {
 
@@ -283,7 +280,8 @@ class GCMarker : public JSTracer
 
     void setGCMode(JSGCMode mode) { stack.setGCMode(mode); }
 
-    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
+                               const AutoLockForExclusiveAccess& lock) const;
 
 #ifdef DEBUG
 

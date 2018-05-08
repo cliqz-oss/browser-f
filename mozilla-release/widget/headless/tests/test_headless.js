@@ -1,10 +1,9 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const server = new HttpServer();
 server.registerDirectory("/", do_get_cwd());
@@ -136,14 +135,17 @@ add_task(async function test_keydown() {
   let webNavigation = windowlessBrowser.QueryInterface(Ci.nsIWebNavigation);
   let contentWindow = await loadContentWindow(webNavigation, HEADLESS_URL);
 
-  let utils = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
   let keydown = new Promise((resolve) => {
     contentWindow.addEventListener("keydown", () => {
       resolve();
     }, { once: true });
   })
-  utils.sendKeyEvent("keydown", 65, 65, 0);
+
+  let tip = Cc["@mozilla.org/text-input-processor;1"]
+            .createInstance(Ci.nsITextInputProcessor);
+  let begun = tip.beginInputTransactionForTests(contentWindow);
+  ok(begun, "nsITextInputProcessor.beginInputTransactionForTests() should succeed");
+  tip.keydown(new contentWindow.KeyboardEvent("", {key: "a", code: "KeyA", keyCode: contentWindow.KeyboardEvent.DOM_VK_A}));
 
   await keydown;
   ok(true, "Send keydown didn't crash");

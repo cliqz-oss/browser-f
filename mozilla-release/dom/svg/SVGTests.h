@@ -14,6 +14,7 @@
 class nsAttrValue;
 class nsAtom;
 class nsStaticAtom;
+class nsSVGElement;
 
 namespace mozilla {
 class DOMSVGStringList;
@@ -95,7 +96,12 @@ public:
   already_AddRefed<DOMSVGStringList> SystemLanguage();
   bool HasExtension(const nsAString& aExtension);
 
-  virtual bool IsInChromeDoc() const = 0;
+  virtual nsSVGElement* AsSVGElement() = 0;
+
+  const nsSVGElement* AsSVGElement() const
+  {
+    return const_cast<SVGTests*>(this)->AsSVGElement();
+  }
 
 protected:
   virtual ~SVGTests() {}

@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {utils: Cu} = Components;
-
 const {
   ChromeWebElement,
   ContentWebElement,
@@ -11,8 +9,8 @@ const {
   ContentWebWindow,
   element,
   WebElement,
-} = Cu.import("chrome://marionette/content/element.js", {});
-const {InvalidArgumentError} = Cu.import("chrome://marionette/content/error.js", {});
+} = ChromeUtils.import("chrome://marionette/content/element.js", {});
+const {InvalidArgumentError} = ChromeUtils.import("chrome://marionette/content/error.js", {});
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const XBLNS = "http://www.mozilla.org/xbl";

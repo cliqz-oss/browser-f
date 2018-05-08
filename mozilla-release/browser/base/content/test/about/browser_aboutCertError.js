@@ -9,7 +9,7 @@ const GOOD_PAGE = "https://example.com/";
 const BAD_CERT = "https://expired.example.com/";
 const UNKNOWN_ISSUER = "https://self-signed.example.com ";
 const BAD_STS_CERT = "https://badchain.include-subdomains.pinning.example.com:443";
-const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
 const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
 
 add_task(async function checkReturnToAboutHome() {
@@ -278,6 +278,32 @@ add_task(async function checkAdvancedDetails() {
   let certChain = getCertChain(message.securityInfoAsString);
   ok(message.text.includes(certChain), "Found certificate chain");
 
+  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
+
+add_task(async function checkhideAddExceptionButton() {
+  info("Loading a bad cert page and verifying the exception button can be hidden  by a pref");
+  Services.prefs.setBoolPref("security.certerror.hideAddException", true);
+
+  let browser;
+  let certErrorLoaded;
+  await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
+    gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, BAD_CERT);
+    browser = gBrowser.selectedBrowser;
+    certErrorLoaded = BrowserTestUtils.waitForErrorPage(browser);
+  }, false);
+
+  info("Loading and waiting for the cert error");
+  await certErrorLoaded;
+
+  await ContentTask.spawn(browser, null, async function() {
+    let doc = content.document;
+    let exceptionButton = doc.querySelector(".exceptionDialogButtonContainer");
+    ok(exceptionButton.hidden, "Exception button is hidden.");
+  });
+
+  Services.prefs.clearUserPref("security.certerror.hideAddException");
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 

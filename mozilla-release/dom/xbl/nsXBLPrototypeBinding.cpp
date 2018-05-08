@@ -11,6 +11,7 @@
 #include "nsIInputStream.h"
 #include "nsNameSpaceManager.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 #include "nsIURL.h"
 #include "nsIChannel.h"
 #include "nsString.h"
@@ -38,7 +39,9 @@
 #include "nsIInterfaceInfo.h"
 #include "nsIScriptError.h"
 
+#ifdef MOZ_OLD_STYLE
 #include "nsCSSRuleProcessor.h"
+#endif
 #include "nsXBLResourceLoader.h"
 #include "mozilla/AddonPathService.h"
 #include "mozilla/dom/CDATASection.h"
@@ -80,7 +83,10 @@ public:
   Element* GetElement() { return mElement; }
 
   nsXBLAttributeEntry* GetNext() { return mNext; }
+  const nsXBLAttributeEntry* GetNext() const { return mNext; }
   void SetNext(nsXBLAttributeEntry* aEntry) { mNext = aEntry; }
+
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const;
 
 protected:
   Element* mElement;
@@ -90,6 +96,17 @@ protected:
   int32_t mDstNameSpace;
   nsXBLAttributeEntry* mNext;
 };
+
+size_t
+nsXBLAttributeEntry::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = 0;
+  for (const nsXBLAttributeEntry* entry = this;
+       entry; entry = entry->GetNext()) {
+    n += aMallocSizeOf(entry);
+  }
+  return n;
+}
 
 // =============================================================================
 
@@ -116,16 +133,22 @@ nsXBLPrototypeBinding::Init(const nsACString& aID,
                             Element* aElement,
                             bool aFirstBinding)
 {
-  nsresult rv = aInfo->DocumentURI()->Clone(getter_AddRefs(mBindingURI));
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv;
+  nsCOMPtr<nsIURI> bindingURI = aInfo->DocumentURI();
 
   // The binding URI might be an immutable URI (e.g. for about: URIs). In that case,
   // we'll fail in SetRef below, but that doesn't matter much for now.
   if (aFirstBinding) {
-    rv = mBindingURI->Clone(getter_AddRefs(mAlternateBindingURI));
+    rv = bindingURI->Clone(getter_AddRefs(mAlternateBindingURI));
     NS_ENSURE_SUCCESS(rv, rv);
   }
-  mBindingURI->SetRef(aID);
+  rv = NS_MutateURI(bindingURI)
+        .SetRef(aID)
+        .Finalize(mBindingURI);
+  if (NS_FAILED(rv)) {
+    // If SetRef failed, mBindingURI should be a clone.
+    bindingURI->Clone(getter_AddRefs(mBindingURI));
+  }
 
   mXBLDocInfoWeak = aInfo;
 
@@ -483,7 +506,8 @@ nsXBLPrototypeBinding::LocateInstance(Element* aBoundElement,
   if (!copyParent)
     return nullptr;
 
-  nsIContent* child = copyParent->GetChildAt_Deprecated(templParent->IndexOf(aTemplChild));
+  nsIContent* child =
+    copyParent->GetChildAt_Deprecated(templParent->ComputeIndexOf(aTemplChild));
   if (child && child->IsElement()) {
     return child->AsElement();
   }
@@ -563,6 +587,7 @@ nsXBLPrototypeBinding::SetInitialAttributes(
   }
 }
 
+#ifdef MOZ_OLD_STYLE
 nsIStyleRuleProcessor*
 nsXBLPrototypeBinding::GetRuleProcessor()
 {
@@ -572,20 +597,7 @@ nsXBLPrototypeBinding::GetRuleProcessor()
 
   return nullptr;
 }
-
-void
-nsXBLPrototypeBinding::ComputeServoStyleSet(nsPresContext* aPresContext)
-{
-  if (mResources) {
-    mResources->ComputeServoStyleSet(aPresContext);
-  }
-}
-
-ServoStyleSet*
-nsXBLPrototypeBinding::GetServoStyleSet() const
-{
-  return mResources ? mResources->GetServoStyleSet() : nullptr;
-}
+#endif
 
 void
 nsXBLPrototypeBinding::EnsureAttributeTable()
@@ -1243,7 +1255,7 @@ nsXBLPrototypeBinding::ReadContentNode(nsIObjectInputStream* aStream,
 
   RefPtr<nsAtom> tagAtom = NS_Atomize(tag);
   RefPtr<NodeInfo> nodeInfo =
-    aNim->GetNodeInfo(tagAtom, prefixAtom, namespaceID, nsIDOMNode::ELEMENT_NODE);
+    aNim->GetNodeInfo(tagAtom, prefixAtom, namespaceID, nsINode::ELEMENT_NODE);
 
   uint32_t attrCount;
   rv = aStream->Read32(&attrCount);
@@ -1291,7 +1303,7 @@ nsXBLPrototypeBinding::ReadContentNode(nsIObjectInputStream* aStream,
 
         RefPtr<NodeInfo> ni =
           aNim->GetNodeInfo(nameAtom, prefixAtom,
-                            namespaceID, nsIDOMNode::ATTRIBUTE_NODE);
+                            namespaceID, nsINode::ATTRIBUTE_NODE);
         attrs[i].mName.SetTo(ni);
       }
 
@@ -1384,13 +1396,13 @@ nsXBLPrototypeBinding::WriteContentNode(nsIObjectOutputStream* aStream,
     // Text is writen out as a single byte for the type, followed by the text.
     uint8_t type = XBLBinding_Serialize_NoContent;
     switch (aNode->NodeType()) {
-      case nsIDOMNode::TEXT_NODE:
+      case nsINode::TEXT_NODE:
         type = XBLBinding_Serialize_TextNode;
         break;
-      case nsIDOMNode::CDATA_SECTION_NODE:
+      case nsINode::CDATA_SECTION_NODE:
         type = XBLBinding_Serialize_CDATANode;
         break;
-      case nsIDOMNode::COMMENT_NODE:
+      case nsINode::COMMENT_NODE:
         type = XBLBinding_Serialize_CommentNode;
         break;
       default:
@@ -1706,4 +1718,36 @@ nsXBLPrototypeBinding::AppendStyleSheetsTo(
   if (mResources) {
     mResources->AppendStyleSheetsTo(aResult);
   }
+}
+
+size_t
+nsXBLPrototypeBinding::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = aMallocSizeOf(this);
+  n += mPrototypeHandler
+    ? mPrototypeHandler->SizeOfIncludingThis(aMallocSizeOf) : 0;
+  n += mResources ? mResources->SizeOfIncludingThis(aMallocSizeOf) : 0;
+
+  if (mAttributeTable) {
+    n += mAttributeTable->ShallowSizeOfIncludingThis(aMallocSizeOf);
+    for (auto iter = mAttributeTable->Iter(); !iter.Done(); iter.Next()) {
+      InnerAttributeTable* table = iter.UserData();
+      n += table->ShallowSizeOfIncludingThis(aMallocSizeOf);
+      for (auto iter2 = table->Iter(); !iter2.Done(); iter2.Next()) {
+        n += iter2.UserData()->SizeOfIncludingThis(aMallocSizeOf);
+      }
+    }
+  }
+
+  n += mInterfaceTable.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  n += mKeyHandlers.ShallowSizeOfExcludingThis(aMallocSizeOf);
+
+  // Measurement of the following members may be added later if DMD finds it
+  // is worthwhile:
+  // - mBindingURI
+  // - mAlternateBindingURI
+  // - mBaseBindingURI
+  // - mImplementation
+
+  return n;
 }

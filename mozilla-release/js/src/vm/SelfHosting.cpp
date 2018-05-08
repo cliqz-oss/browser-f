@@ -12,18 +12,16 @@
 #include "mozilla/Maybe.h"
 
 #include "jsarray.h"
-#include "jscntxt.h"
-#include "jscompartment.h"
 #include "jsdate.h"
 #include "jsfriendapi.h"
-#include "jsfun.h"
-#include "jshashutil.h"
-#include "jsiter.h"
-#include "jsstr.h"
-#include "jswrapper.h"
 #include "selfhosted.out.h"
 
-#include "builtin/Intl.h"
+#include "builtin/intl/Collator.h"
+#include "builtin/intl/DateTimeFormat.h"
+#include "builtin/intl/IntlObject.h"
+#include "builtin/intl/NumberFormat.h"
+#include "builtin/intl/PluralRules.h"
+#include "builtin/intl/RelativeTimeFormat.h"
 #include "builtin/MapObject.h"
 #include "builtin/ModuleObject.h"
 #include "builtin/Object.h"
@@ -33,31 +31,38 @@
 #include "builtin/SelfHostingDefines.h"
 #include "builtin/SIMD.h"
 #include "builtin/Stream.h"
+#include "builtin/String.h"
 #include "builtin/TypedObject.h"
 #include "builtin/WeakMapObject.h"
+#include "gc/HashUtil.h"
 #include "gc/Marking.h"
 #include "gc/Policy.h"
 #include "jit/AtomicOperations.h"
 #include "jit/InlinableNatives.h"
 #include "js/CharacterEncoding.h"
 #include "js/Date.h"
+#include "js/Wrapper.h"
+#include "util/StringBuffer.h"
+#include "vm/ArgumentsObject.h"
 #include "vm/Compression.h"
 #include "vm/GeneratorObject.h"
 #include "vm/Interpreter.h"
+#include "vm/Iteration.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
+#include "vm/JSFunction.h"
 #include "vm/Printer.h"
 #include "vm/RegExpObject.h"
-#include "vm/String.h"
-#include "vm/StringBuffer.h"
+#include "vm/StringType.h"
 #include "vm/TypedArrayObject.h"
 #include "vm/WrapperObject.h"
 
-#include "jsatominlines.h"
-#include "jsfuninlines.h"
-#include "jsobjinlines.h"
-#include "jsscriptinlines.h"
-
-#include "gc/Iteration-inl.h"
+#include "gc/PrivateIterators-inl.h"
 #include "vm/BooleanObject-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSFunction-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/NumberObject-inl.h"
 #include "vm/StringObject-inl.h"
@@ -68,7 +73,6 @@ using namespace js::selfhosted;
 using JS::AutoCheckCannotGC;
 using mozilla::IsInRange;
 using mozilla::Maybe;
-using mozilla::PodMove;
 
 static void
 selfHosting_WarningReporter(JSContext* cx, JSErrorReport* report)
@@ -375,6 +379,9 @@ intrinsic_CreateModuleSyntaxError(JSContext* cx, unsigned argc, Value* vp)
 
     RootedModuleObject module(cx, &args[0].toObject().as<ModuleObject>());
     RootedString filename(cx, JS_NewStringCopyZ(cx, module->script()->filename()));
+    if (!filename)
+        return false;
+
     RootedString message(cx, args[3].toString());
 
     RootedValue error(cx);
@@ -2215,8 +2222,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_INLINABLE_FN("std_String_charAt",         str_charAt,                   1,0, StringCharAt),
     JS_FN("std_String_endsWith",                 str_endsWith,                 1,0),
     JS_FN("std_String_trim",                     str_trim,                     0,0),
-    JS_FN("std_String_trimLeft",                 str_trimLeft,                 0,0),
-    JS_FN("std_String_trimRight",                str_trimRight,                0,0),
+    JS_FN("std_String_trimStart",                str_trimStart,                0,0),
+    JS_FN("std_String_trimEnd",                  str_trimEnd,                  0,0),
 #if !EXPOSE_INTL_API
     JS_FN("std_String_toLocaleLowerCase",        str_toLocaleLowerCase,        0,0),
     JS_FN("std_String_toLocaleUpperCase",        str_toLocaleUpperCase,        0,0),
@@ -2465,7 +2472,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FOR_EACH_REFERENCE_TYPE_REPR(LOAD_AND_STORE_REFERENCE_FN_DECLS)
 #undef LOAD_AND_STORE_REFERENCE_FN_DECLS
 
-    // See builtin/Intl.h for descriptions of the intl_* functions.
+    // See builtin/intl/*.h for descriptions of the intl_* functions.
     JS_FN("intl_availableCalendars", intl_availableCalendars, 1,0),
     JS_FN("intl_availableCollations", intl_availableCollations, 1,0),
     JS_FN("intl_canonicalizeTimeZone", intl_canonicalizeTimeZone, 1,0),
@@ -2491,10 +2498,10 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("intl_patternForSkeleton", intl_patternForSkeleton, 2,0),
     JS_FN("intl_patternForStyle", intl_patternForStyle, 3,0),
     JS_FN("intl_PluralRules_availableLocales", intl_PluralRules_availableLocales, 0,0),
-    JS_FN("intl_GetPluralCategories", intl_GetPluralCategories, 2, 0),
+    JS_FN("intl_GetPluralCategories", intl_GetPluralCategories, 1, 0),
     JS_FN("intl_SelectPluralRule", intl_SelectPluralRule, 2,0),
     JS_FN("intl_RelativeTimeFormat_availableLocales", intl_RelativeTimeFormat_availableLocales, 0,0),
-    JS_FN("intl_FormatRelativeTime", intl_FormatRelativeTime, 3,0),
+    JS_FN("intl_FormatRelativeTime", intl_FormatRelativeTime, 4,0),
     JS_FN("intl_toLocaleLowerCase", intl_toLocaleLowerCase, 2,0),
     JS_FN("intl_toLocaleUpperCase", intl_toLocaleUpperCase, 2,0),
 
@@ -2555,8 +2562,6 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ThrowArgTypeNotObject", intrinsic_ThrowArgTypeNotObject, 2, 0),
 
     // See builtin/RegExp.h for descriptions of the regexp_* functions.
-    JS_FN("regexp_exec_no_statics", regexp_exec_no_statics, 2,0),
-    JS_FN("regexp_test_no_statics", regexp_test_no_statics, 2,0),
     JS_FN("regexp_construct_raw_flags", regexp_construct_raw_flags, 2,0),
 
     JS_FN("IsModule", intrinsic_IsInstanceOfBuiltin<ModuleObject>, 1, 0),
@@ -3190,3 +3195,9 @@ js::GetSelfHostedFunctionName(JSFunction* fun)
 static_assert(JSString::MAX_LENGTH <= INT32_MAX,
               "StringIteratorNext in builtin/String.js assumes the stored index "
               "into the string is an Int32Value");
+
+static_assert(JSString::MAX_LENGTH == MAX_STRING_LENGTH,
+              "JSString::MAX_LENGTH matches self-hosted constant for maximum string length");
+
+static_assert(ARGS_LENGTH_MAX == MAX_ARGS_LENGTH,
+              "ARGS_LENGTH_MAX matches self-hosted constant for maximum arguments length");

@@ -9,27 +9,25 @@
 
 var EXPORTED_SYMBOLS = ["AddonTestUtils", "MockAsyncShutdown"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 const CERTDB_CONTRACTID = "@mozilla.org/security/x509certdb;1";
 const CERTDB_CID = Components.ID("{fb0bbc5c-452e-4783-b32c-80124693d871}");
 
 
 Cu.importGlobalProperties(["fetch", "TextEncoder"]);
 
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-const {EventEmitter} = Cu.import("resource://gre/modules/EventEmitter.jsm", {});
-const {OS} = Cu.import("resource://gre/modules/osfile.jsm", {});
+const {EventEmitter} = ChromeUtils.import("resource://gre/modules/EventEmitter.jsm", {});
+const {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "Extension",
-                                  "resource://gre/modules/Extension.jsm");
+ChromeUtils.defineModuleGetter(this, "Extension",
+                               "resource://gre/modules/Extension.jsm");
 XPCOMUtils.defineLazyGetter(this, "Management", () => {
-  let {Management} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  let {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
   return Management;
 });
 
@@ -44,7 +42,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "uuidGen",
 
 XPCOMUtils.defineLazyGetter(this, "AppInfo", () => {
   let AppInfo = {};
-  Cu.import("resource://testing-common/AppInfo.jsm", AppInfo);
+  ChromeUtils.import("resource://testing-common/AppInfo.jsm", AppInfo);
   return AppInfo;
 });
 
@@ -77,7 +75,7 @@ const ZipWriter = Components.Constructor(
 
 
 // We need some internal bits of AddonManager
-var AMscope = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+var AMscope = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
 var {AddonManager, AddonManagerPrivate} = AMscope;
 
 
@@ -329,7 +327,7 @@ var AddonTestUtils = {
                                             .QueryInterface(Ci.nsIDirectoryEnumerator);
         while (featuresDirEntries.hasMoreElements()) {
           let entry = featuresDirEntries.getNext();
-          entry.QueryInterface(Components.interfaces.nsIFile);
+          entry.QueryInterface(Ci.nsIFile);
           systemAddonDirs.push(entry);
         }
 
@@ -613,7 +611,7 @@ var AddonTestUtils = {
 
         // Force the XPIProvider provider to reload to better
         // simulate real-world usage.
-        let XPIscope = Cu.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+        let XPIscope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
         // This would be cleaner if I could get it as the rejection reason from
         // the AddonManagerInternal.shutdown() promise
         let shutdownError = XPIscope.XPIDatabase._saveError;
@@ -647,7 +645,7 @@ var AddonTestUtils = {
 
   async loadAddonsList(flush = false) {
     if (flush) {
-      let XPIScope = Cu.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+      let XPIScope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
       XPIScope.XPIStates.save();
       await XPIScope.XPIStates._jsonFile._save();
     }
@@ -1288,6 +1286,7 @@ var AddonTestUtils = {
   async overrideBuiltIns(data) {
     // We need to set this in order load the URL preloader service, which
     // is only possible when running in automation.
+    let prevPrefVal = Services.prefs.getBoolPref(PREF_DISABLE_SECURITY, false);
     Services.prefs.setBoolPref(PREF_DISABLE_SECURITY, true);
     aomStartup.initializeURLPreloader();
 
@@ -1299,7 +1298,7 @@ var AddonTestUtils = {
       ["override", "chrome://browser/content/built_in_addons.json",
        Services.io.newFileURI(file).spec],
     ]);
-    Services.prefs.setBoolPref(PREF_DISABLE_SECURITY, false);
+    Services.prefs.setBoolPref(PREF_DISABLE_SECURITY, prevPrefVal);
   }
 };
 

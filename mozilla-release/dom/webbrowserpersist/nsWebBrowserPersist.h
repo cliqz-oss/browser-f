@@ -91,7 +91,7 @@ private:
     void CleanupLocalFiles();
     nsresult GetValidURIFromObject(nsISupports *aObject, nsIURI **aURI) const;
     static nsresult GetLocalFileFromURI(nsIURI *aURI, nsIFile **aLocalFile);
-    static nsresult AppendPathToURI(nsIURI *aURI, const nsAString & aPath);
+    static nsresult AppendPathToURI(nsIURI *aURI, const nsAString & aPath, nsCOMPtr<nsIURI>& aOutURI);
     nsresult MakeAndStoreLocalFilenameInURIMap(
         nsIURI *aURI, bool aNeedsPersisting, URIData **aData);
     nsresult MakeOutputStream(
@@ -105,8 +105,9 @@ private:
     nsresult StartUpload(nsIInputStream *aInputStream, nsIURI *aDestinationURI,
         const nsACString &aContentType);
     nsresult CalculateAndAppendFileExt(nsIURI *aURI, nsIChannel *aChannel,
-        nsIURI *aOriginalURIWithExtension);
-    nsresult CalculateUniqueFilename(nsIURI *aURI);
+                                       nsIURI *aOriginalURIWithExtension,
+                                       nsCOMPtr<nsIURI>& aOutURI);
+    nsresult CalculateUniqueFilename(nsIURI *aURI, nsCOMPtr<nsIURI>& aOutURI);
     nsresult MakeFilenameFromURI(
         nsIURI *aURI, nsString &aFilename);
     nsresult StoreURI(

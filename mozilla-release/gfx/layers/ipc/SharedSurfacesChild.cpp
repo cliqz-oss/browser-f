@@ -1,11 +1,13 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SharedSurfacesChild.h"
 #include "SharedSurfacesParent.h"
 #include "CompositorManagerChild.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
@@ -183,25 +185,22 @@ SharedSurfacesChild::DestroySharedUserData(void* aClosure)
 }
 
 /* static */ nsresult
-SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
-                           WebRenderLayerManager* aManager,
-                           wr::IpcResourceUpdateQueue& aResources,
-                           wr::ImageKey& aKey)
+SharedSurfacesChild::ShareInternal(SourceSurfaceSharedData* aSurface,
+                                   SharedUserData** aUserData)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aSurface);
-  MOZ_ASSERT(aManager);
+  MOZ_ASSERT(aUserData);
 
   CompositorManagerChild* manager = CompositorManagerChild::GetInstance();
-  if (NS_WARN_IF(!manager || !manager->CanSend())) {
+  if (NS_WARN_IF(!manager || !manager->CanSend() || !gfxVars::UseWebRender())) {
+    // We cannot try to share the surface, most likely because the GPU process
+    // crashed. Ideally, we would retry when it is ready, but the handles may be
+    // a scarce resource, which can cause much more serious problems if we run
+    // out. Better to copy into a fresh buffer later.
+    aSurface->FinishedSharing();
     return NS_ERROR_NOT_INITIALIZED;
   }
-
-  // Each time the surface changes, the producers of SourceSurfaceSharedData
-  // surfaces promise to increment the invalidation counter each time the
-  // surface has changed. We can use this counter to determine whether or not
-  // we should upate our paired ImageKey.
-  int32_t invalidations = aSurface->Invalidations();
 
   static UserDataKey sSharedKey;
   SharedUserData* data =
@@ -214,8 +213,8 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
     // to the GPU process crashing. All previous mappings have been released.
     data->SetId(manager->GetNextExternalImageId());
   } else if (data->IsShared()) {
-    // It has already been shared with the GPU process, reuse the id.
-    aKey = data->UpdateKey(aManager, aResources, invalidations);
+    // It has already been shared with the GPU process.
+    *aUserData = data;
     return NS_OK;
   }
 
@@ -233,7 +232,7 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
   if (pid == base::GetCurrentProcId()) {
     SharedSurfacesParent::AddSameProcess(data->Id(), aSurface);
     data->MarkShared();
-    aKey = data->UpdateKey(aManager, aResources, invalidations);
+    *aUserData = data;
     return NS_OK;
   }
 
@@ -268,8 +267,71 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
                                 SurfaceDescriptorShared(aSurface->GetSize(),
                                                         aSurface->Stride(),
                                                         format, handle));
-  aKey = data->UpdateKey(aManager, aResources, invalidations);
+  *aUserData = data;
   return NS_OK;
+}
+
+/* static */ void
+SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface)
+{
+  MOZ_ASSERT(aSurface);
+
+  // The IPDL actor to do sharing can only be accessed on the main thread so we
+  // need to dispatch if off the main thread. However there is no real danger if
+  // we end up racing because if it is already shared, this method will do
+  // nothing.
+  if (!NS_IsMainThread()) {
+    class ShareRunnable final : public Runnable
+    {
+    public:
+      explicit ShareRunnable(SourceSurfaceSharedData* aSurface)
+        : Runnable("SharedSurfacesChild::Share")
+        , mSurface(aSurface)
+      { }
+
+      NS_IMETHOD Run() override
+      {
+        SharedUserData* unused = nullptr;
+        SharedSurfacesChild::ShareInternal(mSurface, &unused);
+        return NS_OK;
+      }
+
+    private:
+      RefPtr<SourceSurfaceSharedData> mSurface;
+    };
+
+    SystemGroup::Dispatch(TaskCategory::Other,
+                          MakeAndAddRef<ShareRunnable>(aSurface));
+    return;
+  }
+
+  SharedUserData* unused = nullptr;
+  SharedSurfacesChild::ShareInternal(aSurface, &unused);
+}
+
+/* static */ nsresult
+SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
+                           WebRenderLayerManager* aManager,
+                           wr::IpcResourceUpdateQueue& aResources,
+                           wr::ImageKey& aKey)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aSurface);
+  MOZ_ASSERT(aManager);
+
+  // Each time the surface changes, the producers of SourceSurfaceSharedData
+  // surfaces promise to increment the invalidation counter each time the
+  // surface has changed. We can use this counter to determine whether or not
+  // we should upate our paired ImageKey.
+  int32_t invalidations = aSurface->Invalidations();
+  SharedUserData* data = nullptr;
+  nsresult rv = SharedSurfacesChild::ShareInternal(aSurface, &data);
+  if (NS_SUCCEEDED(rv)) {
+    MOZ_ASSERT(data);
+    aKey = data->UpdateKey(aManager, aResources, invalidations);
+  }
+
+  return rv;
 }
 
 /* static */ nsresult
@@ -330,9 +392,13 @@ SharedSurfacesChild::Unshare(const wr::ExternalImageId& aId,
 
   if (manager->OtherPid() == base::GetCurrentProcId()) {
     // We are in the combined UI/GPU process. Call directly to it to remove its
-    // wrapper surface to free the underlying buffer.
-    MOZ_ASSERT(manager->OwnsExternalImageId(aId));
-    SharedSurfacesParent::RemoveSameProcess(aId);
+    // wrapper surface to free the underlying buffer, but only if the external
+    // image ID is owned by the manager. It can be different if the surface was
+    // last shared with the GPU process, which crashed several times, and its
+    // job was moved into the parent process.
+    if (manager->OwnsExternalImageId(aId)) {
+      SharedSurfacesParent::RemoveSameProcess(aId);
+    }
   } else if (manager->OwnsExternalImageId(aId)) {
     // Only attempt to release current mappings in the GPU process. It is
     // possible we had a surface that was previously shared, the GPU process

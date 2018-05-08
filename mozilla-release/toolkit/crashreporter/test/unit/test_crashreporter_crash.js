@@ -1,8 +1,8 @@
 function run_test() {
   var is_win7_or_newer = false;
   var is_windows = false;
-  var ph = Components.classes["@mozilla.org/network/protocol;1?name=http"]
-             .getService(Components.interfaces.nsIHttpProtocolHandler);
+  var ph = Cc["@mozilla.org/network/protocol;1?name=http"]
+             .getService(Ci.nsIHttpProtocolHandler);
   var match = ph.userAgent.match(/Windows NT (\d+).(\d+)/);
   if (match) {
       is_windows = true;
@@ -40,7 +40,7 @@ function run_test() {
 
              // TelemetrySession setup will trigger the session annotation
              let scope = {};
-             Components.utils.import("resource://gre/modules/TelemetryController.jsm", scope);
+             ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", scope);
              scope.TelemetryController.testSetup();
            },
            function(mdump, extra) {
@@ -69,8 +69,8 @@ function run_test() {
 
     // TelemetrySession setup will trigger the session annotation
     let scope = {};
-    Components.utils.import("resource://gre/modules/TelemetryController.jsm", scope);
-    Components.utils.import("resource://gre/modules/TelemetrySend.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", scope);
     scope.TelemetrySend.setTestModeEnabled(true);
     scope.TelemetryController.testSetup();
   }, function(mdump, extra) {
@@ -92,8 +92,8 @@ function run_test() {
 
     // TelemetrySession setup will trigger the session annotation
     let scope = {};
-    Components.utils.import("resource://gre/modules/TelemetryController.jsm", scope);
-    Components.utils.import("resource://gre/modules/TelemetrySend.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", scope);
     scope.TelemetrySend.setTestModeEnabled(true);
     scope.TelemetryController.testSetup();
   }, function(mdump, extra) {
@@ -111,8 +111,8 @@ function run_test() {
 
     // TelemetrySession setup will trigger the session annotation
     let scope = {};
-    Components.utils.import("resource://gre/modules/TelemetryController.jsm", scope);
-    Components.utils.import("resource://gre/modules/TelemetrySend.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", scope);
+    ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", scope);
     scope.TelemetrySend.setTestModeEnabled(true);
     scope.TelemetryController.testSetup();
   }, function(mdump, extra) {

@@ -250,18 +250,17 @@ MacroAssembler::add64(Imm64 imm, Register64 dest)
 }
 
 CodeOffset
-MacroAssembler::add32ToPtrWithPatch(Register src, Register dest)
+MacroAssembler::sub32FromStackPtrWithPatch(Register dest)
 {
-    if (src != dest)
-        movePtr(src, dest);
+    moveStackPtrTo(dest);
     addqWithPatch(Imm32(0), dest);
     return CodeOffset(currentOffset());
 }
 
 void
-MacroAssembler::patchAdd32ToPtr(CodeOffset offset, Imm32 imm)
+MacroAssembler::patchSub32FromStackPtr(CodeOffset offset, Imm32 imm)
 {
-    patchAddq(offset, imm.value);
+    patchAddq(offset, -imm.value);
 }
 
 void
@@ -821,6 +820,81 @@ MacroAssembler::branchToComputedAddress(const BaseIndex& address)
     jmp(Operand(address));
 }
 
+void
+MacroAssembler::cmp32MovePtr(Condition cond, Register lhs, Imm32 rhs, Register src,
+                             Register dest)
+{
+    cmp32(lhs, rhs);
+    cmovCCq(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::test32LoadPtr(Condition cond, const Address& addr, Imm32 mask, const Address& src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    cmovCCq(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::test32MovePtr(Condition cond, const Address& addr, Imm32 mask, Register src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    cmovCCq(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::spectreMovePtr(Condition cond, Register src, Register dest)
+{
+    cmovCCq(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, Register length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(length != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    ScratchRegisterScope scratch(*this);
+    MOZ_ASSERT(index != scratch);
+    MOZ_ASSERT(length != scratch);
+
+    if (JitOptions.spectreIndexMasking)
+        move32(Imm32(0), scratch);
+
+    cmp32(index, length);
+    j(Assembler::AboveOrEqual, failure);
+
+    if (JitOptions.spectreIndexMasking)
+        cmovCCl(Assembler::AboveOrEqual, scratch, index);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, const Address& length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(index != length.base);
+    MOZ_ASSERT(length.base != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    ScratchRegisterScope scratch(*this);
+    MOZ_ASSERT(index != scratch);
+    MOZ_ASSERT(length.base != scratch);
+
+    if (JitOptions.spectreIndexMasking)
+        move32(Imm32(0), scratch);
+
+    cmp32(index, Operand(length));
+    j(Assembler::AboveOrEqual, failure);
+
+    if (JitOptions.spectreIndexMasking)
+        cmovCCl(Assembler::AboveOrEqual, scratch, index);
+}
+
 // ========================================================================
 // Truncate floating point.
 
@@ -890,7 +964,7 @@ MacroAssemblerX64::incrementInt32Value(const Address& addr)
 }
 
 void
-MacroAssemblerX64::unboxValue(const ValueOperand& src, AnyRegister dest)
+MacroAssemblerX64::unboxValue(const ValueOperand& src, AnyRegister dest, JSValueType type)
 {
     if (dest.isFloat()) {
         Label notInt32, end;
@@ -901,7 +975,7 @@ MacroAssemblerX64::unboxValue(const ValueOperand& src, AnyRegister dest)
         unboxDouble(src, dest.fpu());
         bind(&end);
     } else {
-        unboxNonDouble(src, dest.gpr());
+        unboxNonDouble(src, dest.gpr(), type);
     }
 }
 
@@ -924,9 +998,12 @@ void
 MacroAssemblerX64::ensureDouble(const ValueOperand& source, FloatRegister dest, Label* failure)
 {
     Label isDouble, done;
-    Register tag = splitTagForTest(source);
-    asMasm().branchTestDouble(Assembler::Equal, tag, &isDouble);
-    asMasm().branchTestInt32(Assembler::NotEqual, tag, failure);
+    {
+        ScratchTagScope tag(asMasm(), source);
+        splitTagForTest(source, tag);
+        asMasm().branchTestDouble(Assembler::Equal, tag, &isDouble);
+        asMasm().branchTestInt32(Assembler::NotEqual, tag, failure);
+    }
 
     ScratchRegisterScope scratch(asMasm());
     unboxInt32(source, scratch);

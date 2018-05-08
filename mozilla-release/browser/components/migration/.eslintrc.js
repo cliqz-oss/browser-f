@@ -3,8 +3,8 @@
 module.exports = {
   "rules": {
     "block-scoped-var": "error",
-    "comma-dangle": "off",
-    "complexity": ["error", {"max": 21}],
+    "comma-dangle": ["error", "always-multiline"],
+    "complexity": ["error", {"max": 22}],
     "indent-legacy": ["error", 2, {"SwitchCase": 1, "ArrayExpression": "first", "ObjectExpression": "first"}],
     "max-nested-callbacks": ["error", 3],
     "new-parens": "error",
@@ -15,7 +15,7 @@ module.exports = {
     "no-sequences": "error",
     "no-shadow": "error",
     "no-throw-literal": "error",
-    "no-unused-vars": ["error", { "varsIgnorePattern": "^C[ciur]$" }],
+    "no-unused-vars": ["error", { "args": "after-used", "vars": "all" }],
     "padded-blocks": ["error", "never"],
     "semi-spacing": ["error", {"before": false, "after": true}],
     "space-in-parens": ["error", "never"],

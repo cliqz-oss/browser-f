@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 
 #include "nsCSSValue.h"
+#include "mozAutoDocUpdate.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/css/ImportRule.h"
@@ -155,7 +156,7 @@ ImportRule::SetSheet(CSSStyleSheet* aSheet)
 }
 
 void
-ImportRule::GetCssTextImpl(nsAString& aCssText) const
+ImportRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@import url(");
   nsStyleUtil::AppendEscapedCSSString(mURLSpec, aCssText);
@@ -314,7 +315,7 @@ MediaRule::Media()
 }
 
 void
-MediaRule::GetCssTextImpl(nsAString& aCssText) const
+MediaRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@media ");
   AppendConditionText(aCssText);
@@ -390,13 +391,6 @@ DocumentRule::~DocumentRule()
 {
 }
 
-NS_IMPL_ADDREF_INHERITED(DocumentRule, ConditionRule)
-NS_IMPL_RELEASE_INHERITED(DocumentRule, ConditionRule)
-
-// QueryInterface implementation for DocumentRule
-NS_INTERFACE_MAP_BEGIN(DocumentRule)
-NS_INTERFACE_MAP_END_INHERITING(dom::CSSMozDocumentRule)
-
 #ifdef DEBUG
 /* virtual */ void
 DocumentRule::List(FILE* out, int32_t aIndent) const
@@ -445,7 +439,7 @@ DocumentRule::Clone() const
 }
 
 void
-DocumentRule::GetCssTextImpl(nsAString& aCssText) const
+DocumentRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@-moz-document ");
   AppendConditionText(aCssText);
@@ -610,7 +604,7 @@ NameSpaceRule::Clone() const
 }
 
 void
-NameSpaceRule::GetCssTextImpl(nsAString& aCssText) const
+NameSpaceRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@namespace ");
   if (mPrefix) {
@@ -755,7 +749,7 @@ nsCSSFontFeatureValuesRule::SetValueText(const nsAString& aValueText,
 }
 
 void
-nsCSSFontFeatureValuesRule::GetCssTextImpl(nsAString& aCssText) const
+nsCSSFontFeatureValuesRule::GetCssText(nsAString& aCssText) const
 {
   FontFeatureValuesRuleToString(mFamilyList, mFeatureValues, aCssText);
 }
@@ -888,17 +882,6 @@ nsCSSKeyframeStyleDeclaration::GetParentObject()
   return mRule ? mRule->GetDocument() : nullptr;
 }
 
-DocGroup*
-nsCSSKeyframeStyleDeclaration::GetDocGroup() const
-{
-  if (!mRule) {
-    return nullptr;
-  }
-
-  nsIDocument* document = mRule->GetDocument();
-  return document ? document->GetDocGroup() : nullptr;
-}
-
 // -------------------------------------------
 // nsCSSKeyframeRule
 //
@@ -976,7 +959,7 @@ nsCSSKeyframeRule::List(FILE* out, int32_t aIndent) const
 #endif
 
 void
-nsCSSKeyframeRule::GetCssTextImpl(nsAString& aCssText) const
+nsCSSKeyframeRule::GetCssText(nsAString& aCssText) const
 {
   DoGetKeyText(aCssText);
   aCssText.AppendLiteral(" { ");
@@ -1114,7 +1097,7 @@ nsCSSKeyframesRule::List(FILE* out, int32_t aIndent) const
 #endif
 
 void
-nsCSSKeyframesRule::GetCssTextImpl(nsAString& aCssText) const
+nsCSSKeyframesRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@keyframes ");
   aCssText.Append(nsDependentAtomString(mName));
@@ -1312,17 +1295,6 @@ nsCSSPageStyleDeclaration::GetParentObject()
   return mRule ? mRule->GetDocument() : nullptr;
 }
 
-DocGroup*
-nsCSSPageStyleDeclaration::GetDocGroup() const
-{
-  if (!mRule) {
-    return nullptr;
-  }
-
-  nsIDocument* document = mRule->GetDocument();
-  return document ? document->GetDocGroup() : nullptr;
-}
-
 // -------------------------------------------
 // nsCSSPageRule
 //
@@ -1397,7 +1369,7 @@ nsCSSPageRule::List(FILE* out, int32_t aIndent) const
 #endif
 
 void
-nsCSSPageRule::GetCssTextImpl(nsAString& aCssText) const
+nsCSSPageRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AppendLiteral("@page { ");
   nsAutoString tmp;
@@ -1491,15 +1463,8 @@ CSSSupportsRule::UseForPresentation(nsPresContext* aPresContext,
   return mUseGroup;
 }
 
-NS_IMPL_ADDREF_INHERITED(mozilla::CSSSupportsRule, dom::CSSSupportsRule)
-NS_IMPL_RELEASE_INHERITED(mozilla::CSSSupportsRule, dom::CSSSupportsRule)
-
-// QueryInterface implementation for CSSSupportsRule
-NS_INTERFACE_MAP_BEGIN(CSSSupportsRule)
-NS_INTERFACE_MAP_END_INHERITING(dom::CSSSupportsRule)
-
 void
-CSSSupportsRule::GetCssTextImpl(nsAString& aCssText) const
+CSSSupportsRule::GetCssText(nsAString& aCssText) const
 {
   aCssText.AssignLiteral("@supports ");
   aCssText.Append(mCondition);

@@ -1,8 +1,7 @@
 /* eslint-env mozilla/frame-script */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 // Define these to make EventUtils happy.
 let window = this;
@@ -178,7 +177,7 @@ function dismissPrompt(ui, action) {
     case "ESC":
       // XXX This is assuming tab-modal.
       let browserWin = Services.wm.getMostRecentWindow("navigator:browser");
-      EventUtils.synthesizeKey("KEY_Escape", { code: "Escape" }, browserWin);
+      EventUtils.synthesizeKey("KEY_Escape", {}, browserWin);
       break;
     case "pollOK":
       // Buttons are disabled at the moment, poll until they're reenabled.

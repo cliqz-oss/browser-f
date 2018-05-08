@@ -5,13 +5,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Home"];
+var EXPORTED_SYMBOLS = ["Home"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/SharedPreferences.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/SharedPreferences.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 // Keep this in sync with the constant defined in PanelAuthCache.java
 const PREFS_PANEL_AUTH_PREFIX = "home_panels_auth_";
@@ -201,7 +199,7 @@ var HomePanels = (function() {
       let panels = [];
       for (let id in _registeredPanels) {
         // Null ids means we want to fetch all available panels
-        if (ids == null || ids.indexOf(id) >= 0) {
+        if (ids == null || ids.includes(id)) {
           try {
             panels.push(_generatePanel(id));
           } catch (e) {
@@ -467,7 +465,7 @@ var HomePanels = (function() {
 })();
 
 // Public API
-this.Home = Object.freeze({
+var Home = Object.freeze({
   banner: HomeBanner,
   panels: HomePanels,
 

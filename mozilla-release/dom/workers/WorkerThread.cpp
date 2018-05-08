@@ -19,10 +19,10 @@
 #endif
 
 namespace mozilla {
-namespace dom {
-namespace workers {
 
-using namespace mozilla::ipc;
+using namespace ipc;
+
+namespace dom {
 
 namespace {
 
@@ -93,7 +93,7 @@ already_AddRefed<WorkerThread>
 WorkerThread::Create(const WorkerThreadFriendKey& /* aKey */)
 {
   RefPtr<WorkerThread> thread = new WorkerThread();
-  if (NS_FAILED(thread->Init())) {
+  if (NS_FAILED(thread->Init(NS_LITERAL_CSTRING("DOM Worker")))) {
     NS_WARNING("Failed to create new thread!");
     return nullptr;
   }
@@ -206,8 +206,6 @@ WorkerThread::DispatchAnyThread(const WorkerThreadFriendKey& /* aKey */,
 
   return NS_OK;
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(WorkerThread, nsThread)
 
 NS_IMETHODIMP
 WorkerThread::DispatchFromScript(nsIRunnable* aRunnable, uint32_t aFlags)
@@ -356,6 +354,5 @@ WorkerThread::Observer::AfterProcessNextEvent(nsIThreadInternal* /* aThread */,
   return NS_OK;
 }
 
-} // namespace workers
 } // namespace dom
 } // namespace mozilla

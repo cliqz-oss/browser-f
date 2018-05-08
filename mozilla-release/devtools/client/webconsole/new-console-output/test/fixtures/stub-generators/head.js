@@ -2,7 +2,7 @@
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
-/* import-globals-from ../../../../../framework/test/shared-head.js */
+/* import-globals-from ../../../../../shared/test/shared-head.js */
 /* exported generateConsoleApiStubs, generateCssMessageStubs,
             generateEvaluationResultStubs, generateNetworkEventStubs,
             generatePageErrorStubs, BASE_PATH */
@@ -11,7 +11,7 @@
 // shared-head.js handles imports, constants, and utility functions
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 Services.prefs.setBoolPref("devtools.webconsole.new-frontend-enabled", true);
@@ -94,22 +94,25 @@ function getCleanedPacket(key, packet) {
 
           let newArgument = Object.assign({}, argument);
           let existingArgument = existingPacket.message.arguments[i];
-          // Clean actor ids on each message.arguments item.
-          if (newArgument.actor) {
-            newArgument.actor = existingArgument.actor;
-          }
 
-          // `window`'s properties count can vary from OS to OS, so we
-          // clean the `ownPropertyLength` property from the grip.
-          if (newArgument.class === "Window") {
-            newArgument.ownPropertyLength = existingArgument.ownPropertyLength;
+          if (existingArgument) {
+            // Clean actor ids on each message.arguments item.
+            if (newArgument.actor) {
+              newArgument.actor = existingArgument.actor;
+            }
+
+            // `window`'s properties count can vary from OS to OS, so we
+            // clean the `ownPropertyLength` property from the grip.
+            if (newArgument.class === "Window") {
+              newArgument.ownPropertyLength = existingArgument.ownPropertyLength;
+            }
           }
           return newArgument;
         });
       }
     }
 
-    if (res.result) {
+    if (res.result && existingPacket.result) {
       // Clean actor ids on evaluation result messages.
       res.result.actor = existingPacket.result.actor;
       if (res.result.preview) {
@@ -120,9 +123,12 @@ function getCleanedPacket(key, packet) {
       }
     }
 
-    if (res.exception) {
+    if (res.exception && existingPacket.exception) {
       // Clean actor ids on exception messages.
-      res.exception.actor = existingPacket.exception.actor;
+      if (existingPacket.exception.actor) {
+        res.exception.actor = existingPacket.exception.actor;
+      }
+
       if (res.exception.preview) {
         if (res.exception.preview.timestamp) {
           // Clean timestamp there too.
@@ -234,7 +240,7 @@ function getCleanedPacket(key, packet) {
 
 function formatPacket(key, packet) {
   let stringifiedPacket = JSON.stringify(getCleanedPacket(key, packet), null, 2);
-  return `stubPackets.set("${key}", ${stringifiedPacket});`;
+  return `stubPackets.set(\`${key}\`, ${stringifiedPacket});`;
 }
 
 function formatStub(key, packet) {
@@ -243,7 +249,8 @@ function formatStub(key, packet) {
     {getNextId: () => "1"}
   );
   let stringifiedMessage = JSON.stringify(prepared, null, 2);
-  return `stubPreparedMessages.set("${key}", new ConsoleMessage(${stringifiedMessage}));`;
+  return (
+    `stubPreparedMessages.set(\`${key}\`, new ConsoleMessage(${stringifiedMessage}));`);
 }
 
 function formatNetworkEventStub(key, packet) {
@@ -430,7 +437,7 @@ function* generateNetworkEventStubs() {
 
     let onNetworkUpdate = new Promise(resolve => {
       let i = 0;
-      ui.jsterm.hud.on("network-message-updated", function onNetworkUpdated(event, res) {
+      ui.jsterm.hud.on("network-message-updated", function onNetworkUpdated(res) {
         let updateKey = `${keys[i++]} update`;
         // We cannot ensure the form of the network update packet, some properties
         // might be in another order than in the original packet.

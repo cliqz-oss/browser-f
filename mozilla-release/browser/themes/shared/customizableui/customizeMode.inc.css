@@ -19,7 +19,7 @@
   text-shadow: none;
 }
 
-#customization-container:-moz-lwtheme {
+:root[lwtheme-image] #customization-container {
   background-color: transparent;
   background-image: linear-gradient(var(--toolbar-bgcolor), var(--toolbar-non-lwt-bgcolor) 45px);
 }
@@ -34,7 +34,7 @@
   margin: 20px 20px 15px;
 }
 
-#customization-header:-moz-lwtheme {
+:root[lwtheme-image] #customization-header {
   text-shadow: 0 0 1em var(--toolbar-non-lwt-bgcolor),
                0 0 1em var(--toolbar-non-lwt-bgcolor),
                0 0 .5em var(--toolbar-non-lwt-bgcolor);
@@ -119,13 +119,13 @@
   list-style-image: url(chrome://global/skin/icons/arrow-dropdown-16.svg);
 }
 
-.customizationmode-button:-moz-any(:focus,:active,:hover):not([disabled]),
+.customizationmode-button:-moz-any(:active,:hover):not([disabled]),
 .customizationmode-button[open],
 .customizationmode-button[checked] {
   background-color: #e1e1e5;
 }
 
-#customization-done-button:-moz-any(:focus,:active,:hover):not([disabled]) {
+#customization-done-button:-moz-any(:active,:hover):not([disabled]) {
   background-color: #0060df;
 }
 
@@ -429,8 +429,7 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 %ifdef XP_MACOSX
   /* Native styling adds more 'oompf' to the popup box-shadow, so simulate that
    * as best as we can here: */
-  border: 1px solid var(--arrowpanel-dimmed-even-further);
-  box-shadow: 0 4px 10px hsla(0,0%,0%,.3);
+  box-shadow: 0 0 1px hsla(0,0%,0%,.3), 0 4px 10px hsla(0,0%,0%,.3);
   -moz-appearance: none;
   border-radius: var(--arrowpanel-border-radius);
 %else

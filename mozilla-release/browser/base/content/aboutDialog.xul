@@ -13,6 +13,10 @@
 %brandDTD;
 <!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
 %aboutDialogDTD;
+#ifdef XP_MACOSX
+<!ENTITY % baseMenuOverlayDTD SYSTEM "chrome://browser/locale/baseMenuOverlay.dtd">
+%baseMenuOverlayDTD;
+#endif
 ]>
 
 #ifdef XP_MACOSX
@@ -46,6 +50,10 @@
       <vbox id="rightBox" flex="1">
 #if 0
 # Cliqz displays its version info in #distribution. See below.
+        <label id="release" hidden="true">
+        <!-- This string is explicitly not translated -->
+          Extended Support Release
+        </label>
         <hbox align="baseline">
 #expand   <label id="version">__MOZ_APP_VERSION_DISPLAY__</label>
           <label id="releasenotes" class="text-link" hidden="true">&releaseNotes.link;</label>

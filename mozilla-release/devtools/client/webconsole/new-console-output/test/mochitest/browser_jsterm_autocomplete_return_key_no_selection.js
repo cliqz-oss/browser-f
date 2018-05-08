@@ -21,14 +21,13 @@ add_task(async function () {
   const {
     autocompletePopup: popup,
     completeNode,
-    inputNode,
   } = jsterm;
 
   const onPopUpOpen = popup.once("popup-opened");
 
   info("wait for popup to show");
   jsterm.setInputValue("window.testBu");
-  EventUtils.synthesizeKey("g", {});
+  EventUtils.sendString("g");
 
   await onPopUpOpen;
 
@@ -38,11 +37,11 @@ add_task(async function () {
 
   info("press Return and wait for popup to hide");
   const onPopUpClose = popup.once("popup-closed");
-  executeSoon(() => EventUtils.synthesizeKey("VK_RETURN", {}));
+  executeSoon(() => EventUtils.synthesizeKey("KEY_Enter"));
   await onPopUpClose;
 
-  ok(!popup.isOpen, "popup is not open after VK_RETURN");
-  is(jsterm.getInputValue(), "", "inputNode is empty after VK_RETURN");
+  ok(!popup.isOpen, "popup is not open after KEY_Enter");
+  is(jsterm.getInputValue(), "", "inputNode is empty after KEY_Enter");
   is(completeNode.value, "", "completeNode is empty");
   is(jsterm.history[jsterm.history.length - 1], "window.testBug",
      "jsterm history is correct");

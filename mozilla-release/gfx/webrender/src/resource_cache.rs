@@ -4,35 +4,39 @@
 
 use api::{AddFont, BlobImageData, BlobImageResources, ResourceUpdate, ResourceUpdates};
 use api::{BlobImageDescriptor, BlobImageError, BlobImageRenderer, BlobImageRequest};
-use api::{ColorF, DevicePoint, DeviceUintRect, DeviceUintSize};
+use api::{ClearCache, ColorF, DevicePoint, DeviceUintRect, DeviceUintSize};
 use api::{Epoch, FontInstanceKey, FontKey, FontTemplate};
 use api::{ExternalImageData, ExternalImageType};
 use api::{FontInstanceOptions, FontInstancePlatformOptions, FontVariation};
 use api::{GlyphDimensions, GlyphKey, IdNamespace};
 use api::{ImageData, ImageDescriptor, ImageKey, ImageRendering};
 use api::{TileOffset, TileSize};
-#[cfg(feature = "capture")]
-use api::{NativeFontHandle};
 use app_units::Au;
 #[cfg(feature = "capture")]
-use capture::{ExternalCaptureImage};
+use capture::ExternalCaptureImage;
+#[cfg(feature = "replay")]
+use capture::PlainExternalImage;
+#[cfg(any(feature = "replay", feature = "png"))]
+use capture::CaptureConfig;
 use device::TextureFilter;
-use frame::FrameId;
 use glyph_cache::GlyphCache;
 #[cfg(feature = "capture")]
-use glyph_cache::{CachedGlyphInfo, PlainGlyphCacheOwn, PlainGlyphCacheRef, PlainCachedGlyphInfo};
+use glyph_cache::{PlainGlyphCacheRef, PlainCachedGlyphInfo};
+#[cfg(feature = "replay")]
+use glyph_cache::{CachedGlyphInfo, PlainGlyphCacheOwn};
 use glyph_rasterizer::{FontInstance, GlyphFormat, GlyphRasterizer, GlyphRequest};
 use gpu_cache::{GpuCache, GpuCacheAddress, GpuCacheHandle};
-use internal_types::{FastHashMap, FastHashSet, SourceTexture, TextureUpdateList};
+use internal_types::{FastHashMap, FastHashSet, ResourceCacheError, SourceTexture, TextureUpdateList};
 use profiler::{ResourceProfileCounters, TextureCacheProfileCounters};
 use rayon::ThreadPool;
+use render_backend::FrameId;
 use render_task::{RenderTaskCache, RenderTaskCacheKey, RenderTaskId, RenderTaskTree};
 use std::collections::hash_map::Entry::{self, Occupied, Vacant};
 use std::cmp;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
-#[cfg(feature = "capture")]
+#[cfg(any(feature = "capture", feature = "replay"))]
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use texture_cache::{TextureCache, TextureCacheHandle};
@@ -40,7 +44,8 @@ use texture_cache::{TextureCache, TextureCacheHandle};
 
 const DEFAULT_TILE_SIZE: TileSize = 512;
 
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct GlyphFetchResult {
     pub index_in_text_run: i32,
     pub uv_rect_address: GpuCacheAddress,
@@ -55,17 +60,33 @@ pub struct GlyphFetchResult {
 // storing the coordinates as texel values
 // we don't need to go through and update
 // various CPU-side structures.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CacheItem {
     pub texture_id: SourceTexture,
     pub uv_rect_handle: GpuCacheHandle,
+    pub uv_rect: DeviceUintRect,
+    pub texture_layer: i32,
+}
+
+impl CacheItem {
+    pub fn invalid() -> Self {
+        CacheItem {
+            texture_id: SourceTexture::Invalid,
+            uv_rect_handle: GpuCacheHandle::new(),
+            uv_rect: DeviceUintRect::zero(),
+            texture_layer: 0,
+        }
+    }
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct ImageProperties {
     pub descriptor: ImageDescriptor,
     pub external_image: Option<ExternalImageData>,
     pub tiling: Option<TileSize>,
+    pub epoch: Epoch,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -92,17 +113,12 @@ pub struct ImageTiling {
 
 pub type TiledImageMap = FastHashMap<ImageKey, ImageTiling>;
 
+#[derive(Default)]
 struct ImageTemplates {
     images: FastHashMap<ImageKey, ImageResource>,
 }
 
 impl ImageTemplates {
-    fn new() -> Self {
-        ImageTemplates {
-            images: FastHashMap::default(),
-        }
-    }
-
     fn insert(&mut self, key: ImageKey, resource: ImageResource) {
         self.images.insert(key, resource);
     }
@@ -120,21 +136,24 @@ impl ImageTemplates {
     }
 }
 
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct CachedImageInfo {
     texture_cache_handle: TextureCacheHandle,
     epoch: Epoch,
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "capture", derive(Clone, Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Clone, Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub enum ResourceClassCacheError {
     OverLimitSize,
 }
 
 pub type ResourceCacheResult<V> = Result<V, ResourceClassCacheError>;
 
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct ResourceClassCache<K: Hash + Eq, V> {
     resources: FastHashMap<K, ResourceCacheResult<V>>,
 }
@@ -188,11 +207,12 @@ where
 
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "capture", derive(Deserialize, Serialize))]
-struct ImageRequest {
-    key: ImageKey,
-    rendering: ImageRendering,
-    tile: Option<TileOffset>,
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub struct ImageRequest {
+    pub key: ImageKey,
+    pub rendering: ImageRendering,
+    pub tile: Option<TileOffset>,
 }
 
 impl Into<BlobImageRequest> for ImageRequest {
@@ -207,6 +227,7 @@ impl Into<BlobImageRequest> for ImageRequest {
 type ImageCache = ResourceClassCache<ImageRequest, CachedImageInfo>;
 pub type FontInstanceMap = Arc<RwLock<FastHashMap<FontInstanceKey, FontInstance>>>;
 
+#[derive(Default)]
 struct Resources {
     font_templates: FastHashMap<FontKey, FontTemplate>,
     font_instances: FontInstanceMap,
@@ -254,24 +275,22 @@ impl ResourceCache {
         texture_cache: TextureCache,
         workers: Arc<ThreadPool>,
         blob_image_renderer: Option<Box<BlobImageRenderer>>,
-    ) -> Self {
-        ResourceCache {
+    ) -> Result<Self, ResourceCacheError> {
+        let glyph_rasterizer = GlyphRasterizer::new(workers)?;
+
+        Ok(ResourceCache {
             cached_glyphs: GlyphCache::new(),
             cached_images: ResourceClassCache::new(),
             cached_render_tasks: RenderTaskCache::new(),
-            resources: Resources {
-                font_templates: FastHashMap::default(),
-                font_instances: Arc::new(RwLock::new(FastHashMap::default())),
-                image_templates: ImageTemplates::new(),
-            },
+            resources: Resources::default(),
             cached_glyph_dimensions: FastHashMap::default(),
             texture_cache,
             state: State::Idle,
             current_frame_id: FrameId(0),
             pending_image_requests: FastHashSet::default(),
-            glyph_rasterizer: GlyphRasterizer::new(workers),
+            glyph_rasterizer,
             blob_image_renderer,
-        }
+        })
     }
 
     pub fn max_texture_size(&self) -> u32 {
@@ -285,7 +304,7 @@ impl ResourceCache {
             ImageData::External(info) => {
                 // External handles already represent existing textures so it does
                 // not make sense to tile them into smaller ones.
-                info.image_type == ExternalImageType::ExternalBuffer && size_check
+                info.image_type == ExternalImageType::Buffer && size_check
             }
         }
     }
@@ -301,7 +320,7 @@ impl ResourceCache {
         gpu_cache: &mut GpuCache,
         render_tasks: &mut RenderTaskTree,
         f: F,
-    ) -> CacheItem where F: FnMut(&mut RenderTaskTree) -> (RenderTaskId, [f32; 3]) {
+    ) -> CacheItem where F: FnMut(&mut RenderTaskTree) -> (RenderTaskId, bool) {
         self.cached_render_tasks.request_render_task(
             key,
             &mut self.texture_cache,
@@ -472,10 +491,7 @@ impl ResourceCache {
         let max_texture_size = self.max_texture_size();
         let image = match self.resources.image_templates.get_mut(image_key) {
             Some(res) => res,
-            None => panic!(
-                "Attempt to update non-existent image (key {:?}).",
-                image_key
-            ),
+            None => panic!("Attempt to update non-existent image"),
         };
 
         let mut tiling = image.tiling;
@@ -514,32 +530,24 @@ impl ResourceCache {
                 self.blob_image_renderer.as_mut().unwrap().delete(image_key);
             },
             None => {
-                println!("Delete the non-exist key:{:?}", image_key);
+                warn!("Delete the non-exist key");
+                debug!("key={:?}", image_key);
             }
         }
     }
 
     pub fn request_image(
         &mut self,
-        key: ImageKey,
-        rendering: ImageRendering,
-        tile: Option<TileOffset>,
+        request: ImageRequest,
         gpu_cache: &mut GpuCache,
     ) {
         debug_assert_eq!(self.state, State::AddResources);
-        let request = ImageRequest {
-            key,
-            rendering,
-            tile,
-        };
 
-        let template = match self.resources.image_templates.get(key) {
+        let template = match self.resources.image_templates.get(request.key) {
             Some(template) => template,
             None => {
-                warn!(
-                    "ERROR: Trying to render deleted / non-existent key {:?}",
-                    key
-                );
+                warn!("ERROR: Trying to render deleted / non-existent key");
+                debug!("key={:?}", request.key);
                 return
             }
         };
@@ -719,26 +727,19 @@ impl ResourceCache {
     #[inline]
     pub fn get_cached_image(
         &self,
-        image_key: ImageKey,
-        image_rendering: ImageRendering,
-        tile: Option<TileOffset>,
+        request: ImageRequest,
     ) -> Result<CacheItem, ()> {
         debug_assert_eq!(self.state, State::QueryResources);
-        let key = ImageRequest {
-            key: image_key,
-            rendering: image_rendering,
-            tile,
-        };
 
         // TODO(Jerry): add a debug option to visualize the corresponding area for
         // the Err() case of CacheItem.
-        match *self.cached_images.get(&key) {
-          Ok(ref image_info) => {
-              Ok(self.texture_cache.get(&image_info.texture_cache_handle))
-          }
-          Err(_) => {
-              Err(())
-          }
+        match *self.cached_images.get(&request) {
+            Ok(ref image_info) => {
+                Ok(self.texture_cache.get(&image_info.texture_cache_handle))
+            }
+            Err(_) => {
+                Err(())
+            }
         }
     }
 
@@ -747,16 +748,11 @@ impl ResourceCache {
 
         image_template.map(|image_template| {
             let external_image = match image_template.data {
-                ImageData::External(ext_image) => {
-                    match ext_image.image_type {
-                        ExternalImageType::Texture2DHandle |
-                        ExternalImageType::Texture2DArrayHandle |
-                        ExternalImageType::TextureRectHandle |
-                        ExternalImageType::TextureExternalHandle => Some(ext_image),
-                        // external buffer uses resource_cache.
-                        ExternalImageType::ExternalBuffer => None,
-                    }
-                }
+                ImageData::External(ext_image) => match ext_image.image_type {
+                    ExternalImageType::TextureHandle(_) => Some(ext_image),
+                    // external buffer uses resource_cache.
+                    ExternalImageType::Buffer => None,
+                },
                 // raw and blob image are all using resource_cache.
                 ImageData::Raw(..) | ImageData::Blob(..) => None,
             };
@@ -765,6 +761,7 @@ impl ResourceCache {
                 descriptor: image_template.descriptor,
                 external_image,
                 tiling: image_template.tiling,
+                epoch: image_template.epoch,
             }
         })
     }
@@ -860,11 +857,6 @@ impl ResourceCache {
                 }
             };
 
-            let filter = match request.rendering {
-                ImageRendering::Pixelated => TextureFilter::Nearest,
-                ImageRendering::Auto | ImageRendering::CrispEdges => TextureFilter::Linear,
-            };
-
             let descriptor = if let Some(tile) = request.tile {
                 let tile_size = image_template.tiling.unwrap();
                 let image_descriptor = &image_template.descriptor;
@@ -900,6 +892,31 @@ impl ResourceCache {
                 image_template.descriptor.clone()
             };
 
+            let filter = match request.rendering {
+                ImageRendering::Pixelated => {
+                    TextureFilter::Nearest
+                }
+                ImageRendering::Auto | ImageRendering::CrispEdges => {
+                    // If the texture uses linear filtering, enable mipmaps and
+                    // trilinear filtering, for better image quality. We only
+                    // support this for now on textures that are not placed
+                    // into the shared cache. This accounts for any image
+                    // that is > 512 in either dimension, so it should cover
+                    // the most important use cases. We may want to support
+                    // mip-maps on shared cache items in the future.
+                    if descriptor.width > 512 &&
+                       descriptor.height > 512 &&
+                       !self.texture_cache.is_allowed_in_shared_cache(
+                        TextureFilter::Linear,
+                        &descriptor,
+                    ) {
+                        TextureFilter::Trilinear
+                    } else {
+                        TextureFilter::Linear
+                    }
+                }
+            };
+
             let entry = self.cached_images.get_mut(&request).as_mut().unwrap();
             self.texture_cache.update(
                 &mut entry.texture_cache_handle,
@@ -919,18 +936,19 @@ impl ResourceCache {
         self.state = State::Idle;
     }
 
-    pub fn on_memory_pressure(&mut self) {
-        // This is drastic. It will basically flush everything out of the cache,
-        // and the next frame will have to rebuild all of its resources.
-        // We may want to look into something less extreme, but on the other hand this
-        // should only be used in situations where are running low enough on memory
-        // that we risk crashing if we don't do something about it.
-        // The advantage of clearing the cache completely is that it gets rid of any
-        // remaining fragmentation that could have persisted if we kept around the most
-        // recently used resources.
-        self.cached_images.clear();
-        self.cached_glyphs.clear();
-        self.cached_render_tasks.clear();
+    pub fn clear(&mut self, what: ClearCache) {
+        if what.contains(ClearCache::IMAGES) {
+            self.cached_images.clear();
+        }
+        if what.contains(ClearCache::GLYPHS) {
+            self.cached_glyphs.clear();
+        }
+        if what.contains(ClearCache::GLYPH_DIMENSIONS) {
+            self.cached_glyph_dimensions.clear();
+        }
+        if what.contains(ClearCache::RENDER_TASKS) {
+            self.cached_render_tasks.clear();
+        }
     }
 
     pub fn clear_namespace(&mut self, namespace: IdNamespace) {
@@ -975,26 +993,30 @@ pub fn compute_tile_size(
     (actual_width, actual_height)
 }
 
-#[cfg(feature = "capture")]
-#[derive(Serialize, Deserialize)]
+#[cfg(any(feature = "capture", feature = "replay"))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 enum PlainFontTemplate {
     Raw {
         data: String,
         index: u32,
     },
-    Native(NativeFontHandle),
+    Native,
 }
 
-#[cfg(feature = "capture")]
-#[derive(Serialize, Deserialize)]
+#[cfg(any(feature = "capture", feature = "replay"))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 struct PlainImageTemplate {
     data: String,
     descriptor: ImageDescriptor,
+    epoch: Epoch,
     tiling: Option<TileSize>,
 }
 
-#[cfg(feature = "capture")]
-#[derive(Serialize, Deserialize)]
+#[cfg(any(feature = "capture", feature = "replay"))]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct PlainResources {
     font_templates: FastHashMap<FontKey, PlainFontTemplate>,
     font_instances: FastHashMap<FontInstanceKey, FontInstance>,
@@ -1008,32 +1030,36 @@ pub struct PlainCacheRef<'a> {
     glyphs: PlainGlyphCacheRef<'a>,
     glyph_dimensions: &'a GlyphDimensionsCache,
     images: &'a ImageCache,
+    render_tasks: &'a RenderTaskCache,
     textures: &'a TextureCache,
 }
 
-#[cfg(feature = "capture")]
+#[cfg(feature = "replay")]
 #[derive(Deserialize)]
 pub struct PlainCacheOwn {
     current_frame_id: FrameId,
     glyphs: PlainGlyphCacheOwn,
     glyph_dimensions: GlyphDimensionsCache,
     images: ImageCache,
+    render_tasks: RenderTaskCache,
     textures: TextureCache,
 }
 
-#[cfg(feature = "capture")]
+#[cfg(feature = "replay")]
+const NATIVE_FONT: &'static [u8] = include_bytes!("../res/Proggy.ttf");
+
 impl ResourceCache {
+    #[cfg(feature = "capture")]
     pub fn save_capture(
         &mut self, root: &PathBuf
     ) -> (PlainResources, Vec<ExternalCaptureImage>) {
+        #[cfg(feature = "png")]
+        use device::ReadPixelsFormat;
         use std::fs;
         use std::io::Write;
 
         info!("saving resource cache");
         let res = &self.resources;
-        if !root.is_dir() {
-            fs::create_dir_all(root).unwrap()
-        }
         let path_fonts = root.join("fonts");
         if !path_fonts.is_dir() {
             fs::create_dir(&path_fonts).unwrap();
@@ -1045,6 +1071,10 @@ impl ResourceCache {
         let path_blobs = root.join("blobs");
         if !path_blobs.is_dir() {
             fs::create_dir(&path_blobs).unwrap();
+        }
+        let path_externals = root.join("externals");
+        if !path_externals.is_dir() {
+            fs::create_dir(&path_externals).unwrap();
         }
 
         info!("\tfont templates");
@@ -1071,6 +1101,7 @@ impl ResourceCache {
         info!("\timage templates");
         let mut image_paths = FastHashMap::default();
         let mut other_paths = FastHashMap::default();
+        let mut num_blobs = 0;
         let mut external_images = Vec::new();
         for (&key, template) in res.image_templates.images.iter() {
             let desc = &template.descriptor;
@@ -1082,8 +1113,13 @@ impl ResourceCache {
                         Entry::Vacant(e) => e,
                     };
 
-                    //TODO: option to save as PNG:
-                    // https://github.com/servo/webrender/issues/2234
+                    #[cfg(feature = "png")]
+                    CaptureConfig::save_png(
+                        root.join(format!("images/{}.png", image_id)),
+                        (desc.width, desc.height),
+                        ReadPixelsFormat::Standard(desc.format),
+                        &arc,
+                    );
                     let file_name = format!("{}.raw", image_id);
                     let short_path = format!("images/{}", file_name);
                     fs::File::create(path_images.join(file_name))
@@ -1100,7 +1136,6 @@ impl ResourceCache {
                         // https://github.com/servo/webrender/issues/2236
                         tile: None,
                     };
-
                     let renderer = self.blob_image_renderer.as_mut().unwrap();
                     renderer.request(
                         &self.resources,
@@ -1116,8 +1151,17 @@ impl ResourceCache {
                     let result = renderer.resolve(request)
                         .expect("Blob resolve failed");
                     assert_eq!((result.width, result.height), (desc.width, desc.height));
+                    assert_eq!(result.data.len(), desc.compute_total_size() as usize);
 
-                    let file_name = format!("{}.raw", other_paths.len() + 1);
+                    num_blobs += 1;
+                    #[cfg(feature = "png")]
+                    CaptureConfig::save_png(
+                        root.join(format!("blobs/{}.png", num_blobs)),
+                        (desc.width, desc.height),
+                        ReadPixelsFormat::Standard(desc.format),
+                        &result.data,
+                    );
+                    let file_name = format!("{}.raw", num_blobs);
                     let short_path = format!("blobs/{}", file_name);
                     let full_path = path_blobs.clone().join(&file_name);
                     fs::File::create(full_path)
@@ -1127,7 +1171,7 @@ impl ResourceCache {
                     other_paths.insert(key, short_path);
                 }
                 ImageData::External(ref ext) => {
-                    let short_path = format!("blobs/{}.raw", other_paths.len() + 1);
+                    let short_path = format!("externals/{}", external_images.len() + 1);
                     other_paths.insert(key, short_path.clone());
                     external_images.push(ExternalCaptureImage {
                         short_path,
@@ -1149,8 +1193,8 @@ impl ResourceCache {
                                 index,
                             }
                         }
-                        FontTemplate::Native(ref native) => {
-                            PlainFontTemplate::Native(native.clone())
+                        FontTemplate::Native(_) => {
+                            PlainFontTemplate::Native
                         }
                     })
                 })
@@ -1166,6 +1210,7 @@ impl ResourceCache {
                         },
                         descriptor: template.descriptor.clone(),
                         tiling: template.tiling,
+                        epoch: template.epoch,
                     })
                 })
                 .collect(),
@@ -1174,6 +1219,7 @@ impl ResourceCache {
         (resources, external_images)
     }
 
+    #[cfg(feature = "capture")]
     pub fn save_caches(&self, root: &PathBuf) -> PlainCacheRef {
         use std::io::Write;
         use std::fs;
@@ -1234,16 +1280,18 @@ impl ResourceCache {
                 .collect(),
             glyph_dimensions: &self.cached_glyph_dimensions,
             images: &self.cached_images,
+            render_tasks: &self.cached_render_tasks,
             textures: &self.texture_cache,
         }
     }
 
+    #[cfg(feature = "replay")]
     pub fn load_capture(
         &mut self,
         resources: PlainResources,
         caches: Option<PlainCacheOwn>,
         root: &PathBuf,
-    ) {
+    ) -> Vec<PlainExternalImage> {
         use std::fs::File;
         use std::io::Read;
 
@@ -1297,6 +1345,8 @@ impl ResourceCache {
                 self.current_frame_id = cached.current_frame_id;
                 self.cached_glyphs = GlyphCache { glyph_key_caches };
                 self.cached_glyph_dimensions = cached.glyph_dimensions;
+                self.cached_images = cached.images;
+                self.cached_render_tasks = cached.render_tasks;
                 self.texture_cache = cached.textures;
             }
             None => {
@@ -1304,21 +1354,20 @@ impl ResourceCache {
                 self.cached_glyphs.clear();
                 self.cached_glyph_dimensions.clear();
                 self.cached_images.clear();
+                self.cached_render_tasks.clear();
                 let max_texture_size = self.texture_cache.max_texture_size();
                 self.texture_cache = TextureCache::new(max_texture_size);
             }
         }
 
-        self.state = State::Idle;
         self.glyph_rasterizer.reset();
-        self.pending_image_requests.clear();
-
         let res = &mut self.resources;
         res.font_templates.clear();
         *res.font_instances.write().unwrap() = resources.font_instances;
         res.image_templates.images.clear();
 
         info!("\tfont templates...");
+        let native_font_replacement = Arc::new(NATIVE_FONT.to_vec());
         for (key, plain_template) in resources.font_templates {
             let template = match plain_template {
                 PlainFontTemplate::Raw { data, index } => {
@@ -1338,8 +1387,8 @@ impl ResourceCache {
                     };
                     FontTemplate::Raw(arc, index)
                 }
-                PlainFontTemplate::Native(native) => {
-                    FontTemplate::Native(native)
+                PlainFontTemplate::Native => {
+                    FontTemplate::Raw(native_font_replacement.clone(), 0)
                 }
             };
 
@@ -1348,29 +1397,46 @@ impl ResourceCache {
         }
 
         info!("\timage templates...");
+        let mut external_images = Vec::new();
         for (key, template) in resources.image_templates {
-            let arc = match raw_map.entry(template.data) {
-                Entry::Occupied(e) => {
-                    e.get().clone()
+            let data = match CaptureConfig::deserialize::<PlainExternalImage, _>(root, &template.data) {
+                Some(plain) => {
+                    let ext_data = ExternalImageData {
+                        id: plain.id,
+                        channel_index: plain.channel_index,
+                        image_type: ExternalImageType::Buffer,
+                    };
+                    external_images.push(plain);
+                    ImageData::External(ext_data)
                 }
-                Entry::Vacant(e) => {
-                    let mut buffer = Vec::new();
-                    File::open(root.join(e.key()))
-                        .expect(&format!("Unable to open {}", e.key()))
-                        .read_to_end(&mut buffer)
-                        .unwrap();
-                    e.insert(Arc::new(buffer))
-                        .clone()
+                None => {
+                    let arc = match raw_map.entry(template.data) {
+                        Entry::Occupied(e) => {
+                            e.get().clone()
+                        }
+                        Entry::Vacant(e) => {
+                            let mut buffer = Vec::new();
+                            File::open(root.join(e.key()))
+                                .expect(&format!("Unable to open {}", e.key()))
+                                .read_to_end(&mut buffer)
+                                .unwrap();
+                            e.insert(Arc::new(buffer))
+                                .clone()
+                        }
+                    };
+                    ImageData::Raw(arc)
                 }
             };
 
             res.image_templates.images.insert(key, ImageResource {
-                data: ImageData::Raw(arc),
+                data,
                 descriptor: template.descriptor,
                 tiling: template.tiling,
-                epoch: Epoch(0),
+                epoch: template.epoch,
                 dirty_rect: None,
             });
         }
+
+        external_images
     }
 }

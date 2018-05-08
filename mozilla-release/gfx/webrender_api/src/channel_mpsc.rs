@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::io;
 use std::io::{Error, ErrorKind};
-use serde::{Deserializer, Serializer};
-
 use std::sync::mpsc;
 
 ///
@@ -26,6 +25,10 @@ impl PayloadReceiverHelperMethods for PayloadReceiver {
     fn recv_payload(&self) -> Result<Payload, Error> {
         self.recv()
     }
+
+    fn to_mpsc_receiver(self) -> Receiver<Payload> {
+        self.rx
+    }
 }
 
 pub struct MsgReceiver<T> {
@@ -34,7 +37,6 @@ pub struct MsgReceiver<T> {
 
 impl<T> MsgReceiver<T> {
     pub fn recv(&self) -> Result<T, Error> {
-        use std::io;
         use std::error::Error;
         self.rx.recv().map_err(|e| io::Error::new(ErrorKind::Other, e.description()))
     }

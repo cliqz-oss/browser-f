@@ -6,9 +6,10 @@
 
 #include "gc/AtomMarking-inl.h"
 
-#include "jscompartment.h"
+#include "gc/PublicIterators.h"
+#include "vm/JSCompartment.h"
 
-#include "jsgcinlines.h"
+#include "gc/GC-inl.h"
 #include "gc/Heap-inl.h"
 
 namespace js {
@@ -223,7 +224,7 @@ AtomMarkingRuntime::atomIsMarked(Zone* zone, T* thing)
             return true;
     }
 
-    size_t bit = GetAtomBit(thing);
+    size_t bit = GetAtomBit(&thing->asTenured());
     return zone->markedAtoms().getBit(bit);
 }
 
@@ -239,7 +240,9 @@ AtomMarkingRuntime::atomIsMarked(Zone* zone, TenuredCell* thing)
 
     if (thing->is<JSString>()) {
         JSString* str = thing->as<JSString>();
-        return str->isAtom() ? atomIsMarked(zone, &str->asAtom()) : true;
+        if (!str->isAtom())
+            return true;
+        return atomIsMarked(zone, &str->asAtom());
     }
 
     if (thing->is<JS::Symbol>())

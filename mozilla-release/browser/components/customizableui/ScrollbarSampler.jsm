@@ -4,16 +4,14 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ScrollbarSampler"];
+var EXPORTED_SYMBOLS = ["ScrollbarSampler"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var gSystemScrollbarWidth = null;
 
-this.ScrollbarSampler = {
+var ScrollbarSampler = {
   getSystemScrollbarWidth() {
     if (gSystemScrollbarWidth !== null) {
       return Promise.resolve(gSystemScrollbarWidth);

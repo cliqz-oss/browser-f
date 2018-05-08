@@ -10,22 +10,17 @@ const EXPORTED_SYMBOLS = ["WebRequest"];
 
 /* globals ChannelWrapper */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-
 const {nsIHttpActivityObserver, nsISocketTransport} = Ci;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionUtils",
-                                  "resource://gre/modules/ExtensionUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WebRequestCommon",
-                                  "resource://gre/modules/WebRequestCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WebRequestUpload",
-                                  "resource://gre/modules/WebRequestUpload.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionUtils",
+                               "resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "WebRequestCommon",
+                               "resource://gre/modules/WebRequestCommon.jsm");
+ChromeUtils.defineModuleGetter(this, "WebRequestUpload",
+                               "resource://gre/modules/WebRequestUpload.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "ExtensionError", () => ExtensionUtils.ExtensionError);
 
@@ -45,7 +40,7 @@ function parseFilter(filter) {
 function parseExtra(extra, allowed = [], optionsObj = {}) {
   if (extra) {
     for (let ex of extra) {
-      if (allowed.indexOf(ex) == -1) {
+      if (!allowed.includes(ex)) {
         throw new ExtensionError(`Invalid option ${ex}`);
       }
     }
@@ -53,7 +48,7 @@ function parseExtra(extra, allowed = [], optionsObj = {}) {
 
   let result = Object.assign({}, optionsObj);
   for (let al of allowed) {
-    if (extra && extra.indexOf(al) != -1) {
+    if (extra && extra.includes(al)) {
       result[al] = true;
     }
   }
@@ -769,7 +764,7 @@ HttpObserverManager = {
           data.responseHeaders = responseHeaders.toArray();
         }
 
-        if (opts.requestBody) {
+        if (opts.requestBody && channel.canModify) {
           requestBody = requestBody || WebRequestUpload.createRequestBody(channel.channel);
           data.requestBody = requestBody;
         }
@@ -839,6 +834,15 @@ HttpObserverManager = {
           try {
             channel.suspended = false;
             channel.redirectTo(Services.io.newURI(result.redirectUrl));
+            // Web Extensions using the WebRequest API are allowed
+            // to redirect a channel to a data: URI, hence we mark
+            // the channel to let the redirect blocker know. Please
+            // note that this markind needs to happen after the
+            // channel.redirectTo is called because the channel's
+            // RedirectTo() implementation explicitly drops the flag
+            // to avoid additional redirects not caused by the
+            // Web Extension.
+            channel.loadInfo.allowInsecureRedirectToDataURI = true;
             return;
           } catch (e) {
             Cu.reportError(e);

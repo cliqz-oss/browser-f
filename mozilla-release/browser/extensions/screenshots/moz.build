@@ -57,6 +57,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/bn_BD/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["br"] += [
+  'webextension/_locales/br/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["bs"] += [
   'webextension/_locales/bs/messages.json'
 ]
@@ -237,6 +241,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/mk/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ml"] += [
+  'webextension/_locales/ml/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["mr"] += [
   'webextension/_locales/mr/messages.json'
 ]
@@ -371,7 +379,8 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["build"] 
   'webextension/build/onboardingCss.js',
   'webextension/build/onboardingHtml.js',
   'webextension/build/raven.js',
-  'webextension/build/shot.js'
+  'webextension/build/shot.js',
+  'webextension/build/thumbnailGenerator.js'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["icons"] += [
@@ -384,9 +393,8 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["icons"] 
   'webextension/icons/done.svg',
   'webextension/icons/download.svg',
   'webextension/icons/help-16.svg',
-  'webextension/icons/icon-16-v2.svg',
-  'webextension/icons/icon-32-v2.svg',
   'webextension/icons/icon-highlight-32-v2.svg',
+  'webextension/icons/icon-v2.svg',
   'webextension/icons/icon-welcome-face-without-eyes.svg',
   'webextension/icons/menu-fullpage.svg',
   'webextension/icons/menu-myshot-white.svg',

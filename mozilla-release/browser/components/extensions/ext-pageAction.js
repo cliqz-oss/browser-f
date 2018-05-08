@@ -6,15 +6,15 @@
 /* import-globals-from ext-browserAction.js */
 /* import-globals-from ext-browser.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "PageActions",
-                                  "resource:///modules/PageActions.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PanelPopup",
-                                  "resource:///modules/ExtensionPopups.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
-                                  "resource://gre/modules/TelemetryStopwatch.jsm");
+ChromeUtils.defineModuleGetter(this, "PageActions",
+                               "resource:///modules/PageActions.jsm");
+ChromeUtils.defineModuleGetter(this, "PanelPopup",
+                               "resource:///modules/ExtensionPopups.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
+                               "resource://gre/modules/TelemetryStopwatch.jsm");
 
 
-Cu.import("resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 
 var {
   IconDetails,
@@ -229,9 +229,8 @@ this.pageAction = class extends ExtensionAPI {
    * @param {Window} window
    */
   triggerAction(window) {
-    let pageAction = pageActionMap.get(this.extension);
-    if (pageAction.getProperty(window.gBrowser.selectedTab, "show")) {
-      pageAction.handleClick(window);
+    if (this.isShown(window.gBrowser.selectedTab)) {
+      this.handleClick(window);
     }
   }
 
@@ -272,11 +271,23 @@ this.pageAction = class extends ExtensionAPI {
     // If it has no popup URL defined, we dispatch a click event, but do not
     // open a popup.
     if (popupURL) {
-      let popup = new PanelPopup(this.extension, window.document, popupURL,
-                                 this.browserStyle);
-      await popup.contentReady;
+      if (this.popupNode && this.popupNode.panel.state !== "closed") {
+        // The panel is being toggled closed.
+        TelemetryStopwatch.cancel(popupOpenTimingHistogram, this);
+        window.BrowserPageActions.togglePanelForAction(this.browserPageAction,
+                                                       this.popupNode.panel);
+        return;
+      }
+
+      this.popupNode = new PanelPopup(this.extension, window.document, popupURL,
+                                      this.browserStyle);
+      // Remove popupNode when it is closed.
+      this.popupNode.panel.addEventListener("popuphiding", () => {
+        this.popupNode = undefined;
+      }, {once: true});
+      await this.popupNode.contentReady;
       window.BrowserPageActions.togglePanelForAction(this.browserPageAction,
-                                                     popup.panel);
+                                                     this.popupNode.panel);
       TelemetryStopwatch.finish(popupOpenTimingHistogram, this);
     } else {
       TelemetryStopwatch.cancel(popupOpenTimingHistogram, this);

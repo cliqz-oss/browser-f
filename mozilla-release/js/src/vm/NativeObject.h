@@ -13,16 +13,16 @@
 #include <stdint.h>
 
 #include "jsfriendapi.h"
-#include "jsobj.h"
 #include "NamespaceImports.h"
 
 #include "gc/Barrier.h"
 #include "gc/Heap.h"
 #include "gc/Marking.h"
 #include "js/Value.h"
+#include "vm/JSObject.h"
 #include "vm/Shape.h"
 #include "vm/ShapedObject.h"
-#include "vm/String.h"
+#include "vm/StringType.h"
 #include "vm/TypeInference.h"
 
 namespace js {
@@ -413,7 +413,7 @@ enum class ShouldUpdateTypes {
 /*
  * NativeObject specifies the internal implementation of a native object.
  *
- * Native objects use ShapedObject::shape_ to record property information.  Two
+ * Native objects use ShapedObject::shape to record property information. Two
  * native objects with the same shape are guaranteed to have the same number of
  * fixed slots.
  *
@@ -476,8 +476,8 @@ class NativeObject : public ShapedObject
 
   public:
     Shape* lastProperty() const {
-        MOZ_ASSERT(shape_);
-        return shape_;
+        MOZ_ASSERT(shape());
+        return shape();
     }
 
     uint32_t propertyCount() const {
@@ -680,14 +680,20 @@ class NativeObject : public ShapedObject
     }
 
   public:
+
+    /* Object allocation may directly initialize slots so this is public. */
+    void initSlots(HeapSlot* slots) {
+        slots_ = slots;
+    }
+
     static MOZ_MUST_USE bool generateOwnShape(JSContext* cx, HandleNativeObject obj,
                                               Shape* newShape = nullptr)
     {
         return replaceWithNewEquivalentShape(cx, obj, obj->lastProperty(), newShape);
     }
 
-    static MOZ_MUST_USE bool shadowingShapeChange(JSContext* cx, HandleNativeObject obj,
-                                                  const Shape& shape);
+    static MOZ_MUST_USE bool reshapeForShadowedProp(JSContext* cx, HandleNativeObject obj);
+    static MOZ_MUST_USE bool reshapeForProtoMutation(JSContext* cx, HandleNativeObject obj);
     static bool clearFlag(JSContext* cx, HandleNativeObject obj, BaseShape::Flag flag);
 
     // The maximum number of slots in an object.
@@ -735,7 +741,7 @@ class NativeObject : public ShapedObject
      */
     bool hasAllFlags(js::BaseShape::Flag flags) const {
         MOZ_ASSERT(flags);
-        return shape_->hasAllObjectFlags(flags);
+        return shape()->hasAllObjectFlags(flags);
     }
     bool nonProxyIsExtensible() const {
         return !hasAllFlags(js::BaseShape::NOT_EXTENSIBLE);
@@ -1322,6 +1328,10 @@ class NativeObject : public ShapedObject
     bool canHaveNonEmptyElements();
 #endif
 
+    void setEmptyElements() {
+        elements_ = emptyObjectElements;
+    }
+
     void setFixedElements(uint32_t numShifted = 0) {
         MOZ_ASSERT(canHaveNonEmptyElements());
         elements_ = fixedElements() + numShifted;
@@ -1391,8 +1401,7 @@ class NativeObject : public ShapedObject
     }
 
     void setPrivateGCThing(gc::Cell* cell) {
-        MOZ_ASSERT_IF(IsMarkedBlack(this),
-                      !JS::GCThingIsMarkedGray(JS::GCCellPtr(cell, cell->getTraceKind())));
+        MOZ_ASSERT_IF(IsMarkedBlack(this), !cell->isMarkedGray());
         void** pprivate = &privateRef(numFixedSlots());
         privateWriteBarrierPre(pprivate);
         *pprivate = reinterpret_cast<void*>(cell);
@@ -1601,7 +1610,7 @@ AddPropertyTypesAfterProtoChange(JSContext* cx, NativeObject* obj, ObjectGroup* 
 } // namespace js
 
 
-/*** Inline functions declared in jsobj.h that use the native declarations above *****************/
+/*** Inline functions declared in JSObject.h that use the native declarations above **************/
 
 inline bool
 js::HasProperty(JSContext* cx, HandleObject obj, HandleId id, bool* foundp)

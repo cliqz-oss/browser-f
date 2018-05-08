@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 const {
   element,
   WebElement,
-} = Cu.import("chrome://marionette/content/element.js", {});
-Cu.import("chrome://marionette/content/evaluate.js");
-Cu.import("chrome://marionette/content/event.js");
+} = ChromeUtils.import("chrome://marionette/content/element.js", {});
+ChromeUtils.import("chrome://marionette/content/evaluate.js");
+ChromeUtils.import("chrome://marionette/content/event.js");
 
 const CONTEXT_MENU_DELAY_PREF = "ui.click_hold_context_menus.delay";
 const DEFAULT_CONTEXT_MENU_DELAY = 750;  // ms
@@ -178,7 +176,7 @@ action.Chain.prototype.actions = function (chain, touchId, i, keyModifiers, cb) 
   let c;
   i++;
 
-  if (["press", "wait", "keyDown", "keyUp", "click"].indexOf(command) == -1) {
+  if (!["press", "wait", "keyDown", "keyUp", "click"].includes(command)) {
     // if mouseEventsOnly, then touchIds isn't used
     if (!(touchId in this.touchIds) && !this.mouseEventsOnly) {
       this.resetValues();
@@ -227,7 +225,7 @@ action.Chain.prototype.actions = function (chain, touchId, i, keyModifiers, cb) 
 
       // look ahead to check if we're scrolling,
       // needed for APZ touch dispatching
-      if ((i != chain.length) && (chain[i][0].indexOf('move') !== -1)) {
+      if ((i != chain.length) && (chain[i][0].includes('move'))) {
         this.scrolling = true;
       }
       webEl = WebElement.fromUUID(pack[1], "content");

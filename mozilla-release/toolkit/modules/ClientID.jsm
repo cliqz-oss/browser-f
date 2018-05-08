@@ -4,21 +4,19 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ClientID"];
+var EXPORTED_SYMBOLS = ["ClientID"];
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "ClientID::";
 
-XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils",
-                                  "resource://services-common/utils.js");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "CommonUtils",
+                               "resource://services-common/utils.js");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gDatareportingPath", () => {
   return OS.Path.join(OS.Constants.Path.profileDir, "datareporting");
@@ -42,11 +40,10 @@ function isValidClientID(id) {
   return UUID_REGEX.test(id);
 }
 
-this.ClientID = Object.freeze({
+var ClientID = Object.freeze({
   /**
    * This returns a promise resolving to the the stable client ID we use for
-   * data reporting (FHR & Telemetry). Previously exising FHR client IDs are
-   * migrated to this.
+   * data reporting (FHR & Telemetry).
    *
    * WARNING: This functionality is duplicated for Android (see GeckoProfile.getClientId
    * for more). There are Java tests (TestGeckoProfile) to ensure the functionality is
@@ -96,13 +93,12 @@ var ClientIDImpl = {
     return this._loadClientIdTask;
   },
 
+  /**
+   * Load the Client ID from the DataReporting Service state file.
+   * If no Client ID is found, we generate a new one.
+   */
   async _doLoadClientID() {
-    // As we want to correlate FHR and telemetry data (and move towards unifying the two),
-    // we first moved the ID management from the FHR implementation to the datareporting
-    // service, then to a common shared module.
-    // Consequently, we try to import an existing FHR ID, so we can keep using it.
-
-    // Try to load the client id from the DRS state file first.
+    // Try to load the client id from the DRS state file.
     try {
       let state = await CommonUtils.readJSON(gStateFilePath);
       if (state && this.updateClientID(state.clientID)) {
@@ -112,19 +108,7 @@ var ClientIDImpl = {
       // fall through to next option
     }
 
-    // If we dont have DRS state yet, try to import from the FHR state.
-    try {
-      let fhrStatePath = OS.Path.join(OS.Constants.Path.profileDir, "healthreport", "state.json");
-      let state = await CommonUtils.readJSON(fhrStatePath);
-      if (state && this.updateClientID(state.clientID)) {
-        this._saveClientID();
-        return this._clientID;
-      }
-    } catch (e) {
-      // fall through to next option
-    }
-
-    // We dont have an id from FHR yet, generate a new ID.
+    // We dont have an id from the DRS state file yet, generate a new ID.
     this.updateClientID(CommonUtils.generateUUID());
     this._saveClientIdTask = this._saveClientID();
 
@@ -151,8 +135,7 @@ var ClientIDImpl = {
 
   /**
    * This returns a promise resolving to the the stable client ID we use for
-   * data reporting (FHR & Telemetry). Previously exising FHR client IDs are
-   * migrated to this.
+   * data reporting (FHR & Telemetry).
    *
    * @return {Promise<string>} The stable client ID.
    */

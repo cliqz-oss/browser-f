@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 add_task(async function() {
   let rootDir = do_get_file("chromefiles/", true);
@@ -28,7 +28,7 @@ add_task(async function() {
   // importing osfile will sometimes greedily fetch certain path identifiers
   // from the dir service, which means they get cached, which means we can't
   // register a fake path for them anymore.
-  Cu.import("resource://gre/modules/osfile.jsm");
+  ChromeUtils.import("resource://gre/modules/osfile.jsm");
   await OS.File.makeDir(target.path, {from: rootDir.parent.path, ignoreExisting: true});
 
   target.append("Bookmarks");
@@ -72,9 +72,9 @@ add_task(async function() {
 
   await OS.File.writeAtomic(target.path, JSON.stringify(bookmarksData), {encoding: "utf-8"});
 
-  let migrator = MigrationUtils.getMigrator("chrome");
+  let migrator = await MigrationUtils.getMigrator("chrome");
   // Sanity check for the source.
-  Assert.ok(migrator.sourceExists);
+  Assert.ok(await migrator.isSourceAvailable());
 
   let itemsSeen = {bookmarks: 0, folders: 0};
   let bmObserver = {

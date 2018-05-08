@@ -10,14 +10,13 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Variant.h"
 
-#include "jsobj.h"
-#include "jsopcode.h"
-
 #include "gc/DeletePolicy.h"
 #include "gc/Heap.h"
 #include "gc/Policy.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
+#include "vm/BytecodeUtil.h"
+#include "vm/JSObject.h"
 #include "vm/Xdr.h"
 
 namespace js {
@@ -224,7 +223,14 @@ class Scope : public js::gc::TenuredCell
     friend class GCMarker;
 
     // The kind determines data_.
-    ScopeKind kind_;
+    //
+    // The memory here must be fully initialized, since otherwise the magic_
+    // value for gc::RelocationOverlay will land in the padding and may be
+    // stale.
+    union {
+        ScopeKind kind_;
+        uintptr_t paddedKind_;
+    };
 
     // The enclosing scope or nullptr.
     GCPtrScope enclosing_;
@@ -237,11 +243,13 @@ class Scope : public js::gc::TenuredCell
     uintptr_t data_;
 
     Scope(ScopeKind kind, Scope* enclosing, Shape* environmentShape)
-      : kind_(kind),
-        enclosing_(enclosing),
+      : enclosing_(enclosing),
         environmentShape_(environmentShape),
         data_(0)
-    { }
+    {
+        paddedKind_ = 0;
+        kind_ = kind;
+    }
 
     static Scope* create(JSContext* cx, ScopeKind kind, HandleScope enclosing,
                          HandleShape envShape);
@@ -1569,7 +1577,7 @@ class Concrete<js::Scope> : TracerConcrete<js::Scope>
         new (storage) Concrete(ptr);
     }
 
-    CoarseType coarseType() const final override { return CoarseType::Script; }
+    CoarseType coarseType() const final { return CoarseType::Script; }
 
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override;
 

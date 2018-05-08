@@ -4,15 +4,11 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-
 const XPI_CONTENT_TYPE = "application/x-xpinstall";
 const MSG_INSTALL_ADDON = "WebInstallerInstallAddonFromWebpage";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function amContentHandler() {
 }

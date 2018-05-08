@@ -6,8 +6,8 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Integration.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Integration.jsm", this);
 
 XPCOMUtils.defineLazyServiceGetter(this, "ContentPermissionPrompt",
                                    "@mozilla.org/content-permission/prompt;1",
@@ -61,6 +61,7 @@ MockContentPermissionRequest.prototype = {
     this.cancelled = true;
   },
   cancelled: false,
+  principal: Services.scriptSecurityManager.getSystemPrincipal(),
 };
 
 /**

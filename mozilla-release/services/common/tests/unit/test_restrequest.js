@@ -3,10 +3,10 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/rest.js");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/rest.js");
+ChromeUtils.import("resource://services-common/utils.js");
 
 function run_test() {
   Log.repository.getLogger("Services.Common.RESTRequest").level =
@@ -98,7 +98,7 @@ add_test(function test_forbidden_port() {
     if (!error) {
       do_throw("Should have got an error.");
     }
-    Assert.equal(error.result, Components.results.NS_ERROR_PORT_ACCESS_NOT_ALLOWED);
+    Assert.equal(error.result, Cr.NS_ERROR_PORT_ACCESS_NOT_ALLOWED);
     run_next_test();
   });
 });
@@ -598,7 +598,7 @@ add_test(function test_get_no_headers() {
     let server_headers = handler.request.headers;
     while (server_headers.hasMoreElements()) {
       let header = server_headers.getNext().toString();
-      if (ignore_headers.indexOf(header) == -1) {
+      if (!ignore_headers.includes(header)) {
         do_throw("Got unexpected header!");
       }
     }

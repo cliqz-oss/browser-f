@@ -10,7 +10,6 @@ use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLContext
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLRenderingContextMethods;
 use dom::bindings::codegen::UnionTypes::ImageDataOrHTMLImageElementOrHTMLCanvasElementOrHTMLVideoElement;
 use dom::bindings::error::Fallible;
-use dom::bindings::nonnull::NonNullJSObjectPtr;
 use dom::bindings::reflector::{reflect_dom_object, Reflector};
 use dom::bindings::root::{Dom, DomRoot, LayoutDom};
 use dom::bindings::str::DOMString;
@@ -33,6 +32,7 @@ use js::jsapi::{JSContext, JSObject};
 use js::jsval::JSVal;
 use offscreen_gl_context::GLContextAttributes;
 use script_layout_interface::HTMLCanvasDataSource;
+use std::ptr::NonNull;
 
 #[dom_struct]
 pub struct WebGL2RenderingContext {
@@ -115,6 +115,12 @@ impl WebGL2RenderingContextMethods for WebGL2RenderingContext {
         self.base.GetParameter(cx, parameter)
     }
 
+    #[allow(unsafe_code)]
+    /// https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8
+    unsafe fn GetTexParameter(&self, cx: *mut JSContext, target: u32, pname: u32) -> JSVal {
+        self.base.GetTexParameter(cx, target, pname)
+    }
+
     /// https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.3
     fn GetError(&self) -> u32 {
         self.base.GetError()
@@ -132,7 +138,7 @@ impl WebGL2RenderingContextMethods for WebGL2RenderingContext {
 
     #[allow(unsafe_code)]
     /// https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.14
-    unsafe fn GetExtension(&self, cx: *mut JSContext, name: DOMString) -> Option<NonNullJSObjectPtr> {
+    unsafe fn GetExtension(&self, cx: *mut JSContext, name: DOMString) -> Option<NonNull<JSObject>> {
         self.base.GetExtension(cx, name)
     }
 

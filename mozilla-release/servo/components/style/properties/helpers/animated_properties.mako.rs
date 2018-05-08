@@ -4,7 +4,10 @@
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
-<% from data import to_idl_name, SYSTEM_FONT_LONGHANDS %>
+<%
+    from data import to_idl_name, SYSTEM_FONT_LONGHANDS
+    from itertools import groupby
+%>
 
 use cssparser::Parser;
 #[cfg(feature = "gecko")] use gecko_bindings::bindings::RawServoAnimationValueMap;
@@ -17,19 +20,15 @@ use properties::{CSSWideKeyword, PropertyDeclaration};
 use properties::longhands;
 use properties::longhands::font_weight::computed_value::T as FontWeight;
 use properties::longhands::font_stretch::computed_value::T as FontStretch;
-#[cfg(feature = "gecko")]
-use properties::longhands::font_variation_settings::computed_value::T as FontVariationSettings;
 use properties::longhands::visibility::computed_value::T as Visibility;
-#[cfg(feature = "gecko")]
 use properties::PropertyId;
 use properties::{LonghandId, ShorthandId};
-use selectors::parser::SelectorParseErrorKind;
 use servo_arc::Arc;
 use smallvec::SmallVec;
-use std::cmp;
-use std::fmt::{self, Write};
+use std::{cmp, ptr};
+use std::mem::{self, ManuallyDrop};
 #[cfg(feature = "gecko")] use hash::FnvHashMap;
-use style_traits::{CssWriter, ParseError, ToCss};
+use style_traits::ParseError;
 use super::ComputedValues;
 use values::{CSSFloat, CustomIdent, Either};
 use values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
@@ -46,16 +45,18 @@ use values::computed::ToComputedValue;
 use values::computed::transform::{DirectionVector, Matrix, Matrix3D};
 use values::computed::transform::TransformOperation as ComputedTransformOperation;
 use values::computed::transform::Transform as ComputedTransform;
-use values::generics::transform::{self, Transform, TransformOperation};
+use values::computed::transform::Rotate as ComputedRotate;
+use values::computed::transform::Translate as ComputedTranslate;
+use values::computed::transform::Scale as ComputedScale;
+use values::generics::transform::{self, Rotate, Translate, Scale, Transform, TransformOperation};
 use values::distance::{ComputeSquaredDistance, SquaredDistance};
-#[cfg(feature = "gecko")] use values::generics::FontSettings as GenericFontSettings;
-#[cfg(feature = "gecko")] use values::generics::FontSettingTag as GenericFontSettingTag;
-#[cfg(feature = "gecko")] use values::generics::FontSettingTagFloat;
-use values::generics::NonNegative;
+use values::generics::font::{FontSettings as GenericFontSettings, FontTag, VariationValue};
+use values::computed::font::FontVariationSettings;
 use values::generics::effects::Filter;
 use values::generics::position as generic_position;
 use values::generics::svg::{SVGLength,  SvgLengthOrPercentageOrNumber, SVGPaint};
 use values::generics::svg::{SVGPaintKind, SVGStrokeDashArray, SVGOpacity};
+use void::{self, Void};
 
 /// <https://drafts.csswg.org/css-transitions/#animtype-repeatable-list>
 pub trait RepeatableListAnimatable: Animate {}
@@ -77,13 +78,8 @@ pub fn nscsspropertyid_is_animatable(property: nsCSSPropertyID) -> bool {
 /// a shorthand with at least one transitionable longhand component, or an unsupported property.
 // NB: This needs to be here because it needs all the longhands generated
 // beforehand.
-#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum TransitionProperty {
-    /// All, any transitionable property changing should generate a transition.
-    ///
-    /// FIXME(emilio): Can we remove this and just use
-    /// Shorthand(ShorthandId::All)?
-    All,
     /// A shorthand.
     Shorthand(ShorthandId),
     /// A longhand transitionable property.
@@ -93,69 +89,56 @@ pub enum TransitionProperty {
     Unsupported(CustomIdent),
 }
 
-impl ToCss for TransitionProperty {
-    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
-    where
-        W: Write,
-    {
-        match *self {
-            TransitionProperty::All => dest.write_str("all"),
-            TransitionProperty::Shorthand(ref id) => dest.write_str(id.name()),
-            TransitionProperty::Longhand(ref id) => dest.write_str(id.name()),
-            TransitionProperty::Unsupported(ref id) => id.to_css(dest),
-        }
-    }
-}
-
-trivial_to_computed_value!(TransitionProperty);
-
 impl TransitionProperty {
-    /// Iterates over each longhand property.
-    pub fn each<F: FnMut(&LonghandId) -> ()>(mut cb: F) {
-        % for prop in data.longhands:
-            % if prop.transitionable:
-                cb(&LonghandId::${prop.camel_case});
-            % endif
-        % endfor
-    }
-
-    /// Iterates over every longhand property that is not
-    /// TransitionProperty::All, stopping and returning true when the provided
-    /// callback returns true for the first time.
-    pub fn any<F: FnMut(&LonghandId) -> bool>(mut cb: F) -> bool {
-        % for prop in data.longhands:
-            % if prop.transitionable:
-                if cb(&LonghandId::${prop.camel_case}) {
-                    return true;
-                }
-            % endif
-        % endfor
-        false
+    /// Returns `all`.
+    #[inline]
+    pub fn all() -> Self {
+        TransitionProperty::Shorthand(ShorthandId::All)
     }
 
     /// Parse a transition-property value.
     pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+        // FIXME(https://github.com/rust-lang/rust/issues/33156): remove this
+        // enum and use PropertyId when stable Rust allows destructors in
+        // statics.
+        //
+        // FIXME: This should handle aliases too.
+        pub enum StaticId {
+            Longhand(LonghandId),
+            Shorthand(ShorthandId),
+        }
+        ascii_case_insensitive_phf_map! {
+            static_id -> StaticId = {
+                % for prop in data.shorthands:
+                "${prop.name}" => StaticId::Shorthand(ShorthandId::${prop.camel_case}),
+                % endfor
+                % for prop in data.longhands:
+                "${prop.name}" => StaticId::Longhand(LonghandId::${prop.camel_case}),
+                % endfor
+            }
+        }
+
         let location = input.current_source_location();
         let ident = input.expect_ident()?;
-        match_ignore_ascii_case! { &ident,
-            "all" => Ok(TransitionProperty::All),
-            % for prop in data.shorthands_except_all():
-                "${prop.name}" => Ok(TransitionProperty::Shorthand(ShorthandId::${prop.camel_case})),
-            % endfor
-            % for prop in data.longhands:
-                "${prop.name}" => Ok(TransitionProperty::Longhand(LonghandId::${prop.camel_case})),
-            % endfor
-            "none" => Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone()))),
-            _ => CustomIdent::from_ident(location, ident, &[]).map(TransitionProperty::Unsupported),
-        }
-    }
 
+        Ok(match static_id(&ident) {
+            Some(&StaticId::Longhand(id)) => TransitionProperty::Longhand(id),
+            Some(&StaticId::Shorthand(id)) => TransitionProperty::Shorthand(id),
+            None => {
+                TransitionProperty::Unsupported(
+                    CustomIdent::from_ident(location, ident, &["none"])?,
+                )
+            },
+        })
+    }
 
     /// Convert TransitionProperty to nsCSSPropertyID.
     #[cfg(feature = "gecko")]
     pub fn to_nscsspropertyid(&self) -> Result<nsCSSPropertyID, ()> {
         Ok(match *self {
-            TransitionProperty::All => nsCSSPropertyID::eCSSPropertyExtra_all_properties,
+            TransitionProperty::Shorthand(ShorthandId::All) => {
+                nsCSSPropertyID::eCSSPropertyExtra_all_properties
+            }
             TransitionProperty::Shorthand(ref id) => id.to_nscsspropertyid(),
             TransitionProperty::Longhand(ref id) => id.to_nscsspropertyid(),
             TransitionProperty::Unsupported(..) => return Err(()),
@@ -179,7 +162,9 @@ impl From<nsCSSPropertyID> for TransitionProperty {
                 TransitionProperty::Shorthand(ShorthandId::${prop.camel_case})
             }
             % endfor
-            nsCSSPropertyID::eCSSPropertyExtra_all_properties => TransitionProperty::All,
+            nsCSSPropertyID::eCSSPropertyExtra_all_properties => {
+                TransitionProperty::Shorthand(ShorthandId::All)
+            }
             _ => {
                 panic!("non-convertible nsCSSPropertyID")
             }
@@ -289,11 +274,11 @@ impl AnimatedProperty {
     /// Get an animatable value from a transition-property, an old style, and a
     /// new style.
     pub fn from_longhand(
-        property: &LonghandId,
+        property: LonghandId,
         old_style: &ComputedValues,
         new_style: &ComputedValues,
     ) -> Option<AnimatedProperty> {
-        Some(match *property {
+        Some(match property {
             % for prop in data.longhands:
             % if prop.animatable:
                 LonghandId::${prop.camel_case} => {
@@ -339,58 +324,177 @@ unsafe impl HasSimpleFFI for AnimationValueMap {}
 ///
 /// FIXME: We need to add a path for custom properties, but that's trivial after
 /// this (is a similar path to that of PropertyDeclaration).
-#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(Debug)]
+#[repr(u16)]
 pub enum AnimationValue {
     % for prop in data.longhands:
-        % if prop.animatable:
-            /// ${prop.name}
-            % if prop.is_animatable_with_computed_value:
-                ${prop.camel_case}(longhands::${prop.ident}::computed_value::T),
-            % else:
-                ${prop.camel_case}(<longhands::${prop.ident}::computed_value::T as ToAnimatedValue>::AnimatedValue),
-            % endif
-        % endif
+    % if prop.animatable:
+    /// `${prop.name}`
+    ${prop.camel_case}(${prop.animated_type()}),
+    % else:
+    /// `${prop.name}` (not animatable)
+    ${prop.camel_case}(Void),
+    % endif
     % endfor
+}
+
+<%
+    animated = []
+    unanimated = []
+    for prop in data.longhands:
+        if prop.animatable:
+            animated.append(prop)
+        else:
+            unanimated.append(prop)
+%>
+
+#[repr(C)]
+struct AnimationValueVariantRepr<T> {
+    tag: u16,
+    value: T
+}
+
+impl Clone for AnimationValue {
+    #[inline]
+    fn clone(&self) -> Self {
+        use self::AnimationValue::*;
+
+        <%
+            [copy, others] = [list(g) for _, g in groupby(animated, key=lambda x: not x.specified_is_copy())]
+        %>
+
+        let self_tag = unsafe { *(self as *const _ as *const u16) };
+        if self_tag <= LonghandId::${copy[-1].camel_case} as u16 {
+            #[derive(Clone, Copy)]
+            #[repr(u16)]
+            enum CopyVariants {
+                % for prop in copy:
+                _${prop.camel_case}(${prop.animated_type()}),
+                % endfor
+            }
+
+            unsafe {
+                let mut out = mem::uninitialized();
+                ptr::write(
+                    &mut out as *mut _ as *mut CopyVariants,
+                    *(self as *const _ as *const CopyVariants),
+                );
+                return out;
+            }
+        }
+
+        match *self {
+            % for ty, props in groupby(others, key=lambda x: x.animated_type()):
+            <% props = list(props) %>
+            ${" |\n".join("{}(ref value)".format(prop.camel_case) for prop in props)} => {
+                % if len(props) == 1:
+                ${props[0].camel_case}(value.clone())
+                % else:
+                unsafe {
+                    let mut out = ManuallyDrop::new(mem::uninitialized());
+                    ptr::write(
+                        &mut out as *mut _ as *mut AnimationValueVariantRepr<${ty}>,
+                        AnimationValueVariantRepr {
+                            tag: *(self as *const _ as *const u16),
+                            value: value.clone(),
+                        },
+                    );
+                    ManuallyDrop::into_inner(out)
+                }
+                % endif
+            }
+            % endfor
+            _ => unsafe { debug_unreachable!() }
+        }
+    }
+}
+
+impl PartialEq for AnimationValue {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        use self::AnimationValue::*;
+
+        unsafe {
+            let this_tag = *(self as *const _ as *const u16);
+            let other_tag = *(other as *const _ as *const u16);
+            if this_tag != other_tag {
+                return false;
+            }
+
+            match *self {
+                % for ty, props in groupby(animated, key=lambda x: x.animated_type()):
+                ${" |\n".join("{}(ref this)".format(prop.camel_case) for prop in props)} => {
+                    let other_repr =
+                        &*(other as *const _ as *const AnimationValueVariantRepr<${ty}>);
+                    *this == other_repr.value
+                }
+                % endfor
+                ${" |\n".join("{}(void)".format(prop.camel_case) for prop in unanimated)} => {
+                    void::unreachable(void)
+                }
+            }
+        }
+    }
 }
 
 impl AnimationValue {
     /// Returns the longhand id this animated value corresponds to.
+    #[inline]
     pub fn id(&self) -> LonghandId {
-        match *self {
+        let id = unsafe { *(self as *const _ as *const LonghandId) };
+        debug_assert_eq!(id, match *self {
             % for prop in data.longhands:
             % if prop.animatable:
-                AnimationValue::${prop.camel_case}(..) => LonghandId::${prop.camel_case},
+            AnimationValue::${prop.camel_case}(..) => LonghandId::${prop.camel_case},
+            % else:
+            AnimationValue::${prop.camel_case}(void) => void::unreachable(void),
             % endif
             % endfor
-        }
+        });
+        id
     }
 
     /// "Uncompute" this animation value in order to be used inside the CSS
     /// cascade.
     pub fn uncompute(&self) -> PropertyDeclaration {
         use properties::longhands;
+        use self::AnimationValue::*;
+
+        use super::PropertyDeclarationVariantRepr;
+
         match *self {
-            % for prop in data.longhands:
-                % if prop.animatable:
-                    AnimationValue::${prop.camel_case}(ref from) => {
-                        PropertyDeclaration::${prop.camel_case}(
-                            % if prop.boxed:
-                            Box::new(
-                            % endif
-                                longhands::${prop.ident}::SpecifiedValue::from_computed_value(
-                                % if prop.is_animatable_with_computed_value:
-                                    from
-                                % else:
-                                    &ToAnimatedValue::from_animated_value(from.clone())
-                                % endif
-                                ))
-                            % if prop.boxed:
-                            )
-                            % endif
-                    }
+            <% keyfunc = lambda x: (x.base_type(), x.specified_type(), x.boxed, x.is_animatable_with_computed_value) %>
+            % for (ty, specified, boxed, computed), props in groupby(animated, key=keyfunc):
+            <% props = list(props) %>
+            ${" |\n".join("{}(ref value)".format(prop.camel_case) for prop in props)} => {
+                % if not computed:
+                let ref value = ToAnimatedValue::from_animated_value(value.clone());
                 % endif
+                let value = ${ty}::from_computed_value(&value);
+                % if boxed:
+                let value = Box::new(value);
+                % endif
+                % if len(props) == 1:
+                PropertyDeclaration::${props[0].camel_case}(value)
+                % else:
+                unsafe {
+                    let mut out = mem::uninitialized();
+                    ptr::write(
+                        &mut out as *mut _ as *mut PropertyDeclarationVariantRepr<${specified}>,
+                        PropertyDeclarationVariantRepr {
+                            tag: *(self as *const _ as *const u16),
+                            value,
+                        },
+                    );
+                    out
+                }
+                % endif
+            }
             % endfor
+            ${" |\n".join("{}(void)".format(prop.camel_case) for prop in unanimated)} => {
+                void::unreachable(void)
+            }
         }
     }
 
@@ -401,46 +505,67 @@ impl AnimationValue {
         extra_custom_properties: Option<<&Arc<::custom_properties::CustomPropertiesMap>>,
         initial: &ComputedValues
     ) -> Option<Self> {
-        use properties::LonghandId;
+        use super::PropertyDeclarationVariantRepr;
+
+        <%
+            keyfunc = lambda x: (
+                x.specified_type(),
+                x.animated_type(),
+                x.boxed,
+                not x.is_animatable_with_computed_value,
+                x.style_struct.inherited,
+                x.ident in SYSTEM_FONT_LONGHANDS and product == "gecko",
+            )
+        %>
 
         let animatable = match *decl {
-            % for prop in data.longhands:
-            % if prop.animatable:
-            PropertyDeclaration::${prop.camel_case}(ref val) => {
-                context.for_non_inherited_property =
-                    % if prop.style_struct.inherited:
-                        None;
-                    % else:
-                        Some(LonghandId::${prop.camel_case});
-                    % endif
-            % if prop.ident in SYSTEM_FONT_LONGHANDS and product == "gecko":
-                if let Some(sf) = val.get_system() {
-                    longhands::system_font::resolve_system_font(sf, context);
+            % for (specified_ty, ty, boxed, to_animated, inherit, system), props in groupby(animated, key=keyfunc):
+            ${" |\n".join("PropertyDeclaration::{}(ref value)".format(prop.camel_case) for prop in props)} => {
+                let decl_repr = unsafe {
+                    &*(decl as *const _ as *const PropertyDeclarationVariantRepr<${specified_ty}>)
+                };
+                % if inherit:
+                context.for_non_inherited_property = None;
+                % else:
+                context.for_non_inherited_property = unsafe {
+                    Some(*(&decl_repr.tag as *const u16 as *const LonghandId))
+                };
+                % endif
+                % if system:
+                if let Some(sf) = value.get_system() {
+                    longhands::system_font::resolve_system_font(sf, context)
                 }
-            % endif
-            % if prop.boxed:
-            let computed = (**val).to_computed_value(context);
-            % else:
-            let computed = val.to_computed_value(context);
-            % endif
-            AnimationValue::${prop.camel_case}(
-            % if prop.is_animatable_with_computed_value:
-                computed
-            % else:
-                computed.to_animated_value()
-            % endif
-            )
-            },
-            % endif
+                % endif
+                % if boxed:
+                let value = (**value).to_computed_value(context);
+                % else:
+                let value = value.to_computed_value(context);
+                % endif
+                % if to_animated:
+                let value = value.to_animated_value();
+                % endif
+
+                unsafe {
+                    let mut out = mem::uninitialized();
+                    ptr::write(
+                        &mut out as *mut _ as *mut AnimationValueVariantRepr<${ty}>,
+                        AnimationValueVariantRepr {
+                            tag: decl_repr.tag,
+                            value,
+                        },
+                    );
+                    out
+                }
+            }
             % endfor
-            PropertyDeclaration::CSSWideKeyword(id, keyword) => {
-                match id {
+            PropertyDeclaration::CSSWideKeyword(ref declaration) => {
+                match declaration.id {
                     // We put all the animatable properties first in the hopes
                     // that it might increase match locality.
                     % for prop in data.longhands:
                     % if prop.animatable:
                     LonghandId::${prop.camel_case} => {
-                        let style_struct = match keyword {
+                        let style_struct = match declaration.keyword {
                             % if not prop.style_struct.inherited:
                                 CSSWideKeyword::Unset |
                             % endif
@@ -470,15 +595,15 @@ impl AnimationValue {
                     % endfor
                 }
             },
-            PropertyDeclaration::WithVariables(id, ref unparsed) => {
+            PropertyDeclaration::WithVariables(ref declaration) => {
                 let substituted = {
                     let custom_properties =
                         extra_custom_properties.or_else(|| context.style().custom_properties());
 
-                    unparsed.substitute_variables(
-                        id,
+                    declaration.value.substitute_variables(
+                        declaration.id,
                         custom_properties,
-                        context.quirks_mode
+                        context.quirks_mode,
                     )
                 };
                 return AnimationValue::from_declaration(
@@ -495,10 +620,10 @@ impl AnimationValue {
 
     /// Get an AnimationValue for an AnimatableLonghand from a given computed values.
     pub fn from_computed_values(
-        property: &LonghandId,
+        property: LonghandId,
         computed_values: &ComputedValues
     ) -> Option<Self> {
-        Some(match *property {
+        Some(match property {
             % for prop in data.longhands:
             % if prop.animatable:
             LonghandId::${prop.camel_case} => {
@@ -530,63 +655,75 @@ fn animate_discrete<T: Clone>(this: &T, other: &T, procedure: Procedure) -> Resu
 
 impl Animate for AnimationValue {
     fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
-        let value = match (self, other) {
-            % for prop in data.longhands:
-            % if prop.animatable:
-            % if prop.animation_value_type != "discrete":
-            (
-                &AnimationValue::${prop.camel_case}(ref this),
-                &AnimationValue::${prop.camel_case}(ref other),
-            ) => {
-                AnimationValue::${prop.camel_case}(
-                    this.animate(other, procedure)?,
-                )
-            },
-            % else:
-            (
-                &AnimationValue::${prop.camel_case}(ref this),
-                &AnimationValue::${prop.camel_case}(ref other),
-            ) => {
-                AnimationValue::${prop.camel_case}(
-                    animate_discrete(this, other, procedure)?
-                )
-            },
-            % endif
-            % endif
-            % endfor
-            _ => {
+        Ok(unsafe {
+            use self::AnimationValue::*;
+
+            let this_tag = *(self as *const _ as *const u16);
+            let other_tag = *(other as *const _ as *const u16);
+            if this_tag != other_tag {
                 panic!("Unexpected AnimationValue::animate call");
             }
-        };
-        Ok(value)
+
+            match *self {
+                <% keyfunc = lambda x: (x.animated_type(), x.animation_value_type == "discrete") %>
+                % for (ty, discrete), props in groupby(animated, key=keyfunc):
+                ${" |\n".join("{}(ref this)".format(prop.camel_case) for prop in props)} => {
+                    let other_repr =
+                        &*(other as *const _ as *const AnimationValueVariantRepr<${ty}>);
+                    % if discrete:
+                    let value = animate_discrete(this, &other_repr.value, procedure)?;
+                    % else:
+                    let value = this.animate(&other_repr.value, procedure)?;
+                    % endif
+
+                    let mut out = mem::uninitialized();
+                    ptr::write(
+                        &mut out as *mut _ as *mut AnimationValueVariantRepr<${ty}>,
+                        AnimationValueVariantRepr {
+                            tag: this_tag,
+                            value,
+                        },
+                    );
+                    out
+                }
+                % endfor
+                ${" |\n".join("{}(void)".format(prop.camel_case) for prop in unanimated)} => {
+                    void::unreachable(void)
+                }
+            }
+        })
     }
 }
 
+<%
+    nondiscrete = []
+    for prop in animated:
+        if prop.animation_value_type != "discrete":
+            nondiscrete.append(prop)
+%>
+
 impl ComputeSquaredDistance for AnimationValue {
     fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        match *self {
-            % for i, prop in enumerate([p for p in data.longhands if p.animatable and p.animation_value_type == "discrete"]):
-            % if i > 0:
-            |
-            % endif
-            AnimationValue::${prop.camel_case}(..)
-            % endfor
-            => return Err(()),
-            _ => (),
-        }
-        match (self, other) {
-            % for prop in data.longhands:
-            % if prop.animatable:
-            % if prop.animation_value_type != "discrete":
-            (&AnimationValue::${prop.camel_case}(ref this), &AnimationValue::${prop.camel_case}(ref other)) => {
-                this.compute_squared_distance(other)
-            },
-            % endif
-            % endif
-            % endfor
-            _ => {
-                panic!("computed values should be of the same property");
-            },
+        unsafe {
+            use self::AnimationValue::*;
+
+            let this_tag = *(self as *const _ as *const u16);
+            let other_tag = *(other as *const _ as *const u16);
+            if this_tag != other_tag {
+                panic!("Unexpected AnimationValue::compute_squared_distance call");
+            }
+
+            match *self {
+                % for ty, props in groupby(nondiscrete, key=lambda x: x.animated_type()):
+                ${" |\n".join("{}(ref this)".format(prop.camel_case) for prop in props)} => {
+                    let other_repr =
+                        &*(other as *const _ as *const AnimationValueVariantRepr<${ty}>);
+
+                    this.compute_squared_distance(&other_repr.value)
+                }
+                % endfor
+                _ => Err(()),
+            }
         }
     }
 }
@@ -610,7 +747,7 @@ impl ToAnimatedZero for AnimationValue {
 impl RepeatableListAnimatable for LengthOrPercentage {}
 impl RepeatableListAnimatable for Either<f32, LengthOrPercentage> {}
 impl RepeatableListAnimatable for Either<NonNegativeNumber, NonNegativeLengthOrPercentage> {}
-impl RepeatableListAnimatable for SvgLengthOrPercentageOrNumber<NonNegativeLengthOrPercentage, NonNegativeNumber> {}
+impl RepeatableListAnimatable for SvgLengthOrPercentageOrNumber<LengthOrPercentage, Number> {}
 
 macro_rules! repeated_vec_impl {
     ($($ty:ty),*) => {
@@ -672,7 +809,7 @@ impl Animate for Visibility {
 impl ComputeSquaredDistance for Visibility {
     #[inline]
     fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        Ok(SquaredDistance::Value(if *self == *other { 0. } else { 1. }))
+        Ok(SquaredDistance::from_sqrt(if *self == *other { 0. } else { 1. }))
     }
 }
 
@@ -813,18 +950,16 @@ impl Into<FontStretch> for f64 {
 }
 
 /// <https://drafts.csswg.org/css-fonts-4/#font-variation-settings-def>
-#[cfg(feature = "gecko")]
 impl Animate for FontVariationSettings {
     #[inline]
     fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
         FontSettingTagIter::new(self, other)?
             .map(|r| r.and_then(|(st, ot)| st.animate(&ot, procedure)))
-            .collect::<Result<Vec<FontSettingTag>, ()>>()
-            .map(GenericFontSettings::Tag)
+            .collect::<Result<Vec<ComputedVariationValue>, ()>>()
+            .map(|v| GenericFontSettings(v.into_boxed_slice()))
     }
 }
 
-#[cfg(feature = "gecko")]
 impl ComputeSquaredDistance for FontVariationSettings {
     #[inline]
     fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
@@ -834,7 +969,6 @@ impl ComputeSquaredDistance for FontVariationSettings {
     }
 }
 
-#[cfg(feature = "gecko")]
 impl ToAnimatedZero for FontVariationSettings {
     #[inline]
     fn to_animated_zero(&self) -> Result<Self, ()> {
@@ -842,49 +976,21 @@ impl ToAnimatedZero for FontVariationSettings {
     }
 }
 
-#[cfg(feature = "gecko")]
-impl Animate for FontSettingTag {
-    #[inline]
-    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
-        if self.tag != other.tag {
-            return Err(());
-        }
-        let value = self.value.animate(&other.value, procedure)?;
-        Ok(FontSettingTag {
-            tag: self.tag,
-            value,
-        })
-    }
-}
+type ComputedVariationValue = VariationValue<Number>;
 
-#[cfg(feature = "gecko")]
-impl ComputeSquaredDistance for FontSettingTag {
-    #[inline]
-    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        if self.tag != other.tag {
-            return Err(());
-        }
-        self.value.compute_squared_distance(&other.value)
-    }
-}
-
-#[cfg(feature = "gecko")]
-type FontSettingTag = GenericFontSettingTag<FontSettingTagFloat>;
-
-#[cfg(feature = "gecko")]
+// FIXME: Could do a rename, this is only used for font variations.
 struct FontSettingTagIterState<'a> {
-    tags: Vec<(&'a FontSettingTag)>,
+    tags: Vec<(&'a ComputedVariationValue)>,
     index: usize,
-    prev_tag: u32,
+    prev_tag: FontTag,
 }
 
-#[cfg(feature = "gecko")]
 impl<'a> FontSettingTagIterState<'a> {
-    fn new(tags: Vec<(&'a FontSettingTag)>) -> FontSettingTagIterState<'a> {
+    fn new(tags: Vec<<&'a ComputedVariationValue>) -> FontSettingTagIterState<'a> {
         FontSettingTagIterState {
             index: tags.len(),
             tags,
-            prev_tag: 0,
+            prev_tag: FontTag(0),
         }
     }
 }
@@ -894,12 +1000,13 @@ impl<'a> FontSettingTagIterState<'a> {
 /// [CSS fonts level 4](https://drafts.csswg.org/css-fonts-4/#descdef-font-face-font-variation-settings)
 /// defines the animation of font-variation-settings as follows:
 ///
-///   Two declarations of font-feature-settings[sic] can be animated between if they are "like".
-///   "Like" declarations are ones where the same set of properties appear (in any order).
-///   Because succesive[sic] duplicate properties are applied instead of prior duplicate
-///   properties, two declarations can be "like" even if they have differing number of
-///   properties. If two declarations are "like" then animation occurs pairwise between
-///   corresponding values in the declarations.
+///   Two declarations of font-feature-settings[sic] can be animated between if
+///   they are "like".  "Like" declarations are ones where the same set of
+///   properties appear (in any order).  Because succesive[sic] duplicate
+///   properties are applied instead of prior duplicate properties, two
+///   declarations can be "like" even if they have differing number of
+///   properties. If two declarations are "like" then animation occurs pairwise
+///   between corresponding values in the declarations.
 ///
 /// In other words if we have the following lists:
 ///
@@ -911,9 +1018,10 @@ impl<'a> FontSettingTagIterState<'a> {
 ///   "wdth" 5, "wght" 2
 ///   "wght" 4, "wdth" 10
 ///
-/// This iterator supports this by sorting the two lists, then iterating them in reverse,
-/// and skipping entries with repeated tag names. It will return Some(Err()) if it reaches the
-/// end of one list before the other, or if the tag names do not match.
+/// This iterator supports this by sorting the two lists, then iterating them in
+/// reverse, and skipping entries with repeated tag names. It will return
+/// Some(Err()) if it reaches the end of one list before the other, or if the
+/// tag names do not match.
 ///
 /// For the above example, this iterator would return:
 ///
@@ -921,37 +1029,33 @@ impl<'a> FontSettingTagIterState<'a> {
 ///   Some(Ok("wdth" 5, "wdth" 10))
 ///   None
 ///
-#[cfg(feature = "gecko")]
 struct FontSettingTagIter<'a> {
     a_state: FontSettingTagIterState<'a>,
     b_state: FontSettingTagIterState<'a>,
 }
 
-#[cfg(feature = "gecko")]
 impl<'a> FontSettingTagIter<'a> {
     fn new(
         a_settings: &'a FontVariationSettings,
         b_settings: &'a FontVariationSettings,
     ) -> Result<FontSettingTagIter<'a>, ()> {
-        if let (&GenericFontSettings::Tag(ref a_tags), &GenericFontSettings::Tag(ref b_tags)) = (a_settings, b_settings)
-        {
-            fn as_new_sorted_tags(tags: &Vec<FontSettingTag>) -> Vec<(&FontSettingTag)> {
-                use std::iter::FromIterator;
-                let mut sorted_tags: Vec<(&FontSettingTag)> = Vec::from_iter(tags.iter());
-                sorted_tags.sort_by_key(|k| k.tag);
-                sorted_tags
-            };
-
-            Ok(FontSettingTagIter {
-                a_state: FontSettingTagIterState::new(as_new_sorted_tags(a_tags)),
-                b_state: FontSettingTagIterState::new(as_new_sorted_tags(b_tags)),
-            })
-        } else {
-            Err(())
+        if a_settings.0.is_empty() || b_settings.0.is_empty() {
+            return Err(());
         }
+        fn as_new_sorted_tags(tags: &[ComputedVariationValue]) -> Vec<<&ComputedVariationValue> {
+            use std::iter::FromIterator;
+            let mut sorted_tags = Vec::from_iter(tags.iter());
+            sorted_tags.sort_by_key(|k| k.tag.0);
+            sorted_tags
+        };
+
+        Ok(FontSettingTagIter {
+            a_state: FontSettingTagIterState::new(as_new_sorted_tags(&a_settings.0)),
+            b_state: FontSettingTagIterState::new(as_new_sorted_tags(&b_settings.0)),
+        })
     }
 
-    fn next_tag(state: &mut FontSettingTagIterState<'a>) -> Option<(&'a FontSettingTag)> {
+    fn next_tag(state: &mut FontSettingTagIterState<'a>) -> Option<<&'a ComputedVariationValue> {
         if state.index == 0 {
             return None;
         }
@@ -967,11 +1071,10 @@ impl<'a> FontSettingTagIter<'a> {
     }
 }
 
-#[cfg(feature = "gecko")]
 impl<'a> Iterator for FontSettingTagIter<'a> {
-    type Item = Result<(&'a FontSettingTag, &'a FontSettingTag), ()>;
+    type Item = Result<(&'a ComputedVariationValue, &'a ComputedVariationValue), ()>;
 
-    fn next(&mut self) -> Option<Result<(&'a FontSettingTag, &'a FontSettingTag), ()>> {
+    fn next(&mut self) -> Option<Result<(&'a ComputedVariationValue, &'a ComputedVariationValue), ()>> {
         match (
             FontSettingTagIter::next_tag(&mut self.a_state),
             FontSettingTagIter::next_tag(&mut self.b_state),
@@ -1696,7 +1799,7 @@ pub struct Perspective(f32, f32, f32, f32);
 pub struct Quaternion(f64, f64, f64, f64);
 
 /// A decomposed 3d matrix.
-#[derive(Clone, ComputeSquaredDistance, Copy, Debug)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug)]
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub struct MatrixDecomposed3D {
     /// A translation function.
@@ -1739,6 +1842,76 @@ impl Quaternion {
     }
 }
 
+impl Animate for Quaternion {
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
+        use std::f64;
+
+        let (this_weight, other_weight) = procedure.weights();
+        debug_assert!((this_weight + other_weight - 1.0f64).abs() <= f64::EPSILON ||
+                      other_weight == 1.0f64 || other_weight == 0.0f64,
+                      "animate should only be used for interpolating or accumulating transforms");
+
+        // We take a specialized code path for accumulation (where other_weight is 1)
+        if other_weight == 1.0 {
+            if this_weight == 0.0 {
+                return Ok(*other);
+            }
+
+            let clamped_w = self.3.min(1.0).max(-1.0);
+
+            // Determine the scale factor.
+            let mut theta = clamped_w.acos();
+            let mut scale = if theta == 0.0 { 0.0 } else { 1.0 / theta.sin() };
+            theta *= this_weight;
+            scale *= theta.sin();
+
+            // Scale the self matrix by this_weight.
+            let mut scaled_self = *self;
+            % for i in range(3):
+                scaled_self.${i} *= scale;
+            % endfor
+            scaled_self.3 = theta.cos();
+
+            // Multiply scaled-self by other.
+            let a = &scaled_self;
+            let b = other;
+            return Ok(Quaternion(
+                a.3 * b.0 + a.0 * b.3 + a.1 * b.2 - a.2 * b.1,
+                a.3 * b.1 - a.0 * b.2 + a.1 * b.3 + a.2 * b.0,
+                a.3 * b.2 + a.0 * b.1 - a.1 * b.0 + a.2 * b.3,
+                a.3 * b.3 - a.0 * b.0 - a.1 * b.1 - a.2 * b.2,
+            ));
+        }
+
+        let mut product = self.0 * other.0 +
+                          self.1 * other.1 +
+                          self.2 * other.2 +
+                          self.3 * other.3;
+
+        // Clamp product to -1.0 <= product <= 1.0
+        product = product.min(1.0);
+        product = product.max(-1.0);
+
+        if product == 1.0 {
+            return Ok(*self);
+        }
+
+        let theta = product.acos();
+        let w = (other_weight * theta).sin() * 1.0 / (1.0 - product * product).sqrt();
+
+        let mut a = *self;
+        let mut b = *other;
+        let mut result = Quaternion(0., 0., 0., 0.,);
+        % for i in range(4):
+            a.${i} *= (other_weight * theta).cos() - product * w;
+            b.${i} *= w;
+            result.${i} = a.${i} + b.${i};
+        % endfor
+
+        Ok(result)
+    }
+}
+
 impl ComputeSquaredDistance for Quaternion {
     #[inline]
     fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
@@ -1746,7 +1919,7 @@ impl ComputeSquaredDistance for Quaternion {
         // so we can get their angle difference by:
         // cos(theta/2) = (q1 dot q2) / (|q1| * |q2|) = q1 dot q2.
         let distance = self.dot(other).max(-1.0).min(1.0).acos() * 2.0;
-        Ok(SquaredDistance::Value(distance * distance))
+        Ok(SquaredDistance::from_sqrt(distance))
     }
 }
 
@@ -2002,87 +2175,6 @@ impl Animate for Perspective {
     }
 }
 
-impl Animate for MatrixDecomposed3D {
-    /// <https://drafts.csswg.org/css-transforms/#interpolation-of-decomposed-3d-matrix-values>
-    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
-        use std::f64;
-
-        let (this_weight, other_weight) = procedure.weights();
-
-        debug_assert!((this_weight + other_weight - 1.0f64).abs() <= f64::EPSILON ||
-                      other_weight == 1.0f64 || other_weight == 0.0f64,
-                      "animate should only be used for interpolating or accumulating transforms");
-
-        let mut sum = *self;
-
-        // Add translate, scale, skew and perspective components.
-        sum.translate = self.translate.animate(&other.translate, procedure)?;
-        sum.scale = self.scale.animate(&other.scale, procedure)?;
-        sum.skew = self.skew.animate(&other.skew, procedure)?;
-        sum.perspective = self.perspective.animate(&other.perspective, procedure)?;
-
-        // Add quaternions using spherical linear interpolation (Slerp).
-        //
-        // We take a specialized code path for accumulation (where other_weight is 1)
-        if other_weight == 1.0 {
-            if this_weight == 0.0 {
-                return Ok(*other)
-            }
-
-            let clamped_w = self.quaternion.3.min(1.0).max(-1.0);
-
-            // Determine the scale factor.
-            let mut theta = clamped_w.acos();
-            let mut scale = if theta == 0.0 { 0.0 } else { 1.0 / theta.sin() };
-            theta *= this_weight;
-            scale *= theta.sin();
-
-            // Scale the self matrix by this_weight.
-            let mut scaled_self = *self;
-            % for i in range(3):
-                scaled_self.quaternion.${i} *= scale;
-            % endfor
-            scaled_self.quaternion.3 = theta.cos();
-
-            // Multiply scaled-self by other.
-            let a = &scaled_self.quaternion;
-            let b = &other.quaternion;
-            sum.quaternion = Quaternion(
-                a.3 * b.0 + a.0 * b.3 + a.1 * b.2 - a.2 * b.1,
-                a.3 * b.1 - a.0 * b.2 + a.1 * b.3 + a.2 * b.0,
-                a.3 * b.2 + a.0 * b.1 - a.1 * b.0 + a.2 * b.3,
-                a.3 * b.3 - a.0 * b.0 - a.1 * b.1 - a.2 * b.2,
-            );
-        } else {
-            let mut product = self.quaternion.0 * other.quaternion.0 +
-                              self.quaternion.1 * other.quaternion.1 +
-                              self.quaternion.2 * other.quaternion.2 +
-                              self.quaternion.3 * other.quaternion.3;
-
-            // Clamp product to -1.0 <= product <= 1.0
-            product = product.min(1.0);
-            product = product.max(-1.0);
-
-            if product == 1.0 {
-                return Ok(sum);
-            }
-
-            let theta = product.acos();
-            let w = (other_weight * theta).sin() * 1.0 / (1.0 - product * product).sqrt();
-
-            let mut a = *self;
-            let mut b = *other;
-            % for i in range(4):
-                a.quaternion.${i} *= (other_weight * theta).cos() - product * w;
-                b.quaternion.${i} *= w;
-                sum.quaternion.${i} = a.quaternion.${i} + b.quaternion.${i};
-            % endfor
-        }
-
-        Ok(sum)
-    }
-}
-
 impl From<MatrixDecomposed3D> for Matrix3D {
     /// Recompose a 3D matrix.
     /// <https://drafts.csswg.org/css-transforms/#recomposing-to-a-3d-matrix>
@@ -2277,6 +2369,129 @@ impl Matrix3D {
         };
 
         Some(x)
+    }
+}
+
+/// <https://drafts.csswg.org/css-transforms-2/#propdef-rotate>
+impl ComputedRotate {
+    fn fill_unspecified(rotate: &ComputedRotate) -> Result<(Number, Number, Number, Angle), ()> {
+        // According to the spec:
+        // https://drafts.csswg.org/css-transforms-2/#individual-transforms
+        //
+        // If the axis is unspecified, it defaults to "0 0 1"
+        match *rotate {
+            Rotate::None =>
+                Ok((0., 0., 1., Angle::zero())),
+            Rotate::Rotate3D(rx, ry, rz, angle) => Ok((rx, ry, rz, angle)),
+            Rotate::Rotate(angle) => Ok((0., 0., 1., angle)),
+        }
+    }
+}
+
+impl Animate for ComputedRotate {
+    #[inline]
+    fn animate(
+        &self,
+        other: &Self,
+        procedure: Procedure,
+    ) -> Result<Self, ()> {
+        let from = ComputedRotate::fill_unspecified(self)?;
+        let to = ComputedRotate::fill_unspecified(other)?;
+
+        let (fx, fy, fz, fa) = transform::get_normalized_vector_and_angle(from.0, from.1, from.2, from.3);
+        let (tx, ty, tz, ta) = transform::get_normalized_vector_and_angle(to.0, to.1, to.2, to.3);
+        if (fx, fy, fz) == (tx, ty, tz) {
+            return Ok(Rotate::Rotate3D(fx, fy, fz, fa.animate(&ta, procedure)?));
+        }
+
+        let fv = DirectionVector::new(fx, fy, fz);
+        let tv = DirectionVector::new(tx, ty, tz);
+        let fq = Quaternion::from_direction_and_angle(&fv, fa.radians64());
+        let tq = Quaternion::from_direction_and_angle(&tv, ta.radians64());
+
+        let rq = Quaternion::animate(&fq, &tq, procedure)?;
+        let (x, y, z, angle) =
+            transform::get_normalized_vector_and_angle(rq.0 as f32,
+                                                       rq.1 as f32,
+                                                       rq.2 as f32,
+                                                       rq.3.acos() as f32 *2.0);
+
+        Ok(Rotate::Rotate3D(x, y, z, Angle::from_radians(angle)))
+    }
+}
+
+/// <https://drafts.csswg.org/css-transforms-2/#propdef-translate>
+impl ComputedTranslate {
+    fn fill_unspecified(translate: &ComputedTranslate)
+        -> Result<(LengthOrPercentage, LengthOrPercentage, Length), ()> {
+        // According to the spec:
+        // https://drafts.csswg.org/css-transforms-2/#individual-transforms
+        //
+        // Unspecified translations default to 0px
+        match *translate {
+            Translate::None => {
+                Ok((LengthOrPercentage::Length(Length::zero()),
+                    LengthOrPercentage::Length(Length::zero()),
+                    Length::zero()))
+            },
+            Translate::Translate3D(tx, ty, tz) => Ok((tx, ty, tz)),
+            Translate::Translate(tx, ty) => Ok((tx, ty, Length::zero())),
+            Translate::TranslateX(tx) => Ok((tx, LengthOrPercentage::Length(Length::zero()), Length::zero())),
+        }
+    }
+}
+
+impl Animate for ComputedTranslate {
+    #[inline]
+    fn animate(
+        &self,
+        other: &Self,
+        procedure: Procedure,
+    ) -> Result<Self, ()> {
+        let from = ComputedTranslate::fill_unspecified(self)?;
+        let to = ComputedTranslate::fill_unspecified(other)?;
+
+        Ok(Translate::Translate3D(from.0.animate(&to.0, procedure)?,
+                                  from.1.animate(&to.1, procedure)?,
+                                  from.2.animate(&to.2, procedure)?))
+    }
+}
+
+/// <https://drafts.csswg.org/css-transforms-2/#propdef-scale>
+impl ComputedScale {
+    fn fill_unspecified(scale: &ComputedScale)
+        -> Result<(Number, Number, Number), ()> {
+        // According to the spec:
+        // https://drafts.csswg.org/css-transforms-2/#individual-transforms
+        //
+        // Unspecified scales default to 1
+        match *scale {
+            Scale::None => Ok((1.0, 1.0, 1.0)),
+            Scale::Scale3D(sx, sy, sz) => Ok((sx, sy, sz)),
+            Scale::Scale(sx, sy) => Ok((sx, sy, 1.)),
+            Scale::ScaleX(sx) => Ok((sx, 1., 1.)),
+        }
+    }
+}
+
+impl Animate for ComputedScale {
+    #[inline]
+    fn animate(
+        &self,
+        other: &Self,
+        procedure: Procedure,
+    ) -> Result<Self, ()> {
+        let from = ComputedScale::fill_unspecified(self)?;
+        let to = ComputedScale::fill_unspecified(other)?;
+
+        if procedure == Procedure::Add {
+            // scale(x1,y1,z1)*scale(x2,y2,z2) = scale(x1*x2, y1*y2, z1*z2)
+            return Ok(Scale::Scale3D(from.0 * to.0, from.1 * to.1, from.2 * to.2));
+        }
+
+        Ok(Scale::Scale3D(animate_multiplicative_factor(from.0, to.0, procedure)?,
+                          animate_multiplicative_factor(from.1, to.1, procedure)?,
+                          animate_multiplicative_factor(from.2, to.2, procedure)?))
     }
 }
 
@@ -2755,12 +2970,8 @@ impl Animate for AnimatedFilter {
             },
             % endfor
             % for func in ['Brightness', 'Contrast', 'Opacity', 'Saturate']:
-            (&Filter::${func}(ref this), &Filter::${func}(ref other)) => {
-                Ok(Filter::${func}(NonNegative(animate_multiplicative_factor(
-                    this.0,
-                    other.0,
-                    procedure,
-                )?)))
+            (&Filter::${func}(this), &Filter::${func}(other)) => {
+                Ok(Filter::${func}(animate_multiplicative_factor(this, other, procedure)?))
             },
             % endfor
             % if product == "gecko":
@@ -2781,29 +2992,10 @@ impl ToAnimatedZero for AnimatedFilter {
             Filter::${func}(ref this) => Ok(Filter::${func}(this.to_animated_zero()?)),
             % endfor
             % for func in ['Brightness', 'Contrast', 'Opacity', 'Saturate']:
-            Filter::${func}(_) => Ok(Filter::${func}(NonNegative(1.))),
+            Filter::${func}(_) => Ok(Filter::${func}(1.)),
             % endfor
             % if product == "gecko":
             Filter::DropShadow(ref this) => Ok(Filter::DropShadow(this.to_animated_zero()?)),
-            % endif
-            _ => Err(()),
-        }
-    }
-}
-
-// FIXME(nox): This should be derived.
-impl ComputeSquaredDistance for AnimatedFilter {
-    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
-        match (self, other) {
-            % for func in FILTER_FUNCTIONS:
-            (&Filter::${func}(ref this), &Filter::${func}(ref other)) => {
-                this.compute_squared_distance(other)
-            },
-            % endfor
-            % if product == "gecko":
-            (&Filter::DropShadow(ref this), &Filter::DropShadow(ref other)) => {
-                this.compute_squared_distance(other)
-            },
             % endif
             _ => Err(()),
         }
@@ -2870,15 +3062,17 @@ impl ComputeSquaredDistance for AnimatedFilterList {
 ///   border-top-color, border-color, border-top, border
 ///
 /// [property-order] https://drafts.csswg.org/web-animations/#calculating-computed-keyframes
-#[cfg(feature = "gecko")]
 pub fn compare_property_priority(a: &PropertyId, b: &PropertyId) -> cmp::Ordering {
     match (a.as_shorthand(), b.as_shorthand()) {
         // Within shorthands, sort by the number of subproperties, then by IDL name.
         (Ok(a), Ok(b)) => {
-            let subprop_count_a = a.longhands().len();
-            let subprop_count_b = b.longhands().len();
-            subprop_count_a.cmp(&subprop_count_b).then_with(
-                || get_idl_name_sort_order(&a).cmp(&get_idl_name_sort_order(&b)))
+            let subprop_count_a = a.longhands().count();
+            let subprop_count_b = b.longhands().count();
+            subprop_count_a
+                .cmp(&subprop_count_b)
+                .then_with(|| {
+                    get_idl_name_sort_order(a).cmp(&get_idl_name_sort_order(b))
+                })
         },
 
         // Longhands go before shorthands.
@@ -2891,8 +3085,7 @@ pub fn compare_property_priority(a: &PropertyId, b: &PropertyId) -> cmp::Orderin
     }
 }
 
-#[cfg(feature = "gecko")]
-fn get_idl_name_sort_order(shorthand: &ShorthandId) -> u32 {
+fn get_idl_name_sort_order(shorthand: ShorthandId) -> u32 {
 <%
 # Sort by IDL name.
 sorted_shorthands = sorted(data.shorthands, key=lambda p: to_idl_name(p.ident))
@@ -2900,7 +3093,7 @@ sorted_shorthands = sorted(data.shorthands, key=lambda p: to_idl_name(p.ident))
 # Annotate with sorted position
 sorted_shorthands = [(p, position) for position, p in enumerate(sorted_shorthands)]
 %>
-    match *shorthand {
+    match shorthand {
         % for property, position in sorted_shorthands:
             ShorthandId::${property.camel_case} => ${position},
         % endfor

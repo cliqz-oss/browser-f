@@ -17,6 +17,7 @@
 #include "nsAtom.h"
 #include "PLDHashTable.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/StylePrefs.h"
 #include "mozilla/css/ImportRule.h"
 #include "mozilla/css/StyleRule.h"
 #include "mozilla/css/GroupRule.h"
@@ -54,7 +55,7 @@
 #include "mozilla/OperatorNewExtensions.h"
 #include "mozilla/TypedEnumBits.h"
 #include "RuleProcessorCache.h"
-#include "nsIDOMMutationEvent.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -1220,11 +1221,9 @@ static inline bool ActiveHoverQuirkMatches(nsCSSSelector* aSelector,
 
 
 static inline bool
-IsSignificantChild(nsIContent* aChild, bool aTextIsSignificant,
-                   bool aWhitespaceIsSignificant)
+IsSignificantChild(nsIContent* aChild, bool aWhitespaceIsSignificant)
 {
-  return nsStyleUtil::IsSignificantChild(aChild, aTextIsSignificant,
-                                         aWhitespaceIsSignificant);
+  return nsStyleUtil::IsSignificantChild(aChild, aWhitespaceIsSignificant);
 }
 
 // This function is to be called once we have fetched a value for an attribute
@@ -1359,7 +1358,7 @@ checkGenericEmptyMatches(Element* aElement,
   // stop at first non-comment (and non-whitespace for :-moz-only-whitespace)
   // node
   for (child = aElement->GetFirstChild();
-       child && !IsSignificantChild(child, true, isWhitespaceSignificant);
+       child && !IsSignificantChild(child, isWhitespaceSignificant);
        child = child->GetNextSibling());
   return (child == nullptr);
 }
@@ -1631,7 +1630,7 @@ static bool SelectorMatches(Element* aElement,
 
           // stop at first non-comment and non-whitespace node
           for (firstNode = parent->GetFirstChild();
-               firstNode && !IsSignificantChild(firstNode, true, false);
+               firstNode && !IsSignificantChild(firstNode, false);
                firstNode = firstNode->GetNextSibling());
         }
         if (aElement != firstNode) {
@@ -1656,7 +1655,7 @@ static bool SelectorMatches(Element* aElement,
 
           // stop at first non-comment and non-whitespace node
           for (lastNode = parent->GetLastChild();
-               lastNode && !IsSignificantChild(lastNode, true, false);
+               lastNode && !IsSignificantChild(lastNode, false);
                lastNode = lastNode->GetPreviousSibling());
         }
         if (aElement != lastNode) {
@@ -2622,7 +2621,7 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(
         aData->mNameSpaceID == kNameSpaceID_None) {
       const nsAttrValue* otherClasses = aData->mOtherValue;
       NS_ASSERTION(otherClasses ||
-                   aData->mModType == nsIDOMMutationEvent::REMOVAL,
+                   aData->mModType == MutationEventBinding::REMOVAL,
                    "All class values should be StoresOwnData and parsed"
                    "via Element::BeforeSetAttr, so available here");
       // For WillChange, enumerate classes that will be removed to see which

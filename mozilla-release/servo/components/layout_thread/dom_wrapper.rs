@@ -36,7 +36,6 @@ use html5ever::{LocalName, Namespace};
 use layout::data::StyleAndLayoutData;
 use layout::wrapper::GetRawData;
 use msg::constellation_msg::{BrowsingContextId, PipelineId};
-use nonzero::NonZero;
 use range::Range;
 use script::layout_exports::{CharacterDataTypeId, ElementTypeId, HTMLElementTypeId, NodeTypeId};
 use script::layout_exports::{Document, Element, Node, Text};
@@ -59,6 +58,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
 use style::CaseSensitivityExt;
 use style::applicable_declarations::ApplicableDeclarationBlock;
@@ -66,7 +66,7 @@ use style::attr::AttrValue;
 use style::context::SharedStyleContext;
 use style::data::ElementData;
 use style::dom::{DomChildren, LayoutIterator, NodeInfo, OpaqueNode};
-use style::dom::{TDocument, TElement, TNode};
+use style::dom::{TDocument, TElement, TNode, TShadowRoot};
 use style::element_state::*;
 use style::font_metrics::ServoMetricsProvider;
 use style::properties::{ComputedValues, PropertyDeclarationBlock};
@@ -74,9 +74,10 @@ use style::selector_parser::{AttrValue as SelectorAttrValue, NonTSPseudoClass, P
 use style::selector_parser::{PseudoElement, SelectorImpl, extended_filtering};
 use style::shared_lock::{SharedRwLock as StyleSharedRwLock, Locked as StyleLocked};
 use style::str::is_whitespace;
+use style::stylist::CascadeData;
 
 pub unsafe fn drop_style_and_layout_data(data: OpaqueStyleAndLayoutData) {
-    let ptr = data.ptr.get() as *mut StyleData;
+    let ptr = data.ptr.as_ptr() as *mut StyleData;
     let non_opaque: *mut StyleAndLayoutData = ptr as *mut _;
     let _ = Box::from_raw(non_opaque);
 }
@@ -150,9 +151,35 @@ impl<'ln> NodeInfo for ServoLayoutNode<'ln> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Impossible { }
+
+#[derive(Clone, Copy)]
+pub struct ShadowRoot<'lr>(Impossible, PhantomData<&'lr ()>);
+
+impl<'lr> TShadowRoot for ShadowRoot<'lr> {
+    type ConcreteNode = ServoLayoutNode<'lr>;
+
+    fn as_node(&self) -> Self::ConcreteNode {
+        match self.0 { }
+    }
+
+    fn host(&self) -> ServoLayoutElement<'lr> {
+        match self.0 { }
+    }
+
+    fn style_data<'a>(&self) -> &'a CascadeData
+    where
+        Self: 'a,
+    {
+        match self.0 { }
+    }
+}
+
 impl<'ln> TNode for ServoLayoutNode<'ln> {
     type ConcreteDocument = ServoLayoutDocument<'ln>;
     type ConcreteElement = ServoLayoutElement<'ln>;
+    type ConcreteShadowRoot = ShadowRoot<'ln>;
 
     fn parent_node(&self) -> Option<Self> {
         unsafe {
@@ -208,6 +235,10 @@ impl<'ln> TNode for ServoLayoutNode<'ln> {
         self.node.downcast().map(ServoLayoutDocument::from_layout_js)
     }
 
+    fn as_shadow_root(&self) -> Option<ShadowRoot<'ln>> {
+        None
+    }
+
     fn is_in_document(&self) -> bool {
         unsafe { self.node.get_flag(NodeFlags::IS_IN_DOC) }
     }
@@ -229,7 +260,7 @@ impl<'ln> LayoutNode for ServoLayoutNode<'ln> {
             let ptr: *mut StyleAndLayoutData =
                 Box::into_raw(Box::new(StyleAndLayoutData::new()));
             let opaque = OpaqueStyleAndLayoutData {
-                ptr: NonZero::new_unchecked(ptr as *mut StyleData),
+                ptr: NonNull::new_unchecked(ptr as *mut StyleData),
             };
             self.init_style_and_layout_data(opaque);
         };
@@ -341,7 +372,7 @@ pub struct ServoLayoutElement<'le> {
 impl<'le> fmt::Debug for ServoLayoutElement<'le> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<{}", self.element.local_name())?;
-        if let &Some(ref id) = unsafe { &*self.element.id_attribute() } {
+        if let Some(id) = self.id() {
             write!(f, " id={}", id)?;
         }
         write!(f, "> ({:#x})", self.as_node().opaque().0)
@@ -372,7 +403,7 @@ impl<'le> TElement for ServoLayoutElement<'le> {
         }
     }
 
-    fn get_state(&self) -> ElementState {
+    fn state(&self) -> ElementState {
         self.element.get_state_for_layout()
     }
 
@@ -382,9 +413,9 @@ impl<'le> TElement for ServoLayoutElement<'le> {
     }
 
     #[inline]
-    fn get_id(&self) -> Option<Atom> {
+    fn id(&self) -> Option<&Atom> {
         unsafe {
-            (*self.element.id_attribute()).clone()
+            (*self.element.id_attribute()).as_ref()
         }
     }
 
@@ -450,12 +481,12 @@ impl<'le> TElement for ServoLayoutElement<'le> {
     fn get_data(&self) -> Option<&AtomicRefCell<ElementData>> {
         unsafe {
             self.get_style_and_layout_data().map(|d| {
-                &(*(d.ptr.get() as *mut StyleData)).element_data
+                &(*(d.ptr.as_ptr() as *mut StyleData)).element_data
             })
         }
     }
 
-    fn skip_root_and_item_based_display_fixup(&self) -> bool {
+    fn skip_item_display_fixup(&self) -> bool {
         false
     }
 
@@ -489,11 +520,11 @@ impl<'le> TElement for ServoLayoutElement<'le> {
             .map(|v| String::from(v as &str))
     }
 
-    fn match_element_lang(&self,
-                          override_lang: Option<Option<SelectorAttrValue>>,
-                          value: &PseudoClassStringArg)
-                          -> bool
-    {
+    fn match_element_lang(
+        &self,
+        override_lang: Option<Option<SelectorAttrValue>>,
+        value: &PseudoClassStringArg,
+    ) -> bool {
         // Servo supports :lang() from CSS Selectors 4, which can take a comma-
         // separated list of language tags in the pseudo-class, and which
         // performs RFC 4647 extended filtering matching on them.
@@ -535,6 +566,14 @@ impl<'le> TElement for ServoLayoutElement<'le> {
             self.element.synthesize_presentational_hints_for_legacy_attributes(hints);
         }
     }
+
+    fn shadow_root(&self) -> Option<ShadowRoot<'le>> {
+        None
+    }
+
+    fn containing_shadow(&self) -> Option<ShadowRoot<'le>> {
+        None
+    }
 }
 
 impl<'le> PartialEq for ServoLayoutElement<'le> {
@@ -575,7 +614,7 @@ impl<'le> ServoLayoutElement<'le> {
 
     fn get_style_data(&self) -> Option<&StyleData> {
         unsafe {
-            self.get_style_and_layout_data().map(|d| &*(d.ptr.get() as *mut StyleData))
+            self.get_style_and_layout_data().map(|d| &*(d.ptr.as_ptr() as *mut StyleData))
         }
     }
 
@@ -692,12 +731,12 @@ impl<'le> ::selectors::Element for ServoLayoutElement<'le> {
     }
 
     #[inline]
-    fn get_local_name(&self) -> &LocalName {
+    fn local_name(&self) -> &LocalName {
         self.element.local_name()
     }
 
     #[inline]
-    fn get_namespace(&self) -> &Namespace {
+    fn namespace(&self) -> &Namespace {
         self.element.namespace()
     }
 
@@ -784,6 +823,13 @@ impl<'le> ::selectors::Element for ServoLayoutElement<'le> {
         }
     }
 
+    fn is_html_slot_element(&self) -> bool {
+        unsafe {
+            self.element.is_html_element() &&
+            self.local_name() == &local_name!("slot")
+        }
+    }
+
     fn is_html_element_in_html_document(&self) -> bool {
         unsafe {
             if !self.element.is_html_element() {
@@ -860,6 +906,7 @@ impl<'ln> NodeInfo for ServoThreadSafeLayoutNode<'ln> {
 impl<'ln> ThreadSafeLayoutNode for ServoThreadSafeLayoutNode<'ln> {
     type ConcreteNode = ServoLayoutNode<'ln>;
     type ConcreteThreadSafeLayoutElement = ServoThreadSafeLayoutElement<'ln>;
+    type ConcreteElement = ServoLayoutElement<'ln>;
     type ChildrenIterator = ThreadSafeLayoutNodeChildrenIterator<Self>;
 
     fn opaque(&self) -> OpaqueNode {
@@ -1017,8 +1064,8 @@ impl<ConcreteNode> Iterator for ThreadSafeLayoutNodeChildrenIterator<ConcreteNod
                 loop {
                     let next_node = if let Some(ref node) = current_node {
                         if let Some(element) = node.as_element() {
-                            if element.get_local_name() == &local_name!("summary") &&
-                               element.get_namespace() == &ns!(html) {
+                            if element.local_name() == &local_name!("summary") &&
+                               element.namespace() == &ns!(html) {
                                 self.current_node = None;
                                 return Some(node.clone());
                             }
@@ -1036,8 +1083,8 @@ impl<ConcreteNode> Iterator for ThreadSafeLayoutNodeChildrenIterator<ConcreteNod
                 let node = self.current_node.clone();
                 let node = node.and_then(|node| {
                     if node.is_element() &&
-                       node.as_element().unwrap().get_local_name() == &local_name!("summary") &&
-                       node.as_element().unwrap().get_namespace() == &ns!(html) {
+                       node.as_element().unwrap().local_name() == &local_name!("summary") &&
+                       node.as_element().unwrap().namespace() == &ns!(html) {
                         unsafe { node.dangerous_next_sibling() }
                     } else {
                         Some(node)
@@ -1084,6 +1131,7 @@ pub struct ServoThreadSafeLayoutElement<'le> {
 
 impl<'le> ThreadSafeLayoutElement for ServoThreadSafeLayoutElement<'le> {
     type ConcreteThreadSafeLayoutNode = ServoThreadSafeLayoutNode<'le>;
+    type ConcreteElement = ServoLayoutElement<'le>;
 
     fn as_node(&self) -> ServoThreadSafeLayoutNode<'le> {
         ServoThreadSafeLayoutNode {
@@ -1174,19 +1222,23 @@ impl<'le> ::selectors::Element for ServoThreadSafeLayoutElement<'le> {
         None
     }
 
+    fn is_html_slot_element(&self) -> bool {
+        self.element.is_html_slot_element()
+    }
+
     fn is_html_element_in_html_document(&self) -> bool {
         debug!("ServoThreadSafeLayoutElement::is_html_element_in_html_document called");
         true
     }
 
     #[inline]
-    fn get_local_name(&self) -> &LocalName {
-        self.element.get_local_name()
+    fn local_name(&self) -> &LocalName {
+        self.element.local_name()
     }
 
     #[inline]
-    fn get_namespace(&self) -> &Namespace {
-        self.element.get_namespace()
+    fn namespace(&self) -> &Namespace {
+        self.element.namespace()
     }
 
     fn match_pseudo_element(

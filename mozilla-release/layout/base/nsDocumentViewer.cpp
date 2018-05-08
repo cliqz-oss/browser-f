@@ -27,13 +27,12 @@
 #include "nsIFrame.h"
 #include "nsIWritablePropertyBag2.h"
 #include "nsSubDocumentFrame.h"
+#include "nsGenericHTMLElement.h"
 
 #include "nsILinkHandler.h"
 #include "nsIDOMDocument.h"
 #include "nsISelectionListener.h"
 #include "mozilla/dom/Selection.h"
-#include "nsIDOMHTMLDocument.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsContentUtils.h"
 #include "nsLayoutStylesheetCache.h"
 #ifdef ACCESSIBILITY
@@ -41,6 +40,7 @@
 #endif
 #include "mozilla/BasicEvents.h"
 #include "mozilla/Encoding.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/StyleSheet.h"
@@ -64,7 +64,6 @@
 #include "nsIImageLoadingContent.h"
 #include "nsCopySupport.h"
 #ifdef MOZ_XUL
-#include "nsIXULDocument.h"
 #include "nsXULPopupManager.h"
 #endif
 
@@ -123,6 +122,7 @@
 
 #include "mozilla/dom/Element.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/dom/ScriptLoader.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -281,9 +281,9 @@ private:
    */
   nsresult InitPresentationStuff(bool aDoInitialReflow);
 
-  nsresult GetPopupNode(nsIDOMNode** aNode);
-  nsresult GetPopupLinkNode(nsIDOMNode** aNode);
-  nsresult GetPopupImageNode(nsIImageLoadingContent** aNode);
+  already_AddRefed<nsINode> GetPopupNode();
+  already_AddRefed<nsINode> GetPopupLinkNode();
+  already_AddRefed<nsIImageLoadingContent> GetPopupImageNode();
 
   nsresult GetContentSizeInternal(int32_t* aWidth, int32_t* aHeight,
                                   nscoord aMaxWidth, nscoord aMaxHeight);
@@ -720,6 +720,7 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
   nscoord height = p2a * mBounds.height;
 
   mViewManager->SetWindowDimensions(width, height);
+  mPresContext->SetVisibleArea(nsRect(0, 0, width, height));
   mPresContext->SetTextZoom(mTextZoom);
   mPresContext->SetFullZoom(mPageZoom);
   mPresContext->SetOverrideDPPX(mOverrideDPPX);
@@ -731,11 +732,7 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
   if (aDoInitialReflow) {
     nsCOMPtr<nsIPresShell> shell = mPresShell;
     // Initial reflow
-    shell->Initialize(width, height);
-  } else {
-    // Store the visible area so it's available for other callers of
-    // Initialize, like nsContentSink::StartLayout.
-    mPresContext->SetVisibleArea(nsRect(0, 0, width, height));
+    shell->Initialize();
   }
 
   // now register ourselves as a selection listener, so that we get
@@ -1204,11 +1201,7 @@ nsDocumentViewer::PermitUnloadInternal(uint32_t *aPermitUnloadFlags,
 
   // Now, fire an BeforeUnload event to the document and see if it's ok
   // to unload...
-  nsIPresShell* shell = mDocument->GetShell();
-  nsPresContext* presContext = nullptr;
-  if (shell) {
-    presContext = shell->GetPresContext();
-  }
+  nsPresContext* presContext = mDocument->GetPresContext();
   RefPtr<BeforeUnloadEvent> event =
     new BeforeUnloadEvent(mDocument, presContext, nullptr);
   event->InitEvent(NS_LITERAL_STRING("beforeunload"), false, true);
@@ -1848,20 +1841,20 @@ nsDocumentViewer::Stop(void)
 }
 
 NS_IMETHODIMP
-nsDocumentViewer::GetDOMDocument(nsIDOMDocument **aResult)
+nsDocumentViewer::GetDOMDocument(nsISupports **aResult)
 {
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
   return CallQueryInterface(mDocument, aResult);
 }
 
-NS_IMETHODIMP_(nsIDocument *)
+nsIDocument*
 nsDocumentViewer::GetDocument()
 {
   return mDocument;
 }
 
-NS_IMETHODIMP
-nsDocumentViewer::SetDOMDocument(nsIDOMDocument *aDocument)
+nsresult
+nsDocumentViewer::SetDocument(nsIDocument *aDocument)
 {
   // Assumptions:
   //
@@ -1878,10 +1871,7 @@ nsDocumentViewer::SetDOMDocument(nsIDOMDocument *aDocument)
   if (!aDocument)
     return NS_ERROR_NULL_POINTER;
 
-  nsCOMPtr<nsIDocument> newDoc = do_QueryInterface(aDocument);
-  NS_ENSURE_TRUE(newDoc, NS_ERROR_UNEXPECTED);
-
-  return SetDocumentInternal(newDoc, false);
+  return SetDocumentInternal(aDocument, false);
 }
 
 NS_IMETHODIMP
@@ -2331,9 +2321,13 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
 
   StyleSetHandle styleSet;
   if (backendType == StyleBackendType::Gecko) {
+#ifdef MOZ_OLD_STYLE
     styleSet = new nsStyleSet();
+#else
+    MOZ_CRASH("old style system disabled");
+#endif
   } else {
-    styleSet = new ServoStyleSet(ServoStyleSet::Kind::Master);
+    styleSet = new ServoStyleSet();
   }
 
   styleSet->BeginUpdate();
@@ -2380,10 +2374,9 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
     ds->GetChromeEventHandler(getter_AddRefs(chromeHandler));
   }
   if (chromeHandler) {
-    nsCOMPtr<nsIDOMElement> elt(do_QueryInterface(chromeHandler));
-    nsCOMPtr<nsIContent> content(do_QueryInterface(elt));
-    if (elt && content) {
-      nsCOMPtr<nsIURI> baseURI = content->GetBaseURI();
+    nsCOMPtr<Element> elt(do_QueryInterface(chromeHandler));
+    if (elt) {
+      nsCOMPtr<nsIURI> baseURI = elt->GetBaseURI();
 
       nsAutoString sheets;
       elt->GetAttribute(NS_LITERAL_STRING("usechromesheets"), sheets);
@@ -2438,6 +2431,12 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
     }
 
     if (aDocument->LoadsFullXULStyleSheetUpFront()) {
+      // This is the only place components.css gets loaded, unlike xul.css
+      sheet = cache->XULComponentsSheet();
+      if (sheet) {
+        styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+      }
+
       // nsXULElement::BindToTree loads xul.css on-demand if we don't load it
       // up-front here.
       sheet = cache->XULSheet();
@@ -2658,13 +2657,10 @@ nsDocumentViewer::CreateDeviceContext(nsView* aContainerView)
   if (doc) {
     NS_ASSERTION(!aContainerView, "External resource document embedded somewhere?");
     // We want to use our display document's device context if possible
-    nsIPresShell* shell = doc->GetShell();
-    if (shell) {
-      nsPresContext* ctx = shell->GetPresContext();
-      if (ctx) {
-        mDeviceContext = ctx->DeviceContext();
-        return NS_OK;
-      }
+    nsPresContext* ctx = doc->GetPresContext();
+    if (ctx) {
+      mDeviceContext = ctx->DeviceContext();
+      return NS_OK;
     }
   }
 
@@ -2725,30 +2721,28 @@ NS_IMETHODIMP nsDocumentViewer::SelectAll()
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIDOMHTMLDocument> htmldoc = do_QueryInterface(mDocument);
-  nsCOMPtr<nsIDOMNode> bodyNode;
-
-  nsresult rv;
-  if (htmldoc)
-  {
-    nsCOMPtr<nsIDOMHTMLElement>bodyElement;
-    rv = htmldoc->GetBody(getter_AddRefs(bodyElement));
-    if (NS_FAILED(rv) || !bodyElement) return rv;
-
-    bodyNode = do_QueryInterface(bodyElement);
+  if (!mDocument) {
+    return NS_ERROR_FAILURE;
   }
-  else if (mDocument)
-  {
-    bodyNode = do_QueryInterface(mDocument->GetRootElement());
+
+  nsCOMPtr<nsINode> bodyNode;
+  if (mDocument->IsHTMLOrXHTML()) {
+    // XXXbz why not just do GetBody() for all documents, then GetRootElement()
+    // if GetBody() is null?
+    bodyNode = mDocument->GetBody();
+  }
+  else {
+    bodyNode = mDocument->GetRootElement();
   }
   if (!bodyNode) return NS_ERROR_FAILURE;
 
-  rv = selection->RemoveAllRanges();
+  nsresult rv = selection->RemoveAllRanges();
   if (NS_FAILED(rv)) return rv;
 
   mozilla::dom::Selection::AutoUserInitiated userSelection(selection);
-  rv = selection->SelectAllChildren(bodyNode);
-  return rv;
+  ErrorResult err;
+  selection->SelectAllChildren(*bodyNode, err);
+  return err.StealNSResult();
 }
 
 NS_IMETHODIMP nsDocumentViewer::CopySelection()
@@ -2761,8 +2755,7 @@ NS_IMETHODIMP nsDocumentViewer::CopySelection()
 NS_IMETHODIMP nsDocumentViewer::CopyLinkLocation()
 {
   NS_ENSURE_TRUE(mPresShell, NS_ERROR_NOT_INITIALIZED);
-  nsCOMPtr<nsIDOMNode> node;
-  GetPopupLinkNode(getter_AddRefs(node));
+  nsCOMPtr<nsINode> node = GetPopupLinkNode();
   // make noise if we're not in a link
   NS_ENSURE_TRUE(node, NS_ERROR_FAILURE);
 
@@ -2785,8 +2778,7 @@ NS_IMETHODIMP nsDocumentViewer::CopyLinkLocation()
 NS_IMETHODIMP nsDocumentViewer::CopyImage(int32_t aCopyFlags)
 {
   NS_ENSURE_TRUE(mPresShell, NS_ERROR_NOT_INITIALIZED);
-  nsCOMPtr<nsIImageLoadingContent> node;
-  GetPopupImageNode(getter_AddRefs(node));
+  nsCOMPtr<nsIImageLoadingContent> node = GetPopupImageNode();
   // make noise if we're not in an image
   NS_ENSURE_TRUE(node, NS_ERROR_FAILURE);
 
@@ -2846,7 +2838,8 @@ NS_IMETHODIMP nsDocumentViewer::SetCommandNode(nsIDOMNode* aNode)
   nsCOMPtr<nsPIWindowRoot> root = window->GetTopWindowRoot();
   NS_ENSURE_STATE(root);
 
-  root->SetPopupNode(aNode);
+  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
+  root->SetPopupNode(node);
   return NS_OK;
 }
 
@@ -2950,13 +2943,10 @@ static bool
 SetExtResourceTextZoom(nsIDocument* aDocument, void* aClosure)
 {
   // Would it be better to enumerate external resource viewers instead?
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
-      ctxt->SetTextZoom(ZoomInfo->mZoom);
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
+    ctxt->SetTextZoom(ZoomInfo->mZoom);
   }
 
   return true;
@@ -2965,12 +2955,9 @@ SetExtResourceTextZoom(nsIDocument* aDocument, void* aClosure)
 static bool
 SetExtResourceMinFontSize(nsIDocument* aDocument, void* aClosure)
 {
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      ctxt->SetBaseMinFontSize(NS_PTR_TO_INT32(aClosure));
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    ctxt->SetBaseMinFontSize(NS_PTR_TO_INT32(aClosure));
   }
 
   return true;
@@ -2980,13 +2967,10 @@ static bool
 SetExtResourceFullZoom(nsIDocument* aDocument, void* aClosure)
 {
   // Would it be better to enumerate external resource viewers instead?
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
-      ctxt->SetFullZoom(ZoomInfo->mZoom);
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
+    ctxt->SetFullZoom(ZoomInfo->mZoom);
   }
 
   return true;
@@ -2995,13 +2979,10 @@ SetExtResourceFullZoom(nsIDocument* aDocument, void* aClosure)
 static bool
 SetExtResourceOverrideDPPX(nsIDocument* aDocument, void* aClosure)
 {
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
-      ctxt->SetOverrideDPPX(ZoomInfo->mZoom);
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    struct ZoomInfo* ZoomInfo = static_cast<struct ZoomInfo*>(aClosure);
+    ctxt->SetOverrideDPPX(ZoomInfo->mZoom);
   }
 
   return true;
@@ -3270,13 +3251,10 @@ nsDocumentViewer::GetAuthorStyleDisabled(bool* aStyleDisabled)
 static bool
 ExtResourceEmulateMedium(nsIDocument* aDocument, void* aClosure)
 {
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      const nsAString* mediaType = static_cast<nsAString*>(aClosure);
-      ctxt->EmulateMedium(*mediaType);
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    const nsAString* mediaType = static_cast<nsAString*>(aClosure);
+    ctxt->EmulateMedium(*mediaType);
   }
 
   return true;
@@ -3308,12 +3286,9 @@ nsDocumentViewer::EmulateMedium(const nsAString& aMediaType)
 static bool
 ExtResourceStopEmulatingMedium(nsIDocument* aDocument, void* aClosure)
 {
-  nsIPresShell* shell = aDocument->GetShell();
-  if (shell) {
-    nsPresContext* ctxt = shell->GetPresContext();
-    if (ctxt) {
-      ctxt->StopEmulatingMedium();
-    }
+  nsPresContext* ctxt = aDocument->GetPresContext();
+  if (ctxt) {
+    ctxt->StopEmulatingMedium();
   }
 
   return true;
@@ -3612,26 +3587,22 @@ nsresult nsDocViewerSelectionListener::Init(nsDocumentViewer *aDocViewer)
  * not all content (images included) can receive focus.
  */
 
-nsresult
-nsDocumentViewer::GetPopupNode(nsIDOMNode** aNode)
+already_AddRefed<nsINode>
+nsDocumentViewer::GetPopupNode()
 {
-  NS_ENSURE_ARG_POINTER(aNode);
-
-  *aNode = nullptr;
-
   // get the document
   nsIDocument* document = GetDocument();
-  NS_ENSURE_TRUE(document, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(document, nullptr);
 
   // get the private dom window
   nsCOMPtr<nsPIDOMWindowOuter> window(document->GetWindow());
-  NS_ENSURE_TRUE(window, NS_ERROR_NOT_AVAILABLE);
+  NS_ENSURE_TRUE(window, nullptr);
   if (window) {
     nsCOMPtr<nsPIWindowRoot> root = window->GetTopWindowRoot();
-    NS_ENSURE_TRUE(root, NS_ERROR_FAILURE);
+    NS_ENSURE_TRUE(root, nullptr);
 
     // get the popup node
-    nsCOMPtr<nsIDOMNode> node = root->GetPopupNode();
+    nsCOMPtr<nsINode> node = root->GetPopupNode();
 #ifdef MOZ_XUL
     if (!node) {
       nsPIDOMWindowOuter* rootWindow = root->GetWindow();
@@ -3646,67 +3617,45 @@ nsDocumentViewer::GetPopupNode(nsIDOMNode** aNode)
       }
     }
 #endif
-    node.swap(*aNode);
+    return node.forget();
   }
 
-  return NS_OK;
+  return nullptr;
 }
 
 // GetPopupLinkNode: return popup link node or fail
-nsresult
-nsDocumentViewer::GetPopupLinkNode(nsIDOMNode** aNode)
+already_AddRefed<nsINode>
+nsDocumentViewer::GetPopupLinkNode()
 {
-  NS_ENSURE_ARG_POINTER(aNode);
-
-  // you get null unless i say so
-  *aNode = nullptr;
-
   // find popup node
-  nsCOMPtr<nsIDOMNode> node;
-  nsresult rv = GetPopupNode(getter_AddRefs(node));
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<nsINode> node = GetPopupNode();
 
   // find out if we have a link in our ancestry
   while (node) {
-
     nsCOMPtr<nsIContent> content(do_QueryInterface(node));
     if (content) {
       nsCOMPtr<nsIURI> hrefURI = content->GetHrefURI();
       if (hrefURI) {
-        *aNode = node;
-        NS_IF_ADDREF(*aNode); // addref
-        return NS_OK;
+        return node.forget();
       }
     }
 
     // get our parent and keep trying...
-    nsCOMPtr<nsIDOMNode> parentNode;
-    node->GetParentNode(getter_AddRefs(parentNode));
-    node = parentNode;
+    node = node->GetParentNode();
   }
 
   // if we have no node, fail
-  return NS_ERROR_FAILURE;
+  return nullptr;
 }
 
 // GetPopupLinkNode: return popup image node or fail
-nsresult
-nsDocumentViewer::GetPopupImageNode(nsIImageLoadingContent** aNode)
+already_AddRefed<nsIImageLoadingContent>
+nsDocumentViewer::GetPopupImageNode()
 {
-  NS_ENSURE_ARG_POINTER(aNode);
-
-  // you get null unless i say so
-  *aNode = nullptr;
-
   // find popup node
-  nsCOMPtr<nsIDOMNode> node;
-  nsresult rv = GetPopupNode(getter_AddRefs(node));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (node)
-    CallQueryInterface(node, aNode);
-
-  return NS_OK;
+  nsCOMPtr<nsINode> node = GetPopupNode();
+  nsCOMPtr<nsIImageLoadingContent> img = do_QueryInterface(node);
+  return img.forget();
 }
 
 /*
@@ -3732,10 +3681,10 @@ NS_IMETHODIMP nsDocumentViewer::GetInLink(bool* aInLink)
   *aInLink = false;
 
   // get the popup link
-  nsCOMPtr<nsIDOMNode> node;
-  nsresult rv = GetPopupLinkNode(getter_AddRefs(node));
-  if (NS_FAILED(rv)) return rv;
-  NS_ENSURE_TRUE(node, NS_ERROR_FAILURE);
+  nsCOMPtr<nsINode> node = GetPopupLinkNode();
+  if (!node) {
+    return NS_ERROR_FAILURE;
+  }
 
   // if we made it here, we're in a link
   *aInLink = true;
@@ -3754,9 +3703,7 @@ NS_IMETHODIMP nsDocumentViewer::GetInImage(bool* aInImage)
   *aInImage = false;
 
   // get the popup image
-  nsCOMPtr<nsIImageLoadingContent> node;
-  nsresult rv = GetPopupImageNode(getter_AddRefs(node));
-  if (NS_FAILED(rv)) return rv;
+  nsCOMPtr<nsIImageLoadingContent> node = GetPopupImageNode();
   if (!node) {
     return NS_ERROR_FAILURE;
   }
@@ -3871,8 +3818,7 @@ nsDocumentViewer::Print(nsIPrintSettings*       aPrintSettings,
                           nsIWebProgressListener* aWebProgressListener)
 {
   // Printing XUL documents is not supported.
-  nsCOMPtr<nsIXULDocument> xulDoc(do_QueryInterface(mDocument));
-  if (xulDoc) {
+  if (mDocument && mDocument->IsXULDocument()) {
     return NS_ERROR_FAILURE;
   }
 
@@ -3974,9 +3920,8 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
                                nsIWebProgressListener* aWebProgressListener)
 {
 #if defined(NS_PRINTING) && defined(NS_PRINT_PREVIEW)
-  NS_WARNING_ASSERTION(
-    IsInitializedForPrintPreview(),
-    "Using docshell.printPreview is the preferred way for print previewing!");
+  MOZ_ASSERT(IsInitializedForPrintPreview(),
+    "For print preview nsIWebBrowserPrint must be from docshell.printPreview!");
 
   NS_ENSURE_ARG_POINTER(aChildDOMWin);
   nsresult rv = NS_OK;
@@ -3987,8 +3932,7 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
   }
 
   // Printing XUL documents is not supported.
-  nsCOMPtr<nsIXULDocument> xulDoc(do_QueryInterface(mDocument));
-  if (xulDoc) {
+  if (mDocument && mDocument->IsXULDocument()) {
     nsPrintJob::CloseProgressDialog(aWebProgressListener);
     return NS_ERROR_FAILURE;
   }

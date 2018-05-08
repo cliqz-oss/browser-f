@@ -9,13 +9,11 @@
 #include "mozilla/MemoryChecking.h"
 #include "mozilla/Sprintf.h"
 
-#include "jsfun.h"
-#include "jsprf.h"
-
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/ParseNode.h"
 #include "frontend/SharedContext.h"
-#include "vm/StringBuffer.h"
+#include "util/StringBuffer.h"
+#include "vm/JSFunction.h"
 
 using namespace js;
 using namespace js::frontend;
@@ -388,7 +386,7 @@ class NameResolver
         switch (cur->getKind()) {
           // Nodes with no children that might require name resolution need no
           // further work.
-          case ParseNodeKind::Nop:
+          case ParseNodeKind::EmptyStatement:
           case ParseNodeKind::String:
           case ParseNodeKind::TemplateString:
           case ParseNodeKind::RegExp:
@@ -422,6 +420,7 @@ class NameResolver
             break;
 
           // Nodes with a single non-null child requiring name resolution.
+          case ParseNodeKind::ExpressionStatement:
           case ParseNodeKind::TypeOfExpr:
           case ParseNodeKind::Void:
           case ParseNodeKind::Not:
@@ -447,7 +446,6 @@ class NameResolver
             break;
 
           // Nodes with a single nullable child.
-          case ParseNodeKind::Semi:
           case ParseNodeKind::This:
             MOZ_ASSERT(cur->isArity(PN_UNARY));
             if (ParseNode* expr = cur->pn_kid) {

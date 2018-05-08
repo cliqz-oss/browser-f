@@ -20,6 +20,9 @@
 #include "js/MemoryMetrics.h"
 #include "nsQueryObject.h"
 #include "nsServiceManagerUtils.h"
+#ifdef MOZ_XUL
+#include "nsXULPrototypeCache.h"
+#endif
 
 using namespace mozilla;
 
@@ -428,8 +431,15 @@ CollectWindowReports(nsGlobalWindowInner *aWindow,
   REPORT_SIZE("/layout/computed-values/visited", mLayoutComputedValuesVisited,
               "Memory used by ComputedValues objects used for visited styles.");
 
+  REPORT_SIZE("/layout/computed-values/stale", mLayoutComputedValuesStale,
+              "Memory used by ComputedValues and style structs it holds that "
+              "is no longer used but still alive.");
+
   REPORT_SIZE("/property-tables", mPropertyTablesSize,
               "Memory used for the property tables within a window.");
+
+  REPORT_SIZE("/bindings", mBindingsSize,
+              "Memory used by bindings within a window.");
 
   REPORT_COUNT("/dom/event-targets", mDOMEventTargetsCount,
                "Number of non-node event targets in the event targets table "
@@ -626,6 +636,10 @@ nsWindowMemoryReporter::CollectReports(nsIHandleReportCallback* aHandleReport,
   // reporter needs to be passed |windowPaths|.
   xpc::JSReporter::CollectReports(&windowPaths, &topWindowPaths,
                                   aHandleReport, aData, aAnonymize);
+
+#ifdef MOZ_XUL
+  nsXULPrototypeCache::CollectMemoryReports(aHandleReport, aData);
+#endif
 
 #define REPORT(_path, _amount, _desc) \
   aHandleReport->Callback(EmptyCString(), NS_LITERAL_CSTRING(_path), \

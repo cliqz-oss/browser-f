@@ -5,10 +5,10 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* import-globals-from ../../../client/framework/test/shared-head.js */
+/* import-globals-from ../../../client/shared/test/shared-head.js */
 
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 const {DebuggerClient} = require("devtools/shared/client/debugger-client");
@@ -35,59 +35,61 @@ waitForExplicitFinish();
  *         directly, since this would be a CPOW in the e10s case,
  *         and Promises cannot be resolved with CPOWs (see bug 1233497).
  */
-var addTab = Task.async(function* (url) {
+var addTab = async function (url) {
   info(`Adding a new tab with URL: ${url}`);
   let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, url);
-  yield BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   info(`Tab added and URL ${url} loaded`);
 
   return tab.linkedBrowser;
-});
+};
 
-function* initAnimationsFrontForUrl(url) {
+async function initAnimationsFrontForUrl(url) {
   const {AnimationsFront} = require("devtools/shared/fronts/animation");
   const {InspectorFront} = require("devtools/shared/fronts/inspector");
 
-  yield addTab(url);
+  await addTab(url);
 
   initDebuggerServer();
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  let form = yield connectDebuggerClient(client);
+  let form = await connectDebuggerClient(client);
   let inspector = InspectorFront(client, form);
-  let walker = yield inspector.getWalker();
+  let walker = await inspector.getWalker();
   let animations = AnimationsFront(client, form);
 
   return {inspector, walker, animations, client};
 }
 
-function* initLayoutFrontForUrl(url) {
+async function initLayoutFrontForUrl(url) {
   const {InspectorFront} = require("devtools/shared/fronts/inspector");
 
-  yield addTab(url);
+  await addTab(url);
 
   initDebuggerServer();
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  let form = yield connectDebuggerClient(client);
+  let form = await connectDebuggerClient(client);
   let inspector = InspectorFront(client, form);
-  let walker = yield inspector.getWalker();
-  let layout = yield walker.getLayoutInspector();
+  let walker = await inspector.getWalker();
+  let layout = await walker.getLayoutInspector();
 
   return {inspector, walker, layout, client};
 }
 
-function* initAccessibilityFrontForUrl(url) {
+async function initAccessibilityFrontForUrl(url) {
   const {AccessibilityFront} = require("devtools/shared/fronts/accessibility");
   const {InspectorFront} = require("devtools/shared/fronts/inspector");
 
-  yield addTab(url);
+  await addTab(url);
 
   initDebuggerServer();
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  let form = yield connectDebuggerClient(client);
+  let form = await connectDebuggerClient(client);
   let inspector = InspectorFront(client, form);
-  let walker = yield inspector.getWalker();
+  let walker = await inspector.getWalker();
   let accessibility = AccessibilityFront(client, form);
+
+  await accessibility.bootstrap();
 
   return {inspector, walker, accessibility, client};
 }
@@ -121,11 +123,7 @@ async function initPerfFront() {
  * @return {RootActor} Resolves when connected.
  */
 function getRootForm(client) {
-  return new Promise(resolve => {
-    client.listTabs(rootForm => {
-      resolve(rootForm);
-    });
-  });
+  return client.listTabs();
 }
 
 /**
@@ -267,7 +265,7 @@ function waitForMarkerType(front, types, predicate,
     info("Got markers: " + JSON.stringify(markers, null, 2));
 
     filteredMarkers = filteredMarkers.concat(
-      markers.filter(m => types.indexOf(m.name) !== -1));
+      markers.filter(m => types.includes(m.name)));
 
     if (types.every(t => filteredMarkers.some(m => m.name === t)) &&
         predicate(filteredMarkers)) {
@@ -312,8 +310,23 @@ function checkA11yFront(front, expected, expectedFront) {
   }
 
   for (let key in expected) {
-    is(front[key], expected[key], `accessibility front has correct ${key}`);
+    if (["actions", "states", "attributes"].includes(key)) {
+      SimpleTest.isDeeply(front[key], expected[key],
+        `Accessible Front has correct ${key}`);
+    } else {
+      is(front[key], expected[key], `accessibility front has correct ${key}`);
+    }
   }
+}
+
+function getA11yInitOrShutdownPromise() {
+  return new Promise(resolve => {
+    let observe = (subject, topic, data) => {
+      Services.obs.removeObserver(observe, "a11y-init-or-shutdown");
+      resolve(data);
+    };
+    Services.obs.addObserver(observe, "a11y-init-or-shutdown");
+  });
 }
 
 /**
@@ -321,15 +334,23 @@ function checkA11yFront(front, expected, expectedFront) {
  * an "a11y-init-or-shutdown" event is received with a value of "0".
  */
 async function waitForA11yShutdown() {
-  await ContentTask.spawn(gBrowser.selectedBrowser, {}, () =>
-    new Promise(resolve => {
-      let observe = (subject, topic, data) => {
-        Services.obs.removeObserver(observe, "a11y-init-or-shutdown");
+  if (!Services.appinfo.accessibilityEnabled) {
+    return;
+  }
 
-        if (data === "0") {
-          resolve();
-        }
-      };
-      Services.obs.addObserver(observe, "a11y-init-or-shutdown");
-    }));
+  await getA11yInitOrShutdownPromise().then(data =>
+    data === "0" ? Promise.resolve() : Promise.reject());
+}
+
+/**
+ * Wait for accessibility service to initialize. We consider it initialized when
+ * an "a11y-init-or-shutdown" event is received with a value of "1".
+ */
+async function waitForA11yInit() {
+  if (Services.appinfo.accessibilityEnabled) {
+    return;
+  }
+
+  await getA11yInitOrShutdownPromise().then(data =>
+    data === "1" ? Promise.resolve() : Promise.reject());
 }

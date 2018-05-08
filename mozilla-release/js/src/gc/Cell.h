@@ -11,6 +11,7 @@
 #include "gc/Heap.h"
 #include "js/GCAnnotations.h"
 #include "js/TraceKind.h"
+#include "js/TypeDecls.h"
 
 namespace JS {
 
@@ -19,7 +20,6 @@ struct Zone;
 } /* namespace shadow */
 
 enum class TraceKind;
-struct Zone;
 } /* namespace JS */
 
 namespace js {
@@ -94,6 +94,7 @@ struct Cell
     }
 
 #ifdef DEBUG
+    static inline bool thingIsNotGray(Cell* cell);
     inline bool isAligned() const;
     void dump(GenericPrinter& out) const;
     void dump() const;
@@ -122,6 +123,7 @@ class TenuredCell : public Cell
     MOZ_ALWAYS_INLINE bool markIfUnmarked(MarkColor color = MarkColor::Black) const;
     MOZ_ALWAYS_INLINE void markBlack() const;
     MOZ_ALWAYS_INLINE void copyMarkBitsFrom(const TenuredCell* src);
+    MOZ_ALWAYS_INLINE void unmark();
 
     // Access to the arena.
     inline Arena* arena() const;
@@ -242,7 +244,11 @@ Cell::storeBuffer() const
 inline JS::TraceKind
 Cell::getTraceKind() const
 {
-    return isTenured() ? asTenured().getTraceKind() : JS::TraceKind::Object;
+    if (isTenured())
+        return asTenured().getTraceKind();
+    if (js::shadow::String::nurseryCellIsString(this))
+        return JS::TraceKind::String;
+    return JS::TraceKind::Object;
 }
 
 /* static */ MOZ_ALWAYS_INLINE bool
@@ -303,6 +309,12 @@ TenuredCell::copyMarkBitsFrom(const TenuredCell* src)
     ChunkBitmap& bitmap = chunk()->bitmap;
     bitmap.copyMarkBit(this, src, ColorBit::BlackBit);
     bitmap.copyMarkBit(this, src, ColorBit::GrayOrBlackBit);
+}
+
+void
+TenuredCell::unmark()
+{
+    chunk()->bitmap.unmark(this);
 }
 
 inline Arena*
@@ -416,7 +428,8 @@ static MOZ_ALWAYS_INLINE void
 AssertValidToSkipBarrier(TenuredCell* thing)
 {
     MOZ_ASSERT(!IsInsideNursery(thing));
-    MOZ_ASSERT_IF(thing, MapAllocToTraceKind(thing->getAllocKind()) != JS::TraceKind::Object);
+    MOZ_ASSERT_IF(thing, MapAllocToTraceKind(thing->getAllocKind()) != JS::TraceKind::Object &&
+                         MapAllocToTraceKind(thing->getAllocKind()) != JS::TraceKind::String);
 }
 
 /* static */ MOZ_ALWAYS_INLINE void
@@ -426,6 +439,13 @@ TenuredCell::writeBarrierPost(void* cellp, TenuredCell* prior, TenuredCell* next
 }
 
 #ifdef DEBUG
+
+/* static */ bool
+Cell::thingIsNotGray(Cell* cell)
+{
+    return JS::CellIsNotGray(cell);
+}
+
 bool
 Cell::isAligned() const
 {

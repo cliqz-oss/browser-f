@@ -3,11 +3,11 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 "use strict";
 
 // shared-head.js handles imports, constants, and utility functions
-Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js", this);
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
 
 var {Utils: WebConsoleUtils} = require("devtools/client/webconsole/utils");
 var {Messages} = require("devtools/client/webconsole/console-output");
@@ -572,7 +572,7 @@ function matchVariablesViewProperty(prop, rule, options) {
   outstanding.push(promise.resolve(true));
 
   return promise.all(outstanding).then(function _onMatchDone(results) {
-    let ruleMatched = results.indexOf(false) == -1;
+    let ruleMatched = !results.includes(false);
     return resolve(ruleMatched);
   });
 }
@@ -1249,7 +1249,7 @@ function waitForMessages(options) {
     return rule.matched.size == count;
   }
 
-  function onMessagesAdded(event, newMessages) {
+  function onMessagesAdded(newMessages) {
     for (let msg of newMessages) {
       let elem = msg.node;
       let location = getRenderedSource(elem);
@@ -1257,7 +1257,7 @@ function waitForMessages(options) {
         let url = location.url;
         // Prevent recursion with the browser console and any potential
         // messages coming from head.js.
-        if (url.indexOf("devtools/client/webconsole/test/head.js") != -1) {
+        if (url.includes("devtools/client/webconsole/test/head.js")) {
           continue;
         }
       }
@@ -1332,7 +1332,7 @@ function waitForMessages(options) {
       });
     }
 
-    onMessagesAdded("new-messages", messages);
+    onMessagesAdded(messages);
 
     if (!allRulesMatched()) {
       listenerAdded = true;
@@ -1529,7 +1529,7 @@ function checkOutputForInputs(hud, inputTests) {
     yield promise.resolve(null);
   }
 
-  function onVariablesViewOpen(entry, {resolve, reject}, event, view, options) {
+  function onVariablesViewOpen(entry, {resolve, reject}, {view, options}) {
     info("Variables view opened");
     let label = entry.variablesViewLabel || entry.output;
     if (typeof label == "string" && options.label != label) {

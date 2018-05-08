@@ -12,10 +12,9 @@
 
 #include <string.h>
 
-#include "jscntxt.h"
-
 #include "frontend/ParseNode.h"
 #include "js/GCAnnotations.h"
+#include "vm/JSContext.h"
 
 namespace js {
 
@@ -359,6 +358,10 @@ class SyntaxParseHandler
 
     bool isExpressionClosure(Node node) const {
         return node == NodeFunctionExpressionClosure;
+    }
+
+    void noteExpressionClosure(Node* funcNode) const {
+        *funcNode = NodeFunctionExpressionClosure;
     }
 
     void setFunctionFormalParametersAndBody(Node funcNode, Node kid) {}

@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/SVGTextPathElement.h"
+#include "mozilla/dom/SVGLengthBinding.h"
+#include "mozilla/dom/SVGTextContentElementBinding.h"
 #include "mozilla/dom/SVGTextPathElementBinding.h"
 #include "nsSVGElement.h"
 #include "nsGkAtoms.h"
@@ -14,6 +16,9 @@ NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(TextPath)
 
 namespace mozilla {
 namespace dom {
+
+using namespace SVGTextContentElementBinding;
+using namespace SVGTextPathElementBinding;
 
 class SVGAnimatedLength;
 
@@ -26,9 +31,9 @@ SVGTextPathElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 nsSVGElement::LengthInfo SVGTextPathElement::sLengthInfo[2] =
 {
   // from SVGTextContentElement:
-  { &nsGkAtoms::textLength, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::XY },
+  { &nsGkAtoms::textLength, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::XY },
   // from SVGTextPathElement:
-  { &nsGkAtoms::startOffset, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X }
+  { &nsGkAtoms::startOffset, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X }
 };
 
 nsSVGEnumMapping SVGTextPathElement::sMethodMap[] = {
@@ -48,7 +53,7 @@ nsSVGElement::EnumInfo SVGTextPathElement::sEnumInfo[3] =
   // from SVGTextContentElement:
   { &nsGkAtoms::lengthAdjust,
     sLengthAdjustMap,
-    SVG_LENGTHADJUST_SPACING
+    LENGTHADJUST_SPACING
   },
   // from SVGTextPathElement:
   { &nsGkAtoms::method,

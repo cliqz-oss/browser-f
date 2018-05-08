@@ -16,9 +16,9 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/PodOperations.h"
 
-#include "jsprototypes.h"
 #include "jstypes.h"
 
+#include "js/ProtoKey.h"
 #include "js/Result.h"
 #include "js/TraceKind.h"
 #include "js/TypeDecls.h"
@@ -29,20 +29,18 @@
 
 namespace JS {
 
-class AutoIdVector;
-class CallArgs;
+template <typename T> class AutoVector;
+using AutoIdVector = AutoVector<jsid>;
+using AutoValueVector = AutoVector<Value>;
+using AutoObjectVector = AutoVector<JSObject*>;
 
-template <typename T>
-class Rooted;
+class CallArgs;
 
 class JS_FRIEND_API(CompileOptions);
 class JS_FRIEND_API(ReadOnlyCompileOptions);
 class JS_FRIEND_API(OwningCompileOptions);
 class JS_FRIEND_API(TransitiveCompileOptions);
 class JS_PUBLIC_API(CompartmentOptions);
-
-class Value;
-struct Zone;
 
 } // namespace JS
 
@@ -69,14 +67,12 @@ enum JSProtoKey {
 
 /* Struct forward declarations. */
 struct JSClass;
-struct JSCompartment;
 class JSErrorReport;
 struct JSExceptionState;
 struct JSFunctionSpec;
 struct JSLocaleCallbacks;
 struct JSPrincipals;
 struct JSPropertySpec;
-struct JSRuntime;
 struct JSSecurityCallbacks;
 struct JSStructuredCloneCallbacks;
 struct JSStructuredCloneReader;

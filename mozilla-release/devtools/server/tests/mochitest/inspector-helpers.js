@@ -4,18 +4,14 @@
    runNextTest */
 "use strict";
 
-var Cu = Components.utils;
-
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const {DebuggerClient} = require("devtools/shared/client/debugger-client");
 const {DebuggerServer} = require("devtools/server/main");
-const { Task } = require("devtools/shared/task");
 
 const Services = require("Services");
 // promise is still used in tests using this helper
-const promise = require("promise"); // eslint-disable-line no-unused-vars
 const defer = require("devtools/shared/defer");
-const {_documentWalker} = require("devtools/server/actors/inspector");
+const {DocumentWalker: _documentWalker} = require("devtools/server/actors/inspector/document-walker");
 
 // Always log packets when running tests.
 Services.prefs.setBoolPref("devtools.debugger.log", true);
@@ -66,7 +62,7 @@ function attachURL(url, callback) {
     if (event.data === "ready") {
       client = new DebuggerClient(DebuggerServer.connectPipe());
       client.connect().then(([applicationType, traits]) => {
-        client.listTabs(response => {
+        client.listTabs().then(response => {
           for (let tab of response.tabs) {
             if (tab.url === url) {
               window.removeEventListener("message", loadListener);
@@ -301,7 +297,7 @@ function addTest(test) {
 }
 
 function addAsyncTest(generator) {
-  _tests.push(() => Task.spawn(generator).catch(ok.bind(null, false)));
+  _tests.push(() => (generator)().catch(ok.bind(null, false)));
 }
 
 function runNextTest() {

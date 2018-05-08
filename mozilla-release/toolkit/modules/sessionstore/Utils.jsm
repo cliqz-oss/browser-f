@@ -4,17 +4,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Utils"];
+var EXPORTED_SYMBOLS = ["Utils"];
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "serializationHelper",
                                    "@mozilla.org/network/serialization-helper;1",
                                    "nsISerializationHelper");
@@ -26,7 +22,7 @@ function debug(msg) {
   Services.console.logStringMessage("Utils: " + msg);
 }
 
-this.Utils = Object.freeze({
+var Utils = Object.freeze({
   get SERIALIZED_SYSTEMPRINCIPAL() { return SERIALIZED_SYSTEMPRINCIPAL; },
 
   makeURI(url) {

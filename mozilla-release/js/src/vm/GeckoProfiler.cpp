@@ -9,15 +9,15 @@
 #include "mozilla/DebugOnly.h"
 
 #include "jsnum.h"
-#include "jsprf.h"
-#include "jsscript.h"
 
+#include "gc/PublicIterators.h"
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineJIT.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitFrames.h"
 #include "jit/JSJitFrameIter.h"
-#include "vm/StringBuffer.h"
+#include "util/StringBuffer.h"
+#include "vm/JSScript.h"
 
 #include "gc/Marking-inl.h"
 
@@ -76,14 +76,11 @@ GetTopProfilingJitFrame(Activation* act)
         return nullptr;
 
     // Skip wasm frames that might be in the way.
-    JitFrameIter iter(jitActivation);
-    while (!iter.done() && iter.isWasm())
-        ++iter;
-
-    if (!iter.isJSJit())
+    OnlyJSJitFrameIter iter(jitActivation);
+    if (iter.done())
         return nullptr;
 
-    jit::JSJitProfilingFrameIterator jitIter(iter.asJSJit().fp());
+    jit::JSJitProfilingFrameIterator jitIter((jit::CommonFrameLayout*) iter.frame().fp());
     MOZ_ASSERT(!jitIter.done());
     return jitIter.fp();
 }
@@ -110,12 +107,10 @@ GeckoProfilerRuntime::enable(bool enabled)
 
     // This function is called when the Gecko profiler makes a new Sampler
     // (and thus, a new circular buffer). Set all current entries in the
-    // JitcodeGlobalTable as expired and reset the buffer generation and lap
-    // count.
+    // JitcodeGlobalTable as expired and reset the buffer range start.
     if (rt->hasJitRuntime() && rt->jitRuntime()->hasJitcodeGlobalTable())
-        rt->jitRuntime()->getJitcodeGlobalTable()->setAllEntriesAsExpired(rt);
-    rt->resetProfilerSampleBufferGen();
-    rt->resetProfilerSampleBufferLapCount();
+        rt->jitRuntime()->getJitcodeGlobalTable()->setAllEntriesAsExpired();
+    rt->setProfilerSampleBufferRangeStart(0);
 
     // Ensure that lastProfilingFrame is null for all threads before 'enabled' becomes true.
     for (const CooperatingContext& target : rt->cooperatingContexts()) {
@@ -429,7 +424,7 @@ JS_PUBLIC_API(JSScript*)
 ProfileEntry::script() const
 {
     MOZ_ASSERT(isJs());
-    auto script = reinterpret_cast<JSScript*>(spOrScript);
+    auto script = reinterpret_cast<JSScript*>(spOrScript.operator void*());
     if (!script)
         return nullptr;
 

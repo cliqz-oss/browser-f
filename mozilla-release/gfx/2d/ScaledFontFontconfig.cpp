@@ -313,6 +313,9 @@ ScaledFontFontconfig::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* a
     if (FcPatternGetBool(mPattern, FC_EMBEDDED_BITMAP, 0, &bitmap) == FcResultMatch && bitmap) {
       options.flags |= wr::FontInstanceFlags::EMBEDDED_BITMAPS;
     }
+
+    // FIXME: Cairo-FT metrics are not compatible with subpixel positioning.
+    options.subpx_dir = wr::SubpixelDirection::None;
   } else {
     options.render_mode = wr::FontRenderMode::Mono;
     options.subpx_dir = wr::SubpixelDirection::None;
@@ -484,7 +487,7 @@ UnscaledFontFontconfig::GetWRFontDescriptor(WRFontDescriptorOutput aCb, void* aB
 
   const char* path = mFile.c_str();
   size_t pathLength = strlen(path);
-  aCb(reinterpret_cast<const uint8_t*>(path), pathLength, 0, aBaton);
+  aCb(reinterpret_cast<const uint8_t*>(path), pathLength, mIndex, aBaton);
   return true;
 }
 

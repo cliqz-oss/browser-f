@@ -9,13 +9,11 @@
 
 #include <bitset>
 #include "nsAutoPtr.h"
-#include "nsIXMLHttpRequest.h"
 #include "nsISupportsUtils.h"
 #include "nsIURI.h"
 #include "nsIHttpChannel.h"
 #include "nsIDocument.h"
 #include "nsIStreamListener.h"
-#include "nsWeakReference.h"
 #include "nsIChannelEventSink.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsIInterfaceRequestor.h"
@@ -32,13 +30,17 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/dom/MutableBlobStorage.h"
 #include "mozilla/dom/BodyExtractor.h"
+#include "mozilla/dom/ClientInfo.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FormData.h"
+#include "mozilla/dom/PerformanceStorage.h"
+#include "mozilla/dom/ServiceWorkerDescriptor.h"
 #include "mozilla/dom/URLSearchParams.h"
 #include "mozilla/dom/XMLHttpRequest.h"
 #include "mozilla/dom/XMLHttpRequestBinding.h"
@@ -154,15 +156,15 @@ public:
   void GetCORSUnsafeHeaders(nsTArray<nsCString>& aArray) const;
 };
 
+class nsXHRParseEndListener;
+
 // Make sure that any non-DOM interfaces added here are also added to
 // nsXMLHttpRequestXPCOMifier.
 class XMLHttpRequestMainThread final : public XMLHttpRequest,
-                                       public nsIXMLHttpRequest,
                                        public nsIStreamListener,
                                        public nsIChannelEventSink,
                                        public nsIProgressEventSink,
                                        public nsIInterfaceRequestor,
-                                       public nsSupportsWeakReference,
                                        public nsITimerCallback,
                                        public nsISizeOfEventTarget,
                                        public nsINamed,
@@ -198,19 +200,15 @@ public:
   void Construct(nsIPrincipal* aPrincipal,
                  nsIGlobalObject* aGlobalObject,
                  nsIURI* aBaseURI = nullptr,
-                 nsILoadGroup* aLoadGroup = nullptr)
+                 nsILoadGroup* aLoadGroup = nullptr,
+                 PerformanceStorage* aPerformanceStorage = nullptr)
   {
     MOZ_ASSERT(aPrincipal);
-    nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(aGlobalObject);
-    if (win) {
-      if (win->GetExtantDoc()) {
-        mStyleBackend = win->GetExtantDoc()->GetStyleBackendType();
-      }
-    }
     mPrincipal = aPrincipal;
     BindToOwner(aGlobalObject);
     mBaseURI = aBaseURI;
     mLoadGroup = aLoadGroup;
+    mPerformanceStorage = aPerformanceStorage;
   }
 
   void InitParameters(bool aAnon, bool aSystem);
@@ -221,12 +219,10 @@ public:
     mIsSystem = aSystem;
   }
 
+  void SetClientInfoAndController(const ClientInfo& aClientInfo,
+                                  const Maybe<ServiceWorkerDescriptor>& aController);
+
   NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIXMLHttpRequest
-  NS_DECL_NSIXMLHTTPREQUEST
-
-  NS_FORWARD_NSIXMLHTTPREQUESTEVENTTARGET(XMLHttpRequestEventTarget::)
 
   // nsIStreamListener
   NS_DECL_NSISTREAMLISTENER
@@ -282,10 +278,7 @@ public:
 
   virtual void
   SetRequestHeader(const nsACString& aName, const nsACString& aValue,
-                   ErrorResult& aRv) override
-  {
-    aRv = SetRequestHeader(aName, aValue);
-  }
+                   ErrorResult& aRv) override;
 
   virtual uint32_t
   Timeout() const override
@@ -425,6 +418,9 @@ public:
   virtual bool
   MozBackgroundRequest() const override;
 
+  nsresult
+  SetMozBackgroundRequest(bool aMozBackgroundRequest);
+
   virtual void
   SetMozBackgroundRequest(bool aMozBackgroundRequest, ErrorResult& aRv) override;
 
@@ -471,12 +467,11 @@ public:
                              const ProgressEventType aType,
                              int64_t aLoaded, int64_t aTotal);
 
-  // This is called by the factory constructor.
-  nsresult Init();
-
-  nsresult init(nsIPrincipal* principal,
-                nsPIDOMWindowInner* globalObject,
-                nsIURI* baseURI);
+  // This is called by nsXULTemplateQueryProcessorXML.
+  nsresult Init(nsIPrincipal* aPrincipal,
+                nsIGlobalObject* aGlobalObject,
+                nsIURI* aBaseURI,
+                nsILoadGroup* aLoadGroup);
 
   void SetRequestObserver(nsIRequestObserver* aObserver);
 
@@ -508,16 +503,6 @@ public:
   LocalFileToBlobCompleted(Blob* aBlob);
 
 protected:
-  // XHR states are meant to mirror the XHR2 spec:
-  //   https://xhr.spec.whatwg.org/#states
-  enum class State : uint8_t {
-    unsent,           // object has been constructed.
-    opened,           // open() has been successfully invoked.
-    headers_received, // redirects followed and response headers received.
-    loading,          // response body is being received.
-    done,             // data transfer concluded, whether success or error.
-  };
-
   nsresult DetectCharset();
   nsresult AppendToResponseText(const char * aBuffer, uint32_t aBufferLen);
   static nsresult StreamReaderFunc(nsIInputStream* in,
@@ -529,7 +514,7 @@ protected:
   nsresult CreateResponseParsedJSON(JSContext* aCx);
   // Change the state of the object with this. The broadcast argument
   // determines if the onreadystatechange listener should be called.
-  nsresult ChangeState(State aState, bool aBroadcast = true);
+  nsresult ChangeState(uint16_t aState, bool aBroadcast = true);
   already_AddRefed<nsILoadGroup> GetLoadGroup() const;
   nsIURI *GetBaseURI();
 
@@ -581,6 +566,8 @@ protected:
   nsCOMPtr<nsIDocument> mResponseXML;
 
   nsCOMPtr<nsIStreamListener> mXMLParserStreamListener;
+
+  RefPtr<PerformanceStorage> mPerformanceStorage;
 
   // used to implement getAllResponseHeaders()
   class nsHeaderVisitor : public nsIHttpHeaderVisitor
@@ -690,9 +677,10 @@ protected:
   nsCOMPtr<nsIURI> mBaseURI;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
-  State mState;
+  Maybe<ClientInfo> mClientInfo;
+  Maybe<ServiceWorkerDescriptor> mController;
 
-  StyleBackendType mStyleBackend;
+  uint16_t mState;
 
   bool mFlagSynchronous;
   bool mFlagAborted;
@@ -803,6 +791,9 @@ protected:
   // useful to change the correct state when XHR is working sync.
   bool mEventDispatchingSuspended;
 
+  // Our parse-end listener, if we are parsing.
+  RefPtr<nsXHRParseEndListener> mParseEndListener;
+
   static bool sDontWarnAboutSyncXHR;
 };
 
@@ -870,19 +861,23 @@ public:
   NS_DECL_ISUPPORTS
   NS_IMETHOD HandleEvent(nsIDOMEvent *event) override
   {
-    nsCOMPtr<nsIXMLHttpRequest> xhr = do_QueryReferent(mXHR);
-    if (xhr) {
-      static_cast<XMLHttpRequestMainThread*>(xhr.get())->OnBodyParseEnd();
+    if (mXHR) {
+      mXHR->OnBodyParseEnd();
     }
     mXHR = nullptr;
     return NS_OK;
   }
-  explicit nsXHRParseEndListener(nsIXMLHttpRequest* aXHR)
-    : mXHR(do_GetWeakReference(aXHR)) {}
+
+  explicit nsXHRParseEndListener(XMLHttpRequestMainThread* aXHR)
+    : mXHR(aXHR) {}
+
+  void SetIsStale() {
+    mXHR = nullptr;
+  }
 private:
   virtual ~nsXHRParseEndListener() {}
 
-  nsWeakPtr mXHR;
+  XMLHttpRequestMainThread* mXHR;
 };
 
 } // dom namespace

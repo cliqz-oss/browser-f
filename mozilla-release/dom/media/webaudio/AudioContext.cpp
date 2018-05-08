@@ -650,11 +650,15 @@ AudioContext::DestinationStream() const
 }
 
 double
-AudioContext::CurrentTime() const
+AudioContext::CurrentTime()
 {
   MediaStream* stream = Destination()->Stream();
+  // The value of a MediaStream's CurrentTime will always advance forward; it will never
+  // reset (even if one rewinds a video.) Therefore we can use a single Random Seed
+  // initialized at the same time as the object.
   return nsRFPService::ReduceTimePrecisionAsSecs(
-    stream->StreamTimeToSeconds(stream->GetCurrentTime()));
+    stream->StreamTimeToSeconds(stream->GetCurrentTime()),
+    GetRandomTimelineSeed());
 }
 
 void AudioContext::DisconnectFromOwner()
@@ -672,8 +676,7 @@ AudioContext::Shutdown()
   // We don't want to touch promises if the global is going away soon.
   if (!mIsDisconnecting) {
     if (!mIsOffline) {
-      IgnoredErrorResult dummy;
-      RefPtr<Promise> ignored = Close(dummy);
+      RefPtr<Promise> ignored = Close(IgnoreErrors());
     }
 
     for (auto p : mPromiseGripArray) {

@@ -4,15 +4,13 @@
 
 "use strict";
 
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/narrate/VoiceSelect.jsm");
+ChromeUtils.import("resource://gre/modules/narrate/Narrator.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncPrefs.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm");
 
-Cu.import("resource://gre/modules/narrate/VoiceSelect.jsm");
-Cu.import("resource://gre/modules/narrate/Narrator.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AsyncPrefs.jsm");
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm");
-
-this.EXPORTED_SYMBOLS = ["NarrateControls"];
+var EXPORTED_SYMBOLS = ["NarrateControls"];
 
 var gStrings = Services.strings.createBundle("chrome://global/locale/narrate.properties");
 
@@ -149,9 +147,7 @@ NarrateControls.prototype = {
         this._setupVoices();
         break;
       case "unload":
-        if (this.narrator.speaking) {
-          TelemetryStopwatch.finish("NARRATE_CONTENT_SPEAKTIME_MS", this);
-        }
+        this.narrator.stop();
         break;
     }
   },
@@ -165,8 +161,7 @@ NarrateControls.prototype = {
       let win = this._win;
       let voicePrefs = this._getVoicePref();
       let selectedVoice = voicePrefs[language || "default"];
-      let comparer = win.Intl ?
-        (new Intl.Collator()).compare : (a, b) => a.localeCompare(b);
+      let comparer = (new Services.intl.Collator()).compare;
       let filter = !Services.prefs.getBoolPref("narrate.filter-voices");
       let options = win.speechSynthesis.getVoices().filter(v => {
         return filter || !language || v.lang.split("-")[0] == language;
@@ -244,12 +239,13 @@ NarrateControls.prototype = {
         this.narrator.stop();
       } else {
         this._updateSpeechControls(true);
+        TelemetryStopwatch.start("NARRATE_CONTENT_SPEAKTIME_MS", this);
         let options = { rate: this.rate, voice: this.voice };
-        this.narrator.start(options).then(() => {
-          this._updateSpeechControls(false);
-        }, err => {
+        this.narrator.start(options).catch(err => {
           Cu.reportError(`Narrate failed: ${err}.`);
+        }).then(() => {
           this._updateSpeechControls(false);
+          TelemetryStopwatch.finish("NARRATE_CONTENT_SPEAKTIME_MS", this);
         });
       }
     }
@@ -257,6 +253,11 @@ NarrateControls.prototype = {
 
   _updateSpeechControls(speaking) {
     let dropdown = this._doc.querySelector(".narrate-dropdown");
+    if (!dropdown) {
+      // Elements got destroyed, but window lingers on for a bit.
+      return;
+    }
+
     dropdown.classList.toggle("keep-open", speaking);
     dropdown.classList.toggle("speaking", speaking);
 
@@ -266,12 +267,6 @@ NarrateControls.prototype = {
 
     this._doc.querySelector(".narrate-skip-previous").disabled = !speaking;
     this._doc.querySelector(".narrate-skip-next").disabled = !speaking;
-
-    if (speaking) {
-      TelemetryStopwatch.start("NARRATE_CONTENT_SPEAKTIME_MS", this);
-    } else {
-      TelemetryStopwatch.finish("NARRATE_CONTENT_SPEAKTIME_MS", this);
-    }
   },
 
   _createVoiceLabel(voice) {

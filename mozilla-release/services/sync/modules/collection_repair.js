@@ -3,18 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-sync/main.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-sync/main.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "BookmarkRepairRequestor",
+ChromeUtils.defineModuleGetter(this, "BookmarkRepairRequestor",
   "resource://services-sync/bookmark_repair.js");
 
-this.EXPORTED_SYMBOLS = ["getRepairRequestor", "getAllRepairRequestors",
-                         "CollectionRepairRequestor",
-                         "getRepairResponder",
-                         "CollectionRepairResponder"];
+var EXPORTED_SYMBOLS = ["getRepairRequestor", "getAllRepairRequestors",
+                        "CollectionRepairRequestor",
+                        "getRepairResponder",
+                        "CollectionRepairResponder"];
 
 // The individual requestors/responders, lazily loaded.
 const REQUESTORS = {
@@ -32,7 +30,7 @@ function _getRepairConstructor(which, collection) {
   }
   let [modname, symbolname] = which[collection];
   let ns = {};
-  Cu.import("resource://services-sync/" + modname, ns);
+  ChromeUtils.import("resource://services-sync/" + modname, ns);
   return ns[symbolname];
 }
 

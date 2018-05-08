@@ -68,12 +68,8 @@ public final class EventDispatcher extends JNIObject {
         mNativeQueue = GeckoThread.getNativeQueue();
     }
 
-    /* package */ EventDispatcher(final NativeQueue queue) {
+    public EventDispatcher(final NativeQueue queue) {
         mNativeQueue = queue;
-    }
-
-    public NativeQueue getNativeQueue() {
-        return mNativeQueue;
     }
 
     private boolean isReadyForDispatchingToGecko() {
@@ -123,7 +119,7 @@ public final class EventDispatcher extends JNIObject {
                     listeners.add(listener);
                 }
             }
-        } catch (final IllegalAccessException | InstantiationException e) {
+        } catch (final Exception e) {
             throw new IllegalArgumentException("Invalid new list type", e);
         }
     }

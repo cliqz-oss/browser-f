@@ -26,7 +26,6 @@
  */
 
 const {Cu, Ci} = require("chrome");
-const promise = require("promise");
 const protocol = require("devtools/shared/protocol");
 const {Actor} = protocol;
 const {animationPlayerSpec, animationsSpec} = require("devtools/shared/specs/animation");
@@ -391,14 +390,16 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
 
       if (hasCurrentAnimation(changedAnimations)) {
         // Only consider the state has having changed if any of delay, duration,
-        // iterationcount or iterationStart has changed (for now at least).
+        // iterationCount, iterationStart, or playbackRate has changed (for now
+        // at least).
         let newState = this.getState();
         let oldState = this.currentState;
         hasChanged = newState.delay !== oldState.delay ||
                      newState.iterationCount !== oldState.iterationCount ||
                      newState.iterationStart !== oldState.iterationStart ||
                      newState.duration !== oldState.duration ||
-                     newState.endDelay !== oldState.endDelay;
+                     newState.endDelay !== oldState.endDelay ||
+                     newState.playbackRate !== oldState.playbackRate;
         break;
       }
     }
@@ -465,7 +466,8 @@ var AnimationPlayerActor = protocol.ActorClassWithSpec(animationPlayerSpec, {
    * Set the playback rate of the animation player.
    */
   setPlaybackRate: function (playbackRate) {
-    this.player.playbackRate = playbackRate;
+    this.player.updatePlaybackRate(playbackRate);
+    return this.player.ready;
   },
 
   /**
@@ -813,7 +815,7 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
       readyPromises.push(player.ready);
     }
     this.allAnimationsPaused = true;
-    return promise.all(readyPromises);
+    return Promise.all(readyPromises);
   },
 
   /**
@@ -830,7 +832,7 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
       readyPromises.push(player.ready);
     }
     this.allAnimationsPaused = false;
-    return promise.all(readyPromises);
+    return Promise.all(readyPromises);
   },
 
   toggleAll: function () {
@@ -847,7 +849,7 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
    * otherwise they will be played.
    */
   toggleSeveral: function (players, shouldPause) {
-    return promise.all(players.map(player => {
+    return Promise.all(players.map(player => {
       return shouldPause ? player.pause() : player.play();
     }));
   },
@@ -859,8 +861,8 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
    * @param {Boolean} shouldPause Should the players be paused too.
    */
   setCurrentTimes: function (players, time, shouldPause) {
-    return promise.all(players.map(player => {
-      let pause = shouldPause ? player.pause() : promise.resolve();
+    return Promise.all(players.map(player => {
+      let pause = shouldPause ? player.pause() : Promise.resolve();
       return pause.then(() => player.setCurrentTime(time));
     }));
   },
@@ -871,8 +873,8 @@ exports.AnimationsActor = protocol.ActorClassWithSpec(animationsSpec, {
    * @param {Number} rate The new rate.
    */
   setPlaybackRates: function (players, rate) {
-    for (let player of players) {
-      player.setPlaybackRate(rate);
-    }
+    return Promise.all(
+      players.map(player => player.setPlaybackRate(rate))
+    );
   }
 });

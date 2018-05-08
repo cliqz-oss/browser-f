@@ -3791,6 +3791,21 @@ nsHttpConnectionMgr::GetOrCreateConnectionEntry(nsHttpConnectionInfo *specificCI
         return specificEnt;
     }
 
+    // step 1 repeated for an inverted anonymous flag; we return an entry
+    // only when it has an h2 established connection that is not authenticated
+    // with a client certificate.
+    RefPtr<nsHttpConnectionInfo> anonInvertedCI(specificCI->Clone());
+    anonInvertedCI->SetAnonymous(!specificCI->GetAnonymous());
+    nsConnectionEntry *invertedEnt = mCT.GetWeak(anonInvertedCI->HashKey());
+    if (invertedEnt) {
+        nsHttpConnection* h2conn = GetSpdyActiveConn(invertedEnt);
+        if (h2conn && h2conn->IsExperienced() && h2conn->NoClientCertAuth()) {
+            MOZ_ASSERT(h2conn->UsingSpdy());
+            LOG(("GetOrCreateConnectionEntry is coalescing h2 an/onymous connections, ent=%p", invertedEnt));
+            return invertedEnt;
+        }
+    }
+
     if (!specificCI->UsingHttpsProxy()) {
         prohibitWildCard = true;
     }
@@ -4593,7 +4608,9 @@ nsHalfOpenSocket::SetFastOpenConnected(nsresult aError, bool aWillRetry)
 
     MOZ_ASSERT((mFastOpenStatus == TFO_NOT_TRIED) || 
                (mFastOpenStatus == TFO_DATA_SENT) ||
-               (mFastOpenStatus == TFO_TRIED));
+               (mFastOpenStatus == TFO_TRIED) ||
+               (mFastOpenStatus == TFO_DATA_COOKIE_NOT_ACCEPTED) ||
+               (mFastOpenStatus == TFO_DISABLED));
 
     RefPtr<nsHalfOpenSocket> deleteProtector(this);
 
@@ -4702,10 +4719,15 @@ void
 nsHttpConnectionMgr::
 nsHalfOpenSocket::SetFastOpenStatus(uint8_t tfoStatus)
 {
+    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
     MOZ_ASSERT(mFastOpenInProgress);
+
     mFastOpenStatus = tfoStatus;
     mConnectionNegotiatingFastOpen->SetFastOpenStatus(tfoStatus);
-    mConnectionNegotiatingFastOpen->Transaction()->SetFastOpenStatus(tfoStatus);
+    if (mConnectionNegotiatingFastOpen->Transaction()) {
+        // The transaction could already be canceled in the meantime, hence nullified.
+        mConnectionNegotiatingFastOpen->Transaction()->SetFastOpenStatus(tfoStatus);
+    }
 }
 
 void

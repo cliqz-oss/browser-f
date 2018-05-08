@@ -13,6 +13,7 @@
 #include "nsAccUtils.h"
 #include "nsAccessibilityService.h"
 #include "ApplicationAccessible.h"
+#include "nsGenericHTMLElement.h"
 #include "NotificationController.h"
 #include "nsEventShell.h"
 #include "nsTextEquivUtils.h"
@@ -27,18 +28,15 @@
 #include "TableAccessible.h"
 #include "TableCellAccessible.h"
 #include "TreeWalker.h"
+#include "XULDocument.h"
 
 #include "nsIDOMElement.h"
-#include "nsIDOMNodeFilter.h"
-#include "nsIDOMHTMLElement.h"
-#include "nsIDOMKeyEvent.h"
-#include "nsIDOMTreeWalker.h"
 #include "nsIDOMXULButtonElement.h"
-#include "nsIDOMXULDocument.h"
 #include "nsIDOMXULElement.h"
 #include "nsIDOMXULLabelElement.h"
 #include "nsIDOMXULSelectCntrlEl.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
+#include "nsINodeList.h"
 #include "nsPIDOMWindow.h"
 
 #include "nsIDocument.h"
@@ -76,6 +74,7 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/MouseEvents.h"
@@ -85,6 +84,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/HTMLBodyElement.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 #include "mozilla/dom/TreeWalker.h"
 
 using namespace mozilla;
@@ -262,13 +262,13 @@ Accessible::AccessKey() const
   switch (Preferences::GetInt("ui.key.generalAccessKey", -1)) {
   case -1:
     break;
-  case nsIDOMKeyEvent::DOM_VK_SHIFT:
+  case dom::KeyboardEventBinding::DOM_VK_SHIFT:
     return KeyBinding(key, KeyBinding::kShift);
-  case nsIDOMKeyEvent::DOM_VK_CONTROL:
+  case dom::KeyboardEventBinding::DOM_VK_CONTROL:
     return KeyBinding(key, KeyBinding::kControl);
-  case nsIDOMKeyEvent::DOM_VK_ALT:
+  case dom::KeyboardEventBinding::DOM_VK_ALT:
     return KeyBinding(key, KeyBinding::kAlt);
-  case nsIDOMKeyEvent::DOM_VK_META:
+  case dom::KeyboardEventBinding::DOM_VK_META:
     return KeyBinding(key, KeyBinding::kMeta);
   default:
     return KeyBinding();
@@ -789,10 +789,8 @@ Accessible::XULElmName(DocAccessible* aDocument,
       nsCOMPtr<nsIDOMXULSelectControlElement> select = do_QueryInterface(aElm);
       // Use label if this is not a select control element which
       // uses label attribute to indicate which option is selected
-      if (!select) {
-        nsCOMPtr<nsIDOMXULElement> xulEl(do_QueryInterface(aElm));
-        if (xulEl)
-          xulEl->GetAttribute(NS_LITERAL_STRING("label"), aName);
+      if (!select && aElm->IsElement()) {
+        aElm->AsElement()->GetAttribute(NS_LITERAL_STRING("label"), aName);
       }
     }
   }
@@ -1073,11 +1071,8 @@ Accessible::NativeAttributes()
   nsAccUtils::SetAccAttr(attributes, nsGkAtoms::tag, tagName);
 
   // Expose draggable object attribute.
-  nsCOMPtr<nsIDOMHTMLElement> htmlElement = do_QueryInterface(mContent);
-  if (htmlElement) {
-    bool draggable = false;
-    htmlElement->GetDraggable(&draggable);
-    if (draggable) {
+  if (auto htmlElement = nsGenericHTMLElement::FromContent(mContent)) {
+    if (htmlElement->Draggable()) {
       nsAccUtils::SetAccAttr(attributes, nsGkAtoms::draggable,
                              NS_LITERAL_STRING("true"));
     }
@@ -1090,7 +1085,7 @@ Accessible::NativeAttributes()
 
   // CSS style based object attributes.
   nsAutoString value;
-  StyleInfo styleInfo(mContent->AsElement(), mDoc->PresShell());
+  StyleInfo styleInfo(mContent->AsElement());
 
   // Expose 'display' attribute.
   styleInfo.Display(value);
@@ -1755,22 +1750,17 @@ Accessible::RelationByType(RelationType aType)
         }
       } else {
         // In XUL, use first <button default="true" .../> in the document
-        nsCOMPtr<nsIDOMXULDocument> xulDoc =
-          do_QueryInterface(mContent->OwnerDoc());
+        dom::XULDocument* xulDoc = mContent->OwnerDoc()->AsXULDocument();
         nsCOMPtr<nsIDOMXULButtonElement> buttonEl;
         if (xulDoc) {
-          nsCOMPtr<nsIDOMNodeList> possibleDefaultButtons;
-          xulDoc->GetElementsByAttribute(NS_LITERAL_STRING("default"),
-                                         NS_LITERAL_STRING("true"),
-                                         getter_AddRefs(possibleDefaultButtons));
+          nsCOMPtr<nsINodeList> possibleDefaultButtons =
+            xulDoc->GetElementsByAttribute(NS_LITERAL_STRING("default"),
+                                           NS_LITERAL_STRING("true"));
           if (possibleDefaultButtons) {
-            uint32_t length;
-            possibleDefaultButtons->GetLength(&length);
-            nsCOMPtr<nsIDOMNode> possibleButton;
+            uint32_t length = possibleDefaultButtons->Length();
             // Check for button in list of default="true" elements
             for (uint32_t count = 0; count < length && !buttonEl; count ++) {
-              possibleDefaultButtons->Item(count, getter_AddRefs(possibleButton));
-              buttonEl = do_QueryInterface(possibleButton);
+              buttonEl = do_QueryInterface(possibleDefaultButtons->Item(count));
             }
           }
           if (!buttonEl) { // Check for anonymous accept button in <dialog>

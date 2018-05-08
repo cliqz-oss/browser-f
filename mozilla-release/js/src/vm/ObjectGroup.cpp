@@ -7,15 +7,16 @@
 #include "vm/ObjectGroup.h"
 
 #include "jsexn.h"
-#include "jshashutil.h"
-#include "jsobj.h"
 
 #include "builtin/DataViewObject.h"
+#include "gc/FreeOp.h"
+#include "gc/HashUtil.h"
 #include "gc/Policy.h"
 #include "gc/StoreBuffer.h"
 #include "gc/Zone.h"
 #include "js/CharacterEncoding.h"
 #include "vm/ArrayObject.h"
+#include "vm/JSObject.h"
 #include "vm/RegExpObject.h"
 #include "vm/Shape.h"
 #include "vm/TaggedProto.h"
@@ -25,7 +26,6 @@
 
 using namespace js;
 
-using mozilla::DebugOnly;
 using mozilla::PodZero;
 
 /////////////////////////////////////////////////////////////////////
@@ -536,6 +536,14 @@ ObjectGroup::defaultNewGroup(JSContext* cx, const Class* clasp,
         if (protoObj->is<PlainObject>() && !protoObj->isSingleton()) {
             if (!JSObject::changeToSingleton(cx, protoObj))
                 return nullptr;
+
+            // |ReshapeForProtoMutation| ensures singletons will reshape when
+            // prototype is mutated so clear the UNCACHEABLE_PROTO flag.
+            if (protoObj->hasUncacheableProto()) {
+                HandleNativeObject nobj = protoObj.as<NativeObject>();
+                if (!NativeObject::clearFlag(cx, nobj, BaseShape::UNCACHEABLE_PROTO))
+                    return nullptr;
+            }
         }
     }
 
@@ -1754,7 +1762,7 @@ ObjectGroupCompartment::PlainObjectTableSweepPolicy::needsSweep(PlainObjectKey* 
 }
 
 void
-ObjectGroupCompartment::sweep(FreeOp* fop)
+ObjectGroupCompartment::sweep()
 {
     /*
      * Iterate through the array/object group tables and remove all entries

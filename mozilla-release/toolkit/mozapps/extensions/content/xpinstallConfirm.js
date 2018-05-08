@@ -7,8 +7,8 @@
 var XPInstallConfirm = {};
 
 XPInstallConfirm.init = function() {
-  Components.utils.import("resource://gre/modules/AddonManager.jsm");
-  Components.utils.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   var _installCountdown;
   var _installCountdownInterval;
@@ -167,7 +167,7 @@ XPInstallConfirm.init = function() {
 
 XPInstallConfirm.onOK = function() {
   Services.telemetry.getHistogramById("SECURITY_UI")
-    .add(Components.interfaces.nsISecurityUITelemetry.WARNING_CONFIRM_ADDON_INSTALL_CLICK_THROUGH);
+    .add(Ci.nsISecurityUITelemetry.WARNING_CONFIRM_ADDON_INSTALL_CLICK_THROUGH);
   // Perform the install or cancel after the window has unloaded
   XPInstallConfirm._installOK = true;
   return true;

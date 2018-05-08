@@ -535,16 +535,13 @@ CutExtension(nsCString& aPath)
 static void
 DoRegisterManifest(NSLocationType aType,
                    FileLocation& aFile,
-                   bool aChromeOnly,
-                   bool aXPTOnly)
+                   bool aChromeOnly)
 {
-  MOZ_ASSERT(!aXPTOnly || !nsComponentManagerImpl::gComponentManager);
-
   auto result = URLPreloader::Read(aFile);
   if (result.isOk()) {
     nsCString buf(result.unwrap());
 
-    ParseManifest(aType, aFile, buf.BeginWriting(), aChromeOnly, aXPTOnly);
+    ParseManifest(aType, aFile, buf.BeginWriting(), aChromeOnly);
   } else if (NS_BOOTSTRAPPED_LOCATION != aType) {
     nsCString uri;
     aFile.GetURIString(uri);
@@ -557,7 +554,7 @@ nsComponentManagerImpl::RegisterManifest(NSLocationType aType,
                                          FileLocation& aFile,
                                          bool aChromeOnly)
 {
-  DoRegisterManifest(aType, aFile, aChromeOnly, false);
+  DoRegisterManifest(aType, aFile, aChromeOnly);
 }
 
 void
@@ -2001,3 +1998,27 @@ XRE_AddJarManifestLocation(NSLocationType aType, nsIFile* aLocation)
   return NS_OK;
 }
 
+// Expose some important global interfaces to rust for the rust xpcom API. These
+// methods return a non-owning reference to the component manager, which should
+// live for the lifetime of XPCOM.
+extern "C" {
+
+const nsIComponentManager*
+Gecko_GetComponentManager()
+{
+  return nsComponentManagerImpl::gComponentManager;
+}
+
+const nsIServiceManager*
+Gecko_GetServiceManager()
+{
+  return nsComponentManagerImpl::gComponentManager;
+}
+
+const nsIComponentRegistrar*
+Gecko_GetComponentRegistrar()
+{
+  return nsComponentManagerImpl::gComponentManager;
+}
+
+}

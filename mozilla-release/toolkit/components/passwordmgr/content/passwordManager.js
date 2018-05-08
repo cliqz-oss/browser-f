@@ -3,16 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /** * =================== SAVED SIGNONS CODE =================== ***/
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
 let kSignonBundle;
 
@@ -565,16 +563,16 @@ function FocusFilterBox() {
 }
 
 function SignonMatchesFilter(aSignon, aFilterValue) {
-  if (aSignon.hostname.toLowerCase().indexOf(aFilterValue) != -1)
+  if (aSignon.hostname.toLowerCase().includes(aFilterValue))
     return true;
   if (aSignon.username &&
-      aSignon.username.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.username.toLowerCase().includes(aFilterValue))
     return true;
   if (aSignon.httpRealm &&
-      aSignon.httpRealm.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.httpRealm.toLowerCase().includes(aFilterValue))
     return true;
   if (showingPasswords && aSignon.password &&
-      aSignon.password.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.password.toLowerCase().includes(aFilterValue))
     return true;
 
   return false;
@@ -749,7 +747,7 @@ function escapeKeyHandler() {
 }
 
 function OpenMigrator() {
-  const { MigrationUtils } = Cu.import("resource:///modules/MigrationUtils.jsm", {});
+  const { MigrationUtils } = ChromeUtils.import("resource:///modules/MigrationUtils.jsm", {});
   // We pass in the type of source we're using for use in telemetry:
   MigrationUtils.showMigrationWizard(window, [MigrationUtils.MIGRATION_ENTRYPOINT_PASSWORDS]);
 }

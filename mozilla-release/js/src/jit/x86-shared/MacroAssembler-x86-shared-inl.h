@@ -1111,39 +1111,11 @@ MacroAssembler::cmp32Move32(Condition cond, Register lhs, const Address& rhs, Re
 }
 
 void
-MacroAssembler::boundsCheck32ForLoad(Register index, Register length, Register scratch,
-                                     Label* failure)
+MacroAssembler::spectreZeroRegister(Condition cond, Register scratch, Register dest)
 {
-    MOZ_ASSERT(index != length);
-    MOZ_ASSERT(length != scratch);
-    MOZ_ASSERT(index != scratch);
-
-    if (JitOptions.spectreIndexMasking)
-        move32(Imm32(0), scratch);
-
-    cmp32(index, length);
-    j(Assembler::AboveOrEqual, failure);
-
-    if (JitOptions.spectreIndexMasking)
-        cmovCCl(Assembler::AboveOrEqual, scratch, index);
-}
-
-void
-MacroAssembler::boundsCheck32ForLoad(Register index, const Address& length, Register scratch,
-                                     Label* failure)
-{
-    MOZ_ASSERT(index != length.base);
-    MOZ_ASSERT(length.base != scratch);
-    MOZ_ASSERT(index != scratch);
-
-    if (JitOptions.spectreIndexMasking)
-        move32(Imm32(0), scratch);
-
-    cmp32(index, Operand(length));
-    j(Assembler::AboveOrEqual, failure);
-
-    if (JitOptions.spectreIndexMasking)
-        cmovCCl(Assembler::AboveOrEqual, scratch, index);
+    // Note: use movl instead of move32/xorl to ensure flags are not clobbered.
+    movl(Imm32(0), scratch);
+    spectreMovePtr(cond, scratch, dest);
 }
 
 // ========================================================================

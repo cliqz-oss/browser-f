@@ -3,21 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ChromeMigrationUtils"];
+var EXPORTED_SYMBOLS = ["ChromeMigrationUtils"];
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-const FILE_INPUT_STREAM_CID = "@mozilla.org/network/file-input-stream;1";
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-this.ChromeMigrationUtils = {
-  _chromeUserDataPath: null,
-
+var ChromeMigrationUtils = {
   _extensionVersionDirectoryNames: {},
 
   // The cache for the locale strings.
@@ -37,7 +31,10 @@ this.ChromeMigrationUtils = {
    * @param {String} profileId - A Chrome user profile ID. For example, "Profile 1".
    * @returns {Array} All installed Chrome extensions information.
    */
-  async getExtensionList(profileId = this.getLastUsedProfileId()) {
+  async getExtensionList(profileId) {
+    if (profileId === undefined) {
+      profileId = await this.getLastUsedProfileId();
+    }
     let path = this.getExtensionPath(profileId);
     let iterator = new OS.File.DirectoryIterator(path);
     let extensionList = [];
@@ -58,7 +55,10 @@ this.ChromeMigrationUtils = {
    * @param {String} profileId - The user profile's ID.
    * @retruns {Object} The Chrome extension information.
    */
-  async getExtensionInformation(extensionId, profileId = this.getLastUsedProfileId()) {
+  async getExtensionInformation(extensionId, profileId) {
+    if (profileId === undefined) {
+      profileId = await this.getLastUsedProfileId();
+    }
     let extensionInformation = null;
     try {
       let manifestPath = this.getExtensionPath(profileId);
@@ -151,7 +151,10 @@ this.ChromeMigrationUtils = {
    * @param {String} profileId - The user profile's ID.
    * @returns {Boolean} Return true if the extension is installed otherwise return false.
    */
-  async isExtensionInstalled(extensionId, profileId = this.getLastUsedProfileId()) {
+  async isExtensionInstalled(extensionId, profileId) {
+    if (profileId === undefined) {
+      profileId = await this.getLastUsedProfileId();
+    }
     let extensionPath = this.getExtensionPath(profileId);
     let isInstalled = await OS.File.exists(OS.Path.join(extensionPath, extensionId));
     return isInstalled;
@@ -161,30 +164,22 @@ this.ChromeMigrationUtils = {
    * Get the last used user profile's ID.
    * @returns {String} The last used user profile's ID.
    */
-  getLastUsedProfileId() {
-    let localState = this.getLocalState();
+  async getLastUsedProfileId() {
+    let localState = await this.getLocalState();
     return localState ? localState.profile.last_used : "Default";
   },
 
   /**
    * Get the local state file content.
+   * @param {String} dataPath the type of Chrome data we're looking for (Chromium, Canary, etc.)
    * @returns {Object} The JSON-based content.
    */
-  getLocalState() {
-    let localStateFile = new FileUtils.File(this.getChromeUserDataPath());
-    localStateFile.append("Local State");
-    if (!localStateFile.exists())
-      throw new Error("Chrome's 'Local State' file does not exist.");
-    if (!localStateFile.isReadable())
-      throw new Error("Chrome's 'Local State' file could not be read.");
-
+  async getLocalState(dataPath = "Chrome") {
     let localState = null;
     try {
-      let fstream = Cc[FILE_INPUT_STREAM_CID].createInstance(Ci.nsIFileInputStream);
-      fstream.init(localStateFile, -1, 0, 0);
-      let inputStream = NetUtil.readInputStreamToString(fstream, fstream.available(),
-                                                        { charset: "UTF-8" });
-      localState = JSON.parse(inputStream);
+      let localStatePath = OS.Path.join(this.getDataPath(dataPath), "Local State");
+      let localStateJson = await OS.File.read(localStatePath, { encoding: "utf-8" });
+      localState = JSON.parse(localStateJson);
     } catch (ex) {
       Cu.reportError(ex);
       throw ex;
@@ -198,26 +193,16 @@ this.ChromeMigrationUtils = {
    * @returns {String} The path of Chrome extension directory.
    */
   getExtensionPath(profileId) {
-    return OS.Path.join(this.getChromeUserDataPath(), profileId, "Extensions");
-  },
-
-  /**
-   * Get the path of the Chrome user data directory.
-   * @returns {String} The path of the Chrome user data directory.
-   */
-  getChromeUserDataPath() {
-    if (!this._chromeUserDataPath) {
-      this._chromeUserDataPath = this.getDataPath("Chrome");
-    }
-    return this._chromeUserDataPath;
+    return OS.Path.join(this.getDataPath(), profileId, "Extensions");
   },
 
   /**
    * Get the path of an application data directory.
-   * @param {String} chromeProjectName - The Chrome project name, e.g. "Chrome", "Chromium" or "Canary".
+   * @param {String} chromeProjectName - The Chrome project name, e.g. "Chrome", "Canary", etc.
+   *                                     Defaults to "Chrome".
    * @returns {String} The path of application data directory.
    */
-  getDataPath(chromeProjectName) {
+  getDataPath(chromeProjectName = "Chrome") {
     const SUB_DIRECTORIES = {
       win: {
         Chrome: ["Google", "Chrome"],
@@ -231,6 +216,8 @@ this.ChromeMigrationUtils = {
       },
       linux: {
         Chrome: ["google-chrome"],
+        "Chrome Beta": ["google-chrome-beta"],
+        "Chrome Dev": ["google-chrome-unstable"],
         Chromium: ["chromium"],
         // Canary is not available on Linux.
       },

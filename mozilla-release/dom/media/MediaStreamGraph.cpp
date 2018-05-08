@@ -1052,13 +1052,21 @@ MediaStreamGraphImpl::PrepareUpdatesToMainThreadState(bool aFinalUpdate)
 }
 
 GraphTime
+MediaStreamGraphImpl::RoundUpToEndOfAudioBlock(GraphTime aTime)
+{
+  if (aTime % WEBAUDIO_BLOCK_SIZE == 0) {
+    return aTime;
+  }
+  return RoundUpToNextAudioBlock(aTime);
+}
+
+GraphTime
 MediaStreamGraphImpl::RoundUpToNextAudioBlock(GraphTime aTime)
 {
-  StreamTime ticks = aTime;
-  uint64_t block = ticks >> WEBAUDIO_BLOCK_SIZE_BITS;
+  uint64_t block = aTime >> WEBAUDIO_BLOCK_SIZE_BITS;
   uint64_t nextBlock = block + 1;
-  StreamTime nextTicks = nextBlock << WEBAUDIO_BLOCK_SIZE_BITS;
-  return nextTicks;
+  GraphTime nextTime = nextBlock << WEBAUDIO_BLOCK_SIZE_BITS;
+  return nextTime;
 }
 
 void
@@ -1185,6 +1193,29 @@ MediaStreamGraphImpl::UpdateGraph(GraphTime aEndBlockingDecisions)
       }
     } else {
       stream->mStartBlocking = WillUnderrun(stream, aEndBlockingDecisions);
+
+      SourceMediaStream* s = stream->AsSourceStream();
+      if (s && s->mPullEnabled) {
+        for (StreamTracks::TrackIter i(s->mTracks); !i.IsEnded(); i.Next()) {
+          if (i->IsEnded()) {
+            continue;
+          }
+          if (i->GetEnd() < stream->GraphTimeToStreamTime(aEndBlockingDecisions)) {
+            LOG(LogLevel::Error,
+                ("SourceMediaStream %p track %u (%s) is live and pulled, but wasn't fed "
+                 "enough data. Listeners=%zu. Track-end=%f, Iteration-end=%f",
+                 stream,
+                 i->GetID(),
+                 (i->GetType() == MediaSegment::AUDIO ? "audio" : "video"),
+                 stream->mListeners.Length(),
+                 MediaTimeToSeconds(i->GetEnd()),
+                 MediaTimeToSeconds(stream->GraphTimeToStreamTime(aEndBlockingDecisions))));
+            MOZ_DIAGNOSTIC_ASSERT(false,
+                                  "A non-finished SourceMediaStream wasn't fed "
+                                  "enough data by NotifyPull");
+          }
+        }
+      }
     }
   }
 
@@ -1951,13 +1982,17 @@ MediaStream::FinishOnGraphThread()
   }
   LOG(LogLevel::Debug, ("MediaStream %p will finish", this));
 #ifdef DEBUG
-  for (StreamTracks::TrackIter track(mTracks); !track.IsEnded(); track.Next()) {
-    if (!track->IsEnded()) {
-      LOG(LogLevel::Error,
-          ("MediaStream %p will finish, but track %d has not ended.",
-           this,
-           track->GetID()));
-      NS_ASSERTION(false, "Finished stream cannot contain live track");
+  if (!mGraph->mForceShutDown) {
+    // All tracks must be ended by the source before the stream finishes.
+    // The exception is in forced shutdown, where we finish all streams as is.
+    for (StreamTracks::TrackIter track(mTracks); !track.IsEnded(); track.Next()) {
+      if (!track->IsEnded()) {
+        LOG(LogLevel::Error,
+            ("MediaStream %p will finish, but track %d has not ended.",
+             this,
+             track->GetID()));
+        NS_ASSERTION(false, "Finished stream cannot contain live track");
+      }
     }
   }
 #endif
@@ -2012,9 +2047,13 @@ MediaStream::RemoveAllListenersImpl()
   }
   mTrackListeners.Clear();
 
-  if (SourceMediaStream* source = AsSourceStream()) {
-    source->RemoveAllDirectListeners();
+  RemoveAllDirectListenersImpl();
+
+  auto videoOutputs(mVideoOutputs);
+  for (auto& l : videoOutputs) {
+    l.mListener->NotifyRemoved();
   }
+  mVideoOutputs.Clear();
 }
 
 void
@@ -2707,11 +2746,22 @@ SourceMediaStream::DestroyImpl()
 void
 SourceMediaStream::SetPullEnabled(bool aEnabled)
 {
-  MutexAutoLock lock(mMutex);
-  mPullEnabled = aEnabled;
-  if (mPullEnabled && GraphImpl()) {
-    GraphImpl()->EnsureNextIteration();
-  }
+  class Message : public ControlMessage {
+  public:
+    Message(SourceMediaStream* aStream, bool aEnabled)
+      : ControlMessage(nullptr)
+      , mStream(aStream)
+      , mEnabled(aEnabled)
+    {}
+    void Run() override
+    {
+      MutexAutoLock lock(mStream->mMutex);
+      mStream->mPullEnabled = mEnabled;
+    }
+    SourceMediaStream* mStream;
+    bool mEnabled;
+  };
+  GraphImpl()->AppendMessage(MakeUnique<Message>(this, aEnabled));
 }
 
 bool
@@ -2735,17 +2785,6 @@ SourceMediaStream::PullNewData(
   if (t <= current) {
     return false;
   }
-#ifdef DEBUG
-  if (mListeners.Length() == 0) {
-    LOG(
-      LogLevel::Error,
-      ("No listeners in NotifyPull aStream=%p desired=%f current end=%f",
-        this,
-        GraphImpl()->MediaTimeToSeconds(t),
-        GraphImpl()->MediaTimeToSeconds(current)));
-    DumpTrackInfo();
-  }
-#endif
   for (uint32_t j = 0; j < mListeners.Length(); ++j) {
     MediaStreamListener* l = mListeners[j];
     {
@@ -3231,7 +3270,7 @@ SourceMediaStream::EndAllTrackAndFinish()
 }
 
 void
-SourceMediaStream::RemoveAllDirectListeners()
+SourceMediaStream::RemoveAllDirectListenersImpl()
 {
   GraphImpl()->AssertOnGraphThreadOrNotRunning();
 
@@ -3674,8 +3713,7 @@ MediaStreamGraph::GetInstance(MediaStreamGraph::GraphDriverType aGraphDriverRequ
 
     AbstractThread* mainThread;
     if (aWindow) {
-      nsCOMPtr<nsIGlobalObject> parentObject = do_QueryInterface(aWindow);
-      mainThread = parentObject->AbstractMainThreadFor(TaskCategory::Other);
+      mainThread = aWindow->AsGlobal()->AbstractMainThreadFor(TaskCategory::Other);
     } else {
       // Uncommon case, only for some old configuration of webspeech.
       mainThread = AbstractThread::MainThread();
@@ -3700,11 +3738,10 @@ MediaStreamGraph::CreateNonRealtimeInstance(TrackRate aSampleRate,
 {
   MOZ_ASSERT(NS_IsMainThread(), "Main thread only");
 
-  nsCOMPtr<nsIGlobalObject> parentObject = do_QueryInterface(aWindow);
   MediaStreamGraphImpl* graph = new MediaStreamGraphImpl(
     OFFLINE_THREAD_DRIVER,
     aSampleRate,
-    parentObject->AbstractMainThreadFor(TaskCategory::Other));
+    aWindow->AsGlobal()->AbstractMainThreadFor(TaskCategory::Other));
 
   LOG(LogLevel::Debug, ("Starting up Offline MediaStreamGraph %p", graph));
 
@@ -4218,8 +4255,8 @@ MediaStreamGraph::StartNonRealtimeProcessing(uint32_t aTicksToProcess)
     return;
 
   graph->mEndTime =
-    graph->RoundUpToNextAudioBlock(graph->mStateComputedTime +
-                                   aTicksToProcess - 1);
+    graph->RoundUpToEndOfAudioBlock(graph->mStateComputedTime +
+                                    aTicksToProcess);
   graph->mNonRealtimeProcessing = true;
   graph->EnsureRunInStableState();
 }

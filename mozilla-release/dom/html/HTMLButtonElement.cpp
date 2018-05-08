@@ -9,7 +9,6 @@
 #include "HTMLFormSubmissionConstants.h"
 #include "mozilla/dom/HTMLButtonElementBinding.h"
 #include "mozilla/dom/HTMLFormSubmission.h"
-#include "nsIDOMHTMLFormElement.h"
 #include "nsAttrValueInlines.h"
 #include "nsGkAtoms.h"
 #include "nsIPresShell.h"
@@ -463,8 +462,7 @@ bool
 HTMLButtonElement::RestoreState(nsPresState* aState)
 {
   if (aState && aState->IsDisabledSet() && !aState->GetDisabled()) {
-    IgnoredErrorResult rv;
-    SetDisabled(false, rv);
+    SetDisabled(false, IgnoreErrors());
   }
 
   return false;

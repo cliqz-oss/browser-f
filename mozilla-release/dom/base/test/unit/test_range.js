@@ -2,20 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const C_i = Components.interfaces;
+Cu.importGlobalProperties(["NodeFilter"]);
 
-const UNORDERED_TYPE = C_i.nsIDOMXPathResult.ANY_UNORDERED_NODE_TYPE;
+const UNORDERED_TYPE = 8; // XPathResult.ANY_UNORDERED_NODE_TYPE
 
 /**
  * Determine if the data node has only ignorable white-space.
  *
- * @return nsIDOMNodeFilter.FILTER_SKIP if it does.
- * @return nsIDOMNodeFilter.FILTER_ACCEPT otherwise.
+ * @return NodeFilter.FILTER_SKIP if it does.
+ * @return NodeFilter.FILTER_ACCEPT otherwise.
  */
 function isWhitespace(aNode) {
   return ((/\S/).test(aNode.nodeValue)) ?
-         C_i.nsIDOMNodeFilter.FILTER_SKIP :
-         C_i.nsIDOMNodeFilter.FILTER_ACCEPT;
+         NodeFilter.FILTER_SKIP :
+         NodeFilter.FILTER_ACCEPT;
 }
 
 /**
@@ -56,7 +56,7 @@ function dumpFragment(aFragment) {
  * @return nsIDOMNode  The target node retrieved from the XPath.
  */
 function evalXPathInDocumentFragment(aContextNode, aPath) {
-  Assert.ok(aContextNode instanceof C_i.nsIDOMDocumentFragment);
+  Assert.ok(aContextNode instanceof Ci.nsIDOMDocumentFragment);
   Assert.ok(aContextNode.childNodes.length > 0);
   if (aPath == ".") {
     return aContextNode;
@@ -82,47 +82,46 @@ function evalXPathInDocumentFragment(aContextNode, aPath) {
     prefix = prefix.substr(0, bracketIndex);
   }
 
-  var targetType = C_i.nsIDOMNodeFilter.SHOW_ELEMENT;
+  var targetType = NodeFilter.SHOW_ELEMENT;
   var targetNodeName = prefix;
   if (prefix.indexOf("processing-instruction(") == 0) {
-    targetType = C_i.nsIDOMNodeFilter.SHOW_PROCESSING_INSTRUCTION;
+    targetType = NodeFilter.SHOW_PROCESSING_INSTRUCTION;
     targetNodeName = prefix.substring(prefix.indexOf("(") + 2, prefix.indexOf(")") - 1);
   }
   switch (prefix) {
     case "text()":
-      targetType = C_i.nsIDOMNodeFilter.SHOW_TEXT |
-                   C_i.nsIDOMNodeFilter.SHOW_CDATA_SECTION;
+      targetType = NodeFilter.SHOW_TEXT | NodeFilter.SHOW_CDATA_SECTION;
       targetNodeName = null;
       break;
     case "comment()":
-      targetType = C_i.nsIDOMNodeFilter.SHOW_COMMENT;
+      targetType = NodeFilter.SHOW_COMMENT;
       targetNodeName = null;
       break;
     case "node()":
-      targetType = C_i.nsIDOMNodeFilter.SHOW_ALL;
+      targetType = NodeFilter.SHOW_ALL;
       targetNodeName = null;
   }
 
   var filter = {
     count: 0,
 
-    // nsIDOMNodeFilter
+    // NodeFilter
     acceptNode: function acceptNode(aNode) {
       if (aNode.parentNode != aContextNode) {
         // Don't bother looking at kids either.
-        return C_i.nsIDOMNodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_REJECT;
       }
 
       if (targetNodeName && targetNodeName != aNode.nodeName) {
-        return C_i.nsIDOMNodeFilter.FILTER_SKIP;
+        return NodeFilter.FILTER_SKIP;
       }
 
       this.count++;
       if (this.count != childIndex) {
-        return C_i.nsIDOMNodeFilter.FILTER_SKIP;
+        return NodeFilter.FILTER_SKIP;
       }
 
-      return C_i.nsIDOMNodeFilter.FILTER_ACCEPT;
+      return NodeFilter.FILTER_ACCEPT;
     }
   };
 
@@ -149,8 +148,8 @@ function evalXPathInDocumentFragment(aContextNode, aPath) {
  * @return Range object.
  */
 function getRange(aSourceNode, aFragment) {
-  Assert.ok(aSourceNode instanceof C_i.nsIDOMElement);
-  Assert.ok(aFragment instanceof C_i.nsIDOMDocumentFragment);
+  Assert.ok(aSourceNode instanceof Ci.nsIDOMElement);
+  Assert.ok(aFragment instanceof Ci.nsIDOMDocumentFragment);
   var doc = aSourceNode.ownerDocument;
 
   var containerPath = aSourceNode.getAttribute("startContainer");
@@ -178,13 +177,12 @@ function getParsedDocument(aPath) {
 
 function processParsedDocument(doc) {
   Assert.ok(doc.documentElement.localName != "parsererror");
-  Assert.ok(doc instanceof C_i.nsIDOMXPathEvaluator);
-  Assert.ok(doc instanceof C_i.nsIDOMDocument);
+  Assert.ok(doc instanceof Ci.nsIDOMDocument);
 
   // Clean out whitespace.
   var walker = doc.createTreeWalker(doc,
-                                    C_i.nsIDOMNodeFilter.SHOW_TEXT |
-                                    C_i.nsIDOMNodeFilter.SHOW_CDATA_SECTION,
+                                    NodeFilter.SHOW_TEXT |
+                                    NodeFilter.SHOW_CDATA_SECTION,
                                     isWhitespace);
   while (walker.nextNode()) {
     var parent = walker.currentNode.parentNode;
@@ -278,8 +276,8 @@ function do_extract_test(doc) {
 
     dump("Ensure the original nodes weren't extracted - test " + i + "\n\n");
     var walker = doc.createTreeWalker(baseFrag,
-				      C_i.nsIDOMNodeFilter.SHOW_ALL,
-				      null);
+                                      NodeFilter.SHOW_ALL,
+                                      null);
     var foundStart = false;
     var foundEnd = false;
     do {
@@ -311,7 +309,7 @@ function do_extract_test(doc) {
 
     dump("Ensure the original nodes weren't deleted - test " + i + "\n\n");
     walker = doc.createTreeWalker(baseFrag,
-                                  C_i.nsIDOMNodeFilter.SHOW_ALL,
+                                  NodeFilter.SHOW_ALL,
                                   null);
     foundStart = false;
     foundEnd = false;
@@ -362,7 +360,7 @@ function do_miscellaneous_tests(doc) {
   // Text range manipulation.
   if ((endOffset > startOffset) &&
       (startContainer == endContainer) &&
-      (startContainer instanceof C_i.nsIDOMText)) {
+      (startContainer instanceof Ci.nsIDOMText)) {
     // Invalid start node
     try {
       baseRange.setStart(null, 0);
@@ -388,7 +386,7 @@ function do_miscellaneous_tests(doc) {
     }
   
     // Invalid index
-    var newOffset = startContainer instanceof C_i.nsIDOMText ?
+    var newOffset = startContainer instanceof Ci.nsIDOMText ?
                       startContainer.nodeValue.length + 1 :
                       startContainer.childNodes.length + 1;
     try {
@@ -444,14 +442,14 @@ function do_miscellaneous_tests(doc) {
 
   // Requested by smaug:  A range involving a comment as a document child.
   doc = parser.parseFromString("<!-- foo --><foo/>", "application/xml");
-  Assert.ok(doc instanceof C_i.nsIDOMDocument);
+  Assert.ok(doc instanceof Ci.nsIDOMDocument);
   Assert.equal(doc.childNodes.length, 2);
   baseRange = doc.createRange();
   baseRange.setStart(doc.firstChild, 1);
   baseRange.setEnd(doc.firstChild, 2);
   var frag = baseRange.extractContents();
   Assert.equal(frag.childNodes.length, 1);
-  Assert.ok(frag.firstChild instanceof C_i.nsIDOMComment);
+  Assert.ok(frag.firstChild instanceof Ci.nsIDOMComment);
   Assert.equal(frag.firstChild.nodeValue, "f");
 
   /* smaug also requested attribute tests.  Sadly, those are not yet supported

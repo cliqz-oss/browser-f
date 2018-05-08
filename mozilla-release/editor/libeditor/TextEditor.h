@@ -7,7 +7,6 @@
 #define mozilla_TextEditor_h
 
 #include "mozilla/EditorBase.h"
-#include "mozilla/TextEditRules.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIEditor.h"
@@ -30,6 +29,8 @@ namespace mozilla {
 
 class AutoEditInitRulesTrigger;
 class HTMLEditRules;
+enum class EditAction : int32_t;
+
 namespace dom {
 class Selection;
 } // namespace dom
@@ -73,9 +74,9 @@ public:
   using EditorBase::RemoveAttributeOrEquivalent;
   using EditorBase::SetAttributeOrEquivalent;
 
-  NS_IMETHOD Init(nsIDOMDocument* aDoc, nsIContent* aRoot,
-                  nsISelectionController* aSelCon, uint32_t aFlags,
-                  const nsAString& aValue) override;
+  virtual nsresult Init(nsIDocument& aDoc, Element* aRoot,
+                        nsISelectionController* aSelCon, uint32_t aFlags,
+                        const nsAString& aValue) override;
 
   nsresult DocumentIsEmpty(bool* aIsEmpty);
   NS_IMETHOD GetDocumentIsEmpty(bool* aDocumentIsEmpty) override;
@@ -172,7 +173,20 @@ public:
   static void GetDefaultEditorPrefs(int32_t& aNewLineHandling,
                                     int32_t& aCaretStyle);
 
+  /**
+    * The maximum number of characters allowed.
+    *   default: -1 (unlimited).
+    */
   int32_t MaxTextLength() const { return mMaxTextLength; }
+  void SetMaxTextLength(int32_t aLength) { mMaxTextLength = aLength; }
+
+  /**
+   * Replace existed string with a string.
+   * This is fast path to replace all string when using single line control.
+   *
+   * @ param aString   the string to be set
+   */
+  nsresult SetText(const nsAString& aString);
 
 protected:
   virtual ~TextEditor();
@@ -255,7 +269,6 @@ protected:
                          const nsACString& aCharacterSet);
 
 protected:
-  RefPtr<TextEditRules> mRules;
   nsCOMPtr<nsIDocumentEncoder> mCachedDocumentEncoder;
   nsString mCachedDocumentEncoderType;
   int32_t mWrapColumn;

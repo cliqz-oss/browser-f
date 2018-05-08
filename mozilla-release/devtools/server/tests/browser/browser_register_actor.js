@@ -22,7 +22,7 @@ function test() {
 
       let registry = ActorRegistryFront(gClient, response);
       registry.registerActor(actorURL, options).then(actorFront => {
-        gClient.listTabs(res => {
+        gClient.listTabs().then(res => {
           let tab = res.tabs[res.selected];
           ok(!!tab.helloActor, "Hello actor must exist");
 
@@ -51,22 +51,22 @@ function getCount(actor, callback) {
   }, callback);
 }
 
-var checkActorState = Task.async(function* (helloActor, callback) {
-  let response = yield getCount(helloActor);
+var checkActorState = async function (helloActor, callback) {
+  let response = await getCount(helloActor);
   ok(!response.error, "No error");
   is(response.count, 1, "The counter must be valid");
 
-  response = yield getCount(helloActor);
+  response = await getCount(helloActor);
   ok(!response.error, "No error");
   is(response.count, 2, "The counter must be valid");
 
-  let {tabs, selected} = yield gClient.listTabs();
+  let {tabs, selected} = await gClient.listTabs();
   let tab = tabs[selected];
   is(tab.helloActor, helloActor, "Hello actor must be valid");
 
-  response = yield getCount(helloActor);
+  response = await getCount(helloActor);
   ok(!response.error, "No error");
   is(response.count, 3, "The counter must be valid");
 
   callback();
-});
+};

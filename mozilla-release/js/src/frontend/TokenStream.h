@@ -73,30 +73,62 @@
  *
  * All such functionality lives in TokenStreamCharsBase<CharT>.
  *
- * == TokenStreamChars<CharT, AnyCharsAccess> → TokenStreamCharsBase<CharT> ==
+ * == GeneralTokenStreamChars<CharT, AnyCharsAccess> →
+ *    TokenStreamCharsBase<CharT> ==
  *
- * Some functionality operates at a very low level upon character-type-specific
- * data, but in distinct ways.  For example, "is this character the start of a
- * multi-character codepoint?"  Consider how such functionality would work on
- * various encodings (hypothetically -- we haven't fully implemented any
- * particular single-byte encoding support yet):
+ * Some functionality operates differently on different character types, just
+ * as for TokenStreamCharsBase, but additionally requires access to character-
+ * type-agnostic information in TokenStreamAnyChars.  For example, getting the
+ * next character performs different steps for different character types and
+ * must access TokenStreamAnyChars to update line break information.
  *
- *   * For two-byte text, the character must pass |unicode::IsLeadSurrogate|.
- *   * For single-byte Latin-1 text, there are no multi-character codepoints.
- *   * For single-byte UTF-8 text, the answer depends on how many high bits of
- *     the character are set.
+ * Such functionality, if it can be defined using the same algorithm for all
+ * character types, lives in GeneralTokenStreamChars<CharT, AnyCharsAccess>.
+ * The AnyCharsAccess parameter provides a way for a GeneralTokenStreamChars
+ * instance to access its corresponding TokenStreamAnyChars, without inheriting
+ * from it.
+ *
+ * GeneralTokenStreamChars<CharT, AnyCharsAccess> is just functionality, no
+ * actual member data.
  *
  * Such functionality all lives in TokenStreamChars<CharT, AnyCharsAccess>, a
  * declared-but-not-defined template class whose specializations have a common
  * public interface (plus whatever private helper functions are desirable).
  *
- * Why the AnyCharsAccess parameter?  Some functionality along these lines
- * really wants TokenStreamSpecific, below, e.g. to report an error.  Providing
- * this parameter allows TokenStreamChars functions to statically cast to this
- * presumed superclass to access its functionality.
+ * == TokenStreamChars<CharT, AnyCharsAccess> →
+ *    GeneralTokenStreamChars<CharT, AnyCharsAccess> ==
  *
- * TokenStreamChars<CharT, AnyCharsAccess> is just functionality, no actual
- * member data.
+ * Some functionality is like that in GeneralTokenStreamChars, *but* it's
+ * defined entirely differently for different character types.
+ *
+ * For example, consider "match a multi-code unit code point" (hypothetically:
+ * we've only implemented two-byte tokenizing right now):
+ *
+ *   * For two-byte text, there must be two code units to get, the leading code
+ *     unit must be a UTF-16 lead surrogate, and the trailing code unit must be
+ *     a UTF-16 trailing surrogate.  (If any of these fail to hold, a next code
+ *     unit encodes that code point and is not multi-code unit.)
+ *   * For single-byte Latin-1 text, there are no multi-code unit code points.
+ *   * For single-byte UTF-8 text, the first code unit must have N > 1 of its
+ *     highest bits set (and the next unset), and |N - 1| successive code units
+ *     must have their high bit set and next-highest bit unset, *and*
+ *     concatenating all unconstrained bits together must not produce a code
+ *     point value that could have been encoded in fewer code units.
+ *
+ * This functionality can't be implemented as member functions in
+ * GeneralTokenStreamChars because we'd need to *partially specialize* those
+ * functions -- hold CharT constant while letting AnyCharsAccess vary.  But
+ * C++ forbids function template partial specialization like this: either you
+ * fix *all* parameters or you fix none of them.
+ *
+ * Fortunately, C++ *does* allow *class* template partial specialization.  So
+ * TokenStreamChars is a template class with one specialization per CharT.
+ * Functions can be defined differently in the different specializations,
+ * because AnyCharsAccess as the only template parameter on member functions
+ * *can* vary.
+ *
+ * All TokenStreamChars<CharT, AnyCharsAccess> specializations, one per CharT,
+ * are just functionality, no actual member data.
  *
  * == TokenStreamSpecific<CharT, AnyCharsAccess> →
  *    TokenStreamChars<CharT, AnyCharsAccess>, TokenStreamShared ==
@@ -140,17 +172,17 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "jscntxt.h"
 #include "jspubtd.h"
 
 #include "frontend/ErrorReporter.h"
 #include "frontend/TokenKind.h"
 #include "js/UniquePtr.h"
 #include "js/Vector.h"
+#include "util/Unicode.h"
 #include "vm/ErrorReporting.h"
+#include "vm/JSContext.h"
 #include "vm/RegExpShared.h"
-#include "vm/String.h"
-#include "vm/Unicode.h"
+#include "vm/StringType.h"
 
 struct KeywordInfo;
 
@@ -240,7 +272,7 @@ struct Token
 
         // Looking for an operand, not an operator.  In practice, this means
         // that when '/' is seen, we look for a regexp instead of just returning
-        // TOK_DIV.
+        // Div.
         Operand,
 
         // Treat subsequent characters as the tail of a template literal, after
@@ -314,25 +346,25 @@ struct Token
     // Mutators
 
     void setName(PropertyName* name) {
-        MOZ_ASSERT(type == TokenKind::TOK_NAME);
+        MOZ_ASSERT(type == TokenKind::Name);
         u.name = name;
     }
 
     void setAtom(JSAtom* atom) {
-        MOZ_ASSERT(type == TokenKind::TOK_STRING ||
-                   type == TokenKind::TOK_TEMPLATE_HEAD ||
-                   type == TokenKind::TOK_NO_SUBS_TEMPLATE);
+        MOZ_ASSERT(type == TokenKind::String ||
+                   type == TokenKind::TemplateHead ||
+                   type == TokenKind::NoSubsTemplate);
         u.atom = atom;
     }
 
     void setRegExpFlags(RegExpFlag flags) {
-        MOZ_ASSERT(type == TokenKind::TOK_REGEXP);
+        MOZ_ASSERT(type == TokenKind::RegExp);
         MOZ_ASSERT((flags & AllFlags) == flags);
         u.reflags = flags;
     }
 
     void setNumber(double n, DecimalPoint decimalPoint) {
-        MOZ_ASSERT(type == TokenKind::TOK_NUMBER);
+        MOZ_ASSERT(type == TokenKind::Number);
         u.number.value = n;
         u.number.decimalPoint = decimalPoint;
     }
@@ -340,30 +372,30 @@ struct Token
     // Type-safe accessors
 
     PropertyName* name() const {
-        MOZ_ASSERT(type == TokenKind::TOK_NAME);
+        MOZ_ASSERT(type == TokenKind::Name);
         return u.name->JSAtom::asPropertyName(); // poor-man's type verification
     }
 
     JSAtom* atom() const {
-        MOZ_ASSERT(type == TokenKind::TOK_STRING ||
-                   type == TokenKind::TOK_TEMPLATE_HEAD ||
-                   type == TokenKind::TOK_NO_SUBS_TEMPLATE);
+        MOZ_ASSERT(type == TokenKind::String ||
+                   type == TokenKind::TemplateHead ||
+                   type == TokenKind::NoSubsTemplate);
         return u.atom;
     }
 
     RegExpFlag regExpFlags() const {
-        MOZ_ASSERT(type == TokenKind::TOK_REGEXP);
+        MOZ_ASSERT(type == TokenKind::RegExp);
         MOZ_ASSERT((u.reflags & AllFlags) == u.reflags);
         return u.reflags;
     }
 
     double number() const {
-        MOZ_ASSERT(type == TokenKind::TOK_NUMBER);
+        MOZ_ASSERT(type == TokenKind::Number);
         return u.number.value;
     }
 
     DecimalPoint decimalPoint() const {
-        MOZ_ASSERT(type == TokenKind::TOK_NUMBER);
+        MOZ_ASSERT(type == TokenKind::Number);
         return u.number.decimalPoint;
     }
 };
@@ -472,6 +504,7 @@ class TokenStreamAnyChars
     TokenStreamAnyChars(JSContext* cx, const ReadOnlyCompileOptions& options,
                         StrictModeGetter* smg);
 
+    template<typename CharT, class AnyCharsAccess> friend class GeneralTokenStreamChars;
     template<typename CharT, class AnyCharsAccess> friend class TokenStreamSpecific;
 
     // Accessors.
@@ -491,7 +524,7 @@ class TokenStreamAnyChars
 
   public:
     PropertyName* currentName() const {
-        if (isCurrentTokenType(TokenKind::TOK_NAME))
+        if (isCurrentTokenType(TokenKind::Name))
             return currentToken().name();
 
         MOZ_ASSERT(TokenKindIsPossibleIdentifierName(currentToken().type));
@@ -499,7 +532,7 @@ class TokenStreamAnyChars
     }
 
     bool currentNameHasEscapes() const {
-        if (isCurrentTokenType(TokenKind::TOK_NAME)) {
+        if (isCurrentTokenType(TokenKind::Name)) {
             TokenPos pos = currentToken().pos;
             return (pos.end - pos.begin) != currentToken().name()->length();
         }
@@ -509,7 +542,7 @@ class TokenStreamAnyChars
     }
 
     PropertyName* nextName() const {
-        if (nextToken().type != TokenKind::TOK_NAME)
+        if (nextToken().type != TokenKind::Name)
             return nextToken().name();
 
         MOZ_ASSERT(TokenKindIsPossibleIdentifierName(nextToken().type));
@@ -566,7 +599,7 @@ class TokenStreamAnyChars
             // Token after yield expression without operand already has
             // NoneIsOperand exception.
             MOZ_ASSERT(modifierException == OperandIsNone);
-            MOZ_ASSERT(next.type != TokenKind::TOK_DIV,
+            MOZ_ASSERT(next.type != TokenKind::Div,
                        "next token requires contextual specifier to be parsed unambiguously");
 
             // Do not update modifierException.
@@ -577,12 +610,12 @@ class TokenStreamAnyChars
         switch (modifierException) {
           case NoneIsOperand:
             MOZ_ASSERT(next.modifier == Operand);
-            MOZ_ASSERT(next.type != TokenKind::TOK_DIV,
+            MOZ_ASSERT(next.type != TokenKind::Div,
                        "next token requires contextual specifier to be parsed unambiguously");
             break;
           case OperandIsNone:
             MOZ_ASSERT(next.modifier == None);
-            MOZ_ASSERT(next.type != TokenKind::TOK_DIV && next.type != TokenKind::TOK_REGEXP,
+            MOZ_ASSERT(next.type != TokenKind::Div && next.type != TokenKind::RegExp,
                        "next token requires contextual specifier to be parsed unambiguously");
             break;
           default:
@@ -741,19 +774,19 @@ class TokenStreamAnyChars
   public:
     // ErrorReporter API.
 
-    virtual const JS::ReadOnlyCompileOptions& options() const override final {
+    const JS::ReadOnlyCompileOptions& options() const final {
         return options_;
     }
 
-    virtual void
-    lineAndColumnAt(size_t offset, uint32_t* line, uint32_t* column) const override final;
+    void
+    lineAndColumnAt(size_t offset, uint32_t* line, uint32_t* column) const final;
 
-    virtual void currentLineAndColumn(uint32_t* line, uint32_t* column) const override final;
+    void currentLineAndColumn(uint32_t* line, uint32_t* column) const final;
 
-    virtual bool hasTokenizationStarted() const override final;
-    virtual void reportErrorNoOffsetVA(unsigned errorNumber, va_list args) override final;
+    bool hasTokenizationStarted() const final;
+    void reportErrorNoOffsetVA(unsigned errorNumber, va_list args) final;
 
-    virtual const char* getFilename() const override final {
+    const char* getFilename() const final {
         return filename_;
     }
 
@@ -771,7 +804,7 @@ class TokenStreamAnyChars
     const char*         filename_;          // input filename or null
     UniqueTwoByteChars  displayURL_;        // the user's requested source URL or null
     UniqueTwoByteChars  sourceMapURL_;      // source map's filename or null
-    uint8_t             isExprEnding[size_t(TokenKind::TOK_LIMIT)];// which tokens definitely terminate exprs?
+    uint8_t             isExprEnding[size_t(TokenKind::Limit)];// which tokens definitely terminate exprs?
     JSContext* const    cx;
     bool                mutedErrors;
     StrictModeGetter*   strictModeGetter;  // used to test for strict mode
@@ -780,6 +813,9 @@ class TokenStreamAnyChars
 template<typename CharT>
 class TokenStreamCharsBase
 {
+  protected:
+    void ungetCharIgnoreEOL(int32_t c);
+
   public:
     using CharBuffer = Vector<CharT, 32>;
 
@@ -789,6 +825,9 @@ class TokenStreamCharsBase
     atomizeChars(JSContext* cx, const CharT* chars, size_t length);
 
     const CharBuffer& getTokenbuf() const { return tokenbuf; }
+
+    MOZ_MUST_USE bool copyTokenbufTo(JSContext* cx,
+                                     UniquePtr<char16_t[], JS::FreePolicy>* destination);
 
     // This is the low-level interface to the JS source code buffer.  It just
     // gets raw chars, basically.  TokenStreams functions are layered on top
@@ -909,7 +948,7 @@ class TokenStreamCharsBase
         const CharT* ptr;
     };
 
-    MOZ_MUST_USE bool appendMultiUnitCodepointToTokenbuf(uint32_t codepoint);
+    MOZ_MUST_USE bool appendCodePointToTokenbuf(uint32_t codePoint);
 
     class MOZ_STACK_CLASS Position
     {
@@ -956,46 +995,93 @@ TokenStreamCharsBase<char16_t>::atomizeChars(JSContext* cx, const char16_t* char
     return AtomizeChars(cx, chars, length);
 }
 
-template<typename CharT, class AnyCharsAccess> class TokenStreamChars;
-
-template<class AnyCharsAccess>
-class TokenStreamChars<char16_t, AnyCharsAccess>
-  : public TokenStreamCharsBase<char16_t>
+template<typename CharT, class AnyCharsAccess>
+class GeneralTokenStreamChars
+  : public TokenStreamCharsBase<CharT>
 {
-    using Self = TokenStreamChars<char16_t, AnyCharsAccess>;
-    using CharsBase = TokenStreamCharsBase<char16_t>;
+    using CharsSharedBase = TokenStreamCharsBase<CharT>;
 
-    using TokenStreamSpecific = frontend::TokenStreamSpecific<char16_t, AnyCharsAccess>;
+  protected:
+    using typename CharsSharedBase::TokenBuf;
+
+    using CharsSharedBase::userbuf;
+
+  public:
+    using CharsSharedBase::CharsSharedBase;
+
+    TokenStreamAnyChars& anyCharsAccess() {
+        return AnyCharsAccess::anyChars(this);
+    }
+
+    const TokenStreamAnyChars& anyCharsAccess() const {
+        return AnyCharsAccess::anyChars(this);
+    }
+
+    using TokenStreamSpecific = frontend::TokenStreamSpecific<CharT, AnyCharsAccess>;
 
     TokenStreamSpecific* asSpecific() {
-        static_assert(mozilla::IsBaseOf<Self, TokenStreamSpecific>::value,
+        static_assert(mozilla::IsBaseOf<GeneralTokenStreamChars, TokenStreamSpecific>::value,
                       "static_cast below presumes an inheritance relationship");
 
         return static_cast<TokenStreamSpecific*>(this);
     }
 
-    bool matchTrailForLeadSurrogate(char16_t lead, uint32_t* codePoint);
+    int32_t getCharIgnoreEOL();
 
-  public:
-    using CharsBase::CharsBase;
+    void ungetChar(int32_t c);
+};
 
-    TokenStreamAnyChars& anyChars() {
-        return AnyCharsAccess::anyChars(this);
-    }
+template<typename CharT, class AnyCharsAccess> class TokenStreamChars;
 
-    const TokenStreamAnyChars& anyChars() const {
-        return AnyCharsAccess::anyChars(this);
-    }
+template<class AnyCharsAccess>
+class TokenStreamChars<char16_t, AnyCharsAccess>
+  : public GeneralTokenStreamChars<char16_t, AnyCharsAccess>
+{
+  private:
+    using Self = TokenStreamChars<char16_t, AnyCharsAccess>;
+    using GeneralCharsBase = GeneralTokenStreamChars<char16_t, AnyCharsAccess>;
+    using CharsSharedBase = TokenStreamCharsBase<char16_t>;
 
-    MOZ_MUST_USE bool copyTokenbufTo(JSContext* cx,
-                                     UniquePtr<char16_t[], JS::FreePolicy>* destination);
+    using GeneralCharsBase::asSpecific;
 
-    MOZ_ALWAYS_INLINE bool isMultiUnitCodepoint(char16_t c, uint32_t* codepoint) {
+    using typename GeneralCharsBase::TokenStreamSpecific;
+
+    void matchMultiUnitCodePointSlow(char16_t lead, uint32_t* codePoint);
+
+  protected:
+    using GeneralCharsBase::anyCharsAccess;
+    using GeneralCharsBase::getCharIgnoreEOL;
+    using CharsSharedBase::ungetCharIgnoreEOL;
+    using GeneralCharsBase::userbuf;
+
+    using GeneralCharsBase::GeneralCharsBase;
+
+    // |c| must be the code unit just gotten.  If it and the subsequent code
+    // unit form a valid surrogate pair, get the second code unit, set
+    // |*codePoint| to the code point encoded by the surrogate pair, and return
+    // true.  Otherwise do not get a second code unit, set |*codePoint = 0|,
+    // and return true.
+    //
+    // ECMAScript specifically requires that unpaired UTF-16 surrogates be
+    // treated as the corresponding code point and not as an error.  See
+    // <https://tc39.github.io/ecma262/#sec-ecmascript-language-types-string-type>.
+    // Therefore this function always returns true.  The |bool| return type
+    // exists so that a future UTF-8 |TokenStreamChars| can treat malformed
+    // multi-code unit UTF-8 sequences as errors.  (Because ECMAScript only
+    // interprets UTF-16 inputs, the process of translating the UTF-8 to UTF-16
+    // would fail, so no script should execute.  Technically, we shouldn't even
+    // be tokenizing -- but it probably isn't realistic to assume every user
+    // correctly passes only valid UTF-8, at least not without better types in
+    // our codebase for strings that by construction only contain valid UTF-8.)
+    MOZ_ALWAYS_INLINE bool matchMultiUnitCodePoint(char16_t c, uint32_t* codePoint) {
         if (MOZ_LIKELY(!unicode::IsLeadSurrogate(c)))
-            return false;
-
-        return matchTrailForLeadSurrogate(c, codepoint);
+            *codePoint = 0;
+        else
+            matchMultiUnitCodePointSlow(c, codePoint);
+        return true;
     }
+
+    void ungetCodePointIgnoreEOL(uint32_t codePoint);
 };
 
 // TokenStream is the lexical scanner for JavaScript source text.
@@ -1046,6 +1132,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 {
   public:
     using CharsBase = TokenStreamChars<CharT, AnyCharsAccess>;
+    using GeneralCharsBase = GeneralTokenStreamChars<CharT, AnyCharsAccess>;
     using CharsSharedBase = TokenStreamCharsBase<CharT>;
 
     // Anything inherited through a base class whose type depends upon this
@@ -1063,6 +1150,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     using typename CharsSharedBase::Position;
 
   public:
+    using GeneralCharsBase::anyCharsAccess;
     using CharsSharedBase::getTokenbuf;
 
   private:
@@ -1070,24 +1158,20 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     using typename CharsSharedBase::TokenBuf;
 
   private:
-    using CharsSharedBase::appendMultiUnitCodepointToTokenbuf;
+    using CharsSharedBase::appendCodePointToTokenbuf;
     using CharsSharedBase::atomizeChars;
-    using CharsBase::copyTokenbufTo;
-    using CharsBase::isMultiUnitCodepoint;
+    using CharsSharedBase::copyTokenbufTo;
+    using GeneralCharsBase::getCharIgnoreEOL;
+    using CharsBase::matchMultiUnitCodePoint;
     using CharsSharedBase::tokenbuf;
+    using GeneralCharsBase::ungetChar;
+    using CharsSharedBase::ungetCharIgnoreEOL;
+    using CharsBase::ungetCodePointIgnoreEOL;
     using CharsSharedBase::userbuf;
 
   public:
     TokenStreamSpecific(JSContext* cx, const ReadOnlyCompileOptions& options,
                         const CharT* base, size_t length);
-
-    TokenStreamAnyChars& anyCharsAccess() {
-        return CharsBase::anyChars();
-    }
-
-    const TokenStreamAnyChars& anyCharsAccess() const {
-        return CharsBase::anyChars();
-    }
 
     // If there is an invalid escape in a template, report it and return false,
     // otherwise return true.
@@ -1137,11 +1221,11 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     JSAtom* getRawTemplateStringAtom() {
         TokenStreamAnyChars& anyChars = anyCharsAccess();
 
-        MOZ_ASSERT(anyChars.currentToken().type == TokenKind::TOK_TEMPLATE_HEAD ||
-                   anyChars.currentToken().type == TokenKind::TOK_NO_SUBS_TEMPLATE);
+        MOZ_ASSERT(anyChars.currentToken().type == TokenKind::TemplateHead ||
+                   anyChars.currentToken().type == TokenKind::NoSubsTemplate);
         const CharT* cur = userbuf.rawCharPtrAt(anyChars.currentToken().pos.begin + 1);
         const CharT* end;
-        if (anyChars.currentToken().type == TokenKind::TOK_TEMPLATE_HEAD) {
+        if (anyChars.currentToken().type == TokenKind::TemplateHead) {
             // Of the form    |`...${|   or   |}...${|
             end = userbuf.rawCharPtrAt(anyChars.currentToken().pos.end - 2);
         } else {
@@ -1202,7 +1286,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
             anyChars.lookahead--;
             anyChars.cursor = (anyChars.cursor + 1) & ntokensMask;
             TokenKind tt = anyChars.currentToken().type;
-            MOZ_ASSERT(tt != TokenKind::TOK_EOL);
+            MOZ_ASSERT(tt != TokenKind::Eol);
             verifyConsistentModifier(modifier, anyChars.currentToken());
             *ttp = tt;
             return true;
@@ -1251,9 +1335,9 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 
     // This is like peekToken(), with one exception:  if there is an EOL
     // between the end of the current token and the start of the next token, it
-    // return true and store TOK_EOL in |*ttp|.  In that case, no token with
-    // TOK_EOL is actually created, just a TOK_EOL TokenKind is returned, and
-    // currentToken() shouldn't be consulted.  (This is the only place TOK_EOL
+    // return true and store Eol in |*ttp|.  In that case, no token with
+    // Eol is actually created, just a Eol TokenKind is returned, and
+    // currentToken() shouldn't be consulted.  (This is the only place Eol
     // is produced.)
     MOZ_ALWAYS_INLINE MOZ_MUST_USE bool
     peekTokenSameLine(TokenKind* ttp, Modifier modifier = None) {
@@ -1264,7 +1348,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
         // |lineno| is the line that the furthest-scanned token ends on.  If
         // it's the same as the line that the current token ends on, that's a
         // stronger condition than what we are looking for, and we don't need
-        // to return TOK_EOL.
+        // to return Eol.
         if (anyChars.lookahead != 0) {
             bool onThisLine;
             if (!anyChars.srcCoords.isOnThisLine(curr.pos.end, anyChars.lineno, &onThisLine)) {
@@ -1281,7 +1365,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
         }
 
         // The above check misses two cases where we don't have to return
-        // TOK_EOL.
+        // Eol.
         // - The next token starts on the same line, but is a multi-line token.
         // - The next token starts on the same line, but lookahead==2 and there
         //   is a newline between the next token and the one after that.
@@ -1296,7 +1380,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
         const auto& srcCoords = anyChars.srcCoords;
         *ttp = srcCoords.lineNum(curr.pos.end) == srcCoords.lineNum(next.pos.begin)
              ? next.type
-             : TokenKind::TOK_EOL;
+             : TokenKind::Eol;
         return true;
     }
 
@@ -1353,17 +1437,14 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 
     MOZ_MUST_USE bool getTokenInternal(TokenKind* ttp, Modifier modifier);
 
-    MOZ_MUST_USE bool getStringOrTemplateToken(int untilChar, Token** tp);
+    MOZ_MUST_USE bool getStringOrTemplateToken(char untilChar, Token** tp);
 
     // Try to get the next character, normalizing '\r', '\r\n', and '\n' into
     // '\n'.  Also updates internal line-counter state.  Return true on success
     // and store the character in |*c|.  Return false and leave |*c| undefined
     // on failure.
     MOZ_MUST_USE bool getChar(int32_t* cp);
-    int32_t getCharIgnoreEOL();
 
-    void ungetChar(int32_t c);
-    void ungetCharIgnoreEOL(int32_t c);
     Token* newToken(ptrdiff_t adjust);
     uint32_t peekUnicodeEscape(uint32_t* codePoint);
     uint32_t peekExtendedUnicodeEscape(uint32_t* codePoint);

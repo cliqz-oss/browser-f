@@ -9,7 +9,7 @@ const { FILTER_TAGS } = require("../constants");
 const { Component, createFactory } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { connect } = require("devtools/client/shared/vendor/react-redux");
+const { connect } = require("devtools/client/shared/redux/visibility-handler-connect");
 const { Chart } = require("devtools/client/shared/widgets/Chart");
 const { PluralForm } = require("devtools/shared/plural-form");
 const Actions = require("../actions/index");
@@ -185,7 +185,7 @@ class StatisticsPanel extends Component {
       sorted: true,
     });
 
-    chart.on("click", (_, { label }) => {
+    chart.on("click", ({ label }) => {
       // Reset FilterButtons and enable one filter exclusively
       this.props.closeStatistics();
       this.props.enableRequestFilterTypeOnly(label);
@@ -335,7 +335,7 @@ class StatisticsPanel extends Component {
 
 module.exports = connect(
   (state) => ({
-    requests: state.requests.requests.valueSeq(),
+    requests: [...state.requests.requests.values()],
   }),
   (dispatch, props) => ({
     closeStatistics: () => dispatch(Actions.openStatistics(props.connector, false)),

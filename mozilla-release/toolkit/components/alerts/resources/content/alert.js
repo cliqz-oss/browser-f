@@ -2,10 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Copied from nsILookAndFeel.h, see comments on eMetric_AlertNotificationOrigin
 const NS_ALERT_HORIZONTAL = 1;

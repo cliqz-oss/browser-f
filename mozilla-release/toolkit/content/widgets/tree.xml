@@ -28,7 +28,7 @@
     </implementation>
   </binding>
 
-  <binding id="tree" extends="chrome://global/content/bindings/tree.xml#tree-base" role="xul:tree">
+  <binding id="tree" extends="chrome://global/content/bindings/tree.xml#tree-base">
     <content hidevscroll="true" hidehscroll="true" clickthrough="never">
       <children includes="treecols"/>
       <xul:stack class="tree-stack" flex="1">
@@ -38,8 +38,16 @@
         <xul:textbox anonid="input" class="tree-input" left="0" top="0" hidden="true"/>
       </xul:stack>
       <xul:hbox xbl:inherits="collapsed=hidehscroll">
-        <xul:scrollbar orient="horizontal" flex="1" increment="16" style="position:relative; z-index:2147483647;"/>
-        <xul:scrollcorner xbl:inherits="collapsed=hidevscroll"/>
+        <xul:scrollbar orient="horizontal" flex="1" increment="16" style="position:relative; z-index:2147483647;"
+          oncontextmenu="event.stopPropagation(); event.preventDefault();"
+          onclick="event.stopPropagation(); event.preventDefault();"
+          ondblclick="event.stopPropagation();"
+          oncommand="event.stopPropagation();"/>
+        <xul:scrollcorner xbl:inherits="collapsed=hidevscroll"
+          oncontextmenu="event.stopPropagation(); event.preventDefault();"
+          onclick="event.stopPropagation(); event.preventDefault();"
+          ondblclick="event.stopPropagation();"
+          oncommand="event.stopPropagation();"/>
       </xul:hbox>
     </content>
 
@@ -333,8 +341,8 @@
               return false;
             if (row < 0 || row >= this.view.rowCount || !column)
               return false;
-            if (column.type != Components.interfaces.nsITreeColumn.TYPE_TEXT &&
-                column.type != Components.interfaces.nsITreeColumn.TYPE_PASSWORD)
+            if (column.type != Ci.nsITreeColumn.TYPE_TEXT &&
+                column.type != Ci.nsITreeColumn.TYPE_PASSWORD)
               return false;
             if (column.cycler || !this.view.isEditable(row, column))
               return false;
@@ -1025,7 +1033,7 @@
     </handlers>
   </binding>
 
-  <binding id="treecols" role="xul:treecolumns">
+  <binding id="treecols">
     <resources>
       <stylesheet src="chrome://global/skin/tree.css"/>
     </resources>
@@ -1052,7 +1060,11 @@
       <xul:hbox flex="1" class="tree-bodybox">
         <children/>
       </xul:hbox>
-      <xul:scrollbar height="0" minwidth="0" minheight="0" orient="vertical" xbl:inherits="collapsed=hidevscroll" style="position:relative; z-index:2147483647;"/>
+      <xul:scrollbar height="0" minwidth="0" minheight="0" orient="vertical" xbl:inherits="collapsed=hidevscroll" style="position:relative; z-index:2147483647;"
+        oncontextmenu="event.stopPropagation(); event.preventDefault();"
+        onclick="event.stopPropagation(); event.preventDefault();"
+        ondblclick="event.stopPropagation();"
+        oncommand="event.stopPropagation();"/>
     </content>
     <handlers>
       <handler event="underflow">
@@ -1121,7 +1133,7 @@
              if (cell.col.cycler) {
                view.cycleCell(cell.row, cell.col);
                return;
-             } else if (cell.col.type == Components.interfaces.nsITreeColumn.TYPE_CHECKBOX) {
+             } else if (cell.col.type == Ci.nsITreeColumn.TYPE_CHECKBOX) {
                if (this.parentNode.editable && cell.col.editable &&
                    view.isEditable(cell.row, cell.col)) {
                  var value = view.getCellValue(cell.row, cell.col);
@@ -1215,7 +1227,7 @@
         // mousedown and the time we click, don't fire the select handler.
         // see bug #92366
         if (!cell.col.cycler && this._lastSelectedRow == cell.row &&
-            cell.col.type != Components.interfaces.nsITreeColumn.TYPE_CHECKBOX) {
+            cell.col.type != Ci.nsITreeColumn.TYPE_CHECKBOX) {
 
           var cellSelType = this.parentNode._cellSelType;
           if (cellSelType == "text" && cell.childElt != "text" && cell.childElt != "image")
@@ -1269,7 +1281,7 @@
     </handlers>
   </binding>
 
-  <binding id="treecol-base" role="xul:treecolumnitem"
+  <binding id="treecol-base"
            extends="chrome://global/content/bindings/tree.xml#tree-base">
     <implementation>
       <constructor>
@@ -1487,7 +1499,7 @@
     </content>
   </binding>
 
-  <binding id="columnpicker" display="xul:button" role="xul:button"
+  <binding id="columnpicker" display="xul:button"
            extends="chrome://global/content/bindings/tree.xml#tree-base">
     <content>
       <xul:image class="tree-columnpicker-icon"/>

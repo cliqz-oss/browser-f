@@ -35,6 +35,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::dom::SVGPreserveAspectRatioBinding;
 using namespace mozilla::gfx;
 
 SVGSVGElement*
@@ -81,7 +82,7 @@ GetStrokeDashData(SVGContentUtils::AutoStrokeOptions* aStrokeOptions,
   Float pathScale = 1.0;
 
   if (aContextPaint && aStyleSVG->StrokeDasharrayFromObject()) {
-    const FallibleTArray<gfxFloat>& dashSrc = aContextPaint->GetStrokeDashArray();
+    const FallibleTArray<Float>& dashSrc = aContextPaint->GetStrokeDashArray();
     dashArrayLength = dashSrc.Length();
     if (dashArrayLength <= 0) {
       return eContinuousStroke;
@@ -179,7 +180,7 @@ SVGContentUtils::GetStrokeOptions(AutoStrokeOptions* aStrokeOptions,
     styleContext = aStyleContext;
   } else {
     styleContext =
-      nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr, nullptr);
+      nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr);
   }
 
   if (!styleContext) {
@@ -252,7 +253,7 @@ SVGContentUtils::GetStrokeWidth(nsSVGElement* aElement,
     styleContext = aStyleContext;
   } else {
     styleContext =
-      nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr, nullptr);
+      nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr);
   }
 
   if (!styleContext) {
@@ -275,7 +276,7 @@ SVGContentUtils::GetFontSize(Element *aElement)
     return 1.0f;
 
   RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr, nullptr);
+    nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr);
   if (!styleContext) {
     // ReportToConsole
     NS_WARNING("Couldn't get style context for content in GetFontStyle");
@@ -312,7 +313,7 @@ SVGContentUtils::GetFontXHeight(Element *aElement)
     return 1.0f;
 
   RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr, nullptr);
+    nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr);
   if (!styleContext) {
     // ReportToConsole
     NS_WARNING("Couldn't get style context for content in GetFontStyle");
@@ -552,8 +553,8 @@ SVGContentUtils::GetViewBoxTransform(float aViewportWidth, float aViewportHeight
   NS_ASSERTION(aViewboxWidth  > 0, "viewBox width must be greater than zero!");
   NS_ASSERTION(aViewboxHeight > 0, "viewBox height must be greater than zero!");
 
-  SVGAlign align = aPreserveAspectRatio.GetAlign();
-  SVGMeetOrSlice meetOrSlice = aPreserveAspectRatio.GetMeetOrSlice();
+  uint16_t align = aPreserveAspectRatio.GetAlign();
+  uint16_t meetOrSlice = aPreserveAspectRatio.GetMeetOrSlice();
 
   // default to the defaults
   if (align == SVG_PRESERVEASPECTRATIO_UNKNOWN)

@@ -23,16 +23,8 @@ add_task(async function() {
         // Check that name picker is read only
         let namepicker = dialogWin.document.getElementById("editBMPanel_namePicker");
         Assert.ok(namepicker.readOnly, "Name field is read-only");
-        let bookmark = await PlacesUtils.bookmarks.fetch(PlacesUtils.bookmarks.unfiledGuid);
-        Assert.equal(namepicker.value, bookmark.title, "Node title is correct");
-        // Blur the field and ensure root's name has not been changed.
-        namepicker.blur();
-        bookmark = await PlacesUtils.bookmarks.fetch(PlacesUtils.bookmarks.unfiledGuid);
-        Assert.equal(namepicker.value, bookmark.title, "Root title is correct");
-        // Check the shortcut's title.
-        info(tree.selectedNode.bookmarkGuid);
-        bookmark = await PlacesUtils.bookmarks.fetch(tree.selectedNode.bookmarkGuid);
-        Assert.equal(bookmark.title, "", "Shortcut title is null");
+        Assert.equal(namepicker.value,
+          PlacesUtils.getString("OtherBookmarksFolderTitle"), "Node title is correct");
       }
     );
   });

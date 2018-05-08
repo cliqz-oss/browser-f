@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
-const nsIPK11TokenDB = Components.interfaces.nsIPK11TokenDB;
+const nsIPK11TokenDB = Ci.nsIPK11TokenDB;
 const nsPKCS11ModuleDB = "@mozilla.org/security/pkcs11moduledb;1";
-const nsIPKCS11ModuleDB = Components.interfaces.nsIPKCS11ModuleDB;
-const nsIPKCS11Slot = Components.interfaces.nsIPKCS11Slot;
-const nsIPK11Token = Components.interfaces.nsIPK11Token;
+const nsIPKCS11ModuleDB = Ci.nsIPKCS11ModuleDB;
+const nsIPKCS11Slot = Ci.nsIPKCS11Slot;
+const nsIPK11Token = Ci.nsIPK11Token;
 
 var params;
 var tokenName = "";
@@ -112,7 +111,7 @@ function setPassword() {
           // checkPasswords() should have prevented this path from being reached.
         } else {
           if (pw1.value == "") {
-            var secmoddb = Components.classes[nsPKCS11ModuleDB].getService(nsIPKCS11ModuleDB);
+            var secmoddb = Cc[nsPKCS11ModuleDB].getService(nsIPKCS11ModuleDB);
             if (secmoddb.isFIPSEnabled) {
               // empty passwords are not allowed in FIPS mode
               doPrompt(bundle.getString("pw_change2empty_in_fips_mode"));

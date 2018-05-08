@@ -8,12 +8,12 @@
 /* import-globals-from specialpowersAPI.js */
 /* globals addMessageListener, removeMessageListener, sendSyncMessage, sendAsyncMessage */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function SpecialPowers(window) {
-  this.window = Components.utils.getWeakReference(window);
-  this._windowID = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                         .getInterface(Components.interfaces.nsIDOMWindowUtils)
+  this.window = Cu.getWeakReference(window);
+  this._windowID = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                         .getInterface(Ci.nsIDOMWindowUtils)
                          .currentInnerWindowID;
   this._encounteredCrashDumpFiles = [];
   this._unexpectedCrashDumpFiles = { };
@@ -58,7 +58,7 @@ function SpecialPowers(window) {
   addMessageListener("SpecialPowers.FilesError", this._messageListener);
   let self = this;
   Services.obs.addObserver(function onInnerWindowDestroyed(subject, topic, data) {
-    var id = subject.QueryInterface(Components.interfaces.nsISupportsPRUint64).data;
+    var id = subject.QueryInterface(Ci.nsISupportsPRUint64).data;
     if (self._windowID === id) {
       Services.obs.removeObserver(onInnerWindowDestroyed, "inner-window-destroyed");
       try {
@@ -67,7 +67,7 @@ function SpecialPowers(window) {
         removeMessageListener("SpecialPowers.FilesError", self._messageListener);
       } catch (e) {
         // Ignore the exception which the message manager has been destroyed.
-        if (e.result != Components.results.NS_ERROR_ILLEGAL_VALUE) {
+        if (e.result != Cr.NS_ERROR_ILLEGAL_VALUE) {
           throw e;
         }
       }
@@ -86,14 +86,14 @@ SpecialPowers.prototype.Components = undefined;
 SpecialPowers.prototype.IsInNestedFrame = false;
 
 SpecialPowers.prototype._sendSyncMessage = function(msgname, msg) {
-  if (this.SP_SYNC_MESSAGES.indexOf(msgname) == -1) {
+  if (!this.SP_SYNC_MESSAGES.includes(msgname)) {
     dump("TEST-INFO | specialpowers.js |  Unexpected SP message: " + msgname + "\n");
   }
   return sendSyncMessage(msgname, msg);
 };
 
 SpecialPowers.prototype._sendAsyncMessage = function(msgname, msg) {
-  if (this.SP_ASYNC_MESSAGES.indexOf(msgname) == -1) {
+  if (!this.SP_ASYNC_MESSAGES.includes(msgname)) {
     dump("TEST-INFO | specialpowers.js |  Unexpected SP message: " + msgname + "\n");
   }
   sendAsyncMessage(msgname, msg);
@@ -197,7 +197,7 @@ SpecialPowers.prototype.nestedFrameSetup = function() {
   Services.obs.addObserver(function onRemoteBrowserShown(subject, topic, data) {
     let frameLoader = subject;
     // get a ref to the app <iframe>
-    frameLoader.QueryInterface(Components.interfaces.nsIFrameLoader);
+    frameLoader.QueryInterface(Ci.nsIFrameLoader);
     let frame = frameLoader.ownerElement;
     let frameId = frame.getAttribute("id");
     if (frameId === "nested-parent-frame") {
@@ -233,8 +233,8 @@ SpecialPowers.prototype.nestedFrameSetup = function() {
 };
 
 SpecialPowers.prototype.isServiceWorkerRegistered = function() {
-  var swm = Components.classes["@mozilla.org/serviceworkers/manager;1"]
-                      .getService(Components.interfaces.nsIServiceWorkerManager);
+  var swm = Cc["@mozilla.org/serviceworkers/manager;1"]
+              .getService(Ci.nsIServiceWorkerManager);
   return swm.getAllRegistrations().length != 0;
 };
 

@@ -4,23 +4,19 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "CoverageCollector",
 ];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
 /* globals Debugger */
-const {addDebuggerToGlobal} = Cu.import("resource://gre/modules/jsdebugger.jsm",
-                                        {});
+const {addDebuggerToGlobal} = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm",
+                                                 {});
 addDebuggerToGlobal(Cu.getGlobalForObject(this));
 
 /**
  * Records coverage for each test by way of the js debugger.
  */
-this.CoverageCollector = function(prefix) {
+var CoverageCollector = function(prefix) {
   this._prefix = prefix;
   this._dbg = new Debugger();
   this._dbg.collectCoverageInfo = true;
@@ -161,25 +157,13 @@ CoverageCollector.prototype._getMethodNames = function() {
 };
 
 /**
- * Implements an iterator for objects. It is
- * used to iterate over the elements of the object obtained
- * from the function _getMethodNames.
- */
-Object.prototype[Symbol.iterator] = function* () {
-  for (var [key, value] of Object.entries(this)) {
-    yield [key, value];
-  }
-};
-
-
-/**
  * Records lines covered since the last time coverage was recorded,
  * associating them with the given test name. The result is written
  * to a json file in a specified directory.
  */
 CoverageCollector.prototype.recordTestCoverage = function(testName) {
   let ccov_scope = {};
-  const {OS} = Cu.import("resource://gre/modules/osfile.jsm", ccov_scope);
+  const {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm", ccov_scope);
 
   dump("Collecting coverage for: " + testName + "\n");
   let rawLines = this._getLinesCovered(testName);
@@ -199,7 +183,7 @@ CoverageCollector.prototype.recordTestCoverage = function(testName) {
     };
 
     if (typeof(methods[scriptName]) != "undefined" && methods[scriptName] != null) {
-      for (let [methodName, methodLines] of methods[scriptName]) {
+      for (let [methodName, methodLines] of Object.entries(methods[scriptName])) {
         rec.methods[methodName] = methodLines;
       }
     }

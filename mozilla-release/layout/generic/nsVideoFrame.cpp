@@ -101,7 +101,7 @@ nsVideoFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
     nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::img,
                                             nullptr,
                                             kNameSpaceID_XHTML,
-                                            nsIDOMNode::ELEMENT_NODE);
+                                            nsINode::ELEMENT_NODE);
     NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
     mPosterImage = NS_NewHTMLImageElement(nodeInfo.forget());
     NS_ENSURE_TRUE(mPosterImage, NS_ERROR_OUT_OF_MEMORY);
@@ -126,7 +126,7 @@ nsVideoFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
     nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::div,
                                             nullptr,
                                             kNameSpaceID_XHTML,
-                                            nsIDOMNode::ELEMENT_NODE);
+                                            nsINode::ELEMENT_NODE);
     NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
     mCaptionDiv = NS_NewHTMLDivElement(nodeInfo.forget());
     NS_ENSURE_TRUE(mCaptionDiv, NS_ERROR_OUT_OF_MEMORY);
@@ -143,7 +143,7 @@ nsVideoFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::videocontrols,
                                           nullptr,
                                           kNameSpaceID_XUL,
-                                          nsIDOMNode::ELEMENT_NODE);
+                                          nsINode::ELEMENT_NODE);
   NS_ENSURE_TRUE(nodeInfo, NS_ERROR_OUT_OF_MEMORY);
 
   NS_TrustedNewXULElement(getter_AddRefs(mVideoControls), nodeInfo.forget());
@@ -451,12 +451,12 @@ public:
 
     nsIntSize videoSizeInPx;
     if (NS_FAILED(element->GetVideoSize(&videoSizeInPx)) || area.IsEmpty()) {
-      return false;
+      return true;
     }
 
     RefPtr<ImageContainer> container = element->GetImageContainer();
     if (!container) {
-      return false;
+      return true;
     }
 
     // Retrieve the size of the decoded video frame, before being scaled
@@ -484,7 +484,7 @@ public:
     gfxRect destGFXRect = Frame()->PresContext()->AppUnitsToGfxUnits(dest);
     destGFXRect.Round();
     if (destGFXRect.IsEmpty()) {
-      return false;
+      return true;
     }
 
     VideoInfo::Rotation rotationDeg = element->RotationDegrees();
@@ -570,7 +570,7 @@ nsVideoFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   if (HasVideoElement() && !shouldDisplayPoster) {
     aLists.Content()->AppendToTop(
-      new (aBuilder) nsDisplayVideo(aBuilder, this));
+      MakeDisplayItem<nsDisplayVideo>(aBuilder, this));
   }
 
   // Add child frames to display list. We expect various children,
@@ -809,8 +809,7 @@ nsVideoFrame::OnVisibilityChange(Visibility aNewVisibility,
                                  const Maybe<OnNonvisible>& aNonvisibleAction)
 {
   if (HasVideoElement()) {
-    nsCOMPtr<nsIDOMHTMLMediaElement> mediaDomElement = do_QueryInterface(mContent);
-    mediaDomElement->OnVisibilityChange(aNewVisibility);
+    static_cast<HTMLMediaElement*>(GetContent())->OnVisibilityChange(aNewVisibility);
   }
 
   nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mPosterImage);
@@ -823,8 +822,7 @@ nsVideoFrame::OnVisibilityChange(Visibility aNewVisibility,
 }
 
 bool nsVideoFrame::HasVideoElement() {
-  nsCOMPtr<nsIDOMHTMLMediaElement> mediaDomElement = do_QueryInterface(mContent);
-  return mediaDomElement->IsVideo();
+  return static_cast<HTMLMediaElement*>(GetContent())->IsVideo();
 }
 
 bool nsVideoFrame::HasVideoData()
@@ -839,8 +837,5 @@ bool nsVideoFrame::HasVideoData()
 
 void nsVideoFrame::UpdateTextTrack()
 {
-  HTMLMediaElement* element = static_cast<HTMLMediaElement*>(GetContent());
-  if (element) {
-    element->NotifyCueDisplayStatesChanged();
-  }
+  static_cast<HTMLMediaElement*>(GetContent())->NotifyCueDisplayStatesChanged();
 }

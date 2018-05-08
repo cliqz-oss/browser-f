@@ -12,17 +12,14 @@
 
 var global = this;
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-
-Cu.import("chrome://specialpowers/content/MockFilePicker.jsm");
-Cu.import("chrome://specialpowers/content/MockColorPicker.jsm");
-Cu.import("chrome://specialpowers/content/MockPermissionPrompt.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockFilePicker.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockColorPicker.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockPermissionPrompt.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 // We're loaded with "this" not set to the global in some cases, so we
 // have to play some games to get at the global object here.  Normally
@@ -30,7 +27,7 @@ Cu.import("resource://gre/modules/NetUtil.jsm");
 // but this whole file is in strict mode.  So instead fall back on
 // returning "this" from indirect eval, which returns the global.
 if (!(function() { var e = eval; return e("this"); })().File) { // eslint-disable-line no-eval
-    Cu.importGlobalProperties(["File", "InspectorUtils"]);
+    Cu.importGlobalProperties(["File", "InspectorUtils", "NodeFilter"]);
 }
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
@@ -50,8 +47,6 @@ function SpecialPowersAPI() {
   this._pendingPermissions = [];
   this._applyingPermissions = false;
   this._observingPermissions = false;
-  this._fm = null;
-  this._cb = null;
 }
 
 function bindDOMWindowUtils(aWindow) {
@@ -100,7 +95,7 @@ function isObjectOrArray(obj) {
                       "Uint32Array", "Float32Array", "Float64Array",
                       "Uint8ClampedArray"];
   let className = Cu.getClassName(obj, true);
-  return arrayClasses.indexOf(className) != -1;
+  return arrayClasses.includes(className);
 }
 
 // In general, we want Xray wrappers for content DOM objects, because waiving
@@ -665,7 +660,7 @@ SpecialPowersAPI.prototype = {
   get Cc() { return wrapPrivileged(this.getFullComponents().classes); },
   get Ci() {
  return this.Components ? this.Components.interfaces
-                                    : Components.interfaces;
+                                    : Ci;
 },
   get Cu() { return wrapPrivileged(this.getFullComponents().utils); },
   get Cr() { return wrapPrivileged(this.Components.results); },
@@ -823,7 +818,7 @@ SpecialPowersAPI.prototype = {
                              : Ci.nsIPermissionManager.DENY_ACTION;
         }
 
-        if (permission.remove == true)
+        if (permission.remove)
           perm = Ci.nsIPermissionManager.UNKNOWN_ACTION;
 
         if (originalValue == perm) {
@@ -842,7 +837,7 @@ SpecialPowersAPI.prototype = {
 
         var cleanupTodo = Object.assign({}, todo);
 
-        if (permission.remove == true)
+        if (permission.remove)
           todo.op = "remove";
 
         pendingPermissions.push(todo);
@@ -1447,12 +1442,12 @@ SpecialPowersAPI.prototype = {
   },
   get formHistory() {
     let tmp = {};
-    Cu.import("resource://gre/modules/FormHistory.jsm", tmp);
+    ChromeUtils.import("resource://gre/modules/FormHistory.jsm", tmp);
     return wrapPrivileged(tmp.FormHistory);
   },
   getFormFillController(window) {
-    return Components.classes["@mozilla.org/satchel/form-fill-controller;1"]
-                     .getService(Components.interfaces.nsIFormFillController);
+    return Cc["@mozilla.org/satchel/form-fill-controller;1"]
+             .getService(Ci.nsIFormFillController);
   },
   attachFormFillControllerTo(window) {
     this.getFormFillController()
@@ -1624,9 +1619,7 @@ SpecialPowersAPI.prototype = {
 
   isMainProcess() {
     try {
-      return Cc["@mozilla.org/xre/app-info;1"].
-               getService(Ci.nsIXULRuntime).
-               processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
+      return Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
     } catch (e) { }
     return true;
   },
@@ -1637,9 +1630,7 @@ SpecialPowersAPI.prototype = {
     if (this._xpcomabi != null)
       return this._xpcomabi;
 
-    var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                        .getService(Components.interfaces.nsIXULAppInfo)
-                        .QueryInterface(Components.interfaces.nsIXULRuntime);
+    var xulRuntime = Services.appinfo.QueryInterface(Ci.nsIXULRuntime);
 
     this._xpcomabi = xulRuntime.XPCOMABI;
     return this._xpcomabi;
@@ -1663,23 +1654,15 @@ SpecialPowersAPI.prototype = {
     if (this._os != null)
       return this._os;
 
-    var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                        .getService(Components.interfaces.nsIXULAppInfo)
-                        .QueryInterface(Components.interfaces.nsIXULRuntime);
-
-    this._os = xulRuntime.OS;
+    this._os = Services.appinfo.OS;
     return this._os;
   },
 
   addSystemEventListener(target, type, listener, useCapture) {
-    Cc["@mozilla.org/eventlistenerservice;1"].
-      getService(Ci.nsIEventListenerService).
-      addSystemEventListener(target, type, listener, useCapture);
+    Services.els.addSystemEventListener(target, type, listener, useCapture);
   },
   removeSystemEventListener(target, type, listener, useCapture) {
-    Cc["@mozilla.org/eventlistenerservice;1"].
-      getService(Ci.nsIEventListenerService).
-      removeSystemEventListener(target, type, listener, useCapture);
+    Services.els.removeSystemEventListener(target, type, listener, useCapture);
   },
 
   // helper method to check if the event is consumed by either default group's
@@ -1715,14 +1698,14 @@ SpecialPowersAPI.prototype = {
   },
 
   addCategoryEntry(category, entry, value, persists, replace) {
-    Components.classes["@mozilla.org/categorymanager;1"].
-      getService(Components.interfaces.nsICategoryManager).
+    Cc["@mozilla.org/categorymanager;1"].
+      getService(Ci.nsICategoryManager).
       addCategoryEntry(category, entry, value, persists, replace);
   },
 
   deleteCategoryEntry(category, entry, persists) {
-    Components.classes["@mozilla.org/categorymanager;1"].
-      getService(Components.interfaces.nsICategoryManager).
+    Cc["@mozilla.org/categorymanager;1"].
+      getService(Ci.nsICategoryManager).
       deleteCategoryEntry(category, entry, persists);
   },
   openDialog(win, args) {
@@ -1750,28 +1733,22 @@ SpecialPowersAPI.prototype = {
     return obj;
   },
 
-  get focusManager() {
-    if (this._fm != null)
-      return this._fm;
-
-    this._fm = Components.classes["@mozilla.org/focus-manager;1"].
-                        getService(Components.interfaces.nsIFocusManager);
-
-    return this._fm;
-  },
-
   getFocusedElementForWindow(targetWindow, aDeep) {
     var outParam = {};
-    this.focusManager.getFocusedElementForWindow(targetWindow, aDeep, outParam);
+    Services.focus.getFocusedElementForWindow(targetWindow, aDeep, outParam);
     return outParam.value;
   },
 
+  get focusManager() {
+    return Services.focus;
+  },
+
   activeWindow() {
-    return this.focusManager.activeWindow;
+    return Services.focus.activeWindow;
   },
 
   focusedWindow() {
-    return this.focusManager.focusedWindow;
+    return Services.focus.focusedWindow;
   },
 
   focus(aWindow) {
@@ -1795,21 +1772,18 @@ SpecialPowersAPI.prototype = {
   },
 
   getClipboardData(flavor, whichClipboard) {
-    if (this._cb == null)
-      this._cb = Components.classes["@mozilla.org/widget/clipboard;1"].
-                            getService(Components.interfaces.nsIClipboard);
     if (whichClipboard === undefined)
-      whichClipboard = this._cb.kGlobalClipboard;
+      whichClipboard = Services.clipboard.kGlobalClipboard;
 
-    var xferable = Components.classes["@mozilla.org/widget/transferable;1"].
-                   createInstance(Components.interfaces.nsITransferable);
+    var xferable = Cc["@mozilla.org/widget/transferable;1"].
+                   createInstance(Ci.nsITransferable);
     // in e10s b-c tests |content.window| is a CPOW whereas |window| works fine.
     // for some non-e10s mochi tests, |window| is null whereas |content.window|
     // works fine.  So we take whatever is non-null!
     xferable.init(this._getDocShell(typeof(window) == "undefined" ? content.window : window)
-                      .QueryInterface(Components.interfaces.nsILoadContext));
+                      .QueryInterface(Ci.nsILoadContext));
     xferable.addDataFlavor(flavor);
-    this._cb.getData(xferable, whichClipboard);
+    Services.clipboard.getData(xferable, whichClipboard);
     var data = {};
     try {
       xferable.getTransferData(flavor, data, {});
@@ -1818,7 +1792,7 @@ SpecialPowersAPI.prototype = {
     if (data == null)
       return "";
 
-    return data.QueryInterface(Components.interfaces.nsISupportsString).data;
+    return data.QueryInterface(Ci.nsISupportsString).data;
   },
 
   clipboardCopyString(str) {
@@ -1828,18 +1802,14 @@ SpecialPowersAPI.prototype = {
   },
 
   supportsSelectionClipboard() {
-    if (this._cb == null) {
-      this._cb = Components.classes["@mozilla.org/widget/clipboard;1"].
-                            getService(Components.interfaces.nsIClipboard);
-    }
-    return this._cb.supportsSelectionClipboard();
+    return Services.clipboard.supportsSelectionClipboard();
   },
 
   swapFactoryRegistration(cid, contractID, newFactory, oldFactory) {
     newFactory = Cu.waiveXrays(newFactory);
     oldFactory = Cu.waiveXrays(oldFactory);
 
-    var componentRegistrar = Components.manager.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+    var componentRegistrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
 
     var unregisterFactory = newFactory;
     var registerFactory = oldFactory;
@@ -1847,8 +1817,8 @@ SpecialPowersAPI.prototype = {
     if (cid == null) {
       if (contractID != null) {
         cid = componentRegistrar.contractIDToCID(contractID);
-        oldFactory = Components.manager.getClassObject(Components.classes[contractID],
-                                                            Components.interfaces.nsIFactory);
+        oldFactory = Components.manager.getClassObject(Cc[contractID],
+                                                            Ci.nsIFactory);
       } else {
         return {"error": "trying to register a new contract ID: Missing contractID"};
       }
@@ -2195,7 +2165,7 @@ SpecialPowersAPI.prototype = {
     let walker = Cc["@mozilla.org/inspector/deep-tree-walker;1"].
                  createInstance(Ci.inIDeepTreeWalker);
     walker.showAnonymousContent = showAnonymousContent;
-    walker.init(node.ownerDocument, Ci.nsIDOMNodeFilter.SHOW_ALL);
+    walker.init(node.ownerDocument, NodeFilter.SHOW_ALL);
     walker.currentNode = node;
     return {
       get firstChild() {
@@ -2266,6 +2236,8 @@ SpecialPowersAPI.prototype = {
                                                           tables,
                                                           wrapCallback);
   },
+
+  EARLY_BETA_OR_EARLIER: AppConstants.EARLY_BETA_OR_EARLIER,
 
 };
 

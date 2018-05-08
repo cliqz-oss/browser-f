@@ -9,8 +9,6 @@
 
 #include "CrossProcessMutex.h"
 #include "mozilla/layers/GeckoContentController.h"
-#include "mozilla/layers/APZCTreeManager.h"
-#include "mozilla/layers/AsyncPanZoomAnimation.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/Monitor.h"
@@ -43,6 +41,7 @@ class SharedMemoryBasic;
 namespace layers {
 
 class AsyncDragMetrics;
+class APZCTreeManager;
 struct ScrollableLayerGuid;
 class CompositorController;
 class MetricsSharingController;
@@ -52,9 +51,11 @@ class AsyncPanZoomAnimation;
 class AndroidFlingAnimation;
 class GenericFlingAnimation;
 class InputBlockState;
+struct FlingHandoffState;
 class TouchBlockState;
 class PanGestureBlockState;
 class OverscrollHandoffChain;
+struct OverscrollHandoffState;
 class StateChangeNotificationBlocker;
 class CheckerboardEvent;
 class OverscrollEffectBase;
@@ -190,7 +191,7 @@ public:
 
   /**
    * Kicks an animation to zoom to a rect. This may be either a zoom out or zoom
-   * in. The actual animation is done on the compositor thread after being set
+   * in. The actual animation is done on the sampler thread after being set
    * up.
    */
   void ZoomToRect(CSSRect aRect, const uint32_t aFlags);
@@ -213,7 +214,7 @@ public:
   void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs);
 
   // --------------------------------------------------------------------------
-  // These methods must only be called on the compositor thread.
+  // These methods must only be called on the sampler thread.
   //
 
   /**
@@ -776,7 +777,7 @@ protected:
 
   /* Access to the following two fields is protected by the mRefPtrMonitor,
      since they are accessed on the UI thread but can be cleared on the
-     compositor thread. */
+     sampler thread. */
   RefPtr<GeckoContentController> mGeckoContentController;
   RefPtr<GestureEventListener> mGestureEventListener;
   mutable Monitor mRefPtrMonitor;
@@ -1334,17 +1335,11 @@ public:
   /**
    * Set an extra offset for testing async scrolling.
    */
-  void SetTestAsyncScrollOffset(const CSSPoint& aPoint)
-  {
-    mTestAsyncScrollOffset = aPoint;
-  }
+  void SetTestAsyncScrollOffset(const CSSPoint& aPoint);
   /**
    * Set an extra offset for testing async scrolling.
    */
-  void SetTestAsyncZoom(const LayerToParentLayerScale& aZoom)
-  {
-    mTestAsyncZoom = aZoom;
-  }
+  void SetTestAsyncZoom(const LayerToParentLayerScale& aZoom);
 
   void MarkAsyncTransformAppliedToContent()
   {

@@ -18,11 +18,11 @@ namespace Telemetry {
 namespace Common {
 
 enum class RecordedProcessType : uint32_t {
-  Main       = (1 << GeckoProcessType_Default),  // Also known as "parent process"
-  Content    = (1 << GeckoProcessType_Content),
-  Gpu        = (1 << GeckoProcessType_GPU),
-  AllChilds  = 0xFFFFFFFF - 1,  // All the children processes (i.e. content, gpu, ...)
-  All        = 0xFFFFFFFF       // All the processes
+  Main         = (1 << GeckoProcessType_Default),  // Also known as "parent process"
+  Content      = (1 << GeckoProcessType_Content),
+  Gpu          = (1 << GeckoProcessType_GPU),
+  AllChildren  = 0xFFFFFFFF - 1,  // All the child processes (i.e. content, gpu, ...)
+  All          = 0xFFFFFFFF       // All the processes
 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(RecordedProcessType);
 
@@ -107,6 +107,16 @@ GeckoProcessType GetGeckoProcessType(ProcessID process);
 bool
 IsValidIdentifierString(const nsACString& aStr, const size_t aMaxLength,
                         const bool aAllowInfixPeriod, const bool aAllowInfixUnderscore);
+
+/**
+ * Convert the given UTF16 string to a JavaScript string.
+ *
+ * @param cx The JS context.
+ * @param aStr The UTF16 string.
+ * @returns a JavaScript string.
+ */
+JSString*
+ToJSString(JSContext* cx, const nsAString& aStr);
 
 } // namespace Common
 } // namespace Telemetry

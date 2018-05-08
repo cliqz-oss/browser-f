@@ -22,11 +22,10 @@ NS_IMPL_ADDREF(nsPrintProgress)
 NS_IMPL_RELEASE(nsPrintProgress)
 
 NS_INTERFACE_MAP_BEGIN(nsPrintProgress)
-   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIPrintStatusFeedback)
+   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIPrintProgress)
    NS_INTERFACE_MAP_ENTRY(nsIPrintProgress)
-   NS_INTERFACE_MAP_ENTRY(nsIPrintStatusFeedback)
    NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener)
-NS_INTERFACE_MAP_END_THREADSAFE
+NS_INTERFACE_MAP_END
 
 
 nsPrintProgress::nsPrintProgress(nsIPrintSettings* aPrintSettings)
@@ -181,6 +180,14 @@ NS_IMETHODIMP nsPrintProgress::DoneIniting()
 
 NS_IMETHODIMP nsPrintProgress::OnStateChange(nsIWebProgress *aWebProgress, nsIRequest *aRequest, uint32_t aStateFlags, nsresult aStatus)
 {
+  if (XRE_IsE10sParentProcess() &&
+      aStateFlags & nsIWebProgressListener::STATE_STOP) {
+    // If we're in an e10s parent, m_observer is a PrintProgressDialogParent,
+    // so we let it know that printing has completed, because it might mean that
+    // its PrintProgressDialogChild has already been deleted.
+    m_observer->Observe(nullptr, "completed", nullptr);
+  }
+
   m_pendingStateFlags = aStateFlags;
   m_pendingStateValue = aStatus;
 
@@ -197,6 +204,14 @@ NS_IMETHODIMP nsPrintProgress::OnStateChange(nsIWebProgress *aWebProgress, nsIRe
 
 NS_IMETHODIMP nsPrintProgress::OnProgressChange(nsIWebProgress *aWebProgress, nsIRequest *aRequest, int32_t aCurSelfProgress, int32_t aMaxSelfProgress, int32_t aCurTotalProgress, int32_t aMaxTotalProgress)
 {
+  if (XRE_IsE10sParentProcess() && aCurSelfProgress &&
+      aCurSelfProgress >= aMaxSelfProgress) {
+    // If we're in an e10s parent, m_observer is a PrintProgressDialogParent,
+    // so we let it know that printing has completed, because it might mean that
+    // its PrintProgressDialogChild has already been deleted.
+    m_observer->Observe(nullptr, "completed", nullptr);
+  }
+
   uint32_t count = m_listenerList.Count();
   for (uint32_t i = count - 1; i < count; i --)
   {
@@ -239,35 +254,5 @@ nsresult nsPrintProgress::ReleaseListeners()
   m_listenerList.Clear();
 
   return NS_OK;
-}
-
-NS_IMETHODIMP nsPrintProgress::ShowStatusString(const char16_t *status)
-{
-  return OnStatusChange(nullptr, nullptr, NS_OK, status);
-}
-
-NS_IMETHODIMP nsPrintProgress::StartMeteors()
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP nsPrintProgress::StopMeteors()
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP nsPrintProgress::ShowProgress(int32_t percent)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP nsPrintProgress::SetDocShell(nsIDocShell *shell, mozIDOMWindowProxy *window)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP nsPrintProgress::CloseWindow()
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 

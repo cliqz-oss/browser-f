@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
-
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const {gDevTools} = require("devtools/client/framework/devtools");
 const {gDevToolsBrowser} = require("devtools/client/framework/devtools-browser");
 const {Toolbox} = require("devtools/client/framework/toolbox");
@@ -13,7 +10,7 @@ const Services = require("Services");
 const {AppProjects} = require("devtools/client/webide/modules/app-projects");
 const {Connection} = require("devtools/shared/client/connection-manager");
 const {AppManager} = require("devtools/client/webide/modules/app-manager");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const promise = require("promise");
 const {GetAvailableAddons} = require("devtools/client/webide/modules/addons");
 const {getJSON} = require("devtools/client/shared/getjson");
@@ -131,7 +128,7 @@ var UI = {
     showDoorhanger({ window, type: "deveditionpromo", anchor: document.querySelector("#deck") });
   },
 
-  appManagerUpdate: function (event, what, details) {
+  appManagerUpdate: function (what, details) {
     // Got a message from app-manager.js
     // See AppManager.update() for descriptions of what these events mean.
     switch (what) {
@@ -180,9 +177,6 @@ var UI = {
         this.updateTitle();
         this.updateCommands();
         break;
-      case "install-progress":
-        this.updateProgress(Math.round(100 * details.bytesSent / details.totalBytes));
-        break;
       case "runtime-targets":
         this.autoSelectProject();
         break;
@@ -215,13 +209,6 @@ var UI = {
   _busyTimeout: null,
   _busyOperationDescription: null,
   _busyPromise: null,
-
-  updateProgress: function (percent) {
-    let progress = document.querySelector("#action-busy-determined");
-    progress.mode = "determined";
-    progress.value = percent;
-    this.setupBusyTimeout();
-  },
 
   busy: function () {
     let win = document.querySelector("window");
@@ -392,7 +379,6 @@ var UI = {
     }
 
     // Runtime commands
-    let monitorCmd = document.querySelector("#cmd_showMonitor");
     let screenshotCmd = document.querySelector("#cmd_takeScreenshot");
     let detailsCmd = document.querySelector("#cmd_showRuntimeDetails");
     let disconnectCmd = document.querySelector("#cmd_disconnectRuntime");
@@ -401,7 +387,6 @@ var UI = {
 
     if (AppManager.connected) {
       if (AppManager.deviceFront) {
-        monitorCmd.removeAttribute("disabled");
         detailsCmd.removeAttribute("disabled");
         screenshotCmd.removeAttribute("disabled");
       }
@@ -410,7 +395,6 @@ var UI = {
       }
       disconnectCmd.removeAttribute("disabled");
     } else {
-      monitorCmd.setAttribute("disabled", "true");
       detailsCmd.setAttribute("disabled", "true");
       screenshotCmd.setAttribute("disabled", "true");
       disconnectCmd.setAttribute("disabled", "true");
@@ -892,10 +876,6 @@ var Cmds = {
 
   showDevicePrefs: function () {
     UI.selectDeckPanel("devicepreferences");
-  },
-
-  showMonitor: function () {
-    UI.selectDeckPanel("monitor");
   },
 
   play: Task.async(function* () {

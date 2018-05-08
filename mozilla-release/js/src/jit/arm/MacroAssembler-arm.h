@@ -9,11 +9,10 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jsopcode.h"
-
 #include "jit/arm/Assembler-arm.h"
 #include "jit/JitFrames.h"
 #include "jit/MoveResolver.h"
+#include "vm/BytecodeUtil.h"
 
 using mozilla::DebugOnly;
 
@@ -23,6 +22,25 @@ namespace jit {
 static Register CallReg = ip;
 static const int defaultShift = 3;
 JS_STATIC_ASSERT(1 << defaultShift == sizeof(JS::Value));
+
+// See documentation for ScratchTagScope and ScratchTagScopeRelease in
+// MacroAssembler-x64.h.
+
+class ScratchTagScope
+{
+    const ValueOperand& v_;
+  public:
+    ScratchTagScope(MacroAssembler&, const ValueOperand& v) : v_(v) {}
+    operator Register() { return v_.typeReg(); }
+    void release() {}
+    void reacquire() {}
+};
+
+class ScratchTagScopeRelease
+{
+  public:
+    explicit ScratchTagScopeRelease(ScratchTagScope*) {}
+};
 
 // MacroAssemblerARM is inheriting form Assembler defined in
 // Assembler-arm.{h,cpp}
@@ -99,10 +117,10 @@ class MacroAssemblerARM : public Assembler
     void convertInt32ToFloat32(const Address& src, FloatRegister dest);
 
     void wasmTruncateToInt32(FloatRegister input, Register output, MIRType fromType,
-                             bool isUnsigned, Label* oolEntry);
+                             bool isUnsigned, bool isSaturating, Label* oolEntry);
     void outOfLineWasmTruncateToIntCheck(FloatRegister input, MIRType fromType,
-                                         MIRType toType, bool isUnsigned, Label* rejoin,
-                                         wasm::BytecodeOffset trapOffset);
+                                         MIRType toType, TruncFlags flags,
+                                         Label* rejoin, wasm::BytecodeOffset trapOffset);
 
     // Somewhat direct wrappers for the low-level assembler funcitons
     // bitops. Attempt to encode a virtual alu instruction using two real
@@ -120,8 +138,8 @@ class MacroAssemblerARM : public Assembler
                 SBit s = LeaveCC, Condition c = Always);
     void ma_nop();
 
-    void ma_movPatchable(Imm32 imm, Register dest, Assembler::Condition c);
-    void ma_movPatchable(ImmPtr imm, Register dest, Assembler::Condition c);
+    BufferOffset ma_movPatchable(Imm32 imm, Register dest, Assembler::Condition c);
+    BufferOffset ma_movPatchable(ImmPtr imm, Register dest, Assembler::Condition c);
 
     // To be used with Iter := InstructionIterator or BufferInstructionIterator.
     template<class Iter>
@@ -701,9 +719,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
         test32(lhs, rhs);
     }
 
-    // Returns the register containing the type tag.
-    Register splitTagForTest(const ValueOperand& value) {
-        return value.typeReg();
+    void splitTagForTest(const ValueOperand& value, ScratchTagScope& tag) {
+        MOZ_ASSERT(value.typeReg() == tag);
     }
 
     // Higher level tag testing code.
@@ -757,24 +774,51 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     Condition testGCThing(Condition cond, const BaseIndex& src);
 
     // Unboxing code.
-    void unboxNonDouble(const ValueOperand& operand, Register dest);
-    void unboxNonDouble(const Address& src, Register dest);
-    void unboxNonDouble(const BaseIndex& src, Register dest);
-    void unboxInt32(const ValueOperand& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxInt32(const Address& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxBoolean(const ValueOperand& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxBoolean(const Address& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxString(const ValueOperand& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxString(const Address& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxSymbol(const ValueOperand& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxSymbol(const Address& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxObject(const ValueOperand& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxObject(const Address& src, Register dest) { unboxNonDouble(src, dest); }
-    void unboxObject(const BaseIndex& src, Register dest) { unboxNonDouble(src, dest); }
+    void unboxNonDouble(const ValueOperand& operand, Register dest, JSValueType type);
+    void unboxNonDouble(const Address& src, Register dest, JSValueType type);
+    void unboxNonDouble(const BaseIndex& src, Register dest, JSValueType type);
+    void unboxInt32(const ValueOperand& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_INT32);
+    }
+    void unboxInt32(const Address& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_INT32);
+    }
+    void unboxBoolean(const ValueOperand& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_BOOLEAN);
+    }
+    void unboxBoolean(const Address& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_BOOLEAN);
+    }
+    void unboxString(const ValueOperand& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_STRING);
+    }
+    void unboxString(const Address& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_STRING);
+    }
+    void unboxSymbol(const ValueOperand& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_SYMBOL);
+    }
+    void unboxSymbol(const Address& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_SYMBOL);
+    }
+    void unboxObject(const ValueOperand& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_OBJECT);
+    }
+    void unboxObject(const Address& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_OBJECT);
+    }
+    void unboxObject(const BaseIndex& src, Register dest) {
+        unboxNonDouble(src, dest, JSVAL_TYPE_OBJECT);
+    }
     void unboxDouble(const ValueOperand& src, FloatRegister dest);
     void unboxDouble(const Address& src, FloatRegister dest);
-    void unboxValue(const ValueOperand& src, AnyRegister dest);
+    void unboxValue(const ValueOperand& src, AnyRegister dest, JSValueType type);
     void unboxPrivate(const ValueOperand& src, Register dest);
+
+    // See comment in MacroAssembler-x64.h.
+    void unboxGCThingForPreBarrierTrampoline(const Address& src, Register dest) {
+        load32(ToPayload(src), dest);
+    }
 
     void notBoolean(const ValueOperand& val) {
         as_eor(val.payloadReg(), val.payloadReg(), Imm8(1));
@@ -789,6 +833,15 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     // and returns that.
     Register extractObject(const Address& address, Register scratch);
     Register extractObject(const ValueOperand& value, Register scratch) {
+        unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_OBJECT);
+        return value.payloadReg();
+    }
+    Register extractString(const ValueOperand& value, Register scratch) {
+        unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_STRING);
+        return value.payloadReg();
+    }
+    Register extractSymbol(const ValueOperand& value, Register scratch) {
+        unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_SYMBOL);
         return value.payloadReg();
     }
     Register extractInt32(const ValueOperand& value, Register scratch) {
@@ -843,7 +896,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
 
     template <typename T>
-    void storeUnboxedPayload(ValueOperand value, T address, size_t nbytes) {
+    void storeUnboxedPayload(ValueOperand value, T address, size_t nbytes, JSValueType) {
         switch (nbytes) {
           case 4:
             storePtr(value.payloadReg(), address);
@@ -1127,9 +1180,6 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void cmpPtr(const Address& lhs, ImmPtr rhs);
     void cmpPtr(const Address& lhs, ImmGCPtr rhs);
     void cmpPtr(const Address& lhs, Imm32 rhs);
-
-    static bool convertUInt64ToDoubleNeedsTemp();
-    void convertUInt64ToDouble(Register64 src, FloatRegister dest, Register temp);
 
     void setStackArg(Register reg, uint32_t arg);
 

@@ -1,15 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/policies.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/rotaryengine.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/policies.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://testing-common/services/sync/rotaryengine.js");
 
 function makeRotaryEngine() {
   return new RotaryEngine(Service);
@@ -19,7 +19,7 @@ async function clean(engine) {
   Svc.Prefs.resetBranch("");
   Svc.Prefs.set("log.logger.engine.rotary", "Trace");
   Service.recordManager.clearCache();
-  engine._tracker.clearChangedIDs();
+  await engine._tracker.clearChangedIDs();
   await engine.finalize();
 }
 
@@ -98,7 +98,8 @@ add_task(async function test_syncStartup_emptyOrOutdatedGlobalsResetsSync() {
   try {
 
     // Confirm initial environment
-    Assert.equal(engine._tracker.changedIDs.rekolok, undefined);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.rekolok, undefined);
     let metaGlobal = await Service.recordManager.get(engine.metaURL);
     Assert.equal(metaGlobal.payload.engines, undefined);
     Assert.ok(!!collection.payload("flying"));
@@ -173,7 +174,8 @@ add_task(async function test_syncStartup_syncIDMismatchResetsClient() {
 
     // Confirm initial environment
     Assert.equal(engine.syncID, "fake-guid-00");
-    Assert.equal(engine._tracker.changedIDs.rekolok, undefined);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.rekolok, undefined);
 
     engine.lastSync = Date.now() / 1000;
     engine.lastSyncLocal = Date.now();
@@ -331,9 +333,9 @@ add_task(async function test_processIncoming_reconcile() {
                          long_original: "Long Original Entry",
                          nukeme: "Nuke me!"};
   // Make this record 1 min old, thus older than the one on the server
-  engine._tracker.addChangedID("newerserver", Date.now() / 1000 - 60);
+  await engine._tracker.addChangedID("newerserver", Date.now() / 1000 - 60);
   // This record has been changed 2 mins later than the one on the server
-  engine._tracker.addChangedID("olderidentical", Date.now() / 1000);
+  await engine._tracker.addChangedID("olderidentical", Date.now() / 1000);
 
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
@@ -348,7 +350,8 @@ add_task(async function test_processIncoming_reconcile() {
     Assert.equal(engine._store.items.olderidentical, "Older but identical");
     Assert.equal(engine._store.items.updateclient, "Got data?");
     Assert.equal(engine._store.items.nukeme, "Nuke me!");
-    Assert.ok(engine._tracker.changedIDs.olderidentical > 0);
+    let changes = await engine._tracker.getChangedIDs();
+    Assert.ok(changes.olderidentical > 0);
 
     await engine._syncStartup();
     await engine._processIncoming();
@@ -366,7 +369,8 @@ add_task(async function test_processIncoming_reconcile() {
     // The data for 'olderidentical' is identical on the server, so
     // it's no longer marked as changed anymore.
     Assert.equal(engine._store.items.olderidentical, "Older but identical");
-    Assert.equal(engine._tracker.changedIDs.olderidentical, undefined);
+    changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.olderidentical, undefined);
 
     // Updated with server data.
     Assert.equal(engine._store.items.updateclient, "Get this!");
@@ -460,7 +464,7 @@ add_task(async function test_processIncoming_reconcile_locally_deleted_dupe_new(
 
   // Simulate a locally-deleted item.
   engine._store.items = {};
-  engine._tracker.addChangedID("DUPE_LOCAL", now + 3);
+  await engine._tracker.addChangedID("DUPE_LOCAL", now + 3);
   Assert.equal(false, (await engine._store.itemExists("DUPE_LOCAL")));
   Assert.equal(false, (await engine._store.itemExists("DUPE_INCOMING")));
   Assert.equal("DUPE_LOCAL", (await engine._findDupe({id: "DUPE_INCOMING"})));
@@ -475,7 +479,7 @@ add_task(async function test_processIncoming_reconcile_locally_deleted_dupe_new(
   Assert.equal(1, collection.count());
   wbo = collection.wbo("DUPE_INCOMING");
   Assert.notEqual(null, wbo);
-  let payload = JSON.parse(JSON.parse(wbo.payload).ciphertext);
+  let payload = wbo.getCleartext();
   Assert.ok(payload.deleted);
 
   await cleanAndGo(engine, server);
@@ -499,7 +503,7 @@ add_task(async function test_processIncoming_reconcile_locally_deleted_dupe_old(
 
   // Simulate a locally-deleted item.
   engine._store.items = {};
-  engine._tracker.addChangedID("DUPE_LOCAL", now + 1);
+  await engine._tracker.addChangedID("DUPE_LOCAL", now + 1);
   Assert.equal(false, (await engine._store.itemExists("DUPE_LOCAL")));
   Assert.equal(false, (await engine._store.itemExists("DUPE_INCOMING")));
   Assert.equal("DUPE_LOCAL", (await engine._findDupe({id: "DUPE_INCOMING"})));
@@ -514,7 +518,7 @@ add_task(async function test_processIncoming_reconcile_locally_deleted_dupe_old(
   let collection = server.getCollection(user, "rotary");
   Assert.equal(1, collection.count());
   wbo = collection.wbo("DUPE_INCOMING");
-  let payload = JSON.parse(JSON.parse(wbo.payload).ciphertext);
+  let payload = wbo.getCleartext();
   Assert.equal("incoming", payload.denomination);
 
   await cleanAndGo(engine, server);
@@ -535,7 +539,7 @@ add_task(async function test_processIncoming_reconcile_changed_dupe() {
   server.insertWBO(user, "rotary", wbo);
 
   await engine._store.create({id: "DUPE_LOCAL", denomination: "local"});
-  engine._tracker.addChangedID("DUPE_LOCAL", now + 3);
+  await engine._tracker.addChangedID("DUPE_LOCAL", now + 3);
   Assert.ok((await engine._store.itemExists("DUPE_LOCAL")));
   Assert.equal("DUPE_LOCAL", (await engine._findDupe({id: "DUPE_INCOMING"})));
 
@@ -552,7 +556,7 @@ add_task(async function test_processIncoming_reconcile_changed_dupe() {
   Assert.equal(1, collection.count());
   wbo = collection.wbo("DUPE_INCOMING");
   Assert.notEqual(undefined, wbo);
-  let payload = JSON.parse(JSON.parse(wbo.payload).ciphertext);
+  let payload = wbo.getCleartext();
   Assert.equal("local", payload.denomination);
 
   await cleanAndGo(engine, server);
@@ -574,7 +578,7 @@ add_task(async function test_processIncoming_reconcile_changed_dupe_new() {
   server.insertWBO(user, "rotary", wbo);
 
   await engine._store.create({id: "DUPE_LOCAL", denomination: "local"});
-  engine._tracker.addChangedID("DUPE_LOCAL", now + 1);
+  await engine._tracker.addChangedID("DUPE_LOCAL", now + 1);
   Assert.ok((await engine._store.itemExists("DUPE_LOCAL")));
   Assert.equal("DUPE_LOCAL", (await engine._findDupe({id: "DUPE_INCOMING"})));
 
@@ -591,7 +595,7 @@ add_task(async function test_processIncoming_reconcile_changed_dupe_new() {
   Assert.equal(1, collection.count());
   wbo = collection.wbo("DUPE_INCOMING");
   Assert.notEqual(undefined, wbo);
-  let payload = JSON.parse(JSON.parse(wbo.payload).ciphertext);
+  let payload = wbo.getCleartext();
   Assert.equal("incoming", payload.denomination);
   await cleanAndGo(engine, server);
 });
@@ -627,8 +631,8 @@ add_task(async function test_processIncoming_resume_toFetch() {
   // Time travel 10 seconds into the future but still download the above WBOs.
   let engine = makeRotaryEngine();
   engine.lastSync = LASTSYNC;
-  engine.toFetch = ["flying", "scotsman"];
-  engine.previousFailed = ["failed0", "failed1", "failed2"];
+  engine.toFetch = new SerializableSet(["flying", "scotsman"]);
+  engine.previousFailed = new SerializableSet(["failed0", "failed1", "failed2"]);
 
   let server = sync_httpd_setup({
       "/1.1/foo/storage/rotary": collection.handler()
@@ -657,7 +661,7 @@ add_task(async function test_processIncoming_resume_toFetch() {
     Assert.equal(engine._store.items.failed0, "Record No. 0");
     Assert.equal(engine._store.items.failed1, "Record No. 1");
     Assert.equal(engine._store.items.failed2, "Record No. 2");
-    Assert.equal(engine.previousFailed.length, 0);
+    Assert.equal(engine.previousFailed.size, 0);
   } finally {
     await cleanAndGo(engine, server);
   }
@@ -703,8 +707,8 @@ add_task(async function test_processIncoming_notify_count() {
   try {
     // Confirm initial environment.
     Assert.equal(engine.lastSync, 0);
-    Assert.equal(engine.toFetch.length, 0);
-    Assert.equal(engine.previousFailed.length, 0);
+    Assert.equal(engine.toFetch.size, 0);
+    Assert.equal(engine.previousFailed.size, 0);
     do_check_empty(engine._store.items);
 
     let called = 0;
@@ -722,8 +726,8 @@ add_task(async function test_processIncoming_notify_count() {
 
     // Confirm failures.
     do_check_attribute_count(engine._store.items, 12);
-    Assert.deepEqual(engine.previousFailed, ["record-no-00", "record-no-05",
-      "record-no-10"]);
+    Assert.deepEqual(Array.from(engine.previousFailed).sort(),
+                     ["record-no-00", "record-no-05", "record-no-10"].sort());
 
     // There are newly failed records and they are reported.
     Assert.equal(called, 1);
@@ -737,7 +741,7 @@ add_task(async function test_processIncoming_notify_count() {
 
     // Confirming removed failures.
     do_check_attribute_count(engine._store.items, 14);
-    Assert.deepEqual(engine.previousFailed, ["record-no-00"]);
+    Assert.deepEqual(Array.from(engine.previousFailed), ["record-no-00"]);
 
     Assert.equal(called, 2);
     Assert.equal(counts.failed, 1);
@@ -792,12 +796,12 @@ add_task(async function test_processIncoming_previousFailed() {
   try {
     // Confirm initial environment.
     Assert.equal(engine.lastSync, 0);
-    Assert.equal(engine.toFetch.length, 0);
-    Assert.equal(engine.previousFailed.length, 0);
+    Assert.equal(engine.toFetch.size, 0);
+    Assert.equal(engine.previousFailed.size, 0);
     do_check_empty(engine._store.items);
 
     // Initial failed items in previousFailed to be reset.
-    let previousFailed = [Utils.makeGUID(), Utils.makeGUID(), Utils.makeGUID()];
+    let previousFailed = new SerializableSet([Utils.makeGUID(), Utils.makeGUID(), Utils.makeGUID()]);
     engine.previousFailed = previousFailed;
     Assert.equal(engine.previousFailed, previousFailed);
 
@@ -807,9 +811,10 @@ add_task(async function test_processIncoming_previousFailed() {
 
     // Expected result: 4 sync batches with 2 failures each => 8 failures
     do_check_attribute_count(engine._store.items, 6);
-    Assert.deepEqual(engine.previousFailed, ["record-no-00", "record-no-01",
-      "record-no-04", "record-no-05", "record-no-08", "record-no-09",
-      "record-no-12", "record-no-13"]);
+    Assert.deepEqual(
+      Array.from(engine.previousFailed).sort(),
+      ["record-no-00", "record-no-01", "record-no-04", "record-no-05",
+       "record-no-08", "record-no-09", "record-no-12", "record-no-13"].sort());
 
     // Sync again with the same failed items (records 0, 1, 8, 9).
     await engine._processIncoming();
@@ -817,8 +822,9 @@ add_task(async function test_processIncoming_previousFailed() {
     // A second sync with the same failed items should not add the same items again.
     // Items that did not fail a second time should no longer be in previousFailed.
     do_check_attribute_count(engine._store.items, 10);
-    Assert.deepEqual(engine.previousFailed, ["record-no-00", "record-no-01",
-      "record-no-08", "record-no-09"]);
+    Assert.deepEqual(
+      Array.from(engine.previousFailed).sort(),
+      ["record-no-00", "record-no-01", "record-no-08", "record-no-09"].sort());
 
     // Refetched items that didn't fail the second time are in engine._store.items.
     Assert.equal(engine._store.items["record-no-04"], "Record No. 4");
@@ -900,8 +906,8 @@ add_task(async function test_processIncoming_failed_records() {
 
     // Confirm initial environment
     Assert.equal(engine.lastSync, 0);
-    Assert.equal(engine.toFetch.length, 0);
-    Assert.equal(engine.previousFailed.length, 0);
+    Assert.equal(engine.toFetch.size, 0);
+    Assert.equal(engine.previousFailed.size, 0);
     do_check_empty(engine._store.items);
 
     let observerSubject;
@@ -920,8 +926,8 @@ add_task(async function test_processIncoming_failed_records() {
                              NUMBER_OF_RECORDS - BOGUS_RECORDS.length);
 
     // Ensure that the bogus records will be fetched again on the next sync.
-    Assert.equal(engine.previousFailed.length, BOGUS_RECORDS.length);
-    Assert.deepEqual(engine.previousFailed.sort(), BOGUS_RECORDS.sort());
+    Assert.equal(engine.previousFailed.size, BOGUS_RECORDS.length);
+    Assert.deepEqual(Array.from(engine.previousFailed).sort(), BOGUS_RECORDS.sort());
 
     // Ensure the observer was notified
     Assert.equal(observerData, engine.name);
@@ -999,8 +1005,8 @@ add_task(async function test_processIncoming_decrypt_failed() {
   try {
 
     // Confirm initial state
-    Assert.equal(engine.toFetch.length, 0);
-    Assert.equal(engine.previousFailed.length, 0);
+    Assert.equal(engine.toFetch.size, 0);
+    Assert.equal(engine.previousFailed.size, 0);
 
     let observerSubject;
     let observerData;
@@ -1016,11 +1022,11 @@ add_task(async function test_processIncoming_decrypt_failed() {
     Assert.equal(ping.engines[0].incoming.failed, 4);
     Assert.equal(ping.engines[0].incoming.newFailed, 4);
 
-    Assert.equal(engine.previousFailed.length, 4);
-    Assert.equal(engine.previousFailed[0], "nojson");
-    Assert.equal(engine.previousFailed[1], "nojson2");
-    Assert.equal(engine.previousFailed[2], "nodecrypt");
-    Assert.equal(engine.previousFailed[3], "nodecrypt2");
+    Assert.equal(engine.previousFailed.size, 4);
+    Assert.ok(engine.previousFailed.has("nojson"));
+    Assert.ok(engine.previousFailed.has("nojson2"));
+    Assert.ok(engine.previousFailed.has("nodecrypt"));
+    Assert.ok(engine.previousFailed.has("nodecrypt2"));
 
     // Ensure the observer was notified
     Assert.equal(observerData, engine.name);
@@ -1054,7 +1060,7 @@ add_task(async function test_uploadOutgoing_toEmptyServer() {
   engine._store.items = {flying: "LNER Class A3 4472",
                          scotsman: "Flying Scotsman"};
   // Mark one of these records as changed
-  engine._tracker.addChangedID("scotsman", 0);
+  await engine._tracker.addChangedID("scotsman", 0);
 
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
@@ -1078,9 +1084,9 @@ add_task(async function test_uploadOutgoing_toEmptyServer() {
     // no longer marked.
     Assert.equal(collection.payload("flying"), undefined);
     Assert.ok(!!collection.payload("scotsman"));
-    Assert.equal(JSON.parse(collection.wbo("scotsman").data.ciphertext).id,
-                 "scotsman");
-    Assert.equal(engine._tracker.changedIDs.scotsman, undefined);
+    Assert.equal(collection.cleartext("scotsman").id, "scotsman");
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.scotsman, undefined);
 
     // The 'flying' record wasn't marked so it wasn't uploaded
     Assert.equal(collection.payload("flying"), undefined);
@@ -1110,8 +1116,8 @@ async function test_uploadOutgoing_max_record_payload_bytes(allowSkippedRecord) 
   engine.lastSync = 1;
   engine._store.items = { flying: "a".repeat(1024 * 1024), scotsman: "abcd" };
 
-  engine._tracker.addChangedID("flying", 1000);
-  engine._tracker.addChangedID("scotsman", 1000);
+  await engine._tracker.addChangedID("flying", 1000);
+  await engine._tracker.addChangedID("scotsman", 1000);
 
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
@@ -1136,7 +1142,8 @@ async function test_uploadOutgoing_max_record_payload_bytes(allowSkippedRecord) 
     // Check we uploaded the other record to the server
     Assert.ok(collection.payload("scotsman"));
     // And that we won't try to upload the huge record next time.
-    Assert.equal(engine._tracker.changedIDs.flying, undefined);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, undefined);
 
   } catch (e) {
     if (allowSkippedRecord) {
@@ -1146,7 +1153,8 @@ async function test_uploadOutgoing_max_record_payload_bytes(allowSkippedRecord) 
     await engine.trackRemainingChanges();
 
     // Check that we will try to upload the huge record next time
-    Assert.equal(engine._tracker.changedIDs.flying, 1000);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, 1000);
   } finally {
     // Check we didn't upload the oversized record to the server
     Assert.equal(collection.payload("flying"), undefined);
@@ -1188,9 +1196,9 @@ add_task(async function test_uploadOutgoing_failed() {
   const FLYING_CHANGED = 12345;
   const SCOTSMAN_CHANGED = 23456;
   const PEPPERCORN_CHANGED = 34567;
-  engine._tracker.addChangedID("flying", FLYING_CHANGED);
-  engine._tracker.addChangedID("scotsman", SCOTSMAN_CHANGED);
-  engine._tracker.addChangedID("peppercorn", PEPPERCORN_CHANGED);
+  await engine._tracker.addChangedID("flying", FLYING_CHANGED);
+  await engine._tracker.addChangedID("scotsman", SCOTSMAN_CHANGED);
+  await engine._tracker.addChangedID("peppercorn", PEPPERCORN_CHANGED);
 
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
@@ -1202,9 +1210,10 @@ add_task(async function test_uploadOutgoing_failed() {
     // Confirm initial environment
     Assert.equal(engine.lastSyncLocal, 0);
     Assert.equal(collection.payload("flying"), undefined);
-    Assert.equal(engine._tracker.changedIDs.flying, FLYING_CHANGED);
-    Assert.equal(engine._tracker.changedIDs.scotsman, SCOTSMAN_CHANGED);
-    Assert.equal(engine._tracker.changedIDs.peppercorn, PEPPERCORN_CHANGED);
+    let changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, FLYING_CHANGED);
+    Assert.equal(changes.scotsman, SCOTSMAN_CHANGED);
+    Assert.equal(changes.peppercorn, PEPPERCORN_CHANGED);
 
     engine.enabled = true;
     await sync_engine_and_validate_telem(engine, true);
@@ -1214,12 +1223,13 @@ add_task(async function test_uploadOutgoing_failed() {
 
     // Ensure the 'flying' record has been uploaded and is no longer marked.
     Assert.ok(!!collection.payload("flying"));
-    Assert.equal(engine._tracker.changedIDs.flying, undefined);
+    changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, undefined);
 
     // The 'scotsman' and 'peppercorn' records couldn't be uploaded so
     // they weren't cleared from the tracker.
-    Assert.equal(engine._tracker.changedIDs.scotsman, SCOTSMAN_CHANGED);
-    Assert.equal(engine._tracker.changedIDs.peppercorn, PEPPERCORN_CHANGED);
+    Assert.equal(changes.scotsman, SCOTSMAN_CHANGED);
+    Assert.equal(changes.peppercorn, PEPPERCORN_CHANGED);
 
   } finally {
     await promiseClean(engine, server);
@@ -1253,8 +1263,8 @@ async function createRecordFailTelemetry(allowSkippedRecord) {
   // Mark these records as changed
   const FLYING_CHANGED = 12345;
   const SCOTSMAN_CHANGED = 23456;
-  engine._tracker.addChangedID("flying", FLYING_CHANGED);
-  engine._tracker.addChangedID("scotsman", SCOTSMAN_CHANGED);
+  await engine._tracker.addChangedID("flying", FLYING_CHANGED);
+  await engine._tracker.addChangedID("scotsman", SCOTSMAN_CHANGED);
 
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
@@ -1266,8 +1276,9 @@ async function createRecordFailTelemetry(allowSkippedRecord) {
     // Confirm initial environment
     Assert.equal(engine.lastSyncLocal, 0);
     Assert.equal(collection.payload("flying"), undefined);
-    Assert.equal(engine._tracker.changedIDs.flying, FLYING_CHANGED);
-    Assert.equal(engine._tracker.changedIDs.scotsman, SCOTSMAN_CHANGED);
+    let changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, FLYING_CHANGED);
+    Assert.equal(changes.scotsman, SCOTSMAN_CHANGED);
 
     engine.enabled = true;
     ping = await sync_engine_and_validate_telem(engine, true, onErrorPing => {
@@ -1280,7 +1291,8 @@ async function createRecordFailTelemetry(allowSkippedRecord) {
 
     // Ensure the 'flying' record has been uploaded and is no longer marked.
     Assert.ok(!!collection.payload("flying"));
-    Assert.equal(engine._tracker.changedIDs.flying, undefined);
+    changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.flying, undefined);
   } catch (err) {
     if (allowSkippedRecord) {
       do_throw("should not get here");
@@ -1288,7 +1300,8 @@ async function createRecordFailTelemetry(allowSkippedRecord) {
 
     // Ensure the 'flying' record has not been uploaded and is still marked
     Assert.ok(!collection.payload("flying"));
-    Assert.ok(engine._tracker.changedIDs.flying);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.ok(changes.flying);
   } finally {
     // Local timestamp has been set.
     Assert.ok(engine.lastSyncLocal > 0);
@@ -1299,7 +1312,8 @@ async function createRecordFailTelemetry(allowSkippedRecord) {
     // In any case, the 'scotsman' record couldn't be created so it wasn't
     // uploaded nor it was not cleared from the tracker.
     Assert.ok(!collection.payload("scotsman"));
-    Assert.equal(engine._tracker.changedIDs.scotsman, SCOTSMAN_CHANGED);
+    const changes = await engine._tracker.getChangedIDs();
+    Assert.equal(changes.scotsman, SCOTSMAN_CHANGED);
 
     engine._store.createRecord = oldCreateRecord;
     await promiseClean(engine, server);
@@ -1324,7 +1338,7 @@ add_task(async function test_uploadOutgoing_largeRecords() {
   let engine = makeRotaryEngine();
   engine.allowSkippedRecord = false;
   engine._store.items["large-item"] = "Y".repeat(Service.getMaxRecordPayloadSize() * 2);
-  engine._tracker.addChangedID("large-item", 0);
+  await engine._tracker.addChangedID("large-item", 0);
   collection.insert("large-item");
 
 
@@ -1496,7 +1510,7 @@ add_task(async function test_sync_partialUpload() {
   for (let i = 0; i < 234; i++) {
     let id = "record-no-" + i;
     engine._store.items[id] = "Record No. " + i;
-    engine._tracker.addChangedID(id, i);
+    await engine._tracker.addChangedID(id, i);
     // Let two items in the first upload batch fail.
     if ((i != 23) && (i != 42)) {
       collection.insert(id);
@@ -1523,6 +1537,7 @@ add_task(async function test_sync_partialUpload() {
     // The timestamp has been updated.
     Assert.ok(engine.lastSyncLocal > 456);
 
+    const changes = await engine._tracker.getChangedIDs();
     for (let i = 0; i < 234; i++) {
       let id = "record-no-" + i;
       // Ensure failed records are back in the tracker:
@@ -1530,9 +1545,9 @@ add_task(async function test_sync_partialUpload() {
       // * records after the third batch and higher couldn't be uploaded because
       //   we failed hard on the 3rd upload.
       if ((i == 23) || (i == 42) || (i >= 200))
-        Assert.equal(engine._tracker.changedIDs[id], i);
+        Assert.equal(changes[id], i);
       else
-        Assert.equal(false, id in engine._tracker.changedIDs);
+        Assert.equal(false, id in changes);
     }
 
   } finally {

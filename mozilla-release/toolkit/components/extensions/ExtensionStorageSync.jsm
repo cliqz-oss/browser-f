@@ -10,17 +10,13 @@
 
 /* exported extensionIdToCollectionId */
 
-this.EXPORTED_SYMBOLS = ["ExtensionStorageSync", "extensionStorageSync"];
+var EXPORTED_SYMBOLS = ["ExtensionStorageSync", "extensionStorageSync"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
 const global = this;
 
 Cu.importGlobalProperties(["atob", "btoa"]);
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 const KINTO_PROD_SERVER_URL = "https://webextensions.settings.services.mozilla.com/v1";
 const KINTO_DEFAULT_SERVER_URL = KINTO_PROD_SERVER_URL;
 
@@ -42,10 +38,10 @@ const SCALAR_STORAGE_CONSUMED = "storage.sync.api.usage.storage_consumed";
 // Default is 5sec, which seems a bit aggressive on the open internet
 const KINTO_REQUEST_TIMEOUT = 30000;
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   BulkKeyBundle: "resource://services-sync/keys.js",
@@ -66,7 +62,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "prefStorageSyncServerURL",
                                       STORAGE_SYNC_SERVER_URL_PREF,
                                       KINTO_DEFAULT_SERVER_URL);
 XPCOMUtils.defineLazyGetter(this, "WeaveCrypto", function() {
-  let {WeaveCrypto} = Cu.import("resource://services-crypto/WeaveCrypto.js", {});
+  let {WeaveCrypto} = ChromeUtils.import("resource://services-crypto/WeaveCrypto.js", {});
   return new WeaveCrypto();
 });
 
@@ -111,7 +107,7 @@ function throwIfNoFxA(fxAccounts, action) {
 // Global ExtensionStorageSync instance that extensions and Fx Sync use.
 // On Android, because there's no FXAccounts instance, any syncing
 // operations will fail.
-this.extensionStorageSync = null;
+var extensionStorageSync = null;
 
 /**
  * Utility function to enforce an order of fields when computing an HMAC.
@@ -140,15 +136,11 @@ const getKBHash = async function(fxaService) {
     throw new Error("User isn't signed in!");
   }
 
-  if (!signedInUser.kB) {
-    throw new Error("User doesn't have kB??");
+  if (!signedInUser.kExtKbHash) {
+    throw new Error("User doesn't have KbHash??");
   }
 
-  let kBbytes = CommonUtils.hexToBytes(signedInUser.kB);
-  let hasher = Cc["@mozilla.org/security/hash;1"]
-      .createInstance(Ci.nsICryptoHash);
-  hasher.init(hasher.SHA256);
-  return CommonUtils.bytesAsHex(CryptoUtils.digestBytes(signedInUser.uid + kBbytes, hasher));
+  return signedInUser.kExtKbHash;
 };
 
 /**
@@ -270,19 +262,11 @@ class KeyRingEncryptionRemoteTransformer extends EncryptionRemoteTransformer {
         throw new Error("user isn't signed in to FxA; can't sync");
       }
 
-      if (!user.kB) {
-        throw new Error("user doesn't have kB");
+      if (!user.kExtSync) {
+        throw new Error("user doesn't have kExtSync");
       }
 
-      let kB = CommonUtils.hexToBytes(user.kB);
-
-      let keyMaterial = CryptoUtils.hkdf(kB, undefined,
-                                         "identity.mozilla.com/picl/v1/chrome.storage.sync",
-                                         2 * 32);
-      let bundle = new BulkKeyBundle();
-      // [encryptionKey, hmacKey]
-      bundle.keyPair = [keyMaterial.slice(0, 32), keyMaterial.slice(32, 64)];
-      return bundle;
+      return BulkKeyBundle.fromHexKey(user.kExtSync);
     })();
   }
   // Pass through the kbHash field from the unencrypted record. If
@@ -1252,4 +1236,4 @@ class ExtensionStorageSync {
   }
 }
 this.ExtensionStorageSync = ExtensionStorageSync;
-this.extensionStorageSync = new ExtensionStorageSync(_fxaService, Services.telemetry);
+extensionStorageSync = new ExtensionStorageSync(_fxaService, Services.telemetry);

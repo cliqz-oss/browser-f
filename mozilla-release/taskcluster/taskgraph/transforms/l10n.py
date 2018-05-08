@@ -20,6 +20,7 @@ from taskgraph.util.schema import (
     resolve_keyed_by,
     Schema,
 )
+from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.util.treeherder import split_symbol, join_symbol
 from taskgraph.transforms.job import job_description_schema
 from taskgraph.transforms.task import task_description_schema
@@ -67,7 +68,7 @@ l10n_description_schema = Schema({
 
         # Additional paths to look for mozharness configs in. These should be
         # relative to the base of the source checkout
-        Optional('config-paths'): _by_platform([basestring]),
+        Optional('config-paths'): [basestring],
 
         # Options to pass to the mozharness script
         Required('options'): _by_platform([basestring]),
@@ -163,7 +164,7 @@ l10n_description_schema = Schema({
 transforms = TransformSequence()
 
 
-def _parse_locales_file(locales_file, platform):
+def parse_locales_file(locales_file, platform=None):
     """ Parse the passed locales file for a list of locales.
     """
     locales = []
@@ -175,7 +176,7 @@ def _parse_locales_file(locales_file, platform):
             locales = {
                 locale: data['revision']
                 for locale, data in all_locales.items()
-                if platform in data['platforms']
+                if platform is None or platform in data['platforms']
             }
         else:
             all_locales = f.read().split()
@@ -219,6 +220,8 @@ def copy_in_useful_magic(config, jobs):
         # build-platform is needed on `job` for by-build-platform
         job['build-platform'] = dep.attributes.get("build_platform")
         attributes['build_type'] = dep.attributes.get("build_type")
+        if dep.attributes.get('artifact_prefix'):
+            attributes['artifact_prefix'] = dep.attributes['artifact_prefix']
         if dep.attributes.get("nightly"):
             attributes['nightly'] = dep.attributes.get("nightly")
         else:
@@ -296,11 +299,29 @@ def handle_keyed_by(config, jobs):
 
 
 @transforms.add
+def handle_artifact_prefix(config, jobs):
+    """Resolve ``artifact_prefix`` in env vars"""
+    for job in jobs:
+        artifact_prefix = get_artifact_prefix(job)
+        for k1, v1 in job.get('env', {}).iteritems():
+            if isinstance(v1, basestring):
+                job['env'][k1] = v1.format(
+                    artifact_prefix=artifact_prefix
+                )
+            elif isinstance(v1, dict):
+                for k2, v2 in v1.iteritems():
+                    job['env'][k1][k2] = v2.format(
+                        artifact_prefix=artifact_prefix
+                    )
+        yield job
+
+
+@transforms.add
 def all_locales_attribute(config, jobs):
     for job in jobs:
         locales_platform = job['attributes']['build_platform'].replace("-nightly", "")
-        locales_with_changesets = _parse_locales_file(job["locales-file"],
-                                                      platform=locales_platform)
+        locales_with_changesets = parse_locales_file(job["locales-file"],
+                                                     platform=locales_platform)
         locales_with_changesets = _remove_locales(locales_with_changesets,
                                                   to_remove=job['ignore-locales'])
 

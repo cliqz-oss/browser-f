@@ -1,10 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 function userInfo(username) {
   this.username = username;

@@ -5,9 +5,8 @@
 
 /* exported defer, DebuggerClient, initTestDebuggerServer */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 const { require } =
-  Cu.import("resource://devtools/shared/Loader.jsm", {});
+  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const xpcInspector = require("xpcInspector");
@@ -77,9 +76,7 @@ var listener = {
   }
 };
 
-var consoleService = Cc["@mozilla.org/consoleservice;1"]
-                     .getService(Ci.nsIConsoleService);
-consoleService.registerListener(listener);
+Services.console.registerListener(listener);
 
 /**
  * Initialize the testing debugger server.

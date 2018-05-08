@@ -28,7 +28,7 @@ const {
 function Requests() {
   return {
     // Map with all requests (key = actor ID, value = request object)
-    requests: mapNew(),
+    requests: new Map(),
     // Selected request ID
     selectedId: null,
     preselectedId: null,
@@ -89,11 +89,14 @@ function requestsReducer(state = Requests(), action) {
         ...request,
         ...processNetworkUpdates(action.data),
       };
+      let requestEndTime = request.startedMillis +
+        (request.eventTimings ? request.eventTimings.totalTime : 0);
 
       return {
         ...state,
         requests: mapSet(state.requests, action.id, request),
-        lastEndedMillis: lastEndedMillis,
+        lastEndedMillis: requestEndTime > lastEndedMillis ?
+          requestEndTime : lastEndedMillis,
       };
     }
 
@@ -174,8 +177,8 @@ function requestsReducer(state = Requests(), action) {
         return nextState;
       }
 
-      if (!state.selectedId && !state.requests.isEmpty()) {
-        nextState.selectedId = [...state.requests.values()][0].id;
+      if (!state.selectedId && action.defaultSelectedId) {
+        nextState.selectedId = action.defaultSelectedId;
         return nextState;
       }
 
@@ -213,24 +216,11 @@ function closeCustomRequest(state) {
   };
 }
 
-// Immutability helpers
-// FIXME The following helper API need refactoring, see bug 1418969.
-
-/**
- * Clone an existing map.
- */
-function mapNew(map) {
-  let newMap = new Map(map);
-  newMap.isEmpty = () => newMap.size == 0;
-  newMap.valueSeq = () => [...newMap.values()];
-  return newMap;
-}
-
 /**
  * Append new item into existing map and return new map.
  */
 function mapSet(map, key, value) {
-  let newMap = mapNew(map);
+  let newMap = new Map(map);
   return newMap.set(key, value);
 }
 
@@ -238,7 +228,7 @@ function mapSet(map, key, value) {
  * Remove an item from existing map and return new map.
  */
 function mapDelete(map, key) {
-  let newMap = mapNew(map);
+  let newMap = new Map(map);
   newMap.delete(key);
   return newMap;
 }

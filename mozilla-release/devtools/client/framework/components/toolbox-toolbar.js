@@ -27,8 +27,9 @@ class ToolboxToolbar extends Component {
       toolboxButtons: PropTypes.array,
       // The id of the currently selected tool, e.g. "inspector"
       currentToolId: PropTypes.string,
-      // An optionally highlighted tool, e.g. "inspector"
-      highlightedTool: PropTypes.string,
+      // An optionally highlighted tools, e.g. "inspector".
+      // Note: highlightedTools must be an instance of Set.
+      highlightedTools: PropTypes.object,
       // List of tool panel definitions.
       panelDefinitions: PropTypes.array,
       // Function to select a tool based on its id.
@@ -113,6 +114,7 @@ function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isSt
       const {
         id,
         description,
+        disabled,
         onClick,
         isChecked,
         className: buttonClass,
@@ -121,6 +123,7 @@ function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isSt
       return button({
         id,
         title: description,
+        disabled,
         className: (
           "command-button devtools-button "
           + buttonClass + (isChecked ? " checked" : "")
@@ -149,13 +152,15 @@ function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isSt
  * @param {Function} selectTool - Function to select a tool in the toolbox.
  * @param {String}   focusedButton - The id of the focused button.
  * @param {Function} focusButton - Keep a record of the currently focused button.
+ * @param {Object}   highlightedTools - Optionally highlighted tools, e.g. "inspector".
  */
 function renderOptions({optionsPanel, currentToolId, selectTool, focusedButton,
-                        focusButton}) {
+                        focusButton, highlightedTools}) {
   return div({id: "toolbox-option-container"}, ToolboxTab({
     panelDefinition: optionsPanel,
     currentToolId,
     selectTool,
+    highlightedTools,
     focusedButton,
     focusButton,
   }));
@@ -225,7 +230,6 @@ function renderDockButtons(props) {
       title: L10N.getStr("toolbox.closebutton.tooltip"),
       onClick: () => {
         closeToolbox();
-        focusButton(closeButtonId);
       },
       tabIndex: focusedButton === "toolbox-close" ? "0" : "-1",
     })

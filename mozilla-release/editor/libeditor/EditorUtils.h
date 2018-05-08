@@ -8,6 +8,7 @@
 #define mozilla_EditorUtils_h
 
 #include "mozilla/dom/Selection.h"
+#include "mozilla/EditAction.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/GuardObjects.h"
@@ -543,8 +544,6 @@ public:
   static bool IsDescendantOf(const nsINode& aNode,
                              const nsINode& aParent,
                              EditorDOMPoint* aOutPoint);
-
-  static bool IsLeafNode(nsIDOMNode* aNode);
 };
 
 class EditorHookUtils final

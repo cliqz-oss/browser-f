@@ -4,8 +4,7 @@
 
 "use strict";
 
-const { utils: Cu } = Components;
-const { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
+const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
 
 /**
  * A function that can be used as part of a require hook for a

@@ -24,6 +24,10 @@
  * for more information.
  */
 
+/* eslint-disable mozilla/use-cc-etc */
+/* eslint-disable mozilla/use-chromeutils-import */
+/* eslint-disable mozilla/use-services */
+
 var _quit = false;
 var _tests_pending = 0;
 var _pendingTimers = [];

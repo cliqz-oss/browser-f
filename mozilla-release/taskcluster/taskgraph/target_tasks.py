@@ -52,8 +52,7 @@ def filter_beta_release_tasks(task, parameters, ignore_kinds=None, allow_l10n=Fa
             'beetmover-repackage', 'beetmover-repackage-signing',
             'checksums-signing',
             'nightly-l10n', 'nightly-l10n-signing',
-            'push-apk', 'push-apk-breakpoint',
-            'repackage-l10n',
+            'push-apk', 'repackage-l10n',
         ]
     platform = task.attributes.get('build_platform')
     if platform in (
@@ -301,6 +300,28 @@ def target_tasks_mozilla_release(full_task_graph, parameters, graph_config):
             filter_beta_release_tasks(t, parameters)]
 
 
+@_target_task('mozilla_esr60_tasks')
+def target_tasks_mozilla_esr60(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required for a promotable beta or release build
+    of desktop, plus android CI. The candidates build process involves a pipeline
+    of builds and signing, but does not include beetmover or balrog jobs."""
+
+    def filter(task):
+        if not filter_beta_release_tasks(task, parameters):
+            return False
+
+        platform = task.attributes.get('build_platform')
+
+        # Android is not built on esr.
+        if platform and 'android' in platform:
+            return False
+
+        # All else was already filtered
+        return True
+
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
+
+
 @_target_task('promote_firefox')
 def target_tasks_promote_firefox(full_task_graph, parameters, graph_config):
     """Select the superset of tasks required to promote a beta or release build
@@ -330,14 +351,10 @@ def target_tasks_promote_firefox(full_task_graph, parameters, graph_config):
         if task.label in beta_release_tasks:
             return True
 
-        # 'secondary' update/final verify tasks only run for
-        # RCs
+        # 'secondary' balrog/update verify/final verify tasks only run for RCs
         if parameters.get('release_type') != 'rc':
-            if task.kind in ('release-buildbot-update-verify',
-                             'release-update-verify',
-                             'release-secondary-final-verify'):
-                if 'secondary' in task.label:
-                    return False
+            if 'secondary' in task.kind:
+                return False
 
         if task.attributes.get('shipping_product') == 'firefox' and \
                 task.attributes.get('shipping_phase') == 'promote':
@@ -390,10 +407,7 @@ def target_tasks_ship_firefox(full_task_graph, parameters, graph_config):
                 task.attributes.get('shipping_phase') != 'ship':
             return False
 
-        if task.kind in (
-            'release-secondary-balrog-publishing',
-            'release-secondary-notify-ship',
-        ):
+        if 'secondary' in task.kind:
                 return is_rc
         else:
                 return not is_rc
@@ -488,7 +502,12 @@ def target_tasks_promote_fennec(full_task_graph, parameters, graph_config):
         if attr("locale") or attr("chunk_locales"):
             return False
         if task.label in filtered_for_project:
-            if task.kind not in ('balrog', 'push-apk', 'push-apk-breakpoint'):
+            # bug 1438023 - old-id should only run on central.
+            # We can remove this hack when shippable builds land and we
+            # are using run-on-projects properly here.
+            if 'old-id' in task.label:
+                return False
+            if task.kind not in ('balrog', 'push-apk'):
                 if task.attributes.get('nightly'):
                     return True
         if task.attributes.get('shipping_product') == 'fennec' and \
@@ -514,12 +533,9 @@ def target_tasks_ship_fennec(full_task_graph, parameters, graph_config):
         if task.attributes.get('shipping_product') != 'fennec' or \
                 task.attributes.get('shipping_phase') not in ('ship', 'push'):
             return False
-        # We always run push-apk* during ship
-        if task.kind in (
-            'push-apk',
-            'push-apk-breakpoint',
-        ):
-                return True
+        # We always run push-apk during ship
+        if task.kind == 'push-apk':
+            return True
         # secondary-notify-ship is only for RC
         if task.kind in (
             'release-secondary-notify-ship',
@@ -627,5 +643,5 @@ def target_tasks_file_update(full_task_graph, parameters, graph_config):
     """
     def filter(task):
         # For now any task in the repo-update kind is ok
-        return task.kind in ['repo-update']
+        return task.kind in ['repo-update', 'repo-update-bb']
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]

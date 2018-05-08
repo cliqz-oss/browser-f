@@ -9,12 +9,10 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PlacesRemoteTabsAutocompleteProvider"];
+var EXPORTED_SYMBOLS = ["PlacesRemoteTabsAutocompleteProvider"];
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "weaveXPCService", function() {
   try {
@@ -29,7 +27,7 @@ XPCOMUtils.defineLazyGetter(this, "weaveXPCService", function() {
 
 XPCOMUtils.defineLazyGetter(this, "Weave", () => {
   try {
-    let {Weave} = Cu.import("resource://services-sync/main.js", {});
+    let {Weave} = ChromeUtils.import("resource://services-sync/main.js", {});
     return Weave;
   } catch (ex) {
     // The app didn't build Sync.
@@ -117,7 +115,7 @@ Services.prefs.addObserver(PREF_SHOW_REMOTE_ICONS, observe);
 observe(null, "nsPref:changed", PREF_SHOW_REMOTE_ICONS);
 
 // This public object is a static singleton.
-this.PlacesRemoteTabsAutocompleteProvider = {
+var PlacesRemoteTabsAutocompleteProvider = {
   // a promise that resolves with an array of matching remote tabs.
   getMatches(searchString) {
     // If Sync isn't configured we bail early.

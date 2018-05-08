@@ -52,10 +52,15 @@ class nsMenuFrame;
 class nsMenuPopupFrame;
 class nsMenuBarFrame;
 class nsMenuParent;
-class nsIDOMKeyEvent;
 class nsIDocShellTreeItem;
 class nsPIDOMWindowOuter;
 class nsRefreshDriver;
+
+namespace mozilla {
+namespace dom {
+class KeyboardEvent;
+} // namespace dom
+} // namespace mozilla
 
 // when a menu command is executed, the closemenu attribute may be used
 // to define how the menu should be closed up
@@ -123,9 +128,9 @@ static_assert(NS_STYLE_DIRECTION_LTR == 0 && NS_STYLE_DIRECTION_RTL == 1,
  */
 extern const nsNavigationDirection DirectionFromKeyCodeTable[2][6];
 
-#define NS_DIRECTION_FROM_KEY_CODE(frame, keycode)                     \
-  (DirectionFromKeyCodeTable[frame->StyleVisibility()->mDirection]  \
-                            [keycode - nsIDOMKeyEvent::DOM_VK_END])
+#define NS_DIRECTION_FROM_KEY_CODE(frame, keycode)                                      \
+  (DirectionFromKeyCodeTable[frame->StyleVisibility()->mDirection]                      \
+                            [keycode - mozilla::dom::KeyboardEventBinding::DOM_VK_END])
 
 // nsMenuChainItem holds info about an open popup. Items are stored in a
 // doubly linked list. Note that the linked list is stored beginning from
@@ -422,9 +427,10 @@ public:
   // retrieve the node and offset of the last mouse event used to open a
   // context menu. This information is determined from the rangeParent and
   // the rangeOffset of the event supplied to ShowPopup or ShowPopupAtScreen.
-  // This is used by the implementation of nsIDOMXULDocument::GetPopupRangeParent
-  // and nsIDOMXULDocument::GetPopupRangeOffset.
-  void GetMouseLocation(nsIDOMNode** aNode, int32_t* aOffset);
+  // This is used by the implementation of XULDocument::GetPopupRangeParent
+  // and XULDocument::GetPopupRangeOffset.
+  nsINode* GetMouseLocationParent();
+  int32_t MouseLocationOffset();
 
   /**
    * Open a <menu> given its content node. If aSelectFirstItem is
@@ -596,12 +602,12 @@ public:
    * aDocument. aDocument must be non-null and be a document contained within
    * the same window hierarchy as the popup to retrieve.
    */
-  already_AddRefed<nsIDOMNode> GetLastTriggerPopupNode(nsIDocument* aDocument)
+  already_AddRefed<nsINode> GetLastTriggerPopupNode(nsIDocument* aDocument)
   {
     return GetLastTriggerNode(aDocument, false);
   }
 
-  already_AddRefed<nsIDOMNode> GetLastTriggerTooltipNode(nsIDocument* aDocument)
+  already_AddRefed<nsINode> GetLastTriggerTooltipNode(nsIDocument* aDocument)
   {
     return GetLastTriggerNode(aDocument, true);
   }
@@ -669,7 +675,7 @@ public:
    * key is handled by that popup, otherwise if aFrame is null, the key is
    * handled by the active popup or menubar.
    */
-  bool HandleShortcutNavigation(nsIDOMKeyEvent* aKeyEvent,
+  bool HandleShortcutNavigation(mozilla::dom::KeyboardEvent* aKeyEvent,
                                 nsMenuPopupFrame* aFrame);
 
   /**
@@ -693,15 +699,15 @@ public:
    * Handles the keyboard event with keyCode value. Returns true if the event
    * has been handled.
    */
-  bool HandleKeyboardEventWithKeyCode(nsIDOMKeyEvent* aKeyEvent,
+  bool HandleKeyboardEventWithKeyCode(mozilla::dom::KeyboardEvent* aKeyEvent,
                                       nsMenuChainItem* aTopVisibleMenuItem);
 
   // Sets mIgnoreKeys of the Top Visible Menu Item
   nsresult UpdateIgnoreKeys(bool aIgnoreKeys);
 
-  nsresult KeyUp(nsIDOMKeyEvent* aKeyEvent);
-  nsresult KeyDown(nsIDOMKeyEvent* aKeyEvent);
-  nsresult KeyPress(nsIDOMKeyEvent* aKeyEvent);
+  nsresult KeyUp(mozilla::dom::KeyboardEvent* aKeyEvent);
+  nsresult KeyDown(mozilla::dom::KeyboardEvent* aKeyEvent);
+  nsresult KeyPress(mozilla::dom::KeyboardEvent* aKeyEvent);
 
 protected:
   nsXULPopupManager();
@@ -798,7 +804,7 @@ private:
 
 protected:
 
-  already_AddRefed<nsIDOMNode> GetLastTriggerNode(nsIDocument* aDocument, bool aIsTooltip);
+  already_AddRefed<nsINode> GetLastTriggerNode(nsIDocument* aDocument, bool aIsTooltip);
 
   /**
    * Set mouse capturing for the current popup. This traps mouse clicks that
@@ -832,7 +838,7 @@ protected:
   nsCOMPtr<nsIWidget> mWidget;
 
   // range parent and offset set in SetTriggerEvent
-  nsCOMPtr<nsIDOMNode> mRangeParent;
+  nsCOMPtr<nsINode> mRangeParent;
   int32_t mRangeOffset;
   // Device pixels relative to the showing popup's presshell's
   // root prescontext's root frame.

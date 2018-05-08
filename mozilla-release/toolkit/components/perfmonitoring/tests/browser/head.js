@@ -3,12 +3,10 @@
 
 /* eslint-env mozilla/frame-script */
 
-var { utils: Cu, interfaces: Ci, classes: Cc } = Components;
-
-Cu.import("resource://gre/modules/AddonManager.jsm", this);
-Cu.import("resource://gre/modules/PerformanceWatcher.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://testing-common/ContentTaskUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm", this);
+ChromeUtils.import("resource://gre/modules/PerformanceWatcher.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", this);
 
 /**
  * Base class for simulating slow addons/webpages.
@@ -55,12 +53,11 @@ CPUBurner.frameScript = function() {
   try {
     "use strict";
 
-    const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
     let sandboxes = new Map();
     let getSandbox = function(addonId) {
       let sandbox = sandboxes.get(addonId);
       if (!sandbox) {
-        sandbox = Components.utils.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(), { addonId  });
+        sandbox = Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(), { addonId  });
         sandboxes.set(addonId, sandbox);
       }
       return sandbox;
@@ -165,7 +162,7 @@ function AddonBurner(addonId = "fake add-on id: " + Math.random()) {
   this.jankThreshold = 200000;
   CPUBurner.call(this, `http://example.com/?uri=${addonId}`, this.jankThreshold);
   this._addonId = addonId;
-  this._sandbox = Components.utils.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(), { addonId: this._addonId });
+  this._sandbox = Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal(), { addonId: this._addonId });
   this._CPOWBurner = null;
 
   this._promiseCPOWBurner = new Promise(resolve => {

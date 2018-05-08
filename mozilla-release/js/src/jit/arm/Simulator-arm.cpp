@@ -65,6 +65,33 @@ __aeabi_uidivmod(int x, int y)
 namespace js {
 namespace jit {
 
+// For decoding load-exclusive and store-exclusive instructions.
+namespace excl {
+
+// Bit positions.
+enum {
+    ExclusiveOpHi = 24,         // Hi bit of opcode field
+    ExclusiveOpLo = 23,         // Lo bit of opcode field
+    ExclusiveSizeHi = 22,       // Hi bit of operand size field
+    ExclusiveSizeLo = 21,       // Lo bit of operand size field
+    ExclusiveLoad = 20          // Bit indicating load
+};
+
+// Opcode bits for exclusive instructions.
+enum {
+    ExclusiveOpcode = 3
+};
+
+// Operand size, Bits(ExclusiveSizeHi,ExclusiveSizeLo).
+enum {
+    ExclusiveWord = 0,
+    ExclusiveDouble = 1,
+    ExclusiveByte = 2,
+    ExclusiveHalf = 3
+};
+
+}
+
 // Load/store multiple addressing mode.
 enum BlockAddrMode {
     // Alias modes for comparison when writeback does not matter.
@@ -255,6 +282,9 @@ class SimInstruction {
     // Test for a nop instruction, which falls under type 1.
     inline bool isNopType1() const { return bits(24, 0) == 0x0120F000; }
 
+    // Test for a nop instruction, which falls under type 1.
+    inline bool isCsdbType1() const { return bits(24, 0) == 0x0120F014; }
+
     // Test for a stop instruction.
     inline bool isStop() const {
         return typeValue() == 7 && bit(24) == 1 && svcValue() >= kStopCode;
@@ -413,6 +443,7 @@ Simulator::Destroy(Simulator* sim)
 void
 Simulator::disassemble(SimInstruction* instr, size_t n)
 {
+#ifdef JS_DISASM_ARM
     disasm::NameConverter converter;
     disasm::Disassembler dasm(converter);
     disasm::EmbeddedVector<char, disasm::ReasonableBufferSize> buffer;
@@ -422,6 +453,7 @@ Simulator::disassemble(SimInstruction* instr, size_t n)
         fprintf(stderr, "  0x%08x  %s\n", uint32_t(instr), buffer.start());
         instr = reinterpret_cast<SimInstruction*>(reinterpret_cast<uint8_t*>(instr) + 4);
     }
+#endif
 }
 
 void
@@ -1551,15 +1583,15 @@ Simulator::exclusiveMonitorClear()
     exclusiveMonitorHeld_ = false;
 }
 
-void
-Simulator::startWasmInterrupt(JitActivation* activation)
+JS::ProfilingFrameIterator::RegisterState
+Simulator::registerState()
 {
-    JS::ProfilingFrameIterator::RegisterState state;
+    wasm::RegisterState state;
     state.pc = (void*) get_pc();
     state.fp = (void*) get_register(fp);
     state.sp = (void*) get_register(sp);
     state.lr = (void*) get_register(lr);
-    activation->startWasmInterrupt(state);
+    return state;
 }
 
 // The signal handler only redirects the PC to the interrupt stub when the PC is
@@ -1574,18 +1606,15 @@ Simulator::handleWasmInterrupt()
         return;
 
     uint8_t* pc = (uint8_t*)get_pc();
-    uint8_t* fp = (uint8_t*)get_register(r11);
 
-    const wasm::CodeSegment* cs = nullptr;
-    if (!wasm::InInterruptibleCode(cx_, pc, &cs))
+    const wasm::ModuleSegment* ms = nullptr;
+    if (!wasm::InInterruptibleCode(cx_, pc, &ms))
         return;
 
-    // fp can be null during the prologue/epilogue of the entry function.
-    if (!fp)
+    if (!cx_->activation()->asJit()->startWasmInterrupt(registerState()))
         return;
 
-    startWasmInterrupt(cx_->activation()->asJit());
-    set_pc(int32_t(cs->interruptCode()));
+    set_pc(int32_t(ms->interruptCode()));
 }
 
 static inline JitActivation*
@@ -1615,24 +1644,30 @@ Simulator::handleWasmSegFault(int32_t addr, unsigned numBytes)
     uint8_t* fp = reinterpret_cast<uint8_t*>(get_register(r11));
 
     const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
-    if (!segment)
+    if (!segment || !segment->isModule())
+        return false;
+    const wasm::ModuleSegment* moduleSegment = segment->asModule();
+
+    wasm::Instance* instance = wasm::LookupFaultingInstance(*moduleSegment, pc, fp);
+    if (!instance)
         return false;
 
-    wasm::Instance* instance = wasm::LookupFaultingInstance(*segment, pc, fp);
-    if (!instance || !instance->memoryAccessInGuardRegion((uint8_t*)addr, numBytes))
+    MOZ_RELEASE_ASSERT(&instance->code() == &moduleSegment->code());
+
+    if (!instance->memoryAccessInGuardRegion((uint8_t*)addr, numBytes))
         return false;
 
     const wasm::MemoryAccess* memoryAccess = instance->code().lookupMemoryAccess(pc);
     if (!memoryAccess) {
-        startWasmInterrupt(act);
+        MOZ_ALWAYS_TRUE(act->asJit()->startWasmInterrupt(registerState()));
         if (!instance->code().containsCodePC(pc))
             MOZ_CRASH("Cannot map PC to trap handler");
-        set_pc(int32_t(segment->outOfBoundsCode()));
+        set_pc(int32_t(moduleSegment->outOfBoundsCode()));
         return true;
     }
 
     MOZ_ASSERT(memoryAccess->hasTrapOutOfLineCode());
-    set_pc(int32_t(memoryAccess->trapOutOfLineCode(segment->base())));
+    set_pc(int32_t(memoryAccess->trapOutOfLineCode(moduleSegment->base())));
     return true;
 }
 
@@ -1644,19 +1679,19 @@ Simulator::handleWasmIllFault()
         return false;
 
     void* pc = reinterpret_cast<void*>(get_pc());
-    uint8_t* fp = reinterpret_cast<uint8_t*>(get_register(r11));
 
     const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
-    if (!segment)
+    if (!segment || !segment->isModule())
         return false;
+    const wasm::ModuleSegment* moduleSegment = segment->asModule();
 
     wasm::Trap trap;
     wasm::BytecodeOffset bytecode;
-    if (!segment->code().lookupTrap(pc, &trap, &bytecode))
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode))
         return false;
 
-    act->startWasmTrap(trap, bytecode.offset, pc, fp);
-    set_pc(int32_t(segment->trapCode()));
+    act->startWasmTrap(trap, bytecode.offset, registerState());
+    set_pc(int32_t(moduleSegment->trapCode()));
     return true;
 }
 
@@ -3104,17 +3139,17 @@ Simulator::decodeType01(SimInstruction* instr)
                         MOZ_CRASH();
                 }
             } else {
-                if (instr->bits(disasm::ExclusiveOpHi, disasm::ExclusiveOpLo) == disasm::ExclusiveOpcode) {
+                if (instr->bits(excl::ExclusiveOpHi, excl::ExclusiveOpLo) == excl::ExclusiveOpcode) {
                     // Load-exclusive / store-exclusive.
-                    if (instr->bit(disasm::ExclusiveLoad)) {
+                    if (instr->bit(excl::ExclusiveLoad)) {
                         int rn = instr->rnValue();
                         int rt = instr->rtValue();
                         int32_t address = get_register(rn);
-                        switch (instr->bits(disasm::ExclusiveSizeHi, disasm::ExclusiveSizeLo)) {
-                          case disasm::ExclusiveWord:
+                        switch (instr->bits(excl::ExclusiveSizeHi, excl::ExclusiveSizeLo)) {
+                          case excl::ExclusiveWord:
                             set_register(rt, readExW(address, instr));
                             break;
-                          case disasm::ExclusiveDouble: {
+                          case excl::ExclusiveDouble: {
                             MOZ_ASSERT((rt % 2) == 0);
                             int32_t hibits;
                             int32_t lobits = readExDW(address, &hibits);
@@ -3122,10 +3157,10 @@ Simulator::decodeType01(SimInstruction* instr)
                             set_register(rt+1, hibits);
                             break;
                           }
-                          case disasm::ExclusiveByte:
+                          case excl::ExclusiveByte:
                             set_register(rt, readExBU(address));
                             break;
-                          case disasm::ExclusiveHalf:
+                          case excl::ExclusiveHalf:
                             set_register(rt, readExHU(address, instr));
                             break;
                         }
@@ -3136,20 +3171,20 @@ Simulator::decodeType01(SimInstruction* instr)
                         int32_t address = get_register(rn);
                         int32_t value = get_register(rt);
                         int32_t result = 0;
-                        switch (instr->bits(disasm::ExclusiveSizeHi, disasm::ExclusiveSizeLo)) {
-                          case disasm::ExclusiveWord:
+                        switch (instr->bits(excl::ExclusiveSizeHi, excl::ExclusiveSizeLo)) {
+                          case excl::ExclusiveWord:
                             result = writeExW(address, value, instr);
                             break;
-                          case disasm::ExclusiveDouble: {
+                          case excl::ExclusiveDouble: {
                             MOZ_ASSERT((rt % 2) == 0);
                             int32_t value2 = get_register(rt+1);
                             result = writeExDW(address, value, value2);
                             break;
                           }
-                          case disasm::ExclusiveByte:
+                          case excl::ExclusiveByte:
                             result = writeExB(address, (uint8_t)value);
                             break;
-                          case disasm::ExclusiveHalf:
+                          case excl::ExclusiveHalf:
                             result = writeExH(address, (uint16_t)value, instr);
                             break;
                         }
@@ -3355,6 +3390,8 @@ Simulator::decodeType01(SimInstruction* instr)
         }
     } else if ((type == 1) && instr->isNopType1()) {
         // NOP.
+    } else if ((type == 1) && instr->isCsdbType1()) {
+        // Speculation barrier. (No-op for the simulator)
     } else {
         int rd = instr->rdValue();
         int rn = instr->rnValue();
@@ -4894,8 +4931,8 @@ FakeInterruptHandler()
     JSContext* cx = TlsContext.get();
     uint8_t* pc = cx->simulator()->get_pc_as<uint8_t*>();
 
-    const wasm::CodeSegment* cs = nullptr;
-    if (!wasm::InInterruptibleCode(cx, pc, &cs))
+    const wasm::ModuleSegment* ms= nullptr;
+    if (!wasm::InInterruptibleCode(cx, pc, &ms))
         return;
 
     cx->simulator()->trigger_wasm_interrupt();

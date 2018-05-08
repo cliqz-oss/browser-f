@@ -28,20 +28,17 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1397412
   </body>
   <script class="testbody" type="application/javascript">
   <![CDATA[
-  var Cc = Components.classes;
-  var Ci = Components.interfaces;
-
 function runTest() {
   var initialHTML1 = "xx<br><br>";
   var expectedHTML1 = "xx<br>t<br>";
   var initialHTML2 = "xx<br><br>yy<br>";
   var expectedHTML2 = "xx<br>t<br>yy<br>";
-  window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-     .getInterface(Components.interfaces.nsIWebNavigation)
-     .QueryInterface(Components.interfaces.nsIDocShellTreeItem)
+  window.QueryInterface(Ci.nsIInterfaceRequestor)
+     .getInterface(Ci.nsIWebNavigation)
+     .QueryInterface(Ci.nsIDocShellTreeItem)
      .rootTreeItem
-     .QueryInterface(Components.interfaces.nsIDocShell)
-     .appType = Components.interfaces.nsIDocShell.APP_TYPE_EDITOR;
+     .QueryInterface(Ci.nsIDocShell)
+     .appType = Ci.nsIDocShell.APP_TYPE_EDITOR;
   var e = document.getElementById("editor");
   var doc = e.contentDocument;
   doc.designMode = "on";
@@ -52,14 +49,14 @@ function runTest() {
   // Test 1.
   body.innerHTML = initialHTML1;
   selection.collapse(body, 2);
-  synthesizeKey("t", { code: "KeyT" });
+  sendString("t");
   var actualHTML = body.innerHTML;
   is(actualHTML, expectedHTML1, "'t' should be inserted between <br>s");
 
   // Test 2.
   body.innerHTML = initialHTML2;
   selection.collapse(body, 2);
-  synthesizeKey("t", { code: "KeyT" });
+  sendString("t");
   actualHTML = body.innerHTML;
   is(actualHTML, expectedHTML2, "'t' should be inserted between <br>s");
 

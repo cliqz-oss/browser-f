@@ -5,7 +5,7 @@
 // Each test will wait for a write to the Session Store
 // before executing.
 
-var OS = Cu.import("resource://gre/modules/osfile.jsm", {}).OS;
+var OS = ChromeUtils.import("resource://gre/modules/osfile.jsm", {}).OS;
 var {File, Constants, Path} = OS;
 
 const PREF_SS_INTERVAL = "browser.sessionstore.interval";
@@ -66,7 +66,7 @@ add_task(async function test_creation() {
 
   ok((await File.exists(Paths.recovery)), "After write, recovery sessionstore file exists again");
   ok(!(await File.exists(Paths.recoveryBackup)), "After write, recoveryBackup sessionstore doesn't exist");
-  ok((await promiseRead(Paths.recovery)).indexOf(URL) != -1, "Recovery sessionstore file contains the required tab");
+  ok((await promiseRead(Paths.recovery)).includes(URL), "Recovery sessionstore file contains the required tab");
   ok(!(await File.exists(Paths.clean)), "After first write, clean shutdown " +
     "sessionstore doesn't exist, since we haven't shutdown yet");
 
@@ -79,11 +79,11 @@ add_task(async function test_creation() {
   await SessionSaver.run();
 
   ok((await File.exists(Paths.recovery)), "After second write, recovery sessionstore file still exists");
-  ok((await promiseRead(Paths.recovery)).indexOf(URL2) != -1, "Recovery sessionstore file contains the latest url");
+  ok((await promiseRead(Paths.recovery)).includes(URL2), "Recovery sessionstore file contains the latest url");
   ok((await File.exists(Paths.recoveryBackup)), "After write, recoveryBackup sessionstore now exists");
   let backup = await promiseRead(Paths.recoveryBackup);
-  ok(backup.indexOf(URL2) == -1, "Recovery backup doesn't contain the latest url");
-  ok(backup.indexOf(URL) != -1, "Recovery backup contains the original url");
+  ok(!backup.includes(URL2), "Recovery backup doesn't contain the latest url");
+  ok(backup.includes(URL), "Recovery backup contains the original url");
   ok(!(await File.exists(Paths.clean)), "After first write, clean shutdown " +
     "sessionstore doesn't exist, since we haven't shutdown yet");
 

@@ -298,6 +298,8 @@ public:
    * nsICSSLoaderObserver notification will be sent.
    *
    * @param aParentSheet the parent of this child sheet
+   * @param aParentData the SheetLoadData corresponding to the load of the
+   *                    parent sheet.
    * @param aURL the URL of the child sheet
    * @param aMedia the already-parsed media list for the child sheet
    * @param aGeckoParentRule the @import rule importing this child, when using
@@ -307,6 +309,7 @@ public:
    *              for this load
    */
   nsresult LoadChildSheet(StyleSheet* aParentSheet,
+                          SheetLoadData* aParentData,
                           nsIURI* aURL,
                           dom::MediaList* aMedia,
                           ImportRule* aGeckoParentRule,
@@ -482,6 +485,14 @@ private:
   friend class SheetLoadData;
   friend class StreamLoader;
 
+  // Helpers to conditionally block onload if mDocument is non-null.
+  void BlockOnload();
+  void UnblockOnload(bool aFireSync);
+
+  // Helper to select the correct dispatch target for asynchronous events for
+  // this loader.
+  already_AddRefed<nsISerialEventTarget> DispatchTarget();
+
   nsresult CheckContentPolicy(nsIPrincipal* aLoadingPrincipal,
                               nsIPrincipal* aTriggeringPrincipal,
                               nsIURI* aTargetURI,
@@ -571,7 +582,30 @@ private:
   nsresult ParseSheet(const nsAString& aUTF16,
                       Span<const uint8_t> aUTF8,
                       SheetLoadData* aLoadData,
+                      bool aAllowAsync,
                       bool& aCompleted);
+
+  //
+  // Separate parsing paths for the old and new style systems, so that we can
+  // make parsing asynchronous in the new style system without touching the old
+  // one. Once we drop the old style system, this can be simplified.
+  //
+
+
+#ifdef MOZ_OLD_STYLE
+  nsresult DoParseSheetGecko(CSSStyleSheet* aSheet,
+                             const nsAString& aUTF16,
+                             Span<const uint8_t> aUTF8,
+                             SheetLoadData* aLoadData,
+                             bool& aCompleted);
+#endif
+
+  nsresult DoParseSheetServo(ServoStyleSheet* aSheet,
+                             const nsAString& aUTF16,
+                             Span<const uint8_t> aUTF8,
+                             SheetLoadData* aLoadData,
+                             bool aAllowAsync,
+                             bool& aCompleted);
 
   // The load of the sheet in aLoadData is done, one way or another.  Do final
   // cleanup, including releasing aLoadData.
@@ -580,8 +614,12 @@ private:
   // The guts of SheetComplete.  This may be called recursively on parent datas
   // or datas that had glommed on to a single load.  The array is there so load
   // datas whose observers need to be notified can be added to it.
-  void DoSheetComplete(SheetLoadData* aLoadData, nsresult aStatus,
-                       LoadDataArray& aDatasToNotify);
+  void DoSheetComplete(SheetLoadData* aLoadData, LoadDataArray& aDatasToNotify);
+
+  // Mark the given SheetLoadData, as well as any of its siblings, parents, etc
+  // transitively, as failed.  The idea is to mark as failed any load that was
+  // directly or indirectly @importing the sheet this SheetLoadData represents.
+  void MarkLoadTreeFailed(SheetLoadData* aLoadData);
 
   StyleBackendType GetStyleBackendType() const;
 
@@ -595,10 +633,6 @@ private:
                       mPendingDatas; // weak refs
   };
   nsAutoPtr<Sheets> mSheets;
-
-  // We're not likely to have many levels of @import...  But likely to have
-  // some.  Allocate some storage, what the hell.
-  AutoTArray<SheetLoadData*, 8> mParsingDatas;
 
   // The array of posted stylesheet loaded events (SheetLoadDatas) we have.
   // Note that these are rare.

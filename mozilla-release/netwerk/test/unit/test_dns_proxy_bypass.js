@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var ioService = Cc["@mozilla.org/network/io-service;1"].
   getService(Ci.nsIIOService);
@@ -62,7 +62,7 @@ function run_test() {
   prefs.setIntPref("network.proxy.type", 1);
   prefs.setBoolPref("network.proxy.socks_remote_dns", true);
   var chan = Cc["@mozilla.org/network/protocol;1?name=ws"].
-    createInstance(Components.interfaces.nsIWebSocketChannel);
+    createInstance(Ci.nsIWebSocketChannel);
 
   chan.initLoadInfo(null, // aLoadingNode
                     Services.scriptSecurityManager.getSystemPrincipal(),

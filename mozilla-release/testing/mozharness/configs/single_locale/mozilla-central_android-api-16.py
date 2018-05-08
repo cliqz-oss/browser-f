@@ -25,9 +25,6 @@ config = {
         "manifest": "mobile/android/config/tooltool-manifests/android/releng.manifest",
         "output_dir": "%(abs_work_dir)s/" + MOZILLA_DIR,
     },
-    "exes": {
-        'tooltool.py': '/builds/tooltool.py',
-    },
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -56,11 +53,7 @@ config = {
         "MOZ_UPDATE_CHANNEL": MOZ_UPDATE_CHANNEL,
     },
     "upload_branch": "%s-android-api-16" % BRANCH,
-    "ssh_key_dir": "~/.ssh",
-    "mozilla_dir": MOZILLA_DIR,
-    "mozconfig": "%s/mobile/android/config/mozconfigs/android-api-16/l10n-nightly" % MOZILLA_DIR,
     "signature_verification_script": "tools/release/signing/verify-android-signature.sh",
-    "stage_product": "mobile",
     "platform": "android",
     "build_type": "api-16-opt",
 
@@ -93,7 +86,6 @@ config = {
         ("/home/cltbld/.ssh", "/home/mock_mozilla/.ssh"),
         ('/home/cltbld/.hgrc', '/builds/.hgrc'),
         ('/builds/relengapi.tok', '/builds/relengapi.tok'),
-        ('/tools/tooltool.py', '/builds/tooltool.py'),
         ('/usr/local/lib/hgext', '/usr/local/lib/hgext'),
     ],
 }

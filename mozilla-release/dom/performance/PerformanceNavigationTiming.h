@@ -29,18 +29,22 @@ public:
   // so that timestamps are relative to startTime, as opposed to the
   // performance.timing object for which timestamps are absolute and has a
   // zeroTime initialized to navigationStart
-  explicit PerformanceNavigationTiming(PerformanceTiming* aPerformanceTiming,
-                                       Performance* aPerformance,
-                                       nsIHttpChannel* aChannel)
-    : PerformanceResourceTiming(aPerformanceTiming, aPerformance,
-                                NS_LITERAL_STRING("document"), aChannel) {
+  PerformanceNavigationTiming(UniquePtr<PerformanceTimingData>&& aPerformanceTiming,
+                              Performance* aPerformance)
+    : PerformanceResourceTiming(Move(aPerformanceTiming), aPerformance,
+                                NS_LITERAL_STRING("document")) {
       SetEntryType(NS_LITERAL_STRING("navigation"));
       SetInitiatorType(NS_LITERAL_STRING("navigation"));
     }
 
   DOMHighResTimeStamp Duration() const override
   {
-    return nsRFPService::ReduceTimePrecisionAsMSecs(LoadEventEnd() - StartTime());
+    DOMHighResTimeStamp rawDuration = LoadEventEnd() - StartTime();
+    if (mPerformance->IsSystemPrincipal()) {
+      return rawDuration;
+    }
+    return nsRFPService::ReduceTimePrecisionAsMSecs(rawDuration,
+      mPerformance->GetRandomTimelineSeed());
   }
 
   DOMHighResTimeStamp StartTime() const override

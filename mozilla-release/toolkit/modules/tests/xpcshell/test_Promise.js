@@ -2,10 +2,10 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-Components.utils.import("resource://gre/modules/Promise.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Task.jsm");
-Components.utils.import("resource://testing-common/PromiseTestUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Promise.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
 
 // Prevent test failures due to the unhandled rejections in this test file.
 PromiseTestUtils.disableUncaughtRejectionObserverForSelfTest();
@@ -961,7 +961,7 @@ function wait_for_uncaught(aMustAppear, aTimeout = undefined) {
     let data = message + stack;
     print("Observing " + message + ", looking for " + aMustAppear.join(", "));
     for (let expected of remaining) {
-      if (data.indexOf(expected) != -1) {
+      if (data.includes(expected)) {
         print("I found " + expected);
         remaining.delete(expected);
       }
@@ -1016,7 +1016,7 @@ function wait_for_uncaught(aMustAppear, aTimeout = undefined) {
   let make_exception_rejection = function make_exception_rejection() {
     let salt = (Math.random() * ( Math.pow(2, 24) - 1 ));
     let exn = new Components.Exception("This is an uncaught exception " + salt,
-                                       Components.results.NS_ERROR_NOT_AVAILABLE);
+                                       Cr.NS_ERROR_NOT_AVAILABLE);
     return {
       mustFind: [exn.message, exn.filename, exn.lineNumber, exn.location.toString()],
       error: exn
@@ -1052,9 +1052,9 @@ function wait_for_uncaught(aMustAppear, aTimeout = undefined) {
           }
         })();
         info("Posted all rejections");
-        Components.utils.forceGC();
-        Components.utils.forceCC();
-        Components.utils.forceShrinkingGC();
+        Cu.forceGC();
+        Cu.forceCC();
+        Cu.forceShrinkingGC();
         return promise;
       }));
   }
@@ -1073,7 +1073,7 @@ make_promise_test(function test_caught_is_not_reported() {
   })();
   // Isolate this in a function to increase likelihood that the gc will
   // realise that |uncaught| has remained uncaught.
-  Components.utils.forceGC();
+  Cu.forceGC();
 
   return promise.then(function onSuccess() {
     throw new Error("This error was caught and should not have been reported");

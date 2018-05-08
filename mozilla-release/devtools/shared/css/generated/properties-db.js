@@ -1388,8 +1388,6 @@ exports.CSS_PROPERTIES = {
     "supports": [],
     "values": [
       "auto",
-      "disabled",
-      "enabled",
       "inherit",
       "initial",
       "none",
@@ -2021,9 +2019,18 @@ exports.CSS_PROPERTIES = {
       6
     ],
     "values": [
+      "COLOR",
+      "calc",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
       "inset",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -2873,7 +2880,6 @@ exports.CSS_PROPERTIES = {
       "border-block-start-style",
       "border-block-start-width",
       "border-bottom-color",
-      "-moz-border-bottom-colors",
       "border-bottom-left-radius",
       "border-bottom-right-radius",
       "border-bottom-style",
@@ -2891,16 +2897,13 @@ exports.CSS_PROPERTIES = {
       "border-inline-start-style",
       "border-inline-start-width",
       "border-left-color",
-      "-moz-border-left-colors",
       "border-left-style",
       "border-left-width",
       "border-right-color",
-      "-moz-border-right-colors",
       "border-right-style",
       "border-right-width",
       "border-spacing",
       "border-top-color",
-      "-moz-border-top-colors",
       "border-top-left-radius",
       "border-top-right-radius",
       "border-top-style",
@@ -2960,6 +2963,7 @@ exports.CSS_PROPERTIES = {
       "font-feature-settings",
       "font-kerning",
       "font-language-override",
+      "font-optical-sizing",
       "font-size",
       "font-size-adjust",
       "-moz-font-smoothing-background-color",
@@ -3078,6 +3082,7 @@ exports.CSS_PROPERTIES = {
       "quotes",
       "resize",
       "right",
+      "rotate",
       "ruby-align",
       "ruby-position",
       "scroll-behavior",
@@ -3126,6 +3131,7 @@ exports.CSS_PROPERTIES = {
       "-moz-text-size-adjust",
       "-webkit-text-stroke-color",
       "-webkit-text-stroke-width",
+      "scale",
       "text-transform",
       "top",
       "-moz-top-layer",
@@ -3138,6 +3144,7 @@ exports.CSS_PROPERTIES = {
       "transition-duration",
       "transition-property",
       "transition-timing-function",
+      "translate",
       "-moz-user-focus",
       "-moz-user-input",
       "-moz-user-modify",
@@ -4869,9 +4876,18 @@ exports.CSS_PROPERTIES = {
       6
     ],
     "values": [
+      "COLOR",
+      "calc",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
       "inset",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -4954,8 +4970,10 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "auto",
       "inherit",
       "initial",
+      "rect",
       "unset"
     ]
   },
@@ -4968,9 +4986,22 @@ exports.CSS_PROPERTIES = {
       11
     ],
     "values": [
+      "border-box",
+      "circle",
+      "content-box",
+      "ellipse",
+      "fill-box",
       "inherit",
       "initial",
-      "unset"
+      "inset",
+      "margin-box",
+      "none",
+      "padding-box",
+      "polygon",
+      "stroke-box",
+      "unset",
+      "url",
+      "view-box"
     ]
   },
   "clip-rule": {
@@ -5240,13 +5271,19 @@ exports.CSS_PROPERTIES = {
     ],
     "values": [
       "-moz-alt-content",
+      "attr",
       "close-quote",
+      "counter",
+      "counters",
       "inherit",
       "initial",
       "no-close-quote",
       "no-open-quote",
+      "none",
+      "normal",
       "open-quote",
-      "unset"
+      "unset",
+      "url"
     ]
   },
   "counter-increment": {
@@ -5681,6 +5718,8 @@ exports.CSS_PROPERTIES = {
       "font-feature-settings",
       "font-language-override",
       "font-kerning",
+      "font-optical-sizing",
+      "font-variation-settings",
       "font-variant-alternates",
       "font-variant-caps",
       "font-variant-east-asian",
@@ -6669,12 +6708,68 @@ exports.CSS_PROPERTIES = {
       11
     ],
     "values": [
+      "arabic-indic",
+      "armenian",
+      "bengali",
+      "cambodian",
+      "circle",
+      "cjk-decimal",
+      "cjk-earthly-branch",
+      "cjk-heavenly-stem",
+      "cjk-ideographic",
+      "decimal",
+      "decimal-leading-zero",
+      "devanagari",
+      "disc",
+      "disclosure-closed",
+      "disclosure-open",
+      "ethiopic-numeric",
+      "georgian",
+      "gujarati",
+      "gurmukhi",
+      "hebrew",
+      "hiragana",
+      "hiragana-iroha",
       "inherit",
       "initial",
       "inside",
+      "japanese-formal",
+      "japanese-informal",
+      "kannada",
+      "katakana",
+      "katakana-iroha",
+      "khmer",
+      "korean-hangul-formal",
+      "korean-hanja-formal",
+      "korean-hanja-informal",
+      "lao",
+      "lower-alpha",
+      "lower-armenian",
+      "lower-greek",
+      "lower-latin",
+      "lower-roman",
+      "malayalam",
+      "mongolian",
+      "myanmar",
       "none",
+      "oriya",
       "outside",
+      "persian",
+      "simp-chinese-formal",
+      "simp-chinese-informal",
+      "square",
+      "symbols",
+      "tamil",
+      "telugu",
+      "thai",
+      "tibetan",
+      "trad-chinese-formal",
+      "trad-chinese-informal",
       "unset",
+      "upper-alpha",
+      "upper-armenian",
+      "upper-latin",
+      "upper-roman",
       "url"
     ]
   },
@@ -6715,9 +6810,66 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "arabic-indic",
+      "armenian",
+      "bengali",
+      "cambodian",
+      "circle",
+      "cjk-decimal",
+      "cjk-earthly-branch",
+      "cjk-heavenly-stem",
+      "cjk-ideographic",
+      "decimal",
+      "decimal-leading-zero",
+      "devanagari",
+      "disc",
+      "disclosure-closed",
+      "disclosure-open",
+      "ethiopic-numeric",
+      "georgian",
+      "gujarati",
+      "gurmukhi",
+      "hebrew",
+      "hiragana",
+      "hiragana-iroha",
       "inherit",
       "initial",
-      "unset"
+      "japanese-formal",
+      "japanese-informal",
+      "kannada",
+      "katakana",
+      "katakana-iroha",
+      "khmer",
+      "korean-hangul-formal",
+      "korean-hanja-formal",
+      "korean-hanja-informal",
+      "lao",
+      "lower-alpha",
+      "lower-armenian",
+      "lower-greek",
+      "lower-latin",
+      "lower-roman",
+      "malayalam",
+      "mongolian",
+      "myanmar",
+      "none",
+      "oriya",
+      "persian",
+      "simp-chinese-formal",
+      "simp-chinese-informal",
+      "square",
+      "symbols",
+      "tamil",
+      "telugu",
+      "thai",
+      "tibetan",
+      "trad-chinese-formal",
+      "trad-chinese-informal",
+      "unset",
+      "upper-alpha",
+      "upper-armenian",
+      "upper-latin",
+      "upper-roman"
     ]
   },
   "margin": {
@@ -8838,8 +8990,17 @@ exports.CSS_PROPERTIES = {
       6
     ],
     "values": [
+      "COLOR",
+      "calc",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -9273,7 +9434,6 @@ exports.PSEUDO_ELEMENTS = [
   ":-moz-focus-outer",
   ":-moz-list-bullet",
   ":-moz-list-number",
-  ":-moz-math-anonymous",
   ":-moz-progress-bar",
   ":-moz-range-track",
   ":-moz-range-progress",
@@ -9314,6 +9474,10 @@ exports.PREFERENCES = [
     "layout.css.contain.enabled"
   ],
   [
+    "font-optical-sizing",
+    "layout.css.font-variations.enabled"
+  ],
+  [
     "font-variation-settings",
     "layout.css.font-variations.enabled"
   ],
@@ -9350,8 +9514,8 @@ exports.PREFERENCES = [
     "layout.css.overflow-clip-box.enabled"
   ],
   [
-    "paint-order",
-    "svg.paint-order.enabled"
+    "rotate",
+    "layout.css.individual-transform.enabled"
   ],
   [
     "scroll-behavior",
@@ -9430,16 +9594,24 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
+    "scale",
+    "layout.css.individual-transform.enabled"
+  ],
+  [
     "touch-action",
     "layout.css.touch_action.enabled"
   ],
   [
-    "-moz-transform",
-    "layout.css.prefixes.transforms"
-  ],
-  [
     "transform-box",
     "svg.transform-box.enabled"
+  ],
+  [
+    "translate",
+    "layout.css.individual-transform.enabled"
+  ],
+  [
+    "-moz-transform",
+    "layout.css.prefixes.transforms"
   ],
   [
     "-moz-transform-origin",

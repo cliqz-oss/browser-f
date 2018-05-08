@@ -793,22 +793,6 @@ CSS_PROP_BORDER(
     nullptr,
     offsetof(nsStyleBorder, mBorderBottomColor),
     eStyleAnimType_ComplexColor)
-#ifndef CSS_PROP_LIST_EXCLUDE_INTERNAL
-CSS_PROP_BORDER(
-    -moz-border-bottom-colors,
-    _moz_border_bottom_colors,
-    CSS_PROP_DOMPROP_PREFIXED(BorderBottomColors),
-    CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_INTERNAL |
-        CSS_PROPERTY_ENABLED_IN_UA_SHEETS_AND_CHROME |
-        CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
-        CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
-    "",
-    0,
-    nullptr,
-    CSS_PROP_NO_OFFSET,
-    eStyleAnimType_Discrete)
-#endif
 CSS_PROP_BORDER(
     border-bottom-left-radius,
     border_bottom_left_radius,
@@ -1061,22 +1045,6 @@ CSS_PROP_BORDER(
     nullptr,
     offsetof(nsStyleBorder, mBorderLeftColor),
     eStyleAnimType_ComplexColor)
-#ifndef CSS_PROP_LIST_EXCLUDE_INTERNAL
-CSS_PROP_BORDER(
-    -moz-border-left-colors,
-    _moz_border_left_colors,
-    CSS_PROP_DOMPROP_PREFIXED(BorderLeftColors),
-    CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_INTERNAL |
-        CSS_PROPERTY_ENABLED_IN_UA_SHEETS_AND_CHROME |
-        CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
-        CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
-    "",
-    0,
-    nullptr,
-    CSS_PROP_NO_OFFSET,
-    eStyleAnimType_Discrete)
-#endif
 CSS_PROP_BORDER(
     border-left-style,
     border_left_style,
@@ -1127,22 +1095,6 @@ CSS_PROP_BORDER(
     nullptr,
     offsetof(nsStyleBorder, mBorderRightColor),
     eStyleAnimType_ComplexColor)
-#ifndef CSS_PROP_LIST_EXCLUDE_INTERNAL
-CSS_PROP_BORDER(
-    -moz-border-right-colors,
-    _moz_border_right_colors,
-    CSS_PROP_DOMPROP_PREFIXED(BorderRightColors),
-    CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_INTERNAL |
-        CSS_PROPERTY_ENABLED_IN_UA_SHEETS_AND_CHROME |
-        CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
-        CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
-    "",
-    0,
-    nullptr,
-    CSS_PROP_NO_OFFSET,
-    eStyleAnimType_Discrete)
-#endif
 CSS_PROP_BORDER(
     border-right-style,
     border_right_style,
@@ -1205,22 +1157,6 @@ CSS_PROP_BORDER(
     nullptr,
     offsetof(nsStyleBorder, mBorderTopColor),
     eStyleAnimType_ComplexColor)
-#ifndef CSS_PROP_LIST_EXCLUDE_INTERNAL
-CSS_PROP_BORDER(
-    -moz-border-top-colors,
-    _moz_border_top_colors,
-    CSS_PROP_DOMPROP_PREFIXED(BorderTopColors),
-    CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_INTERNAL |
-        CSS_PROPERTY_ENABLED_IN_UA_SHEETS_AND_CHROME |
-        CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
-        CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
-    "",
-    0,
-    nullptr,
-    CSS_PROP_NO_OFFSET,
-    eStyleAnimType_Discrete)
-#endif
 CSS_PROP_BORDER(
     border-top-left-radius,
     border_top_left_radius,
@@ -1374,7 +1310,7 @@ CSS_PROP_EFFECTS(
         CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
         // NOTE: some components must be nonnegative
     "",
-    0,
+    VARIANT_COLOR | VARIANT_LENGTH | VARIANT_CALC | VARIANT_INHERIT | VARIANT_NONE,
     kBoxShadowTypeKTable,
     offsetof(nsStyleEffects, mBoxShadow),
     eStyleAnimType_Shadow)
@@ -1426,7 +1362,7 @@ CSS_PROP_EFFECTS(
     CSS_PROPERTY_PARSE_FUNCTION |
         CSS_PROPERTY_UNITLESS_LENGTH_QUIRK,
     "",
-    0,
+    VARIANT_AH,
     nullptr,
     offsetof(nsStyleEffects, mClip),
     eStyleAnimType_Custom)
@@ -1439,7 +1375,7 @@ CSS_PROP_SVGRESET(
         CSS_PROPERTY_CREATES_STACKING_CONTEXT |
         CSS_PROPERTY_STORES_CALC,
     "",
-    0,
+    VARIANT_HUO,
     nullptr,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Custom)
@@ -1616,7 +1552,7 @@ CSS_PROP_CONTENT(
     CSS_PROPERTY_PARSE_FUNCTION |
         CSS_PROPERTY_START_IMAGE_LOADS,
     "",
-    0,
+    VARIANT_HMK | VARIANT_NONE | VARIANT_URL | VARIANT_COUNTER | VARIANT_ATTR,
     kContentKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Discrete)
@@ -1939,6 +1875,18 @@ CSS_PROP_FONT(
     nullptr,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Discrete)
+CSS_PROP_FONT(
+    font-optical-sizing,
+    font_optical_sizing,
+    FontOpticalSizing,
+    CSS_PROPERTY_PARSE_VALUE |
+        CSS_PROPERTY_APPLIES_TO_FIRST_LETTER_AND_FIRST_LINE |
+        CSS_PROPERTY_APPLIES_TO_PLACEHOLDER,
+    "layout.css.font-variations.enabled",
+    VARIANT_HK,
+    kFontOpticalSizingKTable,
+    CSS_PROP_NO_OFFSET,
+    eStyleAnimType_None)
 CSS_PROP_FONT(
     font-size,
     font_size,
@@ -3502,7 +3450,7 @@ CSS_PROP_SVG(
     paint_order,
     PaintOrder,
     CSS_PROPERTY_PARSE_FUNCTION,
-    "svg.paint-order.enabled",
+    "",
     0,
     nullptr,
     CSS_PROP_NO_OFFSET,
@@ -3611,6 +3559,19 @@ CSS_PROP_POSITION(
     nullptr,
     offsetof(nsStylePosition, mOffset),
     eStyleAnimType_Sides_Right)
+CSS_PROP_DISPLAY(
+    rotate,
+    rotate,
+    Rotate,
+    CSS_PROPERTY_PARSE_FUNCTION |
+        CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT |
+        CSS_PROPERTY_FIXPOS_CB,
+    "layout.css.individual-transform.enabled",
+    0,
+    nullptr,
+    offsetof(nsStyleDisplay, mSpecifiedRotate),
+    eStyleAnimType_None)
 CSS_PROP_TEXT(
     ruby-align,
     ruby_align,
@@ -3804,6 +3765,7 @@ CSS_PROP_DISPLAY(
         CSS_PROPERTY_VALUE_PARSER_FUNCTION |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_START_IMAGE_LOADS |
+        CSS_PROPERTY_LOAD_USE_CORS |
         CSS_PROPERTY_STORES_CALC,
     "layout.css.shape-outside.enabled",
     0,
@@ -4194,7 +4156,7 @@ CSS_PROP_TEXT(
         CSS_PROPERTY_IGNORED_WHEN_COLORS_DISABLED,
         // NOTE: some components must be nonnegative
     "",
-    0,
+    VARIANT_COLOR | VARIANT_LENGTH | VARIANT_CALC | VARIANT_INHERIT | VARIANT_NONE,
     nullptr,
     offsetof(nsStyleText, mTextShadow),
     eStyleAnimType_Shadow)
@@ -4240,6 +4202,19 @@ CSS_PROP_TEXT(
     kBorderWidthKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Discrete)
+CSS_PROP_DISPLAY(
+    scale,
+    scale,
+    Scale,
+    CSS_PROPERTY_PARSE_FUNCTION |
+        CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT |
+        CSS_PROPERTY_FIXPOS_CB,
+    "layout.css.individual-transform.enabled",
+    0,
+    nullptr,
+    offsetof(nsStyleDisplay, mSpecifiedScale),
+    eStyleAnimType_None)
 CSS_PROP_TEXT(
     text-transform,
     text_transform,
@@ -4319,15 +4294,6 @@ CSS_PROP_DISPLAY(
     nullptr,
     offsetof(nsStyleDisplay, mSpecifiedTransform),
     eStyleAnimType_Custom)
-// This shorthand is essentially an alias, but it requires different
-// parsing rules, and it therefore implemented as a shorthand.
-CSS_PROP_SHORTHAND(
-    -moz-transform,
-    _moz_transform,
-    MozTransform,
-    CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_IS_ALIAS,
-    "layout.css.prefixes.transforms")
 CSS_PROP_DISPLAY(
     transform-box,
     transform_box,
@@ -4411,6 +4377,19 @@ CSS_PROP_DISPLAY(
     VARIANT_KEYWORD | VARIANT_TIMING_FUNCTION, // used by list parsing
     kTransitionTimingFunctionKTable,
     CSS_PROP_NO_OFFSET,
+    eStyleAnimType_None)
+CSS_PROP_DISPLAY(
+    translate,
+    translate,
+    Translate,
+    CSS_PROPERTY_PARSE_FUNCTION |
+        CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT |
+        CSS_PROPERTY_FIXPOS_CB,
+    "layout.css.individual-transform.enabled",
+    0,
+    nullptr,
+    offsetof(nsStyleDisplay, mSpecifiedTranslate),
     eStyleAnimType_None)
 #ifndef CSS_PROP_LIST_ONLY_COMPONENTS_OF_ALL_SHORTHAND
 CSS_PROP_TEXTRESET(

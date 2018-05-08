@@ -5,17 +5,15 @@
 
 'use strict';
 
-const Cu = Components.utils;
-
-Cu.import('resource://gre/modules/Services.jsm');
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+ChromeUtils.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
 
 XPCOMUtils.defineLazyGetter(this, 'gDOMBundle', () =>
   Services.strings.createBundle('chrome://global/locale/dom/dom.properties'));
 
 Cu.importGlobalProperties(['crypto']);
 
-this.EXPORTED_SYMBOLS = ['PushCrypto', 'concatArray'];
+var EXPORTED_SYMBOLS = ['PushCrypto', 'concatArray'];
 
 var UTF8 = new TextEncoder('utf-8');
 
@@ -220,7 +218,7 @@ function chunkArray(array, size) {
   return result;
 }
 
-this.concatArray = function(arrays) {
+var concatArray = function(arrays) {
   var size = arrays.reduce((total, a) => total + a.byteLength, 0);
   var index = 0;
   return arrays.reduce((result, a) => {
@@ -563,7 +561,7 @@ class aesgcm128Decoder extends OldSchemeDecoder {
   }
 }
 
-this.PushCrypto = {
+var PushCrypto = {
 
   generateAuthenticationSecret() {
     return crypto.getRandomValues(new Uint8Array(16));

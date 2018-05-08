@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cu = Components.utils;
-Cu.import("resource://gre/modules/DownloadUtils.jsm");
+ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
 
 const gDecimalSymbol = Number(5.4).toLocaleString().match(/\D/);
 function _(str) {
@@ -206,7 +205,7 @@ function run_test() {
   testURI("jar:http://www.mozilla.com/file!/magic", "mozilla.com", "www.mozilla.com");
   testURI("file:///C:/Cool/Stuff/", "local file", "local file");
   // Don't test for moz-icon if we don't have a protocol handler for it (e.g. b2g):
-  if ("@mozilla.org/network/protocol;1?name=moz-icon" in Components.classes) {
+  if ("@mozilla.org/network/protocol;1?name=moz-icon" in Cc) {
     testURI("moz-icon:file:///test.extension", "local file", "local file");
     testURI("moz-icon://.extension", "moz-icon resource", "moz-icon resource");
   }

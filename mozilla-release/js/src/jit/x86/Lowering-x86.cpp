@@ -119,8 +119,16 @@ LIRGeneratorX86::visitUnbox(MUnbox* unbox)
 
     // Swap the order we use the box pieces so we can re-use the payload register.
     LUnbox* lir = new(alloc()) LUnbox;
-    lir->setOperand(0, usePayloadInRegisterAtStart(inner));
-    lir->setOperand(1, useType(inner, LUse::ANY));
+    bool reusePayloadReg = !JitOptions.spectreValueMasking ||
+        unbox->type() == MIRType::Int32 ||
+        unbox->type() == MIRType::Boolean;
+    if (reusePayloadReg) {
+        lir->setOperand(0, usePayloadInRegisterAtStart(inner));
+        lir->setOperand(1, useType(inner, LUse::ANY));
+    } else {
+        lir->setOperand(0, usePayload(inner, LUse::REGISTER));
+        lir->setOperand(1, useType(inner, LUse::ANY));
+    }
 
     if (unbox->fallible())
         assignSnapshot(lir, unbox->bailoutKind());
@@ -130,7 +138,10 @@ LIRGeneratorX86::visitUnbox(MUnbox* unbox)
     // recoverable. Unbox's purpose is to eagerly kill the definition of a type
     // tag, so keeping both alive (for the purpose of gcmaps) is unappealing.
     // Instead, we create a new virtual register.
-    defineReuseInput(lir, unbox, 0);
+    if (reusePayloadReg)
+        defineReuseInput(lir, unbox, 0);
+    else
+        define(lir, unbox);
 }
 
 void
@@ -454,30 +465,6 @@ LIRGeneratorX86::visitAsmJSStoreHeap(MAsmJSStoreHeap* ins)
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH("unexpected array type");
     }
-    add(lir, ins);
-}
-
-void
-LIRGeneratorX86::visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic* ins)
-{
-    // The code generated for StoreTypedArrayElementStatic is identical to that
-    // for AsmJSStoreHeap, and the same concerns apply.
-    LStoreTypedArrayElementStatic* lir;
-    switch (ins->accessType()) {
-      case Scalar::Int8: case Scalar::Uint8:
-      case Scalar::Uint8Clamped:
-        lir = new(alloc()) LStoreTypedArrayElementStatic(useRegister(ins->ptr()),
-                                                         useFixed(ins->value(), eax));
-        break;
-      case Scalar::Int16: case Scalar::Uint16:
-      case Scalar::Int32: case Scalar::Uint32:
-      case Scalar::Float32: case Scalar::Float64:
-        lir = new(alloc()) LStoreTypedArrayElementStatic(useRegisterAtStart(ins->ptr()),
-                                                         useRegisterAtStart(ins->value()));
-        break;
-      default: MOZ_CRASH("unexpected array type");
-    }
-
     add(lir, ins);
 }
 

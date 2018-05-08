@@ -3,11 +3,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = ["WebrtcUI"];
 
-this.EXPORTED_SYMBOLS = ["WebrtcUI"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   DoorHanger: "resource://gre/modules/Prompt.jsm",
@@ -68,12 +66,7 @@ var WebrtcUI = {
     } else if (aTopic === "PeerConnection:request") {
       this.handlePCRequest(aSubject, aTopic, aData);
     } else if (aTopic === "recording-device-events") {
-      switch (aData) {
-        case "shutdown":
-        case "starting":
-          this.notify();
-          break;
-      }
+      this.notify();
     } else if (aTopic === "VideoCapture:Paused") {
       if (this._notificationId) {
         Notifications.cancel(this._notificationId);
@@ -105,11 +98,11 @@ var WebrtcUI = {
       let audioActive = false;
       for (let i = 0; i < count; i++) {
         let win = windows.queryElementAt(i, Ci.nsIDOMWindow);
-        let hasAudio = {};
-        let hasVideo = {};
-        MediaManagerService.mediaCaptureWindowState(win, hasVideo, hasAudio);
-        if (hasVideo.value) cameraActive = true;
-        if (hasAudio.value) audioActive = true;
+        let hasCamera = {};
+        let hasMicrophone = {};
+        MediaManagerService.mediaCaptureWindowState(win, hasCamera, hasMicrophone);
+        if (hasCamera.value != MediaManagerService.STATE_NOCAPTURE) cameraActive = true;
+        if (hasMicrophone.value != MediaManagerService.STATE_NOCAPTURE) audioActive = true;
       }
 
       if (cameraActive && audioActive) {

@@ -103,7 +103,7 @@ static setLcdFilterFunc setLcdFilter;
 #define MAX_OPEN_FACES 10
 /* This is the maximum font size we allow to be passed to FT_Set_Char_Size
  */
-#define MAX_FONT_SIZE 1000
+#define MAX_FONT_SIZE 2000
 
 extern FT_Face mozilla_NewFTFace(FT_Library aFTLibrary, const char* aFileName, int aFaceIndex);
 extern FT_Face mozilla_NewFTFaceFromData(FT_Library aFTLibrary, const uint8_t* aData, size_t aDataSize, int aFaceIndex);
@@ -726,7 +726,10 @@ _cairo_ft_unscaled_font_lock_face (cairo_ft_unscaled_font_t *unscaled)
     }
 
     if (unscaled->var_coords) {
-        typedef FT_UInt (*SetCoordsFunc)(FT_Face, FT_UInt, FT_Fixed*);
+#if MOZ_TREE_FREETYPE
+        FT_Set_Var_Design_Coordinates(face, unscaled->num_var_coords, unscaled->var_coords);
+#else
+        typedef FT_Error (*SetCoordsFunc)(FT_Face, FT_UInt, FT_Fixed*);
         static SetCoordsFunc setCoords;
         static cairo_bool_t firstTime = TRUE;
         if (firstTime) {
@@ -736,6 +739,7 @@ _cairo_ft_unscaled_font_lock_face (cairo_ft_unscaled_font_t *unscaled)
         if (setCoords) {
             (*setCoords)(face, unscaled->num_var_coords, unscaled->var_coords);
         }
+#endif
     }
 
     unscaled->face = face;

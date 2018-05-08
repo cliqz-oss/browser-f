@@ -9,10 +9,9 @@
 
 #include "mozilla/Maybe.h"
 
-#include "jsobj.h"
-
 #include "builtin/TypedObjectConstants.h"
 #include "js/GCHashTable.h"
+#include "vm/JSObject.h"
 #include "vm/Runtime.h"
 #include "vm/SharedMem.h"
 #include "wasm/WasmTypes.h"
@@ -102,23 +101,14 @@ int32_t LiveMappedBufferCount();
 
 class ArrayBufferObjectMaybeShared;
 
-uint32_t AnyArrayBufferByteLength(const ArrayBufferObjectMaybeShared* buf);
 mozilla::Maybe<uint32_t> WasmArrayBufferMaxSize(const ArrayBufferObjectMaybeShared* buf);
 size_t WasmArrayBufferMappedSize(const ArrayBufferObjectMaybeShared* buf);
-bool WasmArrayBufferGrowForWasm(ArrayBufferObjectMaybeShared* buf, uint32_t delta);
-bool AnyArrayBufferIsPreparedForAsmJS(const ArrayBufferObjectMaybeShared* buf);
-bool AnyArrayBufferIsWasm(const ArrayBufferObjectMaybeShared* buf);
-ArrayBufferObjectMaybeShared& AsAnyArrayBuffer(HandleValue val);
 
 class ArrayBufferObjectMaybeShared : public NativeObject
 {
   public:
-    uint32_t byteLength() {
-        return AnyArrayBufferByteLength(this);
-    }
-
+    inline uint32_t byteLength();
     inline bool isDetached() const;
-
     inline SharedMem<uint8_t*> dataPointerEither();
 
     // WebAssembly support:
@@ -135,13 +125,8 @@ class ArrayBufferObjectMaybeShared : public NativeObject
     uint32_t wasmBoundsCheckLimit() const;
 #endif
 
-    bool isPreparedForAsmJS() const {
-        return AnyArrayBufferIsPreparedForAsmJS(this);
-    }
-
-    bool isWasm() const {
-        return AnyArrayBufferIsWasm(this);
-    }
+    inline bool isPreparedForAsmJS() const;
+    inline bool isWasm() const;
 };
 
 typedef Rooted<ArrayBufferObjectMaybeShared*> RootedArrayBufferObjectMaybeShared;
@@ -195,6 +180,7 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
         PLAIN               = 0, // malloced or inline data
         WASM                = 1,
         MAPPED              = 2,
+        EXTERNAL            = 3,
 
         KIND_MASK           = 0x3
     };
@@ -208,9 +194,9 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
         DETACHED            = 0x4,
 
         // The dataPointer() is owned by this buffer and should be released
-        // when no longer in use. Releasing the pointer may be done by either
-        // freeing or unmapping it, and how to do this is determined by the
-        // buffer's other flags.
+        // when no longer in use. Releasing the pointer may be done by freeing,
+        // invoking a dereference callback function, or unmapping, as
+        // determined by the buffer's other flags.
         //
         // Array buffers which do not own their data include buffers that
         // allocate their data inline, and buffers that are created lazily for
@@ -240,11 +226,22 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
     class BufferContents {
         uint8_t* data_;
         BufferKind kind_;
+        JS::BufferContentsRefFunc ref_;
+        JS::BufferContentsRefFunc unref_;
+        void* refUserData_;
 
         friend class ArrayBufferObject;
 
-        BufferContents(uint8_t* data, BufferKind kind) : data_(data), kind_(kind) {
+        BufferContents(uint8_t* data, BufferKind kind, JS::BufferContentsRefFunc ref = nullptr,
+                       JS::BufferContentsRefFunc unref = nullptr, void* refUserData = nullptr)
+        : data_(data), kind_(kind), ref_(ref), unref_(unref), refUserData_(refUserData)
+        {
             MOZ_ASSERT((kind_ & ~KIND_MASK) == 0);
+            MOZ_ASSERT_IF(ref_ || unref_ || refUserData_, kind_ == EXTERNAL);
+
+            // BufferContents does not ref or unref the data since it is
+            // internal and short-lived. It is the caller's responsibility to
+            // ensure that the BufferContents does not outlive the data.
         }
 
       public:
@@ -260,8 +257,18 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
             return BufferContents(static_cast<uint8_t*>(data), PLAIN);
         }
 
+        static BufferContents createExternal(void *data, JS::BufferContentsRefFunc ref,
+                                             JS::BufferContentsRefFunc unref,
+                                             void* refUserData = nullptr)
+        {
+            return BufferContents(static_cast<uint8_t*>(data), EXTERNAL, ref, unref, refUserData);
+        }
+
         uint8_t* data() const { return data_; }
         BufferKind kind() const { return kind_; }
+        JS::BufferContentsRefFunc refFunc() const { return ref_; }
+        JS::BufferContentsRefFunc unrefFunc() const { return unref_; }
+        void* refUserData() const { return refUserData_; }
 
         explicit operator bool() const { return data_ != nullptr; }
         WasmArrayRawBuffer* wasmBuffer() const;
@@ -286,8 +293,7 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
                                      HandleObject proto = nullptr,
                                      NewObjectKind newKind = GenericObject);
     static ArrayBufferObject* create(JSContext* cx, uint32_t nbytes,
-                                     HandleObject proto = nullptr,
-                                     NewObjectKind newKind = GenericObject);
+                                     HandleObject proto = nullptr);
 
     // Create an ArrayBufferObject that is safely finalizable and can later be
     // initialize()d to become a real, content-visible ArrayBufferObject.
@@ -345,12 +351,23 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
 
     uint8_t* inlineDataPointer() const;
 
+    struct RefcountInfo {
+        JS::BufferContentsRefFunc ref;
+        JS::BufferContentsRefFunc unref;
+        void* refUserData;
+    };
+    RefcountInfo* refcountInfo() const;
+
   public:
     uint8_t* dataPointer() const;
     SharedMem<uint8_t*> dataPointerShared() const;
     uint32_t byteLength() const;
 
     BufferContents contents() const {
+        if (isExternal()) {
+            return BufferContents(dataPointer(), EXTERNAL, refcountInfo()->ref,
+                                  refcountInfo()->unref, refcountInfo()->refUserData);
+        }
         return BufferContents(dataPointer(), bufferKind());
     }
     bool hasInlineData() const {
@@ -371,6 +388,7 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
     bool isPlain() const { return bufferKind() == PLAIN; }
     bool isWasm() const { return bufferKind() == WASM; }
     bool isMapped() const { return bufferKind() == MAPPED; }
+    bool isExternal() const { return bufferKind() == EXTERNAL; }
     bool isDetached() const { return flags() & DETACHED; }
     bool isPreparedForAsmJS() const { return flags() & FOR_ASMJS; }
 
@@ -449,7 +467,7 @@ bool CreateWasmBuffer(JSContext* cx, const wasm::Limits& memory,
  * Common definitions shared by all array buffer views.
  */
 
-class ArrayBufferViewObject : public JSObject
+class ArrayBufferViewObject : public NativeObject
 {
   public:
     static ArrayBufferObjectMaybeShared* bufferObject(JSContext* cx, Handle<ArrayBufferViewObject*> obj);

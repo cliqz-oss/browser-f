@@ -18,12 +18,10 @@
 <script class="testbody" type="text/javascript">
 /* import-globals-from classifierHelper.js */
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/BrowserTestUtils.jsm");
-Cu.import("resource://testing-common/ContentTask.jsm");
-Cu.import("resource://testing-common/TestUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+ChromeUtils.import("resource://testing-common/ContentTask.jsm");
+ChromeUtils.import("resource://testing-common/TestUtils.jsm");
 
 var mainWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
                     .getInterface(Ci.nsIWebNavigation)
