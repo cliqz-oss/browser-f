@@ -923,25 +923,10 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 .no-results-message[query*=🔥🦊] > .no-results-container {
   visibility: hidden;
 }
-<<<<<<< HEAD
 %endif
-
-#passwordsBoxHint {
-  padding-left: 28px;
-  font-size: 0.85em;
-  margin-top: -10px!important;
-  color: GrayText;
-}
-
-#passwordsBoxHint > .text-link {
-  font-size: 1em;
-}
-||||||| merged common ancestors
-=======
 
 /* Proxy port input */
 
 .proxy-port-input {
   width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
 }
->>>>>>> origin/upstream-releases

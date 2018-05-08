@@ -144,13 +144,7 @@ EXTRA_JS_MODULES += [
     'FormValidationHandler.jsm',
     'LaterRun.jsm',
     'offlineAppCache.jsm',
-<<<<<<< HEAD
-||||||| merged common ancestors
-    'PageActions.jsm',
-=======
     'OpenInTabsUtils.jsm',
-    'PageActions.jsm',
->>>>>>> origin/upstream-releases
     'PermissionUI.jsm',
     'PingCentre.jsm',
     'PluginContent.jsm',

@@ -618,18 +618,10 @@
                 class="tail-with-learn-more"
 #endif
                 preference="browser.crashReports.unsubmittedCheck.autoSubmit2"
-<<<<<<< HEAD
-                label="&alwaysSubmitCrashReports1.label;"
-                accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
-#if 0
-||||||| merged common ancestors
-                label="&alwaysSubmitCrashReports1.label;"
-                accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
-=======
                 label="&sendBackloggedCrashReports.label;"
                 accesskey="&sendBackloggedCrashReports.accesskey;"
                 flex="1"/>
->>>>>>> origin/upstream-releases
+#if 0
       <label id="crashReporterLearnMore"
              class="learnMore text-link">&crashReporterLearnMore.label;</label>
 #endif

@@ -1364,15 +1364,9 @@ var gBrowserInit = {
     BrowserOnClick.init();
     FeedHandler.init();
     CompactTheme.init();
-<<<<<<< HEAD
 #if 0
-    AboutPrivateBrowsingListener.init();
-#endif
-||||||| merged common ancestors
-    AboutPrivateBrowsingListener.init();
-=======
     AboutCapabilitiesListener.init();
->>>>>>> origin/upstream-releases
+#endif
     TrackingProtection.init();
     CaptivePortalWatcher.init();
     ZoomUI.init(window);
@@ -9449,19 +9443,13 @@ var PanicButtonNotifier = {
   },
 };
 
-<<<<<<< HEAD
 #if 0
-var AboutPrivateBrowsingListener = {
-||||||| merged common ancestors
-var AboutPrivateBrowsingListener = {
-=======
 var AboutCapabilitiesListener = {
   _topics: [
     "AboutCapabilities:OpenPrivateWindow",
     "AboutCapabilities:DontShowIntroPanelAgain",
   ],
 
->>>>>>> origin/upstream-releases
   init() {
     let mm = window.messageManager;
     for (let topic of this._topics) {

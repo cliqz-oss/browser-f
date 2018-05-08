@@ -108,14 +108,8 @@
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-<<<<<<< HEAD
 #if 0
-      <menuseparator id="context_sendTabToDevice_separator"/>
-||||||| merged common ancestors
-      <menuseparator id="context_sendTabToDevice_separator"/>
-=======
       <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
->>>>>>> origin/upstream-releases
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             class="sync-ui-item"
             accesskey="&sendTabToDevice.accesskey;">

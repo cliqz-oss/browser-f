@@ -36,20 +36,3 @@
   -->
 <!ENTITY translation.options.attribution.beforeLogo "Translations by">
 <!ENTITY translation.options.attribution.afterLogo "">
-<<<<<<< HEAD
-
-<!ENTITY  drmContent2.label              "Digital Rights Management (DRM) Content">
-
-<!ENTITY  playDRMContent2.label          "Play DRM-controlled content">
-<!ENTITY  playDRMContent2.accesskey      "P">
-<!ENTITY  playDRMContent.learnMore.label "Learn more">
-<!ENTITY  mozillaSupportLearnMore.label  "(Mozilla Support)">
-||||||| merged common ancestors
-
-<!ENTITY  drmContent2.label              "Digital Rights Management (DRM) Content">
-
-<!ENTITY  playDRMContent2.label          "Play DRM-controlled content">
-<!ENTITY  playDRMContent2.accesskey      "P">
-<!ENTITY  playDRMContent.learnMore.label "Learn more">
-=======
->>>>>>> origin/upstream-releases

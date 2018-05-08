@@ -3910,7 +3910,6 @@ var CustomizableUI = {
   createSpecialWidget(aId, aDocument) {
     return CustomizableUIInternal.createSpecialWidget(aId, aDocument);
   },
-<<<<<<< HEAD
 
   /**
    * Cliqz.
@@ -3938,8 +3937,6 @@ var CustomizableUI = {
   isCliqzWidget(aWidgetId) {
     return CustomizableUI.CLIQZ_WIDGET_IDS.includes(aWidgetId);
   },
-||||||| merged common ancestors
-=======
 
   /**
    * Fills a submenu with menu items.
@@ -4020,7 +4017,6 @@ var CustomizableUI = {
 
     parent.appendChild(aSubview);
   },
->>>>>>> origin/upstream-releases
 };
 Object.freeze(this.CustomizableUI);
 Object.freeze(this.CustomizableUI.windows);

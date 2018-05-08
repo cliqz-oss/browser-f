@@ -16,13 +16,6 @@ ChromeUtils.defineModuleGetter(this, "AboutNewTab",
 // Dummy references to the files that this service no longer allows loading.
 // Bug 1409054 to remove "chrome://browser/content/abouthome/aboutHome.xhtml"
 
-<<<<<<< HEAD
-//const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
-const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
-||||||| merged common ancestors
-const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
-=======
->>>>>>> origin/upstream-releases
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 

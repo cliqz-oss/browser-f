@@ -227,54 +227,23 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 
-<<<<<<< HEAD
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf deine Kamera und/oder dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf deine Fenster oder Bildschirme durch diese Website">
-||||||| merged common ancestors
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
-=======
-
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
->>>>>>> origin/upstream-releases
 
 <!ENTITY urlbar.servicesNotificationAnchor.tooltip        "Ansicht über eine Installation öffnen">
 <!ENTITY urlbar.translateNotificationAnchor.tooltip       "Diese Seite übersetzen">
 <!ENTITY urlbar.translatedNotificationAnchor.tooltip      "Übersetzung von Seiten verwalten">
 <!ENTITY urlbar.emeNotificationAnchor.tooltip             "Verwendung von DRM-geschützter Software verwalten">
 
-<<<<<<< HEAD
+<!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
+
 <!ENTITY urlbar.cameraBlocked.tooltip            "Du hast den Zugriff auf deine Kamera durch diese Website blockiert.">
 <!ENTITY urlbar.microphoneBlocked.tooltip        "Du hast den Zugriff auf dein Mikrofon durch diese Website blockiert.">
 <!ENTITY urlbar.screenBlocked.tooltip            "Du hast den Zugriff auf deinen Bildschirm durch diese Website blockiert.">
 <!ENTITY urlbar.geolocationBlocked.tooltip       "Du hast den Zugriff auf deinen Standort durch diese Website blockiert.">
-<!ENTITY urlbar.indexedDBBlocked.tooltip         "Du hast die Verwendung von Offline-Speicher durch diese Website blockiert.">
 <!ENTITY urlbar.webNotificationsBlocked.tooltip  "Du hast das Anzeigen von Benachrichtungen durch diese Website blockiert.">
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Du hast die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-
-||||||| merged common ancestors
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.indexedDBBlocked.tooltip         "Sie haben die Verwendung von Offline-Speicher durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-
-=======
-<!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
-
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
->>>>>>> origin/upstream-releases
 <!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
 <!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
 
@@ -422,36 +391,14 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.showAll.tooltip "Alle Tabs von diesem Gerät anzeigen">
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.tabsnotsyncing.label): This is shown
      when Sync is configured but syncing tabs is disabled. -->
-<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktiviere das Synchronisieren von Tabs, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
-<!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.label): This is shown
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktivieren Sie das Synchronisieren von Tabs, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
-<!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.label): This is shown
-=======
-<!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktivieren Sie das Synchronisieren von Tabs, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.subtitle): This is shown
->>>>>>> origin/upstream-releases
      when Sync is configured but this appears to be the only device attached to
      the account. We also show links to download Firefox for android/ios. -->
-<<<<<<< HEAD
-<!ENTITY appMenuRemoteTabs.noclients.title "Noch keine synchronisierten Tabs">
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.noclients.title "Noch keine synchronisierten Tabs">
-<!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-=======
-<!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
->>>>>>> origin/upstream-releases
 <!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
-<<<<<<< HEAD
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
-=======
 <!ENTITY appMenuRemoteTabs.opensyncprefs.label "Sync-Einstellungen öffnen">
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
->>>>>>> origin/upstream-releases
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
@@ -497,39 +444,13 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY moreMenu.label "Sonstiges">
 
 <!ENTITY openCmd.commandkey           "l">
-<<<<<<< HEAD
 <!ENTITY urlbar.placeholder2          "In Cliqz suchen oder Adresse eingeben">
-||||||| merged common ancestors
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
-=======
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
 <!ENTITY urlbar.placeholder3          "Suchwörter und Adressen hier eingeben">
->>>>>>> origin/upstream-releases
 <!ENTITY urlbar.accesskey             "s">
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Erweiterung:">
 <!ENTITY urlbar.switchToTab.label     "Wechseln zum Tab:">
 
-<<<<<<< HEAD
-<!ENTITY urlbar.searchSuggestionsNotification.question "Willst du ein besseres Sucherlebnis dank Suchvorschlägen?">
-<!ENTITY urlbar.searchSuggestionsNotification.learnMore "Weitere Informationen…">
-<!ENTITY urlbar.searchSuggestionsNotification.learnMore.accesskey "W">
-<!ENTITY urlbar.searchSuggestionsNotification.disable "Nein">
-<!ENTITY urlbar.searchSuggestionsNotification.disable.accesskey "N">
-<!ENTITY urlbar.searchSuggestionsNotification.enable "Ja">
-<!ENTITY urlbar.searchSuggestionsNotification.enable.accesskey "J">
-
-||||||| merged common ancestors
-<!ENTITY urlbar.searchSuggestionsNotification.question "Wollen Sie ein besseres Sucherlebnis dank Suchvorschlägen?">
-<!ENTITY urlbar.searchSuggestionsNotification.learnMore "Weitere Informationen…">
-<!ENTITY urlbar.searchSuggestionsNotification.learnMore.accesskey "W">
-<!ENTITY urlbar.searchSuggestionsNotification.disable "Nein">
-<!ENTITY urlbar.searchSuggestionsNotification.disable.accesskey "N">
-<!ENTITY urlbar.searchSuggestionsNotification.enable "Ja">
-<!ENTITY urlbar.searchSuggestionsNotification.enable.accesskey "J">
-
-=======
->>>>>>> origin/upstream-releases
 <!-- LOCALIZATION NOTE (urlbar.searchSuggestionsNotification.hintPrefix): Shown just before the suggestions opt-out hint. -->
 <!ENTITY urlbar.searchSuggestionsNotification.hintPrefix "Tipp:">
 <!-- LOCALIZATION NOTE (urlbar.searchSuggestionsNotification.hint): &#x1F50E; is the magnifier icon emoji, please don't change it. -->
@@ -891,21 +812,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
-<<<<<<< HEAD
 <!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.noclients.title    "Noch keine synchronisierten Tabs">
 <!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
-||||||| merged common ancestors
-<!ENTITY syncedTabs.sidebar.noclients.label    "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.noclients.title    "Noch keine synchronisierten Tabs">
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
-=======
-<!ENTITY syncedTabs.sidebar.noclients.label    "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
->>>>>>> origin/upstream-releases
 <!ENTITY syncedTabs.sidebar.unverified.label   "Ihr Konto muss verifiziert werden.">
 <!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
 <!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
@@ -948,17 +857,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncReAuthItem.accesskey     "v">
 <!ENTITY syncToolbarButton.label      "Synchronisieren">
 
-<<<<<<< HEAD
 <!ENTITY customizeMode.menuAndToolbars.header3 "Ziehe deine Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
-<!ENTITY customizeMode.menuAndToolbars.empty "Willst du mehr Werkzeuge?">
-<!ENTITY customizeMode.menuAndToolbars.emptyLink "Wähle aus Tausenden von Add-ons.">
-||||||| merged common ancestors
-<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehen Sie Ihre Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
-<!ENTITY customizeMode.menuAndToolbars.empty "Wollen Sie mehr Werkzeuge?">
-<!ENTITY customizeMode.menuAndToolbars.emptyLink "Wählen Sie aus Tausenden von Add-ons.">
-=======
-<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehen Sie Ihre Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
->>>>>>> origin/upstream-releases
 <!ENTITY customizeMode.restoreDefaults "Standard wiederherstellen">
 <!ENTITY customizeMode.done "Fertig">
 <!ENTITY customizeMode.titlebar "Titelleiste">
@@ -971,12 +870,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
 <!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
-<<<<<<< HEAD
-<!ENTITY customizeMode.emptyOverflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-||||||| merged common ancestors
-<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
 <!ENTITY customizeMode.overflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
 <!ENTITY customizeMode.uidensity "Dichte">
@@ -1125,12 +1018,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      used as a textual label for the indicator used by assistive technology
      users. -->
 <!ENTITY accessibilityIndicator.tooltip "Funktionen für Barrierefreiheit aktiviert">
-<<<<<<< HEAD
-
-<!-- Cliqz -->
-<!ENTITY connect.panelUI.label "Connect">
-||||||| merged common ancestors
-=======
 
 <!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
      The first <image> tag is replaced with the icon for the add-ons menu.
@@ -1140,4 +1027,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
->>>>>>> origin/upstream-releases
+
+<!-- Cliqz -->
+<!ENTITY connect.panelUI.label "Connect">

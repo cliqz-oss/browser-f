@@ -99,15 +99,9 @@
 <!ENTITY  rememberActions.removeCookies.label "einzelne Cookies">
 <!ENTITY  rememberActions.post.label          " löschen.">
 
-<<<<<<< HEAD
-<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzt.">
-||||||| merged common ancestors
-<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.">
-=======
 <!ENTITY  rememberDescription1.label      "&brandShortName; wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.">
 
-<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.">
->>>>>>> origin/upstream-releases
+<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzt.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (dontrememberActions.post.label): include a starting space as needed -->
@@ -115,19 +109,11 @@
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
 
-<<<<<<< HEAD
-<!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
-<!ENTITY  privateBrowsingPermanent2.accesskey "V">
-||||||| merged common ancestors
-<!ENTITY  privateBrowsingPermanent2.label "Immer den Privaten Modus verwenden">
-<!ENTITY  privateBrowsingPermanent2.accesskey "M">
-=======
 <!ENTITY  clearHistoryButton.label       "Chronik leeren…">
 <!ENTITY  clearHistoryButton.accesskey   "C">
 
-<!ENTITY  privateBrowsingPermanent2.label "Immer den Privaten Modus verwenden">
-<!ENTITY  privateBrowsingPermanent2.accesskey "M">
->>>>>>> origin/upstream-releases
+<!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
+<!ENTITY  privateBrowsingPermanent2.accesskey "V">
 
 <!ENTITY  rememberHistory2.label      "Besuchte Seiten und Download-Chronik speichern">
 <!ENTITY  rememberHistory2.accesskey  "w">

@@ -1433,6 +1433,7 @@ window._gBrowser = {
       aNextTabParentId = params.nextTabParentId;
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
+      aPrivate = params.private;
     }
 
     var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1462,7 +1463,8 @@ window._gBrowser = {
       openerBrowser: aOpenerBrowser,
       nextTabParentId: aNextTabParentId,
       focusUrlBar: aFocusUrlBar,
-      name: aName
+      name: aName,
+      private: aPrivate
     });
     if (!bgLoad)
       this.selectedTab = tab;
@@ -1848,6 +1850,10 @@ window._gBrowser = {
       aParams.remoteType = E10SUtils.DEFAULT_REMOTE_TYPE;
     }
 
+    if (aParams.private) {
+      b.setAttribute("mozprivatebrowsing", 1);
+    }
+
     if (aParams.remoteType) {
       b.setAttribute("remoteType", aParams.remoteType);
       b.setAttribute("remote", "true");
@@ -2195,6 +2201,7 @@ window._gBrowser = {
     var aNoInitialLabel;
     var aFocusUrlBar;
     var aName;
+    var aPrivate;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2226,6 +2233,7 @@ window._gBrowser = {
       aNoInitialLabel = params.noInitialLabel;
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
+      aPrivate = params.private;
     }
 
     // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2359,6 +2367,7 @@ window._gBrowser = {
       // icon for the tab would be set incorrectly (see bug 1195981).
       if (aURI == BROWSER_NEW_TAB_URL &&
           !aUserContextId &&
+          !aPrivate &&
           !PrivateBrowsingUtils.isWindowPrivate(window)) {
         b = this._getPreloadedBrowser();
         if (b) {
@@ -2375,7 +2384,8 @@ window._gBrowser = {
           sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
           openerWindow: aOpener,
           nextTabParentId: aNextTabParentId,
-          name: aName
+          name: aName,
+          private: !!aPrivate
         });
       }
 
@@ -2471,10 +2481,18 @@ window._gBrowser = {
           referrerPolicy: aReferrerPolicy,
           charset: aCharset,
           postData: aPostData,
+          ensurePrivate: aPrivate,
         });
       } catch (ex) {
         Cu.reportError(ex);
       }
+    }
+    // Reload blank page in private mode, if requested so.
+    else if (aPrivate) {
+      b.loadURIWithFlags(
+          aURI, {
+          ensurePrivate: true,
+      });
     }
 
     // If we're opening a tab related to the an existing tab, move it
@@ -2904,6 +2922,16 @@ window._gBrowser = {
 
     var wasPinned = aTab.pinned;
 
+    // In the multi-process case, it's possible an asynchronous tab switch
+    // is still underway. If so, then it's possible that the last visible
+    // browser is the one we're in the process of removing. There's the
+    // risk of displaying preloaded browsers that are at the end of the
+    // deck if we remove the browser before the switch is complete, so
+    // we alert the switcher in order to show a spinner instead.
+    if (this._switcher) {
+      this._switcher.onTabRemoved(aTab);
+    }
+
     // Remove the tab ...
     this.tabContainer.removeChild(aTab);
 
@@ -2933,16 +2961,6 @@ window._gBrowser = {
     // steps.
 
     var panel = this.getNotificationBox(browser);
-
-    // In the multi-process case, it's possible an asynchronous tab switch
-    // is still underway. If so, then it's possible that the last visible
-    // browser is the one we're in the process of removing. There's the
-    // risk of displaying preloaded browsers that are at the end of the
-    // deck if we remove the browser before the switch is complete, so
-    // we alert the switcher in order to show a spinner instead.
-    if (this._switcher) {
-      this._switcher.onTabRemoved(aTab);
-    }
 
     // This will unload the document. An unload handler could remove
     // dependant tabs, so it's important that the tabbrowser is now in
@@ -3011,10 +3029,11 @@ window._gBrowser = {
   },
 
   swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-    // Do not allow transfering a private tab to a non-private window
-    // and vice versa.
-    if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-      PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal))
+    // Cliqz. Auto-Forget-Tabs:
+    // Transfering a private tab to a non-private window is fine.
+    // Transfering a normal tab to a private window is not.
+    if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+        !aOtherTab.private)
       return;
 
     let ourBrowser = this.getBrowserForTab(aOurTab);
@@ -3383,6 +3402,10 @@ window._gBrowser = {
     for (var name in aOptions)
       options += "," + name + "=" + aOptions[name];
 
+    // Open private window if tab is private.
+    if (aTab.private)
+      options += ",private"
+
     // Play the tab closing animation to give immediate feedback while
     // waiting for the new window to appear.
     // content area when the docshells are swapped.
@@ -3480,12 +3503,15 @@ window._gBrowser = {
     // windows). We also ensure that the tab we create to swap into has
     // the same remote type and process as the one we're swapping in.
     // This makes sure we don't get a short-lived process for the new tab.
+    // Cliqz. We must create private tab in order to swap docShells with
+    // another private tab.
     let linkedBrowser = aTab.linkedBrowser;
     let params = {
       eventDetail: { adoptedTab: aTab },
       preferredRemoteType: linkedBrowser.remoteType,
       sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-      skipAnimation: true
+      skipAnimation: true,
+      private: !!aTab.private
     };
     if (aTab.hasAttribute("usercontextid")) {
       // new tab must have the same usercontextid as the old one
@@ -4565,8 +4591,10 @@ class TabProgressListener {
       }
       // Tabs in private windows aren't registered as "Open" so
       // that they don't appear as switch-to-tab candidates.
+      // CLIQZ: also don't register windows from Forget tabs.
       if (!isBlankPageURL(aLocation.spec) &&
-          (!PrivateBrowsingUtils.isWindowPrivate(window) ||
+          ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
+            !PrivateBrowsingUtils.isBrowserPrivate(this.mTab.linkedBrowser)) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)) {
         gBrowser._unifiedComplete.registerOpenPage(aLocation, userContextId);
         this.mBrowser.registeredOpenURI = aLocation;

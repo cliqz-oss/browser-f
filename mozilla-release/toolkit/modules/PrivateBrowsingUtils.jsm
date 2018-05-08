@@ -12,19 +12,10 @@ const kAutoStartPref = "browser.privatebrowsing.autostart";
 // line for the current session.
 var gTemporaryAutoStartMode = false;
 
-<<<<<<< HEAD
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Ci = Components.interfaces;
-||||||| merged common ancestors
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-=======
 var PrivateBrowsingUtils = {
   get enabled() {
     return Services.policies.isAllowed("privatebrowsing");
   },
->>>>>>> origin/upstream-releases
 
   // Rather than passing content windows to this function, please use
   // isBrowserPrivate since it works with e10s.
@@ -50,8 +41,8 @@ var PrivateBrowsingUtils = {
       // There might be cases when aBrowser.loadContext is not yet (or not anymore)
       // exists for a given aBrowser. As we don't have any other way to know if it's
       // private or not, it's safer to assume it is.
-      Cu.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
-                     "does not have loadContext.");
+      Components.utils.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
+                                   "does not have loadContext.");
       return true;
     }
 

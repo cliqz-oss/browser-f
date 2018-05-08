@@ -52,7 +52,6 @@ const tablePreferences = [
   "urlclassifier.flashInfobarTable"
 ];
 
-<<<<<<< HEAD
 function reportPhishingURL(url, kind) {
   try {
     Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
@@ -67,12 +66,7 @@ function reportPhishingURL(url, kind) {
   }
 }
 
-this.SafeBrowsing = {
-||||||| merged common ancestors
-this.SafeBrowsing = {
-=======
 var SafeBrowsing = {
->>>>>>> origin/upstream-releases
 
   init() {
     if (this.initialized) {

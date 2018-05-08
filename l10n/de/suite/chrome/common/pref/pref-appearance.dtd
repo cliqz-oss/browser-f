@@ -22,30 +22,14 @@
 <!ENTITY showHideTooltips.accesskey             "t">
 
 <!ENTITY pref.locales.title                     "Sprache der Benutzeroberfläche">
-<<<<<<< HEAD
 <!ENTITY selectLocale.label                     "Wähle die Sprache, in der Text in Dialogboxen, Menüs, Symbolleisten und Schaltflächenbeschriftungen erscheint:">
-<!--LOCALIZATION NOTE (restartOnLangChange.label): Don't translate "&brandShortName;".
-    Place &brandShortName; in the phrase where the name of the application should appear
-||||||| merged common ancestors
-<!ENTITY selectLocale.label                     "Wählen Sie die Sprache, in der Text in Dialogboxen, Menüs, Symbolleisten und Schaltflächenbeschriftungen erscheint:">
-<!--LOCALIZATION NOTE (restartOnLangChange.label): Don't translate "&brandShortName;".
-    Place &brandShortName; in the phrase where the name of the application should appear
-=======
-<!ENTITY selectLocale.label                     "Wählen Sie die Sprache, in der Text in Dialogboxen, Menüs, Symbolleisten und Schaltflächenbeschriftungen erscheint:">
 
 <!--LOCALIZATION NOTE (dateTimeFormatting.label): labels/accesskeys for
      radiobuttons are set dynamically from prefutilities.properties
->>>>>>> origin/upstream-releases
 -->
-<<<<<<< HEAD
-<!ENTITY restartOnLangChange.label              "Spracheinstellungen werden angewendet, wenn du &brandShortName; neu startest.">
-||||||| merged common ancestors
-<!ENTITY restartOnLangChange.label              "Spracheinstellungen werden angewendet, wenn Sie &brandShortName; neu starten.">
-=======
 <!ENTITY dateTimeFormatting.label               "Datums- und Zeitformatierung">
->>>>>>> origin/upstream-releases
 
 <!--LOCALIZATION NOTE (restartOnLocaleChange.label): Don't translate "&brandShortName;".
     Place &brandShortName; in the phrase where the name of the application should appear
 -->
-<!ENTITY restartOnLocaleChange.label            "Sprach- und Formatierungseinstellungen werden angewendet, wenn Sie &brandShortName; neu starten.">
+<!ENTITY restartOnLocaleChange.label            "Sprach- und Formatierungseinstellungen werden angewendet, wenn du &brandShortName; neu startest.">

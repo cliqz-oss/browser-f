@@ -77,7 +77,6 @@ static const RedirEntry kRedirMap[] = {
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-<<<<<<< HEAD
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
@@ -85,10 +84,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
 # Replaced by Cliqz
-||||||| merged common ancestors
-=======
   // Actual activity stream URL for home and newtab are set in channel creation
->>>>>>> origin/upstream-releases
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "about:blank",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -96,13 +92,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::MAKE_LINKABLE |
     nsIAboutModule::ENABLE_INDEXED_DB },
-<<<<<<< HEAD
 #endif
-  // the newtab's actual URL will be determined when the channel is created
-||||||| merged common ancestors
-  // the newtab's actual URL will be determined when the channel is created
-=======
->>>>>>> origin/upstream-releases
   { "newtab", "about:blank",
     nsIAboutModule::ENABLE_INDEXED_DB |
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |

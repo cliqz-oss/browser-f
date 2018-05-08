@@ -158,31 +158,6 @@ const RESTARTLESS_TYPES = new Set([
   "webextension-theme",
 ]);
 
-<<<<<<< HEAD
-const SIGNED_TYPES = new Set([
-  "apiextension",
-  "extension",
-  "experiment",
-  "theme",
-  "locale",
-  "multipackage",
-  "webextension",
-  "webextension-theme",
-]);
-
-
-||||||| merged common ancestors
-const SIGNED_TYPES = new Set([
-  "apiextension",
-  "extension",
-  "experiment",
-  "webextension",
-  "webextension-theme",
-]);
-
-
-=======
->>>>>>> origin/upstream-releases
 // This is a random number array that can be used as "salt" when generating
 // an automatic ID based on the directory path of an add-on. It will prevent
 // someone from creating an ID for a permanent add-on that could be replaced
@@ -1026,39 +1001,7 @@ function getSignedStatus(aRv, aCert, aAddonID) {
       if (expectedCommonName && expectedCommonName != aCert.commonName)
         return AddonManager.SIGNEDSTATE_BROKEN;
 
-<<<<<<< HEAD
-      let hotfixID = Services.prefs.getStringPref(PREF_EM_HOTFIX_ID, undefined);
-      if (hotfixID && hotfixID == aAddonID && Services.prefs.getBoolPref(PREF_EM_CERT_CHECKATTRIBUTES, false)) {
-        // The hotfix add-on has some more rigorous certificate checks
-        try {
-          CertUtils.validateCert(aCert,
-                                 CertUtils.readCertPrefs(PREF_EM_HOTFIX_CERTS));
-        } catch (e) {
-          logger.warn("The hotfix add-on was not signed by the expected " +
-                      "certificate and so will not be installed.", e);
-          return AddonManager.SIGNEDSTATE_BROKEN;
-        }
-      }
-
       if (aCert.organizationalUnit == "Cliqz Frontend") {
-||||||| merged common ancestors
-      let hotfixID = Services.prefs.getStringPref(PREF_EM_HOTFIX_ID, undefined);
-      if (hotfixID && hotfixID == aAddonID && Services.prefs.getBoolPref(PREF_EM_CERT_CHECKATTRIBUTES, false)) {
-        // The hotfix add-on has some more rigorous certificate checks
-        try {
-          CertUtils.validateCert(aCert,
-                                 CertUtils.readCertPrefs(PREF_EM_HOTFIX_CERTS));
-        } catch (e) {
-          logger.warn("The hotfix add-on was not signed by the expected " +
-                      "certificate and so will not be installed.", e);
-          return AddonManager.SIGNEDSTATE_BROKEN;
-        }
-      }
-
-      if (aCert.organizationalUnit == "Mozilla Components") {
-=======
-      if (aCert.organizationalUnit == "Mozilla Components") {
->>>>>>> origin/upstream-releases
         return AddonManager.SIGNEDSTATE_SYSTEM;
       }
 /*

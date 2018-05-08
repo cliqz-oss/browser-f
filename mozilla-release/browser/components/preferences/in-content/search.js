@@ -17,12 +17,8 @@ Preferences.addAll([
   { id: "browser.search.hiddenOneOffs", type: "unichar" },
 /* Cliqz. Not used
   { id: "browser.search.widget.inNavBar", type: "bool" },
-<<<<<<< HEAD
 */
-||||||| merged common ancestors
-=======
   { id: "browser.urlbar.matchBuckets", type: "string" },
->>>>>>> origin/upstream-releases
 ]);
 
 const ENGINE_FLAVOR = "text/x-moz-search-engine";

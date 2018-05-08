@@ -9,20 +9,9 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-<<<<<<< HEAD
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/AutoForgetTabsMonitor.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
-||||||| merged common ancestors
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
-=======
 ChromeUtils.defineModuleGetter(this, "ReaderMode",
->>>>>>> origin/upstream-releases
   "resource://gre/modules/ReaderMode.jsm");
 ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");

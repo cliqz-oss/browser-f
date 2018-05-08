@@ -21,14 +21,8 @@ ChromeUtils.defineModuleGetter(this, "SiteDataManager",
 XPCOMUtils.defineLazyPreferenceGetter(this, "trackingprotectionUiEnabled",
                                       "privacy.trackingprotection.ui.enabled");
 
-<<<<<<< HEAD
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-||||||| merged common ancestors
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-=======
 ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
->>>>>>> origin/upstream-releases
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
@@ -379,15 +373,7 @@ var gPrivacyPane = {
     this._pane = document.getElementById("panePrivacy");
     this._initMasterPasswordUI();
     this._initSafeBrowsing();
-<<<<<<< HEAD
-    this.updateCacheSizeInputField();
-    this.updateActualCacheSize();
     this._initGhosteryUI();
-||||||| merged common ancestors
-    this.updateCacheSizeInputField();
-    this.updateActualCacheSize();
-=======
->>>>>>> origin/upstream-releases
 
     setEventListener("notificationSettingsButton", "command",
       gPrivacyPane.showNotificationExceptions);
@@ -1219,7 +1205,7 @@ var gPrivacyPane = {
 
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
-<<<<<<< HEAD
+    checkbox.disabled = noMP && !Services.policies.isAllowed("createMasterPassword");
 
     gPasswordManagers.init();
   },
@@ -1229,10 +1215,6 @@ var gPrivacyPane = {
    */
   _initGhosteryUI() {
     gPrivacyManagers.init();
-||||||| merged common ancestors
-=======
-    checkbox.disabled = noMP && !Services.policies.isAllowed("createMasterPassword");
->>>>>>> origin/upstream-releases
   },
 
   /**

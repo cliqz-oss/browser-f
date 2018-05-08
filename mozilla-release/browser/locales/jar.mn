@@ -86,13 +86,7 @@
     locale/browser/preferences/siteDataSettings.dtd     (%chrome/browser/preferences/siteDataSettings.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/preferences/sync.dtd               (%chrome/browser/preferences/sync.dtd)
-<<<<<<< HEAD
 #endif
-    locale/browser/preferences/tabs.dtd               (%chrome/browser/preferences/tabs.dtd)
-||||||| merged common ancestors
-    locale/browser/preferences/tabs.dtd               (%chrome/browser/preferences/tabs.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/preferences/translation.dtd        (%chrome/browser/preferences/translation.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)

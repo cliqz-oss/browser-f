@@ -1260,13 +1260,8 @@ pref("services.sync.syncedTabs.showRemoteIcons", true);
 pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org",
      sticky);
 #else
-<<<<<<< HEAD
-sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
-||||||| merged common ancestors
-sticky_pref("lightweightThemes.selectedThemeID", "");
-=======
-pref("lightweightThemes.selectedThemeID", "", sticky);
->>>>>>> origin/upstream-releases
+pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org",
+     sticky);
 #endif
 
 // Whether the character encoding menu is under the main Firefox button. This

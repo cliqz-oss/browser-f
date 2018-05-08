@@ -5561,16 +5561,6 @@ pref("browser.safebrowsing.id", "Firefox");
 
 // Download protection
 pref("browser.safebrowsing.downloads.enabled", true);
-<<<<<<< HEAD
-#else
-pref("browser.safebrowsing.downloads.enabled", true);
-#endif
-||||||| merged common ancestors
-#else
-pref("browser.safebrowsing.downloads.enabled", false);
-#endif
-=======
->>>>>>> origin/upstream-releases
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 pref("browser.safebrowsing.downloads.remote.timeout_ms", 10000);
 pref("browser.safebrowsing.downloads.remote.url", "https://sb-ssl.google.com/safebrowsing/clientreport/download?key=%GOOGLE_API_KEY%");

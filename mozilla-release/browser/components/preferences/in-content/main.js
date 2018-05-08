@@ -7,37 +7,15 @@
 /* import-globals-from ../../../../toolkit/mozapps/preferences/fontbuilder.js */
 /* import-globals-from ../../../base/content/aboutDialog-appUpdater.js */
 
-<<<<<<< HEAD
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Downloads.jsm");
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("resource:///modules/ShellService.jsm");
-Components.utils.import("resource:///modules/TransientPrefs.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
-Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CloudStorage",
-||||||| merged common ancestors
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Downloads.jsm");
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("resource:///modules/ShellService.jsm");
-Components.utils.import("resource:///modules/TransientPrefs.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
-Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CloudStorage",
-=======
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 ChromeUtils.import("resource:///modules/ShellService.jsm");
 ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "CloudStorage",
->>>>>>> origin/upstream-releases
   "resource://gre/modules/CloudStorage.jsm");
 
 // Constants & Enumeration Values
@@ -392,16 +370,9 @@ var gMainPane = {
 
 #if 0
     this.updateBrowserStartupLastSession();
-<<<<<<< HEAD
-    handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
-||||||| merged common ancestors
-
-    handleControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY);
-=======
 
     handleControllingExtension(
       URL_OVERRIDES_TYPE, NEW_TAB_KEY, NEW_TAB_STRING_ID);
->>>>>>> origin/upstream-releases
     let newTabObserver = {
       observe(subject, topic, data) {
         handleControllingExtension(
@@ -539,7 +510,6 @@ var gMainPane = {
       : "aboutDialog.architecture.thirtyTwoBit";
     let arch = bundle.GetStringFromName(archResource);
 
-<<<<<<< HEAD
     // Add Firefox and nav-extension versions
     let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
       let componentsVersion = Services.appinfo.platformVersion;
@@ -551,15 +521,11 @@ var gMainPane = {
 
       document.getElementById("version").textContent = version;
     });
-||||||| merged common ancestors
-    document.getElementById("version").textContent = version;
-=======
     document.l10n.setAttributes(
       document.getElementById("updateAppInfo"),
       "update-application-info",
       { version }
     );
->>>>>>> origin/upstream-releases
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
@@ -950,24 +916,11 @@ var gMainPane = {
     let useCurrent = document.getElementById("useCurrent");
     let tabs = this._getTabsForHomePage();
 
-<<<<<<< HEAD
-    if (tabs.length > 1)
-      useCurrent.label = useCurrent.getAttribute("label2");
-    else
-      useCurrent.label = useCurrent.getAttribute("label1");
-#if 0
-||||||| merged common ancestors
-    if (tabs.length > 1)
-      useCurrent.label = useCurrent.getAttribute("label2");
-    else
-      useCurrent.label = useCurrent.getAttribute("label1");
-
-=======
     const tabCount = tabs.length;
 
     document.l10n.setAttributes(useCurrent, "use-current-pages", { tabCount });
 
->>>>>>> origin/upstream-releases
+#if 0
     // If the homepage is controlled by an extension then you can't use this.
     if (await getControllingExtensionInfo(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)) {
       return;

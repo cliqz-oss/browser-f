@@ -183,7 +183,6 @@ var MigratorPrototype = {
   },
 
   /**
-<<<<<<< HEAD
    * Cliqz
    * Flag for Firefox migrator. Only FirefoxProfileMigrator must set it to true.
    */
@@ -192,25 +191,6 @@ var MigratorPrototype = {
   },
 
   /**
-   * OVERRIDE IF AND ONLY IF your migrator supports importing the homepage.
-   * @see nsIBrowserProfileMigrator
-   */
-  get sourceHomePageURL() {
-    return "";
-  },
-
-  /**
-||||||| merged common ancestors
-   * OVERRIDE IF AND ONLY IF your migrator supports importing the homepage.
-   * @see nsIBrowserProfileMigrator
-   */
-  get sourceHomePageURL() {
-    return "";
-  },
-
-  /**
-=======
->>>>>>> origin/upstream-releases
    * Override if the data to migrate is locked/in-use and the user should
    * probably shutdown the source browser.
    */
@@ -388,7 +368,6 @@ var MigratorPrototype = {
       }
     };
 
-<<<<<<< HEAD
     /**
      * Cliqz
      * In Cliqz browser it is possible to import data from Firefox always, not
@@ -399,13 +378,8 @@ var MigratorPrototype = {
      * copied). So we replace this flag to our own, which signal about importing
      * from Firefox.
      */
-    if (MigrationUtils.isStartupMigration && !this.isFirefoxMigrator) {
-||||||| merged common ancestors
-    if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator) {
-=======
-    if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator &&
+    if (MigrationUtils.isStartupMigration && !this.isFirefoxMigrator &&
         Services.policies.isAllowed("defaultBookmarks")) {
->>>>>>> origin/upstream-releases
       MigrationUtils.profileStartup.doStartup();
       // First import the default bookmarks.
       // Note: We do not need to do so for the Firefox migrator

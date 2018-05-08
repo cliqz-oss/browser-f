@@ -55,9 +55,12 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
-<<<<<<< HEAD
 #if MOZ_SERVICES_SYNC
-  register_module("paneSync", gSyncPane);
+  if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
+    document.getElementById("category-sync").hidden = false;
+    document.getElementById("weavePrefsDeck").removeAttribute("data-hidden-from-search");
+    register_module("paneSync", gSyncPane);
+  }
 #endif
   register_module("paneConnect", gConnectPane);
   // Cliqz. DB-1230: Display the rich list item when connect module is available
@@ -70,15 +73,6 @@ function init_all() {
   } catch (e) {
     Cu.reportError(e);
   }
-||||||| merged common ancestors
-  register_module("paneSync", gSyncPane);
-=======
-  if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
-    document.getElementById("category-sync").hidden = false;
-    document.getElementById("weavePrefsDeck").removeAttribute("data-hidden-from-search");
-    register_module("paneSync", gSyncPane);
-  }
->>>>>>> origin/upstream-releases
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();

@@ -177,18 +177,12 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-<<<<<<< HEAD
         <toolbarbutton id="appMenu-cliqz-connect-button"
                        label="&connect.panelUI.label;"
                        class="subviewbutton subviewbutton-iconic"
                        oncommand="openPreferences('connect', {origin: 'ContainersCommand'});"/>
 #ifdef 0
-        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons">
-||||||| merged common ancestors
-        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons">
-=======
         <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons sync-ui-item">
->>>>>>> origin/upstream-releases
           <hbox id="appMenu-fxa-status"
                 flex="1"
                 defaultlabel="&fxaSignIn.label;"
@@ -212,14 +206,8 @@
             <observes element="sync-status" attribute="tooltiptext"/>
           </toolbarbutton>
         </toolbaritem>
-<<<<<<< HEAD
 #endif
-        <toolbarseparator/>
-||||||| merged common ancestors
-        <toolbarseparator/>
-=======
         <toolbarseparator class="sync-ui-item"/>
->>>>>>> origin/upstream-releases
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"
                        label="&newNavigatorCmd.label;"

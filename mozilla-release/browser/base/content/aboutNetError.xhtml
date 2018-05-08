@@ -170,16 +170,11 @@
         if (illustratedErrors.includes(err)) {
           document.body.classList.add("illustrated", err);
         }
-<<<<<<< HEAD
         */
-||||||| merged common ancestors
-
-=======
         if (err == "blockedByPolicy") {
           document.body.classList.add("blocked");
         }
 
->>>>>>> origin/upstream-releases
         gIsCertError = (err == "nssBadCert");
         // Only worry about captive portals if this is a cert error.
         let showCaptivePortalUI = isCaptive() && gIsCertError;

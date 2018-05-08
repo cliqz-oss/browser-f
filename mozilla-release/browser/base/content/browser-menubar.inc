@@ -598,10 +598,12 @@
 #else
                           />
 #endif
+#if 0
                 <menuitem id="menu_openTour"
                           oncommand="openTourPage();"
                           label="&helpShowTour2.label;"
                           accesskey="&helpShowTour2.accesskey;"/>
+#endif
                 <menuitem id="menu_keyboardShortcuts"
                           oncommand="openHelpLink('keyboard-shortcuts')"
                           onclick="checkForMiddleClick(this, event);"
@@ -612,11 +614,13 @@
                           label="&helpTroubleshootingInfo.label;"
                           oncommand="openTroubleshootingPage()"
                           onclick="checkForMiddleClick(this, event);"/>
+#if 0
                 <menuitem id="feedbackPage"
                           accesskey="&helpFeedbackPage.accesskey;"
                           label="&helpFeedbackPage.label;"
                           oncommand="openFeedbackPage()"
                           onclick="checkForMiddleClick(this, event);"/>
+#endif
                 <menuitem id="helpSafeMode"
                           accesskey="&helpSafeMode.accesskey;"
                           label="&helpSafeMode.label;"

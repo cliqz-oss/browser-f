@@ -1218,22 +1218,12 @@ var gBuiltInActions = [
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
     },
-<<<<<<< HEAD
-  }
-||||||| merged common ancestors
-  },
-=======
   }
 ];
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
 if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   gBuiltInActions.push(
->>>>>>> origin/upstream-releases
   // send to device
   {
     id: "sendToDevice",
@@ -1261,18 +1251,9 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
           .onShowingSubview(panelViewNode);
       },
     },
-<<<<<<< HEAD
-  }
-#endif
-];
-||||||| merged common ancestors
-  }
-];
-=======
   });
 }
->>>>>>> origin/upstream-releases
-
+#endif
 
 /**
  * Gets a BrowserPageActions object in a browser window.

@@ -621,8 +621,7 @@ var LightWeightThemeWebInstaller = {
     return this._manager = temp.LightweightThemeManager;
   },
 
-<<<<<<< HEAD
-  _installRequest(dataString, baseURI) {
+  _installRequest(dataString, principal, baseURI) {
     let notificationBox = gBrowser.getNotificationBox();
     // remove previous notification
     ["lwtheme-install-request",
@@ -638,17 +637,11 @@ var LightWeightThemeWebInstaller = {
         []);
 #if 0
     // Disable LW themes in Cliqz.
-
-||||||| merged common ancestors
-  _installRequest(dataString, baseURI) {
-=======
-  _installRequest(dataString, principal, baseURI) {
     // Don't allow installing off null principals.
     if (!principal.URI) {
       return;
     }
 
->>>>>>> origin/upstream-releases
     let data = this._manager.parseTheme(dataString, baseURI);
 
     if (!data) {
@@ -744,30 +737,16 @@ var LightWeightThemeWebInstaller = {
     this._manager.resetPreview();
   },
 
-<<<<<<< HEAD
-  _isAllowed(srcURIString) {
+  _isAllowed(principal) {
     return false;  // Disable LW themes in Cliqz.
 #if 0
-    let uri;
-    try {
-      uri = makeURI(srcURIString);
-    } catch (e) {
-      // makeURI fails if srcURIString is a nonsense URI
-||||||| merged common ancestors
-  _isAllowed(srcURIString) {
-    let uri;
-    try {
-      uri = makeURI(srcURIString);
-    } catch (e) {
-      // makeURI fails if srcURIString is a nonsense URI
-=======
-  _isAllowed(principal) {
     if (!principal || !principal.URI || !principal.URI.schemeIs("https")) {
       return false;
     }
 
     let pm = Services.perms;
     return pm.testPermission(principal.URI, "install") == pm.ALLOW_ACTION;
+#endif
   },
 
   _shouldShowUndoPrompt(principal) {
@@ -777,7 +756,6 @@ var LightWeightThemeWebInstaller = {
 
     let prePath = principal.URI.prePath;
     if (prePath == "https://discovery.addons.mozilla.org") {
->>>>>>> origin/upstream-releases
       return false;
     }
 
@@ -788,15 +766,4 @@ var LightWeightThemeWebInstaller = {
     return true;
   },
 
-<<<<<<< HEAD
-    let pm = Services.perms;
-    return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
-#endif
-  }
-||||||| merged common ancestors
-    let pm = Services.perms;
-    return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
-  }
-=======
->>>>>>> origin/upstream-releases
 };

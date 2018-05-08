@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
@@ -21,29 +20,4 @@
 <!ENTITY restoreDefault.label      "Restore to Default">
 <!ENTITY restoreDefault.accesskey  "R">
 
-||||||| merged common ancestors
-<!-- This Source Code Form is subject to the terms of the Mozilla Public
-   - License, v. 2.0. If a copy of the MPL was not distributed with this
-   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-
-<!ENTITY startup.label             "Startup">
-
-<!ENTITY startupPage2.label        "When &brandShortName; starts">
-<!ENTITY startupPage2.accesskey    "s">
-<!ENTITY startupUserHomePage.label "Show your home page">
-<!ENTITY startupBlankPage.label    "Show a blank page">
-<!ENTITY startupPrevSession.label  "Show your windows and tabs from last time">
-
-<!ENTITY homepage2.label           "Home page">
-<!ENTITY homepage2.accesskey       "P">
-<!ENTITY useCurrentPage.label      "Use Current Page">
-<!ENTITY useCurrentPage.accesskey  "C">
-<!ENTITY useMultiple.label         "Use Current Pages">
-<!ENTITY chooseBookmark.label      "Use Bookmark…">
-<!ENTITY chooseBookmark.accesskey  "B">
-<!ENTITY restoreDefault.label      "Restore to Default">
-<!ENTITY restoreDefault.accesskey  "R">
-
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY disableExtension.label    "Disable Extension">

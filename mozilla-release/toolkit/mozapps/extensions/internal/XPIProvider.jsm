@@ -6580,23 +6580,9 @@ class SystemAddonInstallLocation extends MutableDirectoryInstallLocation {
       return false;
     }
 
-<<<<<<< HEAD
 /*
  Cliqz - https-everywhere is unpacked non bootstrap addon, though we want
  it to be a system addon. Thus we disable those checks for now
-    if (aAddon.unpack) {
-      logger.warn(`System add-on ${aAddon.id} isn't a packed add-on.`);
-      return false;
-    }
-
-||||||| merged common ancestors
-    if (aAddon.unpack) {
-      logger.warn(`System add-on ${aAddon.id} isn't a packed add-on.`);
-      return false;
-    }
-
-=======
->>>>>>> origin/upstream-releases
     if (!aAddon.bootstrap) {
       logger.warn(`System add-on ${aAddon.id} isn't restartless.`);
       return false;

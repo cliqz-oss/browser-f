@@ -13877,19 +13877,6 @@
     "releaseChannelCollection": "opt-out",
     "bug_numbers": [1426270],
     "alert_emails": ["nnethercote@mozilla.com"]
-<<<<<<< HEAD
-  },
-  "REPORT_DECEPTIVE_SITE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 3,
-    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
-    "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "PERMISSION_REQUEST_ORIGIN_SCHEME": {
     "record_in_processes": ["main"],
@@ -13918,6 +13905,15 @@
     "kind": "boolean",
     "keyed": true,
     "description": "Permission requests (showing a permission prompt) by whether they were requested from code handling a user input event."
->>>>>>> origin/upstream-releases
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

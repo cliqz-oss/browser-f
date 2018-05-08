@@ -216,14 +216,8 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
       allowThirdPartyFixup: aAllowThirdPartyFixup,
       postData: aPostData,
       referrerURI: aReferrerURI,
-<<<<<<< HEAD
-      referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_UNSET,
-      private: aPrivate
-||||||| merged common ancestors
-      referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_UNSET,
-=======
       referrerPolicy: Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
->>>>>>> origin/upstream-releases
+      private: aPrivate,
     };
   }
 

@@ -7,17 +7,9 @@
 /* import-globals-from aboutDialog-appUpdater.js */
 
 // Services = object with smart getters for common XPCOM services
-<<<<<<< HEAD
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-||||||| merged common ancestors
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-=======
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
->>>>>>> origin/upstream-releases
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
 function init(aEvent) {
   if (aEvent.target != document)

@@ -452,14 +452,10 @@ nsDocShell::~nsDocShell()
 nsresult
 nsDocShell::Init()
 {
-<<<<<<< HEAD
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Init", this));
 
-||||||| merged common ancestors
-=======
   MOZ_ASSERT(!mIsBeingDestroyed);
 
->>>>>>> origin/upstream-releases
   nsresult rv = nsDocLoader::Init();
   NS_ENSURE_SUCCESS(rv, rv);
 

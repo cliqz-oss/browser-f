@@ -98,21 +98,9 @@ browser.jar:
         content/browser/defaultthemes/5.preview.jpg   (content/defaultthemes/5.preview.jpg)
         content/browser/defaultthemes/dark.icon.svg  (content/defaultthemes/dark.icon.svg)
         content/browser/defaultthemes/light.icon.svg (content/defaultthemes/light.icon.svg)
-<<<<<<< HEAD
-        content/browser/newtab/newTab.xhtml           (content/newtab/newTab.xhtml)
-*       content/browser/newtab/newTab.js              (content/newtab/newTab.js)
-        content/browser/newtab/newTab.css             (content/newtab/newTab.css)
-        content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
 #if CQZ_AUTO_PRIVATE_TAB
         content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
 #endif
-||||||| merged common ancestors
-        content/browser/newtab/newTab.xhtml           (content/newtab/newTab.xhtml)
-*       content/browser/newtab/newTab.js              (content/newtab/newTab.js)
-        content/browser/newtab/newTab.css             (content/newtab/newTab.css)
-        content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
-=======
->>>>>>> origin/upstream-releases
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
@@ -138,15 +126,7 @@ browser.jar:
 *       content/browser/web-panels.xul                (content/web-panels.xul)
         content/browser/webext-panels.js              (content/webext-panels.js)
 *       content/browser/webext-panels.xul             (content/webext-panels.xul)
-<<<<<<< HEAD
-*       content/browser/baseMenuOverlay.xul           (content/baseMenuOverlay.xul)
 *       content/browser/nsContextMenu.js              (content/nsContextMenu.js)
-||||||| merged common ancestors
-*       content/browser/baseMenuOverlay.xul           (content/baseMenuOverlay.xul)
-        content/browser/nsContextMenu.js              (content/nsContextMenu.js)
-=======
-        content/browser/nsContextMenu.js              (content/nsContextMenu.js)
->>>>>>> origin/upstream-releases
 # XXX: We should exclude this one as well (bug 71895)
 *       content/browser/hiddenWindow.xul              (content/hiddenWindow.xul)
 #ifdef XP_MACOSX

@@ -51,14 +51,8 @@
       <hbox align="center" class="indent">
 #if 0
         <image class="face-sad"/>
-<<<<<<< HEAD
 #endif
-        <label id="isNotDefaultLabel" flex="1">&isNotDefault.label;</label>
-||||||| merged common ancestors
-        <label id="isNotDefaultLabel" flex="1">&isNotDefault.label;</label>
-=======
         <label id="isNotDefaultLabel" flex="1" data-l10n-id="is-not-default"/>
->>>>>>> origin/upstream-releases
         <button id="setDefaultButton"
                 class="accessory-button"
                 data-l10n-id="set-as-my-default-browser"
@@ -67,21 +61,14 @@
       <hbox align="center" class="indent">
 #if 0
         <image class="face-smile"/>
-<<<<<<< HEAD
 #endif
-        <label id="isDefaultLabel" flex="1">&isDefault.label;</label>
-||||||| merged common ancestors
-        <label id="isDefaultLabel" flex="1">&isDefault.label;</label>
-=======
         <label id="isDefaultLabel" flex="1" data-l10n-id="is-default"/>
->>>>>>> origin/upstream-releases
       </hbox>
     </deck>
   </vbox>
 #endif
 
   <vbox id="startupPageBox">
-<<<<<<< HEAD
     <label accesskey="&startupPage2.accesskey;"
            control="browserStartupPage">&startupPage2.label;</label>
     <checkbox
@@ -94,13 +81,8 @@
         label="&startupUserHomePage.label;"/>
 # Replaced by two checkboxes above.
 #if 0
-||||||| merged common ancestors
-    <label accesskey="&startupPage2.accesskey;"
-           control="browserStartupPage">&startupPage2.label;</label>
-=======
     <label data-l10n-id="startup-page"
            control="browserStartupPage"/>
->>>>>>> origin/upstream-releases
     <radiogroup id="browserStartupPage"
                 preference="browser.startup.page">
       <radio data-l10n-id="startup-user-homepage"
@@ -177,33 +159,6 @@
       </vbox>
     </hbox>
   </vbox>
-<<<<<<< HEAD
-||||||| merged common ancestors
-
-  <hbox class="homepage-buttons">
-    <button id="useCurrent"
-            flex="1"
-            class="homepage-button"
-            label=""
-            accesskey="&useCurrentPage.accesskey;"
-            label1="&useCurrentPage.label;"
-            label2="&useMultiple.label;"
-            preference="pref.browser.homepage.disable_button.current_page"/>
-    <button id="useBookmark"
-            flex="1"
-            class="homepage-button"
-            label="&chooseBookmark.label;"
-            accesskey="&chooseBookmark.accesskey;"
-            preference="pref.browser.homepage.disable_button.bookmark_page"
-            searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
-    <button id="restoreDefaultHomePage"
-            flex="1"
-            class="homepage-button"
-            label="&restoreDefault.label;"
-            accesskey="&restoreDefault.accesskey;"
-            preference="pref.browser.homepage.disable_button.restore_default"/>
-  </hbox>
-=======
 
   <hbox class="homepage-buttons">
     <button id="useCurrent"
@@ -225,7 +180,6 @@
             data-l10n-id="restore-default"
             preference="pref.browser.homepage.disable_button.restore_default"/>
   </hbox>
->>>>>>> origin/upstream-releases
 </groupbox>
 
 <!-- Tab preferences -->
