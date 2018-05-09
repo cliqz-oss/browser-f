@@ -16,7 +16,8 @@ from taskgraph.util.partials import (get_balrog_platform_name,
 from taskgraph.util.schema import validate_schema, Schema
 from taskgraph.util.scriptworker import (get_beetmover_bucket_scope,
                                          get_beetmover_action_scope,
-                                         get_phase)
+                                         get_phase,
+                                         get_worker_type_for_scope)
 from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import Any, Required, Optional
@@ -246,7 +247,7 @@ def make_task_description(config, jobs):
         task = {
             'label': label,
             'description': description,
-            'worker-type': 'scriptworker-prov-v1/beetmoverworker-v1',
+            'worker-type': get_worker_type_for_scope(config, bucket_scope),
             'scopes': [bucket_scope, action_scope],
             'dependencies': dependencies,
             'attributes': attributes,
@@ -261,7 +262,7 @@ def make_task_description(config, jobs):
 
 def generate_upstream_artifacts(job, build_task_ref, build_signing_task_ref,
                                 repackage_task_ref, repackage_signing_task_ref,
-                                platform, locale=None):
+                                platform, locale=None, project=None):
 
     build_mapping = UPSTREAM_ARTIFACT_UNSIGNED_PATHS
     build_signing_mapping = UPSTREAM_ARTIFACT_SIGNED_PATHS
@@ -297,10 +298,19 @@ def generate_upstream_artifacts(job, build_task_ref, build_signing_task_ref,
                     tasktype, platform, plarform_was_previously_matched_by_regex, platform_regex
                 )
                 if paths:
+                    usable_paths = paths[:]
+
+                    no_stub = ("mozilla-esr60", "jamun")
+                    if project in no_stub:
+                        # Stub installer is only generated on win32 and not on esr
+                        # XXX We really should have a better solution for this
+                        if 'target.stub-installer.exe' in usable_paths:
+                            usable_paths.remove('target.stub-installer.exe')
                     upstream_artifacts.append({
                         "taskId": {"task-reference": ref},
                         "taskType": tasktype,
-                        "paths": ["{}/{}".format(artifact_prefix, path) for path in paths],
+                        "paths": ["{}/{}".format(artifact_prefix, path)
+                                  for path in usable_paths],
                         "locale": locale or "en-US",
                     })
                 plarform_was_previously_matched_by_regex = platform_regex
@@ -386,7 +396,8 @@ def make_task_worker(config, jobs):
             'release-properties': craft_release_properties(config, job),
             'upstream-artifacts': generate_upstream_artifacts(
                 job, build_task_ref, build_signing_task_ref, repackage_task_ref,
-                repackage_signing_task_ref, platform, locale
+                repackage_signing_task_ref, platform, locale,
+                project=config.params['project']
             ),
         }
         if locale:
