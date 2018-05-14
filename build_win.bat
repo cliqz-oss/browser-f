@@ -32,18 +32,9 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::                              Default: not specified
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 IF "%CQZ_WORKSPACE%"=="" SET CQZ_WORKSPACE=%cd%
-
 SET LANG=en-US
 SET CQZ_CERT_DB_PATH=C:\certdb
-IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
-  SET WIN32_REDIST_DIR=C:\Program Files ^(x86^)\Microsoft Visual Studio 14.0\VC\redist\x64\Microsoft.VC140.CRT\
-  SET WIN_UCRT_REDIST_DIR=C:\Program Files ^(x86^)\Windows Kits\10\redist\ucrt\DLLs\x64\
-  SET BUILD_SHELL=C:\mozilla-build\start-shell-msvc2015-x64.bat
-) ELSE (
-  SET WIN32_REDIST_DIR=C:\Program Files ^(x86^)\Microsoft Visual Studio 14.0\VC\redist\x86\Microsoft.VC140.CRT\
-  SET WIN_UCRT_REDIST_DIR=C:\Program Files ^(x86^)\Windows Kits\10\redist\ucrt\DLLs\x86\
-  SET BUILD_SHELL=C:\mozilla-build\start-shell-msvc2015.bat
-)
+SET BUILD_SHELL=c:\mozilla-build\start-shell.bat
 SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe
 
 :::::::::::::::::::::::::::::::::::
@@ -80,8 +71,19 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 :: BOOTSTRAP
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Launch bootstrap stage
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive | call %BUILD_SHELL%
-ECHO rustup target add i686-pc-windows-msvc | call %BUILD_SHELL%
+
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./download_windows_artifacts.sh | call %BUILD_SHELL%
+
+SET RUSTC=c:\build\rustc\bin\rustc
+SET CARGO=c:\build\rustc\bin\cargo
+SET LLVM_CONFIG=c:\build\clang\bin\llvm-config
+IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
+  SET WIN32_REDIST_DIR=c:\build\redist\msvc\x64\
+  SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x64\
+) ELSE (
+  SET WIN32_REDIST_DIR=c:\build\redist\msvc\x86\
+  SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x86\
+)
 
 :::::::::::::::::::::::::::::::::::
 :: BUILD
