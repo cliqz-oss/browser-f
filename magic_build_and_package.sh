@@ -8,6 +8,14 @@
 set -e
 set -x
 
+# check if dependencies are installed.
+for prog in "wget" "rustc" "zip" "unzip" "yasm"; do
+    if [ -z $(which $prog) ]; then
+       echo "couldnot find build dependency: $prog"
+       exit 1
+    fi
+done
+
 source cliqz_env.sh
 
 cd $SRC_BASE
