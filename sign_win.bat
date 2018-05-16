@@ -1,7 +1,7 @@
 cd %CQZ_WORKSPACE%\obj
 
 set ff_version=''
-set archivator_exe=c:\mozilla-build\7zip\7z.exe
+set archivator_exe=c:\mozilla-build\bin\7z.exe
 for /F %%f in (..\mozilla-release\browser\config\version_display.txt) do set ff_version=%%f
 set ff_exe=%ff_version%.en-US
 echo %ff_exe%
