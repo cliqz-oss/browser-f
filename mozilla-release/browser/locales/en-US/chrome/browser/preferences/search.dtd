@@ -16,19 +16,17 @@
 
 <!ENTITY defaultSearchEngine.label             "Complementary search engine">
 
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Choose the default search engine to use in the address bar and search bar.">
-
 <!ENTITY chooseYourDefaultSearchEngine2.label  "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
 <!ENTITY provideSearchSuggestions.label        "Provide search suggestions">
 <!ENTITY provideSearchSuggestions.accesskey    "s">
 
-<!ENTITY showURLBarSuggestions2.label           "Show search suggestions in address bar results">
-<!ENTITY showURLBarSuggestions2.accesskey       "l">
+<!ENTITY showURLBarSuggestions2.label          "Show search suggestions in address bar results">
+<!ENTITY showURLBarSuggestions2.accesskey      "l">
 <!ENTITY urlBarSuggestionsPermanentPB.label    "Search suggestions will not be shown in location bar results because you have configured &brandShortName; to never remember history.">
 
 <!ENTITY oneClickSearchEngines.label           "Direct searches">
 
-<!ENTITY chooseWhichOneToDisplay2.label         "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
+<!ENTITY chooseWhichOneToDisplay2.label        "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
 
 <!ENTITY engineNameColumn.label                "Search Engine">
 <!ENTITY engineKeywordColumn.label             "Keyword">

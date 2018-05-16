@@ -60,7 +60,6 @@ can reach it easily. -->
 <!ENTITY  undoCloseTab.accesskey             "U">
 <!ENTITY  closeTab.label                     "Close Tab">
 <!ENTITY  closeTab.accesskey                 "c">
-<!ENTITY  duplicateTab.label                 "Duplicate Tab">
 
 <!ENTITY  listAllTabs.label      "List all tabs">
 
