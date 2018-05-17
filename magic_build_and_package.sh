@@ -34,11 +34,6 @@ fi
 echo '***** Building *****'
 ./mach build
 
-if [ $IS_WIN ]; then
-  echo '***** Windows build installer *****'
-  ./mach build installer
-fi
-
 echo '***** Packaging *****'
 ./mach package
 
