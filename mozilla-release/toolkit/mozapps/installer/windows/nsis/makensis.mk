@@ -54,39 +54,10 @@ ifdef MOZ_EXTERNAL_SIGNING_FORMAT
 	$(MOZ_SIGN_CMD) $(foreach f,$(MOZ_EXTERNAL_SIGNING_FORMAT),-f $(f)) "$@"
 endif
 
-<<<<<<< HEAD
-$(CONFIG_DIR)/7zSD.sfx:
-	cp $(SFX_MODULE) $(CONFIG_DIR)/7zSD_tmp.sfx
-	../../../../cliqz-helpers/rcedit.exe $(CONFIG_DIR)/7zSD_tmp.sfx -sfv "$(CQZ_VERSION)"
-	$(CYGWIN_WRAPPER) upx --best -o $(CONFIG_DIR)/7zSD.sfx $(CONFIG_DIR)/7zSD_tmp.sfx
+# Need to find new place for this stuff. For now need to change version manualy
+#	../../../../cliqz-helpers/rcedit.exe $(CONFIG_DIR)/7zSD_tmp.sfx -sfv "$(CQZ_VERSION)"
+#	$(CYGWIN_WRAPPER) upx --best -o $(CONFIG_DIR)/7zSD.sfx $(CONFIG_DIR)/7zSD_tmp.sfx
 
-installer::
-	$(INSTALL) $(CONFIG_DIR)/setup.exe $(DEPTH)/installer-stage
-	cd $(DEPTH)/installer-stage && $(CYGWIN_WRAPPER) $(7Z) a -r -t7z $(ABS_CONFIG_DIR)/app.7z -mx -m0=BCJ2 -m1=LZMA:d25 -m2=LZMA:d19 -m3=LZMA:d19 -mb0:1 -mb0s1:2 -mb0s2:3
-	$(MAKE) $(CONFIG_DIR)/7zSD.sfx
-	$(NSINSTALL) -D $(DIST)/$(PKG_INST_PATH)
-	cat $(CONFIG_DIR)/7zSD.sfx $(CONFIG_DIR)/app.tag $(CONFIG_DIR)/app.7z > "$(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe"
-	chmod 0755 "$(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe"
-ifdef MOZ_STUB_INSTALLER
-	cp $(CONFIG_DIR)/stub.exe "$(DIST)/$(PKG_INST_PATH)$(PKG_STUB_BASENAME).exe"
-	chmod 0755 "$(DIST)/$(PKG_INST_PATH)$(PKG_STUB_BASENAME).exe"
-endif
-||||||| merged common ancestors
-$(CONFIG_DIR)/7zSD.sfx:
-	$(CYGWIN_WRAPPER) upx --best -o $(CONFIG_DIR)/7zSD.sfx $(SFX_MODULE)
-
-installer::
-	$(INSTALL) $(CONFIG_DIR)/setup.exe $(DEPTH)/installer-stage
-	cd $(DEPTH)/installer-stage && $(CYGWIN_WRAPPER) $(7Z) a -r -t7z $(ABS_CONFIG_DIR)/app.7z -mx -m0=BCJ2 -m1=LZMA:d25 -m2=LZMA:d19 -m3=LZMA:d19 -mb0:1 -mb0s1:2 -mb0s2:3
-	$(MAKE) $(CONFIG_DIR)/7zSD.sfx
-	$(NSINSTALL) -D $(DIST)/$(PKG_INST_PATH)
-	cat $(CONFIG_DIR)/7zSD.sfx $(CONFIG_DIR)/app.tag $(CONFIG_DIR)/app.7z > "$(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe"
-	chmod 0755 "$(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe"
-ifdef MOZ_STUB_INSTALLER
-	cp $(CONFIG_DIR)/stub.exe "$(DIST)/$(PKG_INST_PATH)$(PKG_STUB_BASENAME).exe"
-	chmod 0755 "$(DIST)/$(PKG_INST_PATH)$(PKG_STUB_BASENAME).exe"
-endif
-=======
 ifdef ZIP_IN
 installer:: $(CONFIG_DIR)/setup.exe $(ZIP_IN)
 	@echo 'Packaging $(WIN32_INSTALLER_OUT).'
@@ -98,7 +69,6 @@ installer:: $(CONFIG_DIR)/setup.exe $(ZIP_IN)
 	  --tag $(topsrcdir)/$(MOZ_BUILD_APP)/installer/windows/app.tag \
 	  --setupexe $(CONFIG_DIR)/setup.exe \
 	  --sfx-stub $(SFX_MODULE)
->>>>>>> origin/upstream-releases
 ifdef MOZ_EXTERNAL_SIGNING_FORMAT
 	$(MOZ_SIGN_CMD) $(foreach f,$(MOZ_EXTERNAL_SIGNING_FORMAT),-f $(f)) "$(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe"
 endif
