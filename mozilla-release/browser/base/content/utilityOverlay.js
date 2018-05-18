@@ -849,9 +849,10 @@ function openTourPage() {
 }
 
 function buildHelpMenu() {
+#if 0
   document.getElementById("feedbackPage")
           .disabled = !Services.policies.isAllowed("feedbackCommands");
-
+#endif
   document.getElementById("helpSafeMode")
           .disabled = !Services.policies.isAllowed("safeMode");
 
