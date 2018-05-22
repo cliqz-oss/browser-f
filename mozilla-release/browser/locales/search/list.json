@@ -197,7 +197,7 @@
     "de": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "yahoo-de", "bing", "ddg", "youtube-de", "ecosia", "twitter", "amazondotcom-de", "eBay-de", "wikipedia-de", "leo_ende_de", "gmaps-de", "gimages-de", "startpage-de", "qwant"
+          "google", "yahoo-de", "bing", "ddg", "youtube-de", "ecosia", "twitter", "amazondotcom-de", "ebay-de", "wikipedia-de", "leo_ende_de", "gmaps-de", "gimages-de", "startpage-de", "qwant"
         ]
       }
     },
