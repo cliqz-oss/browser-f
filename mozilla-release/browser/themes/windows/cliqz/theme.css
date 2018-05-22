@@ -7,7 +7,7 @@
   :root:-moz-lwtheme-darktext {
     --toolbox-border-bottom-color: #f2f2f2;
     --chrome-secondary-background-color: #f2f2f2;
-    --lwt-toolbar-field-background-color: #f2f2f2; }
+    --url-and-searchbar-background-color: #f2f2f2; }
   :root:not([uidensity="compact"]) #back-button > .toolbarbutton-icon {
     background-color: unset;
     border: unset;
@@ -31,7 +31,7 @@
     margin-left: 3px;
     margin-right: 3px;
     padding: 3px 0;
-    width: 16px;
+    width: 22px;
     height: 22px; }
   :root[uidensity="touch"] #navigator-toolbox {
     /* TABS TOOLBAR */ }
@@ -134,13 +134,9 @@
 :root {
   /* Override global variables */
   --tabs-top-border-width: 0;
-  /* Override light theme variables */
-  /* Adjust width of all tabs button */ }
+  /* Override light theme variables */ }
   :root:-moz-lwtheme-darktext {
-    --chrome-background-color: #D1D1D1;
-    --url-and-searchbar-background-color: #f2f2f2; }
-  :root:not([uidensity="touch"]) #alltabs-button .toolbarbutton-icon {
-    width: 22px; }
+    --chrome-background-color: #D1D1D1; }
 
 /* Add 2 more px padding on top of PersonalToolbar/Bookmark bar */
 #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
