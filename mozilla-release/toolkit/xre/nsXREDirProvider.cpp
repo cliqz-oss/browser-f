@@ -266,8 +266,8 @@ nsXREDirProvider::GetUserProfilesLocalDir(nsIFile** aResult)
  * Get the directory that is the parent of the system-wide directories
  * for extensions and native manifests.
  *
- * On OSX this is /Library/Application Support/Mozilla
- * On Linux this is /usr/{lib,lib64}/mozilla
+ * On OSX this is /Library/Application Support/Cliqz
+ * On Linux this is /usr/{lib,lib64}/cliqz
  *   (for 32- and 64-bit systems respsectively)
  */
 static nsresult
@@ -278,16 +278,16 @@ GetSystemParentDirectory(nsIFile** aFile)
 #if defined(XP_MACOSX)
   rv = GetOSXFolderType(kOnSystemDisk, kApplicationSupportFolderType, getter_AddRefs(localDir));
   if (NS_SUCCEEDED(rv)) {
-    rv = localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla"));
+    rv = localDir->AppendNative(NS_LITERAL_CSTRING("Cliqz"));
   }
 #else
   NS_NAMED_LITERAL_CSTRING(dirname,
 #ifdef HAVE_USR_LIB64_DIR
-                           "/usr/lib64/mozilla"
+                           "/usr/lib64/cliqz"
 #elif defined(__OpenBSD__) || defined(__FreeBSD__)
-                           "/usr/local/lib/mozilla"
+                           "/usr/local/lib/cliqz"
 #else
-                           "/usr/lib/mozilla"
+                           "/usr/lib/cliqz"
 #endif
                            );
   rv = NS_NewNativeLocalFile(dirname, false, getter_AddRefs(localDir));
@@ -389,9 +389,9 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), false);
     if (NS_SUCCEEDED(rv)) {
 #if defined(XP_MACOSX)
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla"));
+      rv = localDir->AppendNative(NS_LITERAL_CSTRING("Cliqz"));
 #else
-      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".mozilla"));
+      rv = localDir->AppendNative(NS_LITERAL_CSTRING(".cliqz"));
 #endif
     }
     if (NS_SUCCEEDED(rv)) {
@@ -447,9 +447,9 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
   else if (!strcmp(aProperty, XRE_SYS_SHARE_EXTENSION_PARENT_DIR)) {
 #ifdef ENABLE_SYSTEM_EXTENSION_DIRS
 #if defined(__OpenBSD__) || defined(__FreeBSD__)
-    static const char *const sysLExtDir = "/usr/local/share/mozilla/extensions";
+    static const char *const sysLExtDir = "/usr/local/share/cliqz/extensions";
 #else
-    static const char *const sysLExtDir = "/usr/share/mozilla/extensions";
+    static const char *const sysLExtDir = "/usr/share/cliqz/extensions";
 #endif
     return NS_NewNativeLocalFile(nsDependentCString(sysLExtDir),
                                  false, aFile);
@@ -1229,7 +1229,7 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
                                            gAppData->name)))) {
       return NS_ERROR_FAILURE;
     }
-  } else if (NS_FAILED(localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla")))) {
+  } else if (NS_FAILED(localDir->AppendNative(NS_LITERAL_CSTRING("Cliqz")))) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1593,7 +1593,7 @@ nsXREDirProvider::AppendSysUserExtensionPath(nsIFile* aFile)
 
 #if defined (XP_MACOSX) || defined(XP_WIN)
 
-  static const char* const sXR = "Mozilla";
+  static const char* const sXR = "Cliqz";
   rv = aFile->AppendNative(nsDependentCString(sXR));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1603,7 +1603,7 @@ nsXREDirProvider::AppendSysUserExtensionPath(nsIFile* aFile)
 
 #elif defined(XP_UNIX)
 
-  static const char* const sXR = ".mozilla";
+  static const char* const sXR = ".cliqz";
   rv = aFile->AppendNative(nsDependentCString(sXR));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1626,7 +1626,7 @@ nsXREDirProvider::AppendSysUserExtensionsDevPath(nsIFile* aFile)
 
 #if defined (XP_MACOSX) || defined(XP_WIN)
 
-  static const char* const sXR = "Mozilla";
+  static const char* const sXR = "Cliqz";
   rv = aFile->AppendNative(nsDependentCString(sXR));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1636,7 +1636,7 @@ nsXREDirProvider::AppendSysUserExtensionsDevPath(nsIFile* aFile)
 
 #elif defined(XP_UNIX)
 
-  static const char* const sXR = ".mozilla";
+  static const char* const sXR = ".cliqz";
   rv = aFile->AppendNative(nsDependentCString(sXR));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1702,7 +1702,7 @@ nsXREDirProvider::AppendProfilePath(nsIFile* aFile, bool aLocal)
   // The parent of this directory is set in GetUserDataDirectoryHome
   // XXX: handle gAppData->profile properly
   // XXXsmaug ...and the rest of the profile creation!
-  rv = aFile->AppendNative(nsDependentCString("mozilla"));
+  rv = aFile->AppendNative(nsDependentCString("cliqz"));
   NS_ENSURE_SUCCESS(rv, rv);
 #elif defined(XP_UNIX)
   nsAutoCString folder;
