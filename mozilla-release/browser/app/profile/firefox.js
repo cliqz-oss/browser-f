@@ -1761,7 +1761,8 @@ pref("app.normandy.logging.level", 50); // Warn
 pref("app.normandy.run_interval_seconds", 86400); // 24 hours
 pref("app.normandy.shieldLearnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/shield");
 #ifdef MOZ_DATA_REPORTING
-pref("app.shield.optoutstudies.enabled", true);
+// Cliqz. Always false
+pref("app.shield.optoutstudies.enabled", false);
 #else
 pref("app.shield.optoutstudies.enabled", false);
 #endif

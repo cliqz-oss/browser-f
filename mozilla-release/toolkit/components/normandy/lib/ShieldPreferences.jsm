@@ -58,10 +58,12 @@ var ShieldPreferences = {
 
   observe(subject, topic, data) {
     switch (topic) {
+/* Cliqz - don't use
       // Add the opt-out-study checkbox to the Privacy preferences when it is shown.
       case "privacy-pane-loaded":
         this.injectOptOutStudyCheckbox(subject.document);
         break;
+*/
       case NS_PREFBRANCH_PREFCHANGE_TOPIC_ID:
         this.observePrefChange(data);
         break;
