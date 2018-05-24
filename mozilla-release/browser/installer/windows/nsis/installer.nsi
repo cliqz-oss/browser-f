@@ -480,9 +480,9 @@ Section "-Application" APP_IDX
   ; Always add the application's shortcuts to the shortcuts log ini file. The
   ; DeleteShortcuts macro will do the right thing on uninstall if the
   ; shortcuts don't exist.
-  ${LogStartMenuShortcut} "${BrandShortName}.lnk"
-  ${LogQuickLaunchShortcut} "${BrandShortName}.lnk"
-  ${LogDesktopShortcut} "${BrandShortName}.lnk"
+  ${LogStartMenuShortcut} "${BrandShortcutName}.lnk"
+  ${LogQuickLaunchShortcut} "${BrandShortcutName}.lnk"
+  ${LogDesktopShortcut} "${BrandShortcutName}.lnk"
 
   ; Best effort to update the Win7 taskbar and start menu shortcut app model
   ; id's. The possible contexts are current user / system and the user that
@@ -518,28 +518,28 @@ Section "-Application" APP_IDX
     ; behind not doing that is to interpret "false" as "don't do anything
     ; involving start menu shortcuts at all." We could also try to do this for
     ; both shell contexts, but that won't typically accomplish anything.
-    ${If} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
-      ShellLink::GetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk"
+    ${If} ${FileExists} "$SMPROGRAMS\${BrandShortName}.lnk"
+      ShellLink::GetShortCutTarget "$SMPROGRAMS\${BrandShortName}.lnk"
       Pop $0
       ${GetLongPath} "$0" $0
       ${If} $0 == "$INSTDIR\${FileMainEXE}"
-      ${AndIfNot} ${FileExists} "$SMPROGRAMS\${BrandShortName}.lnk"
-        Rename "$SMPROGRAMS\${BrandFullName}.lnk" \
-               "$SMPROGRAMS\${BrandShortName}.lnk"
-        ${LogMsg} "Renamed existing shortcut to $SMPROGRAMS\${BrandShortName}.lnk"
+      ${AndIfNot} ${FileExists} "$SMPROGRAMS\${BrandShortcutName}.lnk"
+        Rename "$SMPROGRAMS\${BrandShortName}.lnk" \
+               "$SMPROGRAMS\${BrandShortcutName}.lnk"
+        ${LogMsg} "Renamed existing shortcut to $SMPROGRAMS\${BrandShortcutName}.lnk"
       ${EndIf}
     ${Else}
-      CreateShortCut "$SMPROGRAMS\${BrandShortName}.lnk" "$INSTDIR\${FileMainEXE}"
-      ${If} ${FileExists} "$SMPROGRAMS\${BrandShortName}.lnk"
-        ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\${BrandShortName}.lnk" \
+      CreateShortCut "$SMPROGRAMS\${BrandShortcutName}.lnk" "$INSTDIR\${FileMainEXE}"
+      ${If} ${FileExists} "$SMPROGRAMS\${BrandShortcutName}.lnk"
+        ShellLink::SetShortCutWorkingDirectory "$SMPROGRAMS\${BrandShortcutName}.lnk" \
                                                "$INSTDIR"
         ${If} "$AppUserModelID" != ""
-          ApplicationID::Set "$SMPROGRAMS\${BrandShortName}.lnk" \
+          ApplicationID::Set "$SMPROGRAMS\${BrandShortcutName}.lnk" \
                              "$AppUserModelID" "true"
         ${EndIf}
-        ${LogMsg} "Added Shortcut: $SMPROGRAMS\${BrandShortName}.lnk"
+        ${LogMsg} "Added Shortcut: $SMPROGRAMS\${BrandShortcutName}.lnk"
       ${Else}
-        ${LogMsg} "** ERROR Adding Shortcut: $SMPROGRAMS\${BrandShortName}.lnk"
+        ${LogMsg} "** ERROR Adding Shortcut: $SMPROGRAMS\${BrandShortcutName}.lnk"
       ${EndIf}
     ${EndIf}
   ${EndIf}
@@ -560,27 +560,27 @@ Section "-Application" APP_IDX
   ${EndIf}
 
   ${If} $AddDesktopSC == 1
-    ${If} ${FileExists} "$DESKTOP\${BrandFullName}.lnk"
-      ShellLink::GetShortCutTarget "$DESKTOP\${BrandFullName}.lnk"
+    ${If} ${FileExists} "$DESKTOP\${BrandShortName}.lnk"
+      ShellLink::GetShortCutTarget "$DESKTOP\${BrandShortName}.lnk"
       Pop $0
       ${GetLongPath} "$0" $0
       ${If} $0 == "$INSTDIR\${FileMainEXE}"
-      ${AndIfNot} ${FileExists} "$DESKTOP\${BrandShortName}.lnk"
-        Rename "$DESKTOP\${BrandFullName}.lnk" "$DESKTOP\${BrandShortName}.lnk"
-        ${LogMsg} "Renamed existing shortcut to $DESKTOP\${BrandShortName}.lnk"
+      ${AndIfNot} ${FileExists} "$DESKTOP\${BrandShortcutName}.lnk"
+        Rename "$DESKTOP\${BrandShortName}.lnk" "$DESKTOP\${BrandShortcutName}.lnk"
+        ${LogMsg} "Renamed existing shortcut to $DESKTOP\${BrandShortcutName}.lnk"
       ${EndIf}
     ${Else}
-      CreateShortCut "$DESKTOP\${BrandShortName}.lnk" "$INSTDIR\${FileMainEXE}"
-      ${If} ${FileExists} "$DESKTOP\${BrandShortName}.lnk"
-        ShellLink::SetShortCutWorkingDirectory "$DESKTOP\${BrandShortName}.lnk" \
+      CreateShortCut "$DESKTOP\${BrandShortcutName}.lnk" "$INSTDIR\${FileMainEXE}"
+      ${If} ${FileExists} "$DESKTOP\${BrandShortcutName}.lnk"
+        ShellLink::SetShortCutWorkingDirectory "$DESKTOP\${BrandShortcutName}.lnk" \
                                                "$INSTDIR"
         ${If} "$AppUserModelID" != ""
-          ApplicationID::Set "$DESKTOP\${BrandShortName}.lnk" \
+          ApplicationID::Set "$DESKTOP\${BrandShortcutName}.lnk" \
                              "$AppUserModelID" "true"
         ${EndIf}
-        ${LogMsg} "Added Shortcut: $DESKTOP\${BrandShortName}.lnk"
+        ${LogMsg} "Added Shortcut: $DESKTOP\${BrandShortcutName}.lnk"
       ${Else}
-        ${LogMsg} "** ERROR Adding Shortcut: $DESKTOP\${BrandShortName}.lnk"
+        ${LogMsg} "** ERROR Adding Shortcut: $DESKTOP\${BrandShortcutName}.lnk"
       ${EndIf}
     ${EndIf}
   ${EndIf}
@@ -594,12 +594,12 @@ Section "-Application" APP_IDX
       ${GetOptions} "$0" "/UAC:" $0
       ${If} ${Errors}
         Call AddQuickLaunchShortcut
-        ${LogMsg} "Added Shortcut: $QUICKLAUNCH\${BrandShortName}.lnk"
+        ${LogMsg} "Added Shortcut: $QUICKLAUNCH\${BrandShortcutName}.lnk"
       ${Else}
         ; It is not possible to add a log entry from the unelevated process so
         ; add the log entry without the path since there is no simple way to
         ; know the correct full path.
-        ${LogMsg} "Added Quick Launch Shortcut: ${BrandShortName}.lnk"
+        ${LogMsg} "Added Quick Launch Shortcut: ${BrandShortcutName}.lnk"
         GetFunctionAddress $0 AddQuickLaunchShortcut
         UAC::ExecCodeSegment $0
       ${EndIf}
@@ -835,9 +835,9 @@ FunctionEnd
 # Helper Functions
 
 Function AddQuickLaunchShortcut
-  CreateShortCut "$QUICKLAUNCH\${BrandShortName}.lnk" "$INSTDIR\${FileMainEXE}"
-  ${If} ${FileExists} "$QUICKLAUNCH\${BrandShortName}.lnk"
-    ShellLink::SetShortCutWorkingDirectory "$QUICKLAUNCH\${BrandShortName}.lnk" \
+  CreateShortCut "$QUICKLAUNCH\${BrandShortcutName}.lnk" "$INSTDIR\${FileMainEXE}"
+  ${If} ${FileExists} "$QUICKLAUNCH\${BrandShortcutName}.lnk"
+    ShellLink::SetShortCutWorkingDirectory "$QUICKLAUNCH\${BrandShortcutName}.lnk" \
                                            "$INSTDIR"
   ${EndIf}
 FunctionEnd
