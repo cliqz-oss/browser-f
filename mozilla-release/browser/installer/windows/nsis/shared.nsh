@@ -371,16 +371,16 @@
         Pop $R7
         ${GetLongPath} "$R7" $R7
         ${If} $R7 == "$INSTDIR\${FileMainEXE}"
-        ${AndIf} $R8 != "${BrandShortName}.lnk"
-        ${AndIfNot} ${FileExists} "${SHORTCUT_DIR}\${BrandShortName}.lnk"
+        ${AndIf} $R8 != "${BrandShortcutName}.lnk"
+        ${AndIfNot} ${FileExists} "${SHORTCUT_DIR}\${BrandShortcutName}.lnk"
           ClearErrors
-          Rename "${SHORTCUT_DIR}\$R8" "${SHORTCUT_DIR}\${BrandShortName}.lnk"
+          Rename "${SHORTCUT_DIR}\$R8" "${SHORTCUT_DIR}\${BrandShortcutName}.lnk"
           ${IfNot} ${Errors}
             ; Update the shortcut log manually instead of calling LogShortcut
             ; because it would add a Shortcut1 entry, and we really do want to
             ; overwrite the existing entry 0, since we just renamed the file.
             WriteINIStr "$R9" "${LOG_SECTION}" "Shortcut0" \
-                        "${BrandShortName}.lnk"
+                        "${BrandShortcutName}.lnk"
           ${EndIf}
         ${EndIf}
       ${EndIf}
