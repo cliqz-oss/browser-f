@@ -1647,7 +1647,7 @@ var gPasswordManagers = {
   },
 
   getExisting: function() {
-    let KNOWN_PW_MANAGERS = ["support@lastpass.com"];
+    let KNOWN_PW_MANAGERS = ["support@lastpass.com", "{446900e4-71c2-419f-a6a7-df9c091e268b}"];
 
     return new Promise(function(resolve, reject) {
       AddonManager.getAllAddons(function(all) {
@@ -1669,7 +1669,7 @@ var gPasswordManagers = {
       },
       "name": "LastPass",
       "homepageURL": "https://lastpass.com/",
-      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser_pre/support%40lastpass.com/support%40lastpass.com-4.2.1.21-browser-signed.xpi",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/support%40lastpass.com/latest.xpi",
       "afterInstall" : function() {
         const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
         const doc = Services.wm.getMostRecentWindow("navigator:browser").document;
@@ -1692,6 +1692,14 @@ var gPasswordManagers = {
           }
         }
       }
+    }, {
+      "id": "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/735/735894-64.png?modified=mcrushed",
+      },
+      "name": "Bitwarden",
+      "homepageURL": "https://bitwarden.com/",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D/latest.xpi"
     }];
   }
 }
