@@ -49,8 +49,8 @@
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
 
 <!ENTITY  passwordManager.title          "Passwort Manager">
-<!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
-<!ENTITY  passwordManager.desc2          "Bitte beachte, dass Cliqz keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
+<!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von ausgewählten und geprüften Passwort-Manager Anwendungen.">
+<!ENTITY  passwordManager.desc2          "Diese Anwendungen wurden nicht von Cliqz entwickelt. Cliqz hat keine Kontrolle darüber, auf welche Daten sie Zugriff haben.">
 
 <!ENTITY  ghostery.title                 "Erweiterte Kontrolle der Privatsphäre">
 <!ENTITY  ghostery.desc1                 "Ghostery weist auf versteckte Dienste hin, die im Hintergrund private Daten an">
