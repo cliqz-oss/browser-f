@@ -48,9 +48,9 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
 
-<!ENTITY  passwordManager.title          "Password Manager">
-<!ENTITY  passwordManager.desc1          "Cliqz integrates with LastPass, a third-party password manager software.">
-<!ENTITY  passwordManager.desc2          "Note that Cliqz has no control over what data third-party software might access.">
+<!ENTITY  passwordManager.title          "Password Managers">
+<!ENTITY  passwordManager.desc1          "Cliqz integrates with selected and verified third-party password manager applications.">
+<!ENTITY  passwordManager.desc2          "Note that Cliqz did not create these applications and has no control over what data they might access.">
 
 <!ENTITY  ghostery.title                 "Extended Privacy Control">
 <!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
