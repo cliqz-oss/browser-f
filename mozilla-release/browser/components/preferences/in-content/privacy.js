@@ -1665,7 +1665,7 @@ var gPasswordManagers = {
     return [{
       "id": "support@lastpass.com",
       "icons": {
-       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/8/8542-64.png?modified=1457436015"
+        "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/support%40lastpass.com/64x64.png"
       },
       "name": "LastPass",
       "homepageURL": "https://lastpass.com/",
@@ -1695,7 +1695,8 @@ var gPasswordManagers = {
     }, {
       "id": "{446900e4-71c2-419f-a6a7-df9c091e268b}",
       "icons": {
-       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/735/735894-64.png?modified=mcrushed",
+        "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D/64x64.png",
+        "128": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D/128x128.png"
       },
       "name": "Bitwarden",
       "homepageURL": "https://bitwarden.com/",
@@ -1754,7 +1755,8 @@ var gPrivacyManagers = {
     return [{
       "id": "firefox@ghostery.com",
       "icons": {
-       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/9/9609-64.png?modified=1480432819"
+        "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/firefox%40ghostery.com/64x64.png",
+        "128": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/firefox%40ghostery.com/128x128.png"
       },
       "name": "Ghostery",
       "homepageURL": "https://www.ghostery.com",
