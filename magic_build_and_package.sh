@@ -47,10 +47,7 @@ fi
 
 echo '***** Build DE language pack *****'
 if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
-  cd $OLDPWD
-  cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
-  $MAKE merge-de LOCALE_MERGEDIR=$(pwd)/mergedir
-  $MAKE installers-de LOCALE_MERGEDIR=$(pwd)/mergedir
+  ./mach build installers-de
 fi
 
 echo '***** Build & package finished successfully. *****'
