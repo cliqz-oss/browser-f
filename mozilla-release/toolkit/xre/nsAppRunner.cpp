@@ -237,6 +237,7 @@ extern void InstallSignalHandlers(const char *ProgramName);
 #define FILE_COMPATIBILITY_INFO NS_LITERAL_CSTRING("compatibility.ini")
 #define FILE_INVALIDATE_CACHES NS_LITERAL_CSTRING(".purgecaches")
 #define FILE_STARTUP_INCOMPLETE NS_LITERAL_STRING(".startup-incomplete")
+#define CLIQZ_PRIVATE_MODE_FOLDER NS_LITERAL_CSTRING("cliqzprivatemode")
 
 int    gArgc;
 char **gArgv;
@@ -3133,6 +3134,7 @@ public:
   nsCOMPtr<nsIFile> mProfD;
   nsCOMPtr<nsIFile> mProfLD;
   nsCOMPtr<nsIProfileLock> mProfileLock;
+  nsCOMPtr<nsIProfileLock> mParentProfileLock; // For Cliqz Ultra Private Mode
 #ifdef MOZ_ENABLE_XREMOTE
   nsCOMPtr<nsIRemoteService> mRemoteService;
   nsProfileLock mRemoteLock;
@@ -4321,6 +4323,45 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   rv = mProfileLock->GetLocalDirectory(getter_AddRefs(mProfLD));
   NS_ENSURE_SUCCESS(rv, 1);
 
+  // Cliqz-specific changes: If ultra-private mode is enabled,
+  // two profiles will be locked, the one that would normally
+  // be selected, and the one that is inside that profile
+  // [normalprofilefolder]/cliqzprivatemode. The latter will be
+  // finally selected, as if the app had been run with --profile.
+  if (EnvHasValue("MOZ_CLIQZ_PRIVATE_MODE")) {
+    // 1. Ensure that [mProfD]/cliqzprivatemode folder exists.
+    nsCOMPtr<nsIFile> profileDir;
+    mProfD->Clone(getter_AddRefs(profileDir));
+    profileDir->AppendNative(CLIQZ_PRIVATE_MODE_FOLDER);
+    bool exists;
+    profileDir->Exists(&exists);
+    if (!exists) {
+      rv = profileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+      NS_ENSURE_SUCCESS(rv, 1);
+    }
+    profileDir->IsDirectory(&exists);
+    if (!exists) {
+      return 1;
+    }
+
+    // 2. Lock the cliqzprivatemode profile the same way it is done in SelectProfile for the --profile arg case.
+    nsCOMPtr<nsIProfileUnlocker> unlocker;
+    rv = NS_LockProfilePath(profileDir, profileDir, getter_AddRefs(unlocker), getter_AddRefs(mParentProfileLock));
+    if (!NS_SUCCEEDED(rv)) {
+      return 1;
+    }
+
+    // 3. Swap the mParentProfileLock and mProfileLock.
+    mProfileLock.swap(mParentProfileLock);
+    gProfileLock = mProfileLock;
+
+    // 4. Overwrite mProfD and mProfLD with the final values.
+    rv = mProfileLock->GetDirectory(mProfD);
+    NS_ENSURE_SUCCESS(rv, 1);
+    rv = mProfileLock->GetLocalDirectory(mProfLD);
+    NS_ENSURE_SUCCESS(rv, 1);
+  }
+
   rv = mDirProvider.SetProfile(mProfD, mProfLD);
   NS_ENSURE_SUCCESS(rv, 1);
 
@@ -5005,6 +5046,9 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
   // has gone out of scope.  see bug #386739 for more details
   mProfileLock->Unlock();
   gProfileLock = nullptr;
+  if (mParentProfileLock != nullptr) {
+    mParentProfileLock->Unlock();
+  }
 
   // Restart the app after XPCOM has been shut down cleanly.
   if (appInitiatedRestart) {
