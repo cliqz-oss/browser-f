@@ -1184,7 +1184,7 @@ var SessionStoreInternal = {
           // gSessionStartup.willOverrideHomepage returns a boolean or a promise that resolves
           // to a boolean. Converting to a general promise for simplicity.
           let willOverrideHomepagePromise = Promise.all([gSessionStartup.willOverrideHomepage]);
-          willOverrideHomepagePromise.then(willOverrideHomepage => {
+          willOverrideHomepagePromise.then(([willOverrideHomepage]) => {
             let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) && willOverrideHomepage;
             let options = {firstWindow: true, overwriteTabs: overwrite};
             this.restoreWindows(aWindow, aInitialState, options);
