@@ -1961,7 +1961,9 @@ var gBrowserInit = {
 
     CompactTheme.uninit();
 
+#if 0
     AboutCapabilitiesListener.uninit();
+#endif
 
     TrackingProtection.uninit();
 
