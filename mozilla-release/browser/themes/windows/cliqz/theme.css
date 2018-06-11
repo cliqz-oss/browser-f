@@ -168,13 +168,13 @@
 
 /* Apply this hack for Windows 10 and later */
 @media not all and (-moz-os-version: windows-win7) and (-moz-os-version: windows-win8) {
-  #titlebar #titlebar-buttonbox, #tabbrowser-tabs #titlebar-buttonbox {
+  :root:not([uidensity="touch"]) #titlebar #titlebar-buttonbox, :root:not([uidensity="touch"]) #tabbrowser-tabs #titlebar-buttonbox {
     max-height: 30px; }
-  #TabsToolbar {
+  :root:not([uidensity="touch"]) #TabsToolbar {
     margin-top: -1px; }
-  #tabbrowser-tabs .tabbrowser-arrowscrollbox {
+  :root:not([uidensity="touch"]) #tabbrowser-tabs .tabbrowser-arrowscrollbox {
     max-height: 30px; }
-  #tabbrowser-tabs .arrowscrollbox-scrollbox {
+  :root:not([uidensity="touch"]) #tabbrowser-tabs .arrowscrollbox-scrollbox {
     max-height: 30px;
     margin-top: 3px; } }
 
