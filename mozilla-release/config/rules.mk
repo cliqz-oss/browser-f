@@ -1231,6 +1231,7 @@ endif
 # Cliqz additional distribution files
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
+CLIQZ_ULTRAPRIVATEMODE_EXT_URL = "https://cdn.cliqz.com/browser-f/fun-demo/ultraprivatemode.cliqz.com.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1249,6 +1250,11 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
+CLIQZ_ULTRAPRIVATEMODE_XPI_PATH = $(EXTENSIONS_PATH)/ultraprivatemode@cliqz.com.xpi
+$(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH): $(EXTENSIONS_PATH)
+	echo CLIQZ_ULTRAPRIVATEMODE_XPI_PATH in `pwd`
+	wget --output-document $(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH) $(CLIQZ_ULTRAPRIVATEMODE_EXT_URL)
+
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
@@ -1256,7 +1262,7 @@ $(CLIQZ_CFG):
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_ULTRAPRIVATEMODE_XPI_PATH) $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
