@@ -1,9 +1,12 @@
 :root {
   /* Override global variables */
   --tab-toolbar-navbar-overlap: 0;
+  /* Override dark theme variables */
   /* Override light theme variables */
   /* Style back button the same way as other toolbar buttons (remove border and border radius) */
   /* Customize hover background on newtab and all-tabs button */ }
+  :root:-moz-lwtheme {
+    --url-and-searchbar-background-color: #323234; }
   :root:-moz-lwtheme-darktext {
     --toolbox-border-bottom-color: #f2f2f2;
     --chrome-secondary-background-color: #f2f2f2;
@@ -35,9 +38,9 @@
     height: 22px; }
   :root[uidensity="touch"] #navigator-toolbox {
     /* TABS TOOLBAR */ }
-    :root[uidensity="touch"] #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:not([pinned="true"]) {
+    :root[uidensity="touch"] #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([pinned="true"]) {
       /* Always show close tab button on touch density */ }
-      :root[uidensity="touch"] #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:not([pinned="true"]) .tab-content .tab-close-button {
+      :root[uidensity="touch"] #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([pinned="true"]) .tab-content .tab-close-button {
         display: unset; }
     :root[uidensity="touch"] #navigator-toolbox #urlbar, :root[uidensity="touch"] #navigator-toolbox .searchbar-textbox {
       min-height: 36px; }
@@ -47,49 +50,50 @@
   /* NAVIGATION TOOLBAR */
   /* Line on the bottom of the nav-bar/toolbar */
   /* Forget mode urlbar */ }
-  #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+  #navigator-toolbox #TabsToolbar {
     /* Customize tabs toolbar background color for light theme */
-    -moz-appearance: none;
-    background-color: #D1D1D1;
     /* Remove the right border of the placehodler and replace by the first tab border(below) */
     /* Remove 1px margin bottom on the newtab-button */
     /* Remove the first tab's left border in full screen */ }
-    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext .titlebar-placeholder[type="pre-tabs"] {
+    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+      -moz-appearance: none;
+      background-color: #D1D1D1; }
+    #navigator-toolbox #TabsToolbar .titlebar-placeholder[type="pre-tabs"] {
       border-inline-end-width: 0; }
-    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext .toolbarbutton-1 {
+    #navigator-toolbox #TabsToolbar .toolbarbutton-1 {
       margin-bottom: 0; }
-    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab {
+    #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab {
       /* Remove the tab-line effect on top when hovering a tab */
       /* Move tab content 1px up :-) */
       /* Add left border for the first tab (normal/pinned) and make sure to hide it in full screen */
       /* Make the tabs' border thinner on retina */ }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-line {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-line {
         height: unset; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber,
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber-fallback,
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-image,
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-sharing-icon-overlay,
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-sound,
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber,
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber-fallback,
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-image,
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-sharing-icon-overlay,
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-sound,
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
         margin-top: 0; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-label {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-label {
         margin-top: 0; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
         display: none; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-background {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab .tab-background {
         transition: background-color ease 150ms; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:first-of-type {
         border-left: 0.5px solid rgba(0, 0, 0, 0.2); }
-        #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type[visuallyselected="true"] {
+        #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:first-of-type[visuallyselected="true"] {
           border-left-color: rgba(0, 0, 0, 0.015); }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:after, #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:before {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:after, #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:before {
         opacity: 0.2;
         border-left-width: 0.5px; }
-      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:hover:not([pinned="true"]) .tab-content .tab-close-button, #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab[visuallyselected="true"]:not([pinned="true"]) .tab-content .tab-close-button {
+      #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:hover:not([pinned="true"]) .tab-content .tab-close-button, #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab[visuallyselected="true"]:not([pinned="true"]) .tab-content .tab-close-button {
         display: unset; }
-    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabs-newtab-button {
+    #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabs-newtab-button {
       margin-left: 2px; }
-    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+    #navigator-toolbox #TabsToolbar[inFullscreen] #tabbrowser-tabs .tabbrowser-tab:first-of-type {
       border-left: none; }
   #navigator-toolbox #nav-bar {
     border-top: unset !important;
@@ -107,15 +111,22 @@
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
         transition: background-color cubic-bezier(0.43, -0.01, 0.26, 1.01) 60ms;
         transition-delay: 60ms;
-        /* Add 1px margin for page action buttons */
-        /* Change box-shadow and background color when focused and hovering */ }
+        /* Add 1px margin for page action buttons */ }
         #navigator-toolbox #nav-bar #urlbar-container #urlbar #page-action-buttons {
           margin-right: 1px; }
-        #navigator-toolbox #nav-bar #urlbar-container #urlbar:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar[focused="true"] {
-          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
-          background-color: #fff; }
-        #navigator-toolbox #nav-bar #urlbar-container #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
-          color: #000; }
+        #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme {
+          box-shadow: 0 1px 2px rgba(255, 255, 255, 0.2);
+          /* Change box-shadow and background color when focused and hovering */ }
+          #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[focused="true"] {
+            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+            background-color: #474749; }
+        #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
+          /* Change box-shadow and background color when focused and hovering */ }
+          #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[focused="true"] {
+            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+            background-color: #fff; }
+          #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
+            color: #000; }
   #navigator-toolbox #PersonalToolbar {
     border-top: 1px solid #e1e1e1;
     box-shadow: rgba(0, 0, 0, 0.19) 0 1px 1px 0;
@@ -143,14 +154,16 @@
 
 #main-window.cliqz-blue {
   /* Override light theme variables */ }
-  #main-window.cliqz-blue:-moz-lwtheme-darktext {
+  #main-window.cliqz-blue:-moz-lwtheme-darktext, #main-window.cliqz-blue:-moz-lwtheme {
     --chrome-background-color: #00ADEF; }
-  #main-window.cliqz-blue #navigator-toolbox, #main-window.cliqz-blue #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext,
+  #main-window.cliqz-blue #navigator-toolbox, #main-window.cliqz-blue #navigator-toolbox #TabsToolbar,
   #main-window.cliqz-blue .tabbrowser-tab .tab-content {
     background-color: #00ADEF; }
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] {
     border-top: 0; }
-    #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content {
+    #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"]:-moz-lwtheme .tab-content {
+      background-color: unset; }
+    #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"]:-moz-lwtheme-darktext .tab-content {
       background-color: #f2f2f2; }
   #main-window.cliqz-blue .tabbrowser-tab:hover:not([visuallyselected="true"]) .tab-content {
     background-color: #0098d5;

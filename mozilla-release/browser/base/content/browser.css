@@ -1273,9 +1273,23 @@ toolbarpaletteitem[dragover] {
 }
 
 /* Hidden in Cliqz */
-#customization-lwtheme-button {
+
+#customization-lwtheme-menu-recommended, #customization-lwtheme-menu-footer {
   display: none !important;
 }
+
+#customization-lwtheme-menu .customization-lwtheme-menu-theme {
+  display: none !important;
+}
+
+#customization-lwtheme-menu .customization-lwtheme-menu-theme[image="resource:///chrome/browser/content/browser/defaultthemes/light.icon.svg"] {
+  display: initial !important;
+}
+
+#customization-lwtheme-menu .customization-lwtheme-menu-theme[image="resource:///chrome/browser/content/browser/defaultthemes/dark.icon.svg"] {
+  display: initial !important;
+}
+
 
 toolbarpaletteitem[place="palette"] {
   -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbarpaletteitem-palette-wrapping-label");

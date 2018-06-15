@@ -592,7 +592,6 @@ var LightWeightThemeWebInstaller = {
         this._installRequest(data.themeData, data.principal, data.baseURI);
         break;
       }
-#if 0
       case "LightWeightThemeWebInstaller:Preview": {
         this._preview(data.themeData, data.principal, data.baseURI);
         break;
@@ -601,7 +600,6 @@ var LightWeightThemeWebInstaller = {
         this._resetPreview(data && data.principal);
         break;
       }
-#endif
     }
   },
 
@@ -635,8 +633,7 @@ var LightWeightThemeWebInstaller = {
         "lwtheme-install-request", "",
         notificationBox.PRIORITY_INFO_MEDIUM,
         []);
-#if 0
-    // Disable LW themes in Cliqz.
+
     // Don't allow installing off null principals.
     if (!principal.URI) {
       return;
@@ -675,7 +672,6 @@ var LightWeightThemeWebInstaller = {
         LightWeightThemeWebInstaller._install(data, notify);
       }
     });
-#endif
   },
 
   _install(newLWTheme, notify) {
@@ -738,15 +734,12 @@ var LightWeightThemeWebInstaller = {
   },
 
   _isAllowed(principal) {
-    return false;  // Disable LW themes in Cliqz.
-#if 0
     if (!principal || !principal.URI || !principal.URI.schemeIs("https")) {
       return false;
     }
 
     let pm = Services.perms;
     return pm.testPermission(principal.URI, "install") == pm.ALLOW_ACTION;
-#endif
   },
 
   _shouldShowUndoPrompt(principal) {
