@@ -80,10 +80,6 @@ static const RedirEntry kRedirMap[] = {
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "home", "resource://cliqz/freshtab/home.html",
-    nsIAboutModule::ALLOW_SCRIPT },
-#if 0
-# Replaced by Cliqz
   // Actual activity stream URL for home and newtab are set in channel creation
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "about:blank",
@@ -92,7 +88,6 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::MAKE_LINKABLE |
     nsIAboutModule::ENABLE_INDEXED_DB },
-#endif
   { "newtab", "about:blank",
     nsIAboutModule::ENABLE_INDEXED_DB |
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
@@ -182,10 +177,11 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       rv = NS_URIChainHasFlags(tempURI, nsIProtocolHandler::URI_IS_UI_RESOURCE,
                                &isUIResource);
       NS_ENSURE_SUCCESS(rv, rv);
-      // TODO: Instead of this, try to return URI_IS_UI_RESOURCE from extension
-      // about-handler |getURIFlags|.
+      // Cliqz: after FF 56 "isUIResource" flag need to set to false because of
+      // SetResultPrincipalURI, because our NewTab contain relative paths.
+      // Could be removed if path in extension will be changed to absolute.
       if (path.EqualsLiteral("home") || path.EqualsLiteral("newtab")) {
-        isUIResource = true;
+        isUIResource = false;
       }
 
       rv = NS_NewChannelInternal(getter_AddRefs(tempChannel),

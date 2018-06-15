@@ -16,6 +16,7 @@ ChromeUtils.defineModuleGetter(this, "AboutNewTab",
 // Dummy references to the files that this service no longer allows loading.
 // Bug 1409054 to remove "chrome://browser/content/abouthome/aboutHome.xhtml"
 
+const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 
@@ -179,6 +180,7 @@ AboutNewTabService.prototype = {
     // resource://activity-stream/prerendered/ar/activity-stream.html
     // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
     // resource://activity-stream/prerendered/static/activity-stream-debug.html
+    return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
     return [
       "resource://activity-stream/prerendered/",
       this._activityStreamPath,
