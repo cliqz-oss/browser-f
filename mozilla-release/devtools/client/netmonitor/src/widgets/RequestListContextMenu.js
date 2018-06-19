@@ -19,14 +19,14 @@ loader.lazyRequireGetter(this, "saveAs", "devtools/client/shared/file-saver", tr
 loader.lazyRequireGetter(this, "copyString", "devtools/shared/platform/clipboard", true);
 loader.lazyRequireGetter(this, "showMenu", "devtools/client/netmonitor/src/utils/menu", true);
 loader.lazyRequireGetter(this, "openRequestInTab", "devtools/client/netmonitor/src/utils/firefox/open-request-in-tab", true);
-loader.lazyRequireGetter(this, "HarExporter", "devtools/client/netmonitor/src/har/har-exporter", true);
+loader.lazyRequireGetter(this, "HarMenuUtils", "devtools/client/netmonitor/src/har/har-menu-utils", true);
 
 class RequestListContextMenu {
   constructor(props) {
     this.props = props;
   }
 
-  open(event, selectedRequest, sortedRequests) {
+  open(event, selectedRequest, requests) {
     let {
       id,
       isCustom,
@@ -45,6 +45,7 @@ class RequestListContextMenu {
       url,
     } = selectedRequest;
     let {
+      connector,
       cloneSelectedRequest,
       openStatistics,
     } = this.props;
@@ -143,8 +144,8 @@ class RequestListContextMenu {
       id: "request-list-context-copy-all-as-har",
       label: L10N.getStr("netmonitor.context.copyAllAsHar"),
       accesskey: L10N.getStr("netmonitor.context.copyAllAsHar.accesskey"),
-      visible: sortedRequests.size > 0,
-      click: () => this.copyAllAsHar(sortedRequests),
+      visible: requests.length > 0,
+      click: () => HarMenuUtils.copyAllAsHar(requests, connector),
     });
 
     menu.push({
@@ -158,8 +159,8 @@ class RequestListContextMenu {
       id: "request-list-context-save-all-as-har",
       label: L10N.getStr("netmonitor.context.saveAllAsHar"),
       accesskey: L10N.getStr("netmonitor.context.saveAllAsHar.accesskey"),
-      visible: sortedRequests.size > 0,
-      click: () => this.saveAllAsHar(sortedRequests),
+      visible: requests.length > 0,
+      click: () => HarMenuUtils.saveAllAsHar(requests, connector),
     });
 
     menu.push({
@@ -194,7 +195,7 @@ class RequestListContextMenu {
       label: L10N.getStr("netmonitor.context.newTab"),
       accesskey: L10N.getStr("netmonitor.context.newTab.accesskey"),
       visible: !!selectedRequest,
-      click: () => this.openRequestInTab(selectedRequest),
+      click: () => this.openRequestInTab(id, url, requestPostData),
     });
 
     menu.push({
@@ -219,18 +220,23 @@ class RequestListContextMenu {
       id: "request-list-context-perf",
       label: L10N.getStr("netmonitor.context.perfTools"),
       accesskey: L10N.getStr("netmonitor.context.perfTools.accesskey"),
-      visible: sortedRequests.size > 0,
+      visible: requests.size > 0,
       click: () => openStatistics(true),
     });
 
-    showMenu(event, menu);
+    showMenu(menu, {
+      screenX: event.screenX,
+      screenY: event.screenY,
+    });
   }
 
   /**
    * Opens selected item in a new tab.
    */
-  openRequestInTab(selectedRequest) {
-    openRequestInTab(selectedRequest);
+  async openRequestInTab(id, url, requestPostData) {
+    requestPostData = requestPostData ||
+      await this.props.connector.requestData(id, "requestPostData");
+    openRequestInTab(url, requestPostData);
   }
 
   /**
@@ -271,13 +277,16 @@ class RequestListContextMenu {
    */
   async copyPostData(id, formDataSections, requestPostData) {
     let params = [];
-    // Try to extract any form data parameters.
-    formDataSections.forEach(section => {
-      let paramsArray = parseQueryString(section);
-      if (paramsArray) {
-        params = [...params, ...paramsArray];
-      }
-    });
+    // Try to extract any form data parameters if formDataSections is already
+    // available, which is only true if ParamsPanel has ever been mounted before.
+    if (formDataSections) {
+      formDataSections.forEach(section => {
+        let paramsArray = parseQueryString(section);
+        if (paramsArray) {
+          params = [...params, ...paramsArray];
+        }
+      });
+    }
 
     let string = params
       .map(param => param.name + (param.value ? "=" + param.value : ""))
@@ -286,7 +295,7 @@ class RequestListContextMenu {
     // Fall back to raw payload.
     if (!string) {
       requestPostData = requestPostData ||
-        await this.props.connector.requestData(id, "requestPostData").requestPostData;
+        await this.props.connector.requestData(id, "requestPostData");
 
       string = requestPostData.postData.text;
       if (Services.appinfo.OS !== "WINNT") {
@@ -304,7 +313,7 @@ class RequestListContextMenu {
       await this.props.connector.requestData(id, "requestHeaders");
 
     requestPostData = requestPostData ||
-      await this.props.connector.requestData(id, "requestPostData").requestPostData;
+      await this.props.connector.requestData(id, "requestPostData");
 
     // Create a sanitized object for the Curl command generator.
     let data = {
@@ -388,31 +397,6 @@ class RequestListContextMenu {
       await this.props.connector.requestData(id, "responseContent");
 
     copyString(responseContent.content.text);
-  }
-
-  /**
-   * Copy HAR from the network panel content to the clipboard.
-   */
-  copyAllAsHar(sortedRequests) {
-    return HarExporter.copy(this.getDefaultHarOptions(sortedRequests));
-  }
-
-  /**
-   * Save HAR from the network panel content to a file.
-   */
-  saveAllAsHar(sortedRequests) {
-    // This will not work in launchpad
-    // document.execCommand(‘cut’/‘copy’) was denied because it was not called from
-    // inside a short running user-generated event handler.
-    // https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Interact_with_the_clipboard
-    return HarExporter.save(this.getDefaultHarOptions(sortedRequests));
-  }
-
-  getDefaultHarOptions(sortedRequests) {
-    return {
-      connector: this.props.connector,
-      items: sortedRequests,
-    };
   }
 }
 

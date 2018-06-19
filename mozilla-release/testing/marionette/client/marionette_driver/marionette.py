@@ -12,7 +12,6 @@ import socket
 import sys
 import time
 import traceback
-import warnings
 
 from contextlib import contextmanager
 
@@ -611,10 +610,6 @@ class Marionette(object):
             self.startup_timeout = int(startup_timeout)
 
         if self.bin:
-            if not Marionette.is_port_available(self.port, host=self.host):
-                ex_msg = "{0}:{1} is unavailable.".format(self.host, self.port)
-                raise errors.MarionetteException(message=ex_msg)
-
             self.instance = GeckoInstance.create(
                 app, host=self.host, port=self.port, bin=self.bin, **instance_args)
             self.start_binary(self.startup_timeout)
@@ -627,6 +622,9 @@ class Marionette(object):
             return self.instance.profile.profile
 
     def start_binary(self, timeout):
+        if not self.is_port_available(self.port, host=self.host):
+            raise IOError("Port {0}:{1} is unavailable.".format(self.host, self.port))
+
         try:
             self.instance.start()
             self.raise_for_port(timeout=timeout)
@@ -1008,7 +1006,7 @@ class Marionette(object):
         application.
 
         Duplicate entries in `shutdown_flags` are removed, and
-        `"eAttemptQuit"` is added if no other `*Quit` flags are given.
+        `"eForceQuit"` is added if no other `*Quit` flags are given.
         This provides backwards compatible behaviour with earlier
         Firefoxen.
 
@@ -1016,7 +1014,7 @@ class Marionette(object):
         Possible flag values are listed at http://mzl.la/1X0JZsC.
 
         :param shutdown_flags: Optional additional quit masks to include.
-            Duplicates are removed, and `"eAttemptQuit"` is added if no
+            Duplicates are removed, and `"eForceQuit"` is added if no
             flags ending with `"Quit"` are present.
 
         :throws InvalidArgumentException: If there are multiple
@@ -1032,9 +1030,9 @@ class Marionette(object):
         # remove duplicates
         flags = set(shutdown_flags)
 
-        # add eAttemptQuit if there are no *Quits
+        # add eForceQuit if there are no *Quits
         if not any(flag.endswith("Quit") for flag in flags):
-            flags = flags | set(("eAttemptQuit",))
+            flags = flags | set(("eForceQuit",))
 
         # Trigger a quit-application-requested observer notification
         # so that components can safely shutdown before quitting the
@@ -1318,25 +1316,6 @@ class Marionette(object):
                                                 key="value")
 
         return self.chrome_window
-
-    def get_window_position(self):
-        """Get the current window's position.
-
-        :returns: a dictionary with x and y
-        """
-        warnings.warn("get_window_position() has been deprecated, please use get_window_rect()",
-                      DeprecationWarning)
-        return self._send_message("getWindowPosition")
-
-    def set_window_position(self, x, y):
-        """Set the position of the current window
-
-        :param x: x coordinate for the top left of the window
-        :param y: y coordinate for the top left of the window
-        """
-        warnings.warn("set_window_position() has been deprecated, please use set_window_rect()",
-                      DeprecationWarning)
-        self._send_message("setWindowPosition", {"x": x, "y": y})
 
     def set_window_rect(self, x=None, y=None, height=None, width=None):
         """Set the position and size of the current window.
@@ -1707,21 +1686,19 @@ class Marionette(object):
         args = self._to_json(script_args)
         stack = traceback.extract_stack()
         frame = stack[-2:-1][0]  # grab the second-to-last frame
-        body = {"script": script,
+        filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
+        body = {"script": script.strip(),
                 "args": args,
                 "newSandbox": new_sandbox,
                 "sandbox": sandbox,
                 "scriptTimeout": script_timeout,
                 "line": int(frame[1]),
-                "filename": os.path.basename(frame[0])}
-
-        rv = self._send_message("WebDriver:ExecuteScript",
-                                body, key="value")
+                "filename": filename}
+        rv = self._send_message("WebDriver:ExecuteScript", body, key="value")
         return self._from_json(rv)
 
     def execute_async_script(self, script, script_args=(), new_sandbox=True,
-                             sandbox="default", script_timeout=None,
-                             debug_script=False):
+                             sandbox="default", script_timeout=None):
         """Executes an asynchronous JavaScript script, and returns the
         result (or None if the script does return a value).
 
@@ -1738,8 +1715,6 @@ class Marionette(object):
         :param new_sandbox: If False, preserve global variables from
             the last execute_*script call. This is True by default,
             in which case no globals are preserved.
-        :param debug_script: Capture javascript exceptions when in
-            `CONTEXT_CHROME` context.
 
         Usage example:
 
@@ -1757,17 +1732,16 @@ class Marionette(object):
         args = self._to_json(script_args)
         stack = traceback.extract_stack()
         frame = stack[-2:-1][0]  # grab the second-to-last frame
-        body = {"script": script,
+        filename = frame[0] if sys.platform == "win32" else os.path.relpath(frame[0])
+        body = {"script": script.strip(),
                 "args": args,
                 "newSandbox": new_sandbox,
                 "sandbox": sandbox,
                 "scriptTimeout": script_timeout,
                 "line": int(frame[1]),
-                "filename": os.path.basename(frame[0]),
-                "debug_script": debug_script}
+                "filename": filename}
 
-        rv = self._send_message("WebDriver:ExecuteAsyncScript",
-                                body, key="value")
+        rv = self._send_message("WebDriver:ExecuteAsyncScript", body, key="value")
         return self._from_json(rv)
 
     def find_element(self, method, target, id=None):
@@ -1992,39 +1966,6 @@ class Marionette(object):
             self._send_message("Marionette:SetScreenOrientation", body)
         except errors.UnknownCommandException:
             self._send_message("setScreenOrientation", body)
-
-    @property
-    def window_size(self):
-        """Get the current browser window size.
-
-        Will return the current browser window size in pixels. Refers to
-        window outerWidth and outerHeight values, which include scroll bars,
-        title bars, etc.
-
-        :returns: Window rect.
-        """
-        warnings.warn("window_size property has been deprecated, please use get_window_rect()",
-                      DeprecationWarning)
-        return self._send_message("getWindowSize")
-
-    def set_window_size(self, width, height):
-        """Resize the browser window currently in focus.
-
-        The supplied ``width`` and ``height`` values refer to the window `outerWidth`
-        and `outerHeight` values, which include scroll bars, title bars, etc.
-
-        An error will be returned if the requested window size would result
-        in the window being in the maximised state.
-
-        :param width: The width to resize the window to.
-        :param height: The height to resize the window to.
-
-        :returns Window rect.
-        """
-        warnings.warn("set_window_size() has been deprecated, please use set_window_rect()",
-                      DeprecationWarning)
-        body = {"width": width, "height": height}
-        return self._send_message("setWindowSize", body)
 
     def minimize_window(self):
         """Iconify the browser window currently receiving commands.

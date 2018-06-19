@@ -12,27 +12,34 @@ var gClearSiteDataDialog = {
   _clearCacheCheckbox: null,
   _clearButton: null,
 
-  init() {
-    this._bundle = Services.strings
-      .createBundle("chrome://browser/locale/preferences/clearSiteData.properties");
+  onLoad() {
+    document.mozSubdialogReady = this.init();
+  },
 
-    SiteDataManager.getTotalUsage().then(bytes => {
-      // Size is an array of amount and unit, e.g. [20, "MB"].
-      let size = DownloadUtils.convertByteUnits(bytes);
-      document.getElementById("clearSiteDataLabel").value =
-        this._bundle.formatStringFromName("clearSiteDataWithEstimates.label", size, 2);
-    });
-    SiteDataManager.getCacheSize().then(bytes => {
-      // Size is an array of amount and unit, e.g. [20, "MB"].
-      let size = DownloadUtils.convertByteUnits(bytes);
-      document.getElementById("clearCacheLabel").value =
-        this._bundle.formatStringFromName("clearCacheWithEstimates.label", size, 2);
-    });
-
+  async init() {
     this._clearButton = document.getElementById("clearButton");
     this._cancelButton = document.getElementById("cancelButton");
     this._clearSiteDataCheckbox = document.getElementById("clearSiteData");
     this._clearCacheCheckbox = document.getElementById("clearCache");
+
+    // We'll block init() on this because the result values may impact
+    // subdialog sizing.
+    await Promise.all([
+      SiteDataManager.getTotalUsage().then(bytes => {
+        let [amount, unit] = DownloadUtils.convertByteUnits(bytes);
+        document.l10n.setAttributes(this._clearSiteDataCheckbox,
+          "clear-site-data-cookies-with-data", { amount, unit });
+      }),
+      SiteDataManager.getCacheSize().then(bytes => {
+        let [amount, unit] = DownloadUtils.convertByteUnits(bytes);
+        document.l10n.setAttributes(this._clearCacheCheckbox,
+          "clear-site-data-cache-with-data", { amount, unit });
+      }),
+    ]);
+    await document.l10n.translateElements([
+      this._clearCacheCheckbox,
+      this._clearSiteDataCheckbox
+    ]);
 
     window.addEventListener("keypress", this.onWindowKeyPress);
 
@@ -78,4 +85,4 @@ var gClearSiteDataDialog = {
   },
 };
 
-window.addEventListener("load", () => gClearSiteDataDialog.init());
+window.addEventListener("load", () => gClearSiteDataDialog.onLoad());

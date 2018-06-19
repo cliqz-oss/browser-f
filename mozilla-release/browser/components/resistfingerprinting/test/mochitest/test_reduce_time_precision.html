@@ -8,7 +8,7 @@ https://trac.torproject.org/projects/tor/ticket/1517
   <meta charset="utf-8">
   <title>Test for Tor Bug 1517 and Mozilla Bug 1424341</title>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -36,7 +36,6 @@ https://trac.torproject.org/projects/tor/ticket/1517
     "new Date().getTime()",
     "new Event(\"\").timeStamp",
     "new File([], \"\").lastModified",
-    "new File([], \"\").lastModifiedDate.getTime()",
   ];
   // These are measured in seconds, so we need to scale them up
   var timeStampCodesDOM = timeStampCodes.concat([
@@ -175,6 +174,16 @@ https://trac.torproject.org/projects/tor/ticket/1517
     // and check if it is rounded
     for (let timeStampCode of timeStampCodesDOM) {
       let timeStamp = eval(timeStampCode);
+
+      // Audio Contexts increment in intervals of (minimum) 5.4ms, so we don't
+      // clamp/jitter if the timer precision is les than that.
+      // (Technically on MBPs they increment in intervals of 2.6 but this is
+      // non-standard and will eventually be changed. We don't cover this situation
+      // because we don't really support arbitrary Timer Precision, especially in
+      // the 2.6 - 5.4ms interval.)
+      if (timeStampCode.includes("audioContext") && expectedPrecision < 5.4)
+        continue;
+
       ok(isRounded(timeStamp, expectedPrecision),
         "pref: " + prefname + " - '" +
          "'" + timeStampCode +

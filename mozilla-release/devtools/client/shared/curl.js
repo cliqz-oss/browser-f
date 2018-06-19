@@ -55,7 +55,7 @@ const Curl = {
    * @return string
    *         A cURL command.
    */
-  generateCommand: function (data) {
+  generateCommand: function(data) {
     let utils = CurlUtils;
 
     let command = ["curl"];
@@ -88,20 +88,20 @@ const Curl = {
       postData.push(escapeString(text));
       ignoredHeaders.add("content-length");
     }
-
-    // Add method.
-    // For GET and POST requests this is not necessary as GET is the
-    // default. If --data or --binary is added POST is the default.
-    if (!(data.method == "GET" || data.method == "POST")) {
-      command.push("-X");
-      command.push(data.method);
-    }
+    // curl generates the host header itself based on the given URL
+    ignoredHeaders.add("host");
 
     // Add -I (HEAD)
     // For servers that supports HEAD.
     // This will fetch the header of a document only.
     if (data.method == "HEAD") {
       command.push("-I");
+    } else if (!(data.method == "GET" || data.method == "POST")) {
+      // Add method.
+      // For HEAD, GET and POST requests this is not necessary. GET is the
+      // default, if --data or --binary is added POST is used, -I implies HEAD.
+      command.push("-X");
+      command.push(data.method);
     }
 
     // Add request headers.
@@ -144,7 +144,7 @@ const CurlUtils = {
    * @return boolean
    *         True if the request is URL encoded, false otherwise.
    */
-  isUrlEncodedRequest: function (data) {
+  isUrlEncodedRequest: function(data) {
     let postDataText = data.postDataText;
     if (!postDataText) {
       return false;
@@ -169,7 +169,7 @@ const CurlUtils = {
    * @return boolean
    *         True if the request is multipart reqeust, false otherwise.
    */
-  isMultipartRequest: function (data) {
+  isMultipartRequest: function(data) {
     let postDataText = data.postDataText;
     if (!postDataText) {
       return false;
@@ -194,7 +194,7 @@ const CurlUtils = {
    * @return string
    *         Post data parameters.
    */
-  writePostDataTextParams: function (postDataText) {
+  writePostDataTextParams: function(postDataText) {
     if (!postDataText) {
       return "";
     }
@@ -212,7 +212,7 @@ const CurlUtils = {
    * @return string
    *         The found header value or null if not found.
    */
-  findHeader: function (headers, name) {
+  findHeader: function(headers, name) {
     if (!headers) {
       return null;
     }
@@ -235,7 +235,7 @@ const CurlUtils = {
    * @return string
    *         The boundary string for the request.
    */
-  getMultipartBoundary: function (data) {
+  getMultipartBoundary: function(data) {
     let boundaryRe = /\bboundary=(-{3,}\w+)/i;
 
     // Get the boundary string from the Content-Type request header.
@@ -264,7 +264,7 @@ const CurlUtils = {
    * @return string
    *         The multipart text without the binary data.
    */
-  removeBinaryDataFromMultipartText: function (multipartText, boundary) {
+  removeBinaryDataFromMultipartText: function(multipartText, boundary) {
     let result = "";
     boundary = "--" + boundary;
     let parts = multipartText.split(boundary);
@@ -299,7 +299,7 @@ const CurlUtils = {
    * @return array
    *         An array of header objects {name:x, value:x}
    */
-  getHeadersFromMultipartText: function (multipartText) {
+  getHeadersFromMultipartText: function(multipartText) {
     let headers = [];
     if (!multipartText || multipartText.startsWith("---")) {
       return headers;
@@ -345,7 +345,7 @@ const CurlUtils = {
    * Escape util function for POSIX oriented operating systems.
    * Credit: Google DevTools
    */
-  escapeStringPosix: function (str) {
+  escapeStringPosix: function(str) {
     function escapeCharacter(x) {
       let code = x.charCodeAt(0);
       if (code < 256) {
@@ -373,7 +373,7 @@ const CurlUtils = {
    * Escape util function for Windows systems.
    * Credit: Google DevTools
    */
-  escapeStringWin: function (str) {
+  escapeStringWin: function(str) {
     /* Replace quote by double quote (but not by \") because it is
        recognized by both cmd.exe and MS Crt arguments parser.
 

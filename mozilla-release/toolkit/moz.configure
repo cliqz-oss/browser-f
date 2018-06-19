@@ -55,18 +55,39 @@ imply_option('--enable-profiling', dmd)
 imply_option('--enable-jemalloc', dmd)
 imply_option('--enable-replace-malloc', dmd)
 
+# ALSA cubeb backend
+# ==============================================================
+option('--enable-alsa', env='MOZ_ALSA',
+       help='Enable ALSA audio backend.')
+
+alsa = pkg_check_modules('MOZ_ALSA', 'alsa', when='--enable-alsa')
+
+set_config('MOZ_ALSA', depends_if(alsa)(lambda _: True))
+set_define('MOZ_ALSA', depends_if(alsa)(lambda _: True))
+
 # JACK cubeb backend
 # ==============================================================
 option('--enable-jack', env='MOZ_JACK',
        help='Enable JACK audio backend.')
 
-@depends('--enable-jack')
-def jack(value):
-    if value:
-        return True
+jack = pkg_check_modules('MOZ_JACK', 'jack', when='--enable-jack')
 
-set_config('MOZ_JACK', jack)
-set_define('MOZ_JACK', jack)
+set_config('MOZ_JACK', depends_if(jack)(lambda _: True))
+set_define('MOZ_JACK', depends_if(jack)(lambda _: True))
+
+# PulseAudio cubeb backend
+# ==============================================================
+@depends(target)
+def pulseaudio_default(target):
+    return target.os not in ('WINNT', 'OSX', 'iOS', 'Android', 'OpenBSD')
+
+option('--enable-pulseaudio', env='MOZ_PULSEAUDIO', default=pulseaudio_default,
+       help='Enable PulseAudio audio backend.')
+
+pulseaudio = pkg_check_modules('MOZ_PULSEAUDIO', 'libpulse', when='--enable-pulseaudio')
+
+set_config('MOZ_PULSEAUDIO', depends_if(pulseaudio)(lambda _: True))
+set_define('MOZ_PULSEAUDIO', depends_if(pulseaudio)(lambda _: True))
 
 # Javascript engine
 # ==============================================================
@@ -398,6 +419,20 @@ set_config('MOZ_FMP4', fmp4)
 set_define('MOZ_FMP4', fmp4)
 add_old_configure_assignment('MOZ_FMP4', fmp4)
 
+# OpenMAX IL Decoding Support
+# ==============================================================
+option('--enable-openmax',
+       help='Enable OpenMAX IL for video/audio decoding')
+
+@depends('--enable-openmax')
+def openmax(value):
+    enabled = bool(value)
+    if enabled:
+        return True
+
+set_config('MOZ_OMX', openmax)
+set_define('MOZ_OMX', openmax)
+
 # EME Support
 # ==============================================================
 # Widevine is enabled by default in desktop browser builds.
@@ -550,54 +585,6 @@ id_and_secret_keyfile('Leanplum SDK')
 
 simple_keyfile('Pocket API')
 
-# Servo integration
-# ==============================================================
-option('--enable-stylo', nargs='?', choices=('build', 'only'),
-       help='Include Stylo in the build.  "build" means to disable Stylo at ' +
-            'runtime, and "only" means to exclude the old style system from ' +
-            'the build.')
-
-@depends('--enable-stylo', '--help')
-def stylo_config(value, _):
-    build_stylo = None
-    enable_stylo = None
-    old_style = True
-
-    # If nothing is specified, default to building and enabling Stylo,
-    # and building the old style system.
-    if value.origin == 'default':
-        build_stylo = True
-        enable_stylo = True
-    elif len(value) and value[0] == 'build':
-        # Build but disable by request.
-        build_stylo = True
-    elif len(value) and value[0] == 'only':
-        # Disable the old style system.
-        build_stylo = True
-        enable_stylo = True
-        old_style = None
-    elif bool(value):
-        # Build and enable.
-        build_stylo = True
-        enable_stylo = True
-
-    return namespace(
-        build = build_stylo,
-        enable = enable_stylo,
-        old_style = old_style,
-    )
-
-option('--disable-stylo-build-bindgen',
-       help='Disable build-time bindgen for Stylo')
-
-@depends(stylo_config, '--enable-stylo-build-bindgen', '--enable-compile-environment')
-def building_stylo_bindgen(stylo_config, bindgen_enabled, compile_environment):
-    if not compile_environment:
-        return False
-    if not bindgen_enabled:
-        return False
-    return stylo_config.build
-
 # We support setting up the appropriate options for Stylo's build-time
 # bindings generation via setting LLVM_CONFIG or by providing explicit
 # configure options.  The Windows installer of LLVM/Clang doesn't provide
@@ -647,10 +634,10 @@ def llvm_config_paths(host):
     return llvm_config_progs
 
 llvm_config = check_prog('LLVM_CONFIG', llvm_config_paths,
-                         when=building_stylo_bindgen,
+                         when='--enable-compile-environment',
                          what='llvm-config', allow_missing=True)
 
-with only_when(building_stylo_bindgen):
+with only_when('--enable-compile-environment'):
     option('--with-libclang-path', nargs=1,
            help='Absolute path to a directory containing Clang/LLVM libraries for Stylo (version 3.9.x or above)')
     option('--with-clang-path', nargs=1,
@@ -734,15 +721,15 @@ with only_when(building_stylo_bindgen):
             if not clang_resolved:
                 die(dedent('''\
                 The file {} returned by `llvm-config {}` does not exist.
-                clang is required to build Stylo.  Please install the necessary packages,
-                run `mach bootstrap`, or add --disable-stylo to your mozconfig.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
                 '''.format(clang_path, '--bindir')))
 
             if not os.path.exists(libclang_path):
                 die(dedent('''\
                 The directory {} returned by `llvm-config {}` does not exist.
-                clang is required to build Stylo.  Please install the necessary packages,
-                run `mach bootstrap`, or add --disable-stylo to your mozconfig.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
                 '''.format(libclang_path, libclang_arg)))
 
             (found, searched) = search_for_libclang(libclang_path)
@@ -750,8 +737,8 @@ with only_when(building_stylo_bindgen):
                 die(dedent('''\
                 Could not find the clang shared library in the path {}
                 returned by `llvm-config {}` (searched for files {}).
-                clang is required to build Stylo.  Please install the necessary packages,
-                run `mach bootstrap`, or add --disable-stylo to your mozconfig.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
                 '''.format(libclang_path, libclang_arg, searched)))
 
             return namespace(
@@ -794,14 +781,6 @@ with only_when(building_stylo_bindgen):
 
     set_config('MOZ_LIBCLANG_PATH', bindgen_config_paths.libclang_path)
     set_config('MOZ_CLANG_PATH', bindgen_config_paths.clang_path)
-    set_config('MOZ_STYLO_BINDGEN', depends_if('--enable-stylo-build-bindgen')(lambda _: True))
-
-set_config('MOZ_STYLO', stylo_config.build)
-set_define('MOZ_STYLO', stylo_config.build)
-set_config('MOZ_STYLO_ENABLE', stylo_config.enable)
-set_define('MOZ_STYLO_ENABLE', stylo_config.enable)
-set_config('MOZ_OLD_STYLE', stylo_config.old_style)
-set_define('MOZ_OLD_STYLE', stylo_config.old_style)
 
 option('--with-servo', env='SERVO_TARGET_DIR', nargs=1,
        help='Absolute path of the target directory where libgeckoservo can '
@@ -967,12 +946,12 @@ set_define('USE_SKIA_GPU', skia_gpu)
 
 option('--enable-skia-pdf', help='Enable Skia PDF')
 
-@depends('--enable-skia-pdf', skia, milestone)
-def skia_pdf(value, skia, milestone):
+@depends('--enable-skia-pdf', skia, target, milestone)
+def skia_pdf(value, skia, target, milestone):
     if value.origin == 'default':
         if not skia:
             return None
-        if milestone.is_nightly:
+        if milestone.is_nightly and target.os != 'WINNT':
             return True
     elif value and not skia:
         die('Cannot enable Skia PDF without enabling Skia')
@@ -1180,6 +1159,7 @@ def enable_asan_reporter(value):
 
 set_config('MOZ_ASAN_REPORTER', enable_asan_reporter)
 set_define('MOZ_ASAN_REPORTER', enable_asan_reporter)
+add_old_configure_assignment('MOZ_ASAN_REPORTER', enable_asan_reporter)
 
 # Elfhack
 # ==============================================================

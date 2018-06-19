@@ -30,6 +30,7 @@ struct ActiveScrolledRoot;
 namespace layers {
 
 class Layer;
+class WebRenderLayerManager;
 class WebRenderScrollData;
 
 // Data needed by APZ, per layer. One instance of this class is created for
@@ -46,7 +47,8 @@ public:
   void Initialize(WebRenderScrollData& aOwner,
                   nsDisplayItem* aItem,
                   int32_t aDescendantCount,
-                  const ActiveScrolledRoot* aStopAtAsr);
+                  const ActiveScrolledRoot* aStopAtAsr,
+                  const Maybe<gfx::Matrix4x4>& aAncestorTransform);
 
   int32_t GetDescendantCount() const;
   size_t GetScrollMetadataCount() const;
@@ -60,6 +62,7 @@ public:
   const ScrollMetadata& GetScrollMetadata(const WebRenderScrollData& aOwner,
                                           size_t aIndex) const;
 
+  gfx::Matrix4x4 GetAncestorTransform() const { return mAncestorTransform; }
   void SetTransform(const gfx::Matrix4x4& aTransform) { mTransform = aTransform; }
   gfx::Matrix4x4 GetTransform() const { return mTransform; }
   CSSTransformMatrix GetTransformTyped() const;
@@ -72,17 +75,13 @@ public:
   EventRegionsOverride GetEventRegionsOverride() const { return mEventRegionsOverride; }
 
   const LayerIntRegion& GetVisibleRegion() const { return mVisibleRegion; }
-  void SetReferentId(uint64_t aReferentId) { mReferentId = Some(aReferentId); }
-  Maybe<uint64_t> GetReferentId() const { return mReferentId; }
+  void SetReferentId(LayersId aReferentId) { mReferentId = Some(aReferentId); }
+  Maybe<LayersId> GetReferentId() const { return mReferentId; }
 
-  void SetScrollThumbData(const ScrollThumbData& aData) { mScrollThumbData = aData; }
-  const ScrollThumbData& GetScrollThumbData() const { return mScrollThumbData; }
+  void SetScrollbarData(const ScrollbarData& aData) { mScrollbarData = aData; }
+  const ScrollbarData& GetScrollbarData() const { return mScrollbarData; }
   void SetScrollbarAnimationId(const uint64_t& aId) { mScrollbarAnimationId = aId; }
   const uint64_t& GetScrollbarAnimationId() const { return mScrollbarAnimationId; }
-  void SetScrollbarTargetContainerId(FrameMetrics::ViewID aId) { mScrollbarTargetContainerId = aId; }
-  FrameMetrics::ViewID GetScrollbarTargetContainerId() const { return mScrollbarTargetContainerId; }
-  void SetScrollbarContainerDirection(ScrollDirection aDirection) { mScrollbarContainerDirection = Some(aDirection); }
-  Maybe<ScrollDirection> GetScrollbarContainerDirection() const { return mScrollbarContainerDirection; }
 
   void SetFixedPositionScrollContainerId(FrameMetrics::ViewID aId) { mFixedPosScrollContainerId = aId; }
   FrameMetrics::ViewID GetFixedPositionScrollContainerId() const { return mFixedPosScrollContainerId; }
@@ -107,16 +106,15 @@ private:
   // Various data that we collect from the Layer in Initialize(), serialize
   // over IPC, and use on the parent side in APZ.
 
+  gfx::Matrix4x4 mAncestorTransform;
   gfx::Matrix4x4 mTransform;
   bool mTransformIsPerspective;
   EventRegions mEventRegions;
   LayerIntRegion mVisibleRegion;
-  Maybe<uint64_t> mReferentId;
+  Maybe<LayersId> mReferentId;
   EventRegionsOverride mEventRegionsOverride;
-  ScrollThumbData mScrollThumbData;
+  ScrollbarData mScrollbarData;
   uint64_t mScrollbarAnimationId;
-  FrameMetrics::ViewID mScrollbarTargetContainerId;
-  Maybe<ScrollDirection> mScrollbarContainerDirection;
   FrameMetrics::ViewID mFixedPosScrollContainerId;
 };
 
@@ -199,15 +197,15 @@ private:
 
 namespace IPC {
 
-// When ScrollThumbData is stored on the layer tree, it's part of
+// When ScrollbarData is stored on the layer tree, it's part of
 // SimpleAttributes which itself uses PlainOldDataSerializer, so
-// we don't need a ParamTraits specialization for ScrollThumbData
-// separately. Here, however, ScrollThumbData is stored as part
+// we don't need a ParamTraits specialization for ScrollbarData
+// separately. Here, however, ScrollbarData is stored as part
 // of WebRenderLayerScrollData whose fields are serialized
 // individually, so we do.
 template<>
-struct ParamTraits<mozilla::layers::ScrollThumbData>
-  : public PlainOldDataSerializer<mozilla::layers::ScrollThumbData>
+struct ParamTraits<mozilla::layers::ScrollbarData>
+  : public PlainOldDataSerializer<mozilla::layers::ScrollbarData>
 { };
 
 template<>
@@ -220,16 +218,15 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData>
   {
     WriteParam(aMsg, aParam.mDescendantCount);
     WriteParam(aMsg, aParam.mScrollIds);
+    WriteParam(aMsg, aParam.mAncestorTransform);
     WriteParam(aMsg, aParam.mTransform);
     WriteParam(aMsg, aParam.mTransformIsPerspective);
     WriteParam(aMsg, aParam.mEventRegions);
     WriteParam(aMsg, aParam.mVisibleRegion);
     WriteParam(aMsg, aParam.mReferentId);
     WriteParam(aMsg, aParam.mEventRegionsOverride);
-    WriteParam(aMsg, aParam.mScrollThumbData);
+    WriteParam(aMsg, aParam.mScrollbarData);
     WriteParam(aMsg, aParam.mScrollbarAnimationId);
-    WriteParam(aMsg, aParam.mScrollbarTargetContainerId);
-    WriteParam(aMsg, aParam.mScrollbarContainerDirection);
     WriteParam(aMsg, aParam.mFixedPosScrollContainerId);
   }
 
@@ -238,16 +235,15 @@ struct ParamTraits<mozilla::layers::WebRenderLayerScrollData>
   {
     return ReadParam(aMsg, aIter, &aResult->mDescendantCount)
         && ReadParam(aMsg, aIter, &aResult->mScrollIds)
+        && ReadParam(aMsg, aIter, &aResult->mAncestorTransform)
         && ReadParam(aMsg, aIter, &aResult->mTransform)
         && ReadParam(aMsg, aIter, &aResult->mTransformIsPerspective)
         && ReadParam(aMsg, aIter, &aResult->mEventRegions)
         && ReadParam(aMsg, aIter, &aResult->mVisibleRegion)
         && ReadParam(aMsg, aIter, &aResult->mReferentId)
         && ReadParam(aMsg, aIter, &aResult->mEventRegionsOverride)
-        && ReadParam(aMsg, aIter, &aResult->mScrollThumbData)
+        && ReadParam(aMsg, aIter, &aResult->mScrollbarData)
         && ReadParam(aMsg, aIter, &aResult->mScrollbarAnimationId)
-        && ReadParam(aMsg, aIter, &aResult->mScrollbarTargetContainerId)
-        && ReadParam(aMsg, aIter, &aResult->mScrollbarContainerDirection)
         && ReadParam(aMsg, aIter, &aResult->mFixedPosScrollContainerId);
   }
 };

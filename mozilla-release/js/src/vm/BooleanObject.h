@@ -7,11 +7,13 @@
 #ifndef vm_BooleanObject_h
 #define vm_BooleanObject_h
 
-#include "jsbool.h"
+#include "builtin/Boolean.h"
 
 #include "vm/NativeObject.h"
 
 namespace js {
+
+class GlobalObject;
 
 class BooleanObject : public NativeObject
 {
@@ -41,7 +43,7 @@ class BooleanObject : public NativeObject
 
     /* For access to init, as Boolean.prototype is special. */
     friend JSObject*
-    js::InitBooleanClass(JSContext* cx, js::HandleObject global);
+    js::InitBooleanClass(JSContext* cx, js::Handle<GlobalObject*> global);
 };
 
 } // namespace js

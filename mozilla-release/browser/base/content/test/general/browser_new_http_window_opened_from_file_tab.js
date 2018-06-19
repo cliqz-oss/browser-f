@@ -12,7 +12,7 @@ add_task(async function() {
   const uriString = Services.io.newFileURI(dir).spec;
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, uriString);
   registerCleanupFunction(async function() {
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
   let browser = tab.linkedBrowser;
 
@@ -24,7 +24,7 @@ add_task(async function() {
 
   // Open new http window from JavaScript in file:// page and check that we get
   // a new window with the correct page and features.
-  let promiseNewWindow = BrowserTestUtils.waitForNewWindow(TEST_HTTP);
+  let promiseNewWindow = BrowserTestUtils.waitForNewWindow({url: TEST_HTTP});
   await ContentTask.spawn(browser, TEST_HTTP, uri => {
     content.open(uri, "_blank");
   });
@@ -40,7 +40,7 @@ add_task(async function() {
 
   // Open new http window from a link in file:// page and check that we get a
   // new window with the correct page and features.
-  promiseNewWindow = BrowserTestUtils.waitForNewWindow(TEST_HTTP);
+  promiseNewWindow = BrowserTestUtils.waitForNewWindow({url: TEST_HTTP});
   await BrowserTestUtils.synthesizeMouseAtCenter("#linkToExample", {}, browser);
   let win2 = await promiseNewWindow;
   registerCleanupFunction(async function() {

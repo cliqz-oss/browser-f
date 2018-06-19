@@ -64,7 +64,6 @@ ImageBridgeParent::Setup()
 ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop,
                                      ProcessId aChildProcessId)
   : mMessageLoop(aLoop)
-  , mSetChildThreadPriority(false)
   , mClosed(false)
   , mCompositorThreadHolder(CompositorThreadHolder::GetSingleton())
 {
@@ -165,17 +164,6 @@ ImageBridgeParent::ActorDestroy(ActorDestroyReason aWhy)
   // for the compositor thread to terminate.
 }
 
-mozilla::ipc::IPCResult
-ImageBridgeParent::RecvImageBridgeThreadId(const PlatformThreadId& aThreadId)
-{
-  MOZ_ASSERT(!mSetChildThreadPriority);
-  if (mSetChildThreadPriority) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  mSetChildThreadPriority = true;
-  return IPC_OK();
-}
-
 class MOZ_STACK_CLASS AutoImageBridgeParentAsyncMessageSender
 {
 public:
@@ -202,15 +190,6 @@ private:
 };
 
 mozilla::ipc::IPCResult
-ImageBridgeParent::RecvInitReadLocks(ReadLockArray&& aReadLocks)
-{
-  if (!AddReadLocks(Move(aReadLocks))) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
 ImageBridgeParent::RecvUpdate(EditArray&& aEdits, OpDestroyArray&& aToDestroy,
                               const uint64_t& aFwdTransactionId)
 {
@@ -218,7 +197,6 @@ ImageBridgeParent::RecvUpdate(EditArray&& aEdits, OpDestroyArray&& aToDestroy,
   // to early-return from RecvUpdate without doing so.
   AutoImageBridgeParentAsyncMessageSender autoAsyncMessageSender(this, &aToDestroy);
   UpdateFwdTransactionId(aFwdTransactionId);
-  AutoClearReadLocks clearLocks(mReadLocks);
 
   for (EditArray::index_type i = 0; i < aEdits.Length(); ++i) {
     if (!ReceiveCompositableUpdate(aEdits[i])) {

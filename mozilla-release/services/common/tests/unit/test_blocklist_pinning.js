@@ -2,7 +2,9 @@
 
 const { Constructor: CC } = Components;
 
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://testing-common/httpd.js");
+const BlocklistClients = ChromeUtils.import("resource://services-common/blocklist-clients.js", {});
 
 const BinaryInputStream = CC("@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream", "setInputStream");
@@ -27,7 +29,9 @@ let server;
 // Some simple tests to demonstrate that the core preload sync operations work
 // correctly and that simple kinto operations are working as expected.
 add_task(async function test_something() {
-  const { PinningPreloadClient } = ChromeUtils.import("resource://services-common/blocklist-clients.js", {});
+  BlocklistClients.initialize();
+
+  const PinningPreloadClient = BlocklistClients.PinningBlocklistClient;
 
   const configPath = "/v1/";
   const recordsPath = "/v1/buckets/pinning/collections/pins/records";
@@ -80,10 +84,8 @@ add_task(async function test_something() {
 
   // Open the collection, verify it's been populated:
   // Our test data has a single record; it should be in the local collection
-  await PinningPreloadClient.openCollection(async (collection) => {
-    const list = await collection.list();
-    Assert.equal(list.data.length, 1);
-  });
+  const before = await PinningPreloadClient.get();
+  Assert.equal(before.length, 1);
 
   // check that a pin exists for one.example.com
   ok(sss.isSecureURI(sss.HEADER_HPKP,
@@ -94,10 +96,8 @@ add_task(async function test_something() {
 
   // Open the collection, verify it's been updated:
   // Our data now has four new records; all should be in the local collection
-  await PinningPreloadClient.openCollection(async (collection) => {
-    const list = await collection.list();
-    Assert.equal(list.data.length, 5);
-  });
+  const after = await PinningPreloadClient.get();
+  Assert.equal(after.length, 5);
 
   // check that a pin exists for two.example.com and three.example.com
   ok(sss.isSecureURI(sss.HEADER_HPKP,
@@ -151,7 +151,7 @@ add_task(async function test_something() {
 function run_test() {
   // Ensure that signature verification is disabled to prevent interference
   // with basic certificate sync tests
-  Services.prefs.setBoolPref("services.blocklist.signing.enforced", false);
+  Services.prefs.setBoolPref("services.settings.verify_signature", false);
 
   // Set up an HTTP Server
   server = new HttpServer();

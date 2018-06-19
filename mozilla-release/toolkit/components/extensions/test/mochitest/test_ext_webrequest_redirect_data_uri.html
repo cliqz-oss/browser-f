@@ -3,7 +3,7 @@
 <head>
   <title>Bug 1434357: Allow Web Request API to redirect to data: URI</title>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
@@ -23,7 +23,7 @@
 const WIN_URL =
   "http://mochi.test:8888/tests/toolkit/components/extensions/test/mochitest/file_redirect_data_uri.html";
 
-add_task(function* test_webRequest_redirect_data_uri() {
+add_task(async function test_webRequest_redirect_data_uri() {
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       permissions: [
@@ -71,11 +71,11 @@ add_task(function* test_webRequest_redirect_data_uri() {
     },
   });
 
-  yield extension.startup();
+  await extension.startup();
   let win = window.open(WIN_URL);
-  yield extension.awaitMessage("finished");
+  await extension.awaitMessage("finished");
   win.close();
-  yield extension.unload();
+  await extension.unload();
 });
 
 </script>

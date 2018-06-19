@@ -10,9 +10,9 @@ const TEST_URI = CHROME_URL_ROOT + "doc_tableWidget_basic.html";
 
 const {TableWidget} = require("devtools/client/shared/widgets/TableWidget");
 
-add_task(function* () {
-  yield addTab("about:blank");
-  let [host, , doc] = yield createHost("bottom", TEST_URI);
+add_task(async function() {
+  await addTab("about:blank");
+  let [host, , doc] = await createHost("bottom", TEST_URI);
 
   let table = new TableWidget(doc.querySelector("box"), {
     initialColumns: {
@@ -293,9 +293,11 @@ function testAPI(doc, table) {
   // double because splitters
   is(table.tbody.children.length, 2 * 2,
      "2 columns exist after setColumn call");
-  is(table.tbody.children[0].firstChild.firstChild.value, "Foobar",
+  is(table.tbody.children[0].firstChild.firstChild.getAttribute("value"),
+     "Foobar",
      "Correct column header value for first column");
-  is(table.tbody.children[2].firstChild.firstChild.value, "Testing",
+  is(table.tbody.children[2].firstChild.firstChild.getAttribute("value"),
+     "Testing",
      "Correct column header value for second column");
 
   table.setColumns({

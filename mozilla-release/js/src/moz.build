@@ -32,7 +32,7 @@ for gcfile in ['devtools/rootAnalysis', 'devtools/gc-ubench', 'devtools/gctrace'
     with Files(gcfile):
         BUG_COMPONENT = component_gc
 
-for stlfile in ['jsarray.*', 'jsbool*', 'jsdate.*', 'jsnum.*']:
+for stlfile in ['jsdate.*', 'jsnum.*']:
     with Files(stlfile):
         BUG_COMPONENT = component_stl
 
@@ -49,13 +49,29 @@ if not CONFIG['JS_DISABLE_SHELL']:
 TEST_DIRS += ['jsapi-tests', 'tests', 'gdb']
 
 if CONFIG['FUZZING_INTERFACES']:
-    if CONFIG['LIBFUZZER']:
-        # Add trace-pc coverage for libfuzzer
-        CFLAGS += ['-fsanitize-coverage=trace-pc-guard']
-        CXXFLAGS += ['-fsanitize-coverage=trace-pc-guard']
-
     TEST_DIRS += [
         'fuzz-tests',
+    ]
+
+if CONFIG['FUZZING_INTERFACES'] and CONFIG['LIBFUZZER']:
+    # In addition to regular coverage provided by trace-pc-guard,
+    # LibFuzzer can use trace-cmp to instrument various compare instructions.
+    # Only use this feature on source files that do a lot of constant
+    # comparisons that would otherwise be hard to guess by LibFuzzer,
+    # as it comes with a larger overhead (requires -use_value_profile=1).
+    libfuzzer_flags = ['-fsanitize-coverage=trace-pc-guard']
+    libfuzzer_flags_cmp = ['-fsanitize-coverage=trace-pc-guard', '-fsanitize-coverage=trace-cmp']
+
+    # Any files that are targeted by LibFuzzer should be added here so they can
+    # be built with the necessary instrumentation flags, rather than just building
+    # the whole JS engine with instrumentation, to reduce the amount of noise.
+    SOURCES += [
+        'vm/StructuredClone.cpp',
+    ]
+    SOURCES['vm/StructuredClone.cpp'].flags += libfuzzer_flags_cmp
+else:
+    UNIFIED_SOURCES += [
+        'vm/StructuredClone.cpp',
     ]
 
 CONFIGURE_SUBST_FILES += [
@@ -79,6 +95,19 @@ if CONFIG['HAVE_DTRACE']:
     GENERATED_FILES += ['javascript-trace.h']
 
     EXPORTS += ['!javascript-trace.h']
+
+# Generate jit/MOpcodes.h from jit/MIR.h
+GENERATED_FILES += ['jit/MOpcodes.h']
+MOpcodesGenerated = GENERATED_FILES['jit/MOpcodes.h']
+MOpcodesGenerated.script = 'jit/GenerateOpcodeFiles.py:generate_mir_header'
+MOpcodesGenerated.inputs = ['jit/MIR.h']
+
+# Generate jit/LOpcodes.h from jit/LIR.h, jit/shared/LIR-shared.h, and
+# platform-specific LIR files.
+GENERATED_FILES += ['jit/LOpcodes.h']
+LOpcodesGenerated = GENERATED_FILES['jit/LOpcodes.h']
+LOpcodesGenerated.script = 'jit/GenerateOpcodeFiles.py:generate_lir_header'
+LOpcodesGenerated.inputs = ['jit/LIR.h', 'jit/shared/LIR-shared.h']
 
 # Changes to internal header files, used externally, massively slow down
 # browser builds.  Don't add new files here unless you know what you're
@@ -148,6 +177,7 @@ EXPORTS.js += [
 
 UNIFIED_SOURCES += [
     'builtin/AtomicsObject.cpp',
+    'builtin/Boolean.cpp',
     'builtin/DataViewObject.cpp',
     'builtin/Eval.cpp',
     'builtin/intl/Collator.cpp',
@@ -200,7 +230,6 @@ UNIFIED_SOURCES += [
     'gc/WeakMap.cpp',
     'gc/WeakMapPtr.cpp',
     'gc/Zone.cpp',
-    'gc/ZoneGroup.cpp',
     'irregexp/NativeRegExpMacroAssembler.cpp',
     'irregexp/RegExpAST.cpp',
     'irregexp/RegExpCharacters.cpp',
@@ -236,7 +265,6 @@ UNIFIED_SOURCES += [
     'jit/EdgeCaseAnalysis.cpp',
     'jit/EffectiveAddressAnalysis.cpp',
     'jit/ExecutableAllocator.cpp',
-    'jit/FlowAliasAnalysis.cpp',
     'jit/FoldLinearArithConstants.cpp',
     'jit/InstructionReordering.cpp',
     'jit/Ion.cpp',
@@ -287,7 +315,6 @@ UNIFIED_SOURCES += [
     'jit/VMFunctions.cpp',
     'jit/WasmBCE.cpp',
     'jsapi.cpp',
-    'jsbool.cpp',
     'jsdate.cpp',
     'jsexn.cpp',
     'jsfriendapi.cpp',
@@ -361,7 +388,6 @@ UNIFIED_SOURCES += [
     'vm/Stack.cpp',
     'vm/Stopwatch.cpp',
     'vm/StringType.cpp',
-    'vm/StructuredClone.cpp',
     'vm/SymbolType.cpp',
     'vm/TaggedProto.cpp',
     'vm/Time.cpp',
@@ -375,7 +401,6 @@ UNIFIED_SOURCES += [
     'vm/Xdr.cpp',
     'wasm/AsmJS.cpp',
     'wasm/WasmBaselineCompile.cpp',
-    'wasm/WasmBinaryIterator.cpp',
     'wasm/WasmBinaryToAST.cpp',
     'wasm/WasmBinaryToText.cpp',
     'wasm/WasmBuiltins.cpp',
@@ -389,6 +414,7 @@ UNIFIED_SOURCES += [
     'wasm/WasmIonCompile.cpp',
     'wasm/WasmJS.cpp',
     'wasm/WasmModule.cpp',
+    'wasm/WasmOpIter.cpp',
     'wasm/WasmProcess.cpp',
     'wasm/WasmSignalHandlers.cpp',
     'wasm/WasmStubs.cpp',
@@ -399,10 +425,10 @@ UNIFIED_SOURCES += [
     'wasm/WasmValidate.cpp'
 ]
 
-# jsarray.cpp and vm/JSAtom.cpp cannot be built in unified mode because
+# builtin/Array.cpp and vm/JSAtom.cpp cannot be built in unified mode because
 #   xpcshell is broken during packaging when compiled with gcc-4.8.2
-# builtin/RegExp.cpp cannot be built in unified mode because it is built
-#   without PGO
+# builtin/RegExp.cpp cannot be built in unified mode because it causes huge
+#   win32 test slowdowns
 # frontend/Parser.cpp cannot be built in unified mode because of explicit
 #   template instantiations.
 # jsmath.cpp cannot be built in unified mode because it needs to re-#define the
@@ -412,20 +438,24 @@ UNIFIED_SOURCES += [
 # StoreBuffer.cpp cannot be built in unified because its template
 #   instantiations may or may not be needed depending on what it gets bundled
 #   with.
+# perf/ProfilingStack.cpp cannot be built in unified mode because we want to
+#   suppress warnings due to usage of the system allocator, and this allows it
+#   to have a deterministic object name.
 # util/DoubleToString.cpp cannot be built in unified mode because we want to
 #   suppress compiler warnings in third-party dtoa.c.
 # vm/Interpreter.cpp is gigantic and destroys incremental build times for any
 #   files unlucky enough to be unified with it.
 SOURCES += [
+    'builtin/Array.cpp',
     'builtin/RegExp.cpp',
     'frontend/Parser.cpp',
     'gc/StoreBuffer.cpp',
-    'jsarray.cpp',
     'jsmath.cpp',
     'jsutil.cpp',
     'util/DoubleToString.cpp',
     'vm/Interpreter.cpp',
     'vm/JSAtom.cpp',
+    'vm/ProfilingStack.cpp',
 ]
 
 if CONFIG['JS_POSIX_NSPR']:
@@ -446,10 +476,12 @@ if CONFIG['ENABLE_TRACE_LOGGING']:
     ]
 
 if not CONFIG['ENABLE_ION']:
+    LOpcodesGenerated.inputs += ['jit/none/LIR-none.h']
     UNIFIED_SOURCES += [
         'jit/none/Trampoline-none.cpp'
     ]
 elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
+    LOpcodesGenerated.inputs += ['jit/x86-shared/LIR-x86-shared.h']
     UNIFIED_SOURCES += [
         'jit/x86-shared/Architecture-x86-shared.cpp',
         'jit/x86-shared/Assembler-x86-shared.cpp',
@@ -465,6 +497,7 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
         'jit/x86-shared/Disassembler-x86-shared.cpp',  # using namespace js::jit::X86Encoding;
     ]
     if CONFIG['JS_CODEGEN_X64']:
+        LOpcodesGenerated.inputs += ['jit/x64/LIR-x64.h']
         UNIFIED_SOURCES += [
             'jit/x64/Assembler-x64.cpp',
             'jit/x64/Bailouts-x64.cpp',
@@ -477,6 +510,7 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x64/Trampoline-x64.cpp',
         ]
     else:
+        LOpcodesGenerated.inputs += ['jit/x86/LIR-x86.h']
         UNIFIED_SOURCES += [
             'jit/x86/Assembler-x86.cpp',
             'jit/x86/Bailouts-x86.cpp',
@@ -489,6 +523,7 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x86/Trampoline-x86.cpp',
         ]
 elif CONFIG['JS_CODEGEN_ARM']:
+    LOpcodesGenerated.inputs += ['jit/arm/LIR-arm.h']
     UNIFIED_SOURCES += [
         'jit/arm/Architecture-arm.cpp',
         'jit/arm/Assembler-arm.cpp',
@@ -514,6 +549,7 @@ elif CONFIG['JS_CODEGEN_ARM']:
             'jit/arm/llvm-compiler-rt/arm/aeabi_uidivmod.S',
         ]
 elif CONFIG['JS_CODEGEN_ARM64']:
+    LOpcodesGenerated.inputs += ['jit/arm64/LIR-arm64.h']
     UNIFIED_SOURCES += [
         'jit/arm64/Architecture-arm64.cpp',
         'jit/arm64/Assembler-arm64.cpp',
@@ -545,6 +581,7 @@ elif CONFIG['JS_CODEGEN_ARM64']:
             'jit/arm64/vixl/Simulator-vixl.cpp'
         ]
 elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
+    LOpcodesGenerated.inputs += ['jit/mips-shared/LIR-mips-shared.h']
     UNIFIED_SOURCES += [
         'jit/mips-shared/Architecture-mips-shared.cpp',
         'jit/mips-shared/Assembler-mips-shared.cpp',
@@ -557,6 +594,7 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
         'jit/mips-shared/MoveEmitter-mips-shared.cpp',
     ]
     if CONFIG['JS_CODEGEN_MIPS32']:
+        LOpcodesGenerated.inputs += ['jit/mips32/LIR-mips32.h']
         UNIFIED_SOURCES += [
             'jit/mips32/Architecture-mips32.cpp',
             'jit/mips32/Assembler-mips32.cpp',
@@ -575,6 +613,7 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
                 'jit/mips32/Simulator-mips32.cpp'
             ]
     elif CONFIG['JS_CODEGEN_MIPS64']:
+        LOpcodesGenerated.inputs += ['jit/mips64/LIR-mips64.h']
         UNIFIED_SOURCES += [
             'jit/mips64/Architecture-mips64.cpp',
             'jit/mips64/Assembler-mips64.cpp',
@@ -654,6 +693,7 @@ if CONFIG['NIGHTLY_BUILD']:
     DEFINES['ENABLE_WASM_SATURATING_TRUNC_OPS'] = True
     DEFINES['ENABLE_WASM_SIGNEXTEND_OPS'] = True
     DEFINES['ENABLE_WASM_THREAD_OPS'] = True
+    DEFINES['ENABLE_WASM_GC'] = True
 
 # An experiment we want to run on Nightly and early Beta: Can we change the JS
 # representation of an exported global from the global's value to an instance
@@ -663,21 +703,24 @@ if CONFIG['NIGHTLY_BUILD']:
 DEFINES['ENABLE_WASM_GLOBAL'] = True
 
 if CONFIG['JS_BUILD_BINAST']:
-    # Using SOURCES as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.
+    # Using SOURCES, as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.
     # These parts of BinAST are designed only to test evolutions of the
     # specification.
     SOURCES += ['frontend/BinTokenReaderTester.cpp']
     # These parts of BinAST should eventually move to release.
     SOURCES += [
+        'frontend/BinSource-auto.cpp',
         'frontend/BinSource.cpp',
-        'frontend/BinToken.cpp'
+        'frontend/BinToken.cpp',
+        'frontend/BinTokenReaderBase.cpp',
+        'frontend/BinTokenReaderMultipart.cpp',
     ]
 
     # Instrument BinAST files for fuzzing as we have a fuzzing target for BinAST.
     if CONFIG['FUZZING_INTERFACES'] and CONFIG['LIBFUZZER']:
-        SOURCES['frontend/BinSource.cpp'].flags += ['-fsanitize-coverage=trace-pc-guard']
-        SOURCES['frontend/BinToken.cpp'].flags += ['-fsanitize-coverage=trace-pc-guard']
-        SOURCES['frontend/BinTokenReaderTester.cpp'].flags += ['-fsanitize-coverage=trace-pc-guard']
+        SOURCES['frontend/BinSource.cpp'].flags += libfuzzer_flags_cmp
+        SOURCES['frontend/BinToken.cpp'].flags += libfuzzer_flags_cmp
+        SOURCES['frontend/BinTokenReaderTester.cpp'].flags += libfuzzer_flags_cmp
 
 # Wasm code should use WASM_HUGE_MEMORY instead of JS_CODEGEN_X64
 # so that it is easy to use the huge-mapping optimization for other
@@ -703,10 +746,6 @@ if CONFIG['MOZ_LINKER']:
     DEFINES['MOZ_LINKER'] = True
 
 if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-    if CONFIG['CPU_ARCH'] == 'x86':
-        SOURCES['builtin/RegExp.cpp'].no_pgo = True # Bug 772303
-    elif CONFIG['CPU_ARCH'] == 'x86_64' and CONFIG['JS_HAS_CTYPES']:
-        SOURCES['ctypes/CTypes.cpp'].no_pgo = True # Bug 810661
     # Prevent floating point errors caused by VC++ optimizations
     # XXX We should add this to CXXFLAGS, too?
     CFLAGS += ['-fp:precise']
@@ -719,13 +758,10 @@ if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # have a Parser<FullParseHandler> definition but no
     # Parser<SyntaxParseHandler> definition, see bug 1167030.
     CXXFLAGS += ['-wd4661']
-    CXXFLAGS += ['-we4067', '-we4258', '-we4275']
-    CXXFLAGS += ['-wd4146'] # FIXME: unary minus operator applied to unsigned type (bug 1229189)
-
-    # This is intended as a temporary hack to support building with VS2015.
-    # 'noexcept' used with no exception handling mode specified;
-    # termination on exception is not guaranteed. Specify /EHsc
-    CXXFLAGS += ['-wd4577']
+    # FIXME: unary minus operator applied to unsigned type (bug 1229189)
+    CXXFLAGS += ['-wd4146']
+    # FIXME: 'operation' : conversion from 'type1' to 'type2' of
+    # greater size (bug 1259304)
     CXXFLAGS += ['-wd4312']
 
 CFLAGS += CONFIG['MOZ_ICU_CFLAGS']

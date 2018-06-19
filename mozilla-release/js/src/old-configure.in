@@ -281,7 +281,6 @@ if test -n "$_WIN32_MSVC"; then
     # Common to all MSVC environments:
 
     AC_DEFINE(HAVE_LOCALECONV)
-    AC_DEFINE(HAVE_HYPOT)
     AC_CHECK_FUNCS([_getc_nolock])
 fi
 
@@ -1603,6 +1602,13 @@ MOZ_ARG_HEADER(Build dependencies)
 if test "$GNU_CC" -a "$GNU_CXX"; then
   _DEPEND_CFLAGS='-MD -MP -MF $(MDDEPDIR)/$(@F).pp'
 else
+  # clang-cl doesn't accept the normal -MD -MP -MF options that clang does, but
+  # the underlying cc1 binary understands how to generate dependency files.
+  # These options are based on analyzing what the normal clang driver sends to
+  # cc1 when given the "correct" dependency options.
+  if test -n "$CLANG_CL"; then
+   _DEPEND_CFLAGS='-Xclang -MP -Xclang -MG -Xclang -dependency-file -Xclang $(MDDEPDIR)/$(@F).pp -Xclang -MT -Xclang $@'
+  fi
   dnl Don't override this for MSVC
   if test -z "$_WIN32_MSVC"; then
     _USE_CPP_INCLUDE_FLAG=

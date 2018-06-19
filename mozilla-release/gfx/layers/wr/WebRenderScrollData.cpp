@@ -8,6 +8,7 @@
 
 #include "Layers.h"
 #include "LayersLogging.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/layout/RenderFrameParent.h"
 #include "mozilla/Unused.h"
 #include "nsDisplayList.h"
@@ -22,7 +23,6 @@ WebRenderLayerScrollData::WebRenderLayerScrollData()
   , mTransformIsPerspective(false)
   , mEventRegionsOverride(EventRegionsOverride::NoOverride)
   , mScrollbarAnimationId(0)
-  , mScrollbarTargetContainerId(FrameMetrics::NULL_SCROLL_ID)
   , mFixedPosScrollContainerId(FrameMetrics::NULL_SCROLL_ID)
 {
 }
@@ -41,7 +41,8 @@ void
 WebRenderLayerScrollData::Initialize(WebRenderScrollData& aOwner,
                                      nsDisplayItem* aItem,
                                      int32_t aDescendantCount,
-                                     const ActiveScrolledRoot* aStopAtAsr)
+                                     const ActiveScrolledRoot* aStopAtAsr,
+                                     const Maybe<gfx::Matrix4x4>& aAncestorTransform)
 {
   MOZ_ASSERT(aDescendantCount >= 0); // Ensure value is valid
   MOZ_ASSERT(mDescendantCount == -1); // Don't allow re-setting an already set value
@@ -58,12 +59,30 @@ WebRenderLayerScrollData::Initialize(WebRenderScrollData& aOwner,
       mScrollIds.AppendElement(index.ref());
     } else {
       Maybe<ScrollMetadata> metadata = asr->mScrollableFrame->ComputeScrollMetadata(
-          nullptr, aOwner.GetManager(), aItem->ReferenceFrame(),
+          aOwner.GetManager(), aItem->ReferenceFrame(),
           ContainerLayerParameters(), nullptr);
       MOZ_ASSERT(metadata);
       MOZ_ASSERT(metadata->GetMetrics().GetScrollId() == scrollId);
       mScrollIds.AppendElement(aOwner.AddMetadata(metadata.ref()));
     }
+  }
+
+  // aAncestorTransform, if present, is the transform from an ancestor
+  // nsDisplayTransform that was stored on the stacking context in order to
+  // propagate it downwards in the tree. (i.e. |aItem| is a strict descendant of
+  // the nsDisplayTranform which produced aAncestorTransform). We store this
+  // separately from mTransform because in the case where we have multiple
+  // scroll metadata on this layer item, the mAncestorTransform is associated
+  // with the "topmost" scroll metadata, and the mTransform is associated with
+  // the "bottommost" scroll metadata. The code in
+  // WebRenderScrollDataWrapper::GetTransform() is responsible for combining
+  // these transforms and exposing them appropriately. Also, we don't save the
+  // ancestor transform for thumb layers, because those are a special case in
+  // APZ; we need to keep the ancestor transform for the scrollable content that
+  // the thumb scrolls, but not for the thumb itself, as it will result in
+  // incorrect visual positioning of the thumb.
+  if (aAncestorTransform && mScrollbarData.mScrollbarLayerType != ScrollbarLayerType::Thumb) {
+    mAncestorTransform = *aAncestorTransform;
   }
 }
 
@@ -108,16 +127,17 @@ WebRenderLayerScrollData::Dump(const WebRenderScrollData& aOwner) const
   for (size_t i : mScrollIds) {
     printf_stderr("  metadata: %s\n", Stringify(aOwner.GetScrollMetadata(i)).c_str());
   }
+  printf_stderr("  ancestor transform: %s\n", Stringify(mAncestorTransform).c_str());
   printf_stderr("  transform: %s perspective: %d visible: %s\n",
     Stringify(mTransform).c_str(), mTransformIsPerspective,
     Stringify(mVisibleRegion).c_str());
   printf_stderr("  event regions: %s override: 0x%x\n",
     Stringify(mEventRegions).c_str(), mEventRegionsOverride);
-  printf_stderr("  ref layers id: 0x%" PRIx64 "\n", mReferentId.valueOr(0));
-  //printf_stderr("  scroll thumb: %s animation: %" PRIu64 "\n",
-  //  Stringify(mScrollThumbData).c_str(), mScrollbarAnimationId);
-  printf_stderr("  scroll container: %d target: %" PRIu64 "\n",
-    mScrollbarContainerDirection.isSome(), mScrollbarTargetContainerId);
+  if (mReferentId) {
+    printf_stderr("  ref layers id: 0x%" PRIx64 "\n", uint64_t(*mReferentId));
+  }
+  printf_stderr("  scrollbar type: %d animation: %" PRIx64 "\n",
+    (int)mScrollbarData.mScrollbarLayerType, mScrollbarAnimationId);
   printf_stderr("  fixed pos container: %" PRIu64 "\n",
     mFixedPosScrollContainerId);
 }

@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {Cu} = require("chrome");
-
 const {TargetFactory} = require("devtools/client/framework/target");
 const Services = require("Services");
 const {FileUtils} = require("resource://gre/modules/FileUtils.jsm");
@@ -15,7 +13,6 @@ const {AppValidator} = require("devtools/client/webide/modules/app-validator");
 const {ConnectionManager, Connection} = require("devtools/shared/client/connection-manager");
 const {getDeviceFront} = require("devtools/shared/fronts/device");
 const {getPreferenceFront} = require("devtools/shared/fronts/preference");
-const {Task} = require("devtools/shared/task");
 const {RuntimeScanners, RuntimeTypes} = require("devtools/client/webide/modules/runtimes");
 const {NetUtil} = require("resource://gre/modules/NetUtil.jsm");
 const Telemetry = require("devtools/client/shared/telemetry");
@@ -29,7 +26,7 @@ var AppManager = exports.AppManager = {
 
   _initialized: false,
 
-  init: function () {
+  init: function() {
     if (this._initialized) {
       return;
     }
@@ -57,7 +54,7 @@ var AppManager = exports.AppManager = {
     this._telemetry = new Telemetry();
   },
 
-  destroy: function () {
+  destroy: function() {
     if (!this._initialized) {
       return;
     }
@@ -123,12 +120,12 @@ var AppManager = exports.AppManager = {
    *     has changed.  This event includes |type| in the details, to distinguish
    *     "apps" and "tabs".
    */
-  update: function (what, details) {
+  update: function(what, details) {
     // Anything we want to forward to the UI
     this.emit("app-manager-update", what, details);
   },
 
-  reportError: function (l10nProperty, ...l10nArgs) {
+  reportError: function(l10nProperty, ...l10nArgs) {
     let win = Services.wm.getMostRecentWindow("devtools:webide");
     if (win) {
       win.UI.reportError(l10nProperty, ...l10nArgs);
@@ -143,7 +140,7 @@ var AppManager = exports.AppManager = {
     }
   },
 
-  onConnectionChanged: function () {
+  onConnectionChanged: function() {
     console.log("Connection status changed: " + this.connection.status);
 
     if (this.connection.status == Connection.Status.DISCONNECTED) {
@@ -171,12 +168,11 @@ var AppManager = exports.AppManager = {
   get apps() {
     if (this._appsFront) {
       return this._appsFront.apps;
-    } else {
-      return new Map();
     }
+    return new Map();
   },
 
-  isProjectRunning: function () {
+  isProjectRunning: function() {
     if (this.selectedProject.type == "mainProcess" ||
         this.selectedProject.type == "tab") {
       return true;
@@ -186,7 +182,7 @@ var AppManager = exports.AppManager = {
     return app && app.running;
   },
 
-  checkIfProjectIsRunning: function () {
+  checkIfProjectIsRunning: function() {
     if (this.selectedProject) {
       if (this.isProjectRunning()) {
         this.update("project-started");
@@ -196,16 +192,16 @@ var AppManager = exports.AppManager = {
     }
   },
 
-  listTabs: function () {
+  listTabs: function() {
     return this.tabStore.listTabs();
   },
 
-  onTabList: function () {
+  onTabList: function() {
     this.update("runtime-targets", { type: "tabs" });
   },
 
   // TODO: Merge this into TabProject as part of project-agnostic work
-  onTabNavigate: function () {
+  onTabNavigate: function() {
     this.update("runtime-targets", { type: "tabs" });
     if (this.selectedProject.type !== "tab") {
       return;
@@ -227,23 +223,23 @@ var AppManager = exports.AppManager = {
     this.update("project-validated");
   },
 
-  onTabClosed: function () {
+  onTabClosed: function() {
     if (this.selectedProject.type !== "tab") {
       return;
     }
     this.selectedProject = null;
   },
 
-  reloadTab: function () {
+  reloadTab: function() {
     if (this.selectedProject && this.selectedProject.type != "tab") {
       return Promise.reject("tried to reload non-tab project");
     }
     return this.getTarget().then(target => {
       target.activeTab.reload();
-    }, console.error.bind(console));
+    }, console.error);
   },
 
-  getTarget: function () {
+  getTarget: function() {
     if (this.selectedProject.type == "mainProcess") {
       // Fx >=39 exposes a ChromeActor to debug the main process
       if (this.connection.client.mainRoot.traits.allowChromeProcess) {
@@ -255,15 +251,14 @@ var AppManager = exports.AppManager = {
                        chrome: true
                      });
                    });
-      } else {
+      }
         // Fx <39 exposes tab actors on the root actor
-        return TargetFactory.forRemoteTab({
+      return TargetFactory.forRemoteTab({
           form: this._listTabsResponse,
           client: this.connection.client,
           chrome: true,
           isTabActor: false
-        });
-      }
+      });
     }
 
     if (this.selectedProject.type == "tab") {
@@ -275,14 +270,14 @@ var AppManager = exports.AppManager = {
       return Promise.reject("Can't find app front for selected project");
     }
 
-    return Task.spawn(function* () {
+    return (async function() {
       // Once we asked the app to launch, the app isn't necessary completely loaded.
       // launch request only ask the app to launch and immediatly returns.
       // We have to keep trying to get app tab actors required to create its target.
 
       for (let i = 0; i < 10; i++) {
         try {
-          return yield app.getTarget();
+          return await app.getTarget();
         } catch (e) {}
         return new Promise(resolve => {
           setTimeout(resolve, 500);
@@ -291,10 +286,10 @@ var AppManager = exports.AppManager = {
 
       AppManager.reportError("error_cantConnectToApp", app.manifest.manifestURL);
       throw new Error("can't connect to app");
-    });
+    })();
   },
 
-  getProjectManifestURL: function (project) {
+  getProjectManifestURL: function(project) {
     let manifest = null;
     if (project.type == "runtimeApp") {
       manifest = project.app.manifestURL;
@@ -311,7 +306,7 @@ var AppManager = exports.AppManager = {
     return manifest;
   },
 
-  _getProjectFront: function (project) {
+  _getProjectFront: function(project) {
     let manifest = this.getProjectManifestURL(project);
     if (manifest && this._appsFront) {
       return this._appsFront.apps.get(manifest);
@@ -347,7 +342,9 @@ var AppManager = exports.AppManager = {
     }
 
     let cancelled = false;
-    this.update("before-project", { cancel: () => { cancelled = true; } });
+    this.update("before-project", { cancel: () => {
+      cancelled = true;
+    } });
     if (cancelled) {
       return;
     }
@@ -374,7 +371,7 @@ var AppManager = exports.AppManager = {
     return this._selectedProject;
   },
 
-  removeSelectedProject: Task.async(function* () {
+  async removeSelectedProject() {
     let location = this.selectedProject.location;
     AppManager.selectedProject = null;
     // If the user cancels the removeProject operation, don't remove the project
@@ -382,9 +379,9 @@ var AppManager = exports.AppManager = {
       return;
     }
 
-    yield AppProjects.remove(location);
+    await AppProjects.remove(location);
     AppManager.update("project-removed");
-  }),
+  },
 
   _selectedRuntime: null,
   set selectedRuntime(value) {
@@ -402,8 +399,7 @@ var AppManager = exports.AppManager = {
     return this._selectedRuntime;
   },
 
-  connectToRuntime: function (runtime) {
-
+  connectToRuntime: function(runtime) {
     if (this.connected && this.selectedRuntime === runtime) {
       // Already connected
       return Promise.resolve();
@@ -463,7 +459,7 @@ var AppManager = exports.AppManager = {
     return deferred;
   },
 
-  _recordRuntimeInfo: Task.async(function* () {
+  async _recordRuntimeInfo() {
     if (!this.connected) {
       return;
     }
@@ -476,7 +472,7 @@ var AppManager = exports.AppManager = {
       this.update("runtime-telemetry");
       return;
     }
-    let d = yield this.deviceFront.getDescription();
+    let d = await this.deviceFront.getDescription();
     this._telemetry.logKeyed("DEVTOOLS_WEBIDE_CONNECTED_RUNTIME_PROCESSOR",
                              d.processor, true);
     this._telemetry.logKeyed("DEVTOOLS_WEBIDE_CONNECTED_RUNTIME_OS",
@@ -488,9 +484,9 @@ var AppManager = exports.AppManager = {
     this._telemetry.logKeyed("DEVTOOLS_WEBIDE_CONNECTED_RUNTIME_VERSION",
                              d.version, true);
     this.update("runtime-telemetry");
-  }),
+  },
 
-  isMainProcessDebuggable: function () {
+  isMainProcessDebuggable: function() {
     // Fx <39 exposes chrome tab actors on RootActor
     // Fx >=39 exposes a dedicated actor via getProcess request
     return this.connection.client &&
@@ -518,7 +514,7 @@ var AppManager = exports.AppManager = {
     return getPreferenceFront(this.connection.client, this._listTabsResponse);
   },
 
-  disconnectRuntime: function () {
+  disconnectRuntime: function() {
     if (!this.connected) {
       return Promise.resolve();
     }
@@ -529,7 +525,7 @@ var AppManager = exports.AppManager = {
     });
   },
 
-  launchRuntimeApp: function () {
+  launchRuntimeApp: function() {
     if (this.selectedProject && this.selectedProject.type != "runtimeApp") {
       return Promise.reject("attempting to launch a non-runtime app");
     }
@@ -537,23 +533,22 @@ var AppManager = exports.AppManager = {
     return app.launch();
   },
 
-  launchOrReloadRuntimeApp: function () {
+  launchOrReloadRuntimeApp: function() {
     if (this.selectedProject && this.selectedProject.type != "runtimeApp") {
       return Promise.reject("attempting to launch / reload a non-runtime app");
     }
     let app = this._getProjectFront(this.selectedProject);
     if (!app.running) {
       return app.launch();
-    } else {
-      return app.reload();
     }
+    return app.reload();
   },
 
-  runtimeCanHandleApps: function () {
+  runtimeCanHandleApps: function() {
     return !!this._appsFront;
   },
 
-  installAndRunProject: function () {
+  installAndRunProject: function() {
     let project = this.selectedProject;
 
     if (!project || (project.type != "packaged" && project.type != "hosted")) {
@@ -571,18 +566,16 @@ var AppManager = exports.AppManager = {
       return Promise.reject("Can't install");
     }
 
-    return Task.spawn(function* () {
+    return (async function() {
       let self = AppManager;
 
       // Validate project
-      yield self.validateAndUpdateProject(project);
+      await self.validateAndUpdateProject(project);
 
       if (project.errorsCount > 0) {
         self.reportError("error_cantInstallValidationErrors");
         return;
       }
-
-      let installPromise;
 
       if (project.type != "packaged" && project.type != "hosted") {
         return Promise.reject("Don't know how to install project");
@@ -593,7 +586,7 @@ var AppManager = exports.AppManager = {
         let packageDir = project.location;
         console.log("Installing app from " + packageDir);
 
-        response = yield self._appsFront.installPackaged(packageDir,
+        response = await self._appsFront.installPackaged(packageDir,
                                                          project.packagedAppOrigin);
 
         // If the packaged app specified a custom origin override,
@@ -611,7 +604,7 @@ var AppManager = exports.AppManager = {
           origin: origin.spec,
           manifestURL: project.location
         };
-        response = yield self._appsFront.installHosted(appId,
+        response = await self._appsFront.installHosted(appId,
                                             metadata,
                                             project.manifest);
       }
@@ -632,28 +625,27 @@ var AppManager = exports.AppManager = {
             }
           });
         });
-        yield app.launch();
-        yield deferred;
+        await app.launch();
+        await deferred;
       } else {
-        yield app.reload();
+        await app.reload();
       }
-    });
+    })();
   },
 
-  stopRunningApp: function () {
+  stopRunningApp: function() {
     let app = this._getProjectFront(this.selectedProject);
     return app.close();
   },
 
   /* PROJECT VALIDATION */
 
-  validateAndUpdateProject: function (project) {
+  validateAndUpdateProject: function(project) {
     if (!project) {
       return Promise.reject();
     }
 
-    return Task.spawn(function* () {
-
+    return (async function() {
       let packageDir = project.location;
       let validation = new AppValidator({
         type: project.type,
@@ -661,7 +653,7 @@ var AppManager = exports.AppManager = {
         location: packageDir
       });
 
-      yield validation.validate();
+      await validation.validate();
 
       if (validation.manifest) {
         let manifest = validation.manifest;
@@ -674,16 +666,14 @@ var AppManager = exports.AppManager = {
         }
         if (!iconPath) {
           project.icon = AppManager.DEFAULT_PROJECT_ICON;
-        } else {
-          if (project.type == "hosted") {
-            let manifestURL = Services.io.newURI(project.location);
-            let origin = Services.io.newURI(manifestURL.prePath);
-            project.icon = Services.io.newURI(iconPath, null, origin).spec;
-          } else if (project.type == "packaged") {
-            let projectFolder = FileUtils.File(packageDir);
-            let folderURI = Services.io.newFileURI(projectFolder).spec;
-            project.icon = folderURI + iconPath.replace(/^\/|\\/, "");
-          }
+        } else if (project.type == "hosted") {
+          let manifestURL = Services.io.newURI(project.location);
+          let origin = Services.io.newURI(manifestURL.prePath);
+          project.icon = Services.io.newURI(iconPath, null, origin).spec;
+        } else if (project.type == "packaged") {
+          let projectFolder = FileUtils.File(packageDir);
+          let folderURI = Services.io.newFileURI(projectFolder).spec;
+          project.icon = folderURI + iconPath.replace(/^\/|\\/, "");
         }
         project.manifest = validation.manifest;
 
@@ -723,20 +713,20 @@ var AppManager = exports.AppManager = {
       }
 
       if (project.type === "hosted" && project.location !== validation.manifestURL) {
-        yield AppProjects.updateLocation(project, validation.manifestURL);
+        await AppProjects.updateLocation(project, validation.manifestURL);
       } else if (AppProjects.get(project.location)) {
-        yield AppProjects.update(project);
+        await AppProjects.update(project);
       }
 
       if (AppManager.selectedProject === project) {
         AppManager.update("project-validated");
       }
-    });
+    })();
   },
 
   /* RUNTIME LIST */
 
-  _clearRuntimeList: function () {
+  _clearRuntimeList: function() {
     this.runtimeList = {
       usb: [],
       wifi: [],
@@ -744,7 +734,7 @@ var AppManager = exports.AppManager = {
     };
   },
 
-  _rebuildRuntimeList: function () {
+  _rebuildRuntimeList: function() {
     let runtimes = RuntimeScanners.listRuntimes();
     this._clearRuntimeList();
 
@@ -768,7 +758,7 @@ var AppManager = exports.AppManager = {
 
   /* MANIFEST UTILS */
 
-  writeManifest: function (project) {
+  writeManifest: function(project) {
     if (project.type != "packaged") {
       return Promise.reject("Not a packaged app");
     }

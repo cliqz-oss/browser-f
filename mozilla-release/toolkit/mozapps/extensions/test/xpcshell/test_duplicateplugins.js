@@ -7,15 +7,19 @@ ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 // This verifies that duplicate plugins are coalesced and maintain their ID
 // across restarts.
 
+class MockPlugin extends MockPluginTag {
+  constructor(opts) {
+    super(opts, opts.enabledState);
+    this.blocklisted = opts.blocklisted;
+  }
+}
+
 var PLUGINS = [{
   name: "Duplicate Plugin 1",
   description: "A duplicate plugin",
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/home/mozilla/.plugins/dupplugin1.so"
 }, {
   name: "Duplicate Plugin 1",
@@ -23,9 +27,6 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/usr/lib/plugins/dupplugin1.so"
 }, {
   name: "Duplicate Plugin 2",
@@ -33,9 +34,6 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/home/mozilla/.plugins/dupplugin2.so"
 }, {
   name: "Duplicate Plugin 2",
@@ -43,9 +41,6 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/usr/lib/plugins/dupplugin2.so"
 }, {
   name: "Non-duplicate Plugin", // 3
@@ -53,9 +48,6 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/home/mozilla/.plugins/dupplugin3.so"
 }, {
   name: "Non-duplicate Plugin", // 4
@@ -63,9 +55,6 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/usr/lib/plugins/dupplugin4.so"
 }, {
   name: "Another Non-duplicate Plugin", // 5
@@ -73,29 +62,10 @@ var PLUGINS = [{
   version: "1",
   blocklisted: false,
   enabledState: Ci.nsIPluginTag.STATE_ENABLED,
-  get disabled() {
-    return this.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
-  },
   filename: "/home/mozilla/.plugins/dupplugin5.so"
-}];
+}].map(opts => new MockPlugin(opts));
 
-// A fake plugin host to return the plugins defined above
-var PluginHost = {
-  getPluginTags(countRef) {
-    countRef.value = PLUGINS.length;
-    return PLUGINS;
-  },
-
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIPluginHost)
-     || iid.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
-};
-
-MockRegistrar.register("@mozilla.org/plugin/host;1", PluginHost);
+mockPluginHost(PLUGINS);
 
 var gPluginIDs = [null, null, null, null, null];
 
@@ -116,66 +86,62 @@ function found_plugin(aNum, aId) {
 }
 
 // Test that the plugins were coalesced and all appear in the returned list
-function run_test_1() {
-  AddonManager.getAddonsByTypes(["plugin"], function(aAddons) {
-    Assert.equal(aAddons.length, 5);
-    aAddons.forEach(function(aAddon) {
-      if (aAddon.name == "Duplicate Plugin 1") {
-        found_plugin(0, aAddon.id);
-        Assert.equal(aAddon.description, "A duplicate plugin");
-      } else if (aAddon.name == "Duplicate Plugin 2") {
-        found_plugin(1, aAddon.id);
-        Assert.equal(aAddon.description, "Another duplicate plugin");
-      } else if (aAddon.name == "Another Non-duplicate Plugin") {
-        found_plugin(5, aAddon.id);
-        Assert.equal(aAddon.description, "Not a duplicate plugin");
-      } else if (aAddon.name == "Non-duplicate Plugin") {
-        if (aAddon.description == "Not a duplicate plugin")
-          found_plugin(3, aAddon.id);
-        else if (aAddon.description == "Not a duplicate because the descriptions are different")
-          found_plugin(4, aAddon.id);
-        else
-          do_throw("Found unexpected plugin with description " + aAddon.description);
-      } else {
-        do_throw("Found unexpected plugin " + aAddon.name);
-      }
-    });
-
-    run_test_2();
+async function run_test_1() {
+  let aAddons = await AddonManager.getAddonsByTypes(["plugin"]);
+  Assert.equal(aAddons.length, 5);
+  aAddons.forEach(function(aAddon) {
+    if (aAddon.name == "Duplicate Plugin 1") {
+      found_plugin(0, aAddon.id);
+      Assert.equal(aAddon.description, "A duplicate plugin");
+    } else if (aAddon.name == "Duplicate Plugin 2") {
+      found_plugin(1, aAddon.id);
+      Assert.equal(aAddon.description, "Another duplicate plugin");
+    } else if (aAddon.name == "Another Non-duplicate Plugin") {
+      found_plugin(5, aAddon.id);
+      Assert.equal(aAddon.description, "Not a duplicate plugin");
+    } else if (aAddon.name == "Non-duplicate Plugin") {
+      if (aAddon.description == "Not a duplicate plugin")
+        found_plugin(3, aAddon.id);
+      else if (aAddon.description == "Not a duplicate because the descriptions are different")
+        found_plugin(4, aAddon.id);
+      else
+        do_throw("Found unexpected plugin with description " + aAddon.description);
+    } else {
+      do_throw("Found unexpected plugin " + aAddon.name);
+    }
   });
+
+  run_test_2();
 }
 
 // Test that disabling a coalesced plugin disables all its tags
-function run_test_2() {
-  AddonManager.getAddonByID(gPluginIDs[0], function(p) {
-    Assert.ok(!p.userDisabled);
-    p.userDisabled = true;
-    Assert.ok(PLUGINS[0].disabled);
-    Assert.ok(PLUGINS[1].disabled);
+async function run_test_2() {
+  let p = await AddonManager.getAddonByID(gPluginIDs[0]);
+  Assert.ok(!p.userDisabled);
+  p.userDisabled = true;
+  Assert.ok(PLUGINS[0].disabled);
+  Assert.ok(PLUGINS[1].disabled);
 
-    executeSoon(run_test_3);
-  });
+  executeSoon(run_test_3);
 }
 
 // Test that IDs persist across restart
-function run_test_3() {
+async function run_test_3() {
   restartManager();
 
-  AddonManager.getAddonByID(gPluginIDs[0], callback_soon(function(p) {
-    Assert.notEqual(p, null);
-    Assert.equal(p.name, "Duplicate Plugin 1");
-    Assert.equal(p.description, "A duplicate plugin");
+  let p = await AddonManager.getAddonByID(gPluginIDs[0]);
+  Assert.notEqual(p, null);
+  Assert.equal(p.name, "Duplicate Plugin 1");
+  Assert.equal(p.description, "A duplicate plugin");
 
-    // Reorder the plugins and restart again
-    [PLUGINS[0], PLUGINS[1]] = [PLUGINS[1], PLUGINS[0]];
-    restartManager();
+  // Reorder the plugins and restart again
+  [PLUGINS[0], PLUGINS[1]] = [PLUGINS[1], PLUGINS[0]];
+  restartManager();
 
-    AddonManager.getAddonByID(gPluginIDs[0], function(p_2) {
-      Assert.notEqual(p_2, null);
-      Assert.equal(p_2.name, "Duplicate Plugin 1");
-      Assert.equal(p_2.description, "A duplicate plugin");
+  let p_2 = await AddonManager.getAddonByID(gPluginIDs[0]);
+  Assert.notEqual(p_2, null);
+  Assert.equal(p_2.name, "Duplicate Plugin 1");
+  Assert.equal(p_2.description, "A duplicate plugin");
 
-      executeSoon(do_test_finished);
-    });
-  }));
+  executeSoon(do_test_finished);
 }

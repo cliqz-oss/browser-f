@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifndef mozilla_dom_serviceworkerregistrationimpl_h
+#define mozilla_dom_serviceworkerregistrationimpl_h
+
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/Unused.h"
 #include "nsCycleCollectionParticipant.h"
@@ -19,6 +22,7 @@ namespace dom {
 class Promise;
 class PushManager;
 class ServiceWorker;
+class WeakWorkerRef;
 
 ////////////////////////////////////////////////////
 // Main Thread implementation
@@ -38,24 +42,11 @@ public:
   void
   ClearServiceWorkerRegistration(ServiceWorkerRegistration* aReg) override;
 
-  already_AddRefed<Promise>
-  Update(ErrorResult& aRv) override;
+  RefPtr<ServiceWorkerRegistrationPromise>
+  Update() override;
 
-  already_AddRefed<Promise>
-  Unregister(ErrorResult& aRv) override;
-
-  already_AddRefed<Promise>
-  ShowNotification(JSContext* aCx,
-                   const nsAString& aTitle,
-                   const NotificationOptions& aOptions,
-                   ErrorResult& aRv) override;
-
-  already_AddRefed<Promise>
-  GetNotifications(const GetNotificationOptions& aOptions,
-                   ErrorResult& aRv) override;
-
-  already_AddRefed<PushManager>
-  GetPushManager(JSContext* aCx, ErrorResult& aRv) override;
+  RefPtr<GenericPromise>
+  Unregister() override;
 
   // ServiceWorkerRegistrationListener
   void
@@ -88,7 +79,8 @@ private:
   void
   RegistrationRemovedInternal();
 
-  RefPtr<ServiceWorkerRegistration> mOuter;
+  ServiceWorkerRegistration* mOuter;
+  ServiceWorkerRegistrationDescriptor mDescriptor;
   const nsString mScope;
   bool mListeningForEvents;
 };
@@ -99,13 +91,13 @@ private:
 class WorkerListener;
 
 class ServiceWorkerRegistrationWorkerThread final : public ServiceWorkerRegistration::Inner
-                                                  , public WorkerHolder
 {
+  friend class WorkerListener;
+
 public:
   NS_INLINE_DECL_REFCOUNTING(ServiceWorkerRegistrationWorkerThread, override)
 
-  ServiceWorkerRegistrationWorkerThread(WorkerPrivate* aWorkerPrivate,
-                                        const ServiceWorkerRegistrationDescriptor& aDescriptor);
+  explicit ServiceWorkerRegistrationWorkerThread(const ServiceWorkerRegistrationDescriptor& aDescriptor);
 
   void
   RegistrationRemoved();
@@ -117,28 +109,11 @@ public:
   void
   ClearServiceWorkerRegistration(ServiceWorkerRegistration* aReg) override;
 
-  already_AddRefed<Promise>
-  Update(ErrorResult& aRv) override;
+  RefPtr<ServiceWorkerRegistrationPromise>
+  Update() override;
 
-  already_AddRefed<Promise>
-  Unregister(ErrorResult& aRv) override;
-
-  already_AddRefed<Promise>
-  ShowNotification(JSContext* aCx,
-                   const nsAString& aTitle,
-                   const NotificationOptions& aOptions,
-                   ErrorResult& aRv) override;
-
-  already_AddRefed<Promise>
-  GetNotifications(const GetNotificationOptions& aOptions,
-                   ErrorResult& aRv) override;
-
-  already_AddRefed<PushManager>
-  GetPushManager(JSContext* aCx, ErrorResult& aRv) override;
-
-  // WorkerHolder
-  bool
-  Notify(WorkerStatus aStatus) override;
+  RefPtr<GenericPromise>
+  Unregister() override;
 
   void
   UpdateFound();
@@ -152,16 +127,18 @@ private:
   void
   ReleaseListener();
 
-  // Store a strong reference to the outer binding object.  This will create
-  // a ref-cycle.  We must hold it alive in case any events need to be fired
-  // on it.  The cycle is broken when the global becomes detached or the
-  // registration is removed in the ServiceWorkerManager.
-  RefPtr<ServiceWorkerRegistration> mOuter;
+  // This can be called only by WorkerListener.
+  WorkerPrivate*
+  GetWorkerPrivate(const MutexAutoLock& aProofOfLock);
 
-  WorkerPrivate* mWorkerPrivate;
+  ServiceWorkerRegistration* mOuter;
+  const ServiceWorkerRegistrationDescriptor mDescriptor;
   const nsString mScope;
   RefPtr<WorkerListener> mListener;
+  RefPtr<WeakWorkerRef> mWorkerRef;
 };
 
 } // dom namespace
 } // mozilla namespace
+
+#endif // mozilla_dom_serviceworkerregistrationimpl_h

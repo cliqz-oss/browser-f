@@ -749,7 +749,7 @@ plugin
 theme
     Integer count of installed themes.
 lwtheme
-    Integer count of installed lightweigh themes.
+    Integer count of installed lightweight themes.
 
 Notes
 ^^^^^
@@ -1987,6 +1987,7 @@ Example
 ^^^^^^^
 
 ::
+
     "org.mozilla.passwordmgr.passwordmgr": {
       "_v": 2,
       "numSavedPasswords": 32,

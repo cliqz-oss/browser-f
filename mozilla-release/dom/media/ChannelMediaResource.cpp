@@ -285,6 +285,11 @@ ChannelMediaResource::OnStartRequest(nsIRequest* aRequest,
   // This is important, we want to make sure all principals are updated before
   // any consumer can see the new data.
   UpdatePrincipal();
+  if (owner->HasError()) {
+    // Updating the principal resulted in an error. Abort the load.
+    CloseChannel();
+    return NS_OK;
+  }
 
   mCacheStream.NotifyDataStarted(mLoadID, startOffset, seekable, length);
   mIsTransportSeekable = seekable;
@@ -317,7 +322,7 @@ nsresult
 ChannelMediaResource::ParseContentRangeHeader(nsIHttpChannel * aHttpChan,
                                               int64_t& aRangeStart,
                                               int64_t& aRangeEnd,
-                                              int64_t& aRangeTotal)
+                                              int64_t& aRangeTotal) const
 {
   NS_ENSURE_ARG(aHttpChan);
 
@@ -379,7 +384,50 @@ ChannelMediaResource::OnStopRequest(nsIRequest* aRequest, nsresult aStatus)
     ModifyLoadFlags(loadFlags & ~nsIRequest::LOAD_BACKGROUND);
   }
 
-  mCacheStream.NotifyDataEnded(mLoadID, aStatus, true /*aReopenOnError*/);
+  // Note that aStatus might have succeeded --- this might be a normal close
+  // --- even in situations where the server cut us off because we were
+  // suspended. It is also possible that the server sends us fewer bytes than
+  // requested. So we need to "reopen on error" in that case too. The only
+  // cases where we don't need to reopen are when *we* closed the stream.
+  // But don't reopen if we need to seek and we don't think we can... that would
+  // cause us to just re-read the stream, which would be really bad.
+  /*
+   * | length |    offset |   reopen |
+   * +--------+-----------+----------+
+   * |     -1 |         0 |      yes |
+   * +--------+-----------+----------+
+   * |     -1 |       > 0 | seekable |
+   * +--------+-----------+----------+
+   * |      0 |         X |       no |
+   * +--------+-----------+----------+
+   * |    > 0 |         0 |      yes |
+   * +--------+-----------+----------+
+   * |    > 0 | != length | seekable |
+   * +--------+-----------+----------+
+   * |    > 0 | == length |       no |
+   */
+  if (aStatus != NS_ERROR_PARSED_DATA_CACHED && aStatus != NS_BINDING_ABORTED) {
+    auto lengthAndOffset = mCacheStream.GetLengthAndOffset();
+    int64_t length = lengthAndOffset.mLength;
+    int64_t offset = lengthAndOffset.mOffset;
+    if ((offset == 0 || mIsTransportSeekable) && offset != length) {
+      // If the stream did close normally, restart the channel if we're either
+      // at the start of the resource, or if the server is seekable and we're
+      // not at the end of stream. We don't restart the stream if we're at the
+      // end because not all web servers handle this case consistently; see:
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1373618#c36
+      nsresult rv = Seek(offset, false);
+      if (NS_SUCCEEDED(rv)) {
+        return rv;
+      }
+      // Close the streams that failed due to error. This will cause all
+      // client Read and Seek operations on those streams to fail. Blocked
+      // Reads will also be woken up.
+      Close();
+    }
+  }
+
+  mCacheStream.NotifyDataEnded(mLoadID, aStatus);
   return NS_OK;
 }
 
@@ -446,6 +494,55 @@ ChannelMediaResource::OnDataAvailable(uint32_t aLoadID,
   return NS_OK;
 }
 
+int64_t
+ChannelMediaResource::CalculateStreamLength() const
+{
+  if (!mChannel) {
+    return -1;
+  }
+
+  nsCOMPtr<nsIHttpChannel> hc = do_QueryInterface(mChannel);
+  if (!hc) {
+    return -1;
+  }
+
+  bool succeeded = false;
+  Unused << hc->GetRequestSucceeded(&succeeded);
+  if (!succeeded) {
+    return -1;
+  }
+
+  // We can't determine the length of uncompressed payload.
+  const bool isCompressed = IsPayloadCompressed(hc);
+  if (isCompressed) {
+    return -1;
+  }
+
+  int64_t contentLength = -1;
+  if (NS_FAILED(hc->GetContentLength(&contentLength))) {
+    return -1;
+  }
+
+  uint32_t responseStatus = 0;
+  Unused << hc->GetResponseStatus(&responseStatus);
+  if (responseStatus != HTTP_PARTIAL_RESPONSE_CODE) {
+    return contentLength;
+  }
+
+  // We have an HTTP Byte Range response. The Content-Length is the length
+  // of the response, not the resource. We need to parse the Content-Range
+  // header and extract the range total in order to get the stream length.
+  int64_t rangeStart = 0;
+  int64_t rangeEnd = 0;
+  int64_t rangeTotal = 0;
+  bool gotRangeHeader = NS_SUCCEEDED(
+    ParseContentRangeHeader(hc, rangeStart, rangeEnd, rangeTotal));
+  if (gotRangeHeader && rangeTotal != -1) {
+    contentLength = std::max(contentLength, rangeTotal);
+  }
+  return contentLength;
+}
+
 nsresult
 ChannelMediaResource::Open(nsIStreamListener** aStreamListener)
 {
@@ -453,15 +550,8 @@ ChannelMediaResource::Open(nsIStreamListener** aStreamListener)
   MOZ_ASSERT(aStreamListener);
   MOZ_ASSERT(mChannel);
 
-  int64_t cl = -1;
-  nsCOMPtr<nsIHttpChannel> hc = do_QueryInterface(mChannel);
-  if (hc && !IsPayloadCompressed(hc)) {
-    if (NS_FAILED(hc->GetContentLength(&cl))) {
-      cl = -1;
-    }
-  }
-
-  nsresult rv = mCacheStream.Init(cl);
+  int64_t streamLength = CalculateStreamLength();
+  nsresult rv = mCacheStream.Init(streamLength);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -469,7 +559,7 @@ ChannelMediaResource::Open(nsIStreamListener** aStreamListener)
   mSharedInfo = new SharedInfo;
   mSharedInfo->mResources.AppendElement(this);
 
-  mIsLiveStream = cl < 0;
+  mIsLiveStream = streamLength < 0;
   mListener = new Listener(this, 0, ++mLoadID);
   *aStreamListener = mListener;
   NS_ADDREF(*aStreamListener);

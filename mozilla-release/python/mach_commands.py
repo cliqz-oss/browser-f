@@ -20,7 +20,6 @@ import mozinfo
 from manifestparser import TestManifest
 from manifestparser import filters as mpf
 
-import mozpack.path as mozpath
 from mozbuild.base import (
     MachCommandBase,
 )
@@ -66,10 +65,6 @@ class MachCommands(MachCommandBase):
                      default=False,
                      action='store_true',
                      help='Verbose output.')
-    @CommandArgument('--stop',
-                     default=False,
-                     action='store_true',
-                     help='Stop running tests after the first error or failure.')
     @CommandArgument('-j', '--jobs',
                      default=1,
                      type=int,
@@ -91,49 +86,24 @@ class MachCommands(MachCommandBase):
             mozfile.remove(tempdir)
 
     def run_python_tests(self,
-                         tests=[],
+                         tests=None,
                          test_objects=None,
                          subsuite=None,
                          verbose=False,
-                         stop=False,
                          jobs=1,
                          **kwargs):
         self._activate_virtualenv()
 
-        def find_tests_by_path():
-            import glob
-            files = []
-            for t in tests:
-                if t.endswith('.py') and os.path.isfile(t):
-                    files.append(t)
-                elif os.path.isdir(t):
-                    for root, _, _ in os.walk(t):
-                        files += glob.glob(mozpath.join(root, 'test*.py'))
-                        files += glob.glob(mozpath.join(root, 'unit*.py'))
-                else:
-                    self.log(logging.WARN, 'python-test',
-                             {'test': t},
-                             'TEST-UNEXPECTED-FAIL | Invalid test: {test}')
-                    if stop:
-                        break
-            return files
-
-        # Python's unittest, and in particular discover, has problems with
-        # clashing namespaces when importing multiple test modules. What follows
-        # is a simple way to keep environments separate, at the price of
-        # launching Python multiple times. Most tests are run via mozunit,
-        # which produces output in the format Mozilla infrastructure expects.
-        # Some tests are run via pytest.
         if test_objects is None:
             from moztest.resolve import TestResolver
             resolver = self._spawn(TestResolver)
-            if tests:
-                # If we were given test paths, try to find tests matching them.
-                test_objects = resolver.resolve_tests(paths=tests,
-                                                      flavor='python')
-            else:
-                # Otherwise just run everything in PYTHON_UNITTEST_MANIFESTS
-                test_objects = resolver.resolve_tests(flavor='python')
+            # If we were given test paths, try to find tests matching them.
+            test_objects = resolver.resolve_tests(paths=tests, flavor='python')
+        else:
+            # We've received test_objects from |mach test|. We need to ignore
+            # the subsuite because python-tests don't use this key like other
+            # harnesses do and |mach test| doesn't realize this.
+            subsuite = None
 
         mp = TestManifest()
         mp.tests.extend(test_objects)

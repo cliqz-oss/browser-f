@@ -174,14 +174,14 @@ class MachCommands(MachCommandBase):
     @SubCommand('taskgraph', 'cron',
                 description="Run the cron task")
     @CommandArgument('--base-repository',
-                     required=True,
-                     help='URL for "base" repository to clone')
+                     required=False,
+                     help='(ignored)')
     @CommandArgument('--head-repository',
                      required=True,
                      help='URL for "head" repository to fetch')
     @CommandArgument('--head-ref',
-                     required=True,
-                     help='Reference to fetch in head-repository (usually "default")')
+                     required=False,
+                     help='(ignored)')
     @CommandArgument('--project',
                      required=True,
                      help='Project to use for creating tasks. Example: --project=mozilla-central')
@@ -196,6 +196,9 @@ class MachCommands(MachCommandBase):
                      required=False,
                      action='store_true',
                      help='Do not actually create tasks')
+    @CommandArgument('--root', '-r',
+                     required=False,
+                     help="root of the repository to get cron task definitions from")
     def taskgraph_cron(self, **options):
         """Run the cron task; this task creates zero or more decision tasks.  It is run
         from the hooks service on a regular basis."""
@@ -209,6 +212,8 @@ class MachCommands(MachCommandBase):
 
     @SubCommand('taskgraph', 'action-callback',
                 description='Run action callback used by action tasks')
+    @CommandArgument('--root', '-r', default='taskcluster/ci',
+                     help="root of the taskgraph definition relative to topsrcdir")
     def action_callback(self, **options):
         import taskgraph.actions
         try:
@@ -220,6 +225,7 @@ class MachCommands(MachCommandBase):
             input = json.loads(os.environ.get('ACTION_INPUT', 'null'))
             callback = os.environ.get('ACTION_CALLBACK', None)
             parameters = json.loads(os.environ.get('ACTION_PARAMETERS', '{}'))
+            root = options['root']
 
             return taskgraph.actions.trigger_action_callback(
                     task_group_id=task_group_id,
@@ -228,6 +234,7 @@ class MachCommands(MachCommandBase):
                     input=input,
                     callback=callback,
                     parameters=parameters,
+                    root=root,
                     test=False)
         except Exception:
             traceback.print_exc()
@@ -235,6 +242,8 @@ class MachCommands(MachCommandBase):
 
     @SubCommand('taskgraph', 'test-action-callback',
                 description='Run an action callback in a testing mode')
+    @CommandArgument('--root', '-r', default='taskcluster/ci',
+                     help="root of the taskgraph definition relative to topsrcdir")
     @CommandArgument('--parameters', '-p', default='project=mozilla-central',
                      help='parameters file (.yml or .json; see '
                           '`taskcluster/docs/parameters.rst`)`')
@@ -282,6 +291,8 @@ class MachCommands(MachCommandBase):
             parameters = taskgraph.parameters.load_parameters_file(options['parameters'])
             parameters.check()
 
+            root = options['root']
+
             return taskgraph.actions.trigger_action_callback(
                     task_group_id=options['task_group_id'],
                     task_id=task_id,
@@ -289,6 +300,7 @@ class MachCommands(MachCommandBase):
                     input=input,
                     callback=options['callback'],
                     parameters=parameters,
+                    root=root,
                     test=True)
         except Exception:
             traceback.print_exc()
@@ -446,7 +458,7 @@ class TaskClusterPartialsData(object):
              description="Query balrog for release history used by enable partials generation")
     @CommandArgument('-b', '--branch',
                      help="The gecko project branch used in balrog, such as "
-                          "mozilla-central, release, date")
+                          "mozilla-central, release, maple")
     @CommandArgument('--product', default='Firefox',
                      help="The product identifier, such as 'Firefox'")
     def generate_partials_builds(self, product, branch):

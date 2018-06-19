@@ -7,49 +7,64 @@
 #ifndef gc_GCParallelTask_h
 #define gc_GCParallelTask_h
 
+#include "mozilla/Move.h"
+
 #include "js/TypeDecls.h"
 #include "threading/ProtectedData.h"
 
 namespace js {
 
 // A generic task used to dispatch work to the helper thread system.
-// Users should derive from GCParallelTask add what data they need and
-// override |run|.
+// Users supply a function pointer to call.
+//
+// Note that we don't use virtual functions here because destructors can write
+// the vtable pointer on entry, which can causes races if synchronization
+// happens there.
 class GCParallelTask
 {
+  public:
+    using TaskFunc = void (*)(GCParallelTask*);
+
+  private:
     JSRuntime* const runtime_;
+    TaskFunc func_;
 
     // The state of the parallel computation.
-    enum TaskState {
+    enum class State {
         NotStarted,
         Dispatched,
-        Finished,
+        Finished
     };
-    UnprotectedData<TaskState> state;
+    UnprotectedData<State> state_;
 
     // Amount of time this task took to execute.
-    ActiveThreadOrGCTaskData<mozilla::TimeDuration> duration_;
+    MainThreadOrGCTaskData<mozilla::TimeDuration> duration_;
 
     explicit GCParallelTask(const GCParallelTask&) = delete;
 
   protected:
     // A flag to signal a request for early completion of the off-thread task.
-    mozilla::Atomic<bool> cancel_;
-
-    virtual void run() = 0;
+    mozilla::Atomic<bool, mozilla::MemoryOrdering::ReleaseAcquire> cancel_;
 
   public:
-    explicit GCParallelTask(JSRuntime* runtime) : runtime_(runtime), state(NotStarted), duration_(nullptr) {}
+    explicit GCParallelTask(JSRuntime* runtime, TaskFunc func)
+      : runtime_(runtime),
+        func_(func),
+        state_(State::NotStarted),
+        duration_(nullptr),
+        cancel_(false)
+    {}
     GCParallelTask(GCParallelTask&& other)
       : runtime_(other.runtime_),
-        state(other.state),
+        func_(other.func_),
+        state_(other.state_),
         duration_(nullptr),
         cancel_(false)
     {}
 
     // Derived classes must override this to ensure that join() gets called
     // before members get destructed.
-    virtual ~GCParallelTask();
+    ~GCParallelTask();
 
     JSRuntime* runtime() { return runtime_; }
 
@@ -66,24 +81,74 @@ class GCParallelTask
     void joinWithLockHeld(AutoLockHelperThreadState& locked);
 
     // Instead of dispatching to a helper, run the task on the current thread.
-    void runFromActiveCooperatingThread(JSRuntime* rt);
+    void runFromMainThread(JSRuntime* rt);
 
     // Dispatch a cancelation request.
-    enum CancelMode { CancelNoWait, CancelAndWait};
-    void cancel(CancelMode mode = CancelNoWait) {
+    void cancelAndWait() {
         cancel_ = true;
-        if (mode == CancelAndWait)
-            join();
+        join();
     }
 
     // Check if a task is actively running.
-    bool isRunningWithLockHeld(const AutoLockHelperThreadState& locked) const;
+    bool isRunningWithLockHeld(const AutoLockHelperThreadState& lock) const {
+        return isDispatched(lock);
+    }
     bool isRunning() const;
+
+  private:
+    void assertNotStarted() const {
+        // Don't lock here because that adds extra synchronization in debug
+        // builds that may hide bugs. There's no race if the assertion passes.
+        MOZ_ASSERT(state_ == State::NotStarted);
+    }
+    bool isNotStarted(const AutoLockHelperThreadState& lock) const {
+        return state_ == State::NotStarted;
+    }
+    bool isDispatched(const AutoLockHelperThreadState& lock) const {
+        return state_ == State::Dispatched;
+    }
+    bool isFinished(const AutoLockHelperThreadState& lock) const {
+        return state_ == State::Finished;
+    }
+    void setDispatched(const AutoLockHelperThreadState& lock) {
+        MOZ_ASSERT(state_ == State::NotStarted);
+        state_ = State::Dispatched;
+    }
+    void setFinished(const AutoLockHelperThreadState& lock) {
+        MOZ_ASSERT(state_ == State::Dispatched);
+        state_ = State::Finished;
+    }
+    void setNotStarted(const AutoLockHelperThreadState& lock) {
+        MOZ_ASSERT(state_ == State::Finished);
+        state_ = State::NotStarted;
+    }
+
+    void runTask() {
+        func_(this);
+    }
 
     // This should be friended to HelperThread, but cannot be because it
     // would introduce several circular dependencies.
   public:
     void runFromHelperThread(AutoLockHelperThreadState& locked);
+};
+
+// CRTP template to handle cast to derived type when calling run().
+template <typename Derived>
+class GCParallelTaskHelper : public GCParallelTask
+{
+  public:
+    explicit GCParallelTaskHelper(JSRuntime* runtime)
+      : GCParallelTask(runtime, &runTaskTyped)
+    {}
+    GCParallelTaskHelper(GCParallelTaskHelper&& other)
+      : GCParallelTask(mozilla::Move(other))
+    {}
+
+  private:
+    static void runTaskTyped(GCParallelTask* task) {
+        static_cast<Derived*>(task)->run();
+    }
 };
 
 } /* namespace js */

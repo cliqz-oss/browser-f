@@ -104,6 +104,7 @@ nsNSSCertificate::InitFromDER(char* certDER, int derLen)
   }
 
   mCert.reset(aCert);
+  GetSubjectAltNames();
   return true;
 }
 
@@ -111,9 +112,11 @@ nsNSSCertificate::nsNSSCertificate(CERTCertificate* cert)
   : mCert(nullptr)
   , mPermDelete(false)
   , mCertType(CERT_TYPE_NOT_YET_INITIALIZED)
+  , mSubjectAltNames()
 {
   if (cert) {
     mCert.reset(CERT_DupCertificate(cert));
+    GetSubjectAltNames();
   }
 }
 
@@ -121,6 +124,7 @@ nsNSSCertificate::nsNSSCertificate()
   : mCert(nullptr)
   , mPermDelete(false)
   , mCertType(CERT_TYPE_NOT_YET_INITIALIZED)
+  , mSubjectAltNames()
 {
 }
 
@@ -518,32 +522,6 @@ nsNSSCertificate::GetIssuerOrganizationUnit(nsAString& aOrganizationUnit)
 }
 
 NS_IMETHODIMP
-nsNSSCertificate::GetIssuer(nsIX509Cert** aIssuer)
-{
-  NS_ENSURE_ARG(aIssuer);
-  *aIssuer = nullptr;
-
-  nsCOMPtr<nsIArray> chain;
-  nsresult rv;
-  rv = GetChain(getter_AddRefs(chain));
-  NS_ENSURE_SUCCESS(rv, rv);
-  uint32_t length;
-  if (!chain || NS_FAILED(chain->GetLength(&length)) || length == 0) {
-    return NS_ERROR_UNEXPECTED;
-  }
-  if (length == 1) { // No known issuer
-    return NS_OK;
-  }
-  nsCOMPtr<nsIX509Cert> cert;
-  chain->QueryElementAt(1, NS_GET_IID(nsIX509Cert), getter_AddRefs(cert));
-  if (!cert) {
-    return NS_ERROR_UNEXPECTED;
-  }
-  cert.forget(aIssuer);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsNSSCertificate::GetOrganizationalUnit(nsAString& aOrganizationalUnit)
 {
   aOrganizationalUnit.Truncate();
@@ -556,81 +534,102 @@ nsNSSCertificate::GetOrganizationalUnit(nsAString& aOrganizationalUnit)
   return NS_OK;
 }
 
-static nsresult
-UniqueCERTCertListToMutableArray(/*in*/ UniqueCERTCertList& nssChain,
-                                /*out*/ nsIArray** x509CertArray)
-{
-  if (!x509CertArray) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  nsCOMPtr<nsIMutableArray> array = nsArrayBase::Create();
-  if (!array) {
-    return NS_ERROR_FAILURE;
-  }
-
-  CERTCertListNode* node;
-  for (node = CERT_LIST_HEAD(nssChain.get());
-       !CERT_LIST_END(node, nssChain.get());
-       node = CERT_LIST_NEXT(node)) {
-    nsCOMPtr<nsIX509Cert> cert = nsNSSCertificate::Create(node->cert);
-    nsresult rv = array->AppendElement(cert);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-  }
-
-  array.forget(x509CertArray);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsNSSCertificate::GetChain(nsIArray** _rvChain)
-{
-  NS_ENSURE_ARG(_rvChain);
-
-  mozilla::pkix::Time now(mozilla::pkix::Now());
-
-  RefPtr<SharedCertVerifier> certVerifier(GetDefaultCertVerifier());
-  NS_ENSURE_TRUE(certVerifier, NS_ERROR_UNEXPECTED);
-
-  UniqueCERTCertList nssChain;
-  // We want to test all usages supported by the certificate verifier, but we
-  // start with TLS server because most of the time Firefox users care about
-  // server certs.
-  const int usagesToTest[] = { certificateUsageSSLServer,
-                               certificateUsageSSLClient,
-                               certificateUsageSSLCA,
-                               certificateUsageEmailSigner,
-                               certificateUsageEmailRecipient };
-  for (auto usage : usagesToTest) {
-    if (certVerifier->VerifyCert(mCert.get(), usage, now,
-                                 nullptr, /*XXX fixme*/
-                                 nullptr, /*hostname*/
-                                 nssChain,
-                                 CertVerifier::FLAG_LOCAL_ONLY)
-          == mozilla::pkix::Success) {
-      return UniqueCERTCertListToMutableArray(nssChain, _rvChain);
-    }
-  }
-
-  // There is no verified path for the chain, however we still want to
-  // present to the user as much of a possible chain as possible, in the case
-  // where there was a problem with the cert or the issuers.
-  nssChain = UniqueCERTCertList(
-    CERT_GetCertChainFromCert(mCert.get(), PR_Now(), certUsageSSLClient));
-  if (!nssChain) {
-    return NS_ERROR_FAILURE;
-  }
-  return UniqueCERTCertListToMutableArray(nssChain, _rvChain);
-}
-
 NS_IMETHODIMP
 nsNSSCertificate::GetSubjectName(nsAString& _subjectName)
 {
   _subjectName.Truncate();
   if (mCert->subjectName) {
     _subjectName = NS_ConvertUTF8toUTF16(mCert->subjectName);
+  }
+  return NS_OK;
+}
+
+// Reads dNSName and iPAddress entries encountered in the subject alternative
+// name extension of the certificate and stores them in mSubjectAltNames.
+void
+nsNSSCertificate::GetSubjectAltNames()
+{
+  mSubjectAltNames.clear();
+
+  ScopedAutoSECItem altNameExtension;
+  SECStatus rv = CERT_FindCertExtension(mCert.get(),
+                                        SEC_OID_X509_SUBJECT_ALT_NAME,
+                                        &altNameExtension);
+  if (rv != SECSuccess) {
+    return;
+  }
+  UniquePLArenaPool arena(PORT_NewArena(DER_DEFAULT_CHUNKSIZE));
+  if (!arena) {
+    return;
+  }
+  CERTGeneralName* sanNameList(CERT_DecodeAltNameExtension(arena.get(),
+                                                           &altNameExtension));
+  if (!sanNameList) {
+    return;
+  }
+
+  CERTGeneralName* current = sanNameList;
+  do {
+    nsAutoString name;
+    switch (current->type) {
+      case certDNSName:
+        {
+          nsDependentCSubstring nameFromCert(BitwiseCast<char*, unsigned char*>(
+                                             current->name.other.data),
+                                             current->name.other.len);
+          // dNSName fields are defined as type IA5String and thus should
+          // be limited to ASCII characters.
+          if (IsASCII(nameFromCert)) {
+            name.Assign(NS_ConvertASCIItoUTF16(nameFromCert));
+            mSubjectAltNames.push_back(name);
+          }
+        }
+        break;
+
+      case certIPAddress:
+        {
+          char buf[INET6_ADDRSTRLEN];
+          PRNetAddr addr;
+          if (current->name.other.len == 4) {
+            addr.inet.family = PR_AF_INET;
+            memcpy(&addr.inet.ip, current->name.other.data,
+                   current->name.other.len);
+            PR_NetAddrToString(&addr, buf, sizeof(buf));
+            name.AssignASCII(buf);
+          } else if (current->name.other.len == 16) {
+            addr.ipv6.family = PR_AF_INET6;
+            memcpy(&addr.ipv6.ip, current->name.other.data,
+                   current->name.other.len);
+            PR_NetAddrToString(&addr, buf, sizeof(buf));
+            name.AssignASCII(buf);
+          } else {
+            /* invalid IP address */
+          }
+          if (!name.IsEmpty()) {
+            mSubjectAltNames.push_back(name);
+          }
+          break;
+        }
+
+      default: // all other types of names are ignored
+        break;
+    }
+    current = CERT_GetNextGeneralName(current);
+  } while (current != sanNameList); // double linked
+
+  return;
+}
+
+NS_IMETHODIMP
+nsNSSCertificate::GetSubjectAltNames(nsAString& _subjectAltNames)
+{
+  _subjectAltNames.Truncate();
+
+  for (auto altName : mSubjectAltNames) {
+    if (!_subjectAltNames.IsEmpty()) {
+      _subjectAltNames.Append(',');
+    }
+    _subjectAltNames.Append(altName);
   }
   return NS_OK;
 }

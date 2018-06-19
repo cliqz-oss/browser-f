@@ -2,7 +2,6 @@ add_task(async function() {
   let prefs = await openPreferencesViaOpenPreferencesAPI("panePrivacy", {leaveOpen: true});
   is(prefs.selectedPane, "panePrivacy", "Privacy pane was selected");
 
-  // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
   // Fake the subdialog and LoginHelper
   let win = doc.defaultView;
@@ -51,5 +50,5 @@ add_task(async function() {
   ok(button.disabled, "master password button should now be disabled");
   ok(!checkbox.checked, "master password checkbox should now be unchecked");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

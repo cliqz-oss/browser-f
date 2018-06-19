@@ -3,6 +3,7 @@
  http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
 /* import-globals-from ../../../shared/test/shared-head.js */
+/* import-globals-from ../../../shared/test/telemetry-test-helpers.js */
 /* import-globals-from ../../test/head.js */
 "use strict";
 
@@ -27,21 +28,21 @@ const HIGHLIGHTER_TYPE = "CssGridHighlighter";
 /**
  * Simulate a color change in a given color picker tooltip.
  *
- * @param  {Spectrum|ColorWidget} colorPicker
+ * @param  {Spectrum} colorPicker
  *         The color picker widget.
  * @param  {Array} newRgba
  *         Array of the new rgba values to be set in the color widget.
  */
-var simulateColorPickerChange = Task.async(function* (colorPicker, newRgba) {
+var simulateColorPickerChange = async function(colorPicker, newRgba) {
   info("Getting the spectrum colorpicker object");
-  let spectrum = yield colorPicker.spectrum;
+  let spectrum = await colorPicker.spectrum;
   info("Setting the new color");
   spectrum.rgb = newRgba;
   info("Applying the change");
   spectrum.updateUI();
   spectrum.onChange();
-});
+};
 
-registerCleanupFunction(async function () {
+registerCleanupFunction(async function() {
   await asyncStorage.removeItem("gridInspectorHostColors");
 });

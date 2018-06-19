@@ -11,7 +11,6 @@
 #include "nsXULPopupListener.h"
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
-#include "nsIDOMElement.h"
 #include "nsContentCID.h"
 #include "nsContentUtils.h"
 #include "nsXULPopupManager.h"
@@ -26,9 +25,12 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/Element.h"
+#include "mozilla/dom/Event.h" // for Event
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/FragmentOrElement.h"
+#include "mozilla/dom/MouseEvent.h"
+#include "mozilla/dom/MouseEventBinding.h"
 
 // for event firing in context menus
 #include "nsPresContext.h"
@@ -91,7 +93,7 @@ NS_INTERFACE_MAP_END
 // nsIDOMEventListener
 
 nsresult
-nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
+nsXULPopupListener::HandleEvent(Event* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
@@ -100,16 +102,14 @@ nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
        (eventType.EqualsLiteral("contextmenu") && mIsContext)))
     return NS_OK;
 
-  int16_t button;
-
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aEvent);
+  MouseEvent* mouseEvent = aEvent->AsMouseEvent();
   if (!mouseEvent) {
     //non-ui event passed in.  bad things.
     return NS_OK;
   }
 
   // Get the node that was clicked on.
-  EventTarget* target = mouseEvent->AsEvent()->InternalDOMEvent()->GetTarget();
+  EventTarget* target = mouseEvent->GetTarget();
   nsCOMPtr<nsIDOMNode> targetNode = do_QueryInterface(target);
 
   if (!targetNode && mIsContext) {
@@ -134,15 +134,14 @@ nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
   }
 
   {
-    EventTarget* originalTarget = mouseEvent->AsEvent()->InternalDOMEvent()->GetOriginalTarget();
+    EventTarget* originalTarget = mouseEvent->GetOriginalTarget();
     nsCOMPtr<nsIContent> content = do_QueryInterface(originalTarget);
     if (content && EventStateManager::IsRemoteTarget(content)) {
       return NS_OK;
     }
   }
 
-  bool preventDefault;
-  mouseEvent->AsEvent()->GetDefaultPrevented(&preventDefault);
+  bool preventDefault = mouseEvent->DefaultPrevented();
   if (preventDefault && targetNode && mIsContext) {
     // Someone called preventDefault on a context menu.
     // Let's make sure they are allowed to do so.
@@ -193,9 +192,8 @@ nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
 
   if (mIsContext) {
 #ifndef NS_CONTEXT_MENU_IS_MOUSEUP
-    uint16_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
-    mouseEvent->GetMozInputSource(&inputSource);
-    bool isTouch = inputSource == nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+    uint16_t inputSource = mouseEvent->MozInputSource();
+    bool isTouch = inputSource == MouseEventBinding::MOZ_SOURCE_TOUCH;
     // If the context menu launches on mousedown,
     // we have to fire focus on the content we clicked on
     FireFocusOnTargetContent(targetNode, isTouch);
@@ -203,14 +201,14 @@ nsXULPopupListener::HandleEvent(nsIDOMEvent* aEvent)
   }
   else {
     // Only open popups when the left mouse button is down.
-    mouseEvent->GetButton(&button);
-    if (button != 0)
+    if (mouseEvent->Button() != 0) {
       return NS_OK;
+    }
   }
 
   // Open the popup. LaunchPopup will call StopPropagation and PreventDefault
   // in the right situations.
-  LaunchPopup(aEvent, targetContent);
+  LaunchPopup(mouseEvent, targetContent);
 
   return NS_OK;
 }
@@ -222,7 +220,6 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode, bool aIsTo
   nsCOMPtr<nsIContent> content = do_QueryInterface(aTargetNode);
   nsCOMPtr<nsIDocument> doc = content->OwnerDoc();
 
-  // Get nsIDOMElement for targetNode
   // strong reference to keep this from going away between events
   // XXXbz between what events?  We don't use this local at all!
   RefPtr<nsPresContext> context = doc->GetPresContext();
@@ -236,33 +233,29 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode, bool aIsTo
   const nsStyleUserInterface* ui = targetFrame->StyleUserInterface();
   bool suppressBlur = (ui->mUserFocus == StyleUserFocus::Ignore);
 
-  nsCOMPtr<nsIDOMElement> element;
-  nsCOMPtr<nsIContent> newFocus = content;
+  RefPtr<Element> newFocusElement;
 
   nsIFrame* currFrame = targetFrame;
   // Look for the nearest enclosing focusable frame.
   while (currFrame) {
     int32_t tabIndexUnused;
-    if (currFrame->IsFocusable(&tabIndexUnused, true)) {
-      newFocus = currFrame->GetContent();
-      nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocus));
-      if (domElement) {
-        element = domElement;
-        break;
-      }
+    if (currFrame->IsFocusable(&tabIndexUnused, true) &&
+        currFrame->GetContent()->IsElement()) {
+      newFocusElement = currFrame->GetContent()->AsElement();
+      break;
     }
     currFrame = currFrame->GetParent();
   }
 
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm) {
-    if (element) {
+    if (newFocusElement) {
       uint32_t focusFlags = nsIFocusManager::FLAG_BYMOUSE |
                             nsIFocusManager::FLAG_NOSCROLL;
       if (aIsTouch) {
         focusFlags |= nsIFocusManager::FLAG_BYTOUCH;
       }
-      fm->SetFocus(element, focusFlags);
+      fm->SetFocus(newFocusElement, focusFlags);
     } else if (!suppressBlur) {
       nsPIDOMWindowOuter *window = doc->GetWindow();
       fm->ClearFocus(window);
@@ -270,8 +263,7 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIDOMNode* aTargetNode, bool aIsTo
   }
 
   EventStateManager* esm = context->EventStateManager();
-  nsCOMPtr<nsIContent> focusableContent = do_QueryInterface(element);
-  esm->SetContentState(focusableContent, NS_EVENT_STATE_ACTIVE);
+  esm->SetContentState(newFocusElement, NS_EVENT_STATE_ACTIVE);
 
   return NS_OK;
 }
@@ -328,7 +320,7 @@ GetImmediateChild(nsIContent* aContent, nsAtom *aTag)
 // the popup content in the document.
 //
 nsresult
-nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
+nsXULPopupListener::LaunchPopup(MouseEvent* aEvent, nsIContent* aTargetContent)
 {
   nsresult rv = NS_OK;
 
@@ -416,10 +408,8 @@ nsXULPopupListener::LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent)
                   false, true, false, aEvent);
   }
   else {
-    int32_t xPos = 0, yPos = 0;
-    nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aEvent);
-    mouseEvent->GetScreenX(&xPos);
-    mouseEvent->GetScreenY(&yPos);
+    int32_t xPos = aEvent->ScreenX(CallerType::System);
+    int32_t yPos = aEvent->ScreenY(CallerType::System);
 
     pm->ShowPopupAtScreen(mPopupContent, xPos, yPos, mIsContext, aEvent);
   }

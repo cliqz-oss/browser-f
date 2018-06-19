@@ -37,7 +37,7 @@ public:
 
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(ContentScrollPos, nsPoint)
 
-  explicit nsTextControlFrame(nsStyleContext* aContext);
+  explicit nsTextControlFrame(ComputedStyle* aStyle);
   virtual ~nsTextControlFrame();
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
@@ -158,8 +158,8 @@ public:
 
 //==== NSISTATEFULFRAME
 
-  NS_IMETHOD SaveState(nsPresState** aState) override;
-  NS_IMETHOD RestoreState(nsPresState* aState) override;
+  UniquePtr<PresState> SaveState() override;
+  NS_IMETHOD RestoreState(PresState* aState) override;
 
 //=== END NSISTATEFULFRAME
 
@@ -191,10 +191,6 @@ public: //for methods who access nsTextControlFrame directly
 
   mozilla::dom::Element* GetRootNode() const {
     return mRootNode;
-  }
-
-  mozilla::dom::Element* GetPlaceholderNode() const {
-    return mPlaceholderDiv;
   }
 
   mozilla::dom::Element* GetPreviewNode() const {
@@ -326,16 +322,6 @@ private:
   nsresult SelectAllOrCollapseToEndOfText(bool aSelect);
   nsresult SetSelectionEndPoints(uint32_t aSelStart, uint32_t aSelEnd,
                                  SelectionDirection aDirection = eNone);
-
-  /**
-   * Return the root DOM element, and implicitly initialize the editor if
-   * needed.
-   *
-   * XXXbz This function is slow.  Very slow.  Consider using
-   * EnsureEditorInitialized() if you need that, and
-   * nsITextControlElement::GetRootEditorNode on our content if you need that.
-   */
-  nsresult GetRootNodeAndInitializeEditor(nsIDOMElement **aRootElement);
 
   void FinishedInitializer() {
     DeleteProperty(TextControlInitializer());

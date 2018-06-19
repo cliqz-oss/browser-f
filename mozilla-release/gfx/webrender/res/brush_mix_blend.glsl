@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#define VECS_PER_SPECIFIC_BRUSH 1
+#define VECS_PER_SPECIFIC_BRUSH 3
 
 #include shared,prim_shared,brush
 
@@ -16,8 +16,12 @@ void brush_vs(
     VertexInfo vi,
     int prim_address,
     RectWithSize local_rect,
+    RectWithSize segment_rect,
     ivec3 user_data,
-    PictureTask pic_task
+    mat4 transform,
+    PictureTask pic_task,
+    int brush_flags,
+    vec4 unused
 ) {
     vec2 texture_size = vec2(textureSize(sCacheRGBA8, 0));
     vOp = user_data.x;
@@ -37,12 +41,6 @@ void brush_vs(
 #endif
 
 #ifdef WR_FRAGMENT_SHADER
-float gauss(float x, float sigma) {
-    if (sigma == 0.0)
-        return 1.0;
-    return (1.0 / sqrt(6.283185307179586 * sigma * sigma)) * exp(-(x * x) / (2.0 * sigma * sigma));
-}
-
 vec3 Multiply(vec3 Cb, vec3 Cs) {
     return Cb * Cs;
 }
@@ -200,15 +198,15 @@ const int MixBlendMode_Saturation  = 13;
 const int MixBlendMode_Color       = 14;
 const int MixBlendMode_Luminosity  = 15;
 
-vec4 brush_fs() {
+Fragment brush_fs() {
     vec4 Cb = textureLod(sCacheRGBA8, vBackdropUv, 0.0);
     vec4 Cs = textureLod(sCacheRGBA8, vSrcUv, 0.0);
 
     if (Cb.a == 0.0) {
-        return Cs;
+        return Fragment(Cs);
     }
     if (Cs.a == 0.0) {
-        return vec4(0.0);
+        return Fragment(vec4(0.0));
     }
 
     // The mix-blend-mode functions assume no premultiplied alpha
@@ -279,6 +277,6 @@ vec4 brush_fs() {
 
     result.rgb *= result.a;
 
-    return result;
+    return Fragment(result);
 }
 #endif

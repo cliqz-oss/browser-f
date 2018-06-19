@@ -46,10 +46,6 @@ InterceptedChannelBase::InterceptedChannelBase(nsINetworkInterceptController* aC
 {
 }
 
-InterceptedChannelBase::~InterceptedChannelBase()
-{
-}
-
 void
 InterceptedChannelBase::EnsureSynthesizedResponse()
 {
@@ -136,6 +132,12 @@ NS_IMETHODIMP
 InterceptedChannelBase::SaveTimeStamps()
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  // If we were not able to start the fetch event for some reason (like
+  // corrupted scripts), then just do nothing here.
+  if (mHandleFetchEventStart.IsNull()) {
+    return NS_OK;
+  }
 
   nsCOMPtr<nsIChannel> underlyingChannel;
   nsresult rv = GetChannel(getter_AddRefs(underlyingChannel));

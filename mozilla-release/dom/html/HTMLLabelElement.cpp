@@ -11,9 +11,9 @@
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/dom/HTMLLabelElementBinding.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "nsFocusManager.h"
 #include "nsContentUtils.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsQueryObject.h"
 #include "mozilla/dom/ShadowRoot.h"
 
@@ -61,9 +61,10 @@ HTMLLabelElement::Focus(ErrorResult& aError)
   // retarget the focus method at the for content
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm) {
-    nsCOMPtr<nsIDOMElement> elem = do_QueryObject(GetLabeledElement());
-    if (elem)
+    RefPtr<Element> elem = GetLabeledElement();
+    if (elem) {
       fm->SetFocus(elem, 0);
+    }
   }
 }
 
@@ -156,12 +157,12 @@ HTMLLabelElement::PostHandleEvent(EventChainPostVisitor& aVisitor)
               // pass FLAG_BYMOUSE so that we get correct focus ring behavior,
               // but we don't want to pass FLAG_BYMOUSE if this click event was
               // caused by the user pressing an accesskey.
-              nsCOMPtr<nsIDOMElement> elem = do_QueryInterface(content);
-              bool byMouse = (mouseEvent->inputSource != nsIDOMMouseEvent::MOZ_SOURCE_KEYBOARD);
-              bool byTouch = (mouseEvent->inputSource == nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
-              fm->SetFocus(elem, nsIFocusManager::FLAG_BYMOVEFOCUS |
-                                 (byMouse ? nsIFocusManager::FLAG_BYMOUSE : 0) |
-                                 (byTouch ? nsIFocusManager::FLAG_BYTOUCH : 0));
+              bool byMouse = (mouseEvent->inputSource != MouseEventBinding::MOZ_SOURCE_KEYBOARD);
+              bool byTouch = (mouseEvent->inputSource == MouseEventBinding::MOZ_SOURCE_TOUCH);
+              fm->SetFocus(content,
+                           nsIFocusManager::FLAG_BYMOVEFOCUS |
+                           (byMouse ? nsIFocusManager::FLAG_BYMOUSE : 0) |
+                           (byTouch ? nsIFocusManager::FLAG_BYTOUCH : 0));
             }
           }
           // Dispatch a new click event to |content|
@@ -209,7 +210,7 @@ HTMLLabelElement::PerformAccesskey(bool aKeyCausesActivation,
     // Click on it if the users prefs indicate to do so.
     WidgetMouseEvent event(aIsTrustedEvent, eMouseClick,
                            nullptr, WidgetMouseEvent::eReal);
-    event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_KEYBOARD;
+    event.inputSource = MouseEventBinding::MOZ_SOURCE_KEYBOARD;
 
     nsAutoPopupStatePusher popupStatePusher(aIsTrustedEvent ?
                                             openAllowed : openAbused);

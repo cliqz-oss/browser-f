@@ -57,6 +57,7 @@
 #include "mozilla/VsyncDispatcher.h"
 #include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/layers/APZEventState.h"
+#include "mozilla/layers/APZInputBridge.h"
 #include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/layers/ChromeProcessController.h"
 #include "mozilla/layers/CompositorOptions.h"
@@ -933,14 +934,27 @@ nsBaseWidget::CreateRootContentController()
 
 void nsBaseWidget::ConfigureAPZCTreeManager()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mAPZC);
 
   ConfigureAPZControllerThread();
 
-  mAPZC->SetDPI(GetDPI());
+  float dpi = GetDPI();
+  // On Android the main thread is not the controller thread
+  APZThreadUtils::RunOnControllerThread(NewRunnableMethod<float>(
+      "layers::IAPZCTreeManager::SetDPI",
+      mAPZC,
+      &IAPZCTreeManager::SetDPI,
+      dpi));
 
   if (gfxPrefs::APZKeyboardEnabled()) {
-    mAPZC->SetKeyboardMap(nsXBLWindowKeyHandler::CollectKeyboardShortcuts());
+    KeyboardMap map = nsXBLWindowKeyHandler::CollectKeyboardShortcuts();
+    // On Android the main thread is not the controller thread
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod<KeyboardMap>(
+        "layers::IAPZCTreeManager::SetKeyboardMap",
+        mAPZC,
+        &IAPZCTreeManager::SetKeyboardMap,
+        map));
   }
 
   RefPtr<IAPZCTreeManager> treeManager = mAPZC;  // for capture by the lambdas
@@ -1029,7 +1043,7 @@ nsBaseWidget::UpdateZoomConstraints(const uint32_t& aPresShellId,
     }
     return;
   }
-  uint64_t layersId = mCompositorSession->RootLayerTreeId();
+  LayersId layersId = mCompositorSession->RootLayerTreeId();
   mAPZC->UpdateZoomConstraints(ScrollableLayerGuid(layersId, aPresShellId, aViewId),
                                aConstraints);
 }
@@ -1066,7 +1080,7 @@ nsBaseWidget::ProcessUntransformedAPZEvent(WidgetInputEvent* aEvent,
   UniquePtr<WidgetEvent> original(aEvent->Duplicate());
   DispatchEvent(aEvent, status);
 
-  if (mAPZC && !context.WasRoutedToChildProcess() && aInputBlockId) {
+  if (mAPZC && !InputAPZContext::WasRoutedToChildProcess() && aInputBlockId) {
     // EventStateManager did not route the event into the child process.
     // It's safe to communicate to APZ that the event has been processed.
     // TODO: Eventually we'll be able to move the SendSetTargetAPZCNotification
@@ -1151,7 +1165,7 @@ public:
 
   NS_IMETHOD Run() override
   {
-    nsEventStatus result = mAPZC->ReceiveInputEvent(mWheelInput, &mGuid, &mInputBlockId);
+    nsEventStatus result = mAPZC->InputBridge()->ReceiveInputEvent(mWheelInput, &mGuid, &mInputBlockId);
     if (result == nsEventStatus_eConsumeNoDefault) {
       return NS_OK;
     }
@@ -1178,7 +1192,7 @@ nsBaseWidget::DispatchTouchInput(MultiTouchInput& aInput)
     uint64_t inputBlockId = 0;
     ScrollableLayerGuid guid;
 
-    nsEventStatus result = mAPZC->ReceiveInputEvent(aInput, &guid, &inputBlockId);
+    nsEventStatus result = mAPZC->InputBridge()->ReceiveInputEvent(aInput, &guid, &inputBlockId);
     if (result == nsEventStatus_eConsumeNoDefault) {
       return;
     }
@@ -1203,7 +1217,7 @@ nsBaseWidget::DispatchInputEvent(WidgetInputEvent* aEvent)
       ScrollableLayerGuid guid;
 
       nsEventStatus result =
-        mAPZC->ReceiveInputEvent(*aEvent, &guid, &inputBlockId);
+        mAPZC->InputBridge()->ReceiveInputEvent(*aEvent, &guid, &inputBlockId);
       if (result == nsEventStatus_eConsumeNoDefault) {
         return result;
       }
@@ -1233,7 +1247,7 @@ nsBaseWidget::DispatchEventToAPZOnly(mozilla::WidgetInputEvent* aEvent)
     MOZ_ASSERT(APZThreadUtils::IsControllerThread());
     uint64_t inputBlockId = 0;
     ScrollableLayerGuid guid;
-    mAPZC->ReceiveInputEvent(*aEvent, &guid, &inputBlockId);
+    mAPZC->InputBridge()->ReceiveInputEvent(*aEvent, &guid, &inputBlockId);
   }
 }
 
@@ -1416,7 +1430,7 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
     bool success = false;
     if (!backendHints.IsEmpty()) {
       shadowManager =
-        mCompositorBridgeChild->SendPLayerTransactionConstructor(backendHints, 0);
+        mCompositorBridgeChild->SendPLayerTransactionConstructor(backendHints, LayersId{0});
       if (shadowManager->SendGetTextureFactoryIdentifier(&textureFactoryIdentifier) &&
           textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_NONE)
       {
@@ -1747,8 +1761,35 @@ nsBaseWidget::ResolveIconName(const nsAString &aIconName,
 void nsBaseWidget::SetSizeConstraints(const SizeConstraints& aConstraints)
 {
   mSizeConstraints = aConstraints;
-  // We can't ensure that the size is honored at this point because we're
-  // probably in the middle of a reflow.
+
+  // Popups are constrained during layout, and we don't want to synchronously
+  // paint from reflow, so bail out... This is not great, but it's no worse than
+  // what we used to do.
+  //
+  // The right fix here is probably making constraint changes go through the
+  // view manager and such.
+  if (mWindowType == eWindowType_popup) {
+    return;
+  }
+
+  // If the current size doesn't meet the new constraints, trigger a
+  // resize to apply it. Note that, we don't want to invoke Resize if
+  // the new constraints don't affect the current size, because Resize
+  // implementation on some platforms may touch other geometry even if
+  // the size don't need to change.
+  LayoutDeviceIntSize curSize = mBounds.Size();
+  LayoutDeviceIntSize clampedSize =
+    Max(aConstraints.mMinSize, Min(aConstraints.mMaxSize, curSize));
+  if (clampedSize != curSize) {
+    gfx::Size size;
+    if (BoundsUseDesktopPixels()) {
+      DesktopSize desktopSize = clampedSize / GetDesktopToDeviceScale();
+      size = desktopSize.ToUnknownSize();
+    } else {
+      size = gfx::Size(clampedSize.ToUnknownSize());
+    }
+    Resize(size.width, size.height, true);
+  }
 }
 
 const widget::SizeConstraints nsBaseWidget::GetSizeConstraints()
@@ -1919,8 +1960,15 @@ nsBaseWidget::ZoomToRect(const uint32_t& aPresShellId,
   if (!mCompositorSession || !mAPZC) {
     return;
   }
-  uint64_t layerId = mCompositorSession->RootLayerTreeId();
-  mAPZC->ZoomToRect(ScrollableLayerGuid(layerId, aPresShellId, aViewId), aRect, aFlags);
+  LayersId layerId = mCompositorSession->RootLayerTreeId();
+  APZThreadUtils::RunOnControllerThread(
+    NewRunnableMethod<ScrollableLayerGuid, CSSRect, uint32_t>(
+      "layers::IAPZCTreeManager::ZoomToRect",
+      mAPZC,
+      &IAPZCTreeManager::ZoomToRect,
+      ScrollableLayerGuid(layerId, aPresShellId, aViewId),
+      aRect,
+      aFlags));
 }
 
 #ifdef ACCESSIBILITY
@@ -1959,7 +2007,7 @@ nsBaseWidget::StartAsyncScrollbarDrag(const AsyncDragMetrics& aDragMetrics)
 
   MOZ_ASSERT(XRE_IsParentProcess() && mCompositorSession);
 
-  uint64_t layersId = mCompositorSession->RootLayerTreeId();
+  LayersId layersId = mCompositorSession->RootLayerTreeId();
   ScrollableLayerGuid guid(layersId, aDragMetrics.mPresShellId, aDragMetrics.mViewId);
 
   APZThreadUtils::RunOnControllerThread(

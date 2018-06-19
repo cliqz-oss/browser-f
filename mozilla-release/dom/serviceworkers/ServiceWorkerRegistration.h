@@ -12,6 +12,7 @@
 #include "mozilla/dom/ServiceWorkerBinding.h"
 #include "mozilla/dom/ServiceWorkerRegistrationBinding.h"
 #include "mozilla/dom/ServiceWorkerRegistrationDescriptor.h"
+#include "mozilla/dom/ServiceWorkerUtils.h"
 
 // Support for Notification API extension.
 #include "mozilla/dom/NotificationBinding.h"
@@ -43,24 +44,11 @@ public:
     virtual void
     ClearServiceWorkerRegistration(ServiceWorkerRegistration* aReg) = 0;
 
-    virtual already_AddRefed<Promise>
-    Update(ErrorResult& aRv) = 0;
+    virtual RefPtr<ServiceWorkerRegistrationPromise>
+    Update() = 0;
 
-    virtual already_AddRefed<Promise>
-    Unregister(ErrorResult& aRv) = 0;
-
-    virtual already_AddRefed<Promise>
-    ShowNotification(JSContext* aCx,
-                     const nsAString& aTitle,
-                     const NotificationOptions& aOptions,
-                     ErrorResult& aRv) = 0;
-
-    virtual already_AddRefed<Promise>
-    GetNotifications(const GetNotificationOptions& aOptions,
-                     ErrorResult& aRv) = 0;
-
-    virtual already_AddRefed<PushManager>
-    GetPushManager(JSContext* aCx, ErrorResult& aRv) = 0;
+    virtual RefPtr<GenericPromise>
+    Unregister() = 0;
   };
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_DOM_SERVICEWORKERREGISTRATION_IID)
@@ -82,6 +70,9 @@ public:
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   void DisconnectFromOwner() override;
+
+  void
+  RegistrationRemoved();
 
   already_AddRefed<ServiceWorker>
   GetInstalling() const;
@@ -131,10 +122,6 @@ private:
   ~ServiceWorkerRegistration();
 
   ServiceWorkerRegistrationDescriptor mDescriptor;
-
-  // This forms a ref-cycle with the inner implementation object.  Its broken
-  // when either the global is torn down or the registration is removed from
-  // the ServiceWorkerManager.
   RefPtr<Inner> mInner;
 
   RefPtr<ServiceWorker> mInstallingWorker;

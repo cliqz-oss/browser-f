@@ -82,33 +82,11 @@ CodeGeneratorMIPSShared::branchToBlock(Assembler::FloatFormat fmt, FloatRegister
                                        MBasicBlock* mir, Assembler::DoubleCondition cond)
 {
     // Skip past trivial blocks.
-    mir = skipTrivialBlocks(mir);
-
-    Label* label = mir->lir()->label();
-    if (Label* oolEntry = labelForBackedgeWithImplicitCheck(mir)) {
-        // Note: the backedge is initially a jump to the next instruction.
-        // It will be patched to the target block's label during link().
-        RepatchLabel rejoin;
-
-        CodeOffsetJump backedge;
-        Label skip;
-        if (fmt == Assembler::DoubleFloat)
-            masm.ma_bc1d(lhs, rhs, &skip, Assembler::InvertCondition(cond), ShortJump);
-        else
-            masm.ma_bc1s(lhs, rhs, &skip, Assembler::InvertCondition(cond), ShortJump);
-
-        backedge = masm.backedgeJump(&rejoin);
-        masm.bind(&rejoin);
-        masm.bind(&skip);
-
-        if (!patchableBackedges_.append(PatchableBackedgeInfo(backedge, label, oolEntry)))
-            MOZ_CRASH();
-    } else {
-        if (fmt == Assembler::DoubleFloat)
-            masm.branchDouble(cond, lhs, rhs, mir->lir()->label());
-        else
-            masm.branchFloat(cond, lhs, rhs, mir->lir()->label());
-    }
+    Label* label = skipTrivialBlocks(mir)->lir()->label();
+    if (fmt == Assembler::DoubleFloat)
+        masm.branchDouble(cond, lhs, rhs, label);
+    else
+        masm.branchFloat(cond, lhs, rhs, label);
 }
 
 FrameSizeClass
@@ -136,7 +114,7 @@ OutOfLineBailout::accept(CodeGeneratorMIPSShared* codegen)
 }
 
 void
-CodeGeneratorMIPSShared::visitTestIAndBranch(LTestIAndBranch* test)
+CodeGenerator::visitTestIAndBranch(LTestIAndBranch* test)
 {
     const LAllocation* opd = test->getOperand(0);
     MBasicBlock* ifTrue = test->ifTrue();
@@ -146,7 +124,7 @@ CodeGeneratorMIPSShared::visitTestIAndBranch(LTestIAndBranch* test)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompare(LCompare* comp)
+CodeGenerator::visitCompare(LCompare* comp)
 {
     MCompare* mir = comp->mir();
     Assembler::Condition cond = JSOpToCondition(mir->compareType(), comp->jsop());
@@ -175,7 +153,7 @@ CodeGeneratorMIPSShared::visitCompare(LCompare* comp)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareAndBranch(LCompareAndBranch* comp)
+CodeGenerator::visitCompareAndBranch(LCompareAndBranch* comp)
 {
     MCompare* mir = comp->cmpMir();
     Assembler::Condition cond = JSOpToCondition(mir->compareType(), comp->jsop());
@@ -265,7 +243,7 @@ CodeGeneratorMIPSShared::bailout(LSnapshot* snapshot)
 }
 
 void
-CodeGeneratorMIPSShared::visitMinMaxD(LMinMaxD* ins)
+CodeGenerator::visitMinMaxD(LMinMaxD* ins)
 {
     FloatRegister first = ToFloatRegister(ins->first());
     FloatRegister second = ToFloatRegister(ins->second());
@@ -279,7 +257,7 @@ CodeGeneratorMIPSShared::visitMinMaxD(LMinMaxD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitMinMaxF(LMinMaxF* ins)
+CodeGenerator::visitMinMaxF(LMinMaxF* ins)
 {
     FloatRegister first = ToFloatRegister(ins->first());
     FloatRegister second = ToFloatRegister(ins->second());
@@ -293,7 +271,7 @@ CodeGeneratorMIPSShared::visitMinMaxF(LMinMaxF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAbsD(LAbsD* ins)
+CodeGenerator::visitAbsD(LAbsD* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     MOZ_ASSERT(input == ToFloatRegister(ins->output()));
@@ -301,7 +279,7 @@ CodeGeneratorMIPSShared::visitAbsD(LAbsD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAbsF(LAbsF* ins)
+CodeGenerator::visitAbsF(LAbsF* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     MOZ_ASSERT(input == ToFloatRegister(ins->output()));
@@ -309,7 +287,7 @@ CodeGeneratorMIPSShared::visitAbsF(LAbsF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitSqrtD(LSqrtD* ins)
+CodeGenerator::visitSqrtD(LSqrtD* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     FloatRegister output = ToFloatRegister(ins->output());
@@ -317,7 +295,7 @@ CodeGeneratorMIPSShared::visitSqrtD(LSqrtD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitSqrtF(LSqrtF* ins)
+CodeGenerator::visitSqrtF(LSqrtF* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     FloatRegister output = ToFloatRegister(ins->output());
@@ -325,7 +303,7 @@ CodeGeneratorMIPSShared::visitSqrtF(LSqrtF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAddI(LAddI* ins)
+CodeGenerator::visitAddI(LAddI* ins)
 {
     const LAllocation* lhs = ins->getOperand(0);
     const LAllocation* rhs = ins->getOperand(1);
@@ -352,7 +330,7 @@ CodeGeneratorMIPSShared::visitAddI(LAddI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAddI64(LAddI64* lir)
+CodeGenerator::visitAddI64(LAddI64* lir)
 {
     const LInt64Allocation lhs = lir->getInt64Operand(LAddI64::Lhs);
     const LInt64Allocation rhs = lir->getInt64Operand(LAddI64::Rhs);
@@ -368,7 +346,7 @@ CodeGeneratorMIPSShared::visitAddI64(LAddI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitSubI(LSubI* ins)
+CodeGenerator::visitSubI(LSubI* ins)
 {
     const LAllocation* lhs = ins->getOperand(0);
     const LAllocation* rhs = ins->getOperand(1);
@@ -395,7 +373,7 @@ CodeGeneratorMIPSShared::visitSubI(LSubI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitSubI64(LSubI64* lir)
+CodeGenerator::visitSubI64(LSubI64* lir)
 {
     const LInt64Allocation lhs = lir->getInt64Operand(LSubI64::Lhs);
     const LInt64Allocation rhs = lir->getInt64Operand(LSubI64::Rhs);
@@ -411,7 +389,7 @@ CodeGeneratorMIPSShared::visitSubI64(LSubI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitMulI(LMulI* ins)
+CodeGenerator::visitMulI(LMulI* ins)
 {
     const LAllocation* lhs = ins->lhs();
     const LAllocation* rhs = ins->rhs();
@@ -533,7 +511,7 @@ CodeGeneratorMIPSShared::visitMulI(LMulI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitMulI64(LMulI64* lir)
+CodeGenerator::visitMulI64(LMulI64* lir)
 {
     const LInt64Allocation lhs = lir->getInt64Operand(LMulI64::Lhs);
     const LInt64Allocation rhs = lir->getInt64Operand(LMulI64::Rhs);
@@ -581,7 +559,7 @@ CodeGeneratorMIPSShared::visitMulI64(LMulI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitDivI(LDivI* ins)
+CodeGenerator::visitDivI(LDivI* ins)
 {
     // Extract the registers from this instruction
     Register lhs = ToRegister(ins->lhs());
@@ -664,7 +642,7 @@ CodeGeneratorMIPSShared::visitDivI(LDivI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitDivPowTwoI(LDivPowTwoI* ins)
+CodeGenerator::visitDivPowTwoI(LDivPowTwoI* ins)
 {
     Register lhs = ToRegister(ins->numerator());
     Register dest = ToRegister(ins->output());
@@ -706,7 +684,7 @@ CodeGeneratorMIPSShared::visitDivPowTwoI(LDivPowTwoI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitModI(LModI* ins)
+CodeGenerator::visitModI(LModI* ins)
 {
     // Extract the registers from this instruction
     Register lhs = ToRegister(ins->lhs());
@@ -803,7 +781,7 @@ CodeGeneratorMIPSShared::visitModI(LModI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitModPowTwoI(LModPowTwoI* ins)
+CodeGenerator::visitModPowTwoI(LModPowTwoI* ins)
 {
     Register in = ToRegister(ins->getOperand(0));
     Register out = ToRegister(ins->getDef(0));
@@ -839,7 +817,7 @@ CodeGeneratorMIPSShared::visitModPowTwoI(LModPowTwoI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitModMaskI(LModMaskI* ins)
+CodeGenerator::visitModMaskI(LModMaskI* ins)
 {
     Register src = ToRegister(ins->getOperand(0));
     Register dest = ToRegister(ins->getDef(0));
@@ -859,7 +837,7 @@ CodeGeneratorMIPSShared::visitModMaskI(LModMaskI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitBitNotI(LBitNotI* ins)
+CodeGenerator::visitBitNotI(LBitNotI* ins)
 {
     const LAllocation* input = ins->getOperand(0);
     const LDefinition* dest = ins->getDef(0);
@@ -869,7 +847,7 @@ CodeGeneratorMIPSShared::visitBitNotI(LBitNotI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitBitOpI(LBitOpI* ins)
+CodeGenerator::visitBitOpI(LBitOpI* ins)
 {
     const LAllocation* lhs = ins->getOperand(0);
     const LAllocation* rhs = ins->getOperand(1);
@@ -900,7 +878,7 @@ CodeGeneratorMIPSShared::visitBitOpI(LBitOpI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitBitOpI64(LBitOpI64* lir)
+CodeGenerator::visitBitOpI64(LBitOpI64* lir)
 {
     const LInt64Allocation lhs = lir->getInt64Operand(LBitOpI64::Lhs);
     const LInt64Allocation rhs = lir->getInt64Operand(LBitOpI64::Rhs);
@@ -932,7 +910,7 @@ CodeGeneratorMIPSShared::visitBitOpI64(LBitOpI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitShiftI(LShiftI* ins)
+CodeGenerator::visitShiftI(LShiftI* ins)
 {
     Register lhs = ToRegister(ins->lhs());
     const LAllocation* rhs = ins->rhs();
@@ -991,7 +969,7 @@ CodeGeneratorMIPSShared::visitShiftI(LShiftI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitShiftI64(LShiftI64* lir)
+CodeGenerator::visitShiftI64(LShiftI64* lir)
 {
     const LInt64Allocation lhs = lir->getInt64Operand(LShiftI64::Lhs);
     LAllocation* rhs = lir->getOperand(LShiftI64::Rhs);
@@ -1035,7 +1013,7 @@ CodeGeneratorMIPSShared::visitShiftI64(LShiftI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitRotateI64(LRotateI64* lir)
+CodeGenerator::visitRotateI64(LRotateI64* lir)
 {
     MRotate* mir = lir->mir();
     LAllocation* count = lir->count();
@@ -1069,7 +1047,7 @@ CodeGeneratorMIPSShared::visitRotateI64(LRotateI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitUrshD(LUrshD* ins)
+CodeGenerator::visitUrshD(LUrshD* ins)
 {
     Register lhs = ToRegister(ins->lhs());
     Register temp = ToRegister(ins->temp());
@@ -1087,7 +1065,7 @@ CodeGeneratorMIPSShared::visitUrshD(LUrshD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitClzI(LClzI* ins)
+CodeGenerator::visitClzI(LClzI* ins)
 {
     Register input = ToRegister(ins->input());
     Register output = ToRegister(ins->output());
@@ -1096,7 +1074,7 @@ CodeGeneratorMIPSShared::visitClzI(LClzI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitCtzI(LCtzI* ins)
+CodeGenerator::visitCtzI(LCtzI* ins)
 {
     Register input = ToRegister(ins->input());
     Register output = ToRegister(ins->output());
@@ -1105,7 +1083,7 @@ CodeGeneratorMIPSShared::visitCtzI(LCtzI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitPopcntI(LPopcntI* ins)
+CodeGenerator::visitPopcntI(LPopcntI* ins)
 {
     Register input = ToRegister(ins->input());
     Register output = ToRegister(ins->output());
@@ -1115,7 +1093,7 @@ CodeGeneratorMIPSShared::visitPopcntI(LPopcntI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitPopcntI64(LPopcntI64* ins)
+CodeGenerator::visitPopcntI64(LPopcntI64* ins)
 {
     Register64 input = ToRegister64(ins->getInt64Operand(0));
     Register64 output = ToOutRegister64(ins);
@@ -1125,7 +1103,7 @@ CodeGeneratorMIPSShared::visitPopcntI64(LPopcntI64* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitPowHalfD(LPowHalfD* ins)
+CodeGenerator::visitPowHalfD(LPowHalfD* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     FloatRegister output = ToFloatRegister(ins->output());
@@ -1163,7 +1141,7 @@ CodeGeneratorMIPSShared::toMoveOperand(LAllocation a) const
 }
 
 void
-CodeGeneratorMIPSShared::visitMathD(LMathD* math)
+CodeGenerator::visitMathD(LMathD* math)
 {
     FloatRegister src1 = ToFloatRegister(math->getOperand(0));
     FloatRegister src2 = ToFloatRegister(math->getOperand(1));
@@ -1188,7 +1166,7 @@ CodeGeneratorMIPSShared::visitMathD(LMathD* math)
 }
 
 void
-CodeGeneratorMIPSShared::visitMathF(LMathF* math)
+CodeGenerator::visitMathF(LMathF* math)
 {
     FloatRegister src1 = ToFloatRegister(math->getOperand(0));
     FloatRegister src2 = ToFloatRegister(math->getOperand(1));
@@ -1213,7 +1191,7 @@ CodeGeneratorMIPSShared::visitMathF(LMathF* math)
 }
 
 void
-CodeGeneratorMIPSShared::visitFloor(LFloor* lir)
+CodeGenerator::visitFloor(LFloor* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister scratch = ScratchDoubleReg;
@@ -1244,7 +1222,7 @@ CodeGeneratorMIPSShared::visitFloor(LFloor* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitFloorF(LFloorF* lir)
+CodeGenerator::visitFloorF(LFloorF* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister scratch = ScratchFloat32Reg;
@@ -1275,7 +1253,7 @@ CodeGeneratorMIPSShared::visitFloorF(LFloorF* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitCeil(LCeil* lir)
+CodeGenerator::visitCeil(LCeil* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister scratch = ScratchDoubleReg;
@@ -1308,7 +1286,7 @@ CodeGeneratorMIPSShared::visitCeil(LCeil* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitCeilF(LCeilF* lir)
+CodeGenerator::visitCeilF(LCeilF* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister scratch = ScratchFloat32Reg;
@@ -1341,7 +1319,7 @@ CodeGeneratorMIPSShared::visitCeilF(LCeilF* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitRound(LRound* lir)
+CodeGenerator::visitRound(LRound* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister temp = ToFloatRegister(lir->temp());
@@ -1408,7 +1386,7 @@ CodeGeneratorMIPSShared::visitRound(LRound* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitRoundF(LRoundF* lir)
+CodeGenerator::visitRoundF(LRoundF* lir)
 {
     FloatRegister input = ToFloatRegister(lir->input());
     FloatRegister temp = ToFloatRegister(lir->temp());
@@ -1475,21 +1453,21 @@ CodeGeneratorMIPSShared::visitRoundF(LRoundF* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitTruncateDToInt32(LTruncateDToInt32* ins)
+CodeGenerator::visitTruncateDToInt32(LTruncateDToInt32* ins)
 {
     emitTruncateDouble(ToFloatRegister(ins->input()), ToRegister(ins->output()),
                        ins->mir());
 }
 
 void
-CodeGeneratorMIPSShared::visitTruncateFToInt32(LTruncateFToInt32* ins)
+CodeGenerator::visitTruncateFToInt32(LTruncateFToInt32* ins)
 {
     emitTruncateFloat32(ToFloatRegister(ins->input()), ToRegister(ins->output()),
                         ins->mir());
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmTruncateToInt32(LWasmTruncateToInt32* lir)
+CodeGenerator::visitWasmTruncateToInt32(LWasmTruncateToInt32* lir)
 {
     auto input = ToFloatRegister(lir->input());
     auto output = ToRegister(lir->output());
@@ -1551,7 +1529,7 @@ CodeGeneratorMIPSShared::visitOutOfLineWasmTruncateCheck(OutOfLineWasmTruncateCh
 }
 
 void
-CodeGeneratorMIPSShared::visitCopySignF(LCopySignF* ins)
+CodeGenerator::visitCopySignF(LCopySignF* ins)
 {
     FloatRegister lhs = ToFloatRegister(ins->getOperand(0));
     FloatRegister rhs = ToFloatRegister(ins->getOperand(1));
@@ -1570,7 +1548,7 @@ CodeGeneratorMIPSShared::visitCopySignF(LCopySignF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitCopySignD(LCopySignD* ins)
+CodeGenerator::visitCopySignD(LCopySignD* ins)
 {
     FloatRegister lhs = ToFloatRegister(ins->getOperand(0));
     FloatRegister rhs = ToFloatRegister(ins->getOperand(1));
@@ -1590,7 +1568,7 @@ CodeGeneratorMIPSShared::visitCopySignD(LCopySignD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitValue(LValue* value)
+CodeGenerator::visitValue(LValue* value)
 {
     const ValueOperand out = ToOutValue(value);
 
@@ -1598,7 +1576,7 @@ CodeGeneratorMIPSShared::visitValue(LValue* value)
 }
 
 void
-CodeGeneratorMIPSShared::visitDouble(LDouble* ins)
+CodeGenerator::visitDouble(LDouble* ins)
 {
     const LDefinition* out = ins->getDef(0);
 
@@ -1606,14 +1584,14 @@ CodeGeneratorMIPSShared::visitDouble(LDouble* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitFloat32(LFloat32* ins)
+CodeGenerator::visitFloat32(LFloat32* ins)
 {
     const LDefinition* out = ins->getDef(0);
     masm.loadConstantFloat32(ins->getFloat(), ToFloatRegister(out));
 }
 
 void
-CodeGeneratorMIPSShared::visitTestDAndBranch(LTestDAndBranch* test)
+CodeGenerator::visitTestDAndBranch(LTestDAndBranch* test)
 {
     FloatRegister input = ToFloatRegister(test->input());
 
@@ -1634,7 +1612,7 @@ CodeGeneratorMIPSShared::visitTestDAndBranch(LTestDAndBranch* test)
 }
 
 void
-CodeGeneratorMIPSShared::visitTestFAndBranch(LTestFAndBranch* test)
+CodeGenerator::visitTestFAndBranch(LTestFAndBranch* test)
 {
     FloatRegister input = ToFloatRegister(test->input());
 
@@ -1655,7 +1633,7 @@ CodeGeneratorMIPSShared::visitTestFAndBranch(LTestFAndBranch* test)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareD(LCompareD* comp)
+CodeGenerator::visitCompareD(LCompareD* comp)
 {
     FloatRegister lhs = ToFloatRegister(comp->left());
     FloatRegister rhs = ToFloatRegister(comp->right());
@@ -1666,7 +1644,7 @@ CodeGeneratorMIPSShared::visitCompareD(LCompareD* comp)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareF(LCompareF* comp)
+CodeGenerator::visitCompareF(LCompareF* comp)
 {
     FloatRegister lhs = ToFloatRegister(comp->left());
     FloatRegister rhs = ToFloatRegister(comp->right());
@@ -1677,7 +1655,7 @@ CodeGeneratorMIPSShared::visitCompareF(LCompareF* comp)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareDAndBranch(LCompareDAndBranch* comp)
+CodeGenerator::visitCompareDAndBranch(LCompareDAndBranch* comp)
 {
     FloatRegister lhs = ToFloatRegister(comp->left());
     FloatRegister rhs = ToFloatRegister(comp->right());
@@ -1696,7 +1674,7 @@ CodeGeneratorMIPSShared::visitCompareDAndBranch(LCompareDAndBranch* comp)
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareFAndBranch(LCompareFAndBranch* comp)
+CodeGenerator::visitCompareFAndBranch(LCompareFAndBranch* comp)
 {
     FloatRegister lhs = ToFloatRegister(comp->left());
     FloatRegister rhs = ToFloatRegister(comp->right());
@@ -1715,7 +1693,7 @@ CodeGeneratorMIPSShared::visitCompareFAndBranch(LCompareFAndBranch* comp)
 }
 
 void
-CodeGeneratorMIPSShared::visitBitAndAndBranch(LBitAndAndBranch* lir)
+CodeGenerator::visitBitAndAndBranch(LBitAndAndBranch* lir)
 {
     if (lir->right()->isConstant())
         masm.ma_and(ScratchRegister, ToRegister(lir->left()), Imm32(ToInt32(lir->right())));
@@ -1726,26 +1704,26 @@ CodeGeneratorMIPSShared::visitBitAndAndBranch(LBitAndAndBranch* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmUint32ToDouble(LWasmUint32ToDouble* lir)
+CodeGenerator::visitWasmUint32ToDouble(LWasmUint32ToDouble* lir)
 {
     masm.convertUInt32ToDouble(ToRegister(lir->input()), ToFloatRegister(lir->output()));
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmUint32ToFloat32(LWasmUint32ToFloat32* lir)
+CodeGenerator::visitWasmUint32ToFloat32(LWasmUint32ToFloat32* lir)
 {
     masm.convertUInt32ToFloat32(ToRegister(lir->input()), ToFloatRegister(lir->output()));
 }
 
 void
-CodeGeneratorMIPSShared::visitNotI(LNotI* ins)
+CodeGenerator::visitNotI(LNotI* ins)
 {
     masm.cmp32Set(Assembler::Equal, ToRegister(ins->input()), Imm32(0),
                   ToRegister(ins->output()));
 }
 
 void
-CodeGeneratorMIPSShared::visitNotD(LNotD* ins)
+CodeGenerator::visitNotD(LNotD* ins)
 {
     // Since this operation is not, we want to set a bit if
     // the double is falsey, which means 0.0, -0.0 or NaN.
@@ -1757,7 +1735,7 @@ CodeGeneratorMIPSShared::visitNotD(LNotD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitNotF(LNotF* ins)
+CodeGenerator::visitNotF(LNotF* ins)
 {
     // Since this operation is not, we want to set a bit if
     // the float32 is falsey, which means 0.0, -0.0 or NaN.
@@ -1769,7 +1747,7 @@ CodeGeneratorMIPSShared::visitNotF(LNotF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitMemoryBarrier(LMemoryBarrier* ins)
+CodeGenerator::visitMemoryBarrier(LMemoryBarrier* ins)
 {
     masm.memoryBarrier(ins->type());
 }
@@ -1902,13 +1880,13 @@ CodeGeneratorMIPSShared::emitWasmLoad(T* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmLoad(LWasmLoad* lir)
+CodeGenerator::visitWasmLoad(LWasmLoad* lir)
 {
     emitWasmLoad(lir);
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmUnalignedLoad(LWasmUnalignedLoad* lir)
+CodeGenerator::visitWasmUnalignedLoad(LWasmUnalignedLoad* lir)
 {
     emitWasmLoad(lir);
 }
@@ -1942,19 +1920,19 @@ CodeGeneratorMIPSShared::emitWasmStore(T* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmStore(LWasmStore* lir)
+CodeGenerator::visitWasmStore(LWasmStore* lir)
 {
     emitWasmStore(lir);
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmUnalignedStore(LWasmUnalignedStore* lir)
+CodeGenerator::visitWasmUnalignedStore(LWasmUnalignedStore* lir)
 {
     emitWasmStore(lir);
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins)
+CodeGenerator::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins)
 {
     const MAsmJSLoadHeap* mir = ins->mir();
     const LAllocation* ptr = ins->ptr();
@@ -2037,7 +2015,7 @@ CodeGeneratorMIPSShared::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
+CodeGenerator::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
 {
     const MAsmJSStoreHeap* mir = ins->mir();
     const LAllocation* value = ins->value();
@@ -2115,7 +2093,7 @@ CodeGeneratorMIPSShared::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
+CodeGenerator::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
 {
     MWasmCompareExchangeHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
@@ -2134,7 +2112,7 @@ CodeGeneratorMIPSShared::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* 
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
+CodeGenerator::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
 {
     MWasmAtomicExchangeHeap* mir = ins->mir();
     Scalar::Type vt = mir->access().type();
@@ -2152,7 +2130,7 @@ CodeGeneratorMIPSShared::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* in
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
+CodeGenerator::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
 {
     MOZ_ASSERT(ins->mir()->hasUses());
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
@@ -2171,7 +2149,7 @@ CodeGeneratorMIPSShared::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* ins)
+CodeGenerator::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* ins)
 {
     MOZ_ASSERT(!ins->mir()->hasUses());
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
@@ -2189,7 +2167,7 @@ CodeGeneratorMIPSShared::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapF
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmStackArg(LWasmStackArg* ins)
+CodeGenerator::visitWasmStackArg(LWasmStackArg* ins)
 {
     const MWasmStackArg* mir = ins->mir();
     if (ins->arg()->isConstant()) {
@@ -2208,7 +2186,7 @@ CodeGeneratorMIPSShared::visitWasmStackArg(LWasmStackArg* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmStackArgI64(LWasmStackArgI64* ins)
+CodeGenerator::visitWasmStackArgI64(LWasmStackArgI64* ins)
 {
     const MWasmStackArg* mir = ins->mir();
     Address dst(StackPointer, mir->spOffset());
@@ -2219,7 +2197,7 @@ CodeGeneratorMIPSShared::visitWasmStackArgI64(LWasmStackArgI64* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmSelect(LWasmSelect* ins)
+CodeGenerator::visitWasmSelect(LWasmSelect* ins)
 {
     MIRType mirType = ins->mir()->type();
 
@@ -2259,7 +2237,7 @@ CodeGeneratorMIPSShared::visitWasmSelect(LWasmSelect* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmReinterpret(LWasmReinterpret* lir)
+CodeGenerator::visitWasmReinterpret(LWasmReinterpret* lir)
 {
     MOZ_ASSERT(gen->compilingWasm());
     MWasmReinterpret* ins = lir->mir();
@@ -2285,7 +2263,7 @@ CodeGeneratorMIPSShared::visitWasmReinterpret(LWasmReinterpret* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitUDivOrMod(LUDivOrMod* ins)
+CodeGenerator::visitUDivOrMod(LUDivOrMod* ins)
 {
     Register lhs = ToRegister(ins->lhs());
     Register rhs = ToRegister(ins->rhs());
@@ -2331,7 +2309,7 @@ CodeGeneratorMIPSShared::visitUDivOrMod(LUDivOrMod* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitEffectiveAddress(LEffectiveAddress* ins)
+CodeGenerator::visitEffectiveAddress(LEffectiveAddress* ins)
 {
     const MEffectiveAddress* mir = ins->mir();
     Register base = ToRegister(ins->base());
@@ -2343,7 +2321,7 @@ CodeGeneratorMIPSShared::visitEffectiveAddress(LEffectiveAddress* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitNegI(LNegI* ins)
+CodeGenerator::visitNegI(LNegI* ins)
 {
     Register input = ToRegister(ins->input());
     Register output = ToRegister(ins->output());
@@ -2352,7 +2330,7 @@ CodeGeneratorMIPSShared::visitNegI(LNegI* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitNegD(LNegD* ins)
+CodeGenerator::visitNegD(LNegD* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     FloatRegister output = ToFloatRegister(ins->output());
@@ -2361,7 +2339,7 @@ CodeGeneratorMIPSShared::visitNegD(LNegD* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitNegF(LNegF* ins)
+CodeGenerator::visitNegF(LNegF* ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     FloatRegister output = ToFloatRegister(ins->output());
@@ -2370,18 +2348,21 @@ CodeGeneratorMIPSShared::visitNegF(LNegF* ins)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAddOffset(LWasmAddOffset* lir)
+CodeGenerator::visitWasmAddOffset(LWasmAddOffset* lir)
 {
     MWasmAddOffset* mir = lir->mir();
     Register base = ToRegister(lir->base());
     Register out = ToRegister(lir->output());
 
-    masm.ma_addTestCarry(out, base, Imm32(mir->offset()), oldTrap(mir, wasm::Trap::OutOfBounds));
+    Label ok;
+    masm.ma_addTestCarry(Assembler::CarryClear, out, base, Imm32(mir->offset()), &ok);
+    masm.wasmTrap(wasm::Trap::OutOfBounds, mir->bytecodeOffset());
+    masm.bind(&ok);
 }
 
 
 void
-CodeGeneratorMIPSShared::visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElementBinop* lir)
+CodeGenerator::visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElementBinop* lir)
 {
     MOZ_ASSERT(lir->mir()->hasUses());
 
@@ -2408,7 +2389,7 @@ CodeGeneratorMIPSShared::visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElem
 }
 
 void
-CodeGeneratorMIPSShared::visitAtomicTypedArrayElementBinopForEffect(LAtomicTypedArrayElementBinopForEffect* lir)
+CodeGenerator::visitAtomicTypedArrayElementBinopForEffect(LAtomicTypedArrayElementBinopForEffect* lir)
 {
     MOZ_ASSERT(!lir->mir()->hasUses());
 
@@ -2432,7 +2413,7 @@ CodeGeneratorMIPSShared::visitAtomicTypedArrayElementBinopForEffect(LAtomicTyped
 }
 
 void
-CodeGeneratorMIPSShared::visitCompareExchangeTypedArrayElement(LCompareExchangeTypedArrayElement* lir)
+CodeGenerator::visitCompareExchangeTypedArrayElement(LCompareExchangeTypedArrayElement* lir)
 {
     Register elements = ToRegister(lir->elements());
     AnyRegister output = ToAnyRegister(lir->output());
@@ -2459,7 +2440,7 @@ CodeGeneratorMIPSShared::visitCompareExchangeTypedArrayElement(LCompareExchangeT
 }
 
 void
-CodeGeneratorMIPSShared::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayElement* lir)
+CodeGenerator::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayElement* lir)
 {
     Register elements = ToRegister(lir->elements());
     AnyRegister output = ToAnyRegister(lir->output());
@@ -2486,7 +2467,7 @@ CodeGeneratorMIPSShared::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTyp
 
 
 void
-CodeGeneratorMIPSShared::visitWasmCompareExchangeI64(LWasmCompareExchangeI64* lir)
+CodeGenerator::visitWasmCompareExchangeI64(LWasmCompareExchangeI64* lir)
 {
     Register ptr = ToRegister(lir->ptr());
     Register64 oldValue = ToRegister64(lir->oldValue());
@@ -2499,7 +2480,7 @@ CodeGeneratorMIPSShared::visitWasmCompareExchangeI64(LWasmCompareExchangeI64* li
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAtomicExchangeI64(LWasmAtomicExchangeI64* lir)
+CodeGenerator::visitWasmAtomicExchangeI64(LWasmAtomicExchangeI64* lir)
 {
     Register ptr = ToRegister(lir->ptr());
     Register64 value = ToRegister64(lir->value());
@@ -2511,7 +2492,7 @@ CodeGeneratorMIPSShared::visitWasmAtomicExchangeI64(LWasmAtomicExchangeI64* lir)
 }
 
 void
-CodeGeneratorMIPSShared::visitWasmAtomicBinopI64(LWasmAtomicBinopI64* lir)
+CodeGenerator::visitWasmAtomicBinopI64(LWasmAtomicBinopI64* lir)
 {
     Register ptr = ToRegister(lir->ptr());
     Register64 value = ToRegister64(lir->value());
@@ -2527,4 +2508,250 @@ CodeGeneratorMIPSShared::visitWasmAtomicBinopI64(LWasmAtomicBinopI64* lir)
 
     masm.atomicFetchOp64(Synchronization::Full(), lir->mir()->operation(), value, addr, temp,
                          output);
+}
+
+void
+CodeGenerator::visitSimdSplatX4(LSimdSplatX4* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimd128Int(LSimd128Int* ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimd128Float(LSimd128Float* ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdExtractElementI(LSimdExtractElementI* ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdExtractElementF(LSimdExtractElementF* ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryCompIx4(LSimdBinaryCompIx4* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryCompFx4(LSimdBinaryCompFx4* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryArithIx4(LSimdBinaryArithIx4* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryArithFx4(LSimdBinaryArithFx4* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryBitwise(LSimdBinaryBitwise* lir)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitNearbyInt(LNearbyInt*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdShift(LSimdShift*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitNearbyIntF(LNearbyIntF*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdSelect(LSimdSelect*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdAllTrue(LSimdAllTrue*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdAnyTrue(LSimdAnyTrue*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdShuffle(LSimdShuffle*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdSplatX8(LSimdSplatX8*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdSplatX16(LSimdSplatX16*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdSwizzleF(LSimdSwizzleF*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdSwizzleI(LSimdSwizzleI*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdShuffleX4(LSimdShuffleX4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryCompIx8(LSimdBinaryCompIx8*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdUnaryArithFx4(LSimdUnaryArithFx4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdUnaryArithIx4(LSimdUnaryArithIx4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdUnaryArithIx8(LSimdUnaryArithIx8*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitFloat32x4ToInt32x4(LFloat32x4ToInt32x4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitInt32x4ToFloat32x4(LInt32x4ToFloat32x4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryArithIx8(LSimdBinaryArithIx8*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryCompIx16(LSimdBinaryCompIx16*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdInsertElementF(LSimdInsertElementF*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdInsertElementI(LSimdInsertElementI*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdUnaryArithIx16(LSimdUnaryArithIx16*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitFloat32x4ToUint32x4(LFloat32x4ToUint32x4*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinaryArithIx16(LSimdBinaryArithIx16*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdExtractElementB(LSimdExtractElementB*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdGeneralShuffleF(LSimdGeneralShuffleF*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdGeneralShuffleI(LSimdGeneralShuffleI*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdReinterpretCast(LSimdReinterpretCast*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdBinarySaturating(LSimdBinarySaturating*)
+{
+    MOZ_CRASH("NYI");
+}
+
+void
+CodeGenerator::visitSimdExtractElementU2D(LSimdExtractElementU2D*)
+{
+    MOZ_CRASH("NYI");
 }

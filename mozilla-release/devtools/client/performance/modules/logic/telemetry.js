@@ -26,7 +26,7 @@ function PerformanceTelemetry(emitter) {
   this.onViewSelected = this.onViewSelected.bind(this);
 
   for (let [event] of EVENT_MAP_FLAGS) {
-    this._emitter.on(event, this.onFlagEvent);
+    this._emitter.on(event, this.onFlagEvent.bind(this, event));
   }
 
   this._emitter.on(EVENTS.RECORDING_STATE_CHANGE, this.onRecordingStateChange);
@@ -37,7 +37,7 @@ function PerformanceTelemetry(emitter) {
   }
 }
 
-PerformanceTelemetry.prototype.destroy = function () {
+PerformanceTelemetry.prototype.destroy = function() {
   if (this._previousView) {
     this._telemetry.stopTimer(SELECTED_VIEW_HISTOGRAM_NAME, this._previousView);
   }
@@ -51,11 +51,11 @@ PerformanceTelemetry.prototype.destroy = function () {
   this._emitter = null;
 };
 
-PerformanceTelemetry.prototype.onFlagEvent = function (eventName, ...data) {
+PerformanceTelemetry.prototype.onFlagEvent = function(eventName, ...data) {
   this._telemetry.log(EVENT_MAP_FLAGS.get(eventName), true);
 };
 
-PerformanceTelemetry.prototype.onRecordingStateChange = function (_, status, model) {
+PerformanceTelemetry.prototype.onRecordingStateChange = function(status, model) {
   if (status != "recording-stopped") {
     return;
   }
@@ -77,7 +77,7 @@ PerformanceTelemetry.prototype.onRecordingStateChange = function (_, status, mod
   }
 };
 
-PerformanceTelemetry.prototype.onViewSelected = function (_, viewName) {
+PerformanceTelemetry.prototype.onViewSelected = function(viewName) {
   if (this._previousView) {
     this._telemetry.stopTimer(SELECTED_VIEW_HISTOGRAM_NAME, this._previousView);
   }
@@ -89,7 +89,7 @@ PerformanceTelemetry.prototype.onViewSelected = function (_, viewName) {
  * Utility to record histogram calls to this instance.
  * Should only be used in testing mode; throws otherwise.
  */
-PerformanceTelemetry.prototype.recordLogs = function () {
+PerformanceTelemetry.prototype.recordLogs = function() {
   if (!flags.testing) {
     throw new Error("Can only record telemetry logs in tests.");
   }
@@ -111,7 +111,7 @@ PerformanceTelemetry.prototype.recordLogs = function () {
   };
 };
 
-PerformanceTelemetry.prototype.getLogs = function () {
+PerformanceTelemetry.prototype.getLogs = function() {
   if (!flags.testing) {
     throw new Error("Can only get telemetry logs in tests.");
   }

@@ -97,9 +97,9 @@ class OptimizationInfo
 
     // The maximum total bytecode size of an inline call site. We use a lower
     // value if off-thread compilation is not available, to avoid stalling the
-    // active thread.
+    // main thread.
     uint32_t inlineMaxBytecodePerCallSiteHelperThread_;
-    uint32_t inlineMaxBytecodePerCallSiteActiveCooperatingThread_;
+    uint32_t inlineMaxBytecodePerCallSiteMainThread_;
 
     // The maximum value we allow for baselineScript->inlinedBytecodeLength_
     // when inlining.
@@ -221,10 +221,6 @@ class OptimizationInfo
         return eliminateRedundantChecks_;
     }
 
-    bool flowAliasAnalysisEnabled() const {
-        return !JitOptions.disableFlowAA;
-    }
-
     IonRegisterAllocator registerAllocator() const {
         return JitOptions.forcedRegisterAllocator
             .valueOr(registerAllocator_);
@@ -247,7 +243,7 @@ class OptimizationInfo
     uint32_t inlineMaxBytecodePerCallSite(bool offThread) const {
         return (offThread || !JitOptions.limitScriptSize)
                ? inlineMaxBytecodePerCallSiteHelperThread_
-               : inlineMaxBytecodePerCallSiteActiveCooperatingThread_;
+               : inlineMaxBytecodePerCallSiteMainThread_;
     }
 
     uint16_t inlineMaxCalleeInlinedBytecodeLength() const {

@@ -20,11 +20,6 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLProgressElement.h"
 #include "nsCSSPseudoElements.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsStyleSet.h"
-#endif
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "nsThemeConstants.h"
 #include <algorithm>
 
@@ -32,15 +27,15 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIFrame*
-NS_NewProgressFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewProgressFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsProgressFrame(aContext);
+  return new (aPresShell) nsProgressFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsProgressFrame)
 
-nsProgressFrame::nsProgressFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsProgressFrame::nsProgressFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
   , mBarDiv(nullptr)
 {
 }

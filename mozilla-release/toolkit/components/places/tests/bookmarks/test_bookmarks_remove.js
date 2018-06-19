@@ -71,14 +71,6 @@ add_task(async function remove_roots_fail() {
   }
 });
 
-add_task(async function remove_normal_folder_under_root_succeeds() {
-  let folder = await PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.rootGuid,
-                                                    type: PlacesUtils.bookmarks.TYPE_FOLDER });
-  checkBookmarkObject(folder);
-  await PlacesUtils.bookmarks.remove(folder);
-  Assert.strictEqual((await PlacesUtils.bookmarks.fetch(folder.guid)), null);
-});
-
 add_task(async function remove_bookmark() {
   // When removing a bookmark we need to check the frecency. First we confirm
   // that there is a normal update when it is inserted.
@@ -145,13 +137,9 @@ add_task(async function remove_bookmark_orphans() {
   // Check there are no orphan annotations.
   let conn = await PlacesUtils.promiseDBConnection();
   let annoAttrs = await conn.execute(`SELECT id, name FROM moz_anno_attributes`);
-  // Bug 1306445 will eventually remove the mobile root anno.
-  Assert.equal(annoAttrs.length, 1);
-  Assert.equal(annoAttrs[0].getResultByName("name"), PlacesUtils.MOBILE_ROOT_ANNO);
+  Assert.equal(annoAttrs.length, 0);
   let annos = await conn.execute(`SELECT item_id, anno_attribute_id FROM moz_items_annos`);
-  Assert.equal(annos.length, 1);
-  Assert.equal(annos[0].getResultByName("item_id"), PlacesUtils.mobileFolderId);
-  Assert.equal(annos[0].getResultByName("anno_attribute_id"), annoAttrs[0].getResultByName("id"));
+  Assert.equal(annos.length, 0);
 });
 
 add_task(async function remove_bookmark_empty_title() {

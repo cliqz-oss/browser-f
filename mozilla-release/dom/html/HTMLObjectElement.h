@@ -28,11 +28,11 @@ public:
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLObjectElement, object)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLObjectElement, object)
   virtual int32_t TabIndexDefault() override;
 
 #ifdef XP_MACOSX
-  // nsIDOMEventTarget
+  // EventTarget
   NS_IMETHOD PostHandleEvent(EventChainPostVisitor& aVisitor) override;
   // Helper methods
   static void OnFocusBlurPlugin(Element* aElement, bool aFocus);

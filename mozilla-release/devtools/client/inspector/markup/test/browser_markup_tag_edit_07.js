@@ -89,7 +89,7 @@ var TEST_DATA = [{
   expectedAttributes: {
     "data-long": LONG_ATTRIBUTE
   },
-  setUp: function (inspector) {
+  setUp: function(inspector) {
     Services.prefs.setBoolPref("devtools.markup.collapseAttributes", false);
   },
   validate: (container, inspector) => {
@@ -100,7 +100,7 @@ var TEST_DATA = [{
       .textContent;
     is(visibleAttrText, LONG_ATTRIBUTE);
   },
-  tearDown: function (inspector) {
+  tearDown: function(inspector) {
     Services.prefs.clearUserPref("devtools.markup.collapseAttributes");
   }
 }, {
@@ -109,7 +109,7 @@ var TEST_DATA = [{
   expectedAttributes: {
     "data-long": LONG_ATTRIBUTE
   },
-  setUp: function (inspector) {
+  setUp: function(inspector) {
     Services.prefs.setIntPref("devtools.markup.collapseAttributeLength", 2);
   },
   validate: (container, inspector) => {
@@ -123,13 +123,13 @@ var TEST_DATA = [{
       .textContent;
     is(visibleAttrText, collapsed);
   },
-  tearDown: function (inspector) {
+  tearDown: function(inspector) {
     Services.prefs.clearUserPref("devtools.markup.collapseAttributeLength");
   }
 }];
 
-add_task(function* () {
-  let {inspector, testActor} = yield openInspectorForURL(TEST_URL);
-  yield runAddAttributesTests(TEST_DATA, "div", inspector, testActor);
+add_task(async function() {
+  let {inspector, testActor} = await openInspectorForURL(TEST_URL);
+  await runAddAttributesTests(TEST_DATA, "div", inspector, testActor);
 });
 

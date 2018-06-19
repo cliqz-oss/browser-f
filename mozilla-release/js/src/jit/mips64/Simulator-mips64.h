@@ -75,6 +75,7 @@ const int kNumFPURegisters = 32;
 const int kFCSRRegister = 31;
 const int kInvalidFPUControlRegister = -1;
 const uint32_t kFPUInvalidResult = static_cast<uint32_t>(1 << 31) - 1;
+const uint64_t kFPUInvalidResult64 = static_cast<uint64_t>(1ULL << 63) - 1;
 
 // FCSR constants.
 const uint32_t kFCSRInexactFlagBit = 2;
@@ -197,6 +198,7 @@ class Simulator {
     double getFpuRegisterDouble(int fpureg) const;
     void setFCSRBit(uint32_t cc, bool value);
     bool testFCSRBit(uint32_t cc);
+    template <typename T>
     bool setFCSRRoundError(double original, double rounded);
 
     // Special case of set_register and get_register to access the raw PC value.
@@ -205,13 +207,6 @@ class Simulator {
 
     template <typename T>
     T get_pc_as() const { return reinterpret_cast<T>(get_pc()); }
-
-    void trigger_wasm_interrupt() {
-        // This can be called several times if a single interrupt isn't caught
-        // and handled by the simulator, but this is fine; once the current
-        // instruction is done executing, the interrupt will be handled anyhow.
-        wasm_interrupt_ = true;
-    }
 
     void enable_single_stepping(SingleStepCallback cb, void* arg);
     void disable_single_stepping();
@@ -319,8 +314,6 @@ class Simulator {
     void increaseStopCounter(uint32_t code);
     void printStopInfo(uint32_t code);
 
-    // Handle a wasm interrupt triggered by an async signal handler.
-    void handleWasmInterrupt();
     JS::ProfilingFrameIterator::RegisterState registerState();
 
     // Handle any wasm faults, returning true if the fault was handled.
@@ -378,9 +371,6 @@ class Simulator {
     int64_t icount_;
     int64_t break_count_;
 
-    // wasm async interrupt support
-    bool wasm_interrupt_;
-
     // Debugger input.
     char* lastDebuggerInput_;
 
@@ -432,12 +422,6 @@ class SimulatorProcess
 
     static mozilla::Atomic<size_t, mozilla::ReleaseAcquire> ICacheCheckingDisableCount;
     static void FlushICache(void* start, size_t size);
-
-    // Jitcode may be rewritten from a signal handler, but is prevented from
-    // calling FlushICache() because the signal may arrive within the critical
-    // area of an AutoLockSimulatorCache. This flag instructs the Simulator
-    // to remove all cache entries the next time it checks, avoiding false negatives.
-    static mozilla::Atomic<bool, mozilla::ReleaseAcquire> cacheInvalidatedBySignalHandler_;
 
     static void checkICacheLocked(SimInstruction* instr);
 

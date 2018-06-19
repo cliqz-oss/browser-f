@@ -31,7 +31,7 @@ class NeckoParent
 {
 public:
   NeckoParent();
-  virtual ~NeckoParent();
+  virtual ~NeckoParent() = default;
 
   MOZ_MUST_USE
   static const char *
@@ -109,7 +109,7 @@ protected:
     DeallocPStunAddrsRequestParent(PStunAddrsRequestParent* aActor) override;
 
   virtual PAltDataOutputStreamParent* AllocPAltDataOutputStreamParent(
-    const nsCString& type, PHttpChannelParent* channel) override;
+    const nsCString& type, const int64_t& predictedSize, PHttpChannelParent* channel) override;
   virtual bool DeallocPAltDataOutputStreamParent(
     PAltDataOutputStreamParent* aActor) override;
 

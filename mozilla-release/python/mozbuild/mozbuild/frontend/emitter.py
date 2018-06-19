@@ -61,7 +61,7 @@ from .data import (
     RustLibrary,
     HostRustLibrary,
     RustProgram,
-    RustTest,
+    RustTests,
     SharedLibrary,
     SimpleProgram,
     Sources,
@@ -784,7 +784,8 @@ class TreeMetadataEmitter(LoggingMixin):
                 self._libs[libname].append(lib)
                 self._linkage.append((context, lib, 'USE_LIBS'))
                 linkables.append(lib)
-                generated_files.add(lib.lib_name)
+                if not lib.installed:
+                    generated_files.add(lib.lib_name)
                 if symbols_file and isinstance(symbols_file, SourcePath):
                     script = mozpath.join(
                         mozpath.dirname(mozpath.dirname(__file__)),
@@ -950,6 +951,10 @@ class TreeMetadataEmitter(LoggingMixin):
                 for target_var in ('SOURCES', 'UNIFIED_SOURCES'):
                     for suffix, srcs in ctxt_sources[target_var].items():
                         linkable.sources[suffix] += srcs
+                if no_pgo_sources:
+                    linkable.no_pgo_sources = no_pgo_sources
+                elif no_pgo:
+                    linkable.no_pgo = True
             for host_linkable in host_linkables:
                 for suffix, srcs in ctxt_sources['HOST_SOURCES'].items():
                     host_linkable.sources[suffix] += srcs
@@ -1130,8 +1135,8 @@ class TreeMetadataEmitter(LoggingMixin):
             if (full_path == context.config.topsrcdir or
                     full_path == context.config.topobjdir):
                 raise SandboxValidationError('Path specified in LOCAL_INCLUDES '
-                    'is not allowed: %s (resolved to %s)' % (local_include,
-                    full_path), context)
+                    '(%s) resolves to the topsrcdir or topobjdir (%s), which is '
+                    'not allowed' % (local_include, full_path), context)
             include_obj = LocalInclude(context, local_include)
             local_includes.append(include_obj.path.full_path)
             yield include_obj
@@ -1188,12 +1193,12 @@ class TreeMetadataEmitter(LoggingMixin):
                         if isinstance(f, SourcePath):
                             if f.startswith('en-US/'):
                                 pass
-                            elif '/locales/en-US/' in f:
+                            elif 'locales/en-US/' in f:
                                 pass
                             else:
                                 raise SandboxValidationError(
                                         '%s paths must start with `en-US/` or '
-                                        'contain `/locales/en-US/`: %s'
+                                        'contain `locales/en-US/`: %s'
                                         % (var, f,), context)
 
                     if not isinstance(f, ObjDirPath):
@@ -1263,13 +1268,13 @@ class TreeMetadataEmitter(LoggingMixin):
                                                    mozpath.basename(c)))
 
         if self.config.substs.get('MOZ_RUST_TESTS', None):
-            rust_test = context.get('RUST_TEST', None)
-            if rust_test:
+            rust_tests = context.get('RUST_TESTS', [])
+            if rust_tests:
                 # TODO: more sophisticated checking of the declared name vs.
                 # contents of the Cargo.toml file.
                 features = context.get('RUST_TEST_FEATURES', [])
 
-                yield RustTest(context, rust_test, features)
+                yield RustTests(context, rust_tests, features)
 
         for obj in self._process_test_manifests(context):
             yield obj
@@ -1339,7 +1344,7 @@ class TreeMetadataEmitter(LoggingMixin):
 
         for idl in context['XPIDL_SOURCES']:
             yield XPIDLFile(context, mozpath.join(context.srcdir, idl),
-                xpidl_module, add_to_manifest=not context['XPIDL_NO_MANIFEST'])
+                xpidl_module)
 
     def _process_generated_files(self, context):
         for path in context['CONFIGURE_DEFINE_FILES']:
@@ -1390,7 +1395,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     inputs.append(p)
 
                 yield GeneratedFile(context, script, method, outputs, inputs,
-                                    flags.flags, localized=localized)
+                                    flags.flags, localized=localized, force=flags.force)
 
     def _process_test_manifests(self, context):
         for prefix, info in TEST_MANIFESTS.items():

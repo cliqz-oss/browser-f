@@ -58,30 +58,6 @@ public:
   virtual void List(FILE* out = stdout, int32_t aIndent = 0) const = 0;
 #endif
 
-  // The constants in this list must maintain the following invariants:
-  //   If a rule of type N must appear before a rule of type M in stylesheets
-  //   then N < M
-  // Note that CSSStyleSheet::RebuildChildList assumes that no other kinds of
-  // rules can come between two rules of type IMPORT_RULE.
-  enum {
-    UNKNOWN_RULE = 0,
-    CHARSET_RULE,
-    IMPORT_RULE,
-    NAMESPACE_RULE,
-    STYLE_RULE,
-    MEDIA_RULE,
-    FONT_FACE_RULE,
-    PAGE_RULE,
-    KEYFRAME_RULE,
-    KEYFRAMES_RULE,
-    DOCUMENT_RULE,
-    SUPPORTS_RULE,
-    FONT_FEATURE_VALUES_RULE,
-    COUNTER_STYLE_RULE
-  };
-
-  virtual int32_t GetType() const = 0;
-
   StyleSheet* GetStyleSheet() const { return mSheet; }
 
   // Return the document the rule lives in, if any
@@ -93,20 +69,24 @@ public:
 
   virtual void SetStyleSheet(StyleSheet* aSheet);
 
-  void SetParentRule(GroupRule* aRule) {
-    // We don't reference count this up reference. The group rule
-    // will tell us when it's going away or when we're detached from
-    // it.
+  // We don't reference count this up reference. The rule will tell us
+  // when it's going away or when we're detached from it.
+  void SetParentRule(Rule* aRule) {
+#ifdef DEBUG
+    if (aRule) {
+      int16_t type = aRule->Type();
+      MOZ_ASSERT(type == dom::CSSRuleBinding::MEDIA_RULE ||
+                 type == dom::CSSRuleBinding::DOCUMENT_RULE ||
+                 type == dom::CSSRuleBinding::SUPPORTS_RULE ||
+                 (type == dom::CSSRuleBinding::KEYFRAMES_RULE &&
+                  Type() == dom::CSSRuleBinding::KEYFRAME_RULE));
+    }
+#endif
     mParentRule = aRule;
   }
 
   uint32_t GetLineNumber() const { return mLineNumber; }
   uint32_t GetColumnNumber() const { return mColumnNumber; }
-
-  /**
-   * Clones |this|. Never returns nullptr.
-   */
-  virtual already_AddRefed<Rule> Clone() const = 0;
 
   // This is pure virtual because all of Rule's data members are non-owning and
   // thus measured elsewhere.
@@ -129,7 +109,7 @@ protected:
   StyleSheet* mSheet;
   // When the parent GroupRule is destroyed, it will call SetParentRule(nullptr)
   // on this object. (Through SetParentRuleReference);
-  GroupRule* MOZ_NON_OWNING_REF mParentRule;
+  Rule* MOZ_NON_OWNING_REF mParentRule;
 
   // Keep the same type so that MSVC packs them.
   uint32_t          mLineNumber;

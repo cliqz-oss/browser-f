@@ -27,7 +27,6 @@ const COLOR_SWATCH_CLASS = "ruleview-colorswatch";
 const BEZIER_SWATCH_CLASS = "ruleview-bezierswatch";
 const FILTER_SWATCH_CLASS = "ruleview-filterswatch";
 const ANGLE_SWATCH_CLASS = "ruleview-angleswatch";
-const INSET_POINT_TYPES = ["top", "right", "bottom", "left"];
 const FONT_FAMILY_CLASS = "ruleview-font-family";
 const SHAPE_SWATCH_CLASS = "ruleview-shapeswatch";
 
@@ -85,18 +84,18 @@ function TextPropertyEditor(ruleEditor, property) {
   const toolbox = this.ruleView.inspector.toolbox;
   this.cssProperties = getCssProperties(toolbox);
 
+  this.getGridlineNames = this.getGridlineNames.bind(this);
+  this.update = this.update.bind(this);
+  this.updatePropertyState = this.updatePropertyState.bind(this);
   this._onEnableClicked = this._onEnableClicked.bind(this);
   this._onExpandClicked = this._onExpandClicked.bind(this);
-  this._onStartEditing = this._onStartEditing.bind(this);
   this._onNameDone = this._onNameDone.bind(this);
-  this._onValueDone = this._onValueDone.bind(this);
+  this._onStartEditing = this._onStartEditing.bind(this);
   this._onSwatchCommit = this._onSwatchCommit.bind(this);
   this._onSwatchPreview = this._onSwatchPreview.bind(this);
   this._onSwatchRevert = this._onSwatchRevert.bind(this);
   this._onValidate = this.ruleView.debounce(this._previewValue, 10, this);
-  this.update = this.update.bind(this);
-  this.updatePropertyState = this.updatePropertyState.bind(this);
-  this._onHoverShapePoint = this._onHoverShapePoint.bind(this);
+  this._onValueDone = this._onValueDone.bind(this);
 
   this._create();
   this.update();
@@ -121,7 +120,7 @@ TextPropertyEditor.prototype = {
   /**
    * Create the property editor's DOM.
    */
-  _create: function () {
+  _create: function() {
     this.element = this.doc.createElementNS(HTML_NS, "li");
     this.element.classList.add("ruleview-property");
     this.element._textPropertyEditor = this;
@@ -299,7 +298,7 @@ TextPropertyEditor.prototype = {
           event.stopPropagation();
           event.preventDefault();
           let browserWin = this.ruleView.inspector.target.tab.ownerDocument.defaultView;
-          browserWin.openUILinkIn(target.href, "tab");
+          browserWin.openTrustedLinkIn(target.href, "tab");
         }
       });
 
@@ -318,10 +317,40 @@ TextPropertyEditor.prototype = {
         maxWidth: () => this.container.getBoundingClientRect().width,
         cssProperties: this.cssProperties,
         cssVariables: this.rule.elementStyle.variables,
+        getGridLineNames: this.getGridlineNames,
       });
-
-      this.ruleView.highlighters.on("hover-shape-point", this._onHoverShapePoint);
     }
+  },
+
+  /**
+   * Get the grid line names of the grid that the currently selected element is
+   * contained in.
+   *
+   * @return {Object} Contains the names of the cols and rows as arrays
+   * {cols: [], rows: []}.
+   */
+  getGridlineNames: async function() {
+    let gridLineNames = {cols: [], rows: []};
+    let layoutInspector = await this.ruleView.inspector.walker.getLayoutInspector();
+    let gridFront = await layoutInspector.getCurrentGrid(
+      this.ruleView.inspector.selection.nodeFront);
+
+    if (gridFront) {
+      let gridFragments = gridFront.gridFragments;
+
+      for (let gridFragment of gridFragments) {
+        for (let rowLine of gridFragment.rows.lines) {
+          gridLineNames.rows = gridLineNames.rows.concat(rowLine.names);
+        }
+        for (let colLine of gridFragment.cols.lines) {
+          gridLineNames.cols = gridLineNames.cols.concat(colLine.names);
+        }
+      }
+    }
+
+    // Emit message for test files
+    this.ruleView.inspector.emit("grid-line-names-updated");
+    return gridLineNames;
   },
 
   /**
@@ -341,7 +370,7 @@ TextPropertyEditor.prototype = {
   /**
    * Populate the span based on changes to the TextProperty.
    */
-  update: function () {
+  update: function() {
     if (this.ruleView.isDestroyed) {
       return;
     }
@@ -515,13 +544,6 @@ TextPropertyEditor.prototype = {
         return s[0].toUpperCase() + s.slice(1);
       }).join("");
       shapeToggle.setAttribute("data-mode", mode);
-
-      let { highlighters, inspector } = this.ruleView;
-      if (highlighters.shapesHighlighterShown === inspector.selection.nodeFront &&
-          highlighters.state.shapes.options.mode === mode) {
-        shapeToggle.classList.add("active");
-        highlighters.highlightRuleViewShapePoint(highlighters.state.shapes.hoverPoint);
-      }
     }
 
     // Now that we have updated the property's value, we might have a pending
@@ -552,7 +574,7 @@ TextPropertyEditor.prototype = {
     this.ruleView._updatePropertyHighlight(this);
   },
 
-  _onStartEditing: function () {
+  _onStartEditing: function() {
     this.element.classList.remove("ruleview-overridden");
     this.filterProperty.hidden = true;
     this.enable.style.visibility = "hidden";
@@ -563,7 +585,7 @@ TextPropertyEditor.prototype = {
    * Update the visibility of the enable checkbox, the warning indicator and
    * the filter property, as well as the overridden state of the property.
    */
-  updatePropertyState: function () {
+  updatePropertyState: function() {
     if (this.prop.enabled) {
       this.enable.style.removeProperty("visibility");
       this.enable.setAttribute("checked", "");
@@ -571,6 +593,10 @@ TextPropertyEditor.prototype = {
       this.enable.style.visibility = "visible";
       this.enable.removeAttribute("checked");
     }
+
+    this.warning.title = !this.isNameValid()
+      ? l10n("rule.warningName.title")
+      : l10n("rule.warning.title");
 
     this.warning.hidden = this.editing || this.isValid();
     this.filterProperty.hidden = this.editing ||
@@ -594,7 +620,7 @@ TextPropertyEditor.prototype = {
    * Update the indicator for computed styles. The computed styles themselves
    * are populated on demand, when they become visible.
    */
-  _updateComputed: function () {
+  _updateComputed: function() {
     this.computed.innerHTML = "";
 
     let showExpander = this.prop.computed.some(c => c.name !== this.prop.name);
@@ -609,7 +635,7 @@ TextPropertyEditor.prototype = {
   /**
    * Populate the list of computed styles.
    */
-  _populateComputed: function () {
+  _populateComputed: function() {
     if (this._populatedComputed) {
       return;
     }
@@ -634,7 +660,7 @@ TextPropertyEditor.prototype = {
    * overridden styles themselves are populated on demand, when they
    * become visible.
    */
-  _updateShorthandOverridden: function () {
+  _updateShorthandOverridden: function() {
     this.shorthandOverridden.innerHTML = "";
 
     this._populatedShorthandOverridden = false;
@@ -644,7 +670,7 @@ TextPropertyEditor.prototype = {
   /**
    * Populate the list of overridden shorthand styles.
    */
-  _populateShorthandOverridden: function () {
+  _populateShorthandOverridden: function() {
     if (this._populatedShorthandOverridden || this.prop.overridden) {
       return;
     }
@@ -665,7 +691,7 @@ TextPropertyEditor.prototype = {
   /**
    * Creates and populates a list item with the computed CSS property.
    */
-  _createComputedListItem: function (parentEl, computed, className) {
+  _createComputedListItem: function(parentEl, computed, className) {
     let li = createChild(parentEl, "li", {
       class: className
     });
@@ -706,7 +732,7 @@ TextPropertyEditor.prototype = {
   /**
    * Handles clicks on the disabled property.
    */
-  _onEnableClicked: function (event) {
+  _onEnableClicked: function(event) {
     let checked = this.enable.hasAttribute("checked");
     if (checked) {
       this.enable.removeAttribute("checked");
@@ -724,7 +750,7 @@ TextPropertyEditor.prototype = {
    * expand the computed list and tracks whether or not the computed list is
    * expanded by manually by the user.
    */
-  _onExpandClicked: function (event) {
+  _onExpandClicked: function(event) {
     if (this.computed.hasAttribute("filter-open") ||
         this.computed.hasAttribute("user-open")) {
       this.expander.removeAttribute("open");
@@ -747,7 +773,7 @@ TextPropertyEditor.prototype = {
    * filtering. The filter-open attribute is used to track whether or not the
    * computed list was toggled opened by the filter.
    */
-  expandForFilter: function () {
+  expandForFilter: function() {
     if (!this.computed.hasAttribute("user-open")) {
       this.expander.setAttribute("open", "true");
       this.computed.setAttribute("filter-open", "");
@@ -758,7 +784,7 @@ TextPropertyEditor.prototype = {
   /**
    * Collapses the computed list that was expanded by style filtering.
    */
-  collapseForFilter: function () {
+  collapseForFilter: function() {
     this.computed.removeAttribute("filter-open");
 
     if (!this.computed.hasAttribute("user-open")) {
@@ -778,7 +804,7 @@ TextPropertyEditor.prototype = {
    * @param {Number} direction
    *        The move focus direction number.
    */
-  _onNameDone: function (value, commit, direction) {
+  _onNameDone: function(value, commit, direction) {
     let isNameUnchanged = (!commit && !this.ruleEditor.isEditing) ||
                           this.committed.name === value;
     if (this.prop.value && isNameUnchanged) {
@@ -826,7 +852,7 @@ TextPropertyEditor.prototype = {
    * @param {Number} direction
    *        The move focus direction number.
    */
-  remove: function (direction) {
+  remove: function(direction) {
     if (this._colorSwatchSpans && this._colorSwatchSpans.length) {
       for (let span of this._colorSwatchSpans) {
         this.ruleView.tooltips.getTooltip("colorPicker").removeSwatch(span);
@@ -858,7 +884,7 @@ TextPropertyEditor.prototype = {
    * @param {Number} direction
    *        The move focus direction number.
    */
-  _onValueDone: function (value = "", commit, direction) {
+  _onValueDone: function(value = "", commit, direction) {
     let parsedProperties = this._getValueAndExtraProperties(value);
     let val = parseSingleValue(this.cssProperties.isKnown,
                                parsedProperties.firstValue);
@@ -916,7 +942,7 @@ TextPropertyEditor.prototype = {
   /**
    * Called when the swatch editor wants to commit a value change.
    */
-  _onSwatchCommit: function () {
+  _onSwatchCommit: function() {
     this._onValueDone(this.valueSpan.textContent, true);
     this.update();
   },
@@ -924,7 +950,7 @@ TextPropertyEditor.prototype = {
   /**
    * Called when the swatch editor wants to preview a value change.
    */
-  _onSwatchPreview: function () {
+  _onSwatchPreview: function() {
     this._previewValue(this.valueSpan.textContent);
   },
 
@@ -932,7 +958,7 @@ TextPropertyEditor.prototype = {
    * Called when the swatch editor closes from an ESC. Revert to the original
    * value of this property before editing.
    */
-  _onSwatchRevert: function () {
+  _onSwatchRevert: function() {
     this._previewValue(this.prop.value, true);
     this.update();
   },
@@ -952,7 +978,7 @@ TextPropertyEditor.prototype = {
    *        propertiesToAdd: An array with additional properties, following the
    *                         parseDeclarations format of {name,value,priority}
    */
-  _getValueAndExtraProperties: function (value) {
+  _getValueAndExtraProperties: function(value) {
     // The inplace editor will prevent manual typing of multiple properties,
     // but we need to deal with the case during a paste event.
     // Adding multiple properties inside of value editor sets value with the
@@ -992,7 +1018,7 @@ TextPropertyEditor.prototype = {
    * @param {Boolean} reverting
    *        True if we're reverting the previously previewed value
    */
-  _previewValue: function (value, reverting = false) {
+  _previewValue: function(value, reverting = false) {
     // Since function call is debounced, we need to make sure we are still
     // editing, and any selector modifications have been completed
     if (!reverting && (!this.editing || this.ruleEditor.isEditing)) {
@@ -1008,10 +1034,18 @@ TextPropertyEditor.prototype = {
    * Validate this property. Does it make sense for this value to be assigned
    * to this property name? This does not apply the property value
    *
-   * @return {Boolean} true if the property value is valid, false otherwise.
+   * @return {Boolean} true if the property name + value pair is valid, false otherwise.
    */
-  isValid: function () {
+  isValid: function() {
     return this.prop.isValid();
+  },
+
+  /**
+   * Validate the name of this property.
+   * @return {Boolean} true if the property name is valid, false otherwise.
+   */
+  isNameValid: function() {
+    return this.prop.isNameValid();
   },
 
   /**
@@ -1019,7 +1053,7 @@ TextPropertyEditor.prototype = {
    *
    * @return {Boolean} true if the property is a `display: [inline-]flex` declaration.
    */
-  isDisplayFlex: function () {
+  isDisplayFlex: function() {
     return this.prop.name === "display" &&
       (this.prop.value === "flex" || this.prop.value === "inline-flex");
   },
@@ -1029,70 +1063,9 @@ TextPropertyEditor.prototype = {
    *
    * @return {Boolean} true if the property is a `display: [inline-]grid` declaration.
    */
-  isDisplayGrid: function () {
+  isDisplayGrid: function() {
     return this.prop.name === "display" &&
       (this.prop.value === "grid" || this.prop.value === "inline-grid");
-  },
-
-  /**
-   * Highlight the given shape point in the rule view. Called when "hover-shape-point"
-   * event is emitted.
-   *
-   * @param {Event} event
-   *        The "hover-shape-point" event.
-   * @param {String} point
-   *        The point to highlight.
-   */
-  _onHoverShapePoint: function (event, point) {
-    // If there is no shape toggle, or it is not active, return.
-    let shapeToggle = this.valueSpan.querySelector(".ruleview-shapeswatch.active");
-    if (!shapeToggle) {
-      return;
-    }
-
-    let view = this.ruleView;
-    let { highlighters } = view;
-    let ruleViewEl = view.element;
-    let selector = `.ruleview-shape-point.active`;
-    for (let pointNode of ruleViewEl.querySelectorAll(selector)) {
-      this._toggleShapePointActive(pointNode, false);
-    }
-
-    if (typeof point === "string") {
-      if (point.includes(",")) {
-        point = point.split(",")[0];
-      }
-      // Because one inset value can represent multiple points, inset points use classes
-      // instead of data.
-      selector = (INSET_POINT_TYPES.includes(point)) ?
-                 `.ruleview-shape-point.${point}` :
-                 `.ruleview-shape-point[data-point='${point}']`;
-      for (let pointNode of this.valueSpan.querySelectorAll(selector)) {
-        let nodeInfo = view.getNodeInfo(pointNode);
-        if (highlighters.isRuleViewShapePoint(nodeInfo)) {
-          this._toggleShapePointActive(pointNode, true);
-        }
-      }
-    }
-  },
-
-  /**
-   * Toggle the class "active" on the given shape point in the rule view if the current
-   * inspector selection is highlighted by the shapes highlighter.
-   *
-   * @param {NodeFront} node
-   *        The NodeFront of the shape point to toggle
-   * @param {Boolean} active
-   *        Whether the shape point should be active
-   */
-  _toggleShapePointActive: function (node, active) {
-    let { highlighters } = this.ruleView;
-    if (highlighters.inspector.selection.nodeFront !=
-        highlighters.shapesHighlighterShown) {
-      return;
-    }
-
-    node.classList.toggle("active", active);
   },
 };
 

@@ -16,7 +16,7 @@ job-defaults:
         using: mach
     when:
         files-changed:
-            - 'config/mozunit.py'
+            - 'config/mozunit/**'
             - 'python/mach_commands.py'
 
 taskgraph-tests:
@@ -72,7 +72,7 @@ mochitest-harness:
             - 'testing/mozharness/mozharness/base/log.py'
             - 'testing/mozharness/mozharness/mozilla/structuredlog.py'
             - 'testing/mozharness/mozharness/mozilla/testing/errors.py'
-            - 'testing/profiles/prefs_general.js'
+            - 'testing/profiles/**'
 
 mozbase:
     description: testing/mozbase unit tests
@@ -107,6 +107,7 @@ mozlint:
     when:
         files-changed:
             - 'python/mozlint/**'
+            - 'tools/lint/**'
 
 mozterm:
     description: python/mozterm unit tests
@@ -127,6 +128,16 @@ mozversioncontrol:
     when:
         files-changed:
             - 'python/mozversioncontrol/**'
+
+raptor:
+    description: testing/raptor unit tests
+    treeherder:
+        symbol: py(rap)
+    run:
+        mach: python-test --subsuite raptor
+    when:
+        files-changed:
+            - 'testing/raptor/**'
 
 reftest-harness:
     description: layout/tools/reftest unittests

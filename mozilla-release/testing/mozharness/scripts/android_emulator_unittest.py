@@ -27,9 +27,11 @@ from mozharness.mozilla.buildbot import TBPL_RETRY, EXIT_STATUS_DICT
 from mozharness.mozilla.mozbase import MozbaseMixin
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.unittest import EmulatorMixin
+from mozharness.mozilla.testing.codecoverage import CodeCoverageMixin
 
 
-class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin):
+class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin,
+                          CodeCoverageMixin):
     config_options = [[
         ["--test-suite"],
         {"action": "store",
@@ -116,6 +118,8 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
         dirs = {}
         dirs['abs_test_install_dir'] = os.path.join(
             abs_dirs['abs_work_dir'], 'tests')
+        dirs['abs_test_bin_dir'] = os.path.join(
+            abs_dirs['abs_work_dir'], 'tests', 'bin')
         dirs['abs_xre_dir'] = os.path.join(
             abs_dirs['abs_work_dir'], 'hostutils')
         dirs['abs_modules_dir'] = os.path.join(
@@ -377,9 +381,11 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
 
     def _query_package_name(self):
         if self.app_name is None:
-            # For convenience, assume geckoview_example when install target
-            # looks like geckoview.
-            if 'geckoview' in self.installer_path:
+            # For convenience, assume geckoview.test/geckoview_example when install
+            # target looks like geckoview.
+            if 'androidTest' in self.installer_path:
+                self.app_name = 'org.mozilla.geckoview.test'
+            elif 'geckoview' in self.installer_path:
                 self.app_name = 'org.mozilla.geckoview_example'
         if self.app_name is None:
             # Find appname from package-name.txt - assumes download-and-extract
@@ -459,7 +465,7 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
 
         if user_paths:
             cmd.extend(user_paths.split(':'))
-        else:
+        elif not self.verify_enabled:
             if self.this_chunk is not None:
                 cmd.extend(['--this-chunk', self.this_chunk])
             if self.total_chunks is not None:
@@ -467,7 +473,7 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
 
         try_options, try_tests = self.try_args(self.test_suite)
         cmd.extend(try_options)
-        if self.config.get('verify') is not True:
+        if not self.verify_enabled and not self.per_test_coverage:
             cmd.extend(self.query_tests_args(
                 self.config["suite_definitions"][self.test_suite].get("tests"),
                 None,
@@ -736,7 +742,7 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
     def _query_suites(self):
         if self.test_suite:
             return [(self.test_suite, self.test_suite)]
-        # test-verification: determine test suites to be verified
+        # per-test mode: determine test suites to run
         all = [('mochitest', {'plain': 'mochitest',
                               'chrome': 'mochitest-chrome',
                               'plain-clipboard': 'mochitest-plain-clipboard',
@@ -745,7 +751,7 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
                ('xpcshell', {'xpcshell': 'xpcshell'})]
         suites = []
         for (category, all_suites) in all:
-            cat_suites = self.query_verify_category_suites(category, all_suites)
+            cat_suites = self.query_per_test_category_suites(category, all_suites)
             for k in cat_suites.keys():
                 suites.append((k, cat_suites[k]))
         return suites
@@ -754,7 +760,7 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
         if self.test_suite:
             categories = [self.test_suite]
         else:
-            # test-verification
+            # per-test mode
             categories = ['mochitest', 'reftest', 'xpcshell']
         return categories
 
@@ -763,12 +769,12 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
         Run the tests
         """
         self.start_time = datetime.datetime.now()
-        max_verify_time = datetime.timedelta(minutes=60)
+        max_per_test_time = datetime.timedelta(minutes=60)
 
-        verify_args = []
+        per_test_args = []
         suites = self._query_suites()
         minidump = self.query_minidump_stackwalk()
-        for (verify_suite, suite) in suites:
+        for (per_test_suite, suite) in suites:
             self.test_suite = suite
 
             cmd = self._build_command()
@@ -784,24 +790,25 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
             env['MINIDUMP_SAVE_PATH'] = self.query_abs_dirs()['abs_blob_upload_dir']
             env['RUST_BACKTRACE'] = 'full'
 
-            for verify_args in self.query_verify_args(verify_suite):
-                if (datetime.datetime.now() - self.start_time) > max_verify_time:
-                    # Verification has run out of time. That is okay! Stop running
-                    # tests so that a task timeout is not triggered, and so that
+            summary = None
+            for per_test_args in self.query_args(per_test_suite):
+                if (datetime.datetime.now() - self.start_time) > max_per_test_time:
+                    # Running tests has run out of time. That is okay! Stop running
+                    # them so that a task timeout is not triggered, and so that
                     # (partial) results are made available in a timely manner.
-                    self.info("TinderboxPrint: Verification too long: "
-                              "Not all tests were verified.<br/>")
-                    # Signal verify time exceeded, to break out of suites and
+                    self.info("TinderboxPrint: Running tests took too long: "
+                              "Not all tests were executed.<br/>")
+                    # Signal per-test time exceeded, to break out of suites and
                     # suite categories loops also.
                     return False
 
                 final_cmd = copy.copy(cmd)
-                if len(verify_args) > 0:
-                    # in verify mode, remove any chunk arguments from command
+                if len(per_test_args) > 0:
+                    # in per-test mode, remove any chunk arguments from command
                     for arg in final_cmd:
                         if 'total-chunk' in arg or 'this-chunk' in arg:
                             final_cmd.remove(arg)
-                final_cmd.extend(verify_args)
+                final_cmd.extend(per_test_args)
 
                 self.info("Running on %s the command %s" % (self.emulator["name"],
                           subprocess.list2cmdline(final_cmd)))
@@ -814,22 +821,18 @@ class AndroidEmulatorTest(TestingMixin, EmulatorMixin, BaseScript, MozbaseMixin)
                     log_obj=self.log_obj,
                     error_list=[])
                 self.run_command(final_cmd, cwd=cwd, env=env, output_parser=parser)
-                tbpl_status, log_level = parser.evaluate_parser(0)
+                tbpl_status, log_level, summary = parser.evaluate_parser(0, summary)
                 parser.append_tinderboxprint_line(self.test_suite)
 
                 self.info("##### %s log ends" % self.test_suite)
 
-                if len(verify_args) > 0:
+                if len(per_test_args) > 0:
                     self.buildbot_status(tbpl_status, level=log_level)
-                    self.log_verify_status(verify_args[-1], tbpl_status, log_level)
+                    self.log_per_test_status(per_test_args[-1], tbpl_status, log_level)
                 else:
-                    self._dump_emulator_log()
                     self.buildbot_status(tbpl_status, level=log_level)
                     self.log("The %s suite: %s ran with return status: %s" %
                              (suite_category, suite, tbpl_status), level=log_level)
-
-        if len(verify_args) > 0:
-            self._dump_emulator_log()
 
     @PostScriptAction('run-tests')
     def stop_emulator(self, action, success=None):

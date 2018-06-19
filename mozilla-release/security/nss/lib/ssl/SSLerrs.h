@@ -374,7 +374,7 @@ ER3(SSL_ERROR_WEAK_SERVER_EPHEMERAL_DH_KEY, (SSL_ERROR_BASE + 115),
     "SSL received a weak ephemeral Diffie-Hellman key in Server Key Exchange handshake message.")
 
 ER3(SSL_ERROR_NEXT_PROTOCOL_DATA_INVALID, (SSL_ERROR_BASE + 116),
-    "SSL received invalid NPN extension data.")
+    "SSL received invalid ALPN extension data.")
 
 ER3(SSL_ERROR_FEATURE_NOT_SUPPORTED_FOR_SSL2, (SSL_ERROR_BASE + 117),
     "SSL feature not supported for SSL 2.0 connections.")
@@ -543,3 +543,9 @@ ER3(SSL_ERROR_TOO_MANY_KEY_UPDATES, (SSL_ERROR_BASE + 171),
 
 ER3(SSL_ERROR_HANDSHAKE_FAILED, (SSL_ERROR_BASE + 172),
     "SSL handshake has already failed. No more operations possible.")
+
+ER3(SSL_ERROR_BAD_RESUMPTION_TOKEN_ERROR, (SSL_ERROR_BASE + 173),
+    "SSL received an invalid resumption token.")
+
+ER3(SSL_ERROR_RX_MALFORMED_DTLS_ACK, (SSL_ERROR_BASE + 174),
+    "SSL received a malformed DTLS ACK")

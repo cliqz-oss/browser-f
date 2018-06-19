@@ -25,7 +25,7 @@ let whitelist = [
    isFromDevTools: false},
   // PDFjs rules needed for compat with other UAs.
   {sourceName: /web\/viewer\.css$/i,
-   errorMessage: /Unknown property.*appearance/i,
+   errorMessage: /Unknown property.*(appearance|user-select)/i,
    isFromDevTools: false},
   // Highlighter CSS uses a UA-only pseudo-class, see bug 985597.
   {sourceName: /highlighters\.css$/i,
@@ -79,52 +79,11 @@ if (!Services.prefs.getBoolPref("full-screen-api.unprefix.enabled")) {
   });
 }
 
-// Platform can be "linux", "macosx" or "win". If omitted, the exception applies to all platforms.
-let allowedImageReferences = [
-  // Bug 1302691
-  {file: "chrome://devtools/skin/images/dock-bottom-minimize@2x.png",
-   from: "chrome://devtools/skin/toolbox.css",
-   isFromDevTools: true},
-  {file: "chrome://devtools/skin/images/dock-bottom-maximize@2x.png",
-   from: "chrome://devtools/skin/toolbox.css",
-   isFromDevTools: true},
-];
-
 let propNameWhitelist = [
   // These are CSS custom properties that we found a definition of but
   // no reference to.
   // Bug 1441837
   {propName: "--in-content-category-text-active",
-   isFromDevTools: false},
-  // Bug 1441844
-  {propName: "--chrome-nav-bar-separator-color",
-   isFromDevTools: false},
-  // Bug 1441855
-  {propName: "--chrome-nav-buttons-background",
-   isFromDevTools: false},
-  // Bug 1441855
-  {propName: "--chrome-nav-buttons-hover-background",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--muteButton-width",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--closedCaptionButton-width",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--fullscreenButton-width",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--durationSpan-width",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--durationSpan-width-long",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--positionDurationBox-width",
-   isFromDevTools: false},
-  // Bug 1441857
-  {propName: "--positionDurationBox-width-long",
    isFromDevTools: false},
   // Bug 1441929
   {propName: "--theme-search-overlays-semitransparent",
@@ -132,13 +91,29 @@ let propNameWhitelist = [
   // Bug 1441878
   {propName: "--theme-codemirror-gutter-background",
    isFromDevTools: true},
-  // Bug 1441879
-  {propName: "--arrow-width",
-   isFromDevTools: true},
-  // Bug 1442300
-  {propName: "--in-content-category-background",
+  // These custom properties are retrieved directly from CSSOM
+  // in videocontrols.xml to get pre-defined style instead of computed
+  // dimensions, which is why they are not referenced by CSS.
+  {propName: "--clickToPlay-width",
    isFromDevTools: false},
-
+  {propName: "--playButton-width",
+   isFromDevTools: false},
+  {propName: "--muteButton-width",
+   isFromDevTools: false},
+  {propName: "--castingButton-width",
+   isFromDevTools: false},
+  {propName: "--closedCaptionButton-width",
+   isFromDevTools: false},
+  {propName: "--fullscreenButton-width",
+   isFromDevTools: false},
+  {propName: "--durationSpan-width",
+   isFromDevTools: false},
+  {propName: "--durationSpan-width-long",
+   isFromDevTools: false},
+  {propName: "--positionDurationBox-width",
+   isFromDevTools: false},
+  {propName: "--positionDurationBox-width-long",
+   isFromDevTools: false},
   // Used on Linux
   {propName: "--in-content-box-background-odd",
    platforms: ["win", "macosx"],
@@ -364,20 +339,21 @@ add_task(async function checkAllTheCSS() {
   iframe.contentWindow.location = testFile;
   await iframeLoaded;
   let doc = iframe.contentWindow.document;
+  doc.docShell.cssErrorReportingEnabled = true;
 
   // Parse and remove all manifests from the list.
   // NOTE that this must be done before filtering out devtools paths
   // so that all chrome paths can be recorded.
-  let manifestPromises = [];
+  let manifestURIs = [];
   uris = uris.filter(uri => {
     if (uri.pathQueryRef.endsWith(".manifest")) {
-      manifestPromises.push(parseManifest(uri));
+      manifestURIs.push(uri);
       return false;
     }
     return true;
   });
   // Wait for all manifest to be parsed
-  await Promise.all(manifestPromises);
+  await throttledMapPromises(manifestURIs, parseManifest);
 
   // filter out either the devtools paths or the non-devtools paths:
   let isDevtools = SimpleTest.harnessParameters.subsuite == "devtools";
@@ -421,25 +397,13 @@ add_task(async function checkAllTheCSS() {
   }
 
   // Wait for all the files to have actually loaded:
-  allPromises = allPromises.map(loadCSS);
-  await Promise.all(allPromises);
+  await throttledMapPromises(allPromises, loadCSS);
 
   // Check if all the files referenced from CSS actually exist.
   for (let [image, references] of imageURIsToReferencesMap) {
     if (!chromeFileExists(image)) {
       for (let ref of references) {
-        let ignored = false;
-        for (let item of allowedImageReferences) {
-          if (image.endsWith(item.file) && ref.endsWith(item.from) &&
-              isDevtools == item.isFromDevTools &&
-              (!item.platforms || item.platforms.includes(AppConstants.platform))) {
-            item.used = true;
-            ignored = true;
-            break;
-          }
-        }
-        if (!ignored)
-          ok(false, "missing " + image + " referenced from " + ref);
+        ok(false, "missing " + image + " referenced from " + ref);
       }
     }
   }
@@ -481,7 +445,6 @@ add_task(async function checkAllTheCSS() {
     }
   }
   checkWhitelist(whitelist);
-  checkWhitelist(allowedImageReferences);
   checkWhitelist(propNameWhitelist);
 
   // Clean up to avoid leaks:

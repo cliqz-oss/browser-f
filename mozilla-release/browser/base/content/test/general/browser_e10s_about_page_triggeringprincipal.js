@@ -16,7 +16,6 @@ add_task(async function test_principal_click() {
   await kAboutPagesRegistered;
   await BrowserTestUtils.withNewTab("about:test-about-principal-parent", async function(browser) {
     let loadPromise = BrowserTestUtils.browserLoaded(browser, false, "about:test-about-principal-child");
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let myLink = browser.contentDocument.getElementById("aboutchildprincipal");
     myLink.click();
     await loadPromise;
@@ -75,7 +74,7 @@ add_task(async function test_principal_ctrl_click() {
       is(loadingPrincipal, null,
          "sanity check - load of TYPE_DOCUMENT must have a null loadingPrincipal");
     });
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });
 
@@ -120,6 +119,6 @@ add_task(async function test_principal_right_click_open_link_in_new_tab() {
       is(loadingPrincipal, null,
          "sanity check - load of TYPE_DOCUMENT must have a null loadingPrincipal");
     });
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });

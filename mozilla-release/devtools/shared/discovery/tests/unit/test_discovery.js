@@ -8,7 +8,7 @@ const { require } =
   ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const defer = require("devtools/shared/defer");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const discovery = require("devtools/shared/discovery/discovery");
 const { setTimeout, clearTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 
@@ -37,7 +37,7 @@ function TestTransport(port) {
 
 TestTransport.prototype = {
 
-  send: function (object, port) {
+  send: function(object, port) {
     log("Send to " + port + ":\n" + JSON.stringify(object, null, 2));
     if (!gTestTransports[port]) {
       log("No listener on port " + port);
@@ -47,20 +47,20 @@ TestTransport.prototype = {
     gTestTransports[port].onPacketReceived(null, message);
   },
 
-  destroy: function () {
+  destroy: function() {
     delete gTestTransports[this.port];
   },
 
   // nsIUDPSocketListener
 
-  onPacketReceived: function (socket, message) {
+  onPacketReceived: function(socket, message) {
     let object = JSON.parse(message);
     object.from = "localhost";
     log("Recv on " + this.port + ":\n" + JSON.stringify(object, null, 2));
     this.emit("message", object);
   },
 
-  onStopListening: function (socket, status) {}
+  onStopListening: function(socket, status) {}
 
 };
 
@@ -69,12 +69,12 @@ discovery._factories.Transport = TestTransport;
 
 // Ignore name generation on b2g and force a fixed value
 Object.defineProperty(discovery.device, "name", {
-  get: function () {
+  get: function() {
     return "test-device";
   }
 });
 
-add_task(async function () {
+add_task(async function() {
   // At startup, no remote devices are known
   deepEqual(discovery.getRemoteDevicesWithService("devtools"), []);
   deepEqual(discovery.getRemoteDevicesWithService("penguins"), []);

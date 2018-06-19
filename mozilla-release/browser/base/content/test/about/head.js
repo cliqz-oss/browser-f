@@ -23,12 +23,6 @@ function waitForCondition(condition, nextTest, errorMsg, retryTimes) {
   var moveOn = function() { clearInterval(interval); nextTest(); };
 }
 
-function promiseWaitForCondition(aConditionFn) {
-  return new Promise(resolve => {
-    waitForCondition(aConditionFn, resolve, "Condition didn't pass.");
-  });
-}
-
 function whenTabLoaded(aTab, aCallback) {
   promiseTabLoadEvent(aTab).then(aCallback);
 }
@@ -119,7 +113,7 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrows
           stopContent(contentStopFromProgressListener, chan.originalURI.spec);
         }
       },
-      QueryInterface: XPCOMUtils.generateQI(["nsISupportsWeakReference"])
+      QueryInterface: ChromeUtils.generateQI(["nsISupportsWeakReference"])
     };
     wp.addProgressListener(progressListener, wp.NOTIFY_STATE_WINDOW);
 

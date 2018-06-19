@@ -44,6 +44,13 @@ uint32_t AudioInputCubeb::sUserChannelCount = 0;
 
 void AudioInputCubeb::UpdateDeviceList()
 {
+  // We keep all the device names, but wipe the mappings and rebuild them.
+  // Do this first so that if cubeb has failed we've unmapped our devices
+  // before we early return. Otherwise we'd keep the old list.
+  for (auto& device_index : (*mDeviceIndexes)) {
+    device_index = -1; // unmapped
+  }
+
   cubeb* cubebContext = CubebUtils::GetCubebContext();
   if (!cubebContext) {
     return;
@@ -57,11 +64,6 @@ void AudioInputCubeb::UpdateDeviceList()
     return;
   }
 
-  for (auto& device_index : (*mDeviceIndexes)) {
-    device_index = -1; // unmapped
-  }
-  // We keep all the device names, but wipe the mappings and rebuild them
-
   // Calculate translation from existing mDevices to new devices. Note we
   // never end up with less devices than before, since people have
   // stashed indexes.
@@ -73,10 +75,7 @@ void AudioInputCubeb::UpdateDeviceList()
          i, devices.device[i].type, devices.device[i].state,
          devices.device[i].friendly_name, devices.device[i].device_id));
     if (devices.device[i].type == CUBEB_DEVICE_TYPE_INPUT && // paranoia
-        (devices.device[i].state == CUBEB_DEVICE_STATE_ENABLED ||
-         (devices.device[i].state == CUBEB_DEVICE_STATE_DISABLED &&
-          devices.device[i].friendly_name &&
-          strcmp(devices.device[i].friendly_name, "Sine source at 440 Hz") == 0)))
+        devices.device[i].state == CUBEB_DEVICE_STATE_ENABLED )
     {
       auto j = mDeviceNames->IndexOf(devices.device[i].device_id);
       if (j != nsTArray<nsCString>::NoIndex) {

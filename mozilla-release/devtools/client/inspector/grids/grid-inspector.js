@@ -57,13 +57,12 @@ class GridInspector {
     this.getSwatchColorPickerTooltip = this.getSwatchColorPickerTooltip.bind(this);
     this.updateGridPanel = this.updateGridPanel.bind(this);
 
-    this.onHighlighterChange = this.onHighlighterChange.bind(this);
+    this.onHighlighterShown = this.onHighlighterShown.bind(this);
+    this.onHighlighterHidden = this.onHighlighterHidden.bind(this);
     this.onNavigate = this.onNavigate.bind(this);
     this.onReflow = throttle(this.onReflow, 500, this);
     this.onSetGridOverlayColor = this.onSetGridOverlayColor.bind(this);
-    this.onShowGridAreaHighlight = this.onShowGridAreaHighlight.bind(this);
-    this.onShowGridCellHighlight = this.onShowGridCellHighlight.bind(this);
-    this.onShowGridLineNamesHighlight = this.onShowGridLineNamesHighlight.bind(this);
+    this.onShowGridOutlineHighlight = this.onShowGridOutlineHighlight.bind(this);
     this.onSidebarSelect = this.onSidebarSelect.bind(this);
     this.onToggleGridHighlighter = this.onToggleGridHighlighter.bind(this);
     this.onToggleShowGridAreas = this.onToggleShowGridAreas.bind(this);
@@ -82,9 +81,13 @@ class GridInspector {
       return;
     }
 
-    this.layoutInspector = await this.inspector.walker.getLayoutInspector();
-
-    this.loadHighlighterSettings();
+    try {
+      this.layoutInspector = await this.inspector.walker.getLayoutInspector();
+    } catch (e) {
+      // This call might fail if called asynchrously after the toolbox is finished
+      // closing.
+      return;
+    }
 
     // Create a shared SwatchColorPicker instance to be reused by all GridItem components.
     this.swatchColorPickerTooltip = new SwatchColorPickerTooltip(
@@ -95,8 +98,8 @@ class GridInspector {
       }
     );
 
-    this.highlighters.on("grid-highlighter-hidden", this.onHighlighterChange);
-    this.highlighters.on("grid-highlighter-shown", this.onHighlighterChange);
+    this.highlighters.on("grid-highlighter-hidden", this.onHighlighterHidden);
+    this.highlighters.on("grid-highlighter-shown", this.onHighlighterShown);
     this.inspector.sidebar.on("select", this.onSidebarSelect);
     this.inspector.on("new-root", this.onNavigate);
 
@@ -108,8 +111,8 @@ class GridInspector {
    * and cleans up references.
    */
   destroy() {
-    this.highlighters.off("grid-highlighter-hidden", this.onHighlighterChange);
-    this.highlighters.off("grid-highlighter-shown", this.onHighlighterChange);
+    this.highlighters.off("grid-highlighter-hidden", this.onHighlighterHidden);
+    this.highlighters.off("grid-highlighter-shown", this.onHighlighterShown);
     this.inspector.sidebar.off("select", this.onSidebarSelect);
     this.inspector.off("new-root", this.onNavigate);
 
@@ -134,9 +137,7 @@ class GridInspector {
     return {
       getSwatchColorPickerTooltip: this.getSwatchColorPickerTooltip,
       onSetGridOverlayColor: this.onSetGridOverlayColor,
-      onShowGridAreaHighlight: this.onShowGridAreaHighlight,
-      onShowGridCellHighlight: this.onShowGridCellHighlight,
-      onShowGridLineNamesHighlight: this.onShowGridLineNamesHighlight,
+      onShowGridOutlineHighlight: this.onShowGridOutlineHighlight,
       onToggleGridHighlighter: this.onToggleGridHighlighter,
       onToggleShowGridAreas: this.onToggleShowGridAreas,
       onToggleShowGridLineNumbers: this.onToggleShowGridLineNumbers,
@@ -195,24 +196,6 @@ class GridInspector {
   }
 
   /**
-   * Create a highlighter settings object for the provided nodeFront.
-   *
-   * @param  {NodeFront} nodeFront
-   *         The NodeFront for which we need highlighter settings.
-   */
-  getGridHighlighterSettings(nodeFront) {
-    let { highlighterSettings } = this.store.getState();
-
-    // Get the grid color for the provided nodeFront.
-    let color = this.getGridColorForNodeFront(nodeFront);
-
-    // Merge the grid color to the generic highlighter settings.
-    return Object.assign({}, highlighterSettings, {
-      color
-    });
-  }
-
-  /**
    * Retrieve the shared SwatchColorPicker instance.
    */
   getSwatchColorPickerTooltip() {
@@ -252,37 +235,6 @@ class GridInspector {
     return this.inspector && this.inspector.toolbox && this.inspector.sidebar &&
            this.inspector.toolbox.currentToolId === "inspector" &&
            this.inspector.sidebar.getCurrentTabID() === "layoutview";
-  }
-
-  /**
-   * Load the grid highligher display settings into the store from the stored preferences.
-   */
-  loadHighlighterSettings() {
-    let { dispatch } = this.store;
-
-    let showGridAreas = Services.prefs.getBoolPref(SHOW_GRID_AREAS);
-    let showGridLineNumbers = Services.prefs.getBoolPref(SHOW_GRID_LINE_NUMBERS);
-    let showInfinteLines = Services.prefs.getBoolPref(SHOW_INFINITE_LINES_PREF);
-
-    dispatch(updateShowGridAreas(showGridAreas));
-    dispatch(updateShowGridLineNumbers(showGridLineNumbers));
-    dispatch(updateShowInfiniteLines(showInfinteLines));
-  }
-
-  showGridHighlighter(node, settings) {
-    this.lastHighlighterColor = settings.color;
-    this.lastHighlighterNode = node;
-    this.lastHighlighterState = true;
-
-    this.highlighters.showGridHighlighter(node, settings);
-  }
-
-  toggleGridHighlighter(node, settings) {
-    this.lastHighlighterColor = settings.color;
-    this.lastHighlighterNode = node;
-    this.lastHighlighterState = node !== this.highlighters.gridHighlighterShown;
-
-    this.highlighters.toggleGridHighlighter(node, settings, "grid");
   }
 
   /**
@@ -355,38 +307,61 @@ class GridInspector {
     this.store.dispatch(updateGrids(grids));
     this.inspector.emit("grid-panel-updated");
   }
+  /**
+   * Handler for "grid-highlighter-shown" events emitted from the
+   * HighlightersOverlay. Passes nodefront and event name to handleHighlighterChange.
+   * Required since on and off events need the same reference object.
+   *
+   * @param  {NodeFront} nodeFront
+   *         The NodeFront of the grid container element for which the grid
+   *         highlighter is shown for.
+   * @param  {Object} options
+   *         The highlighter options used for the highlighter being shown/hidden.
+   */
+  onHighlighterShown(nodeFront, options) {
+    this.onHighlighterChange(nodeFront, true, options);
+  }
+
+  /**
+   * Handler for "grid-highlighter-hidden" events emitted from the
+   * HighlightersOverlay. Passes nodefront and event name to handleHighlighterChange.
+   * Required since on and off events need the same reference object.
+   *
+   * @param  {NodeFront} nodeFront
+   *         The NodeFront of the grid container element for which the grid highlighter
+   *         is hidden for.
+   * @param  {Object} options
+   *         The highlighter options used for the highlighter being shown/hidden.
+   */
+  onHighlighterHidden(nodeFront, options) {
+    this.onHighlighterChange(nodeFront, false, options);
+  }
 
   /**
    * Handler for "grid-highlighter-shown" and "grid-highlighter-hidden" events emitted
    * from the HighlightersOverlay. Updates the NodeFront's grid highlighted state.
    *
-   * @param  {Event} event
-   *         Event that was triggered.
    * @param  {NodeFront} nodeFront
    *         The NodeFront of the grid container element for which the grid highlighter
    *         is shown for.
+   * @param  {Boolean} highlighted
+   *         If the grid should be updated to highlight or hide.
    * @param  {Object} options
    *         The highlighter options used for the highlighter being shown/hidden.
    */
-  onHighlighterChange(event, nodeFront, options = {}) {
-    let highlighted = event === "grid-highlighter-shown";
-    let { color } = options;
-
-    // Only tell the store that the highlighter changed if it did change.
-    // If we're still highlighting the same node, with the same color, no need to force
-    // a refresh.
-    if (this.lastHighlighterState !== highlighted ||
-        this.lastHighlighterNode !== nodeFront) {
-      this.store.dispatch(updateGridHighlighted(nodeFront, highlighted));
+  onHighlighterChange(nodeFront, highlighted, options = {}) {
+    if (!this.isPanelVisible()) {
+      return;
     }
 
-    if (this.lastHighlighterColor !== color || this.lastHighlighterNode !== nodeFront) {
-      this.store.dispatch(updateGridColor(nodeFront, color));
+    const { grids } = this.store.getState();
+    const grid = grids.find(g => g.nodeFront === nodeFront);
+
+    if (!grid || grid.highlighted === highlighted) {
+      return;
     }
 
-    this.lastHighlighterColor = null;
-    this.lastHighlighterNode = null;
-    this.lastHighlighterState = null;
+    this.store.dispatch(updateGridHighlighted(nodeFront, highlighted));
   }
 
   /**
@@ -470,6 +445,7 @@ class GridInspector {
    */
   async onSetGridOverlayColor(node, color) {
     this.store.dispatch(updateGridColor(node, color));
+
     let { grids } = this.store.getState();
     let currentUrl = this.inspector.target.url;
     // Get the hostname, if there is no hostname, fall back on protocol
@@ -489,98 +465,34 @@ class GridInspector {
         // If the grid for which the color was updated currently has a highlighter, update
         // the color.
         if (grid.highlighted) {
-          let highlighterSettings = this.getGridHighlighterSettings(node);
-          this.showGridHighlighter(node, highlighterSettings);
+          this.highlighters.showGridHighlighter(node);
         }
       }
     }
   }
 
   /**
-   * Highlights the grid area in the CSS Grid Highlighter for the given grid.
+   * Highlights the grid area and cell in the CSS Grid Highlighter for the given grid
+   * container element and selected grid area and cell options.
    *
    * @param  {NodeFront} node
-   *         The NodeFront of the grid container element for which the grid
-   *         highlighter is highlighted for.
-   * @param  {String} gridAreaName
-   *         The name of the grid area for which the grid highlighter
+   *         The NodeFront of the grid container element for which the grid highlighter
    *         is highlighted for.
-   * @param  {String} color
-   *         The color of the grid area for which the grid highlighter
-   *         is highlighted for.
+   * @param  {Object} options
+   *         The options object has the following properties which corresponds to the
+   *         required parameters for showing the grid cell or area highlights.
+   *         See css-grid.js.
+   *         {
+   *           showGridCell: {
+   *             gridFragmentIndex: Number,
+   *             rowNumber: Number,
+   *             columnNumber: Number,
+   *           },
+   *           showGridArea: String,
+   *         }
    */
-  onShowGridAreaHighlight(node, gridAreaName, color) {
-    let { highlighterSettings } = this.store.getState();
-
-    highlighterSettings.showGridArea = gridAreaName;
-    highlighterSettings.color = color;
-
-    this.showGridHighlighter(node, highlighterSettings);
-
-    this.store.dispatch(updateGridHighlighted(node, true));
-  }
-
-  /**
-   * Highlights the grid cell in the CSS Grid Highlighter for the given grid.
-   *
-   * @param  {NodeFront} node
-   *         The NodeFront of the grid container element for which the grid
-   *         highlighter is highlighted for.
-   * @param  {String} color
-   *         The color of the grid cell for which the grid highlighter
-   *         is highlighted for.
-   * @param  {Number|null} gridFragmentIndex
-   *         The index of the grid fragment for which the grid highlighter
-   *         is highlighted for.
-   * @param  {Number|null} rowNumber
-   *         The row number of the grid cell for which the grid highlighter
-   *         is highlighted for.
-   * @param  {Number|null} columnNumber
-   *         The column number of the grid cell for which the grid highlighter
-   *         is highlighted for.
-   */
-  onShowGridCellHighlight(node, color, gridFragmentIndex, rowNumber, columnNumber) {
-    let { highlighterSettings } = this.store.getState();
-
-    highlighterSettings.showGridCell = { gridFragmentIndex, rowNumber, columnNumber };
-    highlighterSettings.color = color;
-
-    this.showGridHighlighter(node, highlighterSettings);
-
-    this.store.dispatch(updateGridHighlighted(node, true));
-  }
-
-  /**
-   * Highlights the grid line in the CSS Grid Highlighter for the given grid.
-   *
-   * @param  {NodeFront} node
-   *         The NodeFront of the grid container element for which the grid
-   *         highlighter is highlighted for.
-   * @param  {Number|null} gridFragmentIndex
-   *         The index of the grid fragment for which the grid highlighter
-   *         is highlighted for.
-   * @param  {String} color
-   *         The color of the grid line for which the grid highlighter
-   *         is highlighted for.
-   * @param  {Number|null} lineNumber
-   *         The line number of the grid for which the grid highlighter
-   *         is highlighted for.
-   * @param  {String|null} type
-   *         The type of line for which the grid line is being highlighted for.
-   */
-  onShowGridLineNamesHighlight(node, gridFragmentIndex, color, lineNumber, type) {
-    let { highlighterSettings } = this.store.getState();
-
-    highlighterSettings.showGridLineNames = {
-      gridFragmentIndex,
-      lineNumber,
-      type
-    };
-    highlighterSettings.color = color;
-
-    this.showGridHighlighter(node, highlighterSettings);
-
-    this.store.dispatch(updateGridHighlighted(node, true));
+  onShowGridOutlineHighlight(node, options) {
+    this.highlighters.showGridHighlighter(node, options);
   }
 
   /**
@@ -607,11 +519,10 @@ class GridInspector {
    *         highlighter is toggled on/off for.
    */
   onToggleGridHighlighter(node) {
-    let highlighterSettings = this.getGridHighlighterSettings(node);
-    this.toggleGridHighlighter(node, highlighterSettings);
-
-    this.store.dispatch(updateGridHighlighted(node,
-      node !== this.highlighters.gridHighlighterShown));
+    const { grids } = this.store.getState();
+    const grid = grids.find(g => g.nodeFront === node);
+    this.store.dispatch(updateGridHighlighted(node, !grid.highlighted));
+    this.highlighters.toggleGridHighlighter(node, "grid");
   }
 
   /**
@@ -634,8 +545,7 @@ class GridInspector {
 
     for (let grid of grids) {
       if (grid.highlighted) {
-        let highlighterSettings = this.getGridHighlighterSettings(grid.nodeFront);
-        this.highlighters.showGridHighlighter(grid.nodeFront, highlighterSettings);
+        this.highlighters.showGridHighlighter(grid.nodeFront);
       }
     }
   }
@@ -661,8 +571,7 @@ class GridInspector {
 
     for (let grid of grids) {
       if (grid.highlighted) {
-        let highlighterSettings = this.getGridHighlighterSettings(grid.nodeFront);
-        this.showGridHighlighter(grid.nodeFront, highlighterSettings);
+        this.highlighters.showGridHighlighter(grid.nodeFront);
       }
     }
   }
@@ -688,8 +597,7 @@ class GridInspector {
 
     for (let grid of grids) {
       if (grid.highlighted) {
-        let highlighterSettings = this.getGridHighlighterSettings(grid.nodeFront);
-        this.showGridHighlighter(grid.nodeFront, highlighterSettings);
+        this.highlighters.showGridHighlighter(grid.nodeFront);
       }
     }
   }

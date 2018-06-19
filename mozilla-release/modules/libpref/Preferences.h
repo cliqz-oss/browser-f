@@ -41,6 +41,11 @@ class PrefValue;
 
 struct PrefsSizes;
 
+#ifdef XP_UNIX
+// XXX: bug 1440207 is about improving how fixed fds such as this are used.
+static const int kPrefsFileDescriptor = 8;
+#endif
+
 // Keep this in sync with PrefType in parser/src/lib.rs.
 enum class PrefValueKind : uint8_t
 {
@@ -230,9 +235,6 @@ public:
   // Whether the pref has a user value or not.
   static bool HasUserValue(const char* aPref);
 
-  // Must the pref be sent to content processes when they start?
-  static bool MustSendToContentProcesses(const char* aPref);
-
   // Adds/Removes the observer for the root pref branch. See nsIPrefBranch.idl
   // for details.
   static nsresult AddStrongObserver(nsIObserver* aObserver, const char* aPref);
@@ -303,37 +305,40 @@ public:
   // pref.
   static nsresult AddBoolVarCache(bool* aVariable,
                                   const char* aPref,
-                                  bool aDefault = false);
+                                  bool aDefault = false,
+                                  bool aSkipAssignment = false);
   template<MemoryOrdering Order>
   static nsresult AddAtomicBoolVarCache(Atomic<bool, Order>* aVariable,
                                         const char* aPref,
-                                        bool aDefault = false);
+                                        bool aDefault = false,
+                                        bool aSkipAssignment = false);
   static nsresult AddIntVarCache(int32_t* aVariable,
                                  const char* aPref,
-                                 int32_t aDefault = 0);
+                                 int32_t aDefault = 0,
+                                 bool aSkipAssignment = false);
   template<MemoryOrdering Order>
   static nsresult AddAtomicIntVarCache(Atomic<int32_t, Order>* aVariable,
                                        const char* aPref,
-                                       int32_t aDefault = 0);
+                                       int32_t aDefault = 0,
+                                       bool aSkipAssignment = false);
   static nsresult AddUintVarCache(uint32_t* aVariable,
                                   const char* aPref,
-                                  uint32_t aDefault = 0);
+                                  uint32_t aDefault = 0,
+                                  bool aSkipAssignment = false);
   template<MemoryOrdering Order>
   static nsresult AddAtomicUintVarCache(Atomic<uint32_t, Order>* aVariable,
                                         const char* aPref,
-                                        uint32_t aDefault = 0);
+                                        uint32_t aDefault = 0,
+                                        bool aSkipAssignment = false);
   static nsresult AddFloatVarCache(float* aVariable,
                                    const char* aPref,
-                                   float aDefault = 0.0f);
+                                   float aDefault = 0.0f,
+                                   bool aSkipAssignment = false);
 
-  // When a content process is created these methods are used to pass prefs in
-  // bulk from the parent process. "Early" preferences are ones that are needed
-  // very early on in the content process's lifetime; they are passed via the
-  // command line. "Late" preferences are the remainder, which are passed via
-  // IPC message.
-  static void GetPreferences(InfallibleTArray<dom::Pref>* aSettings);
-  static void SetEarlyPreferences(const nsTArray<dom::Pref>* aSettings);
-  static void SetLatePreferences(const nsTArray<dom::Pref>* aSettings);
+  // When a content process is created these methods are used to pass changed
+  // prefs in bulk from the parent process, via shared memory.
+  static void SerializePreferences(nsCString& aStr);
+  static void DeserializePreferences(char* aStr, size_t aPrefsLen);
 
   // When a single pref is changed in the parent process, these methods are
   // used to pass the update to content processes.
@@ -341,7 +346,7 @@ public:
   static void SetPreference(const dom::Pref& aPref);
 
 #ifdef DEBUG
-  static bool AreAllPrefsSetInContentProcess();
+  static bool ArePrefsInitedInContentProcess();
 #endif
 
   static void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
@@ -395,30 +400,9 @@ public:
   };
 
 private:
-  static mozilla::Result<mozilla::Ok, const char*> InitInitialObjects();
-
-  // Functions above that modify prefs will fail if they are not run in the
-  // parent process. The "InAnyProcess" functions below will succeed outside
-  // the content process, and are used when passing pref values from the parent
-  // process to content processes.
-
-  static nsresult SetBoolInAnyProcess(
-    const char* aPrefName,
-    bool aValue,
-    PrefValueKind aKind = PrefValueKind::User);
-
-  static nsresult SetIntInAnyProcess(const char* aPrefName,
-                                     int32_t aValue,
-                                     PrefValueKind aKind = PrefValueKind::User);
-
-  static nsresult SetCStringInAnyProcess(
-    const char* aPrefName,
-    const nsACString& aValue,
-    PrefValueKind aKind = PrefValueKind::User);
-
-  static nsresult ClearUserInAnyProcess(const char* aPrefName);
-
-  static nsresult LockInAnyProcess(const char* aPrefName);
+  static void SetupTelemetryPref();
+  static mozilla::Result<mozilla::Ok, const char*> InitInitialObjects(
+    bool aIsStartup);
 
   static nsresult RegisterCallback(PrefChangedFunc aCallback,
                                    const char* aPref,

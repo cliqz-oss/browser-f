@@ -56,7 +56,7 @@ class nsTreeBodyFrame final
   typedef mozilla::image::ImgDrawResult ImgDrawResult;
 
 public:
-  explicit nsTreeBodyFrame(nsStyleContext* aContext);
+  explicit nsTreeBodyFrame(ComputedStyle* aStyle);
   ~nsTreeBodyFrame();
 
   NS_DECL_QUERYFRAME
@@ -82,7 +82,7 @@ public:
   nsresult SetView(nsITreeView *aView);
   bool GetFocused() const { return mFocused; }
   nsresult SetFocused(bool aFocused);
-  nsresult GetTreeBody(nsIDOMElement **aElement);
+  nsresult GetTreeBody(mozilla::dom::Element **aElement);
   int32_t RowHeight() const;
   int32_t RowWidth();
   int32_t GetHorizontalPosition() const;
@@ -176,7 +176,7 @@ public:
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                 const nsDisplayListSet& aLists) override;
 
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   friend nsIFrame* NS_NewTreeBodyFrame(nsIPresShell* aPresShell);
   friend class nsTreeColumn;
@@ -284,13 +284,13 @@ protected:
                                const nsRect&        aDirtyRect,
                                nsPoint              aPt);
 
-  // This method is called with a specific style context and rect to
+  // This method is called with a specific ComputedStyle and rect to
   // paint the background rect as if it were a full-blown frame.
-  ImgDrawResult PaintBackgroundLayer(nsStyleContext*      aStyleContext,
-                                  nsPresContext*       aPresContext,
-                                  gfxContext&          aRenderingContext,
-                                  const nsRect&        aRect,
-                                  const nsRect&        aDirtyRect);
+  ImgDrawResult PaintBackgroundLayer(ComputedStyle*      aComputedStyle,
+                                     nsPresContext*       aPresContext,
+                                     gfxContext&          aRenderingContext,
+                                     const nsRect&        aRect,
+                                     const nsRect&        aDirtyRect);
 
 
   // An internal hit test.  aX and aY are expected to be in twips in the
@@ -325,21 +325,21 @@ protected:
                           nsRect& aImageRect,
                           nsRect& aTwistyRect,
                           nsPresContext* aPresContext,
-                          nsStyleContext* aTwistyContext);
+                          ComputedStyle* aTwistyContext);
 
   // Fetch an image from the image cache.
   nsresult GetImage(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContext,
-                    nsStyleContext* aStyleContext, bool& aAllowImageRegions, imgIContainer** aResult);
+                    ComputedStyle* aComputedStyle, bool& aAllowImageRegions, imgIContainer** aResult);
 
   // Returns the size of a given image.   This size *includes* border and
   // padding.  It does not include margins.
-  nsRect GetImageSize(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContext, nsStyleContext* aStyleContext);
+  nsRect GetImageSize(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContext, ComputedStyle* aComputedStyle);
 
   // Returns the destination size of the image, not including borders and padding.
-  nsSize GetImageDestSize(nsStyleContext* aStyleContext, bool useImageRegion, imgIContainer* image);
+  nsSize GetImageDestSize(ComputedStyle* aComputedStyle, bool useImageRegion, imgIContainer* image);
 
   // Returns the source rectangle of the image to be displayed.
-  nsRect GetImageSourceRect(nsStyleContext* aStyleContext, bool useImageRegion, imgIContainer* image);
+  nsRect GetImageSourceRect(ComputedStyle* aComputedStyle, bool useImageRegion, imgIContainer* image);
 
   // Returns the height of rows in the tree.
   int32_t GetRowHeight();
@@ -353,9 +353,9 @@ protected:
   // Calculate the total width of our scrollable portion
   nscoord CalcHorzWidth(const ScrollParts& aParts);
 
-  // Looks up a style context in the style cache.  On a cache miss we resolve
+  // Looks up a ComputedStyle in the style cache.  On a cache miss we resolve
   // the pseudo-styles passed in and place them into the cache.
-  nsStyleContext* GetPseudoStyleContext(nsICSSAnonBoxPseudo* aPseudoElement);
+  ComputedStyle* GetPseudoComputedStyle(nsICSSAnonBoxPseudo* aPseudoElement);
 
   // Retrieves the scrollbars and scrollview relevant to this treebody. We
   // traverse the frame tree under our base element, in frame order, looking
@@ -490,9 +490,9 @@ protected:
 
 #ifdef ACCESSIBILITY
   /**
-   * Fires 'treeRowCountChanged' event asynchronously. The event supports
-   * nsIDOMCustomEvent interface that is used to expose the following
-   * information structures.
+   * Fires 'treeRowCountChanged' event asynchronously. The event is a
+   * CustomEvent that is used to expose the following information structures
+   * via a property bag.
    *
    * @param aIndex  the row index rows are added/removed from
    * @param aCount  the number of added/removed rows (the sign points to
@@ -501,9 +501,9 @@ protected:
   void FireRowCountChangedEvent(int32_t aIndex, int32_t aCount);
 
   /**
-   * Fires 'treeInvalidated' event asynchronously. The event supports
-   * nsIDOMCustomEvent interface that is used to expose the information
-   * structures described by method arguments.
+   * Fires 'treeInvalidated' event asynchronously. The event is a CustomEvent
+   * that is used to expose the information structures described by method
+   * arguments via a property bag.
    *
    * @param aStartRow  the start index of invalidated rows, -1 means that
    *                   columns have been invalidated only
@@ -574,19 +574,19 @@ protected: // Data Members
   // from the view.
   nsCOMPtr<nsITreeView> mView;
 
-  // A cache of all the style contexts we have seen for rows and cells of the tree.  This is a mapping from
-  // a list of atoms to a corresponding style context.  This cache stores every combination that
+  // A cache of all the ComputedStyles we have seen for rows and cells of the tree.  This is a mapping from
+  // a list of atoms to a corresponding ComputedStyle.  This cache stores every combination that
   // occurs in the tree, so for n distinct properties, this cache could have 2 to the n entries
   // (the power set of all row properties).
   nsTreeStyleCache mStyleCache;
 
   // A hashtable that maps from URLs to image request/listener pairs.  The URL
-  // is provided by the view or by the style context. The style context
+  // is provided by the view or by the ComputedStyle. The ComputedStyle
   // represents a resolved :-moz-tree-cell-image (or twisty) pseudo-element.
   // It maps directly to an imgIRequest.
   nsDataHashtable<nsStringHashKey, nsTreeImageCacheEntry> mImageCache;
 
-  // A scratch array used when looking up cached style contexts.
+  // A scratch array used when looking up cached ComputedStyles.
   mozilla::AtomArray mScratchArray;
 
   // The index of the first visible row and the # of rows visible onscreen.

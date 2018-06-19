@@ -35,6 +35,7 @@ XPIDL_MODULE = 'layout_base'
 EXPORTS += [
     'CaretAssociationHint.h',
     'FrameProperties.h',
+    'LayoutConstants.h',
     'LayoutLogging.h',
     'MobileViewportManager.h',
     'nsAutoLayoutPhase.h',
@@ -58,7 +59,6 @@ EXPORTS += [
     'nsPresArena.h',
     'nsPresArenaObjectList.h',
     'nsPresContext.h',
-    'nsPresState.h',
     'nsQuoteList.h',
     'nsRefreshDriver.h',
     'nsStyleChangeList.h',
@@ -79,19 +79,11 @@ EXPORTS.mozilla += [
     'GeometryUtils.h',
     'OverflowChangedTracker.h',
     'PresShell.h',
-    'RestyleLogging.h',
     'RestyleManager.h',
-    'RestyleManagerInlines.h',
-    'ServoRestyleManager.h',
     'ShapeUtils.h',
     'StaticPresData.h',
     'UndisplayedNode.h',
 ]
-
-if CONFIG['MOZ_OLD_STYLE']:
-    EXPORTS.mozilla += [
-        'GeckoRestyleManager.h',
-    ]
 
 UNIFIED_SOURCES += [
     'AccessibleCaret.cpp',
@@ -122,19 +114,12 @@ UNIFIED_SOURCES += [
     'PresShell.cpp',
     'RestyleManager.cpp',
     'ScrollbarStyles.cpp',
-    'ServoRestyleManager.cpp',
     'ShapeUtils.cpp',
     'StackArena.cpp',
     'StaticPresData.cpp',
     'TouchManager.cpp',
     'ZoomConstraintsClient.cpp',
 ]
-
-if CONFIG['MOZ_OLD_STYLE']:
-    UNIFIED_SOURCES += [
-        'GeckoRestyleManager.cpp',
-        'RestyleTracker.cpp',
-    ]
 
 # nsRefreshDriver.cpp needs to be built separately because of name clashes in the OS X headers
 SOURCES += [
@@ -170,6 +155,10 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     LOCAL_INCLUDES += [
         '/widget/android',
     ]
+
+IPDL_SOURCES += [
+    'PresState.ipdlh',
+]
 
 FINAL_LIBRARY = 'xul'
 

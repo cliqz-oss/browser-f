@@ -14,10 +14,6 @@ loader.lazyRequireGetter(this, "AppConstants",
 loader.lazyGetter(this, "screenManager", () => {
   return Cc["@mozilla.org/gfx/screenmanager;1"].getService(Ci.nsIScreenManager);
 });
-loader.lazyGetter(this, "oscpu", () => {
-  return Cc["@mozilla.org/network/protocol;1?name=http"]
-           .getService(Ci.nsIHttpProtocolHandler).oscpu;
-});
 loader.lazyGetter(this, "hostname", () => {
   try {
     // On some platforms (Linux according to try), this service does not exist and fails.
@@ -39,9 +35,7 @@ const APP_MAP = {
   "{3550f703-e582-4d05-9a08-453d09bdfdc6}": "thunderbird",
   "{92650c4d-4b8e-4d2a-b7eb-24ecf4f6b63a}": "seamonkey",
   "{718e30fb-e89b-41dd-9da7-e25a45638b28}": "sunbird",
-  "{3c2e2abc-06d4-11e1-ac3b-374f68613e61}": "b2g",
-  "{aa3c5121-dab2-40e2-81ca-7ea25febc110}": "mobile/android",
-  "{a23983c0-fd0e-11dc-95ff-0800200c9a66}": "mobile/xul"
+  "{aa3c5121-dab2-40e2-81ca-7ea25febc110}": "mobile/android"
 };
 
 var CACHED_INFO = null;
@@ -68,22 +62,8 @@ async function getSystemInfo() {
   let hardware = "unknown";
   let version = "unknown";
 
-  // B2G specific
-  if (apptype === "b2g") {
-    os = "B2G";
-    // `getSetting` does not work in child processes on b2g.
-    // TODO bug 1205797, make this work in child processes.
-    try {
-      hardware = await exports.getSetting("deviceinfo.hardware");
-      version = await exports.getSetting("deviceinfo.os");
-    } catch (e) {
-      // Ignore.
-    }
-  } else {
-    // Not B2G
-    os = appInfo.OS;
-    version = appInfo.version;
-  }
+  os = appInfo.OS;
+  version = appInfo.version;
 
   let bundle = Services.strings.createBundle("chrome://branding/locale/brand.properties");
   if (bundle) {
@@ -125,7 +105,6 @@ async function getSystemInfo() {
     // The application's version, for example "0.8.0+" or "3.7a1pre".
     // Typically, the version of Firefox, for example.
     // It is different than the version of Gecko or the XULRunner platform.
-    // On B2G, this is the Gaia version.
     version,
 
     // The application's build ID/date, for example "2004051604".
@@ -156,7 +135,6 @@ async function getSystemInfo() {
 
     // Name of the OS type. Typically the same as `uname -s`. Possible values:
     // https://developer.mozilla.org/en/OS_TARGET
-    // Also may be "B2G".
     os,
     platform: os,
 
@@ -265,46 +243,12 @@ function getScreenDimensions() {
   return 11;
 }
 
-/**
- * Function for fetching OS CPU and returning
- * an enum for Telemetry.
- */
-function getOSCPU() {
-  if (oscpu.includes("NT 5.1") || oscpu.includes("NT 5.2")) {
-    return 0;
-  }
-  if (oscpu.includes("NT 6.0")) {
-    return 1;
-  }
-  if (oscpu.includes("NT 6.1")) {
-    return 2;
-  }
-  if (oscpu.includes("NT 6.2")) {
-    return 3;
-  }
-  if (oscpu.includes("NT 6.3")) {
-    return 4;
-  }
-  if (oscpu.includes("OS X")) {
-    return 5;
-  }
-  if (oscpu.includes("Linux")) {
-    return 6;
-  }
-  if (oscpu.includes("NT 10.")) {
-    return 7;
-  }
-  // Other OS.
-  return 12;
-}
-
 function getSetting(name) {
   let deferred = defer();
 
   if ("@mozilla.org/settingsService;1" in Cc) {
     let settingsService;
 
-    // settingsService fails in b2g child processes
     // TODO bug 1205797, make this work in child processes.
     try {
       settingsService = Cc["@mozilla.org/settingsService;1"]
@@ -326,5 +270,3 @@ function getSetting(name) {
 exports.getSystemInfo = getSystemInfo;
 exports.getSetting = getSetting;
 exports.getScreenDimensions = getScreenDimensions;
-exports.getOSCPU = getOSCPU;
-exports.constants = AppConstants;

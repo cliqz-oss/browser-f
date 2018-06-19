@@ -8,14 +8,12 @@
 #include "nsTreeColFrame.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsNameSpaceManager.h"
 #include "nsIBoxObject.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/TreeBoxObject.h"
-#include "nsIDOMElement.h"
 #include "nsITreeColumns.h"
-#include "nsIDOMXULTreeElement.h"
 #include "nsDisplayList.h"
 #include "nsTreeBodyFrame.h"
 #include "nsXULElement.h"
@@ -26,9 +24,9 @@
 // Creates a new col frame
 //
 nsIFrame*
-NS_NewTreeColFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTreeColFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTreeColFrame(aContext);
+  return new (aPresShell) nsTreeColFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTreeColFrame)
@@ -170,7 +168,7 @@ nsTreeColFrame::GetTreeBoxObject()
   if (parent) {
     nsIContent* grandParent = parent->GetParent();
     RefPtr<nsXULElement> treeElement =
-      nsXULElement::FromContentOrNull(grandParent);
+      nsXULElement::FromNodeOrNull(grandParent);
     if (treeElement) {
       nsCOMPtr<nsIBoxObject> boxObject =
         treeElement->GetBoxObject(IgnoreErrors());

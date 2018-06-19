@@ -16,9 +16,6 @@
 
 class nsCaret;
 class nsIContent;
-class nsIDOMDragEvent;
-class nsIDOMEvent;
-class nsIDOMMouseEvent;
 class nsIPresShell;
 class nsPresContext;
 
@@ -35,6 +32,11 @@ class nsPresContext;
 namespace mozilla {
 
 class EditorBase;
+
+namespace dom {
+class DragEvent;
+class MouseEvent;
+} // namespace dom
 
 class EditorEventListener : public nsIDOMEventListener
 {
@@ -64,17 +66,17 @@ protected:
   nsresult HandleChangeComposition(WidgetCompositionEvent* aCompositionEvent);
   nsresult HandleStartComposition(WidgetCompositionEvent* aCompositionEvent);
   void HandleEndComposition(WidgetCompositionEvent* aCompositionEvent);
-  virtual nsresult MouseDown(nsIDOMMouseEvent* aMouseEvent);
-  virtual nsresult MouseUp(nsIDOMMouseEvent* aMouseEvent) { return NS_OK; }
-  virtual nsresult MouseClick(nsIDOMMouseEvent* aMouseEvent);
+  virtual nsresult MouseDown(dom::MouseEvent* aMouseEvent);
+  virtual nsresult MouseUp(dom::MouseEvent* aMouseEvent) { return NS_OK; }
+  virtual nsresult MouseClick(dom::MouseEvent* aMouseEvent);
   nsresult Focus(InternalFocusEvent* aFocusEvent);
   nsresult Blur(InternalFocusEvent* aBlurEvent);
-  nsresult DragEnter(nsIDOMDragEvent* aDragEvent);
-  nsresult DragOver(nsIDOMDragEvent* aDragEvent);
-  nsresult DragExit(nsIDOMDragEvent* aDragEvent);
-  nsresult Drop(nsIDOMDragEvent* aDragEvent);
+  nsresult DragEnter(dom::DragEvent* aDragEvent);
+  nsresult DragOver(dom::DragEvent* aDragEvent);
+  nsresult DragExit(dom::DragEvent* aDragEvent);
+  nsresult Drop(dom::DragEvent* aDragEvent);
 
-  bool CanDrop(nsIDOMDragEvent* aEvent);
+  bool CanDrop(dom::DragEvent* aEvent);
   void CleanupDragDropCaret();
   nsIPresShell* GetPresShell() const;
   nsPresContext* GetPresContext() const;
@@ -84,7 +86,7 @@ protected:
   bool EditorHasFocus();
   bool IsFileControlTextBox();
   bool ShouldHandleNativeKeyBindings(WidgetKeyboardEvent* aKeyboardEvent);
-  nsresult HandleMiddleClickPaste(nsIDOMMouseEvent* aMouseEvent);
+  nsresult HandleMiddleClickPaste(dom::MouseEvent* aMouseEvent);
 
   /**
    * DetachedFromEditor() returns true if editor was detached.

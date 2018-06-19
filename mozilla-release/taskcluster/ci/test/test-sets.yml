@@ -37,7 +37,10 @@ common-tests:
     - reftest
     - reftest-no-accel
     - telemetry-tests-client
+    - test-coverage
+    - test-coverage-wpt
     - test-verify
+    - test-verify-gpu
     - test-verify-wpt
     - xpcshell
 
@@ -56,9 +59,9 @@ opt-only-tests:
 
 talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g3
     - talos-g4
     - talos-g5
@@ -69,6 +72,7 @@ talos:
     - talos-perf-reftest-singletons
     - talos-tp6
     - talos-tp6-stylo-threads
+    - talos-tps
     - talos-speedometer
     - talos-motionmark
     - talos-h1
@@ -82,25 +86,6 @@ awsy-stylo-sequential:
 
 ##
 # Limited test sets for specific platforms
-
-stylo-disabled-tests:
-    - cppunit
-    - crashtest
-    - reftest
-    - web-platform-tests
-    - web-platform-tests-reftests
-    - mochitest
-    - mochitest-a11y
-    - mochitest-browser-chrome
-    - browser-screenshots
-    - mochitest-chrome
-    - mochitest-clipboard
-    - mochitest-gpu
-    - mochitest-media
-    - mochitest-webgl
-
-reftest-stylo:
-    - reftest-stylo
 
 linux-qr-talos:
     - talos-chrome
@@ -136,9 +121,9 @@ linux-qr-tests:
 
 linux-talos-profiling:
     - talos-chrome-profiling
+    - talos-damp-profiling
     - talos-dromaeojs-profiling
     - talos-g1-profiling
-    - talos-g2-profiling
     - talos-g3-profiling
     - talos-g4-profiling
     - talos-g5-profiling
@@ -150,6 +135,7 @@ linux-talos-profiling:
     - talos-svgr-profiling
     - talos-tp5o-profiling
     - talos-tp6-profiling
+    # - talos-tps-profiling # Bug 1453007 - times out
 
 linux-talos-flex:
     - talos-flex
@@ -159,6 +145,7 @@ windows-qr-tests:
     - mochitest-gpu
     - mochitest-media
     - mochitest-webgl
+    - reftest
 
 windows-qr-talos:
     - talos-chrome
@@ -167,7 +154,6 @@ windows-qr-talos:
     - talos-g4
     - talos-perf-reftest
     - talos-perf-reftest-singletons
-    - talos-svgr
     - talos-tp5o
     - talos-speedometer
     - talos-motionmark
@@ -202,7 +188,10 @@ windows-tests:
     - mochitest-webgl
     - reftest
     - reftest-no-accel
+    - test-coverage
+    - test-coverage-wpt
     - test-verify
+    - test-verify-gpu
     - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
@@ -210,9 +199,9 @@ windows-tests:
 
 windows-talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g4
     - talos-g5
     - talos-other
@@ -223,8 +212,27 @@ windows-talos:
     - talos-xperf
     - talos-speedometer
     - talos-tp6
+    - talos-tps
     - talos-motionmark
     - talos-h1
+
+windows-talos-profiling:
+    - talos-chrome-profiling
+    - talos-damp-profiling
+    - talos-dromaeojs-profiling
+    - talos-g1-profiling
+    - talos-g3-profiling
+    - talos-g4-profiling
+    - talos-g5-profiling
+    - talos-motionmark-profiling
+    - talos-other-profiling
+    - talos-perf-reftest-profiling
+    - talos-perf-reftest-singletons-profiling
+    - talos-speedometer-profiling
+    - talos-svgr-profiling
+    - talos-tp5o-profiling
+    - talos-tp6-profiling
+    - talos-tps-profiling
 
 macosx64-tests:
     - cppunit
@@ -247,6 +255,7 @@ macosx64-tests:
     - mochitest-webgl
     - reftest
     - test-verify
+    - test-verify-gpu
     - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
@@ -254,9 +263,9 @@ macosx64-tests:
 
 macosx64-talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g4
     - talos-g5
     - talos-other
@@ -266,15 +275,16 @@ macosx64-talos:
     - talos-perf-reftest-singletons
     - talos-tp6
     - talos-tp6-stylo-threads
+    # - talos-tps # Bug 1453007 times out
     - talos-speedometer
     - talos-motionmark
-    - talos-h1
+    # - talos-h1 # too long to unpack profile- Bug 1442893
 
 macosx64-talos-profiling:
     - talos-chrome-profiling
+    - talos-damp-profiling
     - talos-dromaeojs-profiling
     - talos-g1-profiling
-    - talos-g2-profiling
     - talos-g3-profiling
     - talos-g4-profiling
     - talos-g5-profiling
@@ -286,6 +296,7 @@ macosx64-talos-profiling:
     - talos-svgr-profiling
     - talos-tp5o-profiling
     - talos-tp6-profiling
+    # - talos-tps-profiling # Bug 1453007 times out
 
 linux32-tests:
     - cppunit
@@ -324,6 +335,8 @@ desktop-instrumentation:
 android-common-tests:
     - cppunit
     - crashtest
+    - geckoview-junit
+    # - jittest # not ready yet: bug 1098508
     - jsreftest
     - mochitest
     - mochitest-chrome

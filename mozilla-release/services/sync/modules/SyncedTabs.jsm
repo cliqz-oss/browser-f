@@ -20,9 +20,6 @@ XPCOMUtils.defineLazyGetter(this, "weaveXPCService", function() {
            .wrappedJSObject;
 });
 
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-                               "resource://gre/modules/PlacesUtils.jsm");
-
 // from MDN...
 function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -53,12 +50,10 @@ let SyncedTabsInternal = {
       icon = tab.icon;
     }
     if (!icon) {
-      try {
-        icon = (await PlacesUtils.promiseFaviconLinkUrl(url)).spec;
-      } catch (ex) { /* no favicon avaiable */ }
-    }
-    if (!icon) {
-      icon = "";
+      // By not specifying a size the favicon service will pick the default,
+      // that is usually set through setDefaultIconURIPreferredSize by the
+      // first browser window. Commonly it's 16px at current dpi.
+      icon = "page-icon:" + url;
     }
     return {
       type:  "tab",
@@ -76,7 +71,7 @@ let SyncedTabsInternal = {
       id: client.id,
       type: "client",
       name: Weave.Service.clientsEngine.getClientName(client.id),
-      isMobile: Weave.Service.clientsEngine.isMobile(client.id),
+      clientType: Weave.Service.clientsEngine.getClientType(client.id),
       lastModified: client.lastModified * 1000, // sec to ms
       tabs: []
     };

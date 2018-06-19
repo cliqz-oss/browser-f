@@ -18,7 +18,6 @@ const { addDebuggerToGlobal } =
   ChromeUtils.import("resource://gre/modules/jsdebugger.jsm", {});
 
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
-const flags = require("devtools/shared/flags");
 const HeapAnalysesClient =
   require("devtools/shared/heapsnapshot/HeapAnalysesClient");
 const Services = require("Services");
@@ -32,8 +31,10 @@ const { LabelAndShallowSizeVisitor } = DominatorTreeNode;
 // the output away anyway, unless you give it the --verbose flag.
 if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
   Services.prefs.setBoolPref("devtools.debugger.log", true);
+  registerCleanupFunction(() => {
+    Services.prefs.clearUserPref("devtools.debugger.log");
+  });
 }
-flags.wantLogging = true;
 
 const SYSTEM_PRINCIPAL = Cc["@mozilla.org/systemprincipal;1"]
   .createInstance(Ci.nsIPrincipal);
@@ -111,7 +112,7 @@ function getFilePath(name, allowMissing = false, usePlatformPathSeparator = fals
 
   path = path.slice(filePrePath.length);
 
-  if (sePlatformPathSeparator && path.match(/^\w:/)) {
+  if (usePlatformPathSeparator && path.match(/^\w:/)) {
     path = path.replace(/\//g, "\\");
   }
 
@@ -335,7 +336,7 @@ function assertLabelAndShallowSize(breakdown, givenDescription,
   dumpn("Given description: " + JSON.stringify(givenDescription, null, 4));
 
   const visitor = new LabelAndShallowSizeVisitor();
-  CensusUtils.walk(breakdown, description, visitor);
+  CensusUtils.walk(breakdown, givenDescription, visitor);
 
   dumpn("Expected shallow size: " + expectedShallowSize);
   dumpn("Actual shallow size: " + visitor.shallowSize());
@@ -435,7 +436,7 @@ function assertDeduplicatedPaths({ target, paths, expectedNodes, expectedEdges }
     }
     equal(count, 1,
       "should have exactly one matching edge for the expected edge = "
-      + JSON.stringify(edge));
+      + JSON.stringify(expectedEdge));
   }
 }
 

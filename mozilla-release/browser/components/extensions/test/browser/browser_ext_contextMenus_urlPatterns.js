@@ -256,7 +256,7 @@ add_task(async function() {
   await confirmContextMenuItems(contextMenu, expected);
   await closeContextMenu();
 
-  contextMenu = await openContextMenuInFrame("frame");
+  contextMenu = await openContextMenuInFrame("#frame");
   expected = [
     ["documentUrlPatterns-patternMatches-contextAll", true],
     ["documentUrlPatterns-patternMatches-contextFrame", true],
@@ -265,5 +265,5 @@ add_task(async function() {
   await closeContextMenu();
 
   await extension.unload();
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });

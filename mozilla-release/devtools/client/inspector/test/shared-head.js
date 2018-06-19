@@ -5,8 +5,14 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* globals registerTestActor, getTestActor, Task, openToolboxForTab, gBrowser */
+/* globals registerTestActor, getTestActor, openToolboxForTab, gBrowser */
 /* import-globals-from ../../shared/test/shared-head.js */
+/* import-globals-from ../../shared/test/test-actor-registry.js */
+
+// Import helpers registering the test-actor in remote targets
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/shared/test/test-actor-registry.js",
+  this);
 
 var {getInplaceEditorForSpan: inplaceEditor} = require("devtools/client/shared/inplace-editor");
 
@@ -18,23 +24,23 @@ var {getInplaceEditorForSpan: inplaceEditor} = require("devtools/client/shared/i
  * @param {String} hostType Optional hostType, as defined in Toolbox.HostType
  * @return a promise that resolves when the inspector is ready
  */
-var openInspector = Task.async(function* (hostType) {
+var openInspector = async function(hostType) {
   info("Opening the inspector");
 
-  let toolbox = yield openToolboxForTab(gBrowser.selectedTab, "inspector",
+  let toolbox = await openToolboxForTab(gBrowser.selectedTab, "inspector",
                                         hostType);
   let inspector = toolbox.getPanel("inspector");
 
   if (inspector._updateProgress) {
     info("Need to wait for the inspector to update");
-    yield inspector.once("inspector-updated");
+    await inspector.once("inspector-updated");
   }
 
-  yield registerTestActor(toolbox.target.client);
-  let testActor = yield getTestActor(toolbox);
+  await registerTestActor(toolbox.target.client);
+  let testActor = await getTestActor(toolbox);
 
   return {toolbox, inspector, testActor};
-});
+};
 
 /**
  * Open the toolbox, with the inspector tool visible, and the one of the sidebar
@@ -45,32 +51,30 @@ var openInspector = Task.async(function* (hostType) {
  * @return a promise that resolves when the inspector is ready and the tab is
  * visible and ready
  */
-var openInspectorSidebarTab = Task.async(function* (id) {
-  let {toolbox, inspector, testActor} = yield openInspector();
+var openInspectorSidebarTab = async function(id) {
+  let {toolbox, inspector, testActor} = await openInspector();
 
   info("Selecting the " + id + " sidebar");
 
   let onSidebarSelect = inspector.sidebar.once("select");
-  if (id === "computedview" || id === "layoutview") {
-    // The layout and computed views should wait until the box-model widget is ready.
+  if (id === "layoutview") {
+    // The layout view should wait until the box-model and grid-panel are ready.
     let onBoxModelViewReady = inspector.once("boxmodel-view-updated");
-    // The layout view also needs to wait for the grid panel to be fully updated.
-    let onGridPanelReady = id === "layoutview" ?
-      inspector.once("grid-panel-updated") : Promise.resolve();
+    let onGridPanelReady = inspector.once("grid-panel-updated");
     inspector.sidebar.select(id);
-    yield onBoxModelViewReady;
-    yield onGridPanelReady;
+    await onBoxModelViewReady;
+    await onGridPanelReady;
   } else {
     inspector.sidebar.select(id);
   }
-  yield onSidebarSelect;
+  await onSidebarSelect;
 
   return {
     toolbox,
     inspector,
     testActor
   };
-});
+};
 
 /**
  * Open the toolbox, with the inspector tool visible, and the rule-view
@@ -124,10 +128,10 @@ function openLayoutView() {
     // The actual highligher show/hide methods are mocked in box model tests.
     // The highlighter is tested in devtools/inspector/test.
     function mockHighlighter({highlighter}) {
-      highlighter.showBoxModel = function () {
+      highlighter.showBoxModel = function() {
         return promise.resolve();
       };
-      highlighter.hideBoxModel = function () {
+      highlighter.hideBoxModel = function() {
         return promise.resolve();
       };
     }
@@ -168,6 +172,17 @@ function selectComputedView(inspector) {
 }
 
 /**
+ * Select the layout view sidebar tab on an already opened inspector panel.
+ *
+ * @param  {InspectorPanel} inspector
+ * @return {BoxModel} the box model
+ */
+function selectLayoutView(inspector) {
+  inspector.sidebar.select("layoutview");
+  return inspector.getPanel("boxmodel");
+}
+
+/**
  * Get the NodeFront for a node that matches a given css selector, via the
  * protocol.
  * @param {String|NodeFront} selector
@@ -192,13 +207,13 @@ function getNodeFront(selector, {walker}) {
  * to highlight the node upon selection
  * @return {Promise} Resolves when the inspector is updated with the new node
  */
-var selectNode = Task.async(function* (selector, inspector, reason = "test") {
+var selectNode = async function(selector, inspector, reason = "test", isSlotted) {
   info("Selecting the node for '" + selector + "'");
-  let nodeFront = yield getNodeFront(selector, inspector);
+  let nodeFront = await getNodeFront(selector, inspector);
   let updated = inspector.once("inspector-updated");
-  inspector.selection.setNodeFront(nodeFront, reason);
-  yield updated;
-});
+  inspector.selection.setNodeFront(nodeFront, { reason, isSlotted });
+  await updated;
+};
 
 /**
  * Create a throttling function that can be manually "flushed". This is to replace the
@@ -212,7 +227,7 @@ function manualDebounce() {
   let calls = [];
 
   function debounce(func, wait, scope) {
-    return function () {
+    return function() {
       let existingCall = calls.find(call => call.func === func);
       if (existingCall) {
         existingCall.args = arguments;
@@ -222,7 +237,7 @@ function manualDebounce() {
     };
   }
 
-  debounce.flush = function () {
+  debounce.flush = function() {
     calls.forEach(({func, scope, args}) => func.apply(scope, args));
     calls = [];
   };
@@ -293,8 +308,8 @@ function executeInContent(name, data = {}, objects = {},
  * @param {String} name
  *        name of the property.
  */
-function* getComputedStyleProperty(selector, pseudo, propName) {
-  return yield executeInContent("Test:GetComputedStylePropertyValue",
+async function getComputedStyleProperty(selector, pseudo, propName) {
+  return executeInContent("Test:GetComputedStylePropertyValue",
     {selector,
      pseudo,
      name: propName});
@@ -315,8 +330,8 @@ function* getComputedStyleProperty(selector, pseudo, propName) {
  * @param {String} name
  *        the name used in test message
  */
-function* waitForComputedStyleProperty(selector, pseudo, name, expected) {
-  return yield executeInContent("Test:WaitForComputedStylePropertyValue",
+async function waitForComputedStyleProperty(selector, pseudo, name, expected) {
+  return executeInContent("Test:WaitForComputedStylePropertyValue",
     {selector,
      pseudo,
      expected,
@@ -329,19 +344,19 @@ function* waitForComputedStyleProperty(selector, pseudo, name, expected) {
  *
  * @return a promise that resolves to the inplace-editor element when ready
  */
-var focusEditableField = Task.async(function* (ruleView, editable, xOffset = 1,
+var focusEditableField = async function(ruleView, editable, xOffset = 1,
     yOffset = 1, options = {}) {
   let onFocus = once(editable.parentNode, "focus", true);
   info("Clicking on editable field to turn to edit mode");
   EventUtils.synthesizeMouse(editable, xOffset, yOffset, options,
     editable.ownerDocument.defaultView);
-  yield onFocus;
+  await onFocus;
 
   info("Editable field gained focus, returning the input field now");
   let onEdit = inplaceEditor(editable.ownerDocument.activeElement);
 
   return onEdit;
-});
+};
 
 /**
  * Get the DOMNode for a css rule in the rule-view that corresponds to the given
@@ -451,17 +466,17 @@ function getRuleViewSelector(view, selectorText) {
  *        to determine which one should be retrieved. Defaults to 0
  * @return {DOMNode} The selectorhighlighter icon DOM element
  */
-var getRuleViewSelectorHighlighterIcon = Task.async(function* (view,
+var getRuleViewSelectorHighlighterIcon = async function(view,
     selectorText, index = 0) {
   let rule = getRuleViewRule(view, selectorText, index);
 
   let editor = rule._ruleEditor;
   if (!editor.uniqueSelector) {
-    yield once(editor, "selector-icon-created");
+    await once(editor, "selector-icon-created");
   }
 
   return rule.querySelector(".ruleview-selectorhighlighter");
-});
+};
 
 /**
  * Get a rule-link from the rule-view given its index
@@ -499,19 +514,19 @@ function getRuleViewLinkTextByIndex(view, index) {
  * @return a promise that resolves to the newly created editor when ready and
  * focused
  */
-var focusNewRuleViewProperty = Task.async(function* (ruleEditor) {
+var focusNewRuleViewProperty = async function(ruleEditor) {
   info("Clicking on a close ruleEditor brace to start editing a new property");
 
   // Use bottom alignment to avoid scrolling out of the parent element area.
   ruleEditor.closeBrace.scrollIntoView(false);
-  let editor = yield focusEditableField(ruleEditor.ruleView,
+  let editor = await focusEditableField(ruleEditor.ruleView,
     ruleEditor.closeBrace);
 
   is(inplaceEditor(ruleEditor.newPropSpan), editor,
     "Focused editor is the new property editor.");
 
   return editor;
-});
+};
 
 /**
  * Create a new property name in the rule-view, focusing a new property editor
@@ -526,9 +541,9 @@ var focusNewRuleViewProperty = Task.async(function* (ruleEditor) {
  * @return a promise that resolves when the new property name has been entered
  * and once the value field is focused
  */
-var createNewRuleViewProperty = Task.async(function* (ruleEditor, inputValue) {
+var createNewRuleViewProperty = async function(ruleEditor, inputValue) {
   info("Creating a new property editor");
-  let editor = yield focusNewRuleViewProperty(ruleEditor);
+  let editor = await focusNewRuleViewProperty(ruleEditor);
 
   info("Entering the value " + inputValue);
   editor.input.value = inputValue;
@@ -537,8 +552,8 @@ var createNewRuleViewProperty = Task.async(function* (ruleEditor, inputValue) {
   let onFocus = once(ruleEditor.element, "focus", true);
   EventUtils.synthesizeKey("VK_RETURN", {},
     ruleEditor.element.ownerDocument.defaultView);
-  yield onFocus;
-});
+  await onFocus;
+};
 
 /**
  * Set the search value for the rule-view filter styles search box.
@@ -550,7 +565,7 @@ var createNewRuleViewProperty = Task.async(function* (ruleEditor, inputValue) {
  * @return a promise that resolves when the rule-view is filtered for the
  * search term
  */
-var setSearchFilter = Task.async(function* (view, searchValue) {
+var setSearchFilter = async function(view, searchValue) {
   info("Setting filter text to \"" + searchValue + "\"");
 
   let searchField = view.searchField;
@@ -560,8 +575,23 @@ var setSearchFilter = Task.async(function* (view, searchValue) {
     EventUtils.synthesizeKey(key, {}, view.styleWindow);
   }
 
-  yield view.inspector.once("ruleview-filtered");
-});
+  await view.inspector.once("ruleview-filtered");
+};
+
+/**
+ * Flatten all context menu items into a single array to make searching through
+ * it easier.
+ */
+function buildContextMenuItems(menu) {
+  const allItems = [].concat.apply([], menu.items.map(function addItem(item) {
+    if (item.submenu) {
+      return addItem(item.submenu.items);
+    }
+    return item;
+  }));
+
+  return allItems;
+}
 
 /**
  * Open the style editor context menu and return all of it's items in a flat array
@@ -570,15 +600,17 @@ var setSearchFilter = Task.async(function* (view, searchValue) {
  * @return An array of MenuItems
  */
 function openStyleContextMenuAndGetAllItems(view, target) {
-  let menu = view._contextmenu._openMenu({target: target});
+  const menu = view.contextMenu._openMenu({target: target});
+  return buildContextMenuItems(menu);
+}
 
-  // Flatten all menu items into a single array to make searching through it easier
-  let allItems = [].concat.apply([], menu.items.map(function addItem(item) {
-    if (item.submenu) {
-      return addItem(item.submenu.items);
-    }
-    return item;
-  }));
-
-  return allItems;
+/**
+ * Open the inspector menu and return all of it's items in a flat array
+ * @param {InspectorPanel} inspector
+ * @param {Object} options to pass into openMenu
+ * @return An array of MenuItems
+ */
+function openContextMenuAndGetAllItems(inspector, options) {
+  const menu = inspector._openMenu(options);
+  return buildContextMenuItems(menu);
 }

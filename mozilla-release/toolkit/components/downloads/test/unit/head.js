@@ -150,7 +150,7 @@ function promiseWaitForVisit(aUrl) {
     let uri = NetUtil.newURI(aUrl);
 
     PlacesUtils.history.addObserver({
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver]),
       onBeginUpdateBatch() {},
       onEndUpdateBatch() {},
       onVisits(aVisits) {
@@ -299,7 +299,7 @@ function promiseStartLegacyDownload(aSourceUrl, aOptions) {
 
       // Start the actual download process.
       persist.savePrivacyAwareURI(
-        sourceURI, null, referrer, Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL,
+        sourceURI, 0, referrer, Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL,
         null, null, targetFile, isPrivate);
     }).catch(do_report_unexpected_exception);
 
@@ -757,7 +757,7 @@ add_task(function test_common_initialize() {
   // Make sure that downloads started using nsIExternalHelperAppService are
   // saved to disk without asking for a destination interactively.
   let mock = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIHelperAppLauncherDialog]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIHelperAppLauncherDialog]),
     promptForSaveToFileAsync(aLauncher,
                              aWindowContext,
                              aDefaultFileName,

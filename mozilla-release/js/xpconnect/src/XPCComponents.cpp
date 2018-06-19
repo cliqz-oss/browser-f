@@ -23,7 +23,6 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/URLPreloader.h"
-#include "mozilla/XPTInterfaceInfoManager.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
 #include "mozilla/dom/BindingUtils.h"
@@ -31,10 +30,7 @@
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/Scheduler.h"
 #include "nsZipArchive.h"
-#include "nsIDOMFileList.h"
 #include "nsWindowMemoryReporter.h"
-#include "nsDOMClassInfo.h"
-#include "ShimInterfaceInfo.h"
 #include "nsIException.h"
 #include "nsIScriptError.h"
 #include "nsISimpleEnumerator.h"
@@ -117,8 +113,6 @@ public:
 
 private:
     virtual ~nsXPCComponents_Interfaces();
-
-    nsCOMArray<nsIInterfaceInfo> mInterfaces;
 };
 
 NS_IMETHODIMP
@@ -164,9 +158,7 @@ nsXPCComponents_Interfaces::GetClassID(nsCID * *aClassID)
 NS_IMETHODIMP
 nsXPCComponents_Interfaces::GetFlags(uint32_t* aFlags)
 {
-    // Mark ourselves as a DOM object so that instances may be created in
-    // unprivileged scopes.
-    *aFlags = nsIClassInfo::DOM_OBJECT;
+    *aFlags = 0;
     return NS_OK;
 }
 
@@ -207,39 +199,33 @@ nsXPCComponents_Interfaces::NewEnumerate(nsIXPConnectWrappedNative* wrapper,
                                          bool* _retval)
 {
 
-    // Lazily init the list of interfaces when someone tries to
-    // enumerate them.
-    if (mInterfaces.IsEmpty()) {
-        XPTInterfaceInfoManager::GetSingleton()->
-            GetScriptableInterfaces(mInterfaces);
-    }
-
-    if (!properties.reserve(mInterfaces.Length())) {
+    if (!properties.reserve(nsXPTInterfaceInfo::InterfaceCount())) {
         *_retval = false;
         return NS_OK;
     }
 
-    for (uint32_t index = 0; index < mInterfaces.Length(); index++) {
-        nsIInterfaceInfo* interface = mInterfaces.SafeElementAt(index);
+    for (uint32_t index = 0; index < nsXPTInterfaceInfo::InterfaceCount(); index++) {
+        const nsXPTInterfaceInfo* interface = nsXPTInterfaceInfo::ByIndex(index);
         if (!interface)
             continue;
 
-        const char* name;
-        if (NS_SUCCEEDED(interface->GetNameShared(&name)) && name) {
-            RootedString idstr(cx, JS_NewStringCopyZ(cx, name));
-            if (!idstr) {
-                *_retval = false;
-                return NS_OK;
-            }
+        const char* name = interface->Name();
+        if (!name)
+            continue;
 
-            RootedId id(cx);
-            if (!JS_StringToId(cx, idstr, &id)) {
-                *_retval = false;
-                return NS_OK;
-            }
-
-            properties.infallibleAppend(id);
+        RootedString idstr(cx, JS_NewStringCopyZ(cx, name));
+        if (!idstr) {
+            *_retval = false;
+            return NS_OK;
         }
+
+        RootedId id(cx);
+        if (!JS_StringToId(cx, idstr, &id)) {
+            *_retval = false;
+            return NS_OK;
+        }
+
+        properties.infallibleAppend(id);
     }
 
     return NS_OK;
@@ -262,12 +248,7 @@ nsXPCComponents_Interfaces::Resolve(nsIXPConnectWrappedNative* wrapper,
 
     // we only allow interfaces by name here
     if (name.encodeLatin1(cx, str) && name.ptr()[0] != '{') {
-        nsCOMPtr<nsIInterfaceInfo> info =
-            ShimInterfaceInfo::MaybeConstruct(name.ptr(), cx);
-        if (!info) {
-            XPTInterfaceInfoManager::GetSingleton()->
-                GetInfoForName(name.ptr(), getter_AddRefs(info));
-        }
+        const nsXPTInterfaceInfo* info = nsXPTInterfaceInfo::ByName(name.ptr());
         if (!info)
             return NS_OK;
 
@@ -315,8 +296,6 @@ public:
 
 private:
     virtual ~nsXPCComponents_InterfacesByID();
-
-    nsCOMArray<nsIInterfaceInfo> mInterfaces;
 };
 
 /***************************************************************************/
@@ -364,9 +343,7 @@ nsXPCComponents_InterfacesByID::GetClassID(nsCID * *aClassID)
 NS_IMETHODIMP
 nsXPCComponents_InterfacesByID::GetFlags(uint32_t* aFlags)
 {
-    // Mark ourselves as a DOM object so that instances may be created in
-    // unprivileged scopes.
-    *aFlags = nsIClassInfo::DOM_OBJECT;
+    *aFlags = 0;
     return NS_OK;
 }
 
@@ -405,39 +382,31 @@ nsXPCComponents_InterfacesByID::NewEnumerate(nsIXPConnectWrappedNative* wrapper,
                                              bool* _retval)
 {
 
-    if (mInterfaces.IsEmpty()) {
-        XPTInterfaceInfoManager::GetSingleton()->
-            GetScriptableInterfaces(mInterfaces);
-    }
-
-    if (!properties.reserve(mInterfaces.Length())) {
+    if (!properties.reserve(nsXPTInterfaceInfo::InterfaceCount())) {
         *_retval = false;
         return NS_OK;
     }
 
-    for (uint32_t index = 0; index < mInterfaces.Length(); index++) {
-        nsIInterfaceInfo* interface = mInterfaces.SafeElementAt(index);
+    for (uint32_t index = 0; index < nsXPTInterfaceInfo::InterfaceCount(); index++) {
+        const nsXPTInterfaceInfo* interface = nsXPTInterfaceInfo::ByIndex(index);
         if (!interface)
             continue;
 
-        nsIID const* iid;
-        if (NS_SUCCEEDED(interface->GetIIDShared(&iid))) {
-            char idstr[NSID_LENGTH];
-            iid->ToProvidedString(idstr);
-            RootedString jsstr(cx, JS_NewStringCopyZ(cx, idstr));
-            if (!jsstr) {
-                *_retval = false;
-                return NS_OK;
-            }
-
-            RootedId id(cx);
-            if (!JS_StringToId(cx, jsstr, &id)) {
-                *_retval = false;
-                return NS_OK;
-            }
-
-            properties.infallibleAppend(id);
+        char idstr[NSID_LENGTH];
+        interface->IID().ToProvidedString(idstr);
+        RootedString jsstr(cx, JS_NewStringCopyZ(cx, idstr));
+        if (!jsstr) {
+            *_retval = false;
+            return NS_OK;
         }
+
+        RootedId id(cx);
+        if (!JS_StringToId(cx, jsstr, &id)) {
+            *_retval = false;
+            return NS_OK;
+        }
+
+        properties.infallibleAppend(id);
     }
 
     return NS_OK;
@@ -465,9 +434,7 @@ nsXPCComponents_InterfacesByID::Resolve(nsIXPConnectWrappedNative* wrapper,
         if (!iid.Parse(utf8str.ptr()))
             return NS_OK;
 
-        nsCOMPtr<nsIInterfaceInfo> info;
-        XPTInterfaceInfoManager::GetSingleton()->
-            GetInfoForIID(&iid, getter_AddRefs(info));
+        const nsXPTInterfaceInfo* info = nsXPTInterfaceInfo::ByIID(iid);
         if (!info)
             return NS_OK;
 
@@ -958,9 +925,7 @@ nsXPCComponents_Results::GetClassID(nsCID * *aClassID)
 NS_IMETHODIMP
 nsXPCComponents_Results::GetFlags(uint32_t* aFlags)
 {
-    // Mark ourselves as a DOM object so that instances may be created in
-    // unprivileged scopes.
-    *aFlags = nsIClassInfo::DOM_OBJECT;
+    *aFlags = 0;
     return NS_OK;
 }
 
@@ -1946,8 +1911,8 @@ nsXPCComponents_Constructor::CallOrConstruct(nsIXPConnectWrappedNative* wrapper,
             return ThrowAndFail(NS_ERROR_XPC_UNEXPECTED, cx, _retval);
         }
     } else {
-        nsCOMPtr<nsIInterfaceInfo> info;
-        xpc->GetInfoForIID(&NS_GET_IID(nsISupports), getter_AddRefs(info));
+        const nsXPTInterfaceInfo* info =
+            nsXPTInterfaceInfo::ByIID(NS_GET_IID(nsISupports));
 
         if (info) {
             cInterfaceID = nsJSIID::NewID(info);
@@ -2199,21 +2164,6 @@ nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
     }
 
     return xpc::EvalInSandbox(cx, sandbox, source, filename, lineNo, retval);
-}
-
-NS_IMETHODIMP
-nsXPCComponents_Utils::GetSandboxAddonId(HandleValue sandboxVal,
-                                         JSContext* cx, MutableHandleValue rval)
-{
-    if (!sandboxVal.isObject())
-        return NS_ERROR_INVALID_ARG;
-
-    RootedObject sandbox(cx, &sandboxVal.toObject());
-    sandbox = js::CheckedUnwrap(sandbox);
-    if (!sandbox || !xpc::IsSandbox(sandbox))
-        return NS_ERROR_INVALID_ARG;
-
-    return xpc::GetSandboxAddonId(cx, sandbox, rval);
 }
 
 NS_IMETHODIMP
@@ -2700,36 +2650,6 @@ nsXPCComponents_Utils::ForcePermissiveCOWs(JSContext* cx)
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Utils::ForcePrivilegedComponentsForScope(HandleValue vscope,
-                                                         JSContext* cx)
-{
-    if (!vscope.isObject())
-        return NS_ERROR_INVALID_ARG;
-    xpc::CrashIfNotInAutomation();
-    JSObject* scopeObj = js::UncheckedUnwrap(&vscope.toObject());
-    XPCWrappedNativeScope* scope = ObjectScope(scopeObj);
-    scope->ForcePrivilegedComponents();
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXPCComponents_Utils::GetComponentsForScope(HandleValue vscope, JSContext* cx,
-                                             MutableHandleValue rval)
-{
-    if (!vscope.isObject())
-        return NS_ERROR_INVALID_ARG;
-    JSObject* scopeObj = js::UncheckedUnwrap(&vscope.toObject());
-    XPCWrappedNativeScope* scope = ObjectScope(scopeObj);
-    RootedObject components(cx);
-    if (!scope->GetComponentsJSObject(&components))
-        return NS_ERROR_FAILURE;
-    if (!JS_WrapObject(cx, &components))
-        return NS_ERROR_FAILURE;
-    rval.setObject(*components);
-    return NS_OK;
-}
-
-NS_IMETHODIMP
 nsXPCComponents_Utils::Dispatch(HandleValue runnableArg, HandleValue scope,
                                 JSContext* cx)
 {
@@ -3106,20 +3026,6 @@ nsXPCComponents_Utils::GetCompartmentLocation(HandleValue val,
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Utils::AllowCPOWsInAddon(const nsACString& addonIdStr,
-                                         bool allow,
-                                         JSContext* cx)
-{
-    JSAddonId* addonId = xpc::NewAddonId(cx, addonIdStr);
-    if (!addonId)
-        return NS_ERROR_FAILURE;
-    if (!XPCWrappedNativeScope::AllowCPOWsInAddon(cx, addonId, allow))
-        return NS_ERROR_FAILURE;
-
-    return NS_OK;
-}
-
-NS_IMETHODIMP
 nsXPCComponents_Utils::ReadUTF8File(nsIFile* aFile, nsACString& aResult)
 {
     NS_ENSURE_TRUE(aFile, NS_ERROR_INVALID_ARG);
@@ -3308,10 +3214,10 @@ NS_IMPL_QUERY_INTERFACE(ComponentsSH, nsIXPCScriptable)
 { 0x3649f405, 0xf0ec, 0x4c28, \
     { 0xae, 0xb0, 0xaf, 0x9a, 0x51, 0xe4, 0x4c, 0x81 } }
 
-NS_IMPL_CLASSINFO(nsXPCComponentsBase, &ComponentsSH::Get, nsIClassInfo::DOM_OBJECT, NSXPCCOMPONENTSBASE_CID)
+NS_IMPL_CLASSINFO(nsXPCComponentsBase, &ComponentsSH::Get, 0, NSXPCCOMPONENTSBASE_CID)
 NS_IMPL_ISUPPORTS_CI(nsXPCComponentsBase, nsIXPCComponentsBase)
 
-NS_IMPL_CLASSINFO(nsXPCComponents, &ComponentsSH::Get, nsIClassInfo::DOM_OBJECT, NSXPCCOMPONENTS_CID)
+NS_IMPL_CLASSINFO(nsXPCComponents, &ComponentsSH::Get, 0, NSXPCCOMPONENTS_CID)
 // Below is more or less what NS_IMPL_ISUPPORTS_CI_INHERITED1 would look like
 // if it existed.
 NS_IMPL_ADDREF_INHERITED(nsXPCComponents, nsXPCComponentsBase)

@@ -44,6 +44,7 @@ class Arena;
 class ArenaCellSet;
 class ArenaList;
 class SortedArenaList;
+class StoreBuffer;
 class TenuredCell;
 struct Chunk;
 
@@ -174,7 +175,8 @@ class FreeSpan
             return nullptr; // The span is empty.
         }
         checkSpan(arena);
-        JS_EXTRA_POISON(reinterpret_cast<void*>(thing), JS_ALLOCATED_TENURED_PATTERN, thingSize);
+        JS_EXTRA_POISON(reinterpret_cast<void*>(thing), JS_ALLOCATED_TENURED_PATTERN, thingSize,
+                        MemCheckKind::MakeUndefined);
         return reinterpret_cast<TenuredCell*>(thing);
     }
 
@@ -283,7 +285,7 @@ class Arena
      */
     uint8_t data[ArenaSize - ArenaHeaderSize];
 
-    void init(JS::Zone* zoneArg, AllocKind kind);
+    void init(JS::Zone* zoneArg, AllocKind kind, const AutoLockGC& lock);
 
     // Sets |firstFreeSpan| to the Arena's entire valid range, and
     // also sets the next span stored at |firstFreeSpan.last| as empty.
@@ -308,7 +310,7 @@ class Arena
     }
 
     // Return an allocated arena to its unallocated state.
-    inline void release();
+    inline void release(const AutoLockGC& lock);
 
     uintptr_t address() const {
         checkAddress();
@@ -578,7 +580,7 @@ struct ChunkInfo
  * the arena (with the mark bitmap bytes it uses).
  */
 const size_t BytesPerArenaWithHeader = ArenaSize + ArenaBitmapBytes;
-const size_t ChunkDecommitBitmapBytes = ChunkSize / ArenaSize / JS_BITS_PER_BYTE;
+const size_t ChunkDecommitBitmapBytes = ChunkSize / ArenaSize / CHAR_BIT;
 const size_t ChunkBytesAvailable = ChunkSize - sizeof(ChunkTrailer) - sizeof(ChunkInfo) - ChunkDecommitBitmapBytes;
 const size_t ArenasPerChunk = ChunkBytesAvailable / BytesPerArenaWithHeader;
 

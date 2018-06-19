@@ -32,14 +32,6 @@ config = {
     "mozilla-central": {
         "repo_path": 'mozilla-central',
         "update_channel": "nightly",
-        'platform_overrides': {
-            'android-api-16-old-id': {
-                "update_channel": "nightly-old-id",
-            },
-            'android-x86-old-id': {
-                "update_channel": "nightly-old-id",
-            },
-        }
     },
     'mozilla-release': {
         'enable_release_promotion': True,
@@ -48,6 +40,82 @@ config = {
         'branch_uses_per_checkin_strategy': True,
         'platform_overrides': {
             'linux': {
+                'mozconfig_variant': 'release',
+                'force_clobber': True,
+            },
+            'linux64': {
+                'mozconfig_variant': 'release',
+                'force_clobber': True,
+            },
+            'macosx64': {
+                'mozconfig_variant': 'release',
+                'force_clobber': True,
+            },
+            'win32': {
+                'mozconfig_variant': 'release',
+                'force_clobber': True,
+            },
+            'win64': {
+                'mozconfig_variant': 'release',
+                'force_clobber': True,
+            },
+            'linux-debug': {
+                'update_channel': 'default',
+            },
+            'linux64-debug': {
+                'update_channel': 'default',
+            },
+            'linux64-asan-debug': {
+                'update_channel': 'default',
+            },
+            'linux64-asan': {
+                'update_channel': 'default',
+            },
+            'linux64-st-an-debug': {
+                'update_channel': 'default',
+            },
+            'linux64-st-an': {
+                'update_channel': 'default',
+            },
+            'linux64-add-on-devel': {
+                'update_channel': 'default',
+            },
+            'macosx64-debug': {
+                'update_channel': 'default',
+            },
+            'macosx64-st-an': {
+                'update_channel': 'default',
+            },
+            'macosx64-st-an-debug': {
+                'update_channel': 'default',
+            },
+            'macosx64-add-on-devel': {
+                'update_channel': 'default',
+            },
+            'win32-debug': {
+                'update_channel': 'default',
+            },
+            'win32-add-on-devel': {
+                'update_channel': 'default',
+            },
+            'win64-debug': {
+                'update_channel': 'default',
+            },
+            'win64-add-on-devel': {
+                'update_channel': 'default',
+            },
+        },
+    },
+    'mozilla-esr60': {
+        'enable_release_promotion': True,
+        'repo_path': 'releases/mozilla-esr60',
+        'update_channel': 'esr',
+        'branch_uses_per_checkin_strategy': True,
+        'platform_overrides': {
+            'linux': {
+                # We keep using the release configs as the beta and release configs are
+                # identical except for
+                # https://searchfox.org/mozilla-central/rev/ce9ff94ffed34dc17ec0bfa406156d489eaa8ee1/browser/config/mozconfigs/linux32/release#1    # noqa
                 'mozconfig_variant': 'release',
                 'force_clobber': True,
             },
@@ -225,17 +293,6 @@ config = {
         'repo_path': 'integration/autoland',
     },
     'ux': {},
-    'date': {
-        'update_channel': 'nightly-date',
-        'platform_overrides': {
-            'android-api-16-old-id': {
-                "update_channel": "nightly-old-id",
-            },
-            'android-x86-old-id': {
-                "update_channel": "nightly-old-id",
-            },
-        }
-    },
     'cypress': {
         # bug 1164935
         'branch_uses_per_checkin_strategy': True,

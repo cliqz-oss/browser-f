@@ -27,8 +27,12 @@ void brush_vs(
     VertexInfo vi,
     int prim_address,
     RectWithSize local_rect,
+    RectWithSize segment_rect,
     ivec3 user_data,
-    PictureTask pic_task
+    mat4 transform,
+    PictureTask pic_task,
+    int brush_flags,
+    vec4 unused
 ) {
     SolidBrush prim = fetch_solid_primitive(prim_address);
     vColor = prim.color;
@@ -40,11 +44,11 @@ void brush_vs(
 #endif
 
 #ifdef WR_FRAGMENT_SHADER
-vec4 brush_fs() {
+Fragment brush_fs() {
     vec4 color = vColor;
 #ifdef WR_FEATURE_ALPHA_PASS
     color *= init_transform_fs(vLocalPos);
 #endif
-    return color;
+    return Fragment(color);
 }
 #endif

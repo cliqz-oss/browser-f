@@ -9,38 +9,55 @@
 const TEST_URL = URL_ROOT + "doc_inspector_highlighter_cssshapes_iframe.html";
 const HIGHLIGHTER_TYPE = "ShapesHighlighter";
 
-add_task(function* () {
-  let inspector = yield openInspectorForURL(TEST_URL);
-  let helper = yield getHighlighterHelperFor(HIGHLIGHTER_TYPE)(inspector);
-  let {testActor} = inspector;
+add_task(async function() {
+  let env = await openInspectorForURL(TEST_URL);
+  let helper = await getHighlighterHelperFor(HIGHLIGHTER_TYPE)(env);
+  let {testActor, inspector} = env;
+  let view = selectRuleView(inspector);
+  let highlighters = view.highlighters;
+  let config = {inspector, view, highlighters, testActor, helper};
 
-  yield testPolygonIframeMovePoint(testActor, helper);
-
-  yield helper.finalize();
+  await testPolygonIframeMovePoint(config);
 });
 
-function* testPolygonIframeMovePoint(testActor, helper) {
-  info("Displaying polygon");
-  yield helper.show("#polygon", {mode: "cssClipPath"}, "#frame");
-  let { mouse, highlightedNode } = helper;
+async function testPolygonIframeMovePoint(config) {
+  const { inspector, view, testActor, helper } = config;
+  const selector = "#polygon";
+  const property = "clip-path";
 
+  info(`Turn on shapes highlighter for ${selector}`);
+  // Get a reference to the highlighter's target node inside the iframe.
+  let highlightedNode = await getNodeFrontInFrame(selector, "#frame", inspector);
+  // Select the nested node so toggling of the shapes highlighter works from the rule view
+  await selectNode(highlightedNode, inspector);
+  await toggleShapesHighlighter(view, selector, property, true);
+  let { mouse } = helper;
+
+  let onRuleViewChanged = view.once("ruleview-changed");
   info("Moving polygon point visible in iframe");
-  yield mouse.down(10, 10);
-  yield mouse.move(20, 20);
-  yield mouse.up();
-  yield testActor.reflow();
+  // Iframe has 10px margin. Element in iframe is 800px by 800px. First point is at 0 0%
+  await mouse.down(10, 10);
+  await mouse.move(20, 20);
+  await mouse.up();
+  await testActor.reflow();
+  await onRuleViewChanged;
 
-  let computedStyle = yield highlightedNode.getComputedStyle();
+  let computedStyle = await inspector.pageStyle.getComputed(highlightedNode);
   let definition = computedStyle["clip-path"].value;
-  ok(definition.includes("10px 10px"), "Point moved to 10px 10px");
+  ok(definition.includes("10px 1.25%"), "Point moved to 10px 1.25%");
 
+  onRuleViewChanged = view.once("ruleview-changed");
   info("Moving polygon point not visible in iframe");
-  yield mouse.down(110, 410);
-  yield mouse.move(120, 420);
-  yield mouse.up();
-  yield testActor.reflow();
+  await mouse.down(110, 410);
+  await mouse.move(120, 420);
+  await mouse.up();
+  await testActor.reflow();
+  await onRuleViewChanged;
 
-  computedStyle = yield highlightedNode.getComputedStyle();
+  computedStyle = await inspector.pageStyle.getComputed(highlightedNode);
   definition = computedStyle["clip-path"].value;
   ok(definition.includes("110px 51.25%"), "Point moved to 110px 51.25%");
+
+  info(`Turn off shapes highlighter for ${selector}`);
+  await toggleShapesHighlighter(view, selector, property, false);
 }

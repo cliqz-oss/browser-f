@@ -56,36 +56,15 @@ typedef void (*EnterJitCode)(void* code, unsigned argc, Value* argv, Interpreter
 
 class JitcodeGlobalTable;
 
-// Information about a loop backedge in the runtime, which can be set to
-// point to either the loop header or to an OOL interrupt checking stub,
-// if signal handlers are being used to implement interrupts.
-class PatchableBackedge : public InlineListNode<PatchableBackedge>
-{
-    friend class JitZoneGroup;
-
-    CodeLocationJump backedge;
-    CodeLocationLabel loopHeader;
-    CodeLocationLabel interruptCheck;
-
-  public:
-    PatchableBackedge(CodeLocationJump backedge,
-                      CodeLocationLabel loopHeader,
-                      CodeLocationLabel interruptCheck)
-      : backedge(backedge), loopHeader(loopHeader), interruptCheck(interruptCheck)
-    {}
-};
-
 class JitRuntime
 {
   private:
     friend class JitCompartment;
 
-    // Executable allocator for all code except wasm code and Ion code with
-    // patchable backedges (see below).
-    ActiveThreadData<ExecutableAllocator> execAlloc_;
+    // Executable allocator for all code except wasm code.
+    MainThreadData<ExecutableAllocator> execAlloc_;
 
-    // Executable allocator for Ion scripts with patchable backedges.
-    ActiveThreadData<ExecutableAllocator> backedgeExecAlloc_;
+    MainThreadData<uint64_t> nextCompilationId_;
 
     // Shared exception-handler tail.
     ExclusiveAccessLockWriteOnceData<uint32_t> exceptionTailOffset_;
@@ -153,12 +132,24 @@ class JitRuntime
     using VMWrapperMap = HashMap<const VMFunction*, uint32_t, VMFunction>;
     ExclusiveAccessLockWriteOnceData<VMWrapperMap*> functionWrappers_;
 
-    // If true, the signal handler to interrupt Ion code should not attempt to
-    // patch backedges, as some thread is busy modifying data structures.
-    mozilla::Atomic<bool> preventBackedgePatching_;
-
     // Global table of jitcode native address => bytecode address mappings.
     UnprotectedData<JitcodeGlobalTable*> jitcodeGlobalTable_;
+
+#ifdef DEBUG
+    // The number of possible bailing places encounters before forcefully bailing
+    // in that place. Zero means inactive.
+    MainThreadData<uint32_t> ionBailAfter_;
+#endif
+
+    // Number of Ion compilations which were finished off thread and are
+    // waiting to be lazily linked. This is only set while holding the helper
+    // thread state lock, but may be read from at other times.
+    mozilla::Atomic<size_t> numFinishedBuilders_;
+
+    // List of Ion compilation waiting to get linked.
+    using IonBuilderList = mozilla::LinkedList<js::jit::IonBuilder>;
+    MainThreadData<IonBuilderList> ionLazyLinkList_;
+    MainThreadData<size_t> ionLazyLinkListSize_;
 
   private:
     void generateLazyLinkStub(MacroAssembler& masm);
@@ -196,7 +187,7 @@ class JitRuntime
     }
 
   public:
-    explicit JitRuntime(JSRuntime* rt);
+    JitRuntime();
     ~JitRuntime();
     MOZ_MUST_USE bool initialize(JSContext* cx, js::AutoLockForExclusiveAccess& lock);
 
@@ -208,43 +199,9 @@ class JitRuntime
     ExecutableAllocator& execAlloc() {
         return execAlloc_.ref();
     }
-    ExecutableAllocator& backedgeExecAlloc() {
-        return backedgeExecAlloc_.ref();
-    }
 
-    class AutoPreventBackedgePatching
-    {
-        mozilla::DebugOnly<JSRuntime*> rt_;
-        JitRuntime* jrt_;
-        bool prev_;
-
-      public:
-        // This two-arg constructor is provided for JSRuntime::createJitRuntime,
-        // where we have a JitRuntime but didn't set rt->jitRuntime_ yet.
-        AutoPreventBackedgePatching(JSRuntime* rt, JitRuntime* jrt)
-          : rt_(rt),
-            jrt_(jrt),
-            prev_(false)  // silence GCC warning
-        {
-            if (jrt_) {
-                prev_ = jrt_->preventBackedgePatching_;
-                jrt_->preventBackedgePatching_ = true;
-            }
-        }
-        explicit AutoPreventBackedgePatching(JSRuntime* rt)
-          : AutoPreventBackedgePatching(rt, rt->jitRuntime())
-        {}
-        ~AutoPreventBackedgePatching() {
-            MOZ_ASSERT(jrt_ == rt_->jitRuntime());
-            if (jrt_) {
-                MOZ_ASSERT(jrt_->preventBackedgePatching_);
-                jrt_->preventBackedgePatching_ = prev_;
-            }
-        }
-    };
-
-    bool preventBackedgePatching() const {
-        return preventBackedgePatching_;
+    IonCompilationId nextCompilationId() {
+        return IonCompilationId(nextCompilationId_++);
     }
 
     TrampolinePtr getVMWrapper(const VMFunction& f) const;
@@ -331,47 +288,35 @@ class JitRuntime
         return rt->geckoProfiler().enabled();
     }
 
-    bool isOptimizationTrackingEnabled(ZoneGroup* group) {
-        return isProfilerInstrumentationEnabled(group->runtime);
-    }
-};
-
-class JitZoneGroup
-{
-  public:
-    enum BackedgeTarget {
-        BackedgeLoopHeader,
-        BackedgeInterruptCheck
-    };
-
-  private:
-    // Whether patchable backedges currently jump to the loop header or the
-    // interrupt check.
-    ZoneGroupData<BackedgeTarget> backedgeTarget_;
-
-    // List of all backedges in all Ion code. The backedge edge list is accessed
-    // asynchronously when the active thread is paused and preventBackedgePatching_
-    // is false. Thus, the list must only be mutated while preventBackedgePatching_
-    // is true.
-    ZoneGroupData<InlineList<PatchableBackedge>> backedgeList_;
-    InlineList<PatchableBackedge>& backedgeList() { return backedgeList_.ref(); }
-
-  public:
-    explicit JitZoneGroup(ZoneGroup* group);
-
-    BackedgeTarget backedgeTarget() const {
-        return backedgeTarget_;
-    }
-    void addPatchableBackedge(JitRuntime* jrt, PatchableBackedge* backedge) {
-        MOZ_ASSERT(jrt->preventBackedgePatching());
-        backedgeList().pushFront(backedge);
-    }
-    void removePatchableBackedge(JitRuntime* jrt, PatchableBackedge* backedge) {
-        MOZ_ASSERT(jrt->preventBackedgePatching());
-        backedgeList().remove(backedge);
+    bool isOptimizationTrackingEnabled(JSRuntime* rt) {
+        return isProfilerInstrumentationEnabled(rt);
     }
 
-    void patchIonBackedges(JSContext* cx, BackedgeTarget target);
+#ifdef DEBUG
+    void* addressOfIonBailAfter() { return &ionBailAfter_; }
+
+    // Set after how many bailing places we should forcefully bail.
+    // Zero disables this feature.
+    void setIonBailAfter(uint32_t after) {
+        ionBailAfter_ = after;
+    }
+#endif
+
+    size_t numFinishedBuilders() const {
+        return numFinishedBuilders_;
+    }
+    mozilla::Atomic<size_t>& numFinishedBuildersRef(const AutoLockHelperThreadState& locked) {
+        return numFinishedBuilders_;
+    }
+
+    IonBuilderList& ionLazyLinkList(JSRuntime* rt);
+
+    size_t ionLazyLinkListSize() const {
+        return ionLazyLinkListSize_;
+    }
+
+    void ionLazyLinkListRemove(JSRuntime* rt, js::jit::IonBuilder* builder);
+    void ionLazyLinkListAdd(JSRuntime* rt, js::jit::IonBuilder* builder);
 };
 
 enum class CacheKind : uint8_t;
@@ -665,7 +610,7 @@ class JitCompartment
 
     // Perform the necessary read barriers on stubs and SIMD template object
     // described by the bitmasks passed in. This function can only be called
-    // from the active thread.
+    // from the main thread.
     //
     // The stub and template object pointers must still be valid by the time
     // these methods are called. This is arranged by cancelling off-thread Ion
@@ -693,16 +638,13 @@ const unsigned WINDOWS_BIG_FRAME_TOUCH_INCREMENT = 4096 - 1;
 // Otherwise it's a no-op.
 class MOZ_STACK_CLASS AutoWritableJitCode
 {
-    // Backedge patching from the signal handler will change memory protection
-    // flags, so don't allow it in a AutoWritableJitCode scope.
-    JitRuntime::AutoPreventBackedgePatching preventPatching_;
     JSRuntime* rt_;
     void* addr_;
     size_t size_;
 
   public:
     AutoWritableJitCode(JSRuntime* rt, void* addr, size_t size)
-      : preventPatching_(rt), rt_(rt), addr_(addr), size_(size)
+      : rt_(rt), addr_(addr), size_(size)
     {
         rt_->toggleAutoWritableJitCodeActive(true);
         if (!ExecutableAllocator::makeWritable(addr_, size_))
@@ -712,7 +654,7 @@ class MOZ_STACK_CLASS AutoWritableJitCode
       : AutoWritableJitCode(TlsContext.get()->runtime(), addr, size)
     {}
     explicit AutoWritableJitCode(JitCode* code)
-      : AutoWritableJitCode(code->runtimeFromActiveCooperatingThread(), code->raw(), code->bufferSize())
+      : AutoWritableJitCode(code->runtimeFromMainThread(), code->raw(), code->bufferSize())
     {}
     ~AutoWritableJitCode() {
         if (!ExecutableAllocator::makeExecutable(addr_, size_))

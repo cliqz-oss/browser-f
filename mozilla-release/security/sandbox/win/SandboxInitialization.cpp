@@ -7,15 +7,108 @@
 #include "SandboxInitialization.h"
 
 #include "base/memory/ref_counted.h"
+#include "nsWindowsDllInterceptor.h"
 #include "sandbox/win/src/sandbox_factory.h"
 #include "mozilla/sandboxing/permissionsService.h"
 
 namespace mozilla {
 namespace sandboxing {
 
+typedef BOOL(WINAPI* CloseHandle_func) (HANDLE hObject);
+static CloseHandle_func stub_CloseHandle = nullptr;
+
+typedef BOOL(WINAPI* DuplicateHandle_func)(HANDLE hSourceProcessHandle,
+                                           HANDLE hSourceHandle,
+                                           HANDLE hTargetProcessHandle,
+                                           LPHANDLE lpTargetHandle,
+                                           DWORD dwDesiredAccess,
+                                           BOOL bInheritHandle,
+                                           DWORD dwOptions);
+static DuplicateHandle_func stub_DuplicateHandle = nullptr;
+
+static BOOL WINAPI
+patched_CloseHandle(HANDLE hObject)
+{
+  // Check all handles being closed against the sandbox's tracked handles.
+  base::win::OnHandleBeingClosed(hObject);
+  return stub_CloseHandle(hObject);
+}
+
+static BOOL WINAPI
+patched_DuplicateHandle(HANDLE hSourceProcessHandle,
+                        HANDLE hSourceHandle,
+                        HANDLE hTargetProcessHandle,
+                        LPHANDLE lpTargetHandle,
+                        DWORD dwDesiredAccess,
+                        BOOL bInheritHandle,
+                        DWORD dwOptions)
+{
+  // If closing a source handle from our process check it against the sandbox's
+  // tracked handles.
+  if ((dwOptions & DUPLICATE_CLOSE_SOURCE) &&
+    (GetProcessId(hSourceProcessHandle) == ::GetCurrentProcessId())) {
+    base::win::OnHandleBeingClosed(hSourceHandle);
+  }
+
+  return stub_DuplicateHandle(hSourceProcessHandle, hSourceHandle,
+                              hTargetProcessHandle, lpTargetHandle,
+                              dwDesiredAccess, bInheritHandle, dwOptions);
+}
+
+static WindowsDllInterceptor Kernel32Intercept;
+
+static bool
+EnableHandleCloseMonitoring()
+{
+  Kernel32Intercept.Init("kernel32.dll");
+  bool hooked =
+    Kernel32Intercept.AddHook("CloseHandle",
+                              reinterpret_cast<intptr_t>(patched_CloseHandle),
+                              (void**)&stub_CloseHandle);
+  if (!hooked) {
+    return false;
+  }
+
+  hooked =
+    Kernel32Intercept.AddHook("DuplicateHandle",
+                              reinterpret_cast<intptr_t>(patched_DuplicateHandle),
+                              (void**)&stub_DuplicateHandle);
+  if (!hooked) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool
+ShouldDisableHandleVerifier()
+{
+#if defined(_X86_) && (defined(EARLY_BETA_OR_EARLIER) || defined(DEBUG))
+  // Chromium only has the verifier enabled for 32-bit and our close monitoring
+  // hooks cause debug assertions for 64-bit anyway.
+  // For x86 keep the verifier enabled by default only for Nightly or debug.
+  return false;
+#else
+  return !getenv("MOZ_ENABLE_HANDLE_VERIFIER");
+#endif
+}
+
+static void
+InitializeHandleVerifier()
+{
+  // Disable the handle verifier if we don't want it or can't enable the close
+  // monitoring hooks.
+  if (ShouldDisableHandleVerifier() || !EnableHandleCloseMonitoring()) {
+    base::win::DisableHandleVerifier();
+  }
+}
+
 static sandbox::TargetServices*
 InitializeTargetServices()
 {
+  // This might disable the verifier, so we want to do it before it is used.
+  InitializeHandleVerifier();
+
   sandbox::TargetServices* targetServices =
     sandbox::SandboxFactory::GetTargetServices();
   if (!targetServices) {
@@ -47,6 +140,9 @@ LowerSandbox()
 static sandbox::BrokerServices*
 InitializeBrokerServices()
 {
+  // This might disable the verifier, so we want to do it before it is used.
+  InitializeHandleVerifier();
+
   sandbox::BrokerServices* brokerServices =
     sandbox::SandboxFactory::GetBrokerServices();
   if (!brokerServices) {

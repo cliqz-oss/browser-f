@@ -26,8 +26,8 @@ let FormLikeFactory = {
    * @throws Error if aForm isn't an HTMLFormElement
    */
   createFromForm(aForm) {
-    if (!(aForm instanceof Ci.nsIDOMHTMLFormElement)) {
-      throw new Error("createFromForm: aForm must be a nsIDOMHTMLFormElement");
+    if (ChromeUtils.getClassName(aForm) !== "HTMLFormElement") {
+      throw new Error("createFromForm: aForm must be a HTMLFormElement");
     }
 
     let formLike = {
@@ -61,14 +61,14 @@ let FormLikeFactory = {
    * @throws Error if aField isn't a password or username field in a document
    */
   createFromField(aField) {
-    if ((!(aField instanceof Ci.nsIDOMHTMLInputElement) &&
+    if ((ChromeUtils.getClassName(aField) !== "HTMLInputElement" &&
          ChromeUtils.getClassName(aField) !== "HTMLSelectElement") ||
         !aField.ownerDocument) {
       throw new Error("createFromField requires a field in a document");
     }
 
     let rootElement = this.findRootForField(aField);
-    if (rootElement instanceof Ci.nsIDOMHTMLFormElement) {
+    if (ChromeUtils.getClassName(rootElement) === "HTMLFormElement") {
       return this.createFromForm(rootElement);
     }
 

@@ -263,34 +263,6 @@ var TelemetryController = Object.freeze({
   },
 
   /**
-   * Write a ping to a specified location on the disk. Does not add the ping to the
-   * pending pings.
-   *
-   * @param {String} aType The type of the ping.
-   * @param {Object} aPayload The actual data payload for the ping.
-   * @param {String} aFilePath The path to save the ping to.
-   * @param {Object} [aOptions] Options object.
-   * @param {Boolean} [aOptions.addClientId=false] true if the ping should contain the client
-   *                  id, false otherwise.
-   * @param {Boolean} [aOptions.addEnvironment=false] true if the ping should contain the
-   *                  environment data.
-   * @param {Boolean} [aOptions.overwrite=false] true overwrites a ping with the same name,
-   *                  if found.
-   * @param {Object}  [aOptions.overrideEnvironment=null] set to override the environment data.
-   *
-   * @returns {Promise} A promise that resolves with the ping id when the ping is saved to
-   *                    disk.
-   */
-  savePing(aType, aPayload, aFilePath, aOptions = {}) {
-    let options = aOptions;
-    options.addClientId = aOptions.addClientId || false;
-    options.addEnvironment = aOptions.addEnvironment || false;
-    options.overwrite = aOptions.overwrite || false;
-
-    return Impl.savePing(aType, aPayload, aFilePath, options);
-  },
-
-  /**
    * Allows waiting for TelemetryControllers delayed initialization to complete.
    * The returned promise is guaranteed to resolve before TelemetryController is shutting down.
    * @return {Promise} Resolved when delayed TelemetryController initialization completed.
@@ -545,32 +517,6 @@ var Impl = {
   },
 
   /**
-   * Write a ping to a specified location on the disk. Does not add the ping to the
-   * pending pings.
-   *
-   * @param {String} aType The type of the ping.
-   * @param {Object} aPayload The actual data payload for the ping.
-   * @param {String} aFilePath The path to save the ping to.
-   * @param {Object} aOptions Options object.
-   * @param {Boolean} aOptions.addClientId true if the ping should contain the client id,
-   *                  false otherwise.
-   * @param {Boolean} aOptions.addEnvironment true if the ping should contain the
-   *                  environment data.
-   * @param {Boolean} aOptions.overwrite true overwrites a ping with the same name, if found.
-   * @param {Object}  [aOptions.overrideEnvironment=null] set to override the environment data.
-   *
-   * @returns {Promise} A promise that resolves with the ping id when the ping is saved to
-   *                    disk.
-   */
-  savePing: function savePing(aType, aPayload, aFilePath, aOptions) {
-    this._log.trace("savePing - Type " + aType + ", File Path " + aFilePath +
-                    ", aOptions " + JSON.stringify(aOptions));
-    let pingData = this.assemblePing(aType, aPayload, aOptions);
-    return TelemetryStorage.savePingToFile(pingData, aFilePath, aOptions.overwrite)
-                        .then(() => pingData.id);
-  },
-
-  /**
    * Check whether we have an aborted-session ping. If so add it to the pending pings and archive it.
    *
    * @return {Promise} Promise that is resolved when the ping is submitted and archived.
@@ -629,22 +575,7 @@ var Impl = {
     // Unified Telemetry makes it opt-out. If extended Telemetry is enabled, base recording
     // is always on as well.
     if (IS_UNIFIED_TELEMETRY) {
-      // Enable extended Telemetry on pre-release channels and disable it
-      // on Release/ESR.
-      let prereleaseChannels = ["nightly", "aurora", "beta"];
-      if (!AppConstants.MOZILLA_OFFICIAL) {
-        // Turn extended telemetry for local developer builds.
-        prereleaseChannels.push("default");
-      }
-      const isPrereleaseChannel =
-        prereleaseChannels.includes(AppConstants.MOZ_UPDATE_CHANNEL);
-      const isReleaseCandidateOnBeta =
-        AppConstants.MOZ_UPDATE_CHANNEL === "release" &&
-        Services.prefs.getCharPref("app.update.channel", null) === "beta";
-      Telemetry.canRecordBase = true;
-      Telemetry.canRecordExtended = isPrereleaseChannel ||
-        isReleaseCandidateOnBeta ||
-        Services.prefs.getBoolPref(TelemetryUtils.Preferences.OverridePreRelease, false);
+      TelemetryUtils.setTelemetryRecordingFlags();
     } else {
       // We're not on unified Telemetry, stick to the old behaviour for
       // supporting Fennec.
@@ -939,7 +870,7 @@ var Impl = {
       "TelemetryController: removing pending pings after data upload was disabled", p);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
   _attachObservers() {
     if (IS_UNIFIED_TELEMETRY) {
@@ -1069,19 +1000,29 @@ var Impl = {
 
     this._log.trace("registerJsProbes - registering builtin JS probes");
 
-    // Load the scalar probes JSON file.
-    const scalarProbeFilename = "ScalarArtifactDefinitions.json";
-    let scalarProbeFile = Services.dirsvc.get("GreBinD", Ci.nsIFile);
-    scalarProbeFile.append(scalarProbeFilename);
-    if (!scalarProbeFile.exists()) {
-      this._log.trace("registerJsProbes - no scalar builtin JS probes");
-      return;
+    await this.registerScalarProbes();
+    await this.registerEventProbes();
+  },
+
+  _loadProbeDefinitions(filename) {
+    let probeFile = Services.dirsvc.get("GreD", Ci.nsIFile);
+    probeFile.append(filename);
+    if (!probeFile.exists()) {
+      this._log.trace(`loadProbeDefinitions - no builtin JS probe file ${filename}`);
+      return null;
     }
 
-    // Load the file off the disk.
+    return OS.File.read(probeFile.path, { encoding: "utf-8" });
+  },
+
+  async registerScalarProbes() {
+    this._log.trace("registerScalarProbes - registering scalar builtin JS probes");
+
+    // Load the scalar probes JSON file.
+    const scalarProbeFilename = "ScalarArtifactDefinitions.json";
     let scalarJSProbes = {};
     try {
-      let fileContent = await OS.File.read(scalarProbeFile.path, { encoding: "utf-8" });
+      let fileContent = await this._loadProbeDefinitions(scalarProbeFilename);
       scalarJSProbes = JSON.parse(fileContent, (property, value) => {
         // Fixup the "kind" property: it's a string, and we need the constant
         // coming from nsITelemetry.
@@ -1104,13 +1045,33 @@ var Impl = {
         return newValue;
       });
     } catch (ex) {
-      this._log.error(`registerJsProbes - there was an error loading {$scalarProbeFilename}`,
+      this._log.error(`registerScalarProbes - there was an error loading ${scalarProbeFilename}`,
                       ex);
     }
 
     // Register the builtin probes.
     for (let category in scalarJSProbes) {
       Telemetry.registerBuiltinScalars(category, scalarJSProbes[category]);
+    }
+  },
+
+  async registerEventProbes() {
+    this._log.trace("registerEventProbes - registering builtin JS Event probes");
+
+    // Load the event probes JSON file.
+    const eventProbeFilename = "EventArtifactDefinitions.json";
+    let eventJSProbes = {};
+    try {
+      let fileContent = await this._loadProbeDefinitions(eventProbeFilename);
+      eventJSProbes = JSON.parse(fileContent);
+    } catch (ex) {
+      this._log.error(`registerEventProbes - there was an error loading ${eventProbeFilename}`,
+                      ex);
+    }
+
+    // Register the builtin probes.
+    for (let category in eventJSProbes) {
+      Telemetry.registerBuiltinEvents(category, eventJSProbes[category]);
     }
   },
 };

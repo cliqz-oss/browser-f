@@ -4,6 +4,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!-- import-globals-from controller.js -->
+
 <bindings id="placesMenuBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xbl="http://www.mozilla.org/xbl"
@@ -214,7 +216,7 @@
           if (aTimer == this._folder.openTimer) {
             // Timer to open a submenu that's being dragged over.
             this._folder.elt.lastChild.setAttribute("autoopened", "true");
-            this._folder.elt.lastChild.showPopup(this._folder.elt);
+            this._folder.elt.lastChild.openPopup();
             this._folder.openTimer = null;
           } else if (aTimer == this._folder.closeTimer) {
             // Timer to close a submenu that's been dragged off of.

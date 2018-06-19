@@ -8,8 +8,6 @@ config = {
         # 'update',
     ],
     'stage_platform': 'linux64-add-on-devel',
-    'build_type': 'add-on-devel',
-    'enable_signing': False,
     #### 64 bit build specific #####
     'env': {
         'MOZBUILD_STATE_PATH': os.path.join(os.getcwd(), '.mozbuild'),
@@ -21,9 +19,8 @@ config = {
         'MOZ_CRASHREPORTER_NO_REPORT': '1',
         'LC_ALL': 'C',
         ## 64 bit specific
-        'PATH': '/builds/worker/workspace/build/src/gcc/bin:/usr/local/bin:/usr/lib64/ccache:/bin:\
-/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/tools/git/bin:/tools/python27/bin:\
-/tools/python27-mercurial/bin:/home/cltbld/bin',
+        'PATH': '/builds/worker/workspace/build/src/gcc/bin:/usr/local/bin:/bin:\
+/usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
     },
     'mozconfig_variant': 'add-on-devel',
     #######################

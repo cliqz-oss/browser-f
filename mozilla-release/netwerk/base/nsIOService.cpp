@@ -39,7 +39,6 @@
 #include "nsPISocketTransportService.h"
 #include "nsAsyncRedirectVerifyHelper.h"
 #include "nsURLHelper.h"
-#include "nsPIDNSService.h"
 #include "nsIProtocolProxyService2.h"
 #include "MainThreadUtils.h"
 #include "nsINode.h"
@@ -175,6 +174,7 @@ uint32_t   nsIOService::gDefaultSegmentCount = 24;
 
 bool nsIOService::sIsDataURIUniqueOpaqueOrigin = false;
 bool nsIOService::sBlockToplevelDataUriNavigations = false;
+bool nsIOService::sBlockFTPSubresources = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -204,18 +204,6 @@ nsIOService::nsIOService()
 nsresult
 nsIOService::Init()
 {
-    nsresult rv;
-
-    // We need to get references to the DNS service so that we can shut it
-    // down later. If we wait until the nsIOService is being shut down,
-    // GetService will fail at that point.
-
-    mDNSService = do_GetService(NS_DNSSERVICE_CONTRACTID, &rv);
-    if (NS_FAILED(rv)) {
-        NS_WARNING("failed to get DNS service");
-        return rv;
-    }
-
     // XXX hack until xpidl supports error info directly (bug 13423)
     nsCOMPtr<nsIErrorService> errorService = do_GetService(NS_ERRORSERVICE_CONTRACTID);
     if (errorService) {
@@ -260,6 +248,8 @@ nsIOService::Init()
                                  "security.data_uri.unique_opaque_origin", false);
     Preferences::AddBoolVarCache(&sBlockToplevelDataUriNavigations,
                                  "security.data_uri.block_toplevel_data_uri_navigations", false);
+    Preferences::AddBoolVarCache(&sBlockFTPSubresources,
+                                 "security.block_ftp_subresources", true);
     Preferences::AddBoolVarCache(&mOfflineMirrorsConnectivity, OFFLINE_MIRRORS_CONNECTIVITY, true);
 
     gIOService = this;
@@ -532,6 +522,12 @@ UsesExternalProtocolHandler(const char* aScheme)
         return false;
     }
 
+    for (const auto & forcedExternalScheme : gForcedExternalSchemes) {
+      if (!nsCRT::strcasecmp(forcedExternalScheme, aScheme)) {
+        return true;
+      }
+    }
+
     nsAutoCString pref("network.protocol-handler.external.");
     pref += aScheme;
 
@@ -552,7 +548,7 @@ nsIOService::GetProtocolHandler(const char* scheme, nsIProtocolHandler* *result)
     if (NS_SUCCEEDED(rv))
         return rv;
 
-    if (!UsesExternalProtocolHandler(scheme)) {
+    if (scheme[0] != '\0' && !UsesExternalProtocolHandler(scheme)) {
         nsAutoCString contractID(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX);
         contractID += scheme;
         ToLowerCase(contractID);
@@ -1146,10 +1142,6 @@ nsIOService::SetOffline(bool offline)
         }
         else if (!offline && mOffline) {
             // go online
-            if (mDNSService) {
-                DebugOnly<nsresult> rv = mDNSService->Init();
-                NS_ASSERTION(NS_SUCCEEDED(rv), "DNS service init failed");
-            }
             InitializeSocketTransportService();
             mOffline = false;    // indicate success only AFTER we've
                                     // brought up the services
@@ -1167,12 +1159,6 @@ nsIOService::SetOffline(bool offline)
 
     // Don't notify here, as the above notifications (if used) suffice.
     if ((mShutdown || mOfflineForProfileChange) && mOffline) {
-        // be sure to try and shutdown both (even if the first fails)...
-        // shutdown dns service first, because it has callbacks for socket transport
-        if (mDNSService) {
-            DebugOnly<nsresult> rv = mDNSService->Shutdown();
-            NS_ASSERTION(NS_SUCCEEDED(rv), "DNS service shutdown failed");
-        }
         if (mSocketTransportService) {
             DebugOnly<nsresult> rv = mSocketTransportService->Shutdown(mShutdown);
             NS_ASSERTION(NS_SUCCEEDED(rv), "socket transport service shutdown failed");
@@ -1431,7 +1417,7 @@ public:
   NS_IMETHOD Run() override { return mIOService->NotifyWakeup(); }
 
 private:
-    virtual ~nsWakeupNotifier() { }
+    virtual ~nsWakeupNotifier() = default;
     nsCOMPtr<nsIIOServiceInternal> mIOService;
 };
 
@@ -1761,7 +1747,7 @@ nsIOService::ParseAttributePolicyString(const nsAString& policyString,
 // nsISpeculativeConnect
 class IOServiceProxyCallback final : public nsIProtocolProxyCallback
 {
-    ~IOServiceProxyCallback() {}
+    ~IOServiceProxyCallback() = default;
 
 public:
     NS_DECL_ISUPPORTS
@@ -1886,7 +1872,7 @@ nsIOService::SpeculativeConnectInternal(nsIURI *aURI,
                             loadingPrincipal,
                             nullptr, //aTriggeringPrincipal,
                             nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
-                            nsIContentPolicy::TYPE_OTHER,
+                            nsIContentPolicy::TYPE_SPECULATIVE,
                             getter_AddRefs(channel));
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1949,6 +1935,12 @@ nsIOService::IsDataURIUniqueOpaqueOrigin()
 nsIOService::BlockToplevelDataUriNavigations()
 {
   return sBlockToplevelDataUriNavigations;
+}
+
+/*static*/ bool
+nsIOService::BlockFTPSubresources()
+{
+  return sBlockFTPSubresources;
 }
 
 NS_IMETHODIMP

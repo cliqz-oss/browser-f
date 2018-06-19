@@ -12,18 +12,18 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.WindowManager;
 
 import java.util.Locale;
 
-import org.mozilla.gecko.GeckoThread;
+import org.mozilla.geckoview.GeckoResponse;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
-import org.mozilla.geckoview.GeckoSession.Response;
 import org.mozilla.geckoview.GeckoSession.TrackingProtectionDelegate;
 import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.GeckoRuntime;
+import org.mozilla.geckoview.GeckoRuntimeSettings;
 
 public class GeckoViewActivity extends Activity {
     private static final String LOGTAG = "GeckoViewActivity";
@@ -37,6 +37,7 @@ public class GeckoViewActivity extends Activity {
     /* package */ static final int REQUEST_FILE_PICKER = 1;
     private static final int REQUEST_PERMISSIONS = 2;
 
+    private static GeckoRuntime sGeckoRuntime;
     private GeckoSession mGeckoSession;
     private GeckoView mGeckoView;
 
@@ -46,24 +47,36 @@ public class GeckoViewActivity extends Activity {
         Log.i(LOGTAG, "zerdatime " + SystemClock.elapsedRealtime() +
               " - application start");
 
-        final String[] geckoArgs;
+        setContentView(R.layout.geckoview_activity);
+        mGeckoView = (GeckoView) findViewById(R.id.gecko_view);
 
-        if (BuildConfig.DEBUG) {
-            // In debug builds, we want to load JavaScript resources fresh with each build.
-            geckoArgs = new String[] { "-purgecaches" };
-        } else {
-            geckoArgs = null;
+        final boolean useMultiprocess =
+            getIntent().getBooleanExtra(USE_MULTIPROCESS_EXTRA, true);
+
+        if (sGeckoRuntime == null) {
+            final GeckoRuntimeSettings.Builder runtimeSettingsBuilder =
+                new GeckoRuntimeSettings.Builder();
+
+            if (BuildConfig.DEBUG) {
+                // In debug builds, we want to load JavaScript resources fresh with
+                // each build.
+                runtimeSettingsBuilder.arguments(new String[] { "-purgecaches" });
+            }
+
+            final Bundle extras = getIntent().getExtras();
+            if (extras != null) {
+                runtimeSettingsBuilder.extras(extras);
+            }
+            runtimeSettingsBuilder.useContentProcessHint(useMultiprocess);
+            sGeckoRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
         }
 
-        final boolean useMultiprocess = getIntent().getBooleanExtra(USE_MULTIPROCESS_EXTRA,
-                                                                    true);
-        GeckoSession.preload(this, geckoArgs, getIntent().getExtras(), useMultiprocess);
+        final GeckoSessionSettings sessionSettings = new GeckoSessionSettings();
+        sessionSettings.setBoolean(GeckoSessionSettings.USE_MULTIPROCESS,
+                                   useMultiprocess);
+        mGeckoSession = new GeckoSession(sessionSettings);
 
-        setContentView(R.layout.geckoview_activity);
-
-        mGeckoView = (GeckoView) findViewById(R.id.gecko_view);
-        mGeckoSession = new GeckoSession();
-        mGeckoView.setSession(mGeckoSession);
+        mGeckoView.setSession(mGeckoSession, sGeckoRuntime);
 
         mGeckoSession.setContentDelegate(new MyGeckoViewContent());
         final MyTrackingProtection tp = new MyTrackingProtection();
@@ -78,9 +91,6 @@ public class GeckoViewActivity extends Activity {
         final MyGeckoViewPermission permission = new MyGeckoViewPermission();
         permission.androidPermissionRequestCode = REQUEST_PERMISSIONS;
         mGeckoSession.setPermissionDelegate(permission);
-
-        mGeckoSession.getSettings().setBoolean(GeckoSessionSettings.USE_MULTIPROCESS,
-                                               useMultiprocess);
 
         mGeckoSession.enableTrackingProtection(
               TrackingProtectionDelegate.CATEGORY_AD |
@@ -107,7 +117,9 @@ public class GeckoViewActivity extends Activity {
 
         if (ACTION_SHUTDOWN.equals(intent.getAction())) {
             mKillProcessOnDestroy = true;
-            GeckoThread.forceQuit();
+            if (sGeckoRuntime != null) {
+                sGeckoRuntime.shutdown();
+            }
             finish();
             return;
         }
@@ -126,12 +138,8 @@ public class GeckoViewActivity extends Activity {
     }
 
     private void loadSettings(final Intent intent) {
-        final GeckoSessionSettings settings = mGeckoView.getSettings();
-        settings.setBoolean(
-            GeckoSessionSettings.USE_REMOTE_DEBUGGER,
+        sGeckoRuntime.getSettings().setRemoteDebuggingEnabled(
             intent.getBooleanExtra(USE_REMOTE_DEBUGGER_EXTRA, false));
-
-        Log.i(LOGTAG, "Load with settings " + settings);
     }
 
     @Override
@@ -190,10 +198,15 @@ public class GeckoViewActivity extends Activity {
 
         @Override
         public void onContextMenu(GeckoSession session, int screenX, int screenY,
-                                  String uri, String elementSrc) {
+                                  String uri, int elementType, String elementSrc) {
             Log.d(LOGTAG, "onContextMenu screenX=" + screenX +
                           " screenY=" + screenY + " uri=" + uri +
+                          " elementType=" + elementType +
                           " elementSrc=" + elementSrc);
+        }
+
+        @Override
+        public void onExternalResponse(GeckoSession session, GeckoSession.WebResponseInfo request) {
         }
     }
 
@@ -346,14 +359,16 @@ public class GeckoViewActivity extends Activity {
         }
 
         @Override
-        public boolean onLoadRequest(final GeckoSession session, final String uri,
-                                     final int target) {
-            Log.d(LOGTAG, "onLoadRequest=" + uri + " where=" + target);
-            return false;
+        public void onLoadRequest(final GeckoSession session, final String uri,
+                                  final int target, final int flags,
+                                  GeckoResponse<Boolean> response) {
+            Log.d(LOGTAG, "onLoadRequest=" + uri + " where=" + target +
+                  " flags=" + flags);
+            response.respond(false);
         }
 
         @Override
-        public void onNewSession(final GeckoSession session, final String uri, Response<GeckoSession> response) {
+        public void onNewSession(final GeckoSession session, final String uri, GeckoResponse<GeckoSession> response) {
             response.respond(null);
         }
     }

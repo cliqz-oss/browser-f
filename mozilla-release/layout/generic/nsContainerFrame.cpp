@@ -8,13 +8,14 @@
 
 #include "nsContainerFrame.h"
 
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/dom/HTMLSummaryElement.h"
 #include "nsAbsoluteContainingBlock.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
+#include "nsFlexContainerFrame.h"
 #include "nsIDocument.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
 #include "nsRect.h"
 #include "nsPoint.h"
 #include "nsStyleConsts.h"
@@ -846,8 +847,18 @@ nsContainerFrame::ComputeAutoSize(gfxContext*         aRenderingContext,
                        aBorder.ISize(aWM) - aPadding.ISize(aWM);
   // replaced elements always shrink-wrap
   if ((aFlags & ComputeSizeFlags::eShrinkWrap) || IsFrameOfType(eReplaced)) {
-    // don't bother setting it if the result won't be used
-    if (StylePosition()->ISize(aWM).GetUnit() == eStyleUnit_Auto) {
+    // Only bother computing our 'auto' ISize if the result will be used.
+    // It'll be used under two scenarios:
+    // - If our ISize property is itself 'auto'.
+    // - If we're using flex-basis in place of our ISize property (i.e. we're a
+    // flex item with our inline axis being the main axis), AND we have
+    // flex-basis:content.
+    const nsStylePosition* pos = StylePosition();
+    if (pos->ISize(aWM).GetUnit() == eStyleUnit_Auto ||
+        (pos->mFlexBasis.GetUnit() == eStyleUnit_Enumerated &&
+         pos->mFlexBasis.GetIntValue() == NS_STYLE_FLEX_BASIS_CONTENT &&
+         IsFlexItem() &&
+         nsFlexContainerFrame::IsItemInlineAxisMainAxis(this))) {
       result.ISize(aWM) = ShrinkWidthToFit(aRenderingContext, availBased, aFlags);
     }
   } else {
@@ -1051,6 +1062,14 @@ nsContainerFrame::PositionChildViews(nsIFrame* aFrame)
  *    don't want to automatically sync the frame and view
  * NS_FRAME_NO_SIZE_VIEW - don't size the frame's view
  */
+
+/**
+ * De-optimize function to work around a VC2017 15.5+ compiler bug:
+ * https://bugzil.la/1424281#c12
+ */
+#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_AMD64)
+#pragma optimize("g", off)
+#endif
 void
 nsContainerFrame::FinishReflowChild(nsIFrame*                  aKidFrame,
                                     nsPresContext*             aPresContext,
@@ -1097,6 +1116,9 @@ nsContainerFrame::FinishReflowChild(nsIFrame*                  aKidFrame,
 
   aKidFrame->DidReflow(aPresContext, aReflowInput);
 }
+#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_AMD64)
+#pragma optimize("", on)
+#endif
 
 //XXX temporary: hold on to a copy of the old physical version of
 //    FinishReflowChild so that we can convert callers incrementally.
@@ -1823,7 +1845,7 @@ nsContainerFrame::RenumberList()
     increment = 1;
   }
 
-  nsGenericHTMLElement* hc = nsGenericHTMLElement::FromContent(mContent);
+  nsGenericHTMLElement* hc = nsGenericHTMLElement::FromNode(mContent);
   // Must be non-null, since FrameStartsCounterScope only returns true
   // for HTML elements.
   MOZ_ASSERT(hc, "How is mContent not HTML?");
@@ -1867,7 +1889,7 @@ nsContainerFrame::RenumberFrameAndDescendants(int32_t* aOrdinal,
 
   // Do not renumber list for summary elements.
   HTMLSummaryElement* summary =
-    HTMLSummaryElement::FromContent(kid->GetContent());
+    HTMLSummaryElement::FromNode(kid->GetContent());
   if (summary && summary->IsMainSummary()) {
     return false;
   }

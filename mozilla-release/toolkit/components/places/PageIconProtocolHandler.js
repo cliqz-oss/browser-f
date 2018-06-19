@@ -124,8 +124,9 @@ PageIconProtocolHandler.prototype = {
   },
 
   classID: Components.ID("{60a1f7c6-4ff9-4a42-84d3-5a185faa6f32}"),
-  QueryInterface: XPCOMUtils.generateQI([
-    Ci.nsIProtocolHandler
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsIProtocolHandler,
+    Ci.nsISupportsWeakReference,
   ])
 };
 

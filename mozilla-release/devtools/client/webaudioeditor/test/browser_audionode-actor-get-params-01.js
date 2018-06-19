@@ -5,16 +5,16 @@
  * Test AudioNode#getParams()
  */
 
-add_task(function* () {
-  let { target, front } = yield initBackend(SIMPLE_NODES_URL);
-  let [_, nodes] = yield Promise.all([
+add_task(async function() {
+  let { target, front } = await initBackend(SIMPLE_NODES_URL);
+  let [_, nodes] = await Promise.all([
     front.setup({ reload: true }),
     getN(front, "create-node", 15)
   ]);
 
-  yield loadFrameScriptUtils();
+  await loadFrameScriptUtils();
 
-  let allNodeParams = yield Promise.all(nodes.map(node => node.getParams()));
+  let allNodeParams = await Promise.all(nodes.map(node => node.getParams()));
   let nodeTypes = [
     "AudioDestinationNode",
     "AudioBufferSourceNode", "ScriptProcessorNode", "AnalyserNode", "GainNode",
@@ -23,7 +23,7 @@ add_task(function* () {
     "StereoPannerNode"
   ];
 
-  let defaults = yield Promise.all(nodeTypes.map(type => nodeDefaultValues(type)));
+  let defaults = await Promise.all(nodeTypes.map(type => nodeDefaultValues(type)));
 
   nodeTypes.map((type, i) => {
     let params = allNodeParams[i];
@@ -35,15 +35,13 @@ add_task(function* () {
 
       if (param === "buffer") {
         is(flags.Buffer, true, "`buffer` params have Buffer flag");
-      }
-      else if (param === "bufferSize" || param === "frequencyBinCount") {
+      } else if (param === "bufferSize" || param === "frequencyBinCount") {
         is(flags.readonly, true, param + " is readonly");
-      }
-      else if (param === "curve") {
-        is(flags["Float32Array"], true, "`curve` param has Float32Array flag");
+      } else if (param === "curve") {
+        is(flags.Float32Array, true, "`curve` param has Float32Array flag");
       }
     });
   });
 
-  yield removeTab(target.tab);
+  await removeTab(target.tab);
 });

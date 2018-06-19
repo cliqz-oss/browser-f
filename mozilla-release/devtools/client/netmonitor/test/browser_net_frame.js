@@ -146,7 +146,7 @@ const EXPECTED_REQUESTS_SUB = [
 
 const REQUEST_COUNT = EXPECTED_REQUESTS_TOP.length + EXPECTED_REQUESTS_SUB.length;
 
-add_task(async function () {
+add_task(async function() {
   // Async stacks aren't on by default in all builds
   await SpecialPowers.pushPrefEnv({ set: [["javascript.options.asyncstack", true]] });
 
@@ -167,7 +167,7 @@ add_task(async function () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  tab.linkedBrowser.loadURI(TOP_URL, null, null);
+  tab.linkedBrowser.loadURI(TOP_URL);
 
   await waitForNetworkEvents(monitor, REQUEST_COUNT);
 

@@ -14,6 +14,7 @@
 #include "nsISerializable.h"
 #include "nsIClassInfo.h"
 #include "nsSimpleURI.h"
+#include "nsINestedURI.h"
 
 #define NS_JSPROTOCOLHANDLER_CID                     \
 { /* bfc310d2-38a0-11d3-8cd3-0060b0fc14a3 */         \
@@ -29,6 +30,14 @@
     0x512a,                                          \
     0x42d2,                                          \
     {0xa9, 0x35, 0xd0, 0xc8, 0x74, 0x12, 0x89, 0x30} \
+}
+
+#define NS_JSURIMUTATOR_CID                          \
+{ /* 574ce83e-fe9f-4095-b85c-7909abbf7c37 */         \
+    0x574ce83e,                                      \
+    0xfe9f,                                          \
+    0x4095,                                          \
+    {0xb8, 0x5c, 0x79, 0x09, 0xab, 0xbf, 0x7c, 0x37} \
 }
 
 #define NS_JSPROTOCOLHANDLER_CONTRACTID \
@@ -60,17 +69,12 @@ protected:
     nsCOMPtr<nsITextToSubURI>  mTextToSubURI;
 };
 
-
 class nsJSURI final
     : public mozilla::net::nsSimpleURI
 {
 public:
     using mozilla::net::nsSimpleURI::Read;
     using mozilla::net::nsSimpleURI::Write;
-
-    nsJSURI() {}
-
-    explicit nsJSURI(nsIURI* aBaseURI) : mBaseURI(aBaseURI) {}
 
     nsIURI* GetBaseURI() const
     {
@@ -97,12 +101,16 @@ public:
     //NS_IMETHOD QueryInterface( const nsIID& aIID, void** aInstancePtr ) override;
 
 protected:
+    nsJSURI() {}
+    explicit nsJSURI(nsIURI* aBaseURI) : mBaseURI(aBaseURI) {}
+
     virtual ~nsJSURI() {}
 
     virtual nsresult EqualsInternal(nsIURI* other,
                                     RefHandlingEnum refHandlingMode,
                                     bool* result) override;
     bool Deserialize(const mozilla::ipc::URIParams&);
+    nsresult ReadPrivate(nsIObjectInputStream *aStream);
 
 private:
     nsCOMPtr<nsIURI> mBaseURI;
@@ -111,10 +119,31 @@ public:
     class Mutator final
         : public nsIURIMutator
         , public BaseURIMutator<nsJSURI>
+        , public nsISerializable
+        , public nsIJSURIMutator
     {
         NS_DECL_ISUPPORTS
         NS_FORWARD_SAFE_NSIURISETTERS_RET(mURI)
         NS_DEFINE_NSIMUTATOR_COMMON
+
+        NS_IMETHOD
+        Write(nsIObjectOutputStream *aOutputStream) override
+        {
+            return NS_ERROR_NOT_IMPLEMENTED;
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        Read(nsIObjectInputStream* aStream) override
+        {
+            return InitFromInputStream(aStream);
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        SetBase(nsIURI* aBaseURI) override
+        {
+            mURI = new nsJSURI(aBaseURI);
+            return NS_OK;
+        }
 
         explicit Mutator() { }
     private:

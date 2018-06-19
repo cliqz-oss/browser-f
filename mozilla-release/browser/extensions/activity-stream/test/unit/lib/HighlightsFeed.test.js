@@ -12,7 +12,6 @@ const FAKE_IMAGE = "data123";
 describe("Highlights Feed", () => {
   let HighlightsFeed;
   let SECTION_ID;
-  let MANY_EXTRA_LENGTH;
   let SYNC_BOOKMARKS_FINISHED_EVENT;
   let BOOKMARKS_RESTORE_SUCCESS_EVENT;
   let BOOKMARKS_RESTORE_FAILED_EVENT;
@@ -24,6 +23,7 @@ describe("Highlights Feed", () => {
   let fakeNewTabUtils;
   let filterAdultStub;
   let sectionsManagerStub;
+  let downloadsManagerStub;
   let shortURLStub;
   let fakePageThumbs;
 
@@ -35,7 +35,8 @@ describe("Highlights Feed", () => {
         getHighlights: sandbox.spy(() => Promise.resolve(links)),
         deletePocketEntry: sandbox.spy(() => Promise.resolve({})),
         archivePocketEntry: sandbox.spy(() => Promise.resolve({}))
-      }
+      },
+      activityStreamProvider: {_processHighlights: sandbox.spy(l => l.slice(0, 1))}
     };
     sectionsManagerStub = {
       onceInitialized: sinon.stub().callsFake(callback => callback()),
@@ -45,6 +46,11 @@ describe("Highlights Feed", () => {
       updateSectionCard: sinon.spy(),
       sections: new Map([["highlights", {id: "highlights"}]])
     };
+    downloadsManagerStub = sinon.stub().returns({
+      getDownloads: () => [{"url": "https://site.com/download"}],
+      onAction: sinon.spy(),
+      init: sinon.spy()
+    });
     fakeScreenshot = {
       getScreenshotForURL: sandbox.spy(() => Promise.resolve(FAKE_IMAGE)),
       maybeCacheScreenshot: Screenshots.maybeCacheScreenshot,
@@ -59,12 +65,13 @@ describe("Highlights Feed", () => {
 
     globals.set("NewTabUtils", fakeNewTabUtils);
     globals.set("PageThumbs", fakePageThumbs);
-    ({HighlightsFeed, SECTION_ID, MANY_EXTRA_LENGTH, SYNC_BOOKMARKS_FINISHED_EVENT, BOOKMARKS_RESTORE_SUCCESS_EVENT, BOOKMARKS_RESTORE_FAILED_EVENT} = injector({
+    ({HighlightsFeed, SECTION_ID, SYNC_BOOKMARKS_FINISHED_EVENT, BOOKMARKS_RESTORE_SUCCESS_EVENT, BOOKMARKS_RESTORE_FAILED_EVENT} = injector({
       "lib/FilterAdult.jsm": {filterAdult: filterAdultStub},
       "lib/ShortURL.jsm": {shortURL: shortURLStub},
       "lib/SectionsManager.jsm": {SectionsManager: sectionsManagerStub},
       "lib/Screenshots.jsm": {Screenshots: fakeScreenshot},
-      "common/Dedupe.jsm": {Dedupe}
+      "common/Dedupe.jsm": {Dedupe},
+      "lib/DownloadsManager.jsm": {DownloadsManager: downloadsManagerStub}
     }));
     sandbox.spy(global.Services.obs, "addObserver");
     sandbox.spy(global.Services.obs, "removeObserver");
@@ -73,7 +80,7 @@ describe("Highlights Feed", () => {
       dispatch: sinon.spy(),
       getState() { return this.state; },
       state: {
-        Prefs: {values: {"filterAdult": false, "section.highlights.includePocket": false}},
+        Prefs: {values: {"filterAdult": false, "section.highlights.includePocket": false, "section.highlights.includeDownloads": false}},
         TopSites: {
           initialized: true,
           rows: Array(12).fill(null).map((v, i) => ({url: `http://www.topsite${i}.com`}))
@@ -114,6 +121,10 @@ describe("Highlights Feed", () => {
       feed.fetchHighlights = sinon.spy();
       feed.postInit();
       assert.calledOnce(feed.fetchHighlights);
+    });
+    it("should hook up the store for the DownloadsManager", () => {
+      feed.onAction({type: at.INIT});
+      assert.calledOnce(feed.downloadsManager.init);
     });
   });
   describe("#observe", () => {
@@ -178,12 +189,23 @@ describe("Highlights Feed", () => {
       await feed.fetchHighlights(options);
       return sectionsManagerStub.updateSection.firstCall.args[1].rows;
     };
-
-    it("should return early if if are not TopSites initialised", async () => {
+    it("should return early if TopSites are not initialised", async () => {
       sandbox.spy(feed.linksCache, "request");
       feed.store.state.TopSites.initialized = false;
+      feed.store.state.Prefs.values["feeds.topsites"] = true;
 
       // Initially TopSites is uninitialised and fetchHighlights should return.
+      await feed.fetchHighlights();
+
+      assert.notCalled(fakeNewTabUtils.activityStreamLinks.getHighlights);
+      assert.notCalled(feed.linksCache.request);
+    });
+    it("should return early if Sections are not initialised", async () => {
+      sandbox.spy(feed.linksCache, "request");
+      feed.store.state.TopSites.initialized = true;
+      feed.store.state.Prefs.values["feeds.topsites"] = true;
+      feed.store.state.Sections = [];
+
       await feed.fetchHighlights();
 
       assert.notCalled(fakeNewTabUtils.activityStreamLinks.getHighlights);
@@ -193,6 +215,35 @@ describe("Highlights Feed", () => {
       sandbox.spy(feed.linksCache, "request");
       // fetchHighlights should continue
       feed.store.state.TopSites.initialized = true;
+
+      await feed.fetchHighlights();
+
+      assert.calledOnce(feed.linksCache.request);
+      assert.calledOnce(fakeNewTabUtils.activityStreamLinks.getHighlights);
+    });
+    it("should chronologically order highlight data types", async () => {
+      links = [
+        {url: "https://site0.com", type: "bookmark", bookmarkGuid: "1234", date_added: Date.now() - 80}, // 4th newest
+        {url: "https://site1.com", type: "history", bookmarkGuid: "1234", date_added: Date.now() - 60}, // 3rd newest
+        {url: "https://site2.com", type: "history", date_added: Date.now() - 160}, // append at the end
+        {url: "https://site3.com", type: "history", date_added: Date.now() - 60}, // append at the end
+        {url: "https://site4.com", type: "pocket", date_added: Date.now()}, // newest highlight
+        {url: "https://site5.com", type: "pocket", date_added: Date.now() - 100}, // 5th newest
+        {url: "https://site6.com", type: "bookmark", bookmarkGuid: "1234", date_added: Date.now() - 40} // 2nd newest
+      ];
+
+      let highlights = await fetchHighlights();
+      assert.equal(highlights[0].url, links[4].url);
+      assert.equal(highlights[1].url, links[6].url);
+      assert.equal(highlights[2].url, links[1].url);
+      assert.equal(highlights[3].url, links[0].url);
+      assert.equal(highlights[4].url, links[5].url);
+      assert.equal(highlights[5].url, links[2].url);
+      assert.equal(highlights[6].url, links[3].url);
+    });
+    it("should fetch Highlights if TopSites are not enabled", async () => {
+      sandbox.spy(feed.linksCache, "request");
+      feed.store.state.Prefs.values["feeds.topsites"] = false;
 
       await feed.fetchHighlights();
 
@@ -275,37 +326,113 @@ describe("Highlights Feed", () => {
       assert.equal(highlights[0].url, links[0].url);
       assert.equal(highlights[1].url, links[2].url);
     });
-    it("should take both a bookmark and a pocket of the same hostname", async () => {
+    it("should take a bookmark, a pocket, and downloaded item of the same hostname", async () => {
       links = [
         {url: "https://site.com/bookmark", type: "bookmark"},
-        {url: "https://site.com/pocket", type: "pocket"}
+        {url: "https://site.com/pocket", type: "pocket"},
+        {url: "https://site.com/download", type: "download"}
       ];
 
       const highlights = await fetchHighlights();
 
-      assert.equal(highlights.length, 2);
+      assert.equal(highlights.length, 3);
       assert.equal(highlights[0].url, links[0].url);
       assert.equal(highlights[1].url, links[1].url);
+      assert.equal(highlights[2].url, links[2].url);
     });
     it("should includePocket pocket items when pref is true", async () => {
       feed.store.state.Prefs.values["section.highlights.includePocket"] = true;
       sandbox.spy(feed.linksCache, "request");
       await feed.fetchHighlights();
 
-      assert.calledWith(feed.linksCache.request, {numItems: MANY_EXTRA_LENGTH, excludePocket: false});
+      assert.propertyVal(feed.linksCache.request.firstCall.args[0], "excludePocket", false);
     });
     it("should not includePocket pocket items when pref is false", async () => {
       sandbox.spy(feed.linksCache, "request");
       await feed.fetchHighlights();
 
-      assert.calledWith(feed.linksCache.request, {numItems: MANY_EXTRA_LENGTH, excludePocket: true});
+      assert.propertyVal(feed.linksCache.request.firstCall.args[0], "excludePocket", true);
+    });
+    it("should not include downloads when includeDownloads pref is false", async () => {
+      links = [
+        {url: "https://site.com/bookmark", type: "bookmark"},
+        {url: "https://site.com/pocket", type: "pocket"}
+      ];
+
+      // Check that we don't have the downloaded item in highlights
+      const highlights = await fetchHighlights();
+      assert.equal(highlights.length, 2);
+      assert.equal(highlights[0].url, links[0].url);
+      assert.equal(highlights[1].url, links[1].url);
+
+      assert.notCalled(global.NewTabUtils.activityStreamProvider._processHighlights);
+    });
+    it("should include downloads when includeDownloads pref is true", async () => {
+      feed.store.state.Prefs.values["section.highlights.includeDownloads"] = true;
+      links = [
+        {url: "https://site.com/bookmark", type: "bookmark"},
+        {url: "https://site.com/pocket", type: "pocket"}
+      ];
+
+      // Check that we did get the downloaded item in highlights
+      const highlights = await fetchHighlights();
+      assert.equal(highlights.length, 3);
+      assert.equal(highlights[0].url, links[0].url);
+      assert.equal(highlights[1].url, links[1].url);
+      assert.equal(highlights[2].url, "https://site.com/download");
+
+      assert.calledOnce(global.NewTabUtils.activityStreamProvider._processHighlights);
+    });
+    it("should only take 1 download", async () => {
+      feed.store.state.Prefs.values["section.highlights.includeDownloads"] = true;
+      feed.downloadsManager.getDownloads = () => [
+        {"url": "https://site1.com/download"},
+        {"url": "https://site2.com/download"}
+      ];
+      links = [{url: "https://site.com/bookmark", type: "bookmark"}];
+
+      // Check that we did get the most single recent downloaded item in highlights
+      const highlights = await fetchHighlights();
+      assert.equal(highlights.length, 2);
+      assert.equal(highlights[0].url, links[0].url);
+      assert.equal(highlights[1].url, "https://site1.com/download");
+
+      assert.calledOnce(global.NewTabUtils.activityStreamProvider._processHighlights);
+    });
+    it("should sort bookmarks, pocket, and downloads chronologically", async () => {
+      feed.store.state.Prefs.values["section.highlights.includeDownloads"] = true;
+      feed.downloadsManager.getDownloads = () => [
+        {url: "https://site1.com/download", type: "download", date_added: Date.now()}
+      ];
+      links = [
+        {url: "https://site.com/bookmark", type: "bookmark", date_added: Date.now() - 10000},
+        {url: "https://site2.com/pocket", type: "pocket", date_added: Date.now() - 5000},
+        {url: "https://site3.com/visited", type: "history", date_added: Date.now()}
+      ];
+
+      // Check that the higlights are ordered chronologically by their 'date_added'
+      const highlights = await fetchHighlights();
+      assert.equal(highlights.length, 4);
+      assert.equal(highlights[0].url, "https://site1.com/download");
+      assert.equal(highlights[1].url, links[1].url);
+      assert.equal(highlights[2].url, links[0].url);
+      assert.equal(highlights[3].url, links[2].url); // history item goes last
     });
     it("should set type to bookmark if there is a bookmarkGuid", async () => {
+      feed.store.state.Prefs.values["section.highlights.includeBookmarks"] = true;
       links = [{url: "https://mozilla.org", type: "history", bookmarkGuid: "1234567890"}];
 
       const highlights = await fetchHighlights();
 
       assert.equal(highlights[0].type, "bookmark");
+    });
+    it("should keep history type if there is a bookmarkGuid but don't include bookmarks", async () => {
+      feed.store.state.Prefs.values["section.highlights.includeBookmarks"] = false;
+      links = [{url: "https://mozilla.org", type: "history", bookmarkGuid: "1234567890"}];
+
+      const highlights = await fetchHighlights();
+
+      assert.propertyVal(highlights[0], "type", "history");
     });
     it("should not filter out adult pages when pref is false", async () => {
       await feed.fetchHighlights();
@@ -411,6 +538,11 @@ describe("Highlights Feed", () => {
     });
   });
   describe("#onAction", () => {
+    it("should relay all actions to DownloadsManager.onAction", () => {
+      let action = {type: at.COPY_DOWNLOAD_LINK, data: {url: "foo.png"}, _target: {}};
+      feed.onAction(action);
+      assert.calledWith(feed.downloadsManager.onAction, action);
+    });
     it("should fetch highlights on SYSTEM_TICK", async () => {
       await feed.fetchHighlights();
       feed.fetchHighlights = sinon.spy();
@@ -418,6 +550,21 @@ describe("Highlights Feed", () => {
 
       assert.calledOnce(feed.fetchHighlights);
       assert.calledWithExactly(feed.fetchHighlights, {broadcast: false});
+    });
+    it("should fetch highlights on PREF_CHANGED for include prefs", async () => {
+      feed.fetchHighlights = sinon.spy();
+
+      feed.onAction({type: at.PREF_CHANGED, data: {name: "section.highlights.includeBookmarks"}});
+
+      assert.calledOnce(feed.fetchHighlights);
+      assert.calledWith(feed.fetchHighlights, {broadcast: true});
+    });
+    it("should not fetch highlights on PREF_CHANGED for other prefs", async () => {
+      feed.fetchHighlights = sinon.spy();
+
+      feed.onAction({type: at.PREF_CHANGED, data: {name: "section.topstories.showDisclaimer"}});
+
+      assert.notCalled(feed.fetchHighlights);
     });
     it("should fetch highlights on MIGRATION_COMPLETED", async () => {
       await feed.fetchHighlights();
@@ -433,12 +580,22 @@ describe("Highlights Feed", () => {
       assert.calledOnce(feed.fetchHighlights);
       assert.calledWith(feed.fetchHighlights, {broadcast: true});
     });
-    it("should fetch highlights on PLACES_LINKS_DELETED", async () => {
+    it("should fetch highlights on DOWNLOAD_CHANGED", async () => {
       await feed.fetchHighlights();
       feed.fetchHighlights = sinon.spy();
-      feed.onAction({type: at.PLACES_LINKS_DELETED});
+      feed.onAction({type: at.DOWNLOAD_CHANGED});
       assert.calledOnce(feed.fetchHighlights);
       assert.calledWith(feed.fetchHighlights, {broadcast: true});
+    });
+    it("should fetch highlights on PLACES_LINKS_CHANGED", async () => {
+      await feed.fetchHighlights();
+      feed.fetchHighlights = sinon.spy();
+      sandbox.stub(feed.linksCache, "expire");
+
+      feed.onAction({type: at.PLACES_LINKS_CHANGED});
+      assert.calledOnce(feed.fetchHighlights);
+      assert.calledWith(feed.fetchHighlights, {broadcast: false});
+      assert.calledOnce(feed.linksCache.expire);
     });
     it("should fetch highlights on PLACES_LINK_BLOCKED", async () => {
       await feed.fetchHighlights();
@@ -446,27 +603,6 @@ describe("Highlights Feed", () => {
       feed.onAction({type: at.PLACES_LINK_BLOCKED});
       assert.calledOnce(feed.fetchHighlights);
       assert.calledWith(feed.fetchHighlights, {broadcast: true});
-    });
-    it("should fetch highlights on PLACES_BOOKMARK_ADDED", async () => {
-      await feed.fetchHighlights();
-      feed.fetchHighlights = sinon.spy();
-      feed.onAction({type: at.PLACES_BOOKMARK_ADDED});
-      assert.calledOnce(feed.fetchHighlights);
-      assert.calledWith(feed.fetchHighlights, {broadcast: false});
-    });
-    it("should fetch highlights on PLACES_BOOKMARK_REMOVED", async () => {
-      await feed.fetchHighlights();
-      feed.fetchHighlights = sinon.spy();
-      feed.onAction({type: at.PLACES_BOOKMARK_REMOVED});
-      assert.calledOnce(feed.fetchHighlights);
-      assert.calledWith(feed.fetchHighlights, {broadcast: false});
-    });
-    it("should expire the cache on PLACES_BOOKMARK_REMOVED", async () => {
-      sandbox.stub(feed.linksCache, "expire");
-
-      feed.onAction({type: at.PLACES_BOOKMARK_REMOVED});
-
-      assert.calledOnce(feed.linksCache.expire);
     });
     it("should fetch highlights and expire the cache on PLACES_SAVED_TO_POCKET", async () => {
       await feed.fetchHighlights();

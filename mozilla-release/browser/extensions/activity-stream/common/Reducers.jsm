@@ -31,12 +31,12 @@ const INITIAL_STATE = {
     initialized: false,
     values: {}
   },
+  Theme: {className: ""},
   Dialog: {
     visible: false,
     data: {}
   },
-  Sections: [],
-  PreferencesPane: {visible: false}
+  Sections: []
 };
 
 function App(prevState = INITIAL_STATE.App, action) {
@@ -86,14 +86,53 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
   let newRows;
   switch (action.type) {
     case at.TOP_SITES_UPDATED:
-      if (!action.data) {
+      if (!action.data || !action.data.links) {
         return prevState;
       }
-      return Object.assign({}, prevState, {initialized: true, rows: action.data});
+      return Object.assign({}, prevState, {initialized: true, rows: action.data.links}, action.data.pref ? {pref: action.data.pref} : {});
+    case at.TOP_SITES_PREFS_UPDATED:
+      return Object.assign({}, prevState, {pref: action.data.pref});
     case at.TOP_SITES_EDIT:
-      return Object.assign({}, prevState, {editForm: {index: action.data.index}});
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: action.data.index,
+          previewResponse: null
+        }
+      });
     case at.TOP_SITES_CANCEL_EDIT:
       return Object.assign({}, prevState, {editForm: null});
+    case at.PREVIEW_RESPONSE:
+      if (!prevState.editForm || action.data.url !== prevState.editForm.previewUrl) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: action.data.preview,
+          previewUrl: action.data.url
+        }
+      });
+    case at.PREVIEW_REQUEST:
+      if (!prevState.editForm) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: null,
+          previewUrl: action.data.url
+        }
+      });
+    case at.PREVIEW_REQUEST_CANCEL:
+      if (!prevState.editForm) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: null
+        }
+      });
     case at.SCREENSHOT_UPDATED:
       newRows = prevState.rows.map(row => {
         if (row && row.url === action.data.url) {
@@ -129,6 +168,12 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
         }
         return site;
       });
+      return Object.assign({}, prevState, {rows: newRows});
+    case at.PLACES_LINK_DELETED:
+      if (!action.data) {
+        return prevState;
+      }
+      newRows = prevState.rows.filter(site => action.data.url !== site.url);
       return Object.assign({}, prevState, {rows: newRows});
     default:
       return prevState;
@@ -298,10 +343,11 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
           return item;
         })
       }));
-    case at.PLACES_LINKS_DELETED:
-      return prevState.map(section => Object.assign({}, section,
-        {rows: section.rows.filter(site => !action.data.includes(site.url))}));
+    case at.PLACES_LINK_DELETED:
     case at.PLACES_LINK_BLOCKED:
+      if (!action.data) {
+        return prevState;
+      }
       return prevState.map(section =>
         Object.assign({}, section, {rows: section.rows.filter(site => site.url !== action.data.url)}));
     case at.DELETE_FROM_POCKET:
@@ -328,12 +374,10 @@ function Snippets(prevState = INITIAL_STATE.Snippets, action) {
   }
 }
 
-function PreferencesPane(prevState = INITIAL_STATE.PreferencesPane, action) {
+function Theme(prevState = INITIAL_STATE.Theme, action) {
   switch (action.type) {
-    case at.SETTINGS_OPEN:
-      return Object.assign({}, prevState, {visible: true});
-    case at.SETTINGS_CLOSE:
-      return Object.assign({}, prevState, {visible: false});
+    case at.THEME_UPDATE:
+      return Object.assign({}, prevState, action.data);
     default:
       return prevState;
   }
@@ -343,6 +387,6 @@ this.INITIAL_STATE = INITIAL_STATE;
 this.TOP_SITES_DEFAULT_ROWS = TOP_SITES_DEFAULT_ROWS;
 this.TOP_SITES_MAX_SITES_PER_ROW = TOP_SITES_MAX_SITES_PER_ROW;
 
-this.reducers = {TopSites, App, Snippets, Prefs, Dialog, Sections, PreferencesPane};
+this.reducers = {TopSites, App, Snippets, Prefs, Dialog, Sections, Theme};
 
 const EXPORTED_SYMBOLS = ["reducers", "INITIAL_STATE", "insertPinned", "TOP_SITES_DEFAULT_ROWS", "TOP_SITES_MAX_SITES_PER_ROW"];

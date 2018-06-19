@@ -23,8 +23,8 @@
 #include "jit/CodeGenerator.h"
 
 #include "wasm/WasmBaselineCompile.h"
-#include "wasm/WasmBinaryIterator.h"
 #include "wasm/WasmGenerator.h"
+#include "wasm/WasmOpIter.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmValidate.h"
 
@@ -175,8 +175,8 @@ class FunctionCompiler
     BytecodeOffset bytecodeOffset() const {
         return iter_.bytecodeOffset();
     }
-    Maybe<BytecodeOffset> bytecodeIfNotAsmJS() const {
-        return env_.isAsmJS() ? Nothing() : Some(iter_.bytecodeOffset());
+    BytecodeOffset bytecodeIfNotAsmJS() const {
+        return env_.isAsmJS() ? BytecodeOffset() : iter_.bytecodeOffset();
     }
 
     bool init()
@@ -219,6 +219,9 @@ class FunctionCompiler
               case ValType::F64:
                 ins = MConstant::New(alloc(), DoubleValue(0.0), MIRType::Double);
                 break;
+              case ValType::AnyRef:
+                MOZ_CRASH("ion support for anyref locale default value NYI");
+                break;
               case ValType::I8x16:
                 ins = MSimdConstant::New(alloc(), SimdConstant::SplatX16(0), MIRType::Int8x16);
                 break;
@@ -250,8 +253,6 @@ class FunctionCompiler
             if (!mirGen_.ensureBallast())
                 return false;
         }
-
-        addInterruptCheck();
 
         return true;
     }
@@ -851,7 +852,6 @@ class FunctionCompiler
 
   public:
     MDefinition* computeEffectiveAddress(MDefinition* base, MemoryAccessDesc* access) {
-        MOZ_ASSERT(!access->isPlainAsmJS());
         if (inDeadCode())
             return nullptr;
         if (!access->offset())
@@ -890,7 +890,7 @@ class FunctionCompiler
 
         MWasmLoadTls* memoryBase = maybeLoadMemoryBase();
         MInstruction* load = nullptr;
-        if (access->isPlainAsmJS()) {
+        if (env_.isAsmJS() && !access->isAtomic() && !access->isSimd()) {
             MOZ_ASSERT(access->offset() == 0);
             MWasmLoadTls* boundsCheckLimit = maybeLoadBoundsCheckLimit();
             load = MAsmJSLoadHeap::New(alloc(), memoryBase, base, boundsCheckLimit, access->type());
@@ -911,7 +911,7 @@ class FunctionCompiler
 
         MWasmLoadTls* memoryBase = maybeLoadMemoryBase();
         MInstruction* store = nullptr;
-        if (access->isPlainAsmJS()) {
+        if (env_.isAsmJS() && !access->isAtomic() && !access->isSimd()) {
             MOZ_ASSERT(access->offset() == 0);
             MWasmLoadTls* boundsCheckLimit = maybeLoadBoundsCheckLimit();
             store = MAsmJSStoreHeap::New(alloc(), memoryBase, base, boundsCheckLimit,
@@ -1016,27 +1016,30 @@ class FunctionCompiler
         return binop;
     }
 
-    MDefinition* loadGlobalVar(unsigned globalDataOffset, bool isConst, MIRType type)
+    MDefinition* loadGlobalVar(unsigned globalDataOffset, bool isConst, bool isIndirect, MIRType type)
     {
         if (inDeadCode())
             return nullptr;
 
-        auto* load = MWasmLoadGlobalVar::New(alloc(), type, globalDataOffset, isConst, tlsPointer_);
+        auto* load = MWasmLoadGlobalVar::New(alloc(), type, globalDataOffset, isConst, isIndirect,
+                                             tlsPointer_);
         curBlock_->add(load);
         return load;
     }
 
-    void storeGlobalVar(uint32_t globalDataOffset, MDefinition* v)
+    void storeGlobalVar(uint32_t globalDataOffset, bool isIndirect, MDefinition* v)
     {
         if (inDeadCode())
             return;
-        curBlock_->add(MWasmStoreGlobalVar::New(alloc(), globalDataOffset, v, tlsPointer_));
+        curBlock_->add(MWasmStoreGlobalVar::New(alloc(), globalDataOffset, isIndirect, v,
+                                                tlsPointer_));
     }
 
     void addInterruptCheck()
     {
-        // We rely on signal handlers for interrupts on Asm.JS/Wasm
-        MOZ_RELEASE_ASSERT(wasm::HaveSignalHandlers());
+        if (inDeadCode())
+            return;
+        curBlock_->add(MWasmInterruptCheck::New(alloc(), tlsPointer_, bytecodeOffset()));
     }
 
     MDefinition* extractSimdElement(unsigned lane, MDefinition* base, MIRType type, SimdSign sign)
@@ -2294,7 +2297,7 @@ EmitGetGlobal(FunctionCompiler& f)
     const GlobalDesc& global = f.env().globals[id];
     if (!global.isConstant()) {
         f.iter().setResult(f.loadGlobalVar(global.offset(), !global.isMutable(),
-                                           ToMIRType(global.type())));
+                                           global.isIndirect(), ToMIRType(global.type())));
         return true;
     }
 
@@ -2345,8 +2348,7 @@ EmitSetGlobal(FunctionCompiler& f)
 
     const GlobalDesc& global = f.env().globals[id];
     MOZ_ASSERT(global.isMutable());
-
-    f.storeGlobalVar(global.offset(), value);
+    f.storeGlobalVar(global.offset(), global.isIndirect(), value);
     return true;
 }
 
@@ -2361,7 +2363,7 @@ EmitTeeGlobal(FunctionCompiler& f)
     const GlobalDesc& global = f.env().globals[id];
     MOZ_ASSERT(global.isMutable());
 
-    f.storeGlobalVar(global.offset(), value);
+    f.storeGlobalVar(global.offset(), global.isIndirect(), value);
     return true;
 }
 
@@ -2790,7 +2792,7 @@ EmitOldAtomicsLoad(FunctionCompiler& f)
     if (!f.iter().readOldAtomicLoad(&addr, &viewType))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Load());
 
     auto* ins = f.load(addr.base, &access, ValType::I32);
@@ -2810,7 +2812,7 @@ EmitOldAtomicsStore(FunctionCompiler& f)
     if (!f.iter().readOldAtomicStore(&addr, &viewType, &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Store());
 
     f.store(addr.base, &access, value);
@@ -2828,7 +2830,7 @@ EmitOldAtomicsBinOp(FunctionCompiler& f)
     if (!f.iter().readOldAtomicBinOp(&addr, &viewType, &op, &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
 
     auto* ins = f.atomicBinopHeap(op, addr.base, &access, ValType::I32, value);
@@ -2849,7 +2851,7 @@ EmitOldAtomicsCompareExchange(FunctionCompiler& f)
     if (!f.iter().readOldAtomicCompareExchange(&addr, &viewType, &oldValue, &newValue))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
 
     auto* ins = f.atomicCompareExchangeHeap(addr.base, &access, ValType::I32, oldValue, newValue);
@@ -2869,7 +2871,7 @@ EmitOldAtomicsExchange(FunctionCompiler& f)
     if (!f.iter().readOldAtomicExchange(&addr, &viewType, &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
 
     auto* ins = f.atomicExchangeHeap(addr.base, &access, ValType::I32, value);
@@ -2981,6 +2983,7 @@ SimdToLaneType(ValType type)
       case ValType::I64:
       case ValType::F32:
       case ValType::F64:
+      case ValType::AnyRef:
         break;
     }
     MOZ_CRASH("bad simd type");
@@ -3097,7 +3100,7 @@ EmitSimdLoad(FunctionCompiler& f, ValType resultType, unsigned numElems)
     if (!f.iter().readLoad(resultType, Scalar::byteSize(viewType), &addr))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()), numElems);
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(), numElems);
 
     auto* ins = f.load(addr.base, &access, resultType);
     if (!f.inDeadCode() && !ins)
@@ -3121,7 +3124,7 @@ EmitSimdStore(FunctionCompiler& f, ValType resultType, unsigned numElems)
     if (!f.iter().readTeeStore(resultType, Scalar::byteSize(viewType), &addr, &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()), numElems);
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(), numElems);
 
     f.store(addr.base, &access, value);
     return true;
@@ -3261,6 +3264,7 @@ EmitSimdCtor(FunctionCompiler& f, ValType type)
       case ValType::I64:
       case ValType::F32:
       case ValType::F64:
+      case ValType::AnyRef:
         break;
     }
     MOZ_CRASH("unexpected SIMD type");
@@ -3425,7 +3429,7 @@ EmitAtomicCmpXchg(FunctionCompiler& f, ValType type, Scalar::Type viewType)
     if (!f.iter().readAtomicCmpXchg(&addr, type, byteSize(viewType), &oldValue, &newValue))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
     auto* ins = f.atomicCompareExchangeHeap(addr.base, &access, type, oldValue, newValue);
     if (!f.inDeadCode() && !ins)
@@ -3442,7 +3446,7 @@ EmitAtomicLoad(FunctionCompiler& f, ValType type, Scalar::Type viewType)
     if (!f.iter().readAtomicLoad(&addr, type, byteSize(viewType)))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Load());
     auto* ins = f.load(addr.base, &access, type);
     if (!f.inDeadCode() && !ins)
@@ -3460,7 +3464,7 @@ EmitAtomicRMW(FunctionCompiler& f, ValType type, Scalar::Type viewType, jit::Ato
     if (!f.iter().readAtomicRMW(&addr, type, byteSize(viewType), &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
     auto* ins = f.atomicBinopHeap(op, addr.base, &access, type, value);
     if (!f.inDeadCode() && !ins)
@@ -3478,7 +3482,7 @@ EmitAtomicStore(FunctionCompiler& f, ValType type, Scalar::Type viewType)
     if (!f.iter().readAtomicStore(&addr, type, byteSize(viewType), &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Store());
     f.store(addr.base, &access, value);
     return true;
@@ -3503,7 +3507,7 @@ EmitWait(FunctionCompiler& f, ValType type, uint32_t byteSize)
         return false;
 
     MemoryAccessDesc access(type == ValType::I32 ? Scalar::Int32 : Scalar::Int64, addr.align,
-                            addr.offset, Some(f.bytecodeOffset()));
+                            addr.offset, f.bytecodeOffset());
     MDefinition* ptr = f.computeEffectiveAddress(addr.base, &access);
     if (!f.inDeadCode() && !ptr)
         return false;
@@ -3549,7 +3553,7 @@ EmitWake(FunctionCompiler& f)
     if (!f.iter().readWake(&addr, &count))
         return false;
 
-    MemoryAccessDesc access(Scalar::Int32, addr.align, addr.offset, Some(f.bytecodeOffset()));
+    MemoryAccessDesc access(Scalar::Int32, addr.align, addr.offset, f.bytecodeOffset());
     MDefinition* ptr = f.computeEffectiveAddress(addr.base, &access);
     if (!f.inDeadCode() && !ptr)
         return false;
@@ -3582,7 +3586,7 @@ EmitAtomicXchg(FunctionCompiler& f, ValType type, Scalar::Type viewType)
     if (!f.iter().readAtomicRMW(&addr, type, byteSize(viewType), &value))
         return false;
 
-    MemoryAccessDesc access(viewType, addr.align, addr.offset, Some(f.bytecodeOffset()),
+    MemoryAccessDesc access(viewType, addr.align, addr.offset, f.bytecodeOffset(),
                             /*numSimdExprs=*/ 0, Synchronization::Full());
     MDefinition* ins = f.atomicExchangeHeap(addr.base, &access, type, value);
     if (!f.inDeadCode() && !ins)
@@ -3973,6 +3977,11 @@ EmitBodyExprs(FunctionCompiler& f)
             CHECK(EmitReinterpret(f, ValType::F32, ValType::I32, MIRType::Float32));
           case uint16_t(Op::F64ReinterpretI64):
             CHECK(EmitReinterpret(f, ValType::F64, ValType::I64, MIRType::Double));
+
+          // GC types are NYI in Ion.
+          case uint16_t(Op::RefNull):
+          case uint16_t(Op::RefIsNull):
+            return f.iter().unrecognizedOpcode(&op);
 
           // Sign extensions
 #ifdef ENABLE_WASM_SIGNEXTEND_OPS
@@ -4372,7 +4381,7 @@ wasm::IonCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
     TempAllocator alloc(&lifo);
     JitContext jitContext(&alloc);
     MOZ_ASSERT(IsCompilingWasm());
-    MacroAssembler masm(MacroAssembler::WasmToken(), alloc);
+    WasmMacroAssembler masm(alloc);
 
     // Swap in already-allocated empty vectors to avoid malloc/free.
     MOZ_ASSERT(code->empty());
@@ -4387,7 +4396,7 @@ wasm::IonCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
         ValTypeVector locals;
         if (!locals.appendAll(env.funcSigs[func.index]->args()))
             return false;
-        if (!DecodeLocalEntries(d, env.kind, &locals))
+        if (!DecodeLocalEntries(d, env.kind, env.gcTypesEnabled, &locals))
             return false;
 
         // Set up for Ion compilation.

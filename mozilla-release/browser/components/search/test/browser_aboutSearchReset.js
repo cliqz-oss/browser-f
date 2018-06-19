@@ -33,10 +33,10 @@ function checkTelemetryRecords(expectedValue) {
 function promiseStoppedLoad(expectedURL) {
   return new Promise(resolve => {
     let browser = gBrowser.selectedBrowser;
-    let original = browser.loadURIWithFlags;
-    browser.loadURIWithFlags = function(URI) {
+    let original = browser.loadURI;
+    browser.loadURI = function(URI) {
       if (URI == expectedURL) {
-        browser.loadURIWithFlags = original;
+        browser.loadURI = original;
         ok(true, "loaded expected url: " + URI);
         resolve();
         return;
@@ -64,7 +64,6 @@ var gTests = [
     Services.prefs.setCharPref(kStatusPref, "pending");
 
     let loadPromise = promiseStoppedLoad(expectedURL);
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     gBrowser.contentDocumentAsCPOW.getElementById("searchResetKeepCurrent").click();
     await loadPromise;
 
@@ -83,7 +82,6 @@ var gTests = [
   async run() {
     let currentEngine = Services.search.currentEngine;
     let originalEngine = Services.search.originalDefaultEngine;
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = gBrowser.contentDocumentAsCPOW;
     let defaultEngineSpan = doc.getElementById("defaultEngine");
     is(defaultEngineSpan.textContent, originalEngine.name,
@@ -116,7 +114,6 @@ var gTests = [
     let loadPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser,
                                                      false,
                                                      "about:preferences#search");
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     gBrowser.contentDocumentAsCPOW.getElementById("linkSettingsPage").click();
     await loadPromise;
 

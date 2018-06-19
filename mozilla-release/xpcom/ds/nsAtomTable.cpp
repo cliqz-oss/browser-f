@@ -15,17 +15,18 @@
 
 #include "nsAtom.h"
 #include "nsAtomTable.h"
+#include "nsAutoPtr.h"
+#include "nsCRT.h"
+#include "nsDataHashtable.h"
+#include "nsGkAtoms.h"
+#include "nsHashKeys.h"
+#include "nsPrintfCString.h"
 #include "nsStaticAtom.h"
 #include "nsString.h"
-#include "nsCRT.h"
+#include "nsThreadUtils.h"
+#include "nsUnicharUtils.h"
 #include "PLDHashTable.h"
 #include "prenv.h"
-#include "nsThreadUtils.h"
-#include "nsDataHashtable.h"
-#include "nsHashKeys.h"
-#include "nsAutoPtr.h"
-#include "nsUnicharUtils.h"
-#include "nsPrintfCString.h"
 
 // There are two kinds of atoms handled by this module.
 //
@@ -36,10 +37,8 @@
 //   table, removing and deleting dynamic atoms with refcount zero. This allows
 //   us to avoid acquiring the atom table lock during normal refcounting.
 //
-// - Static: the atom itself is heap allocated, but it points to a static
-//   nsStringBuffer. |gAtomTable| effectively owns static atoms, because such
-//   atoms ignore all AddRef/Release calls, which ensures they stay alive until
-//   |gAtomTable| itself is destroyed whereupon they are explicitly deleted.
+// - Static: both the atom and its chars are statically allocated and
+//   immutable, so it ignores all AddRef/Release calls.
 //
 // Note that gAtomTable is used on multiple threads, and has internal
 // synchronization.
@@ -63,34 +62,6 @@ enum class GCKind {
 // we wouldn't use overflow value for comparison.
 // See nsAtom::AddRef() and nsAtom::Release().
 static Atomic<int32_t, ReleaseAcquire> gUnusedAtomCount(0);
-
-// Dynamic atoms need a ref count; this class adds that to nsAtom.
-class nsDynamicAtom : public nsAtom
-{
-public:
-  // We can't use NS_INLINE_DECL_THREADSAFE_REFCOUNTING because the refcounting
-  // of this type is special.
-  MozExternalRefCountType AddRef();
-  MozExternalRefCountType Release();
-
-  static nsDynamicAtom* As(nsAtom* aAtom)
-  {
-    MOZ_ASSERT(aAtom->IsDynamic());
-    return static_cast<nsDynamicAtom*>(aAtom);
-  }
-
-private:
-  friend class nsAtomTable;
-  friend class nsAtomSubTable;
-
-  // Construction is done by |friend|s.
-  nsDynamicAtom(const nsAString& aString, uint32_t aHash)
-    : nsAtom(AtomKind::DynamicAtom, aString, aHash)
-    , mRefCnt(1)
-  {}
-
-  mozilla::ThreadSafeAutoRefCnt mRefCnt;
-};
 
 static char16_t*
 FromStringBuffer(const nsAString& aString)
@@ -120,40 +91,50 @@ FromStringBuffer(const nsAString& aString)
   return str;
 }
 
-// This constructor is for dynamic atoms and HTML5 atoms.
-nsAtom::nsAtom(AtomKind aKind, const nsAString& aString, uint32_t aHash)
-  : mLength(aString.Length())
-  , mKind(static_cast<uint32_t>(aKind))
-  , mHash(aHash)
+nsDynamicAtom::nsDynamicAtom(const nsAString& aString, uint32_t aHash)
+  : nsAtom(AtomKind::DynamicNormal, aString, aHash)
+  , mRefCnt(1)
   , mString(FromStringBuffer(aString))
 {
-  MOZ_ASSERT(aKind == AtomKind::DynamicAtom || aKind == AtomKind::HTML5Atom);
-
-  MOZ_ASSERT_IF(!IsHTML5(), mHash == HashString(mString, mLength));
+  MOZ_ASSERT(mHash == HashString(mString, mLength));
 
   MOZ_ASSERT(mString[mLength] == char16_t(0), "null terminated");
   MOZ_ASSERT(Equals(aString), "correct data");
 }
 
-// This constructor is for static atoms.
-nsAtom::nsAtom(const char16_t* aString, uint32_t aLength, uint32_t aHash)
-  : mLength(aLength)
-  , mKind(static_cast<uint32_t>(AtomKind::StaticAtom))
-  , mHash(aHash)
-  , mString(const_cast<char16_t*>(aString))
+nsDynamicAtom::nsDynamicAtom(const nsAString& aString)
+  : nsAtom(AtomKind::DynamicHTML5, aString, 0)
+  , mRefCnt(1)
+  , mString(FromStringBuffer(aString))
 {
-  MOZ_ASSERT(mHash == HashString(mString, mLength));
-
   MOZ_ASSERT(mString[mLength] == char16_t(0), "null terminated");
-  MOZ_ASSERT(NS_strlen(mString) == mLength, "correct storage");
+  MOZ_ASSERT(Equals(aString), "correct data");
 }
 
-nsAtom::~nsAtom()
+nsDynamicAtom::~nsDynamicAtom()
 {
-  if (!IsStatic()) {
-    MOZ_ASSERT(IsDynamic() || IsHTML5());
-    GetStringBuffer()->Release();
-  }
+  GetStringBuffer()->Release();
+}
+
+const nsStaticAtom*
+nsAtom::AsStatic() const
+{
+  MOZ_ASSERT(IsStatic());
+  return static_cast<const nsStaticAtom*>(this);
+}
+
+const nsDynamicAtom*
+nsAtom::AsDynamic() const
+{
+  MOZ_ASSERT(IsDynamic());
+  return static_cast<const nsDynamicAtom*>(this);
+}
+
+nsDynamicAtom*
+nsAtom::AsDynamic()
+{
+  MOZ_ASSERT(IsDynamic());
+  return static_cast<nsDynamicAtom*>(this);
 }
 
 void
@@ -164,41 +145,55 @@ nsAtom::ToString(nsAString& aString) const
     // AssignLiteral() lets us assign without copying. This isn't a string
     // literal, but it's a static atom and thus has an unbounded lifetime,
     // which is what's important.
-    aString.AssignLiteral(mString, mLength);
+    aString.AssignLiteral(AsStatic()->String(), mLength);
   } else {
-    GetStringBuffer()->ToString(mLength, aString);
+    AsDynamic()->GetStringBuffer()->ToString(mLength, aString);
   }
 }
 
 void
 nsAtom::ToUTF8String(nsACString& aBuf) const
 {
-  MOZ_ASSERT(!IsHTML5(), "Called ToUTF8String() on an HTML5 atom");
-  CopyUTF16toUTF8(nsDependentString(mString, mLength), aBuf);
+  MOZ_ASSERT(!IsDynamicHTML5(),
+             "Called ToUTF8String() on a dynamic HTML5 atom");
+  CopyUTF16toUTF8(nsDependentString(GetUTF16String(), mLength), aBuf);
 }
 
 void
 nsAtom::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf, AtomsSizes& aSizes)
   const
 {
-  MOZ_ASSERT(!IsHTML5(),
-             "Called AddSizeOfIncludingThis() on an HTML5 atom");
-  size_t thisSize = aMallocSizeOf(this);
-  if (IsStatic()) {
-    // String buffers pointed to by static atoms are in static memory, and so
-    // are not measured here.
-    aSizes.mStaticAtomObjects += thisSize;
-  } else {
-    aSizes.mDynamicAtomObjects += thisSize;
+  MOZ_ASSERT(!IsDynamicHTML5(),
+             "Called AddSizeOfIncludingThis() on a dynamic HTML5 atom");
+
+  // Static atoms are in static memory, and so are not measured here.
+  if (IsDynamic()) {
+    aSizes.mDynamicAtomObjects += aMallocSizeOf(this);
     aSizes.mDynamicUnsharedBuffers +=
-      GetStringBuffer()->SizeOfIncludingThisIfUnshared(aMallocSizeOf);
+      AsDynamic()->GetStringBuffer()->SizeOfIncludingThisIfUnshared(
+        aMallocSizeOf);
   }
+}
+
+char16ptr_t
+nsAtom::GetUTF16String() const
+{
+  return IsStatic() ? AsStatic()->String() : AsDynamic()->String();
 }
 
 //----------------------------------------------------------------------
 
 struct AtomTableKey
 {
+  explicit AtomTableKey(const nsStaticAtom* aAtom)
+    : mUTF16String(aAtom->String())
+    , mUTF8String(nullptr)
+    , mLength(aAtom->GetLength())
+    , mHash(aAtom->hash())
+  {
+    MOZ_ASSERT(HashString(mUTF16String, mLength) == mHash);
+  }
+
   AtomTableKey(const char16_t* aUTF16String, uint32_t aLength,
                uint32_t* aHashOut)
     : mUTF16String(aUTF16String)
@@ -284,7 +279,7 @@ public:
   already_AddRefed<nsAtom> Atomize(const nsACString& aUTF8String);
   already_AddRefed<nsAtom> AtomizeMainThread(const nsAString& aUTF16String);
   nsStaticAtom* GetStaticAtom(const nsAString& aUTF16String);
-  void RegisterStaticAtoms(const nsStaticAtomSetup* aSetup, uint32_t aCount);
+  void RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen);
 
   // The result of this function may be imprecise if other threads are operating
   // on atoms concurrently. It's also slow, since it triggers a GC before
@@ -359,13 +354,7 @@ void
 nsAtomTable::AtomTableClearEntry(PLDHashTable* aTable, PLDHashEntryHdr* aEntry)
 {
   auto entry = static_cast<AtomTableEntry*>(aEntry);
-  nsAtom* atom = entry->mAtom;
-  if (atom->IsStatic()) {
-    // This case -- when the entry being cleared holds a static atom -- only
-    // occurs when gAtomTable is destroyed, whereupon all static atoms within it
-    // must be explicitly deleted.
-    delete atom;
-  }
+  entry->mAtom = nullptr;
 }
 
 static void
@@ -509,10 +498,10 @@ nsAtomSubTable::GCLocked(GCKind aKind)
     }
 
     nsAtom* atom = entry->mAtom;
-    MOZ_ASSERT(!atom->IsHTML5());
-    if (atom->IsDynamic() && nsDynamicAtom::As(atom)->mRefCnt == 0) {
+    MOZ_ASSERT(!atom->IsDynamicHTML5());
+    if (atom->IsDynamic() && atom->AsDynamic()->mRefCnt == 0) {
       i.Remove();
-      delete atom;
+      delete atom->AsDynamic();
       ++removedCount;
     }
 #ifdef NS_FREE_PERMANENT_DATA
@@ -588,17 +577,17 @@ nsDynamicAtom::Release()
 MozExternalRefCountType
 nsAtom::AddRef()
 {
-  MOZ_ASSERT(!IsHTML5(), "Attempt to AddRef an HTML5 atom");
+  MOZ_ASSERT(!IsDynamicHTML5(), "Attempt to AddRef a dynamic HTML5 atom");
 
-  return IsStatic() ? 2 : nsDynamicAtom::As(this)->AddRef();
+  return IsStatic() ? 2 : AsDynamic()->AddRef();
 }
 
 MozExternalRefCountType
 nsAtom::Release()
 {
-  MOZ_ASSERT(!IsHTML5(), "Attempt to Release an HTML5 atom");
+  MOZ_ASSERT(!IsDynamicHTML5(), "Attempt to Release a dynamic HTML5 atom");
 
-  return IsStatic() ? 1 : nsDynamicAtom::As(this)->Release();
+  return IsStatic() ? 1 : AsDynamic()->Release();
 }
 
 //----------------------------------------------------------------------
@@ -606,33 +595,19 @@ nsAtom::Release()
 // Have the static atoms been inserted into the table?
 static bool gStaticAtomsDone = false;
 
-class DefaultAtoms
-{
-public:
-  NS_STATIC_ATOM_DECL(empty)
-};
-
-NS_STATIC_ATOM_DEFN(DefaultAtoms, empty)
-
-NS_STATIC_ATOM_BUFFER(empty, "")
-
-static const nsStaticAtomSetup sDefaultAtomSetup[] = {
-  NS_STATIC_ATOM_SETUP(DefaultAtoms, empty)
-};
-
 void
 NS_InitAtomTable()
 {
   MOZ_ASSERT(!gAtomTable);
   gAtomTable = new nsAtomTable();
 
-  // Bug 1340710 has caused us to generate an empty atom at arbitrary times
-  // after startup.  If we end up creating one before nsGkAtoms::_empty is
-  // registered, we get an assertion about transmuting a dynamic atom into a
-  // static atom.  In order to avoid that, we register an empty string static
-  // atom as soon as we initialize the atom table to guarantee that the empty
-  // string atom will always be static.
-  NS_RegisterStaticAtoms(sDefaultAtomSetup);
+  // Bug 1340710 has caused us to use an empty atom at arbitrary times after
+  // startup. If we end up creating one before nsGkAtoms::_empty is registered,
+  // we get an assertion about transmuting a dynamic atom into a static atom.
+  // In order to avoid that, we register nsGkAtoms immediately after creating
+  // the atom table to guarantee that the empty string atom will always be
+  // static.
+  nsGkAtoms::RegisterStaticAtoms();
 }
 
 void
@@ -672,51 +647,41 @@ nsAtomSubTable::AddSizeOfExcludingThisLocked(MallocSizeOf aMallocSizeOf,
 }
 
 void
-nsAtomTable::RegisterStaticAtoms(const nsStaticAtomSetup* aSetup,
-                                 uint32_t aCount)
+nsAtomTable::RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(!gStaticAtomsDone, "Static atom insertion is finished!");
 
-  for (uint32_t i = 0; i < aCount; ++i) {
-    const char16_t* string = aSetup[i].mString;
-    nsStaticAtom** atomp = aSetup[i].mAtomp;
+  for (uint32_t i = 0; i < aAtomsLen; ++i) {
+    const nsStaticAtom* atom = &aAtoms[i];
+    MOZ_ASSERT(nsCRT::IsAscii(atom->String()));
+    MOZ_ASSERT(NS_strlen(atom->String()) == atom->GetLength());
 
-    MOZ_ASSERT(nsCRT::IsAscii(string));
-
-    uint32_t stringLen = NS_strlen(string);
-
-    uint32_t hash;
-    AtomTableKey key(string, stringLen, &hash);
+    AtomTableKey key(atom);
     nsAtomSubTable& table = SelectSubTable(key);
     MutexAutoLock lock(table.mLock);
     AtomTableEntry* he = table.Add(key);
 
-    nsStaticAtom* atom;
     if (he->mAtom) {
-      // Disallow creating a dynamic atom, and then later, while the dynamic
-      // atom is still alive, registering that same atom as a static atom.  It
-      // causes subtle bugs, and we're programming in C++ here, not Smalltalk.
-      if (!he->mAtom->IsStatic()) {
-        nsAutoCString name;
-        he->mAtom->ToUTF8String(name);
-        MOZ_CRASH_UNSAFE_PRINTF(
-          "Static atom registration for %s should be pushed back", name.get());
-      }
-      atom = static_cast<nsStaticAtom*>(he->mAtom);
-    } else {
-      atom = new nsStaticAtom(string, stringLen, hash);
-      he->mAtom = atom;
+      // There are two ways we could get here.
+      // - Register two static atoms with the same string.
+      // - Create a dynamic atom and then register a static atom with the same
+      //   string while the dynamic atom is alive.
+      // Both cases can cause subtle bugs, and are disallowed. We're
+      // programming in C++ here, not Smalltalk.
+      nsAutoCString name;
+      he->mAtom->ToUTF8String(name);
+      MOZ_CRASH_UNSAFE_PRINTF("Atom for '%s' already exists", name.get());
     }
-    *atomp = atom;
+    he->mAtom = const_cast<nsStaticAtom*>(atom);
   }
 }
 
 void
-RegisterStaticAtoms(const nsStaticAtomSetup* aSetup, uint32_t aCount)
+NS_RegisterStaticAtoms(const nsStaticAtom* aAtoms, size_t aAtomsLen)
 {
   MOZ_ASSERT(gAtomTable);
-  gAtomTable->RegisterStaticAtoms(aSetup, aCount);
+  gAtomTable->RegisterStaticAtoms(aAtoms, aAtomsLen);
 }
 
 already_AddRefed<nsAtom>
@@ -876,4 +841,26 @@ NS_SetStaticAtomsDone()
 {
   MOZ_ASSERT(NS_IsMainThread());
   gStaticAtomsDone = true;
+}
+
+void ToLowerCaseASCII(RefPtr<nsAtom>& aAtom)
+{
+  // Assume the common case is that the atom is already ASCII lowercase.
+  bool reAtomize = false;
+  const nsDependentString existing(aAtom->GetUTF16String(), aAtom->GetLength());
+  for (size_t i = 0; i < existing.Length(); ++i) {
+    if (IS_ASCII_UPPER(existing[i])) {
+      reAtomize = true;
+      break;
+    }
+  }
+
+  // If the string was already lowercase, we're done.
+  if (!reAtomize) {
+    return;
+  }
+
+  nsAutoString lowercased;
+  ToLowerCaseASCII(existing, lowercased);
+  aAtom = NS_Atomize(lowercased);
 }

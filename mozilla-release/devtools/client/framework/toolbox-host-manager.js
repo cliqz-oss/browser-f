@@ -8,7 +8,6 @@ const Services = require("Services");
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
-const {Task} = require("devtools/shared/task");
 
 loader.lazyRequireGetter(this, "Toolbox", "devtools/client/framework/toolbox", true);
 loader.lazyRequireGetter(this, "Hosts", "devtools/client/framework/toolbox-hosts", true);
@@ -24,23 +23,12 @@ loader.lazyRequireGetter(this, "Hosts", "devtools/client/framework/toolbox-hosts
  * - switch-host:
  *   Order to display the toolbox in another host (side, bottom, window, or the
  *   previously used one)
- * - toggle-minimize-mode:
- *   When using the bottom host, the toolbox can be miximized to only display
- *   the tool titles
- * - maximize-host:
- *   When using the bottom host in minimized mode, revert back to regular mode
- *   in order to see tool titles and the tools
  * - raise-host:
  *   Focus the tools
  * - set-host-title:
  *   When using the window host, update the window title
  *
  * Messages sent by the chrome to the toolbox:
- * - host-minimized:
- *   The bottom host is done minimizing (after animation end)
- * - host-maximized:
- *   The bottom host is done switching back to regular mode (after animation
- *   end)
  * - switched-host:
  *   The `switch-host` command sent by the toolbox is done
  */
@@ -57,15 +45,13 @@ function ToolboxHostManager(target, hostType, hostOptions) {
   if (!hostType) {
     hostType = Services.prefs.getCharPref(LAST_HOST);
   }
-  this.onHostMinimized = this.onHostMinimized.bind(this);
-  this.onHostMaximized = this.onHostMaximized.bind(this);
   this.host = this.createHost(hostType, hostOptions);
   this.hostType = hostType;
 }
 
 ToolboxHostManager.prototype = {
-  create: Task.async(function* (toolId) {
-    yield this.host.create();
+  async create(toolId) {
+    await this.host.create();
 
     this.host.frame.setAttribute("aria-label", L10N.getStr("toolbox.label"));
     this.host.frame.ownerDocument.defaultView.addEventListener("message", this);
@@ -83,7 +69,7 @@ ToolboxHostManager.prototype = {
     }
 
     return toolbox;
-  }),
+  },
 
   handleEvent(event) {
     switch (event.type) {
@@ -122,14 +108,8 @@ ToolboxHostManager.prototype = {
       case "switch-host":
         this.switchHost(event.data.hostType);
         break;
-      case "maximize-host":
-        this.host.maximize();
-        break;
       case "raise-host":
         this.host.raise();
-        break;
-      case "toggle-minimize-mode":
-        this.host.toggleMinimizeMode(event.data.toolbarHeight);
         break;
       case "set-host-title":
         this.host.setTitle(event.data.title);
@@ -168,25 +148,10 @@ ToolboxHostManager.prototype = {
     }
 
     let newHost = new Hosts[hostType](this.target.tab, options);
-    // Update the label and icon when the state changes.
-    newHost.on("minimized", this.onHostMinimized);
-    newHost.on("maximized", this.onHostMaximized);
     return newHost;
   },
 
-  onHostMinimized() {
-    this.postMessage({
-      name: "host-minimized"
-    });
-  },
-
-  onHostMaximized() {
-    this.postMessage({
-      name: "host-maximized"
-    });
-  },
-
-  switchHost: Task.async(function* (hostType) {
+  async switchHost(hostType) {
     if (hostType == "previous") {
       // Switch to the last used host for the toolbox UI.
       // This is determined by the devtools.toolbox.previousHost pref.
@@ -204,7 +169,7 @@ ToolboxHostManager.prototype = {
     }
     let iframe = this.host.frame;
     let newHost = this.createHost(hostType);
-    let newIframe = yield newHost.create();
+    let newIframe = await newHost.create();
     // change toolbox document's parent to the new host
     newIframe.swapFrameLoaders(iframe);
 
@@ -229,7 +194,7 @@ ToolboxHostManager.prototype = {
       name: "switched-host",
       hostType
     });
-  }),
+  },
 
   /**
    * Destroy the current host, and remove event listeners from its frame.
@@ -244,8 +209,6 @@ ToolboxHostManager.prototype = {
     }
     this.host.frame.removeEventListener("unload", this, true);
 
-    this.host.off("minimized", this.onHostMinimized);
-    this.host.off("maximized", this.onHostMaximized);
     return this.host.destroy();
   }
 };

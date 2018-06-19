@@ -7,24 +7,28 @@
 var gAppManagerDialog = {
   _removed: [],
 
-  init: function appManager_init() {
+  onLoad() {
+    document.mozSubdialogReady = this.init();
+  },
+
+  async init() {
     this.handlerInfo = window.arguments[0];
     Services.scriptloader.loadSubScript("chrome://browser/content/preferences/in-content/main.js",
       window);
     var pane = gMainPane;
-    var bundle = document.getElementById("appManagerBundle");
-    var contentText;
-    if (this.handlerInfo.type == TYPE_MAYBE_FEED)
-      contentText = bundle.getString("handleWebFeeds");
-    else {
-      var description = pane._describeType(this.handlerInfo);
-      var key =
-        (this.handlerInfo.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) ? "handleFile"
-                                                                        : "handleProtocol";
-        contentText = bundle.getFormattedString(key, [description]);
+
+    const appDescElem = document.getElementById("appDescription");
+    if (this.handlerInfo.type == TYPE_MAYBE_FEED) {
+      document.l10n.setAttributes(appDescElem, "app-manager-handle-webfeeds");
+    } else if (this.handlerInfo.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) {
+      document.l10n.setAttributes(appDescElem, "app-manager-handle-file", {
+        type: pane._describeType(this.handlerInfo)
+      });
+    } else {
+      document.l10n.setAttributes(appDescElem, "app-manager-handle-protocol", {
+        type: pane._describeType(this.handlerInfo)
+      });
     }
-    contentText = bundle.getFormattedString("descriptionApplications", [contentText]);
-    document.getElementById("appDescription").textContent = contentText;
 
     var list = document.getElementById("appList");
     var apps = this.handlerInfo.possibleApplicationHandlers.enumerate();
@@ -40,7 +44,15 @@ var gAppManagerDialog = {
       item.app = app;
     }
 
+    // Triggers onSelect which populates label
     list.selectedIndex = 0;
+
+    // We want to block on those elements being localized because the
+    // result will impact the size of the subdialog.
+    await document.l10n.translateElements([
+      appDescElem,
+      document.getElementById("appType")
+    ]);
   },
 
   onOK: function appManager_onOK() {
@@ -63,7 +75,7 @@ var gAppManagerDialog = {
     var list = document.getElementById("appList");
     this._removed.push(list.selectedItem.app);
     var index = list.selectedIndex;
-    list.removeItemAt(index);
+    list.selectedItem.remove();
     if (list.getRowCount() == 0) {
       // The list is now empty, make the bottom part disappear
       document.getElementById("appDetails").hidden = true;
@@ -92,9 +104,9 @@ var gAppManagerDialog = {
     else if (app instanceof Ci.nsIWebContentHandlerInfo)
       address = app.uri;
     document.getElementById("appLocation").value = address;
-    var bundle = document.getElementById("appManagerBundle");
-    var appType = app instanceof Ci.nsILocalHandlerApp ? "descriptionLocalApp"
-                                                       : "descriptionWebApp";
-    document.getElementById("appType").value = bundle.getString(appType);
+    const l10nId = app instanceof Ci.nsILocalHandlerApp ? "app-manager-local-app-info"
+                                                        : "app-manager-web-app-info";
+    const appTypeElem = document.getElementById("appType");
+    document.l10n.setAttributes(appTypeElem, l10nId);
   }
 };

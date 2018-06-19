@@ -30,9 +30,6 @@ switch (countryCode) {
   case "DE":
     code = "firefox-b";
     break;
-  case "RU":
-    // Covered by test but doesn't use a code
-    break;
 }
 
 if (code) {
@@ -176,5 +173,5 @@ async function testSearchEngine(engineDetails) {
   }
 
   engine.alias = undefined;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }

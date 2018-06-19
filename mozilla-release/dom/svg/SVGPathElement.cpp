@@ -20,6 +20,7 @@
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsStyleStruct.h"
+#include "nsWindowSizes.h"
 #include "SVGContentUtils.h"
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Path)
@@ -285,37 +286,6 @@ SVGPathElement::GetMarkPoints(nsTArray<nsSVGMark> *aMarks)
   mD.GetAnimValue().GetMarkerPositioningData(aMarks);
 }
 
-float
-SVGPathElement::GetPathLengthScale(PathLengthScaleForType aFor)
-{
-  MOZ_ASSERT(aFor == eForTextPath || aFor == eForStroking,
-             "Unknown enum");
-  if (mPathLength.IsExplicitlySet()) {
-    float authorsPathLengthEstimate = mPathLength.GetAnimValue();
-    if (authorsPathLengthEstimate > 0) {
-      RefPtr<Path> path = GetOrBuildPathForMeasuring();
-      if (!path) {
-        // The path is empty or invalid so its length must be zero and
-        // we know that 0 / authorsPathLengthEstimate = 0.
-        return 0.0;
-      }
-      if (aFor == eForTextPath) {
-        // For textPath, a transform on the referenced path affects the
-        // textPath layout, so when calculating the actual path length
-        // we need to take that into account.
-        gfxMatrix matrix = PrependLocalTransformsTo(gfxMatrix());
-        if (!matrix.IsIdentity()) {
-          RefPtr<PathBuilder> builder =
-            path->TransformedCopyToBuilder(ToMatrix(matrix));
-          path = builder->Finish();
-        }
-      }
-      return path->ComputeLength() / authorsPathLengthEstimate;
-    }
-  }
-  return 1.0;
-}
-
 already_AddRefed<Path>
 SVGPathElement::BuildPath(PathBuilder* aBuilder)
 {
@@ -329,17 +299,18 @@ SVGPathElement::BuildPath(PathBuilder* aBuilder)
   uint8_t strokeLineCap = NS_STYLE_STROKE_LINECAP_BUTT;
   Float strokeWidth = 0;
 
-  RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(this, nullptr);
-  if (styleContext) {
-    const nsStyleSVG* style = styleContext->StyleSVG();
+  RefPtr<ComputedStyle> computedStyle =
+    nsComputedDOMStyle::GetComputedStyleNoFlush(this, nullptr);
+  if (computedStyle) {
+    const nsStyleSVG* style = computedStyle->StyleSVG();
     // Note: the path that we return may be used for hit-testing, and SVG
     // exposes hit-testing of strokes that are not actually painted. For that
     // reason we do not check for eStyleSVGPaintType_None or check the stroke
     // opacity here.
     if (style->mStrokeLinecap != NS_STYLE_STROKE_LINECAP_BUTT) {
       strokeLineCap = style->mStrokeLinecap;
-      strokeWidth = SVGContentUtils::GetStrokeWidth(this, styleContext, nullptr);
+      strokeWidth =
+        SVGContentUtils::GetStrokeWidth(this, computedStyle, nullptr);
     }
   }
 

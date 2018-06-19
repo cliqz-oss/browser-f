@@ -22,8 +22,7 @@ public: // new functions
     gfxFT2Font(const RefPtr<mozilla::gfx::UnscaledFontFreeType>& aUnscaledFont,
                cairo_scaled_font_t *aCairoFont,
                FT2FontEntry *aFontEntry,
-               const gfxFontStyle *aFontStyle,
-               bool aNeedsBold);
+               const gfxFontStyle *aFontStyle);
     virtual ~gfxFT2Font ();
 
     FT2FontEntry *GetFontEntry();
@@ -41,7 +40,7 @@ protected:
         CachedGlyphData()
             : glyphIndex(0xffffffffU) { }
 
-        CachedGlyphData(uint32_t gid)
+        explicit CachedGlyphData(uint32_t gid)
             : glyphIndex(gid) { }
 
         uint32_t glyphIndex;

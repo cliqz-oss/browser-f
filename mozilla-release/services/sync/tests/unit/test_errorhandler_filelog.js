@@ -312,6 +312,7 @@ add_test(function test_newFailed_errorLog() {
 });
 
 add_test(function test_errorLog_dumpAddons() {
+  Svc.Prefs.set("log.logger", "Trace");
   Svc.Prefs.set("log.appender.file.logOnError", true);
 
   Svc.Obs.add("weave:service:reset-file-log", function onResetFileLog() {
@@ -399,4 +400,29 @@ add_test(function test_logErrorCleanup_age() {
   CommonUtils.namedTimer(function onTimer() {
     Svc.Obs.notify("weave:service:sync:error");
   }, delay, this, "cleanup-timer");
+});
+
+add_task(async function test_remove_log_on_startOver() {
+  Svc.Prefs.set("log.appender.file.logOnError", true);
+
+  let log = Log.repository.getLogger("Sync.Test.FileLog");
+  const MESSAGE = "this WILL show up";
+  log.info(MESSAGE);
+
+  let promiseLogWritten = promiseOneObserver("weave:service:reset-file-log");
+  // Fake an unsuccessful sync.
+  Svc.Obs.notify("weave:service:sync:error");
+
+  await promiseLogWritten;
+  // Should have at least 1 log file.
+  let entries = logsdir.directoryEntries;
+  Assert.ok(entries.hasMoreElements());
+
+  // Fake a reset.
+  let promiseRemoved = promiseOneObserver("weave:service:remove-file-log");
+  Svc.Obs.notify("weave:service:start-over:finish");
+  await promiseRemoved;
+
+  // should be no files left.
+  Assert.ok(!logsdir.directoryEntries.hasMoreElements());
 });

@@ -6,11 +6,35 @@
 #ifndef _mozilla_dom_ServiceWorkerUtils_h
 #define _mozilla_dom_ServiceWorkerUtils_h
 
+#include "mozilla/MozPromise.h"
+#include "mozilla/dom/ServiceWorkerRegistrationDescriptor.h"
+#include "nsTArray.h"
+
 namespace mozilla {
+
+class ErrorResult;
+
 namespace dom {
+
+class ServiceWorkerRegistrationData;
+class ServiceWorkerRegistrationDescriptor;
+
+typedef MozPromise<ServiceWorkerRegistrationDescriptor, CopyableErrorResult, false>
+        ServiceWorkerRegistrationPromise;
+
+typedef MozPromise<nsTArray<ServiceWorkerRegistrationDescriptor>, CopyableErrorResult, false>
+        ServiceWorkerRegistrationListPromise;
 
 bool
 ServiceWorkerParentInterceptEnabled();
+
+bool
+ServiceWorkerRegistrationDataIsValid(const ServiceWorkerRegistrationData& aData);
+
+nsresult
+ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
+                                    nsIURI* aScopeURI,
+                                    nsIURI* aScriptURI);
 
 } // namespace dom
 } // namespace mozilla

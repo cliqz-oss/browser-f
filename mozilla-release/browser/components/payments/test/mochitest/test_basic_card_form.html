@@ -1,0 +1,299 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+Test the basic-card-form element
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test the basic-card-form element</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script src="sinon-2.3.2.js"></script>
+  <script src="payments_common.js"></script>
+  <script src="../../res/vendor/custom-elements.min.js"></script>
+  <script src="../../res/unprivileged-fallbacks.js"></script>
+  <script src="autofillEditForms.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  <link rel="stylesheet" type="text/css" href="../../res/paymentRequest.css"/>
+</head>
+<body>
+  <p id="display">
+  </p>
+<div id="content" style="display: none">
+
+</div>
+<pre id="test">
+</pre>
+<script type="module">
+/** Test the basic-card-form element **/
+
+/* global sinon */
+/* import-globals-from payments_common.js */
+
+import BasicCardForm from "../../res/containers/basic-card-form.js";
+
+let display = document.getElementById("display");
+
+function checkCCForm(customEl, expectedCard) {
+  const CC_PROPERTY_NAMES = [
+    "billingAddressGUID",
+    "cc-number",
+    "cc-name",
+    "cc-exp-month",
+    "cc-exp-year",
+  ];
+  for (let propName of CC_PROPERTY_NAMES) {
+    let expectedVal = expectedCard[propName] || "";
+    is(document.getElementById(propName).value,
+       expectedVal.toString(),
+       `Check ${propName}`);
+  }
+}
+
+add_task(async function test_initialState() {
+  let form = new BasicCardForm();
+  let {page} = form.requestStore.getState();
+  is(page.id, "payment-summary", "Check initial page");
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+  is(page.id, "payment-summary", "Check initial page after appending");
+  form.remove();
+});
+
+add_task(async function test_backButton() {
+  let form = new BasicCardForm();
+  form.dataset.backButtonLabel = "Back";
+  await form.requestStore.setState({
+    page: {
+      id: "test-page",
+      title: "Sample page title 2",
+    },
+  });
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  let stateChangePromise = promiseStateChange(form.requestStore);
+  is(form.pageTitle.textContent, "Sample page title 2", "Check title");
+  is(form.backButton.textContent, "Back", "Check label");
+  synthesizeMouseAtCenter(form.backButton, {});
+
+  let {page} = await stateChangePromise;
+  is(page.id, "payment-summary", "Check initial page after appending");
+
+  form.remove();
+});
+
+add_task(async function test_saveButton() {
+  let form = new BasicCardForm();
+  form.dataset.saveButtonLabel = "Save";
+  form.dataset.errorGenericSave = "Generic error";
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  form.form.querySelector("#cc-number").focus();
+  sendString("4111111111111111");
+  form.form.querySelector("#cc-name").focus();
+  sendString("J. Smith");
+  form.form.querySelector("#cc-exp-month").focus();
+  sendString("11");
+  form.form.querySelector("#cc-exp-year").focus();
+  let year = (new Date()).getFullYear().toString();
+  sendString(year);
+
+  let messagePromise = promiseContentToChromeMessage("updateAutofillRecord");
+  is(form.saveButton.textContent, "Save", "Check label");
+  synthesizeMouseAtCenter(form.saveButton, {});
+
+  let details = await messagePromise;
+  is(details.collectionName, "creditCards", "Check collectionName");
+  isDeeply(details, {
+    collectionName: "creditCards",
+    errorStateChange: {
+      page: {
+        id: "basic-card-page",
+        error: "Generic error",
+      },
+    },
+    guid: undefined,
+    messageType: "updateAutofillRecord",
+    preserveOldProperties: true,
+    record: {
+      "cc-exp-month": "11",
+      "cc-exp-year": year,
+      "cc-name": "J. Smith",
+      "cc-number": "4111111111111111",
+    },
+    selectedStateKey: "selectedPaymentCard",
+    successStateChange: {
+      page: {
+        id: "payment-summary",
+      },
+    },
+  }, "Check event details for the message to chrome");
+  form.remove();
+});
+
+add_task(async function test_genericError() {
+  let form = new BasicCardForm();
+  await form.requestStore.setState({
+    page: {
+      id: "test-page",
+      error: "Generic Error",
+    },
+  });
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  ok(!isHidden(form.genericErrorText), "Error message should be visible");
+  is(form.genericErrorText.textContent, "Generic Error", "Check error message");
+  form.remove();
+});
+
+add_task(async function test_add_selectedShippingAddress() {
+  let form = new BasicCardForm();
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  info("have an existing card in storage");
+  let card1 = deepClone(PTU.BasicCards.JohnDoe);
+  card1.guid = "9864798564";
+  card1["cc-exp-year"] = 2011;
+
+  let address1 = deepClone(PTU.Addresses.TimBL);
+  address1.guid = "TimBLGUID";
+
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+    },
+    savedAddresses: {
+      [address1.guid]: deepClone(address1),
+    },
+    savedBasicCards: {
+      [card1.guid]: deepClone(card1),
+    },
+    selectedShippingAddress: address1.guid,
+  });
+  await asyncElementRendered();
+  checkCCForm(form, {
+    billingAddressGUID: address1.guid,
+  });
+
+  form.remove();
+  await form.requestStore.reset();
+});
+
+add_task(async function test_add_noSelectedShippingAddress() {
+  let form = new BasicCardForm();
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  info("have an existing card in storage but unused");
+  let card1 = deepClone(PTU.BasicCards.JohnDoe);
+  card1.guid = "9864798564";
+  card1["cc-exp-year"] = 2011;
+
+  let address1 = deepClone(PTU.Addresses.TimBL);
+  address1.guid = "TimBLGUID";
+
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+    },
+    savedAddresses: {
+      [address1.guid]: deepClone(address1),
+    },
+    savedBasicCards: {
+      [card1.guid]: deepClone(card1),
+    },
+    selectedShippingAddress: null,
+  });
+  await asyncElementRendered();
+  checkCCForm(form, {});
+
+  info("now test with a missing selectedShippingAddress");
+  await form.requestStore.setState({
+    selectedShippingAddress: "some-missing-guid",
+  });
+  await asyncElementRendered();
+  checkCCForm(form, {});
+
+  form.remove();
+  await form.requestStore.reset();
+});
+
+add_task(async function test_edit() {
+  let form = new BasicCardForm();
+  await form.promiseReady;
+  display.appendChild(form);
+  await asyncElementRendered();
+
+  info("test year before current");
+  let card1 = deepClone(PTU.BasicCards.JohnDoe);
+  card1.guid = "9864798564";
+  card1["cc-exp-year"] = 2011;
+
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+      guid: card1.guid,
+    },
+    savedBasicCards: {
+      [card1.guid]: deepClone(card1),
+    },
+  });
+  await asyncElementRendered();
+  checkCCForm(form, card1);
+
+  info("test future year");
+  card1["cc-exp-year"] = 2100;
+
+  await form.requestStore.setState({
+    savedBasicCards: {
+      [card1.guid]: deepClone(card1),
+    },
+  });
+  await asyncElementRendered();
+  checkCCForm(form, card1);
+
+  info("test change to minimal record");
+  let minimalCard = {
+    // no expiration date or name
+    "cc-number": "1234567690123",
+    guid: "9gnjdhen46",
+  };
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+      guid: minimalCard.guid,
+    },
+    savedBasicCards: {
+      [minimalCard.guid]: deepClone(minimalCard),
+    },
+  });
+  await asyncElementRendered();
+  checkCCForm(form, minimalCard);
+
+  info("change to no selected card");
+  await form.requestStore.setState({
+    page: {
+      id: "basic-card-page",
+    },
+  });
+  await asyncElementRendered();
+  checkCCForm(form, {});
+
+  form.remove();
+});
+</script>
+
+</body>
+</html>

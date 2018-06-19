@@ -6,7 +6,7 @@
  * Tests the marker utils methods.
  */
 
-add_task(function () {
+add_task(function() {
   let { TIMELINE_BLUEPRINT } = require("devtools/client/performance/modules/markers");
   let { PREFS } = require("devtools/client/performance/modules/global");
   let { MarkerBlueprintUtils } = require("devtools/client/performance/modules/marker-blueprint-utils");
@@ -44,7 +44,7 @@ add_task(function () {
         "getMarkerFields() returns an array with proper value");
 
   fields = MarkerBlueprintUtils.getMarkerFields(
-    { name: "DOMEvent", eventPhase: Ci.nsIDOMEvent.AT_TARGET, type: "mouseclick" });
+    { name: "DOMEvent", eventPhase: Event.AT_TARGET, type: "mouseclick" });
   equal(fields.length, 2,
         "getMarkerFields() returns multiple fields when using a fields function");
   equal(fields[0].label, "Event Type:",

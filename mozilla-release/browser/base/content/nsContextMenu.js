@@ -15,7 +15,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   LoginManagerContextMenu: "resource://gre/modules/LoginManagerContextMenu.jsm",
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
-  DevToolsShim: "chrome://devtools-shim/content/DevToolsShim.jsm",
+  DevToolsShim: "chrome://devtools-startup/content/DevToolsShim.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
@@ -445,6 +445,14 @@ nsContextMenu.prototype = {
                       Services.prefs.getBoolPref("devtools.inspector.enabled", true) &&
                       !Services.prefs.getBoolPref("devtools.policy.disabled", false);
 
+    var showInspectA11Y = showInspect &&
+                          // Only when accessibility service started.
+                          Services.appinfo.accessibilityEnabled &&
+                          this.inTabBrowser &&
+                          Services.prefs.getBoolPref("devtools.enabled", true) &&
+                          Services.prefs.getBoolPref("devtools.accessibility.enabled", true) &&
+                          !Services.prefs.getBoolPref("devtools.policy.disabled", false);
+
     this.showItem("context-viewsource", shouldShow);
     this.showItem("context-viewinfo", shouldShow);
     // The page info is broken for WebExtension popups, as the browser is
@@ -452,6 +460,8 @@ nsContextMenu.prototype = {
     this.setItemAttr("context-viewinfo", "disabled", this.webExtBrowserType === "popup");
     this.showItem("inspect-separator", showInspect);
     this.showItem("context-inspect", showInspect);
+
+    this.showItem("context-inspect-a11y", showInspectA11Y);
 
     this.showItem("context-sep-viewsource", shouldShow);
 
@@ -760,6 +770,10 @@ nsContextMenu.prototype = {
     return DevToolsShim.inspectNode(gBrowser.selectedTab, this.targetSelectors);
   },
 
+  inspectA11Y() {
+    return DevToolsShim.inspectA11Y(gBrowser.selectedTab, this.targetSelectors);
+  },
+
   _openLinkInParameters(extra) {
     let params = { charset: gContextMenuContentData.charSet,
                    originPrincipal: this.principal,
@@ -792,20 +806,17 @@ nsContextMenu.prototype = {
 
   // Open linked-to URL in a new window.
   openLink() {
-    urlSecurityCheck(this.linkURL, this.principal);
     openLinkIn(this.linkURL, "window", this._openLinkInParameters());
   },
 
   // Open linked-to URL in a new private window.
   openLinkInPrivateWindow() {
-    urlSecurityCheck(this.linkURL, this.principal);
     openLinkIn(this.linkURL, "window",
                this._openLinkInParameters({ private: true }));
   },
 
   // Open linked-to URL in a new tab.
   openLinkInTab(event) {
-    urlSecurityCheck(this.linkURL, this.principal);
     let referrerURI = gContextMenuContentData.documentURIObject;
 
     // if its parent allows mixed content and the referring URI passes
@@ -832,7 +843,6 @@ nsContextMenu.prototype = {
 
   // open URL in current tab
   openLinkInCurrent() {
-    urlSecurityCheck(this.linkURL, this.principal);
     openLinkIn(this.linkURL, "current", this._openLinkInParameters());
   },
 
@@ -865,9 +875,11 @@ nsContextMenu.prototype = {
                      this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     let referrer = gContextMenuContentData.referrer;
-    openUILinkIn(gContextMenuContentData.docLocation, "current",
-                 { disallowInheritPrincipal: true,
-                   referrerURI: referrer ? makeURI(referrer) : null });
+    openWebLinkIn(gContextMenuContentData.docLocation, "current", {
+      disallowInheritPrincipal: true,
+      referrerURI: referrer ? makeURI(referrer) : null,
+      triggeringPrincipal: this.browser.contentPrincipal,
+    });
   },
 
   reload(event) {
@@ -885,7 +897,7 @@ nsContextMenu.prototype = {
       // (in the sidebar). Deal with those cases:
       if (!tabBrowser || !tabBrowser.loadOneTab || !window.toolbar.visible) {
         // This returns only non-popup browser windows by default.
-        let browserWindow = RecentWindow.getMostRecentBrowserWindow();
+        let browserWindow = BrowserWindowTracker.getTopWindow();
         tabBrowser = browserWindow.gBrowser;
       }
       let relatedToCurrent = gBrowser && gBrowser.selectedBrowser == browser;
@@ -921,10 +933,12 @@ nsContextMenu.prototype = {
 
   viewImageDesc(e) {
     urlSecurityCheck(this.imageDescURL,
-                     this.browser.contentPrincipal,
+                     this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     openUILink(this.imageDescURL, e, { disallowInheritPrincipal: true,
-                                       referrerURI: gContextMenuContentData.documentURIObject });
+                                       referrerURI: gContextMenuContentData.documentURIObject,
+                                       triggeringPrincipal: this.principal,
+    });
   },
 
   viewFrameInfo() {
@@ -934,7 +948,7 @@ nsContextMenu.prototype = {
 
   reloadImage() {
     urlSecurityCheck(this.mediaURL,
-                     this.browser.contentPrincipal,
+                     this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
 
     this.browser.messageManager.sendAsyncMessage("ContextMenu:ReloadImage",
@@ -966,11 +980,13 @@ nsContextMenu.prototype = {
       }, Cu.reportError);
     } else {
       urlSecurityCheck(this.mediaURL,
-                       this.browser.contentPrincipal,
+                       this.principal,
                        Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
       openUILink(this.mediaURL, e, { disallowInheritPrincipal: true,
                                      referrerURI,
-                                     forceAllowDataURI: true });
+                                     forceAllowDataURI: true,
+                                     triggeringPrincipal: this.principal,
+      });
     }
   },
 
@@ -1011,10 +1027,13 @@ nsContextMenu.prototype = {
   // Change current window to the URL of the background image.
   viewBGImage(e) {
     urlSecurityCheck(this.bgImageURL,
-                     this.browser.contentPrincipal,
+                     this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
+
     openUILink(this.bgImageURL, e, { disallowInheritPrincipal: true,
-                                     referrerURI: gContextMenuContentData.documentURIObject });
+                                     referrerURI: gContextMenuContentData.documentURIObject,
+                                     triggeringPrincipal: this.principal,
+    });
   },
 
   setDesktopBackground() {
@@ -1209,8 +1228,6 @@ nsContextMenu.prototype = {
 
   // Save URL of clicked-on link.
   saveLink() {
-    urlSecurityCheck(this.linkURL, this.principal);
-
     let isContentWindowPrivate = this.isRemote ? this.ownerDoc.isPrivate : undefined;
     this.saveHelper(this.linkURL, this.linkTextStr, null, true, this.ownerDoc,
                     gContextMenuContentData.documentURIObject,
@@ -1244,7 +1261,6 @@ nsContextMenu.prototype = {
                    false, referrerURI, null, gContextMenuContentData.contentType,
                    gContextMenuContentData.contentDisposition, isPrivate);
     } else if (this.onVideo || this.onAudio) {
-      urlSecurityCheck(this.mediaURL, this.principal);
       var dialogTitle = this.onVideo ? "SaveVideoTitle" : "SaveAudioTitle";
       this.saveHelper(this.mediaURL, null, dialogTitle, false, doc, referrerURI,
                       this.frameOuterWindowID, "", isContentWindowPrivate);
@@ -1414,7 +1430,7 @@ nsContextMenu.prototype = {
     var newWindowPref = Services.prefs.getIntPref("browser.link.open_newwindow");
     var where = newWindowPref == 3 ? "tab" : "window";
 
-    openUILinkIn(uri, where);
+    openTrustedLinkIn(uri, where);
   },
 
   bookmarkThisPage: function CM_bookmarkThisPage() {
@@ -1484,7 +1500,7 @@ nsContextMenu.prototype = {
     if (dest == "current") {
       dest = "tab";
     }
-    openUILinkIn(drmInfoURL, dest);
+    openTrustedLinkIn(drmInfoURL, dest);
   },
 
   get imageURL() {

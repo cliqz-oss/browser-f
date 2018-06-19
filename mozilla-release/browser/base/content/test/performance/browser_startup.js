@@ -68,6 +68,7 @@ const startupPhases = {
       "resource:///modules/BrowserUITelemetry.jsm",
       "resource:///modules/BrowserUsageTelemetry.jsm",
       "resource:///modules/ContentCrashHandlers.jsm",
+      "resource:///modules/ShellService.jsm",
       "resource://gre/modules/NewTabUtils.jsm",
       "resource://gre/modules/PageThumbs.jsm",
       "resource://gre/modules/PlacesUtils.jsm",
@@ -89,8 +90,8 @@ const startupPhases = {
       "nsPlacesExpiration.js",
     ]),
     modules: new Set([
-      // Bug 1391495 - RecentWindow.jsm is intermittently used.
-      // "resource:///modules/RecentWindow.jsm",
+      // Bug 1391495 - BrowserWindowTracker.jsm is intermittently used.
+      // "resource:///modules/BrowserWindowTracker.jsm",
       "resource://gre/modules/BookmarkHTMLUtils.jsm",
       "resource://gre/modules/Bookmarks.jsm",
       "resource://gre/modules/ContextualIdentityService.jsm",
@@ -122,8 +123,12 @@ const startupPhases = {
   }},
 };
 
+if (Services.prefs.getBoolPref("browser.startup.blankWindow")) {
+  startupPhases["before profile selection"].whitelist.components.add("XULStore.js");
+}
+
 if (!gBrowser.selectedBrowser.isRemoteBrowser) {
-  // With e10s disabled, Places and RecentWindow.jsm (from a
+  // With e10s disabled, Places and BrowserWindowTracker.jsm (from a
   // SessionSaver.jsm timer) intermittently get loaded earlier. Likely
   // due to messages from the 'content' process arriving synchronously
   // instead of crossing a process boundary.

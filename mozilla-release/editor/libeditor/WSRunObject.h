@@ -163,6 +163,9 @@ public:
   enum {eAfter  = 1 << 1};
   enum {eBoth   = eBefore | eAfter};
 
+  template<typename PT, typename CT>
+  WSRunObject(HTMLEditor* aHTMLEditor,
+              const EditorDOMPointBase<PT, CT>& aPoint);
   WSRunObject(HTMLEditor* aHTMLEditor, nsINode* aNode, int32_t aOffset);
   ~WSRunObject();
 
@@ -227,18 +230,19 @@ public:
    * @return                The new <br> node.  If failed to create new <br>
    *                        node, returns nullptr.
    */
+  template<typename PT, typename CT>
   already_AddRefed<dom::Element>
   InsertBreak(Selection& aSelection,
-              const EditorRawDOMPoint& aPointToInsert,
+              const EditorDOMPointBase<PT, CT>& aPointToInsert,
               nsIEditor::EDirection aSelect);
 
   /**
-   * InsertTextImpl() inserts aStringToInsert to aPointToInsert and makes any
+   * InsertText() inserts aStringToInsert to aPointToInsert and makes any
    * needed adjustments to white spaces around that point. E.g., trailing white
    * spaces before aPointToInsert needs to be removed.
-   * This calls EditorBase::InsertTextImpl() after adjusting white spaces.
-   * So, please refer the method's explanation to know what this method exactly
-   * does.
+   * This calls EditorBase::InsertTextWithTransaction() after adjusting white
+   * spaces.  So, please refer the method's explanation to know what this
+   * method exactly does.
    *
    * @param aDocument       The document of this editor.
    * @param aStringToInsert The string to insert.
@@ -253,9 +257,10 @@ public:
    *                        does nothing during composition, returns NS_OK.
    *                        Otherwise, an error code.
    */
+  template<typename PT, typename CT>
   nsresult InsertText(nsIDocument& aDocument,
                       const nsAString& aStringToInsert,
-                      const EditorRawDOMPoint& aPointToInsert,
+                      const EditorDOMPointBase<PT, CT>& aPointToInsert,
                       EditorRawDOMPoint* aPointAfterInsertedString = nullptr);
 
   // DeleteWSBackward deletes a single visible piece of ws before the ws
@@ -269,22 +274,22 @@ public:
   // makes any needed conversion to adjacent ws to retain its significance.
   nsresult DeleteWSForward();
 
-  // PriorVisibleNode returns the first piece of visible thing before
-  // {aNode,aOffset}.  If there is no visible ws qualifying it returns what
-  // is before the ws run.  Note that {outVisNode,outVisOffset} is set to
-  // just AFTER the visible object.
-  void PriorVisibleNode(nsINode* aNode,
-                        int32_t aOffset,
+  // PriorVisibleNode() returns the first piece of visible thing before aPoint.
+  // If there is no visible ws qualifying it returns what is before the ws run.
+  // Note that {outVisNode,outVisOffset} is set to just AFTER the visible
+  // object.
+  template<typename PT, typename CT>
+  void PriorVisibleNode(const EditorDOMPointBase<PT, CT>& aPoint,
                         nsCOMPtr<nsINode>* outVisNode,
                         int32_t* outVisOffset,
                         WSType* outType);
 
-  // NextVisibleNode returns the first piece of visible thing after
-  // {aNode,aOffset}.  If there is no visible ws qualifying it returns what
-  // is after the ws run.  Note that {outVisNode,outVisOffset} is set to just
-  // BEFORE the visible object.
-  void NextVisibleNode(nsINode* aNode,
-                       int32_t aOffset,
+  // NextVisibleNode() returns the first piece of visible thing after aPoint.
+  // If there is no visible ws qualifying it returns what is after the ws run.
+  // Note that {outVisNode,outVisOffset} is set to just BEFORE the visible
+  // object.
+  template<typename PT, typename CT>
+  void NextVisibleNode(const EditorDOMPointBase<PT, CT>& aPoint,
                        nsCOMPtr<nsINode>* outVisNode,
                        int32_t* outVisOffset,
                        WSType* outType);
@@ -378,21 +383,24 @@ protected:
    * When aEndPoint is in a text node, removes the text data before the point.
    * Removes any nodes between them.
    */
-  nsresult DeleteRange(const EditorRawDOMPoint& aStartPoint,
-                       const EditorRawDOMPoint& aEndPoint);
+  template<typename PT1, typename CT1, typename PT2, typename CT2>
+  nsresult DeleteRange(const EditorDOMPointBase<PT1, CT1>& aStartPoint,
+                       const EditorDOMPointBase<PT2, CT2>& aEndPoint);
 
   /**
    * GetNextCharPoint() returns next character's point of aPoint.  If there is
    * no character after aPoint, mTextNode is set to nullptr.
    */
-  WSPoint GetNextCharPoint(const EditorRawDOMPoint& aPoint);
+  template<typename PT, typename CT>
+  WSPoint GetNextCharPoint(const EditorDOMPointBase<PT, CT>& aPoint);
   WSPoint GetNextCharPoint(const WSPoint& aPoint);
 
   /**
    * GetPreviousCharPoint() returns previous character's point of of aPoint.
    * If there is no character before aPoint, mTextNode is set to nullptr.
    */
-  WSPoint GetPreviousCharPoint(const EditorRawDOMPoint& aPoint);
+  template<typename PT, typename CT>
+  WSPoint GetPreviousCharPoint(const EditorDOMPointBase<PT, CT>& aPoint);
   WSPoint GetPreviousCharPoint(const WSPoint& aPoint);
 
   /**
@@ -404,8 +412,11 @@ protected:
    * Then, will call GetNextCharPoint(const WSPoint&) or
    * GetPreviousCharPoint(const WSPoint&) and returns its result.
    */
-  WSPoint GetNextCharPointInternal(const EditorRawDOMPoint& aPoint);
-  WSPoint GetPreviousCharPointInternal(const EditorRawDOMPoint& aPoint);
+  template<typename PT, typename CT>
+  WSPoint GetNextCharPointInternal(const EditorDOMPointBase<PT, CT>& aPoint);
+  template<typename PT, typename CT>
+  WSPoint
+  GetPreviousCharPointInternal(const EditorDOMPointBase<PT, CT>& aPoint);
 
   /**
    * InsertNBSPAndRemoveFollowingASCIIWhitespaces() inserts an NBSP first.
@@ -463,7 +474,9 @@ protected:
    *                      if aPoint is before the first run, returns nullptr.
    *                      if aPoint is after the last run, returns the last run.
    */
-  WSFragment* FindNearestRun(const EditorRawDOMPoint& aPoint, bool aForward);
+  template<typename PT, typename CT>
+  WSFragment* FindNearestRun(const EditorDOMPointBase<PT, CT>& aPoint,
+                             bool aForward);
 
   char16_t GetCharAt(dom::Text* aTextNode, int32_t aOffset);
   nsresult CheckTrailingNBSPOfRun(WSFragment *aRun);
@@ -476,8 +489,10 @@ protected:
    * @param aPoint      Current insertion point.  Its previous character is
    *                    unnecessary NBSP will be checked.
    */
-  nsresult ReplacePreviousNBSPIfUnncessary(WSFragment* aRun,
-                                           const EditorRawDOMPoint& aPoint);
+  template<typename PT, typename CT>
+  nsresult
+  ReplacePreviousNBSPIfUnncessary(WSFragment* aRun,
+                                  const EditorDOMPointBase<PT, CT>& aPoint);
 
   nsresult CheckLeadingNBSP(WSFragment* aRun, nsINode* aNode,
                             int32_t aOffset);

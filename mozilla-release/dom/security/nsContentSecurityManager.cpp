@@ -159,11 +159,75 @@ nsContentSecurityManager::AllowInsecureRedirectToDataURI(nsIChannel* aNewChannel
   return false;
 }
 
+/* static */ nsresult
+nsContentSecurityManager::CheckFTPSubresourceLoad(nsIChannel* aChannel)
+{
+  // We dissallow using FTP resources as a subresource almost everywhere.
+  // The only valid way to use FTP resources is loading it as
+  // a top level document.
+  if (!mozilla::net::nsIOService::BlockFTPSubresources()) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
+  if (!loadInfo) {
+    return NS_OK;
+  }
+
+  nsContentPolicyType type = loadInfo->GetExternalContentPolicyType();
+  if (type == nsIContentPolicy::TYPE_DOCUMENT) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (!uri) {
+    return NS_OK;
+  }
+
+  bool isFtpURI = (NS_SUCCEEDED(uri->SchemeIs("ftp", &isFtpURI)) && isFtpURI);
+  if (!isFtpURI) {
+    return NS_OK;
+  }
+
+  // Allow loading FTP subresources in FTP documents, like XML.
+  nsIPrincipal* triggeringPrincipal = loadInfo->TriggeringPrincipal();
+  nsCOMPtr<nsIURI> triggeringURI;
+  triggeringPrincipal->GetURI(getter_AddRefs(triggeringURI));
+  if (triggeringURI && nsContentUtils::SchemeIs(triggeringURI, "ftp")) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIDocument> doc;
+  if (nsINode* node = loadInfo->LoadingNode()) {
+    doc = node->OwnerDoc();
+  }
+
+  nsAutoCString spec;
+  uri->GetSpec(spec);
+  NS_ConvertUTF8toUTF16 specUTF16(NS_UnescapeURL(spec));
+  const char16_t* params[] = { specUTF16.get() };
+
+  nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                  NS_LITERAL_CSTRING("FTP_URI_BLOCKED"),
+                                  doc,
+                                  nsContentUtils::eSECURITY_PROPERTIES,
+                                  "BlockSubresourceFTP",
+                                  params, ArrayLength(params));
+
+  return NS_ERROR_CONTENT_BLOCKED;
+}
+
 static nsresult
 ValidateSecurityFlags(nsILoadInfo* aLoadInfo)
 {
   nsSecurityFlags securityMode = aLoadInfo->GetSecurityMode();
 
+  // We should never perform a security check on a loadInfo that uses the flag
+  // SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK, because that is only used for temporary
+  // loadInfos used for explicit nsIContentPolicy checks, but never be set as
+  // a security flag on an actual channel.
   if (securityMode != nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS &&
       securityMode != nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED &&
       securityMode != nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS &&
@@ -306,7 +370,6 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
   nsContentPolicyType internalContentPolicyType =
     aLoadInfo->InternalContentPolicyType();
   nsCString mimeTypeGuess;
-  nsCOMPtr<nsISupports> requestingContext = nullptr;
 
   nsCOMPtr<nsIURI> uri;
   nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
@@ -330,43 +393,36 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
   switch(contentPolicyType) {
     case nsIContentPolicy::TYPE_OTHER: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_SCRIPT: {
       mimeTypeGuess = NS_LITERAL_CSTRING("application/javascript");
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_IMAGE: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_STYLESHEET: {
       mimeTypeGuess = NS_LITERAL_CSTRING("text/css");
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_OBJECT: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_DOCUMENT: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->ContextForTopLevelLoad();
       break;
     }
 
     case nsIContentPolicy::TYPE_SUBDOCUMENT: {
       mimeTypeGuess = NS_LITERAL_CSTRING("text/html");
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
@@ -377,22 +433,19 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_XBL: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_PING: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_XMLHTTPREQUEST: {
       // alias nsIContentPolicy::TYPE_DATAREQUEST:
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::DOCUMENT_NODE,
                    "type_xml requires requestingContext of type Document");
       }
@@ -416,10 +469,9 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_OBJECT_SUBREQUEST: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::ELEMENT_NODE,
                    "type_subrequest requires requestingContext of type Element");
       }
@@ -429,10 +481,9 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_DTD: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::DOCUMENT_NODE,
                    "type_dtd requires requestingContext of type Document");
       }
@@ -442,7 +493,6 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_FONT: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
@@ -453,10 +503,9 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
       else {
         mimeTypeGuess = EmptyCString();
       }
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::ELEMENT_NODE,
                    "type_media requires requestingContext of type Element");
       }
@@ -475,22 +524,19 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
         MOZ_ASSERT(NS_SUCCEEDED(rv));
       }
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_CSP_REPORT: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_XSLT: {
       mimeTypeGuess = NS_LITERAL_CSTRING("application/xml");
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::DOCUMENT_NODE,
                    "type_xslt requires requestingContext of type Document");
       }
@@ -500,10 +546,9 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_BEACON: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
 #ifdef DEBUG
       {
-        nsCOMPtr<nsINode> node = do_QueryInterface(requestingContext);
+        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
         MOZ_ASSERT(!node || node->NodeType() == nsINode::DOCUMENT_NODE,
                    "type_beacon requires requestingContext of type Document");
       }
@@ -513,25 +558,26 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
 
     case nsIContentPolicy::TYPE_FETCH: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_IMAGESET: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_WEB_MANIFEST: {
       mimeTypeGuess = NS_LITERAL_CSTRING("application/manifest+json");
-      requestingContext = aLoadInfo->LoadingNode();
       break;
     }
 
     case nsIContentPolicy::TYPE_SAVEAS_DOWNLOAD: {
       mimeTypeGuess = EmptyCString();
-      requestingContext = aLoadInfo->LoadingNode();
+      break;
+    }
+
+    case nsIContentPolicy::TYPE_SPECULATIVE: {
+      mimeTypeGuess = EmptyCString();
       break;
     }
 
@@ -541,13 +587,9 @@ DoContentSecurityChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo)
   }
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  rv = NS_CheckContentLoadPolicy(internalContentPolicyType,
-                                 uri,
-                                 aLoadInfo->LoadingPrincipal(),
-                                 aLoadInfo->TriggeringPrincipal(),
-                                 requestingContext,
+  rv = NS_CheckContentLoadPolicy(uri,
+                                 aLoadInfo,
                                  mimeTypeGuess,
-                                 nullptr,        //extra,
                                  &shouldLoad,
                                  nsContentUtils::GetContentPolicy());
 
@@ -624,6 +666,10 @@ nsContentSecurityManager::doContentSecurityCheck(nsIChannel* aChannel,
   rv = DoContentSecurityChecks(aChannel, loadInfo);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  // Apply this after CSP to match Chrome.
+  rv = CheckFTPSubresourceLoad(aChannel);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   // now lets set the initalSecurityFlag for subsequent calls
   loadInfo->SetInitialSecurityCheckDone(true);
 
@@ -641,6 +687,9 @@ nsContentSecurityManager::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
   // Are we enforcing security using LoadInfo?
   if (loadInfo && loadInfo->GetEnforceSecurity()) {
     nsresult rv = CheckChannel(aNewChannel);
+    if (NS_SUCCEEDED(rv)) {
+      rv = CheckFTPSubresourceLoad(aNewChannel);
+    }
     if (NS_FAILED(rv)) {
       aOldChannel->Cancel(rv);
       return rv;
@@ -764,6 +813,7 @@ nsContentSecurityManager::CheckChannel(nsIChannel* aChannel)
   if ((securityMode == nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS) ||
       (securityMode == nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL)) {
     if (NS_HasBeenCrossOrigin(aChannel)) {
+      NS_ENSURE_FALSE(loadInfo->GetDontFollowRedirects(), NS_ERROR_DOM_BAD_URI);
       loadInfo->MaybeIncreaseTainting(LoadTainting::Opaque);
     }
     // Please note that DoCheckLoadURIChecks should only be enforced for

@@ -63,7 +63,7 @@ var PlacesTestUtils = Object.freeze({
       if (visitDate) {
         if (visitDate.constructor.name != "Date") {
           // visitDate should be in microseconds. It's easy to do the wrong thing
-          // and pass milliseconds to updatePlaces, so we lazily check for that.
+          // and pass milliseconds, so we lazily check for that.
           // While it's not easily distinguishable, since both are integers, we
           // can check if the value is very far in the past, and assume it's
           // probably a mistake.
@@ -324,7 +324,7 @@ var PlacesTestUtils = Object.freeze({
       let proxifiedObserver = new Proxy({}, {
         get: (target, name) => {
           if (name == "QueryInterface")
-            return XPCOMUtils.generateQI([iface]);
+            return ChromeUtils.generateQI([iface]);
           if (name == notification)
             return (...args) => {
               if (conditionFn.apply(this, args)) {
@@ -378,5 +378,39 @@ var PlacesTestUtils = Object.freeze({
     }
     results.push("\n");
     dump(results.join("\n"));
+  },
+
+  /**
+   * Removes all stored metadata.
+   */
+  clearMetadata() {
+    return PlacesUtils.withConnectionWrapper("PlacesTestUtils: clearMetadata",
+      async db => {
+        await db.execute(`DELETE FROM moz_meta`);
+        PlacesUtils.metadata.cache.clear();
+      }
+    );
+  },
+
+  /**
+   * Compares 2 place: URLs ignoring the order of their params.
+   * @param url1 First URL to compare
+   * @param url2 Second URL to compare
+   * @return whether the URLs are the same
+   */
+  ComparePlacesURIs(url1, url2) {
+    url1 = url1 instanceof Ci.nsIURI ? url1.spec : new URL(url1);
+    if (url1.protocol != "place:")
+      throw new Error("Expected a place: uri, got " + url1.href);
+    url2 = url2 instanceof Ci.nsIURI ? url2.spec : new URL(url2);
+    if (url2.protocol != "place:")
+      throw new Error("Expected a place: uri, got " + url2.href);
+    let tokens1 = url1.pathname.split("&").sort().join("&");
+    let tokens2 = url2.pathname.split("&").sort().join("&");
+    if (tokens1 != tokens2) {
+      dump(`Failed comparison between:\n${tokens1}\n${tokens2}\n`);
+      return false;
+    }
+    return true;
   },
 });

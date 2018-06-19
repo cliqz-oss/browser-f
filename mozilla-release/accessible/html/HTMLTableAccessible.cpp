@@ -18,10 +18,8 @@
 #include "TreeWalker.h"
 
 #include "mozilla/dom/HTMLTableElement.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMRange.h"
 #include "nsISelectionPrivate.h"
-#include "nsIDOMNodeList.h"
 #include "nsIHTMLCollection.h"
 #include "nsIDocument.h"
 #include "nsIMutableArray.h"
@@ -480,7 +478,7 @@ HTMLTableAccessible::Caption() const
 void
 HTMLTableAccessible::Summary(nsString& aSummary)
 {
-  dom::HTMLTableElement* table = dom::HTMLTableElement::FromContent(mContent);
+  dom::HTMLTableElement* table = dom::HTMLTableElement::FromNode(mContent);
 
   if (table)
     table->GetSummary(aSummary);

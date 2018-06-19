@@ -6,17 +6,16 @@
 #include "nsCOMPtr.h"
 #include "nsButtonBoxFrame.h"
 #include "nsIContent.h"
-#include "nsIDOMEvent.h"
-#include "nsIDOMNodeList.h"
 #include "nsIDOMXULButtonElement.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
-#include "nsIDOMElement.h"
 #include "nsDisplayList.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/MouseEvents.h"
@@ -28,7 +27,7 @@ using namespace mozilla;
 NS_IMPL_ISUPPORTS(nsButtonBoxFrame::nsButtonBoxListener, nsIDOMEventListener)
 
 nsresult
-nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(nsIDOMEvent* aEvent)
+nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(dom::Event* aEvent)
 {
   if (!mButtonBoxFrame) {
     return NS_OK;
@@ -52,15 +51,15 @@ nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(nsIDOMEvent* aEvent)
 // Creates a new Button frame and returns it
 //
 nsIFrame*
-NS_NewButtonBoxFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewButtonBoxFrame (nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsButtonBoxFrame(aContext);
+  return new (aPresShell) nsButtonBoxFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsButtonBoxFrame)
 
-nsButtonBoxFrame::nsButtonBoxFrame(nsStyleContext* aContext, ClassID aID) :
-  nsBoxFrame(aContext, aID, false),
+nsButtonBoxFrame::nsButtonBoxFrame(ComputedStyle* aStyle, ClassID aID) :
+  nsBoxFrame(aStyle, aID, false),
   mButtonBoxListener(nullptr),
   mIsHandlingKeyEvent(false)
 {
@@ -210,7 +209,7 @@ nsButtonBoxFrame::DoMouseClick(WidgetGUIEvent* aEvent, bool aTrustEvent)
   bool isControl = false;
   bool isAlt = false;
   bool isMeta = false;
-  uint16_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+  uint16_t inputSource = MouseEventBinding::MOZ_SOURCE_UNKNOWN;
 
   if(aEvent) {
     WidgetInputEvent* inputEvent = aEvent->AsInputEvent();

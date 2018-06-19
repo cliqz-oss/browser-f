@@ -57,7 +57,6 @@ AudioNode::AudioNode(AudioContext* aContext,
   , mAbstractMainThread(aContext->GetOwnerGlobal()->AbstractMainThreadFor(TaskCategory::Other))
 {
   MOZ_ASSERT(aContext);
-  DOMEventTargetHelper::BindToOwner(aContext->GetParentObject());
   aContext->RegisterNode(this);
 }
 
@@ -91,7 +90,10 @@ AudioNode::Initialize(const AudioNodeOptions& aOptions, ErrorResult& aRv)
   }
 
   if (aOptions.mChannelInterpretation.WasPassed()) {
-    SetChannelInterpretationValue(aOptions.mChannelInterpretation.Value());
+    SetChannelInterpretationValue(aOptions.mChannelInterpretation.Value(), aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return;
+    }
   }
 }
 

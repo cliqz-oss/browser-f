@@ -221,7 +221,7 @@ public: // intentional!
     bool mBool;
 
 private:
-    virtual ~BoolWrapper() {}
+    virtual ~BoolWrapper() = default;
 };
 
 nsresult
@@ -280,7 +280,7 @@ public:
     }
 
 private:
-    virtual ~ConnEvent() {}
+    virtual ~ConnEvent() = default;
 
     RefPtr<nsHttpConnectionMgr>  mMgr;
     nsConnEventHandler           mHandler;
@@ -477,7 +477,7 @@ public: // intentional!
     bool mAllow1918;
 
 private:
-    virtual ~SpeculativeConnectArgs() {}
+    virtual ~SpeculativeConnectArgs() = default;
     NS_DECL_OWNINGTHREAD
 };
 
@@ -567,7 +567,7 @@ public:
     RefPtr<nsAHttpConnection> mConn;
     nsCOMPtr<nsIHttpUpgradeListener> mUpgradeListener;
 private:
-    virtual ~nsCompleteUpgradeData() { }
+    virtual ~nsCompleteUpgradeData() = default;
 };
 
 nsresult
@@ -725,10 +725,10 @@ nsHttpConnectionMgr::FindCoalescableConnectionByHashKey(nsConnectionEntry *ent,
             LOG(("FindCoalescableConnectionByHashKey() found match conn=%p key=%s newCI=%s matchedCI=%s join ok\n",
                  potentialMatch.get(), key.get(), ci->HashKey().get(), potentialMatch->ConnectionInfo()->HashKey().get()));
             return potentialMatch.get();
-        } else {
-            LOG(("FindCoalescableConnectionByHashKey() found match conn=%p key=%s newCI=%s matchedCI=%s join failed\n",
-                 potentialMatch.get(), key.get(), ci->HashKey().get(), potentialMatch->ConnectionInfo()->HashKey().get()));
         }
+        LOG(("FindCoalescableConnectionByHashKey() found match conn=%p key=%s newCI=%s matchedCI=%s join failed\n",
+             potentialMatch.get(), key.get(), ci->HashKey().get(), potentialMatch->ConnectionInfo()->HashKey().get()));
+
         ++j; // bypassed by continue when weakptr fails
     }
 
@@ -1139,12 +1139,12 @@ nsHttpConnectionMgr::ProcessPendingQForEntry(nsConnectionEntry *ent, bool consid
 
     if (LOG_ENABLED()) {
       LOG(("urgent queue ["));
-      for (auto info : ent->mUrgentStartQ) {
+      for (const auto& info : ent->mUrgentStartQ) {
         LOG(("  %p", info->mTransaction.get()));
       }
       for (auto it = ent->mPendingTransactionTable.Iter(); !it.Done(); it.Next()) {
         LOG(("] window id = %" PRIx64 " queue [", it.Key()));
-        for (auto info : *it.UserData()) {
+        for (const auto& info : *it.UserData()) {
           LOG(("  %p", info->mTransaction.get()));
         }
       }
@@ -3071,7 +3071,7 @@ void nsHttpConnectionMgr::TouchThrottlingTimeWindow(bool aEnsureTicker)
 
     mThrottlingWindowEndsAt = TimeStamp::NowLoRes() + mThrottleMaxTime;
 
-    if (!mThrottleTicker && 
+    if (!mThrottleTicker &&
         MOZ_LIKELY(aEnsureTicker) && MOZ_LIKELY(mThrottleEnabled)) {
         EnsureThrottleTickerIfNeeded();
     }
@@ -3137,8 +3137,8 @@ nsHttpConnectionMgr::AddActiveTransaction(nsHttpTransaction * aTrans)
     // Shift the throttling window to the future (actually, makes sure
     // that throttling will engage when there is anything to throttle.)
     // The |false| argument means we don't need this call to ensure
-    // the ticker, since we do it just below.  Calling 
-    // EnsureThrottleTickerIfNeeded directly does a bit more than call 
+    // the ticker, since we do it just below.  Calling
+    // EnsureThrottleTickerIfNeeded directly does a bit more than call
     // from inside of TouchThrottlingTimeWindow.
     TouchThrottlingTimeWindow(false);
 
@@ -3339,7 +3339,7 @@ nsHttpConnectionMgr::ShouldThrottle(nsHttpTransaction * aTrans)
 
     if (forActiveTab && !stop) {
         // This is an active-tab transaction and is allowed to read.  Hence,
-        // prolong the throttle time window to make sure all 'lower-decks' 
+        // prolong the throttle time window to make sure all 'lower-decks'
         // transactions will actually throttle.
         TouchThrottlingTimeWindow();
         return false;
@@ -3587,7 +3587,7 @@ nsHttpConnectionMgr::ResumeReadOf(nsTArray<RefPtr<nsHttpTransaction>>* transacti
 {
     MOZ_ASSERT(transactions);
 
-    for (auto trans : *transactions) {
+    for (const auto& trans : *transactions) {
         trans->ResumeReading();
     }
 }
@@ -3606,7 +3606,7 @@ nsHttpConnectionMgr::NotifyConnectionOfWindowIdChange(uint64_t previousWindowId)
                 return;
             }
 
-            for (auto t : *trans) {
+            for (const auto& t : *trans) {
                 RefPtr<nsAHttpConnection> conn = t->Connection();
                 if (conn && !connections.Contains(conn)) {
                     connections.AppendElement(conn);
@@ -3628,7 +3628,7 @@ nsHttpConnectionMgr::NotifyConnectionOfWindowIdChange(uint64_t previousWindowId)
         mActiveTransactions[true].Get(mCurrentTopLevelOuterContentWindowId);
     addConnectionHelper(transactions);
 
-    for (auto conn : connections) {
+    for (const auto& conn : connections) {
         conn->TopLevelOuterContentWindowIdChanged(mCurrentTopLevelOuterContentWindowId);
     }
 }
@@ -3989,7 +3989,6 @@ nsHttpConnectionMgr::nsHalfOpenSocket::~nsHalfOpenSocket()
 {
     MOZ_ASSERT(!mStreamOut);
     MOZ_ASSERT(!mBackupStreamOut);
-    MOZ_ASSERT(!mSynTimer);
     LOG(("Destroying nsHalfOpenSocket [this=%p]\n", this));
 
     if (mEnt)
@@ -4071,16 +4070,29 @@ nsHalfOpenSocket::SetupStreams(nsISocketTransport **transport,
         tmpFlags |= nsISocketTransport::BE_CONSERVATIVE;
     }
 
-    // For backup connections, we disable IPv6. That's because some users have
-    // broken IPv6 connectivity (leading to very long timeouts), and disabling
-    // IPv6 on the backup connection gives them a much better user experience
-    // with dual-stack hosts, though they still pay the 250ms delay for each new
-    // connection. This strategy is also known as "happy eyeballs".
-    if (mEnt->mPreferIPv6) {
-        tmpFlags |= nsISocketTransport::DISABLE_IPV4;
-    }
-    else if (mEnt->mPreferIPv4 ||
-             (isBackup && gHttpHandler->FastFallbackToIPv4())) {
+    if (mEnt->PreferenceKnown()) {
+        if (mEnt->mPreferIPv6) {
+            tmpFlags |= nsISocketTransport::DISABLE_IPV4;
+        } else if (mEnt->mPreferIPv4) {
+            tmpFlags |= nsISocketTransport::DISABLE_IPV6;
+        }
+
+        // In case the host is no longer accessible via the preferred IP family,
+        // try the opposite one and potentially restate the preference.
+        tmpFlags |= nsISocketTransport::RETRY_WITH_DIFFERENT_IP_FAMILY;
+
+        // From the same reason, let the backup socket fail faster to try the other family.
+        uint16_t fallbackTimeout = isBackup ? gHttpHandler->GetFallbackSynTimeout() : 0;
+        if (fallbackTimeout) {
+            socketTransport->SetTimeout(nsISocketTransport::TIMEOUT_CONNECT,
+                                        fallbackTimeout);
+        }
+    } else if (isBackup && gHttpHandler->FastFallbackToIPv4()) {
+        // For backup connections, we disable IPv6. That's because some users have
+        // broken IPv6 connectivity (leading to very long timeouts), and disabling
+        // IPv6 on the backup connection gives them a much better user experience
+        // with dual-stack hosts, though they still pay the 250ms delay for each new
+        // connection. This strategy is also known as "happy eyeballs".
         tmpFlags |= nsISocketTransport::DISABLE_IPV6;
     }
 
@@ -4155,6 +4167,7 @@ nsHttpConnectionMgr::nsHalfOpenSocket::SetupPrimaryStreams()
                       getter_AddRefs(mStreamIn),
                       getter_AddRefs(mStreamOut),
                       false);
+
     LOG(("nsHalfOpenSocket::SetupPrimaryStream [this=%p ent=%s rv=%" PRIx32 "]",
          this, mEnt->mConnInfo->Origin(), static_cast<uint32_t>(rv)));
     if (NS_FAILED(rv)) {
@@ -4180,6 +4193,7 @@ nsHttpConnectionMgr::nsHalfOpenSocket::SetupBackupStreams()
                                getter_AddRefs(mBackupStreamIn),
                                getter_AddRefs(mBackupStreamOut),
                                true);
+
     LOG(("nsHalfOpenSocket::SetupBackupStream [this=%p ent=%s rv=%" PRIx32 "]",
          this, mEnt->mConnInfo->Origin(), static_cast<uint32_t>(rv)));
     if (NS_FAILED(rv)) {
@@ -4230,7 +4244,9 @@ nsHttpConnectionMgr::nsHalfOpenSocket::CancelBackupTimer()
 
     LOG(("nsHalfOpenSocket::CancelBackupTimer()"));
     mSynTimer->Cancel();
-    mSynTimer = nullptr;
+
+    // Keeping the reference to the timer to remember we have already
+    // performed the backup connection.
 }
 
 void
@@ -4318,7 +4334,9 @@ nsHttpConnectionMgr::nsHalfOpenSocket::Notify(nsITimer *timer)
     DebugOnly<nsresult> rv = SetupBackupStreams();
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-    mSynTimer = nullptr;
+    // Keeping the reference to the timer to remember we have already
+    // performed the backup connection.
+
     return NS_OK;
 }
 
@@ -4606,7 +4624,7 @@ nsHalfOpenSocket::SetFastOpenConnected(nsresult aError, bool aWillRetry)
         return;
     }
 
-    MOZ_ASSERT((mFastOpenStatus == TFO_NOT_TRIED) || 
+    MOZ_ASSERT((mFastOpenStatus == TFO_NOT_TRIED) ||
                (mFastOpenStatus == TFO_DATA_SENT) ||
                (mFastOpenStatus == TFO_TRIED) ||
                (mFastOpenStatus == TFO_DATA_COOKIE_NOT_ACCEPTED) ||
@@ -4709,7 +4727,6 @@ nsHalfOpenSocket::SetFastOpenConnected(nsresult aError, bool aWillRetry)
     if (mEnt) {
         mEnt->mDoNotDestroy = false;
     } else {
-        MOZ_ASSERT(!mSynTimer);
         MOZ_ASSERT(!mBackupTransport);
         MOZ_ASSERT(!mBackupStreamOut);
     }
@@ -4764,7 +4781,7 @@ nsHalfOpenSocket::CancelFastOpenConnection()
     mFastOpenInProgress = false;
     mConnectionNegotiatingFastOpen = nullptr;
     Abandon();
-    MOZ_ASSERT(!mSynTimer);
+
     MOZ_ASSERT(!mBackupTransport);
     MOZ_ASSERT(!mBackupStreamOut);
 }
@@ -4819,6 +4836,12 @@ nsHalfOpenSocket::SetupConn(nsIAsyncOutputStream *out,
                         PR_MillisecondsToInterval(
                           static_cast<uint32_t>(rtt.ToMilliseconds())));
 
+        bool resetPreference = false;
+        mSocketTransport->GetResetIPFamilyPreference(&resetPreference);
+        if (resetPreference) {
+            mEnt->ResetIPFamilyPreference();
+        }
+
         if (!aFastOpen &&
             NS_SUCCEEDED(mSocketTransport->GetPeerAddr(&peeraddr))) {
             mEnt->RecordIPFamilyPreference(peeraddr.raw.family);
@@ -4841,8 +4864,15 @@ nsHalfOpenSocket::SetupConn(nsIAsyncOutputStream *out,
                         PR_MillisecondsToInterval(
                           static_cast<uint32_t>(rtt.ToMilliseconds())));
 
-        if (NS_SUCCEEDED(mBackupTransport->GetPeerAddr(&peeraddr)))
+        bool resetPreference = false;
+        mBackupTransport->GetResetIPFamilyPreference(&resetPreference);
+        if (resetPreference) {
+            mEnt->ResetIPFamilyPreference();
+        }
+
+        if (NS_SUCCEEDED(mBackupTransport->GetPeerAddr(&peeraddr))) {
             mEnt->RecordIPFamilyPreference(peeraddr.raw.family);
+        }
 
         // The nsHttpConnection object now owns these streams and sockets
         mBackupStreamOut = nullptr;
@@ -5365,19 +5395,32 @@ void
 nsHttpConnectionMgr::
 nsConnectionEntry::RecordIPFamilyPreference(uint16_t family)
 {
-  if (family == PR_AF_INET && !mPreferIPv6)
-    mPreferIPv4 = true;
+  LOG(("nsConnectionEntry::RecordIPFamilyPreference %p, af=%u", this, family));
 
-  if (family == PR_AF_INET6 && !mPreferIPv4)
+  if (family == PR_AF_INET && !mPreferIPv6) {
+    mPreferIPv4 = true;
+  }
+
+  if (family == PR_AF_INET6 && !mPreferIPv4) {
     mPreferIPv6 = true;
+  }
+
+  LOG(("  %p prefer ipv4=%d, ipv6=%d", this, (bool)mPreferIPv4, (bool)mPreferIPv6));
 }
 
 void
 nsHttpConnectionMgr::
 nsConnectionEntry::ResetIPFamilyPreference()
 {
+  LOG(("nsConnectionEntry::ResetIPFamilyPreference %p", this));
+
   mPreferIPv4 = false;
   mPreferIPv6 = false;
+}
+
+bool net::nsHttpConnectionMgr::nsConnectionEntry::PreferenceKnown() const
+{
+  return (bool)mPreferIPv4 || (bool)mPreferIPv6;
 }
 
 size_t

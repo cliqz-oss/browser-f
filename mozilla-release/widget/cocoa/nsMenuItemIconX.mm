@@ -27,7 +27,6 @@
 #include "nsIDocument.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
-#include "nsIDOMElement.h"
 #include "nsThreadUtils.h"
 #include "nsToolkit.h"
 #include "nsNetUtil.h"
@@ -145,7 +144,7 @@ nsMenuItemIconX::GetIconURI(nsIURI** aIconURI)
                                    imageURIString);
 
   nsresult rv;
-  RefPtr<nsStyleContext> sc;
+  RefPtr<ComputedStyle> sc;
   nsCOMPtr<nsIURI> iconURI;
   if (!hasImageAttr) {
     // If the content node has no "image" attribute, get the
@@ -155,7 +154,7 @@ nsMenuItemIconX::GetIconURI(nsIURI** aIconURI)
       return NS_ERROR_FAILURE;
     }
 
-    sc = nsComputedDOMStyle::GetStyleContext(mContent->AsElement(), nullptr);
+    sc = nsComputedDOMStyle::GetComputedStyle(mContent->AsElement(), nullptr);
     if (!sc) {
       return NS_ERROR_FAILURE;
     }
@@ -355,7 +354,9 @@ nsMenuItemIconX::OnFrameComplete(imgIRequest* aRequest)
   }
 
   CGImageRef origImage = NULL;
-  nsresult rv = nsCocoaUtils::CreateCGImageFromSurface(surface, &origImage);
+  bool isEntirelyBlack = false;
+  nsresult rv = nsCocoaUtils::CreateCGImageFromSurface(surface, &origImage,
+                                                       &isEntirelyBlack);
   if (NS_FAILED(rv) || !origImage) {
     [mNativeMenuItem setImage:nil];
     return NS_ERROR_FAILURE;
@@ -387,6 +388,14 @@ nsMenuItemIconX::OnFrameComplete(imgIRequest* aRequest)
     ::CGImageRelease(finalImage);
     return NS_ERROR_FAILURE;
   }
+
+  // If all the color channels in the image are black, treat the image as a
+  // template. This will cause macOS to use the image's alpha channel as a mask
+  // and it will fill it with a color that looks good in the context that it's
+  // used in. For example, for regular menu items, the image will be black, but
+  // when the menu item is hovered (and its background is blue), it will be
+  // filled with white.
+  [newImage setTemplate:isEntirelyBlack];
 
   [newImage setSize:NSMakeSize(kIconWidth, kIconHeight)];
   [mNativeMenuItem setImage:newImage];

@@ -11,6 +11,7 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "loop.debug.loglevel";
 
+// eslint-disable-next-line no-unused-vars
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let ConsoleAPI = ChromeUtils.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
   let consoleOptions = {
@@ -30,7 +31,7 @@ function AboutPage(chromeURL, aboutHost, classID, description, uriFlags) {
 }
 
 AboutPage.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   getURIFlags(aURI) { // eslint-disable-line no-unused-vars
     return this.uriFlags;
   },

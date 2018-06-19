@@ -143,15 +143,20 @@ test-packages-manifest:
       $(foreach pkg,$(TEST_PKGS_ZIP),$(call PKG_ARG,$(pkg),zip)) \
       $(foreach pkg,$(TEST_PKGS_TARGZ),$(call PKG_ARG,$(pkg),tar.gz))
 
+ifdef UPLOAD_PATH
+test_archive_dir = $(UPLOAD_PATH)
+else
+test_archive_dir = $(DIST)/$(PKG_PATH)
+endif
+
 package-tests-prepare-dest:
-	@rm -f '$(DIST)/$(PKG_PATH)$(TEST_PACKAGE)'
-	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
+	$(NSINSTALL) -D $(test_archive_dir)
 
 define package_archive
 package-tests-$(1): stage-all package-tests-prepare-dest
 	$$(call py_action,test_archive, \
 		$(1) \
-		'$$(abspath $$(DIST))/$$(PKG_PATH)/$$(PKG_BASENAME).$(1).tests.$(2)')
+		'$$(abspath $$(test_archive_dir))/$$(PKG_BASENAME).$(1).tests.$(2)')
 package-tests: package-tests-$(1)
 endef
 
@@ -238,7 +243,7 @@ stage-steeplechase: make-stage-dir
 	$(NSINSTALL) -D $(PKG_STAGE)/steeplechase/
 	cp -RL $(DEPTH)/_tests/steeplechase $(PKG_STAGE)/steeplechase/tests
 	cp -RL $(DIST)/xpi-stage/specialpowers $(PKG_STAGE)/steeplechase
-	cp -RL $(topsrcdir)/testing/profiles/prefs_general.js $(PKG_STAGE)/steeplechase
+	cp -RL $(topsrcdir)/testing/profiles/common/user.js $(PKG_STAGE)/steeplechase/prefs_general.js
 
 TEST_EXTENSIONS := \
     specialpowers@mozilla.org.xpi \

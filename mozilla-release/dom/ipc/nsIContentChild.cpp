@@ -7,6 +7,7 @@
 #include "nsIContentChild.h"
 
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/ChildProcessMessageManager.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
@@ -181,8 +182,8 @@ nsIContentChild::RecvAsyncMessage(const nsString& aMsg,
     ipc::StructuredCloneData data;
     ipc::UnpackClonedMessageDataForChild(aData, data);
 
-    cpm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(cpm.get()), nullptr,
-                        aMsg, false, &data, &cpows, aPrincipal, nullptr);
+    cpm->ReceiveMessage(cpm, nullptr, aMsg, false, &data, &cpows, aPrincipal, nullptr,
+                        IgnoreErrors());
   }
   return IPC_OK();
 }

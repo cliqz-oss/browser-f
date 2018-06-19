@@ -80,9 +80,9 @@ JS::RootingContext::traceStackRoots(JSTracer* trc)
 }
 
 static void
-TraceExactStackRoots(const CooperatingContext& target, JSTracer* trc)
+TraceExactStackRoots(JSContext* cx, JSTracer* trc)
 {
-    target.context()->traceStackRoots(trc);
+    cx->traceStackRoots(trc);
 }
 
 template <typename T, TraceFunction<T> TraceFn = TraceNullableRoot>
@@ -162,11 +162,6 @@ AutoGCRooter::trace(JSTracer* trc)
         return;
       }
 
-      case IONMASM: {
-        static_cast<js::jit::MacroAssembler::AutoRooter*>(this)->masm()->trace(trc);
-        return;
-      }
-
       case WRAPPER: {
         /*
          * We need to use TraceManuallyBarrieredEdge here because we trace
@@ -201,16 +196,16 @@ AutoGCRooter::trace(JSTracer* trc)
 }
 
 /* static */ void
-AutoGCRooter::traceAll(const CooperatingContext& target, JSTracer* trc)
+AutoGCRooter::traceAll(JSContext* cx, JSTracer* trc)
 {
-    for (AutoGCRooter* gcr = target.context()->autoGCRooters_; gcr; gcr = gcr->down)
+    for (AutoGCRooter* gcr = cx->autoGCRooters_; gcr; gcr = gcr->down)
         gcr->trace(trc);
 }
 
 /* static */ void
-AutoGCRooter::traceAllWrappers(const CooperatingContext& target, JSTracer* trc)
+AutoGCRooter::traceAllWrappers(JSContext* cx, JSTracer* trc)
 {
-    for (AutoGCRooter* gcr = target.context()->autoGCRooters_; gcr; gcr = gcr->down) {
+    for (AutoGCRooter* gcr = cx->autoGCRooters_; gcr; gcr = gcr->down) {
         if (gcr->tag_ == WRAPVECTOR || gcr->tag_ == WRAPPER)
             gcr->trace(trc);
     }
@@ -252,6 +247,7 @@ PropertyDescriptor::trace(JSTracer* trc)
 void
 js::gc::GCRuntime::traceRuntimeForMajorGC(JSTracer* trc, AutoTraceSession& session)
 {
+    MOZ_ASSERT(!TlsContext.get()->suppressGC);
     MOZ_ASSERT_IF(atomsZone->isCollecting(), session.maybeLock.isSome());
 
     // FinishRoots will have asserted that every root that we do not expect
@@ -269,6 +265,8 @@ js::gc::GCRuntime::traceRuntimeForMajorGC(JSTracer* trc, AutoTraceSession& sessi
 void
 js::gc::GCRuntime::traceRuntimeForMinorGC(JSTracer* trc, AutoTraceSession& session)
 {
+    MOZ_ASSERT(!TlsContext.get()->suppressGC);
+
     // Note that we *must* trace the runtime during the SHUTDOWN_GC's minor GC
     // despite having called FinishRoots already. This is because FinishRoots
     // does not clear the crossCompartmentWrapper map. It cannot do this
@@ -289,8 +287,8 @@ js::TraceRuntime(JSTracer* trc)
     MOZ_ASSERT(!trc->isMarkingTracer());
 
     JSRuntime* rt = trc->runtime();
-    EvictAllNurseries(rt);
-    AutoPrepareForTracing prep(TlsContext.get());
+    rt->gc.evictNursery();
+    AutoPrepareForTracing prep(rt->mainContextFromOwnThread());
     gcstats::AutoPhase ap(rt->gc.stats(), gcstats::PhaseKind::TRACE_HEAP);
     rt->gc.traceRuntime(trc, prep.session());
 }
@@ -319,23 +317,20 @@ void
 js::gc::GCRuntime::traceRuntimeCommon(JSTracer* trc, TraceOrMarkRuntime traceOrMark,
                                       AutoTraceSession& session)
 {
-    MOZ_ASSERT(!TlsContext.get()->suppressGC);
-
     {
         gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::MARK_STACK);
 
-        JSContext* cx = TlsContext.get();
-        for (const CooperatingContext& target : rt->cooperatingContexts()) {
-            // Trace active interpreter and JIT stack roots.
-            TraceInterpreterActivations(cx, target, trc);
-            jit::TraceJitActivations(cx, target, trc);
+        JSContext* cx = rt->mainContextFromOwnThread();
 
-            // Trace legacy C stack roots.
-            AutoGCRooter::traceAll(target, trc);
+        // Trace active interpreter and JIT stack roots.
+        TraceInterpreterActivations(cx, trc);
+        jit::TraceJitActivations(cx, trc);
 
-            // Trace C stack roots.
-            TraceExactStackRoots(target, trc);
-        }
+        // Trace legacy C stack roots.
+        AutoGCRooter::traceAll(cx, trc);
+
+        // Trace C stack roots.
+        TraceExactStackRoots(cx, trc);
 
         for (RootRange r = rootsHash.ref().all(); !r.empty(); r.popFront()) {
             const RootEntry& entry = r.front();
@@ -352,9 +347,8 @@ js::gc::GCRuntime::traceRuntimeCommon(JSTracer* trc, TraceOrMarkRuntime traceOrM
     // Trace the shared Intl data.
     rt->traceSharedIntlData(trc);
 
-    // Trace anything in any of the cooperating threads.
-    for (const CooperatingContext& target : rt->cooperatingContexts())
-        target.context()->trace(trc);
+    // Trace the JSContext.
+    rt->mainContextFromOwnThread()->trace(trc);
 
     // Trace all compartment roots, but not the compartment itself; it is
     // traced via the parent pointer if traceRoots actually traces anything.
@@ -478,9 +472,6 @@ js::IsBufferGrayRootsTracer(JSTracer* trc)
 }
 #endif
 
-// A canary value used to check the gray buffer contents are valid.
-static Cell* const GrayBufferCanary = reinterpret_cast<Cell*>(0x47726179); // "Gray"
-
 void
 js::gc::GCRuntime::bufferGrayRoots()
 {
@@ -493,12 +484,6 @@ js::gc::GCRuntime::bufferGrayRoots()
     BufferGrayRootsTracer grayBufferer(rt);
     if (JSTraceDataOp op = grayRootTracer.op)
         (*op)(&grayBufferer, grayRootTracer.data);
-
-    // Push a canary value onto the end of the list.
-    for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
-        if (!zone->gcGrayRoots().empty() && !zone->gcGrayRoots().append(GrayBufferCanary))
-            grayBufferer.setFailed();
-    }
 
     // Propagate the failure flag from the marker to the runtime.
     if (grayBufferer.failed()) {
@@ -545,13 +530,21 @@ GCRuntime::markBufferedGrayRoots(JS::Zone* zone)
     if (roots.empty())
         return;
 
-    // Check for and remove canary value.
-    MOZ_RELEASE_ASSERT(roots.length() > 1);
-    MOZ_RELEASE_ASSERT(roots.back() == GrayBufferCanary);
-    roots.popBack();
+    for (size_t i = 0; i < roots.length(); i++) {
+        Cell* cell = roots[i];
 
-    for (auto cell : zone->gcGrayRoots()) {
+        // Bug 1203273: Check for bad pointers on OSX and output diagnostics.
+#if defined(XP_DARWIN) && defined(MOZ_DIAGNOSTIC_ASSERT_ENABLED)
+        auto addr = uintptr_t(cell);
+        if (addr < ChunkSize || addr % CellAlignBytes != 0) {
+            MOZ_CRASH_UNSAFE_PRINTF(
+                "Bad GC thing pointer in gray root buffer: %p at index %zu of %zu, address %p",
+                cell, i, roots.length(), &roots[i]);
+        }
+#else
         MOZ_ASSERT(IsCellPointerValid(cell));
+#endif
+
         TraceManuallyBarrieredGenericPointerEdge(&marker, &cell, "buffered gray root");
     }
 }

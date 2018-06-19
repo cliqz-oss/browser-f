@@ -7,29 +7,36 @@
 // * element existance
 // * number of elements
 // * content of element
+// * title of inspect icon
 
-add_task(async function () {
+const TEST_DATA = [
+  { expectedTextContent: "div.ball.animated" },
+  { expectedTextContent: "div.ball.long" },
+];
+
+add_task(async function() {
   await addTab(URL_ROOT + "doc_simple_animation.html");
-  const { animationInspector, inspector, panel } = await openAnimationInspector();
+  await removeAnimatedElementsExcept([".animated", ".long"]);
+  const { animationInspector, panel } = await openAnimationInspector();
 
   info("Checking the animation target elements existance");
   const animationItemEls = panel.querySelectorAll(".animation-list .animation-item");
-  is(animationItemEls.length, animationInspector.animations.length,
-     "Number of animation target element should be same to number of animations "
-     + "that displays");
+  is(animationItemEls.length, animationInspector.state.animations.length,
+     "Number of animation target element should be same to number of animations " +
+     "that displays");
 
-  for (const animationItemEl of animationItemEls) {
+  for (let i = 0; i < animationItemEls.length; i++) {
+    const animationItemEl = animationItemEls[i];
     const animationTargetEl = animationItemEl.querySelector(".animation-target");
     ok(animationTargetEl,
-       "The animation target element should be in each animation item element");
-  }
+      "The animation target element should be in each animation item element");
 
-  info("Checking the content of animation target");
-  await selectNodeAndWaitForAnimations(".animated", inspector);
-  const animationTargetEl =
-    panel.querySelector(".animation-list .animation-item .animation-target");
-  is(animationTargetEl.textContent, "div.ball.animated",
-     "The target element's content is correct");
-  ok(animationTargetEl.querySelector(".objectBox"),
-     "objectBox is in the page exists");
+    info("Checking the content of animation target");
+    const testData = TEST_DATA[i];
+    is(animationTargetEl.textContent, testData.expectedTextContent,
+       "The target element's content is correct");
+    ok(animationTargetEl.querySelector(".objectBox"), "objectBox is in the page exists");
+    ok(animationTargetEl.querySelector(".open-inspector").title,
+       INSPECTOR_L10N.getStr("inspector.nodePreview.highlightNodeLabel"));
+  }
 });

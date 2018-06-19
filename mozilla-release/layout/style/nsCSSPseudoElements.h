@@ -56,6 +56,17 @@
 // grid containers) and thus needs parent display-based style fixup?
 #define CSS_PSEUDO_ELEMENT_IS_FLEX_OR_GRID_ITEM        (1<<7)
 
+// Trivial subclass of nsStaticAtom so that function signatures can require an
+// atom from this atom list.
+class nsICSSPseudoElement : public nsStaticAtom
+{
+public:
+  constexpr nsICSSPseudoElement(const char16_t* aStr, uint32_t aLength,
+                                uint32_t aStringOffset)
+    : nsStaticAtom(aStr, aLength, aStringOffset)
+  {}
+};
+
 namespace mozilla {
 
 // The total count of CSSPseudoElement is less than 256,
@@ -79,11 +90,29 @@ enum class CSSPseudoElementType : CSSPseudoElementTypeBase {
   MAX
 };
 
-} // namespace mozilla
+namespace detail {
 
-// Empty class derived from nsAtom so that function signatures can
-// require an atom from this atom list.
-class nsICSSPseudoElement : public nsAtom {};
+struct CSSPseudoElementAtoms
+{
+  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+    NS_STATIC_ATOM_DECL_STRING(name_, value_)
+  #include "nsCSSPseudoElementList.h"
+  #undef CSS_PSEUDO_ELEMENT
+
+  enum class Atoms {
+    #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+      NS_STATIC_ATOM_ENUM(name_)
+    #include "nsCSSPseudoElementList.h"
+    #undef CSS_PSEUDO_ELEMENT
+    AtomsCount
+  };
+
+  const nsICSSPseudoElement mAtoms[static_cast<size_t>(Atoms::AtomsCount)];
+};
+
+} // namespace detail
+
+} // namespace mozilla
 
 class nsCSSPseudoElements
 {
@@ -91,7 +120,7 @@ class nsCSSPseudoElements
   typedef mozilla::CSSEnabledState EnabledState;
 
 public:
-  static void AddRefAtoms();
+  static void RegisterStaticAtoms();
 
   static bool IsPseudoElement(nsAtom *aAtom);
 
@@ -105,10 +134,16 @@ public:
     return PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_IS_CSS2);
   }
 
-#define CSS_PSEUDO_ELEMENT(_name, _value, _flags) \
-  NS_STATIC_ATOM_SUBCLASS_DECL(nsICSSPseudoElement, _name)
-#include "nsCSSPseudoElementList.h"
-#undef CSS_PSEUDO_ELEMENT
+private:
+  static const nsStaticAtom* const sAtoms;
+  static constexpr size_t sAtomsLen =
+    static_cast<size_t>(mozilla::detail::CSSPseudoElementAtoms::Atoms::AtomsCount);
+
+public:
+  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+    NS_STATIC_ATOM_DECL_PTR(nsICSSPseudoElement, name_);
+  #include "nsCSSPseudoElementList.h"
+  #undef CSS_PSEUDO_ELEMENT
 
   static Type GetPseudoType(nsAtom* aAtom, EnabledState aEnabledState);
 

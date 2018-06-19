@@ -15,10 +15,8 @@
 #include "nsIDocShell.h"
 #include "nsHTMLParts.h"
 #include "nsIComponentManager.h"
-#include "nsIDOMElement.h"
 #include "nsIBaseWindow.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMDocumentType.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsIHttpChannelInternal.h"
@@ -46,6 +44,7 @@
 #include "nsIHTMLDocument.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/EventDispatcher.h"
+#include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/XMLDocumentBinding.h"
 #include "mozilla/dom/DocumentBinding.h"
@@ -62,7 +61,7 @@ nsresult
 NS_NewDOMDocument(nsIDOMDocument** aInstancePtrResult,
                   const nsAString& aNamespaceURI,
                   const nsAString& aQualifiedName,
-                  nsIDOMDocumentType* aDoctype,
+                  DocumentType* aDoctype,
                   nsIURI* aDocumentURI,
                   nsIURI* aBaseURI,
                   nsIPrincipal* aPrincipal,
@@ -153,9 +152,8 @@ NS_NewDOMDocument(nsIDOMDocument** aInstancePtrResult,
   doc->SetDocumentCharacterSet(UTF_8_ENCODING);
 
   if (aDoctype) {
-    nsCOMPtr<nsINode> doctypeAsNode = do_QueryInterface(aDoctype);
     ErrorResult result;
-    d->AppendChild(*doctypeAsNode, result);
+    d->AppendChild(*aDoctype, result);
     // Need to WouldReportJSException() if our callee can throw a JS
     // exception (which it can) and we're neither propagating the
     // error out nor unconditionally suppressing it.
@@ -259,9 +257,6 @@ XMLDocument::~XMLDocument()
   // XXX We rather crash than hang
   mLoopingForSyncLoad = false;
 }
-
-// QueryInterface implementation for XMLDocument
-NS_IMPL_ISUPPORTS_INHERITED(XMLDocument, nsDocument, nsIDOMXMLDocument)
 
 nsresult
 XMLDocument::Init()

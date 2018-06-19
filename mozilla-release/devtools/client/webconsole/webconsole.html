@@ -2,7 +2,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!DOCTYPE html>
-<html dir="">
+<html dir=""
+      windowtype="devtools:webconsole"
+      width="900" height="350">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
     <link rel="stylesheet" href="chrome://devtools/skin/widgets.css"/>
@@ -16,23 +18,11 @@
 
     <script src="chrome://devtools/content/shared/theme-switching.js"></script>
     <script type="application/javascript"
-            src="resource://devtools/client/webconsole/new-console-output/main.js"></script>
+            src="resource://devtools/client/webconsole/main.js"></script>
   </head>
   <body class="theme-sidebar" role="application">
     <div id="app-wrapper" class="theme-body">
       <div id="output-container" role="document" aria-live="polite"></div>
-      <div id="jsterm-wrapper">
-        <div id="webconsole-notificationbox"></div>
-        <div class="jsterm-input-container" style="direction:ltr">
-          <div class="jsterm-stack-node">
-            <textarea class="jsterm-complete-node devtools-monospace"
-                      tabindex="-1"></textarea>
-            <textarea class="jsterm-input-node devtools-monospace"
-                      rows="1" tabindex="0"
-                      aria-autocomplete="list"></textarea>
-          </div>
-        </div>
-      </div>
     </div>
   </body>
 </html>

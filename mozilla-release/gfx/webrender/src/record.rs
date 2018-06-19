@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ApiMsg, FrameMsg};
-use bincode::{serialize, Infinite};
+use api::{ApiMsg, FrameMsg, SceneMsg};
+use bincode::serialize;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::any::TypeId;
 use std::fmt::Debug;
@@ -49,7 +49,7 @@ impl BinaryRecorder {
 impl ApiRecordingReceiver for BinaryRecorder {
     fn write_msg(&mut self, _: u32, msg: &ApiMsg) {
         if should_record_msg(msg) {
-            let buf = serialize(msg, Infinite).unwrap();
+            let buf = serialize(msg).unwrap();
             self.write_length_and_data(&buf);
         }
     }
@@ -67,11 +67,23 @@ pub fn should_record_msg(msg: &ApiMsg) -> bool {
         ApiMsg::AddDocument { .. } |
         ApiMsg::DeleteDocument(..) => true,
         ApiMsg::UpdateDocument(_, ref msgs) => {
+            if msgs.generate_frame {
+                return true;
+            }
+
+            for msg in &msgs.scene_ops {
+                match *msg {
+                    SceneMsg::SetDisplayList { .. } |
+                    SceneMsg::SetRootPipeline { .. } => return true,
+                    _ => {}
+                }
+            }
+
             for msg in &msgs.frame_ops {
                 match *msg {
                     FrameMsg::GetScrollNodeState(..) |
                     FrameMsg::HitTest(..) => {}
-                    _ => { return true; }
+                    _ => return true,
                 }
             }
 

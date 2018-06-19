@@ -4,6 +4,7 @@ import json
 import os
 import urlparse
 import re
+import sys
 
 import webdriver
 
@@ -75,6 +76,7 @@ def _restore_windows(session):
     session.window_handle = current_window
 
 
+@ignore_exceptions
 def _switch_to_top_level_browsing_context(session):
     """If the current browsing context selected by WebDriver is a
     `<frame>` or an `<iframe>`, switch it back to the top-level
@@ -179,7 +181,8 @@ def new_session(configuration, request):
         global _current_session
         if _current_session is not None and _current_session.session_id:
             _current_session.end()
-            _current_session = None
+
+        _current_session = None
 
     def create_session(body):
         global _current_session
@@ -212,7 +215,7 @@ def add_browser_capabilites(configuration):
 def url(server_config):
     def inner(path, protocol="http", query="", fragment=""):
         port = server_config["ports"][protocol][0]
-        host = "%s:%s" % (server_config["host"], port)
+        host = "%s:%s" % (server_config["browser_host"], port)
         return urlparse.urlunsplit((protocol, host, path, query, fragment))
 
     inner.__name__ = "url"

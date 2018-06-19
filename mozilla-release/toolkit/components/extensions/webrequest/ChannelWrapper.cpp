@@ -19,6 +19,7 @@
 #include "mozilla/ErrorNames.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/Unused.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/TabParent.h"
 #include "nsIContentPolicy.h"
@@ -334,11 +335,11 @@ ChannelWrapper::GetLoadContext() const
   return nullptr;
 }
 
-already_AddRefed<nsIDOMElement>
+already_AddRefed<Element>
 ChannelWrapper::GetBrowserElement() const
 {
   if (nsCOMPtr<nsILoadContext> ctxt = GetLoadContext()) {
-    nsCOMPtr<nsIDOMElement> elem;
+    RefPtr<Element> elem;
     if (NS_SUCCEEDED(ctxt->GetTopFrameElement(getter_AddRefs(elem)))) {
       return elem.forget();
     }
@@ -722,6 +723,8 @@ GetContentPolicyType(uint32_t aType)
     return MozContentPolicyType::Imageset;
   case nsIContentPolicy::TYPE_WEB_MANIFEST:
     return MozContentPolicyType::Web_manifest;
+  case nsIContentPolicy::TYPE_SPECULATIVE:
+    return MozContentPolicyType::Speculative;
   default:
     return MozContentPolicyType::Other;
   }
@@ -985,8 +988,7 @@ ChannelWrapper::FireEvent(const nsAString& aType)
   RefPtr<Event> event = Event::Constructor(this, aType, init);
   event->SetTrusted(true);
 
-  bool defaultPrevented;
-  DispatchEvent(event, &defaultPrevented);
+  DispatchEvent(*event);
 }
 
 void

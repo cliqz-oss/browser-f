@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
 #include "mozilla/dom/ScreenBinding.h"
 #include "nsContentUtils.h"
 #include "nsScreen.h"
@@ -50,7 +49,6 @@ nsScreen::~nsScreen()
 
 // QueryInterface implementation for nsScreen
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsScreen)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMScreen)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(nsScreen, DOMEventTargetHelper)
@@ -79,22 +77,6 @@ nsScreen::GetPixelDepth(ErrorResult& aRv)
   context->GetDepth(depth);
   return depth;
 }
-
-#define FORWARD_LONG_GETTER(_name)                                              \
-  NS_IMETHODIMP                                                                 \
-  nsScreen::Get ## _name(int32_t* aOut)                                         \
-  {                                                                             \
-    ErrorResult rv;                                                             \
-    *aOut = Get ## _name(rv);                                                   \
-    return rv.StealNSResult();                                                  \
-  }
-
-FORWARD_LONG_GETTER(AvailWidth)
-FORWARD_LONG_GETTER(AvailHeight)
-
-FORWARD_LONG_GETTER(Top)
-FORWARD_LONG_GETTER(AvailTop)
-FORWARD_LONG_GETTER(AvailLeft)
 
 nsPIDOMWindowOuter*
 nsScreen::GetOuter() const

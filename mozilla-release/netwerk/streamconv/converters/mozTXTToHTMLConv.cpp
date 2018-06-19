@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/TextUtils.h"
 #include "mozTXTToHTMLConv.h"
 #include "nsNetUtil.h"
 #include "nsUnicharUtils.h"
@@ -17,6 +18,9 @@
 #include "prtime.h"
 #include "prinrval.h"
 #endif
+
+using mozilla::IsAsciiAlpha;
+using mozilla::IsAsciiDigit;
 
 const double growthRate = 1.2;
 
@@ -199,8 +203,7 @@ mozTXTToHTMLConv::FindURLStart(const char16_t * aInString, int32_t aInLength,
       start = pos + 1;
       return true;
     }
-    else
-      return false;
+    return false;
   }
   case RFC2396E:
   {
@@ -212,27 +215,25 @@ mozTXTToHTMLConv::FindURLStart(const char16_t * aInString, int32_t aInLength,
       start = uint32_t(++i);
       return start < pos;
     }
-    else
-      return false;
+    return false;
   }
   case freetext:
   {
     int32_t i = pos - 1;
     for (; i >= 0 && (
-         nsCRT::IsAsciiAlpha(aInString[uint32_t(i)]) ||
-         nsCRT::IsAsciiDigit(aInString[uint32_t(i)]) ||
+         IsAsciiAlpha(aInString[uint32_t(i)]) ||
+         IsAsciiDigit(aInString[uint32_t(i)]) ||
          aInString[uint32_t(i)] == '+' ||
          aInString[uint32_t(i)] == '-' ||
          aInString[uint32_t(i)] == '.'
          ); i--)
       ;
-    if (++i >= 0 && uint32_t(i) < pos && nsCRT::IsAsciiAlpha(aInString[uint32_t(i)]))
+    if (++i >= 0 && uint32_t(i) < pos && IsAsciiAlpha(aInString[uint32_t(i)]))
     {
       start = uint32_t(i);
       return true;
     }
-    else
-      return false;
+    return false;
   }
   case abbreviated:
   {
@@ -257,16 +258,15 @@ mozTXTToHTMLConv::FindURLStart(const char16_t * aInString, int32_t aInLength,
         ++i >= 0 && uint32_t(i) < pos
           &&
           (
-            nsCRT::IsAsciiAlpha(aInString[uint32_t(i)]) ||
-            nsCRT::IsAsciiDigit(aInString[uint32_t(i)])
+            IsAsciiAlpha(aInString[uint32_t(i)]) ||
+            IsAsciiDigit(aInString[uint32_t(i)])
           )
       )
     {
       start = uint32_t(i);
       return true;
     }
-    else
-      return false;
+    return false;
   }
   default:
     return false;
@@ -470,8 +470,7 @@ mozTXTToHTMLConv::CheckURLAndCreateHTML(
     outputHTML.AppendLiteral("</a>");
     return true;
   }
-  else
-    return false;
+  return false;
 }
 
 NS_IMETHODIMP mozTXTToHTMLConv::FindURLInPlaintext(const char16_t * aInString, int32_t aInLength, int32_t aPos, int32_t * aStartPos, int32_t * aEndPos)
@@ -597,25 +596,25 @@ mozTXTToHTMLConv::ItMatchesDelimited(const char16_t * aInString,
   if
     (
       (before == LT_ALPHA
-        && !nsCRT::IsAsciiAlpha(text0)) ||
+        && !IsAsciiAlpha(text0)) ||
       (before == LT_DIGIT
-        && !nsCRT::IsAsciiDigit(text0)) ||
+        && !IsAsciiDigit(text0)) ||
       (before == LT_DELIMITER
         &&
         (
-          nsCRT::IsAsciiAlpha(text0) ||
-          nsCRT::IsAsciiDigit(text0) ||
+          IsAsciiAlpha(text0) ||
+          IsAsciiDigit(text0) ||
           text0 == *rep
         )) ||
       (after == LT_ALPHA
-        && !nsCRT::IsAsciiAlpha(textAfterPos)) ||
+        && !IsAsciiAlpha(textAfterPos)) ||
       (after == LT_DIGIT
-        && !nsCRT::IsAsciiDigit(textAfterPos)) ||
+        && !IsAsciiDigit(textAfterPos)) ||
       (after == LT_DELIMITER
         &&
         (
-          nsCRT::IsAsciiAlpha(textAfterPos) ||
-          nsCRT::IsAsciiDigit(textAfterPos) ||
+          IsAsciiAlpha(textAfterPos) ||
+          IsAsciiDigit(textAfterPos) ||
           textAfterPos == *rep
         )) ||
         !Substring(Substring(aInString, aInString+aInLength),
@@ -748,11 +747,11 @@ mozTXTToHTMLConv::SmilyHit(const char16_t * aInString, int32_t aLength, bool col
     }
 
     outputHTML.AppendLiteral("<span class=\""); // <span class="
-    AppendASCIItoUTF16(imageName, outputHTML);  // e.g. smiley-frown
+    outputHTML.AppendASCII(imageName);          // e.g. smiley-frown
     outputHTML.AppendLiteral("\" title=\"");    // " title="
-    AppendASCIItoUTF16(tagTXT, outputHTML);     // smiley tooltip
+    outputHTML.AppendASCII(tagTXT);             // smiley tooltip
     outputHTML.AppendLiteral("\"><span>");      // "><span>
-    AppendASCIItoUTF16(tagTXT, outputHTML);     // original text
+    outputHTML.AppendASCII(tagTXT);             // original text
     outputHTML.AppendLiteral("</span></span>"); // </span></span>
     glyphTextLen = (col0 ? 0 : 1) + tagLen;
     return true;
@@ -944,13 +943,13 @@ mozTXTToHTMLConv::GlyphHit(const char16_t * aInString, int32_t aInLength, bool c
       text1 == '^'
       &&
       (
-        nsCRT::IsAsciiDigit(text0) || nsCRT::IsAsciiAlpha(text0) ||
+        IsAsciiDigit(text0) || IsAsciiAlpha(text0) ||
         text0 == ')' || text0 == ']' || text0 == '}'
       )
       &&
       (
-        (2 < aInLength && nsCRT::IsAsciiDigit(aInString[2])) ||
-        (3 < aInLength && aInString[2] == '-' && nsCRT::IsAsciiDigit(aInString[3]))
+        (2 < aInLength && IsAsciiDigit(aInString[2])) ||
+        (3 < aInLength && aInString[2] == '-' && IsAsciiDigit(aInString[3]))
       )
     )
   {
@@ -959,14 +958,14 @@ mozTXTToHTMLConv::GlyphHit(const char16_t * aInString, int32_t aInLength, bool c
     for (; delimPos < aInLength
            &&
            (
-             nsCRT::IsAsciiDigit(aInString[delimPos]) ||
+             IsAsciiDigit(aInString[delimPos]) ||
              (aInString[delimPos] == '.' && delimPos + 1 < aInLength &&
-               nsCRT::IsAsciiDigit(aInString[delimPos + 1]))
+               IsAsciiDigit(aInString[delimPos + 1]))
            );
          delimPos++)
       ;
 
-    if (delimPos < aInLength && nsCRT::IsAsciiAlpha(aInString[delimPos]))
+    if (delimPos < aInLength && IsAsciiAlpha(aInString[delimPos]))
     {
       return false;
     }
@@ -1005,14 +1004,6 @@ mozTXTToHTMLConv::GlyphHit(const char16_t * aInString, int32_t aInLength, bool c
   Library-internal Interface
 ****************************************************************************/
 
-mozTXTToHTMLConv::mozTXTToHTMLConv()
-{
-}
-
-mozTXTToHTMLConv::~mozTXTToHTMLConv()
-{
-}
-
 NS_IMPL_ISUPPORTS(mozTXTToHTMLConv,
                   mozITXTToHTMLConv,
                   nsIStreamConverter,
@@ -1048,7 +1039,7 @@ mozTXTToHTMLConv::CiteLevelTXT(const char16_t *line,
 #ifdef QUOTE_RECOGNITION_AGGRESSIVE
     for (; int32_t(i) < lineLength && IsSpace(line[i]); i++)
       ;
-    for (; int32_t(i) < lineLength && nsCRT::IsAsciiAlpha(line[i])
+    for (; int32_t(i) < lineLength && IsAsciiAlpha(line[i])
                                    && nsCRT::IsUpper(line[i])   ; i++)
       ;
     if (int32_t(i) < lineLength && (line[i] == '>' || line[i] == ']'))

@@ -10,13 +10,11 @@
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/DeclarationBlockInlines.h"
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/css/StyleRule.h"
-#endif
 #include "mozilla/dom/Element.h"
 #include "mozilla/mozalloc.h"
 #include "nsAString.h"
 #include "nsCOMPtr.h"
+#include "nsCSSProps.h"
 #include "nsColor.h"
 #include "nsComputedDOMStyle.h"
 #include "nsDebug.h"
@@ -26,7 +24,6 @@
 #include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsICSSDeclaration.h"
-#include "nsIDOMNode.h"
 #include "nsIDOMWindow.h"
 #include "nsIDocument.h"
 #include "nsIEditor.h"
@@ -587,7 +584,7 @@ CSSEditUtils::RemoveCSSInlineStyle(nsINode& aNode,
     return NS_OK;
   }
 
-  return mHTMLEditor->RemoveContainer(element);
+  return mHTMLEditor->RemoveContainerWithTransaction(*element);
 }
 
 // Answers true if the property can be removed by setting a "none" CSS value

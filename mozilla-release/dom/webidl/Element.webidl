@@ -230,7 +230,7 @@ partial interface Element {
 
 // http://domparsing.spec.whatwg.org/#extensions-to-the-element-interface
 partial interface Element {
-  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, TreatNullAs=EmptyString]
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, GetterCanOOM, TreatNullAs=EmptyString]
   attribute DOMString innerHTML;
   [CEReactions, Pure,SetterThrows,TreatNullAs=EmptyString]
   attribute DOMString outerHTML;
@@ -276,10 +276,6 @@ partial interface Element {
   readonly attribute HTMLSlotElement? assignedSlot;
   [CEReactions, Unscopable, SetterThrows, Func="nsDocument::IsShadowDOMEnabled"]
            attribute DOMString slot;
-
-  // [deprecated] Shadow DOM v0
-  [Throws, Func="nsDocument::IsShadowDOMEnabled"]
-  ShadowRoot createShadowRoot();
 };
 
 Element implements ChildNode;

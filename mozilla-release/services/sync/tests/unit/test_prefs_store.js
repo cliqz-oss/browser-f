@@ -11,8 +11,10 @@ ChromeUtils.import("resource://services-sync/util.js");
 
 const PREFS_GUID = CommonUtils.encodeBase64URL(Services.appinfo.ID);
 
-loadAddonTestFunctions();
-startupManager();
+AddonTestUtils.init(this);
+AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
+AddonTestUtils.overrideCertDB();
+AddonTestUtils.awaitPromise(AddonTestUtils.promiseStartupManager());
 
 function makePersona(id) {
   return {
@@ -107,8 +109,7 @@ add_task(async function run_test() {
     // Ensure we don't go to the network to fetch personas and end up leaking
     // stuff.
     Services.io.offline = true;
-    Assert.ok(!prefs.get("lightweightThemes.selectedThemeID"));
-    Assert.equal(LightweightThemeManager.currentTheme, null);
+    Assert.equal(LightweightThemeManager.currentTheme.id, "default-theme@mozilla.org");
 
     let persona1 = makePersona();
     let persona2 = makePersona();
@@ -128,8 +129,7 @@ add_task(async function run_test() {
       "lightweightThemes.usedThemes": usedThemes
     };
     await store.update(record);
-    Assert.ok(!prefs.get("lightweightThemes.selectedThemeID"));
-    Assert.equal(LightweightThemeManager.currentTheme, null);
+    Assert.equal(LightweightThemeManager.currentTheme.id, "default-theme@mozilla.org");
 
     _("Only the current app's preferences are applied.");
     record = new PrefRec("prefs", "some-fake-app");

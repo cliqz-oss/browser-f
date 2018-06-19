@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsDOMOfflineResourceList.h"
-#include "nsIDOMEvent.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsError.h"
 #include "mozilla/dom/DOMStringList.h"
@@ -516,17 +515,12 @@ nsDOMOfflineResourceList::SwapCache()
   return NS_OK;
 }
 
-//
-// nsDOMOfflineResourceList::nsIDOMEventTarget
-//
-
 void
 nsDOMOfflineResourceList::FirePendingEvents()
 {
   for (int32_t i = 0; i < mPendingEvents.Count(); ++i) {
-    bool dummy;
-    nsCOMPtr<nsIDOMEvent> event = mPendingEvents[i];
-    DispatchEvent(event, &dummy);
+    RefPtr<Event> event = mPendingEvents[i];
+    DispatchEvent(*event);
   }
   mPendingEvents.Clear();
 }
@@ -556,8 +550,7 @@ nsDOMOfflineResourceList::SendEvent(const nsAString &aEventName)
     return NS_OK;
   }
 
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
 
   return NS_OK;
 }

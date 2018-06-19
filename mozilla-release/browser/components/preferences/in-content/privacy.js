@@ -395,12 +395,7 @@ var gPrivacyPane = {
         document.getElementById("notificationsDoNotDisturbBox");
       notificationsDoNotDisturbBox.removeAttribute("hidden");
       let checkbox = document.getElementById("notificationsDoNotDisturb");
-      let brandName = document.getElementById("bundleBrand")
-        .getString("brandShortName");
-      checkbox.setAttribute("label",
-        bundlePrefs.getFormattedString("pauseNotifications.label",
-          [brandName]));
-      checkbox.setAttribute("accesskey", bundlePrefs.getString("pauseNotifications.accesskey"));
+      document.l10n.setAttributes(checkbox, "permissions-notification-pause");
       if (AlertsServiceDND.manualDoNotDisturb) {
         let notificationsDoNotDisturb =
           document.getElementById("notificationsDoNotDisturb");
@@ -408,25 +403,21 @@ var gPrivacyPane = {
       }
     }
 
-    if (Services.prefs.getBoolPref("browser.storageManager.enabled")) {
-      Services.obs.addObserver(this, "sitedatamanager:sites-updated");
-      Services.obs.addObserver(this, "sitedatamanager:updating-sites");
-      let unload = () => {
-        window.removeEventListener("unload", unload);
-        Services.obs.removeObserver(this, "sitedatamanager:sites-updated");
-        Services.obs.removeObserver(this, "sitedatamanager:updating-sites");
-      };
-      window.addEventListener("unload", unload);
-      SiteDataManager.updateSites();
-      setEventListener("clearSiteDataButton", "command",
-        gPrivacyPane.clearSiteData);
-      setEventListener("siteDataSettings", "command",
-        gPrivacyPane.showSiteDataSettings);
-      let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
-      document.getElementById("siteDataLearnMoreLink").setAttribute("href", url);
-      let siteDataGroup = document.getElementById("siteDataGroup");
-      siteDataGroup.removeAttribute("data-hidden-from-search");
-    }
+    Services.obs.addObserver(this, "sitedatamanager:sites-updated");
+    Services.obs.addObserver(this, "sitedatamanager:updating-sites");
+    let unload = () => {
+      window.removeEventListener("unload", unload);
+      Services.obs.removeObserver(this, "sitedatamanager:sites-updated");
+      Services.obs.removeObserver(this, "sitedatamanager:updating-sites");
+    };
+    window.addEventListener("unload", unload);
+    SiteDataManager.updateSites();
+    setEventListener("clearSiteDataButton", "command",
+      gPrivacyPane.clearSiteData);
+    setEventListener("siteDataSettings", "command",
+      gPrivacyPane.showSiteDataSettings);
+    let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
+    document.getElementById("siteDataLearnMoreLink").setAttribute("href", url);
 
     let notificationInfoURL =
       Services.urlFormatter.formatURLPref("app.support.baseURL") + "push";
@@ -476,11 +467,19 @@ var gPrivacyPane = {
       bundlePrefs.getString("trackingprotectionpermissionstitle"),
       bundlePrefs.getString("trackingprotectionpermissionstext2"),
     ]);
+<<<<<<< HEAD
     appendSearchKeywords("changeBlockList", [
       bundlePrefs.getString("blockliststitle"),
       bundlePrefs.getString("blockliststext"),
     ]);
 #endif
+||||||| merged common ancestors
+    appendSearchKeywords("changeBlockList", [
+      bundlePrefs.getString("blockliststitle"),
+      bundlePrefs.getString("blockliststext"),
+    ]);
+=======
+>>>>>>> origin/upstream-releases
     appendSearchKeywords("popupPolicyButton", [
       bundlePrefs.getString("popuppermissionstitle2"),
       bundlePrefs.getString("popuppermissionstext"),
@@ -520,8 +519,7 @@ var gPrivacyPane = {
     ]);
     appendSearchKeywords("siteDataSettings", [
       bundlePrefs.getString("siteDataSettings3.description"),
-      bundlePrefs.getString("removeAllCookies.label"),
-      bundlePrefs.getString("removeSelectedCookies.label"),
+      bundlePrefs.getString("removeAllSiteData.label"),
     ]);
 
     if (!PrivateBrowsingUtils.enabled) {
@@ -705,6 +703,8 @@ var gPrivacyPane = {
     document.getElementById("keepCookiesUntil").value = this.readKeepCookiesUntil();
     this.readAcceptCookies();
 
+    let clearDataSettings = document.getElementById("clearDataSettings");
+
     if (document.getElementById("historyMode").value == "custom") {
       let disabled = Preferences.get("browser.privatebrowsing.autostart").value;
       this.dependentControls.forEach(function(aElement) {
@@ -722,6 +722,8 @@ var gPrivacyPane = {
         control.disabled = disabled || preference.locked;
       });
 
+      clearDataSettings.removeAttribute("hidden");
+
       // adjust the checked state of the sanitizeOnShutdown checkbox
       document.getElementById("alwaysClear").checked = disabled ? false :
         Preferences.get("privacy.sanitize.sanitizeOnShutdown").value;
@@ -736,6 +738,8 @@ var gPrivacyPane = {
         // adjust the Settings button for sanitizeOnShutdown
         this._updateSanitizeSettingsButton();
       }
+    } else {
+      clearDataSettings.setAttribute("hidden", "true");
     }
   },
 
@@ -868,16 +872,7 @@ var gPrivacyPane = {
    * Displays the available block lists for tracking protection.
    */
   showBlockLists() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
-    let brandName = document.getElementById("bundleBrand")
-      .getString("brandShortName");
-    var params = {
-      brandShortName: brandName,
-      windowTitle: bundlePreferences.getString("blockliststitle"),
-      introText: bundlePreferences.getString("blockliststext")
-    };
-    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul",
-      null, params);
+    gSubDialog.open("chrome://browser/content/preferences/blocklists.xul", null);
   },
 #endif
 
@@ -909,17 +904,17 @@ var gPrivacyPane = {
   readKeepCookiesUntil() {
     let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
     if (privateBrowsing) {
-      return "2";
+      return Ci.nsICookieService.ACCEPT_SESSION;
     }
 
     let lifetimePolicy = Preferences.get("network.cookie.lifetimePolicy").value;
-    if (lifetimePolicy != Ci.nsICookieService.ACCEPT_NORMALLY &&
-      lifetimePolicy != Ci.nsICookieService.ACCEPT_SESSION &&
-      lifetimePolicy != Ci.nsICookieService.ACCEPT_FOR_N_DAYS) {
-      return Ci.nsICookieService.ACCEPT_NORMALLY;
+    if (lifetimePolicy == Ci.nsICookieService.ACCEPT_SESSION) {
+      return Ci.nsICookieService.ACCEPT_SESSION;
     }
 
-    return lifetimePolicy;
+    // network.cookie.lifetimePolicy can be set to any value, but we just
+    // support ACCEPT_SESSION and ACCEPT_NORMALLY. Let's force ACCEPT_NORMALLY.
+    return Ci.nsICookieService.ACCEPT_NORMALLY;
   },
 
   /**

@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/TextUtils.h"
 
 #include "nspr.h"
 
@@ -30,7 +31,6 @@
 #include "nsEscape.h"
 #include "nsUnicharUtils.h"
 #include "nsIStringEnumerator.h"
-#include "nsCRT.h"
 #include "nsContentCID.h"
 #include "nsStreamUtils.h"
 
@@ -55,7 +55,6 @@
 #include "nsIStringBundle.h"
 #include "nsIProtocolHandler.h"
 
-#include "nsIWebBrowserPersistable.h"
 #include "nsWebBrowserPersist.h"
 #include "WebBrowserPersistLocalDocument.h"
 
@@ -414,7 +413,7 @@ NS_IMETHODIMP nsWebBrowserPersist::SetProgressListener(
 }
 
 NS_IMETHODIMP nsWebBrowserPersist::SaveURI(
-    nsIURI *aURI, nsISupports *aCacheKey,
+    nsIURI *aURI, uint32_t aCacheKey,
     nsIURI *aReferrer, uint32_t aReferrerPolicy,
     nsIInputStream *aPostData, const char *aExtraHeaders,
     nsISupports *aFile, nsILoadContext* aPrivacyContext)
@@ -425,7 +424,7 @@ NS_IMETHODIMP nsWebBrowserPersist::SaveURI(
 }
 
 NS_IMETHODIMP nsWebBrowserPersist::SavePrivacyAwareURI(
-    nsIURI *aURI, nsISupports *aCacheKey,
+    nsIURI *aURI, uint32_t aCacheKey,
     nsIURI *aReferrer, uint32_t aReferrerPolicy,
     nsIInputStream *aPostData, const char *aExtraHeaders,
     nsISupports *aFile, bool aIsPrivate)
@@ -632,7 +631,7 @@ nsWebBrowserPersist::SerializeNextFile()
 
             // The Referrer Policy doesn't matter here since the referrer is
             // nullptr.
-            rv = SaveURIInternal(uri, nullptr, nullptr,
+            rv = SaveURIInternal(uri, 0, nullptr,
                                  mozilla::net::RP_Unset, nullptr, nullptr,
                                  fileAsURI, true, mIsPrivate);
             // If SaveURIInternal fails, then it will have called EndDownload,
@@ -1329,7 +1328,7 @@ nsWebBrowserPersist::AppendPathToURI(nsIURI *aURI, const nsAString & aPath, nsCO
 }
 
 nsresult nsWebBrowserPersist::SaveURIInternal(
-    nsIURI *aURI, nsISupports *aCacheKey, nsIURI *aReferrer,
+    nsIURI *aURI, uint32_t aCacheKey, nsIURI *aReferrer,
     uint32_t aReferrerPolicy, nsIInputStream *aPostData,
     const char *aExtraHeaders, nsIURI *aFile,
     bool aCalcFileExt, bool aIsPrivate)
@@ -1349,36 +1348,6 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
     else if (mPersistFlags & PERSIST_FLAGS_FROM_CACHE)
     {
         loadFlags |= nsIRequest::LOAD_FROM_CACHE;
-    }
-
-    // Extract the cache key
-    nsCOMPtr<nsISupports> cacheKey;
-    if (aCacheKey)
-    {
-        // Test if the cache key is actually a web page descriptor (docshell)
-        // or session history entry.
-        nsCOMPtr<nsISHEntry> shEntry = do_QueryInterface(aCacheKey);
-        if (!shEntry)
-        {
-            nsCOMPtr<nsIWebPageDescriptor> webPageDescriptor =
-                do_QueryInterface(aCacheKey);
-            if (webPageDescriptor)
-            {
-                nsCOMPtr<nsISupports> currentDescriptor;
-                webPageDescriptor->GetCurrentDescriptor(getter_AddRefs(currentDescriptor));
-                shEntry = do_QueryInterface(currentDescriptor);
-            }
-        }
-
-        if (shEntry)
-        {
-            shEntry->GetCacheKey(getter_AddRefs(cacheKey));
-        }
-        else
-        {
-            // Assume a plain cache key
-            cacheKey = aCacheKey;
-        }
     }
 
     // Open a channel to the URI
@@ -1453,9 +1422,8 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
 
         // Cache key
         nsCOMPtr<nsICacheInfoChannel> cacheChannel(do_QueryInterface(httpChannel));
-        if (cacheChannel && cacheKey)
-        {
-            cacheChannel->SetCacheKey(cacheKey);
+        if (cacheChannel && aCacheKey != 0) {
+            cacheChannel->SetCacheKey(aCacheKey);
         }
 
         // Headers
@@ -2174,7 +2142,7 @@ nsWebBrowserPersist::MakeFilenameFromURI(nsIURI *aURI, nsString &aFilename)
             for (;*p && *p != ';' && *p != '?' && *p != '#' && *p != '.'
                  ;p++)
             {
-                if (nsCRT::IsAsciiAlpha(*p) || nsCRT::IsAsciiDigit(*p)
+                if (IsAsciiAlpha(*p) || IsAsciiDigit(*p)
                     || *p == '.' || *p == '-' ||  *p == '_' || (*p == ' '))
                 {
                     fileName.Append(char16_t(*p));

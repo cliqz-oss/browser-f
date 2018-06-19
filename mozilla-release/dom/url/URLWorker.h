@@ -24,8 +24,6 @@ class WorkerPrivate;
 class URLWorker final : public URL
 {
 public:
-  class URLProxy;
-
   static already_AddRefed<URLWorker>
   Constructor(const GlobalObject& aGlobal, const nsAString& aURL,
               const Optional<nsAString>& aBase, ErrorResult& aRv);
@@ -53,86 +51,18 @@ public:
        ErrorResult& aRv);
 
   virtual void
-  GetHref(nsAString& aHref, ErrorResult& aRv) const override;
-
-  virtual void
   SetHref(const nsAString& aHref, ErrorResult& aRv) override;
 
   virtual void
   GetOrigin(nsAString& aOrigin, ErrorResult& aRv) const override;
 
   virtual void
-  GetProtocol(nsAString& aProtocol, ErrorResult& aRv) const override;
-
-  virtual void
   SetProtocol(const nsAString& aProtocol, ErrorResult& aRv) override;
-
-  virtual void
-  GetUsername(nsAString& aUsername, ErrorResult& aRv) const override;
-
-  virtual void
-  SetUsername(const nsAString& aUsername, ErrorResult& aRv) override;
-
-  virtual void
-  GetPassword(nsAString& aPassword, ErrorResult& aRv) const override;
-
-  virtual void
-  SetPassword(const nsAString& aPassword, ErrorResult& aRv) override;
-
-  virtual void
-  GetHost(nsAString& aHost, ErrorResult& aRv) const override;
-
-  virtual void
-  SetHost(const nsAString& aHost, ErrorResult& aRv) override;
-
-  virtual void
-  GetHostname(nsAString& aHostname, ErrorResult& aRv) const override;
-
-  virtual void
-  SetHostname(const nsAString& aHostname, ErrorResult& aRv) override;
-
-  virtual void
-  GetPort(nsAString& aPort, ErrorResult& aRv) const override;
-
-  virtual void
-  SetPort(const nsAString& aPort, ErrorResult& aRv) override;
-
-  virtual void
-  GetPathname(nsAString& aPathname, ErrorResult& aRv) const override;
-
-  virtual void
-  SetPathname(const nsAString& aPathname, ErrorResult& aRv) override;
-
-  virtual void
-  GetSearch(nsAString& aSearch, ErrorResult& aRv) const override;
-
-  virtual void
-  GetHash(nsAString& aHost, ErrorResult& aRv) const override;
-
-  virtual void
-  SetHash(const nsAString& aHash, ErrorResult& aRv) override;
-
-  virtual void UpdateURLSearchParams() override;
-
-  virtual void
-  SetSearchInternal(const nsAString& aSearch, ErrorResult& aRv) override;
 
 private:
   ~URLWorker();
 
-  enum Strategy {
-    eAlwaysUseProxy,
-    eUseProxyIfNeeded,
-  };
-
-  void
-  SetHrefInternal(const nsAString& aHref,
-                  Strategy aStrategy,
-                  ErrorResult& aRv);
-
   WorkerPrivate* mWorkerPrivate;
-  RefPtr<URLProxy> mURLProxy;
-  nsCOMPtr<nsIURI> mStdURL;
 };
 
 } // namespace dom

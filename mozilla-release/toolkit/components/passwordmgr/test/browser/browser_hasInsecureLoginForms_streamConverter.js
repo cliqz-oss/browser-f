@@ -17,7 +17,7 @@ function registerConverter() {
   TestStreamConverter.prototype = {
     classID: Components.ID("{5f01d6ef-c090-45a4-b3e5-940d64713eb7}"),
     contractID: "@mozilla.org/streamconv;1?from=test/content&to=*/*",
-    QueryInterface: XPCOMUtils.generateQI([
+    QueryInterface: ChromeUtils.generateQI([
       Ci.nsIRequestObserver,
       Ci.nsIStreamListener,
       Ci.nsIStreamConverter,
@@ -94,7 +94,7 @@ add_task(async function test_streamConverter() {
 
   Assert.ok(!LoginManagerParent.hasInsecureLoginForms(browser));
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   await ContentTask.spawn(originalBrowser, null, async function() {
     this.cleanupFunction();

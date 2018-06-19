@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* utility functions for drawing borders and backgrounds */
+/* utility code for drawing images as CSS borders, backgrounds, and shapes. */
 
 #include "nsImageRenderer.h"
 
@@ -13,11 +13,13 @@
 #include "gfxContext.h"
 #include "gfxDrawable.h"
 #include "ImageOps.h"
+#include "ImageRegion.h"
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "nsContentUtils.h"
 #include "nsCSSRendering.h"
 #include "nsCSSRenderingGradients.h"
+#include "nsDeviceContext.h"
 #include "nsIFrame.h"
 #include "nsStyleStructInlines.h"
 #include "nsSVGDisplayableFrame.h"
@@ -522,7 +524,7 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
 
       nsCOMPtr<imgIContainer> image(ImageOps::CreateFromDrawable(drawable));
       result =
-        nsLayoutUtils::DrawImage(*ctx, mForFrame->StyleContext(),
+        nsLayoutUtils::DrawImage(*ctx, mForFrame->Style(),
                                  aPresContext, image,
                                  samplingFilter, aDest, aFill, aAnchor, aDirtyRect,
                                  ConvertImageRendererToDrawFlags(mFlags),
@@ -600,10 +602,13 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
         containerFlags |= imgIContainer::FLAG_SYNC_DECODE;
       }
 
+      CSSIntSize imageSize(nsPresContext::AppUnitsToIntCSSPixels(mSize.width),
+                           nsPresContext::AppUnitsToIntCSSPixels(mSize.height));
+      Maybe<SVGImageContext> svgContext(Some(SVGImageContext(Some(imageSize))));
+
       const int32_t appUnitsPerDevPixel = mForFrame->PresContext()->AppUnitsPerDevPixel();
       LayoutDeviceRect destRect = LayoutDeviceRect::FromAppUnits(
           aDest, appUnitsPerDevPixel);
-      Maybe<SVGImageContext> svgContext;
       gfx::IntSize decodeSize =
         nsLayoutUtils::ComputeImageContainerDrawingParameters(mImageContainer, mForFrame, destRect,
                                                               aSc, containerFlags, svgContext);
@@ -619,7 +624,7 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
                                                                           aResources, aSc, size, Nothing());
 
       if (key.isNothing()) {
-        return ImgDrawResult::BAD_IMAGE;
+        return ImgDrawResult::NOT_READY;
       }
 
       nsPoint firstTilePos = nsLayoutUtils::GetBackgroundFirstTilePos(aDest.TopLeft(),
@@ -629,8 +634,8 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
           nsRect(firstTilePos.x, firstTilePos.y,
                  aFill.XMost() - firstTilePos.x, aFill.YMost() - firstTilePos.y),
           appUnitsPerDevPixel);
-      wr::LayoutRect fill = aSc.ToRelativeLayoutRect(fillRect);
-      wr::LayoutRect clip = aSc.ToRelativeLayoutRect(
+      wr::LayoutRect fill = wr::ToRoundedLayoutRect(fillRect);
+      wr::LayoutRect clip = wr::ToRoundedLayoutRect(
           LayoutDeviceRect::FromAppUnits(aFill, appUnitsPerDevPixel));
 
       LayoutDeviceSize gapSize = LayoutDeviceSize::FromAppUnits(
@@ -943,8 +948,71 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
   nsRect destTile = RequiresScaling(fillRect, aHFill, aVFill, aUnitSize)
                   ? ComputeTile(fillRect, aHFill, aVFill, aUnitSize, repeatSize)
                   : fillRect;
+
   return Draw(aPresContext, aRenderingContext, aDirtyRect, destTile,
               fillRect, destTile.TopLeft(), repeatSize, aSrc);
+}
+
+ImgDrawResult
+nsImageRenderer::DrawShapeImage(nsPresContext* aPresContext,
+                                gfxContext& aRenderingContext)
+{
+  if (!IsReady()) {
+    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    return ImgDrawResult::NOT_READY;
+  }
+
+  if (mSize.width <= 0 || mSize.height <= 0) {
+    return ImgDrawResult::SUCCESS;
+  }
+
+  ImgDrawResult result = ImgDrawResult::SUCCESS;
+
+  switch (mType) {
+    case eStyleImageType_Image: {
+      uint32_t drawFlags = ConvertImageRendererToDrawFlags(mFlags) |
+                           imgIContainer::FRAME_FIRST;
+      nsRect dest(nsPoint(0, 0), mSize);
+      // We have a tricky situation in our choice of SamplingFilter. Shape images
+      // define a float area based on the alpha values in the rendered pixels.
+      // When multiple device pixels are used for one css pixel, the sampling
+      // can change crisp edges into aliased edges. For visual pixels, that's
+      // usually the right choice. For defining a float area, it can cause problems.
+      // If a style is using a shape-image-threshold value that is less than the
+      // alpha of the edge pixels, any filtering may smear the alpha into adjacent
+      // pixels and expand the float area in a confusing way. Since the alpha
+      // threshold can be set precisely in CSS, and since a web author may be
+      // counting on that threshold to define a precise float area from an image,
+      // it is least confusing to have the rendered pixels have unfiltered alpha.
+      // We use SamplingFilter::POINT to ensure that each rendered pixel has an
+      // alpha that precisely matches the alpha of the closest pixel in the image.
+      result = nsLayoutUtils::DrawSingleImage(aRenderingContext, aPresContext,
+                                              mImageContainer,
+                                              SamplingFilter::POINT,
+                                              dest, dest, Nothing(),
+                                              drawFlags,
+                                              nullptr, nullptr);
+      break;
+    }
+
+    case eStyleImageType_Gradient: {
+      nsCSSGradientRenderer renderer =
+        nsCSSGradientRenderer::Create(aPresContext, mGradientData, mSize);
+      nsRect dest(nsPoint(0, 0), mSize);
+
+      renderer.Paint(aRenderingContext, dest, dest, mSize,
+                     CSSIntRect::FromAppUnitsRounded(dest),
+                     dest, 1.0);
+      break;
+    }
+
+    default:
+      // Unsupported image type.
+      result = ImgDrawResult::BAD_IMAGE;
+      break;
+  }
+
+  return result;
 }
 
 bool

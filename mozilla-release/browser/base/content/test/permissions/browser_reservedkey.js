@@ -1,18 +1,49 @@
 add_task(async function test_reserved_shortcuts() {
-  /* eslint-disable no-unsanitized/property */
-  let keyset = `<keyset>
-                  <key id='kt_reserved' modifiers='shift' key='O' reserved='true' count='0'
-                       oncommand='this.setAttribute("count", Number(this.getAttribute("count")) + 1)'/>
-                  <key id='kt_notreserved' modifiers='shift' key='P' reserved='false' count='0'
-                       oncommand='this.setAttribute("count", Number(this.getAttribute("count")) + 1)'/>
-                  <key id='kt_reserveddefault' modifiers='shift' key='Q' count='0'
-                       oncommand='this.setAttribute("count", Number(this.getAttribute("count")) + 1)'/>
-                </keyset>`;
+  let keyset = document.createElement("keyset");
+  let key1 = document.createElement("key");
+  key1.setAttribute("id", "kt_reserved");
+  key1.setAttribute("modifiers", "shift");
+  key1.setAttribute("key", "O");
+  key1.setAttribute("reserved", "true");
+  key1.setAttribute("count", "0");
+  // We need to have the attribute "oncommand" for the "command" listener to fire
+  key1.setAttribute("oncommand", "//");
+  key1.addEventListener("command", () => {
+    let attribute = key1.getAttribute("count");
+    key1.setAttribute("count", Number(attribute) + 1);
+  });
 
+  let key2 = document.createElement("key");
+  key2.setAttribute("id", "kt_notreserved");
+  key2.setAttribute("modifiers", "shift");
+  key2.setAttribute("key", "P");
+  key2.setAttribute("reserved", "false");
+  key2.setAttribute("count", "0");
+  // We need to have the attribute "oncommand" for the "command" listener to fire
+  key2.setAttribute("oncommand", "//");
+  key2.addEventListener("command", () => {
+    let attribute = key2.getAttribute("count");
+    key2.setAttribute("count", Number(attribute) + 1);
+  });
+
+  let key3 = document.createElement("key");
+  key3.setAttribute("id", "kt_reserveddefault");
+  key3.setAttribute("modifiers", "shift");
+  key3.setAttribute("key", "Q");
+  key3.setAttribute("count", "0");
+  // We need to have the attribute "oncommand" for the "command" listener to fire
+  key3.setAttribute("oncommand", "//");
+  key3.addEventListener("command", () => {
+    let attribute = key3.getAttribute("count");
+    key3.setAttribute("count", Number(attribute) + 1);
+  });
+
+  keyset.appendChild(key1);
+  keyset.appendChild(key2);
+  keyset.appendChild(key3);
   let container = document.createElement("box");
-  container.unsafeSetInnerHTML(keyset);
+  container.appendChild(keyset);
   document.documentElement.appendChild(container);
-  /* eslint-enable no-unsanitized/property */
 
   const pageUrl = "data:text/html,<body onload='document.body.firstChild.focus();'><div onkeydown='event.preventDefault();' tabindex=0>Test</div></body>";
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, pageUrl);
@@ -36,7 +67,7 @@ add_task(async function test_reserved_shortcuts() {
 
   document.documentElement.removeChild(container);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // This test checks that Alt+<key> and F10 cannot be blocked when the preference is set.
@@ -83,6 +114,6 @@ if (!navigator.platform.includes("Mac")) {
     filePopup.hidePopup();
     await popupHidden;
 
-    await BrowserTestUtils.removeTab(tab1);
+    BrowserTestUtils.removeTab(tab1);
   });
 }

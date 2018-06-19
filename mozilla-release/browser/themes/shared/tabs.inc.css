@@ -201,6 +201,22 @@
   opacity: 0.7;
 }
 
+@supports -moz-bool-pref("browser.tabs.30FpsThrobber") {
+  :root[sessionrestored] .tab-throbber[busy]::before {
+    background-image: url("chrome://browser/skin/tabbrowser/loading-30fps.svg");
+    animation: tab-throbber-animation 1.05s steps(30) infinite;
+    width: 480px;
+  }
+}
+
+@supports -moz-bool-pref("browser.tabs.20FpsThrobber") {
+  :root[sessionrestored] .tab-throbber[busy]::before {
+    background-image: url("chrome://browser/skin/tabbrowser/loading-20fps.svg");
+    animation: tab-throbber-animation 1.05s steps(20) infinite;
+    width: 320px;
+  }
+}
+
 :root[sessionrestored] .tab-throbber[busy]:-moz-locale-dir(rtl)::before {
   animation-name: tab-throbber-animation-rtl;
 }
@@ -529,7 +545,7 @@
  */
 
 /* Lightweight theme on tabs */
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab > .tab-stack > .tab-background[selected=true]:-moz-lwtheme { 
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab > .tab-stack > .tab-background[selected=true]:-moz-lwtheme {
   background-attachment: scroll, scroll, fixed;
   background-color: transparent;
   background-image: linear-gradient(var(--lwt-selected-tab-background-color, transparent), var(--lwt-selected-tab-background-color, transparent)),
@@ -644,12 +660,10 @@
   margin-inline-start: -1px;
 }
 
-%ifdef CAN_DRAW_IN_TITLEBAR
 %ifdef MENUBAR_CAN_AUTOHIDE
 :root[tabsintitlebar]:not([extradragspace]) #toolbar-menubar[autohide=true] + #TabsToolbar > #tabbrowser-tabs > .tabbrowser-tab::after,
 %else
 :root[tabsintitlebar]:not([extradragspace]) .tabbrowser-tab::after,
-%endif
 %endif
 /* Show full height tab separators on hover. */
 .tabbrowser-tab:hover::after,
@@ -705,6 +719,22 @@
   list-style-image: url(chrome://global/skin/icons/arrow-dropdown-16.svg);
 }
 
+#tabbrowser-tabs[hiddensoundplaying] ~ #alltabs-button > .toolbarbutton-badge-stack > .toolbarbutton-badge {
+  background: transparent url(chrome://browser/skin/tabbrowser/badge-audio-playing.svg);
+  box-shadow: none;
+  /* Match the color of the button, rather than label default. */
+  color: inherit;
+  display: block;
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: var(--toolbarbutton-icon-fill-opacity);
+  /* "!important" is necessary to override the rule in toolbarbutton.css */
+  margin: -7px 0 0 !important;
+  margin-inline-end: -4px !important;
+  min-width: 12px;
+  min-height: 12px;
+}
+
 .alltabs-item > .menu-iconic-left > .menu-iconic-icon {
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
   -moz-context-properties: fill;
@@ -740,57 +770,4 @@
 
 .alltabs-endimage[activemedia-blocked] {
   list-style-image: url(chrome://browser/skin/tabbrowser/tab-audio-blocked.svg);
-}
-
-.restore-tabs-button-wrapper {
-  visibility: hidden;
-  position: fixed; /* so the button does not take up actual space and cause overflow buttons in the tabbar when hidden */
-}
-
-.restore-tabs-button-wrapper[shown] {
-  visibility: visible;
-  position: initial;
-}
-
-.restore-tabs-button {
-  box-sizing: border-box;
-  -moz-appearance: none;
-  background-color: hsl(0,0%,0%,.04);
-  border: 1px solid hsla(0,0%,16%,.2);
-  border-radius: 3px;
-  margin: 3px;
-  margin-inline-start: 9px;
-  transition: max-width 100ms;
-  padding: 0 5px;
-}
-
-.restore-tabs-button:hover {
-  background-color: hsl(0,0%,0%,.08);
-}
-
-.restore-tabs-button:active {
-  background-color: hsl(0,0%,0%,.11);
-}
-
-#TabsToolbar[brighttext] .restore-tabs-button {
-  background-color: hsl(0,0%,100%,.07);
-  border-color:currentColor;
-  color: currentColor;
-  opacity: .7;
-}
-
-#TabsToolbar[brighttext] .restore-tabs-button:hover {
-  background-color: hsl(0,0%,100%,.17);
-}
-
-#TabsToolbar[brighttext] .restore-tabs-button:active {
-  background-color: hsl(0,0%,100%,.27);
-}
-
-.restore-tabs-button > .toolbarbutton-icon {
-  display: none;
-}
-
-.restore-tabs-button > .toolbarbutton-text {
-  display: -moz-box;
 }

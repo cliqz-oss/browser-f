@@ -23,6 +23,7 @@ using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/Comp
 using mozilla::layers::LayersBackend from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
 
 /**
  * The layers protocol is spoken between thread contexts that manage
@@ -47,16 +48,11 @@ sync protocol PLayerTransaction {
   manager PCompositorBridge;
 
 parent:
-  // Creates a set of mappings between TextureReadLocks and an associated
-  // ReadLockHandle that can be used in Update, and persist until the
-  // next Update call.
-  async InitReadLocks(ReadLockInit[] locks);
-
   // The isFirstPaint flag can be used to indicate that this is the first update
   // for a particular document.
   async Update(TransactionInfo txn);
 
-  async PaintTime(uint64_t id, TimeDuration paintTime);
+  async PaintTime(TransactionId id, TimeDuration paintTime);
 
   async SetLayerObserverEpoch(uint64_t layerObserverEpoch);
 
@@ -91,6 +87,10 @@ parent:
   // pixels. If the layer is not transformed by animation, the return value will
   // be void_t.
   sync GetAnimationTransform(uint64_t aCompositorAnimationId) returns (MaybeTransform transform);
+
+  // Returns the value of the transform applied to the layer by animation and
+  // APZC.
+  sync GetTransform(LayerHandle layer) returns (MaybeTransform transform);
 
   // The next time the layer tree is composited, add this async scroll offset in
   // CSS pixels for the given ViewID.

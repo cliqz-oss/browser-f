@@ -84,15 +84,16 @@ let webpackConfig = {
 
       "devtools/client/sourceeditor/editor": "devtools-source-editor/src/source-editor",
 
-      "devtools/shared/old-event-emitter": "devtools-modules/src/utils/event-emitter",
+      "devtools/shared/event-emitter": "devtools-modules/src/utils/event-emitter",
       "devtools/shared/fronts/timeline": path.join(__dirname, "../../client/shared/webpack/shims/fronts-timeline-shim"),
       "devtools/shared/platform/clipboard": path.join(__dirname, "../../client/shared/webpack/shims/platform-clipboard-stub"),
       "devtools/client/netmonitor/src/utils/firefox/open-request-in-tab": path.join(__dirname, "src/utils/open-request-in-tab"),
+      "devtools/client/shared/unicode-url": "./node_modules/devtools-modules/src/unicode-url",
 
       // Locales need to be explicitly mapped to the en-US subfolder
       "devtools/client/locales": path.join(__dirname, "../../client/locales/en-US"),
       "devtools/shared/locales": path.join(__dirname, "../../shared/locales/en-US"),
-      "devtools/shim/locales": path.join(__dirname, "../../shared/locales/en-US"),
+      "devtools/startup/locales": path.join(__dirname, "../../shared/locales/en-US"),
       "toolkit/locales": path.join(__dirname, "../../../toolkit/locales/en-US"),
 
       // Unless a path explicitly needs to be rewritten or shimmed, all devtools paths can

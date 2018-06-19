@@ -17,7 +17,6 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIDocument.h"
 #include "mozilla/DeclarationBlockInlines.h"
-#include "nsCSSParser.h"
 #include "mozilla/css/Loader.h"
 #include "nsXULElement.h"
 #include "nsContentUtils.h"
@@ -162,9 +161,6 @@ void
 nsStyledElement::NodeInfoChanged(nsIDocument* aOldDoc)
 {
   nsStyledElementBase::NodeInfoChanged(aOldDoc);
-  if (OwnerDoc()->GetStyleBackendType() != aOldDoc->GetStyleBackendType()) {
-    ReparseStyleAttribute(false, /* aForceIfAlreadyParsed */ true);
-  }
 }
 
 nsICSSDeclaration*

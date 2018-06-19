@@ -6,11 +6,11 @@
 
 #include "TrackBuffersManager.h"
 #include "ContainerParser.h"
-#include "MediaPrefs.h"
 #include "MediaSourceDemuxer.h"
 #include "MediaSourceUtils.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsMimeTypes.h"
 #include "SourceBuffer.h"
 #include "SourceBufferResource.h"
@@ -111,6 +111,7 @@ TrackBuffersManager::TrackBuffersManager(MediaSourceDecoder* aParentDecoder,
   : mInputBuffer(new MediaByteBuffer)
   , mBufferFull(false)
   , mFirstInitializationSegmentReceived(false)
+  , mChangeTypeReceived(false)
   , mNewMediaSegmentStarted(false)
   , mActiveTrack(false)
   , mType(aType)
@@ -280,6 +281,14 @@ TrackBuffersManager::ProcessTasks()
       ShutdownDemuxers();
       ResetTaskQueue();
       return;
+    case Type::ChangeType:
+      MOZ_RELEASE_ASSERT(!mCurrentTask);
+      mType = task->As<ChangeTypeTask>()->mType;
+      mChangeTypeReceived = true;
+      mInitData = nullptr;
+      CompleteResetParserState();
+      CreateDemuxerforMIMEType();
+      break;
     default:
       NS_WARNING("Invalid Task");
   }
@@ -385,6 +394,15 @@ TrackBuffersManager::EvictData(const TimeUnit& aPlaybackTime, int64_t aSize)
   return result;
 }
 
+void
+TrackBuffersManager::ChangeType(const MediaContainerType& aType)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  QueueTask(new ChangeTypeTask(aType));
+}
+
+
 TimeIntervals
 TrackBuffersManager::Buffered() const
 {
@@ -475,10 +493,13 @@ TrackBuffersManager::CompleteResetParserState()
   }
 
   // We could be left with a demuxer in an unusable state. It needs to be
-  // recreated. We store in the InputBuffer an init segment which will be parsed
-  // during the next Segment Parser Loop and a new demuxer will be created and
-  // initialized.
-  if (mFirstInitializationSegmentReceived) {
+  // recreated. Unless we have a pending changeType operation, we store in the
+  // InputBuffer an init segment which will be parsed during the next Segment
+  // Parser Loop and a new demuxer will be created and initialized.
+  // If we are in the middle of a changeType operation, then we do not have an
+  // init segment yet. The next appendBuffer operation will need to provide such
+  // init segment.
+  if (mFirstInitializationSegmentReceived && !mChangeTypeReceived) {
     MOZ_ASSERT(mInitData && mInitData->Length(), "we must have an init segment");
     // The aim here is really to destroy our current demuxer.
     CreateDemuxerforMIMEType();
@@ -486,8 +507,10 @@ TrackBuffersManager::CompleteResetParserState()
     // to mInputBuffer as it will get modified in the Segment Parser Loop.
     mInputBuffer = new MediaByteBuffer;
     mInputBuffer->AppendElements(*mInitData);
+    RecreateParser(true);
+  } else {
+    RecreateParser(false);
   }
-  RecreateParser(true);
 }
 
 int64_t
@@ -721,7 +744,7 @@ TrackBuffersManager::SegmentParserLoop()
       MediaResult haveInitSegment = mParser->IsInitSegmentPresent(mInputBuffer);
       if (NS_SUCCEEDED(haveInitSegment)) {
         SetAppendState(AppendState::PARSING_INIT_SEGMENT);
-        if (mFirstInitializationSegmentReceived) {
+        if (mFirstInitializationSegmentReceived && !mChangeTypeReceived) {
           // This is a new initialization segment. Obsolete the old one.
           RecreateParser(false);
         }
@@ -772,8 +795,12 @@ TrackBuffersManager::SegmentParserLoop()
       return;
     }
     if (mSourceBufferAttributes->GetAppendState() == AppendState::PARSING_MEDIA_SEGMENT) {
-      // 1. If the first initialization segment received flag is false, then run the append error algorithm with the decode error parameter set to true and abort this algorithm.
-      if (!mFirstInitializationSegmentReceived) {
+      // 1. If the first initialization segment received flag is false, then run
+      //    the append error algorithm with the decode error parameter set to
+      //    true and abort this algorithm.
+      //    Or we are in the process of changeType, in which case we must first
+      //    get an init segment before getting a media segment.
+      if (!mFirstInitializationSegmentReceived || mChangeTypeReceived) {
         RejectAppend(NS_ERROR_FAILURE, __func__);
         return;
       }
@@ -947,7 +974,7 @@ TrackBuffersManager::OnDemuxerResetDone(const MediaResult& aResult)
   MOZ_ASSERT(OnTaskQueue());
   mDemuxerInitRequest.Complete();
 
-  if (NS_FAILED(aResult) && MediaPrefs::MediaWarningsAsErrors()) {
+  if (NS_FAILED(aResult) && StaticPrefs::MediaPlaybackWarningsAsErrors()) {
     RejectAppend(aResult, __func__);
     return;
   }
@@ -1055,7 +1082,7 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
 
   mDemuxerInitRequest.Complete();
 
-  if (NS_FAILED(aResult) && MediaPrefs::MediaWarningsAsErrors()) {
+  if (NS_FAILED(aResult) && StaticPrefs::MediaPlaybackWarningsAsErrors()) {
     RejectAppend(aResult, __func__);
     return;
   }
@@ -1108,13 +1135,17 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
   if (mFirstInitializationSegmentReceived) {
     if (numVideos != mVideoTracks.mNumTracks ||
         numAudios != mAudioTracks.mNumTracks ||
-        (numVideos && info.mVideo.mMimeType != mVideoTracks.mInfo->mMimeType) ||
-        (numAudios && info.mAudio.mMimeType != mAudioTracks.mInfo->mMimeType)) {
+        (!mChangeTypeReceived &&
+         ((numVideos &&
+           info.mVideo.mMimeType != mVideoTracks.mInfo->mMimeType) ||
+          (numAudios &&
+           info.mAudio.mMimeType != mAudioTracks.mInfo->mMimeType)))) {
       RejectAppend(NS_ERROR_FAILURE, __func__);
       return;
     }
-    // 1. If more than one track for a single type are present (ie 2 audio tracks),
-    // then the Track IDs match the ones in the first initialization segment.
+    // 1. If more than one track for a single type are present (ie 2 audio
+    // tracks), then the Track IDs match the ones in the first initialization
+    // segment.
     // TODO
     // 2. Add the appropriate track descriptions from this initialization
     // segment to each of the track buffers.
@@ -1213,6 +1244,9 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
     mAudioTracks.mLastInfo = new TrackInfoSharedPtr(info.mAudio, streamID);
     mVideoTracks.mLastInfo = new TrackInfoSharedPtr(info.mVideo, streamID);
   }
+
+  // We have now completed the changeType operation.
+  mChangeTypeReceived = false;
 
   UniquePtr<EncryptionInfo> crypto = mInputDemuxer->GetCrypto();
   if (crypto && crypto->IsEncrypted()) {
@@ -2328,18 +2362,8 @@ TrackBuffersManager::SkipToNextRandomAccessPoint(TrackInfo::TrackType aTrack,
   // SkipToNextRandomAccessPoint can only be called if aTimeThreadshold is known
   // to be buffered.
 
-  // So first determine the current position in the track buffer if necessary.
-  if (trackData.mNextGetSampleIndex.isNothing()) {
-    if (trackData.mNextSampleTimecode == TimeUnit()) {
-      // First demux, get first sample.
-      trackData.mNextGetSampleIndex = Some(0u);
-    } else {
-      int32_t pos = FindCurrentPosition(aTrack, aFuzz);
-      if (pos < 0) {
-        return 0;
-      }
-      trackData.mNextGetSampleIndex = Some(uint32_t(pos));
-    }
+  if (NS_FAILED(SetNextGetSampleIndexIfNeeded(aTrack, aFuzz))) {
+    return 0;
   }
 
   TimeUnit nextSampleTimecode = trackData.mNextSampleTimecode;
@@ -2605,8 +2629,13 @@ TrackBuffersManager::GetNextRandomAccessPoint(TrackInfo::TrackType aTrack,
                                               const TimeUnit& aFuzz)
 {
   MOZ_ASSERT(OnTaskQueue());
+
+  // So first determine the current position in the track buffer if necessary.
+  if (NS_FAILED(SetNextGetSampleIndexIfNeeded(aTrack, aFuzz))) {
+    return TimeUnit::FromInfinity();
+  }
+
   auto& trackData = GetTracksData(aTrack);
-  MOZ_ASSERT(trackData.mNextGetSampleIndex.isSome());
   const TrackBuffersManager::TrackBuffer& track = GetTrackBuffer(aTrack);
 
   uint32_t i = trackData.mNextGetSampleIndex.ref();
@@ -2626,6 +2655,45 @@ TrackBuffersManager::GetNextRandomAccessPoint(TrackInfo::TrackType aTrack,
     nextSampleTime = sample->GetEndTime();
   }
   return TimeUnit::FromInfinity();
+}
+
+nsresult
+TrackBuffersManager::SetNextGetSampleIndexIfNeeded(TrackInfo::TrackType aTrack,
+                                                   const TimeUnit& aFuzz)
+{
+  auto& trackData = GetTracksData(aTrack);
+  const TrackBuffer& track = GetTrackBuffer(aTrack);
+
+  if (trackData.mNextGetSampleIndex.isSome()) {
+    // We already know the next GetSample index.
+    return NS_OK;
+  }
+
+  if (!track.Length()) {
+    // There's nothing to find yet.
+    return NS_ERROR_DOM_MEDIA_END_OF_STREAM;
+  }
+
+  if (trackData.mNextSampleTimecode == TimeUnit()) {
+    // First demux, get first sample.
+    trackData.mNextGetSampleIndex = Some(0u);
+    return NS_OK;
+  }
+
+  if (trackData.mNextSampleTimecode >
+      track.LastElement()->mTimecode + track.LastElement()->mDuration) {
+    // The next element is past our last sample. We're done.
+    trackData.mNextGetSampleIndex = Some(uint32_t(track.Length()));
+    return NS_ERROR_DOM_MEDIA_END_OF_STREAM;
+  }
+
+  int32_t pos = FindCurrentPosition(aTrack, aFuzz);
+  if (pos < 0) {
+    // Not found, must wait for more data.
+    return NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA;
+  }
+  trackData.mNextGetSampleIndex = Some(uint32_t(pos));
+  return NS_OK;
 }
 
 void

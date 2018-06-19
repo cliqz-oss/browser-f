@@ -14,8 +14,6 @@
 #include "mozilla/Attributes.h"
 #include "nsIAttribute.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMText.h"
-#include "nsIDOMNodeList.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -41,6 +39,8 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
+  NS_IMPL_FROMNODE_HELPER(Attr, IsAttr())
+
   // nsINode interface
   virtual void GetTextContentInternal(nsAString& aTextContent,
                                       OOMReporter& aError) override;
@@ -51,7 +51,7 @@ public:
   virtual void SetNodeValueInternal(const nsAString& aNodeValue,
                                     ErrorResult& aError) override;
 
-  virtual nsresult GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   // nsIAttribute interface
   void SetMap(nsDOMAttributeMap *aMap) override;

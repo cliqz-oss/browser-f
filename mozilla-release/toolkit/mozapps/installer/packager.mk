@@ -77,17 +77,10 @@ ifdef MOZ_ASAN
 	$(PYTHON) $(MOZILLA_DIR)/build/unix/rewrite_asan_dylib.py $(DIST)/$(MOZ_PKG_DIR)$(_BINPATH)
 endif # MOZ_ASAN
 endif # Darwin
-ifdef MOZ_STYLO
-ifndef MOZ_ARTIFACT_BUILDS
-	@echo 'Packing stylo binding files...'
-	cd '$(DIST)/rust_bindings/style' && \
-		zip -r5D '$(ABS_DIST)/$(PKG_PATH)$(STYLO_BINDINGS_PACKAGE)' .
-endif # MOZ_ARTIFACT_BUILDS
-endif # MOZ_STYLO
 
 prepare-package: stage-package
 
-make-package-internal: prepare-package make-sourcestamp-file make-buildinfo-file make-mozinfo-file
+make-package-internal: prepare-package make-sourcestamp-file
 	@echo 'Compressing...'
 	cd $(DIST) && $(MAKE_PACKAGE)
 
@@ -97,6 +90,14 @@ ifeq (WINNT,$(OS_ARCH))
 ifeq ($(MOZ_PKG_FORMAT),ZIP)
 	$(MAKE) -C windows ZIP_IN='$(ABS_DIST)/$(PACKAGE)' installer
 endif
+endif
+ifdef MOZ_AUTOMATION
+	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
+	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
+		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
+		$(MOZ_PKG_PLATFORM) \
+		--package=$(DIST)/$(PACKAGE) \
+		--installer=$(INSTALLER_PACKAGE)
 endif
 	$(TOUCH) $@
 
@@ -108,20 +109,6 @@ make-sourcestamp-file::
 ifdef MOZ_INCLUDE_SOURCE_INFO
 	@awk '$$2 == "MOZ_SOURCE_URL" {print $$3}' $(DEPTH)/source-repo.h >> $(MOZ_SOURCESTAMP_FILE)
 endif
-
-.PHONY: make-buildinfo-file
-make-buildinfo-file:
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-		$(MOZ_BUILDINFO_FILE) \
-		BUILDID=$(BUILDID) \
-		$(addprefix MOZ_SOURCE_REPO=,$(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)) \
-		MOZ_SOURCE_STAMP=$(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h) \
-		MOZ_PKG_PLATFORM=$(MOZ_PKG_PLATFORM)
-	echo "buildID=$(BUILDID)" > $(MOZ_BUILDID_INFO_TXT_FILE)
-
-.PHONY: make-mozinfo-file
-make-mozinfo-file:
-	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
 
 # The install target will install the application to prefix/lib/appname-version
 install:: prepare-package
@@ -138,25 +125,18 @@ endif
 	$(RM) -f $(DESTDIR)$(bindir)/$(MOZ_APP_NAME)
 	ln -s $(installdir)/$(MOZ_APP_NAME) $(DESTDIR)$(bindir)
 
-checksum:
+upload:
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
 	mkdir -p `dirname $(CHECKSUM_FILE)`
 	@$(PYTHON) $(MOZILLA_DIR)/build/checksums.py \
 		-o $(CHECKSUM_FILE) \
 		$(CHECKSUM_ALGORITHM_PARAM) \
-		-s $(call QUOTED_WILDCARD,$(DIST)) \
-		$(UPLOAD_FILES)
+		$(UPLOAD_PATH)
 	@echo 'CHECKSUM FILE START'
 	@cat $(CHECKSUM_FILE)
 	@echo 'CHECKSUM FILE END'
 	$(SIGN_CHECKSUM_CMD)
-
-
-upload: checksum
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
-		--package '$(PACKAGE)' \
-		--properties-file $(DIST)/mach_build_properties.json \
-		$(UPLOAD_FILES) \
-		$(CHECKSUM_FILES)
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
 
 # source-package creates a source tarball from the files in MOZ_PKG_SRCDIR,
 # which is either set to a clean checkout or defaults to $topsrcdir

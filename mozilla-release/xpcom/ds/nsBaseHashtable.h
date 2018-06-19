@@ -60,6 +60,8 @@ public:
 
   using nsTHashtable<EntryType>::Contains;
   using nsTHashtable<EntryType>::GetGeneration;
+  using nsTHashtable<EntryType>::SizeOfExcludingThis;
+  using nsTHashtable<EntryType>::SizeOfIncludingThis;
 
   nsBaseHashtable() {}
   explicit nsBaseHashtable(uint32_t aInitLength)
@@ -265,29 +267,29 @@ public:
 
   struct EntryPtr {
   private:
-    EntryType& mEntry;
+    EntryType* mEntry;
     bool mExistingEntry;
+    nsBaseHashtable& mTable;
     // For debugging purposes
 #ifdef DEBUG
-    nsBaseHashtable& mTable;
     uint32_t mTableGeneration;
     bool mDidInitNewEntry;
 #endif
 
   public:
     EntryPtr(nsBaseHashtable& aTable, EntryType* aEntry, bool aExistingEntry)
-      : mEntry(*aEntry)
+      : mEntry(aEntry)
       , mExistingEntry(aExistingEntry)
-#ifdef DEBUG
       , mTable(aTable)
+#ifdef DEBUG
       , mTableGeneration(aTable.GetGeneration())
       , mDidInitNewEntry(false)
 #endif
     {}
     ~EntryPtr()
     {
-      MOZ_ASSERT(mExistingEntry || mDidInitNewEntry,
-                 "Forgot to call OrInsert() on a new entry");
+      MOZ_ASSERT(mExistingEntry || mDidInitNewEntry || !mEntry,
+                 "Forgot to call OrInsert() or OrRemove() on a new entry");
     }
 
     // Is there something stored in the table already?
@@ -301,19 +303,29 @@ public:
     UserDataType OrInsert(F func)
     {
       MOZ_ASSERT(mTableGeneration == mTable.GetGeneration());
+      MOZ_ASSERT(mEntry);
       if (!mExistingEntry) {
-        mEntry.mData = func();
+        mEntry->mData = func();
 #ifdef DEBUG
         mDidInitNewEntry = true;
 #endif
       }
-      return mEntry.mData;
+      return mEntry->mData;
+    }
+
+    void OrRemove()
+    {
+      MOZ_ASSERT(mTableGeneration == mTable.GetGeneration());
+      MOZ_ASSERT(mEntry);
+      mTable.RemoveEntry(mEntry);
+      mEntry = nullptr;
     }
 
     MOZ_MUST_USE DataType& Data()
     {
       MOZ_ASSERT(mTableGeneration == mTable.GetGeneration());
-      return mEntry.mData;
+      MOZ_ASSERT(mEntry);
+      return mEntry->mData;
     }
   };
 

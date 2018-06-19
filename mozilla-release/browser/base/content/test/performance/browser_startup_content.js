@@ -28,7 +28,6 @@ const blacklist = {
     "resource://gre/modules/InlineSpellCheckerContent.jsm",
     "resource://gre/modules/Promise.jsm",
     "resource://gre/modules/Task.jsm",
-    "resource://gre/modules/debug.js",
     "resource://gre/modules/osfile.jsm",
   ]),
   services: new Set([
@@ -91,5 +90,5 @@ add_task(async function() {
     }
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

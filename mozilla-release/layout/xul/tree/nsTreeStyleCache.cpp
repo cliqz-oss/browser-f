@@ -5,12 +5,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsTreeStyleCache.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsStyleSet.h"
-#endif
 #include "mozilla/dom/Element.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
+#include "mozilla/ServoStyleSet.h"
+
+using namespace mozilla;
 
 nsTreeStyleCache::Transition::Transition(DFAState aState, nsAtom* aSymbol)
   : mState(aState), mInputSymbol(aSymbol)
@@ -33,13 +31,13 @@ nsTreeStyleCache::Transition::Hash() const
 }
 
 
-// The style context cache impl
-nsStyleContext*
-nsTreeStyleCache::GetStyleContext(nsPresContext* aPresContext,
-                                  nsIContent* aContent,
-                                  nsStyleContext* aContext,
-                                  nsICSSAnonBoxPseudo* aPseudoElement,
-                                  const AtomArray & aInputWord)
+// The ComputedStyle cache impl
+ComputedStyle*
+nsTreeStyleCache::GetComputedStyle(nsPresContext* aPresContext,
+                                   nsIContent* aContent,
+                                   ComputedStyle* aStyle,
+                                   nsICSSAnonBoxPseudo* aPseudoElement,
+                                   const AtomArray & aInputWord)
 {
   MOZ_ASSERT(nsCSSAnonBoxes::IsTreePseudoElement(aPseudoElement));
 
@@ -75,20 +73,20 @@ nsTreeStyleCache::GetStyleContext(nsPresContext* aPresContext,
   }
 
   // We're in a final state.
-  // Look up our style context for this state.
-  nsStyleContext* result = nullptr;
+  // Look up our ComputedStyle for this state.
+  ComputedStyle* result = nullptr;
   if (mCache) {
     result = mCache->GetWeak(currState);
   }
   if (!result) {
     // We missed the cache. Resolve this pseudo-style.
-    RefPtr<nsStyleContext> newResult = aPresContext->StyleSet()->
+    RefPtr<ComputedStyle> newResult = aPresContext->StyleSet()->
         ResolveXULTreePseudoStyle(aContent->AsElement(),
-                                  aPseudoElement, aContext, aInputWord);
+                                  aPseudoElement, aStyle, aInputWord);
 
-    // Put the style context in our table, transferring the owning reference to the table.
+    // Put the ComputedStyle in our table, transferring the owning reference to the table.
     if (!mCache) {
-      mCache = new StyleContextCache();
+      mCache = new ComputedStyleCache();
     }
     result = newResult.get();
     mCache->Put(currState, newResult.forget());

@@ -170,12 +170,14 @@ MediaDecoder::SetVolume(double aVolume)
 
 void
 MediaDecoder::AddOutputStream(ProcessedMediaStream* aStream,
+                              TrackID aNextAvailableTrackID,
                               bool aFinishWhenEnded)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
   AbstractThread::AutoEnter context(AbstractMainThread());
-  mDecoderStateMachine->AddOutputStream(aStream, aFinishWhenEnded);
+  mDecoderStateMachine->AddOutputStream(
+    aStream, aNextAvailableTrackID, aFinishWhenEnded);
 }
 
 void
@@ -185,6 +187,15 @@ MediaDecoder::RemoveOutputStream(MediaStream* aStream)
   MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
   AbstractThread::AutoEnter context(AbstractMainThread());
   mDecoderStateMachine->RemoveOutputStream(aStream);
+}
+
+TrackID
+MediaDecoder::NextAvailableTrackIDFor(MediaStream* aOutputStream) const
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
+  AbstractThread::AutoEnter context(AbstractMainThread());
+  return mDecoderStateMachine->NextAvailableTrackIDFor(aOutputStream);
 }
 
 double
@@ -498,7 +509,7 @@ MediaDecoder::SetStateMachineParameters()
     mAbstractMainThread, GetOwner(), &MediaDecoderOwner::DecodeWarning);
 }
 
-nsresult
+void
 MediaDecoder::Play()
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -506,21 +517,21 @@ MediaDecoder::Play()
   AbstractThread::AutoEnter context(AbstractMainThread());
   NS_ASSERTION(mDecoderStateMachine != nullptr, "Should have state machine.");
   if (mPlaybackRate == 0) {
-    return NS_OK;
+    return;
   }
 
   if (IsEnded()) {
-    return Seek(0, SeekTarget::PrevSyncPoint);
+    Seek(0, SeekTarget::PrevSyncPoint);
+    return;
   } else if (mPlayState == PLAY_STATE_LOADING) {
     mNextState = PLAY_STATE_PLAYING;
-    return NS_OK;
+    return;
   }
 
   ChangeState(PLAY_STATE_PLAYING);
-  return NS_OK;
 }
 
-nsresult
+void
 MediaDecoder::Seek(double aTime, SeekTarget::Type aSeekType)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -540,7 +551,6 @@ MediaDecoder::Seek(double aTime, SeekTarget::Type aSeekType)
   if (mPlayState == PLAY_STATE_ENDED) {
     ChangeState(GetOwner()->GetPaused() ? PLAY_STATE_PAUSED : PLAY_STATE_PLAYING);
   }
-  return NS_OK;
 }
 
 void

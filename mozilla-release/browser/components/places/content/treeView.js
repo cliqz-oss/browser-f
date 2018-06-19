@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from controller.js */
+
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
@@ -136,8 +138,9 @@ PlacesTreeView.prototype = {
       case Ci.nsINavHistoryQueryOptions.RESULTS_AS_DATE_QUERY:
       case Ci.nsINavHistoryQueryOptions.RESULTS_AS_SITE_QUERY:
       case Ci.nsINavHistoryQueryOptions.RESULTS_AS_DATE_SITE_QUERY:
-      case Ci.nsINavHistoryQueryOptions.RESULTS_AS_TAG_QUERY:
+      case Ci.nsINavHistoryQueryOptions.RESULTS_AS_TAGS_ROOT:
       case Ci.nsINavHistoryQueryOptions.RESULTS_AS_ROOTS_QUERY:
+      case Ci.nsINavHistoryQueryOptions.RESULTS_AS_LEFT_PANE_QUERY:
         return false;
     }
 
@@ -651,7 +654,7 @@ PlacesTreeView.prototype = {
 
   // nsINavHistoryResultObserver
   nodeInserted: function PTV_nodeInserted(aParentNode, aNode, aNewIndex) {
-    NS_ASSERT(this._result, "Got a notification but have no result!");
+    console.assert(this._result, "Got a notification but have no result!");
     if (!this._tree || !this._result)
       return;
 
@@ -725,7 +728,7 @@ PlacesTreeView.prototype = {
    * change for visits, and date sorting is the only time things are collapsed.
    */
   nodeRemoved: function PTV_nodeRemoved(aParentNode, aNode, aOldIndex) {
-    NS_ASSERT(this._result, "Got a notification but have no result!");
+    console.assert(this._result, "Got a notification but have no result!");
     if (!this._tree || !this._result)
       return;
 
@@ -780,7 +783,7 @@ PlacesTreeView.prototype = {
 
   nodeMoved:
   function PTV_nodeMoved(aNode, aOldParent, aOldIndex, aNewParent, aNewIndex) {
-    NS_ASSERT(this._result, "Got a notification but have no result!");
+    console.assert(this._result, "Got a notification but have no result!");
     if (!this._tree || !this._result)
       return;
 
@@ -829,7 +832,7 @@ PlacesTreeView.prototype = {
 
   _invalidateCellValue: function PTV__invalidateCellValue(aNode,
                                                           aColumnType) {
-    NS_ASSERT(this._result, "Got a notification but have no result!");
+    console.assert(this._result, "Got a notification but have no result!");
     if (!this._tree || !this._result)
       return;
 
@@ -976,7 +979,7 @@ PlacesTreeView.prototype = {
   },
 
   invalidateContainer: function PTV_invalidateContainer(aContainer) {
-    NS_ASSERT(this._result, "Need to have a result to update");
+    console.assert(this._result, "Need to have a result to update");
     if (!this._tree)
       return;
 
@@ -1305,11 +1308,13 @@ PlacesTreeView.prototype = {
           case PlacesUtils.bookmarks.virtualUnfiledGuid:
             properties += ` queryFolder_${PlacesUtils.bookmarks.unfiledGuid}`;
             break;
+          case PlacesUtils.virtualAllBookmarksGuid:
+          case PlacesUtils.virtualHistoryGuid:
+          case PlacesUtils.virtualDownloadsGuid:
+          case PlacesUtils.virtualTagsGuid:
+            properties += ` OrganizerQuery_${node.bookmarkGuid}`;
+            break;
           }
-        } else {
-          let queryName = PlacesUIUtils.getLeftPaneQueryNameFromId(itemId);
-          if (queryName)
-            properties += " OrganizerQuery_" + queryName;
         }
       } else if (nodeType == Ci.nsINavHistoryResultNode.RESULT_TYPE_SEPARATOR)
         properties += " separator";
@@ -1346,8 +1351,8 @@ PlacesTreeView.prototype = {
     // Treat non-expandable childless queries as non-containers, unless they
     // are tags.
     if (PlacesUtils.nodeIsQuery(node) && !PlacesUtils.nodeIsTagQuery(node)) {
-      PlacesUtils.asQuery(node);
-      return node.queryOptions.expandQueries || node.hasChildren;
+      return PlacesUtils.asQuery(node).queryOptions.expandQueries ||
+             node.hasChildren;
     }
     return true;
   },
@@ -1462,13 +1467,8 @@ PlacesTreeView.prototype = {
     if (this._controller.disallowInsertion(container))
       return null;
 
-    // TODO (Bug 1160193): properly support dropping on a tag root.
-    let tagName = null;
-    if (PlacesUtils.nodeIsTagQuery(container)) {
-      tagName = container.title;
-      if (!tagName)
-        return null;
-    }
+    let tagName = PlacesUtils.nodeIsTagQuery(container) ?
+                    PlacesUtils.asQuery(container).query.tags[0] : null;
 
     return new PlacesInsertionPoint({
       parentId: PlacesUtils.getConcreteItemId(container),
@@ -1789,17 +1789,8 @@ PlacesTreeView.prototype = {
     // have no reason to disallow renaming a shortcut to the Bookmarks Toolbar,
     // except for the one under All Bookmarks.
     if (PlacesUtils.nodeIsSeparator(node) || PlacesUtils.isRootItem(itemGuid) ||
-        PlacesUtils.isQueryGeneratedFolder(itemGuid))
+        PlacesUtils.isQueryGeneratedFolder(node))
       return false;
-
-    let parentId = PlacesUtils.getConcreteItemId(node.parent);
-    if (parentId == PlacesUIUtils.leftPaneFolderId) {
-      // Note that the for the time being this is the check that actually
-      // blocks renaming places "roots", and not the isRootItem check above.
-      // That's because places root are only exposed through folder shortcuts
-      // descendants of the left pane folder.
-      return false;
-    }
 
     return true;
   },

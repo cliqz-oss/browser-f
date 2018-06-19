@@ -1,4 +1,4 @@
-// |reftest| skip -- BigInt is not supported
+// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright (C) 2017 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -18,13 +18,13 @@ var values = byteConversionValues.values;
 values.forEach(function(value, i) {
   if (value === undefined) {
     assert.throws(TypeError,
-                  () => sample.setBigInt64(0, BigInt(value), false),
-                  "value: " + value);
+      () => sample.setBigInt64(0, BigInt(value), false),
+      "value: " + value);
     return;
   } else if (!Number.isInteger(value) || value > 9007199254740991) {
     assert.throws(RangeError,
-                  () => sample.setBigInt64(0, BigInt(value), false),
-                  "value " + value);
+      () => sample.setBigInt64(0, BigInt(value), false),
+      "value " + value);
     return;
   }
 

@@ -24,6 +24,13 @@ const PREF_SAMPLE_RATE = "browser.chrome.errorReporter.sampleRate";
 const PREF_SUBMIT_URL = "browser.chrome.errorReporter.submitUrl";
 const SDK_NAME = "firefox-error-reporter";
 const SDK_VERSION = "1.0.0";
+const TELEMETRY_ERROR_COLLECTED = "browser.errors.collected_count";
+const TELEMETRY_ERROR_COLLECTED_FILENAME = "browser.errors.collected_count_by_filename";
+const TELEMETRY_ERROR_COLLECTED_STACK = "browser.errors.collected_with_stack_count";
+const TELEMETRY_ERROR_REPORTED = "browser.errors.reported_success_count";
+const TELEMETRY_ERROR_REPORTED_FAIL = "browser.errors.reported_failure_count";
+const TELEMETRY_ERROR_SAMPLE_RATE = "browser.errors.sample_rate";
+
 
 // https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptError#Categories
 const REPORTED_CATEGORIES = new Set([
@@ -36,6 +43,27 @@ const REPORTED_CATEGORIES = new Set([
   "XBL Content Sink",
   "xbl javascript",
   "FrameConstructor",
+]);
+
+const PLATFORM_NAMES = {
+  linux: "Linux",
+  win: "Windows",
+  macosx: "macOS",
+  android: "Android",
+};
+
+// Filename URI regexes that we are okay with reporting to Telemetry. URIs not
+// matching these patterns may contain local file paths.
+const TELEMETRY_REPORTED_PATTERNS = new Set([
+  /^resource:\/\/(?:\/|gre|devtools)/,
+  /^chrome:\/\/(?:global|browser|devtools)/,
+]);
+
+// Mapping of regexes to sample rates; if the regex matches the module an error
+// is thrown from, the matching sample rate is used instead of the default.
+// In case of a conflict, the first matching rate by insertion order is used.
+const MODULE_SAMPLE_RATES = new Map([
+  [/^(?:chrome|resource):\/\/devtools/, 1],
 ]);
 
 /**
@@ -55,18 +83,38 @@ const REPORTED_CATEGORIES = new Set([
  * traces; see bug 1426482 for privacy review and server-side mitigation.
  */
 class BrowserErrorReporter {
-  constructor(fetchMethod = this._defaultFetch) {
-    // A fake fetch is passed by the tests to avoid network connections
-    this.fetch = fetchMethod;
+  constructor(options = {}) {
+    // Test arguments for mocks and changing behavior
+    this.fetch = options.fetch || defaultFetch;
+    this.chromeOnly = options.chromeOnly !== undefined ? options.chromeOnly : true;
+    this.registerListener = (
+      options.registerListener || (() => Services.console.registerListener(this))
+    );
+    this.unregisterListener = (
+      options.unregisterListener || (() => Services.console.unregisterListener(this))
+    );
 
     // Values that don't change between error reports.
     this.requestBodyTemplate = {
       logger: "javascript",
       platform: "javascript",
-      release: Services.appinfo.version,
+      release: Services.appinfo.appBuildID,
       environment: UpdateUtils.getUpdateChannel(false),
+      contexts: {
+        os: {
+          name: PLATFORM_NAMES[AppConstants.platform],
+          version: (
+            Cc["@mozilla.org/network/protocol;1?name=http"]
+            .getService(Ci.nsIHttpProtocolHandler)
+            .oscpu
+          ),
+        },
+        browser: {
+          name: "Firefox",
+          version: Services.appinfo.version,
+        },
+      },
       tags: {
-        appBuildID: Services.appinfo.appBuildID,
         changeset: AppConstants.SOURCE_REVISION_URL,
       },
       sdk: {
@@ -81,6 +129,13 @@ class BrowserErrorReporter {
       PREF_ENABLED,
       false,
       this.handleEnabledPrefChanged.bind(this),
+    );
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "sampleRatePref",
+      PREF_SAMPLE_RATE,
+      "0.0",
+      this.handleSampleRatePrefChanged.bind(this),
     );
   }
 
@@ -98,7 +153,7 @@ class BrowserErrorReporter {
 
   init() {
     if (this.collectionEnabled) {
-      Services.console.registerListener(this);
+      this.registerListener();
 
       // Processing already-logged messages in case any errors occurred before
       // startup.
@@ -110,18 +165,37 @@ class BrowserErrorReporter {
 
   uninit() {
     try {
-      Services.console.unregisterListener(this);
+      this.unregisterListener();
     } catch (err) {} // It probably wasn't registered.
   }
 
   handleEnabledPrefChanged(prefName, previousValue, newValue) {
     if (newValue) {
-      Services.console.registerListener(this);
+      this.registerListener();
     } else {
       try {
-        Services.console.unregisterListener(this);
+        this.unregisterListener();
       } catch (err) {} // It probably wasn't registered.
     }
+  }
+
+  handleSampleRatePrefChanged(prefName, previousValue, newValue) {
+    Services.telemetry.scalarSet(TELEMETRY_ERROR_SAMPLE_RATE, newValue);
+  }
+
+  errorCollectedFilenameKey(filename) {
+    for (const pattern of TELEMETRY_REPORTED_PATTERNS) {
+      if (filename.match(pattern)) {
+        return filename;
+      }
+    }
+
+    // WebExtensions get grouped separately from other errors
+    if (filename.startsWith("moz-extension://")) {
+        return "MOZEXTENSION";
+    }
+
+    return "FILTERED";
   }
 
   async observe(message) {
@@ -133,51 +207,52 @@ class BrowserErrorReporter {
 
     const isWarning = message.flags & message.warningFlag;
     const isFromChrome = REPORTED_CATEGORIES.has(message.category);
-    if (!isFromChrome || isWarning) {
+    if ((this.chromeOnly && !isFromChrome) || isWarning) {
       return;
     }
 
+    // Record that we collected an error prior to applying the sample rate
+    Services.telemetry.scalarAdd(TELEMETRY_ERROR_COLLECTED, 1);
+    if (message.stack) {
+      Services.telemetry.scalarAdd(TELEMETRY_ERROR_COLLECTED_STACK, 1);
+    }
+    if (message.sourceName) {
+      const key = this.errorCollectedFilenameKey(message.sourceName);
+      Services.telemetry.keyedScalarAdd(TELEMETRY_ERROR_COLLECTED_FILENAME, key.slice(0, 69), 1);
+    }
+
     // Sample the amount of errors we send out
-    const sampleRate = Number.parseFloat(Services.prefs.getCharPref(PREF_SAMPLE_RATE));
+    let sampleRate = Number.parseFloat(this.sampleRatePref);
+    for (const [regex, rate] of MODULE_SAMPLE_RATES) {
+      if (message.sourceName.match(regex)) {
+        sampleRate = rate;
+        break;
+      }
+    }
     if (!Number.isFinite(sampleRate) || (Math.random() >= sampleRate)) {
       return;
     }
 
-    // Parse the error type from the message if present (e.g. "TypeError: Whoops").
-    let errorMessage = message.errorMessage;
-    let errorName = "Error";
-    if (message.errorMessage.match(ERROR_PREFIX_RE)) {
-      const parts = message.errorMessage.split(":");
-      errorName = parts[0];
-      errorMessage = parts.slice(1).join(":").trim();
-    }
-
-    const frames = [];
-    let frame = message.stack;
-    // Avoid an infinite loop by limiting traces to 100 frames.
-    while (frame && frames.length < 100) {
-      frames.push(await this.normalizeStackFrame(frame));
-      frame = frame.parent;
-    }
-    // Frames are sent in order from oldest to newest.
-    frames.reverse();
-
-    const requestBody = Object.assign({}, this.requestBodyTemplate, {
+    const exceptionValue = {};
+    const requestBody = {
+      ...this.requestBodyTemplate,
       timestamp: new Date().toISOString().slice(0, -1), // Remove trailing "Z"
       project: Services.prefs.getCharPref(PREF_PROJECT_ID),
       exception: {
-        values: [
-          {
-            type: errorName,
-            value: errorMessage,
-            stacktrace: {
-              frames,
-            }
-          },
-        ],
+        values: [exceptionValue],
       },
-      culprit: message.sourceName,
-    });
+    };
+
+    const transforms = [
+      addErrorMessage,
+      addStacktrace,
+      addModule,
+      mangleExtensionUrls,
+      tagExtensionErrors,
+    ];
+    for (const transform of transforms) {
+      await transform(message, exceptionValue, requestBody);
+    }
 
     const url = new URL(Services.prefs.getCharPref(PREF_SUBMIT_URL));
     url.searchParams.set("sentry_client", `${SDK_NAME}/${SDK_VERSION}`);
@@ -195,13 +270,43 @@ class BrowserErrorReporter {
         referrer: "https://fake.mozilla.org",
         body: JSON.stringify(requestBody)
       });
+      Services.telemetry.scalarAdd(TELEMETRY_ERROR_REPORTED, 1);
       this.logger.debug("Sent error successfully.");
     } catch (error) {
+      Services.telemetry.scalarAdd(TELEMETRY_ERROR_REPORTED_FAIL, 1);
       this.logger.warn(`Failed to send error: ${error}`);
     }
   }
+}
 
-  async normalizeStackFrame(frame) {
+function defaultFetch(...args) {
+  // Do not make network requests while running in automation
+  if (Cu.isInAutomation) {
+    return null;
+  }
+
+  return fetch(...args);
+}
+
+function addErrorMessage(message, exceptionValue) {
+  // Parse the error type from the message if present (e.g. "TypeError: Whoops").
+  let errorMessage = message.errorMessage;
+  let errorName = "Error";
+  if (message.errorMessage.match(ERROR_PREFIX_RE)) {
+    const parts = message.errorMessage.split(":");
+    errorName = parts[0];
+    errorMessage = parts.slice(1).join(":").trim();
+  }
+
+  exceptionValue.type = errorName;
+  exceptionValue.value = errorMessage;
+}
+
+async function addStacktrace(message, exceptionValue) {
+  const frames = [];
+  let frame = message.stack;
+  // Avoid an infinite loop by limiting traces to 100 frames.
+  while (frame && frames.length < 100) {
     const normalizedFrame = {
       function: frame.functionDisplayName,
       module: frame.source,
@@ -236,15 +341,49 @@ class BrowserErrorReporter {
       // do to recover in either case.
     }
 
-    return normalizedFrame;
+    frames.push(normalizedFrame);
+    frame = frame.parent;
+  }
+  // Frames are sent in order from oldest to newest.
+  frames.reverse();
+
+  exceptionValue.stacktrace = {frames};
+}
+
+function addModule(message, exceptionValue) {
+  exceptionValue.module = message.sourceName;
+}
+
+function mangleExtensionUrls(message, exceptionValue) {
+  const extensions = new Map();
+  for (let extension of WebExtensionPolicy.getActiveExtensions()) {
+    extensions.set(extension.mozExtensionHostname, extension);
   }
 
-  async _defaultFetch(...args) {
-    // Do not make network requests while running in automation
-    if (Cu.isInAutomation) {
-      return null;
+  // Replaces any instances of moz-extension:// URLs with internal UUIDs to use
+  // the add-on ID instead.
+  function mangleExtURL(string, anchored = true) {
+    if (!string) {
+      return string;
     }
 
-    return fetch(...args);
+    let re = new RegExp(`${anchored ? "^" : ""}moz-extension://([^/]+)/`, "g");
+
+    return string.replace(re, (m0, m1) => {
+      let id = extensions.has(m1) ? extensions.get(m1).id : m1;
+      return `moz-extension://${id}/`;
+    });
   }
+
+  exceptionValue.value = mangleExtURL(exceptionValue.value, false);
+  exceptionValue.module = mangleExtURL(exceptionValue.module);
+  for (const frame of exceptionValue.stacktrace.frames) {
+    frame.module = mangleExtURL(frame.module);
+  }
+}
+
+function tagExtensionErrors(message, exceptionValue, requestBody) {
+  requestBody.tags.isExtensionError = !!(
+      exceptionValue.module && exceptionValue.module.startsWith("moz-extension://")
+  );
 }

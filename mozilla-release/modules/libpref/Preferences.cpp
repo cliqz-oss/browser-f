@@ -15,7 +15,6 @@
 #include "mozilla/ArenaAllocator.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/dom/ContentPrefs.h"
 #include "mozilla/dom/PContent.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Logging.h"
@@ -28,7 +27,9 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
 #include "mozilla/ServoStyleSet.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/SyncRunnable.h"
+#include "mozilla/SystemGroup.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/URLPreloader.h"
@@ -131,6 +132,29 @@ enum class PrefType : uint8_t
   Bool = 3,
 };
 
+// This is used for pref names and string pref values. We encode the string
+// length, then a '/', then the string chars. This encoding means there are no
+// special chars that are forbidden or require escaping.
+static void
+SerializeAndAppendString(const char* aChars, nsCString& aStr)
+{
+  aStr.AppendInt(uint32_t(strlen(aChars)));
+  aStr.Append('/');
+  aStr.Append(aChars);
+}
+
+static char*
+DeserializeString(char* aChars, nsCString& aStr)
+{
+  char* p = aChars;
+  uint32_t length = strtol(p, &p, 10);
+  MOZ_ASSERT(p[0] == '/');
+  p++; // move past the '/'
+  aStr.Assign(p, length);
+  p += length; // move past the string itself
+  return p;
+}
+
 // Keep this in sync with PrefValue in prefs_parser/src/lib.rs.
 union PrefValue {
   const char* mStringVal;
@@ -218,6 +242,64 @@ union PrefValue {
       case dom::PrefValue::Tbool:
         mBoolVal = aDomValue.get_bool();
         return PrefType::Bool;
+
+      default:
+        MOZ_CRASH();
+    }
+  }
+
+  void SerializeAndAppend(PrefType aType, nsCString& aStr)
+  {
+    switch (aType) {
+      case PrefType::Bool:
+        aStr.Append(mBoolVal ? 'T' : 'F');
+        break;
+
+      case PrefType::Int:
+        aStr.AppendInt(mIntVal);
+        break;
+
+      case PrefType::String: {
+        SerializeAndAppendString(mStringVal, aStr);
+        break;
+      }
+
+      case PrefType::None:
+      default:
+        MOZ_CRASH();
+    }
+  }
+
+  static char* Deserialize(PrefType aType,
+                           char* aStr,
+                           dom::MaybePrefValue* aDomValue)
+  {
+    char* p = aStr;
+
+    switch (aType) {
+      case PrefType::Bool:
+        if (*p == 'T') {
+          *aDomValue = true;
+        } else if (*p == 'F') {
+          *aDomValue = false;
+        } else {
+          *aDomValue = false;
+          NS_ERROR("bad bool pref value");
+        }
+        p++;
+        return p;
+
+      case PrefType::Int: {
+        *aDomValue = int32_t(strtol(p, &p, 10));
+        return p;
+      }
+
+      case PrefType::String: {
+        nsCString str;
+        p = DeserializeString(p, str);
+        *aDomValue = str;
+        return p;
+      }
 
       default:
         MOZ_CRASH();
@@ -598,7 +680,7 @@ public:
                            PrefValue aValue,
                            bool aIsSticky,
                            bool aIsLocked,
-                           bool aFromFile,
+                           bool aFromInit,
                            bool* aValueChanged)
   {
     // Types must always match when setting the default value.
@@ -615,7 +697,7 @@ public:
       if (!ValueMatches(PrefValueKind::Default, aType, aValue)) {
         mDefaultValue.Replace(Type(), aType, aValue);
         mHasDefaultValue = true;
-        if (!aFromFile) {
+        if (!aFromInit) {
           mHasChangedSinceInit = true;
         }
         if (aIsSticky) {
@@ -633,7 +715,7 @@ public:
 
   nsresult SetUserValue(PrefType aType,
                         PrefValue aValue,
-                        bool aFromFile,
+                        bool aFromInit,
                         bool* aValueChanged)
   {
     // If we have a default value, types must match when setting the user
@@ -644,9 +726,9 @@ public:
 
     // Should we clear the user value, if present? Only if the new user value
     // matches the default value, and the pref isn't sticky, and we aren't
-    // force-setting it.
+    // force-setting it during initialization.
     if (ValueMatches(PrefValueKind::Default, aType, aValue) && !mIsSticky &&
-        !aFromFile) {
+        !aFromInit) {
       if (mHasUserValue) {
         ClearUserValue();
         if (!IsLocked()) {
@@ -660,7 +742,7 @@ public:
       mUserValue.Replace(Type(), aType, aValue);
       SetType(aType); // needed because we may have changed the type
       mHasUserValue = true;
-      if (!aFromFile) {
+      if (!aFromInit) {
         mHasChangedSinceInit = true;
       }
       if (!IsLocked()) {
@@ -694,6 +776,159 @@ public:
     return false;
   }
 
+  // Prefs are serialized in a manner that mirrors dom::Pref. The two should be
+  // kept in sync. E.g. if something is added to one it should also be added to
+  // the other. (It would be nice to be able to use the code generated from
+  // IPDL for serializing dom::Pref here instead of writing by hand this
+  // serialization/deserialization. Unfortunately, that generated code is
+  // difficult to use directly, outside of the IPDL IPC code.)
+  //
+  // The grammar for the serialized prefs has the following form.
+  //
+  // <pref>         = <type> <locked> ':' <name> ':' <value>? ':' <value>? '\n'
+  // <type>         = 'B' | 'I' | 'S'
+  // <locked>       = 'L' | '-'
+  // <name>         = <string-value>
+  // <value>        = <bool-value> | <int-value> | <string-value>
+  // <bool-value>   = 'T' | 'F'
+  // <int-value>    = an integer literal accepted by strtol()
+  // <string-value> = <int-value> '/' <chars>
+  // <chars>        = any char sequence of length dictated by the preceding
+  //                  <int-value>.
+  //
+  // No whitespace is tolerated between tokens. <type> must match the types of
+  // the values.
+  //
+  // The serialization is text-based, rather than binary, for the following
+  // reasons.
+  //
+  // - The size difference wouldn't be much different between text-based and
+  //   binary. Most of the space is for strings (pref names and string pref
+  //   values), which would be the same in both styles. And other differences
+  //   would be minimal, e.g. small integers are shorter in text but long
+  //   integers are longer in text.
+  //
+  // - Likewise, speed differences should be negligible.
+  //
+  // - It's much easier to debug a text-based serialization. E.g. you can
+  //   print it and inspect it easily in a debugger.
+  //
+  // Examples of unlocked boolean prefs:
+  // - "B-:8/my.bool1:F:T\n"
+  // - "B-:8/my.bool2:F:\n"
+  // - "B-:8/my.bool3::T\n"
+  //
+  // Examples of locked integer prefs:
+  // - "IL:7/my.int1:0:1\n"
+  // - "IL:7/my.int2:123:\n"
+  // - "IL:7/my.int3::-99\n"
+  //
+  // Examples of unlocked string prefs:
+  // - "S-:10/my.string1:3/abc:4/wxyz\n"
+  // - "S-:10/my.string2:5/1.234:\n"
+  // - "S-:10/my.string3::7/string!\n"
+
+  void SerializeAndAppend(nsCString& aStr)
+  {
+    switch (Type()) {
+      case PrefType::Bool:
+        aStr.Append('B');
+        break;
+
+      case PrefType::Int:
+        aStr.Append('I');
+        break;
+
+      case PrefType::String: {
+        aStr.Append('S');
+        break;
+      }
+
+      case PrefType::None:
+      default:
+        MOZ_CRASH();
+    }
+
+    aStr.Append(mIsLocked ? 'L' : '-');
+    aStr.Append(':');
+
+    SerializeAndAppendString(mName, aStr);
+    aStr.Append(':');
+
+    if (mHasDefaultValue) {
+      mDefaultValue.SerializeAndAppend(Type(), aStr);
+    }
+    aStr.Append(':');
+
+    if (mHasUserValue) {
+      mUserValue.SerializeAndAppend(Type(), aStr);
+    }
+    aStr.Append('\n');
+  }
+
+  static char* Deserialize(char* aStr, dom::Pref* aDomPref)
+  {
+    char* p = aStr;
+
+    // The type.
+    PrefType type;
+    if (*p == 'B') {
+      type = PrefType::Bool;
+    } else if (*p == 'I') {
+      type = PrefType::Int;
+    } else if (*p == 'S') {
+      type = PrefType::String;
+    } else {
+      NS_ERROR("bad pref type");
+      type = PrefType::None;
+    }
+    p++; // move past the type char
+
+    // Locked?
+    bool isLocked;
+    if (*p == 'L') {
+      isLocked = true;
+    } else if (*p == '-') {
+      isLocked = false;
+    } else {
+      NS_ERROR("bad pref locked status");
+      isLocked = false;
+    }
+    p++; // move past the isLocked char
+
+    MOZ_ASSERT(*p == ':');
+    p++; // move past the ':'
+
+    // The pref name.
+    nsCString name;
+    p = DeserializeString(p, name);
+
+    MOZ_ASSERT(*p == ':');
+    p++; // move past the ':' preceding the default value
+
+    dom::MaybePrefValue maybeDefaultValue;
+    if (*p != ':') {
+      dom::PrefValue defaultValue;
+      p = PrefValue::Deserialize(type, p, &maybeDefaultValue);
+    }
+
+    MOZ_ASSERT(*p == ':');
+    p++; // move past the ':' between the default and user values
+
+    dom::MaybePrefValue maybeUserValue;
+    if (*p != '\n') {
+      dom::PrefValue userValue;
+      p = PrefValue::Deserialize(type, p, &maybeUserValue);
+    }
+
+    MOZ_ASSERT(*p == '\n');
+    p++; // move past the '\n' following the user value
+
+    *aDomPref = dom::Pref(name, isLocked, maybeDefaultValue, maybeUserValue);
+
+    return p;
+  }
+
   void AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf, PrefsSizes& aSizes)
   {
     // Note: mName is allocated in gPrefNameArena, measured elsewhere.
@@ -725,6 +960,10 @@ private:
 class PrefEntry : public PLDHashEntryHdr
 {
 public:
+#ifdef DEBUG
+  // This field is before mPref to minimize sizeof(PrefEntry) on 64-bit.
+  uint32_t mAccessCount;
+#endif
   Pref* mPref; // Note: this is never null in a live entry.
 
   static bool MatchEntry(const PLDHashEntryHdr* aEntry, const void* aKey)
@@ -740,6 +979,9 @@ public:
     auto entry = static_cast<PrefEntry*>(aEntry);
     auto prefName = static_cast<const char*>(aKey);
 
+#ifdef DEBUG
+    entry->mAccessCount = 0;
+#endif
     entry->mPref = new Pref(prefName);
   }
 
@@ -873,41 +1115,9 @@ pref_savePrefs()
 
 #ifdef DEBUG
 
-// For content processes, what prefs have been initialized?
-enum class ContentProcessPhase
-{
-  eNoPrefsSet,
-  eEarlyPrefsSet,
-  eEarlyAndLatePrefsSet,
-};
-
 // Note that this never changes in the parent process, and is only read in
 // content processes.
-static ContentProcessPhase gPhase = ContentProcessPhase::eNoPrefsSet;
-
-struct StringComparator
-{
-  const char* mPrefName;
-
-  explicit StringComparator(const char* aPrefName)
-    : mPrefName(aPrefName)
-  {
-  }
-
-  int operator()(const char* aPrefName) const
-  {
-    return strcmp(mPrefName, aPrefName);
-  }
-};
-
-static bool
-IsEarlyPref(const char* aPrefName)
-{
-  size_t prefsLen;
-  size_t found;
-  const char** list = mozilla::dom::ContentPrefs::GetEarlyPrefs(&prefsLen);
-  return BinarySearchIf(list, 0, prefsLen, StringComparator(aPrefName), &found);
-}
+static bool gContentProcessPrefsAreInited = false;
 
 #endif // DEBUG
 
@@ -916,23 +1126,7 @@ pref_HashTableLookupInner(const char* aPrefName)
 {
   MOZ_ASSERT(NS_IsMainThread() || mozilla::ServoStyleSet::IsInServoTraversal());
 
-#ifdef DEBUG
-  if (!XRE_IsParentProcess()) {
-    if (gPhase == ContentProcessPhase::eNoPrefsSet) {
-      MOZ_CRASH_UNSAFE_PRINTF("accessing pref %s before early prefs are set",
-                              aPrefName);
-    }
-
-    if (gPhase == ContentProcessPhase::eEarlyPrefsSet &&
-        !IsEarlyPref(aPrefName)) {
-      // If you hit this crash, you have an early access of a non-early pref.
-      // Consider moving the access later or add the pref to the whitelist of
-      // early prefs in ContentPrefs.cpp and get review from a DOM peer.
-      MOZ_CRASH_UNSAFE_PRINTF(
-        "accessing non-early pref %s before late prefs are set", aPrefName);
-    }
-  }
-#endif
+  MOZ_ASSERT_IF(!XRE_IsParentProcess(), gContentProcessPrefsAreInited);
 
   return static_cast<PrefEntry*>(gHashTable->Search(aPrefName));
 }
@@ -941,7 +1135,15 @@ static Pref*
 pref_HashTableLookup(const char* aPrefName)
 {
   PrefEntry* entry = pref_HashTableLookupInner(aPrefName);
-  return entry ? entry->mPref : nullptr;
+  if (!entry) {
+    return nullptr;
+  }
+
+#ifdef DEBUG
+  entry->mAccessCount += 1;
+#endif
+
+  return entry->mPref;
 }
 
 static nsresult
@@ -951,7 +1153,7 @@ pref_SetPref(const char* aPrefName,
              PrefValue aValue,
              bool aIsSticky,
              bool aIsLocked,
-             bool aFromFile)
+             bool aFromInit)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -974,10 +1176,10 @@ pref_SetPref(const char* aPrefName,
   nsresult rv;
   if (aKind == PrefValueKind::Default) {
     rv = pref->SetDefaultValue(
-      aType, aValue, aIsSticky, aIsLocked, aFromFile, &valueChanged);
+      aType, aValue, aIsSticky, aIsLocked, aFromInit, &valueChanged);
   } else {
     MOZ_ASSERT(!aIsLocked); // `locked` is disallowed in user pref files
-    rv = pref->SetUserValue(aType, aValue, aFromFile, &valueChanged);
+    rv = pref->SetUserValue(aType, aValue, aFromInit, &valueChanged);
   }
   if (NS_FAILED(rv)) {
     NS_WARNING(
@@ -1149,7 +1351,7 @@ private:
                  aValue,
                  aIsSticky,
                  aIsLocked,
-                 /* fromFile */ true);
+                 /* fromInit */ true);
   }
 
   static void HandleError(const char* aMsg)
@@ -2470,9 +2672,6 @@ Preferences::HandleDirty()
 static nsresult
 openPrefFile(nsIFile* aFile, PrefValueKind aKind);
 
-static const char kTelemetryPref[] = "toolkit.telemetry.enabled";
-static const char kChannelPref[] = "app.update.channel";
-
 // clang-format off
 static const char kPrefFileHeader[] =
   "// Mozilla User Preferences"
@@ -2671,10 +2870,13 @@ HaveExistingCacheFor(void* aPtr)
   }
   return false;
 }
+#endif
 
 static void
 AssertNotAlreadyCached(const char* aPrefType, const char* aPref, void* aPtr)
 {
+#ifdef DEBUG
+  MOZ_ASSERT(aPtr);
   if (HaveExistingCacheFor(aPtr)) {
     fprintf_stderr(
       stderr,
@@ -2686,8 +2888,8 @@ AssertNotAlreadyCached(const char* aPrefType, const char* aPref, void* aPtr)
     MOZ_ASSERT(false,
                "Should not have an existing pref cache for this address");
   }
-}
 #endif
+}
 
 // Although this is a member of Preferences, it measures sPreferences and
 // several other global structures.
@@ -2920,8 +3122,110 @@ public:
 
 } // namespace
 
-// A list of prefs sent early from the parent, via the command line.
-static InfallibleTArray<dom::Pref>* gEarlyDomPrefs;
+// A list of changed prefs sent from the parent via shared memory.
+static InfallibleTArray<dom::Pref>* gChangedDomPrefs;
+
+static const char kTelemetryPref[] = "toolkit.telemetry.enabled";
+static const char kChannelPref[] = "app.update.channel";
+
+#ifdef MOZ_WIDGET_ANDROID
+
+static Maybe<bool>
+TelemetryPrefValue()
+{
+  // Leave it unchanged if it's already set.
+  // XXX: how could it already be set?
+  if (Preferences::GetType(kTelemetryPref) != nsIPrefBranch::PREF_INVALID) {
+    return Nothing();
+  }
+
+    // Determine the correct default for toolkit.telemetry.enabled. If this
+    // build has MOZ_TELEMETRY_ON_BY_DEFAULT *or* we're on the beta channel,
+    // telemetry is on by default, otherwise not. This is necessary so that
+    // beta users who are testing final release builds don't flipflop defaults.
+#ifdef MOZ_TELEMETRY_ON_BY_DEFAULT
+  return Some(true);
+#else
+  nsAutoCString channelPrefValue;
+  Unused << Preferences::GetCString(
+    kChannelPref, channelPrefValue, PrefValueKind::Default);
+  return Some(channelPrefValue.EqualsLiteral("beta"));
+#endif
+}
+
+/* static */ void
+Preferences::SetupTelemetryPref()
+{
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  Maybe<bool> telemetryPrefValue = TelemetryPrefValue();
+  if (telemetryPrefValue.isSome()) {
+    Preferences::SetBool(
+      kTelemetryPref, *telemetryPrefValue, PrefValueKind::Default);
+  }
+}
+
+#else // !MOZ_WIDGET_ANDROID
+
+static bool
+TelemetryPrefValue()
+{
+  // For platforms with Unified Telemetry (here meaning not-Android),
+  // toolkit.telemetry.enabled determines whether we send "extended" data.
+  // We only want extended data from pre-release channels due to size.
+
+  NS_NAMED_LITERAL_CSTRING(channel, NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
+
+  // Easy cases: Nightly, Aurora, Beta.
+  if (channel.EqualsLiteral("nightly") || channel.EqualsLiteral("aurora") ||
+      channel.EqualsLiteral("beta")) {
+    return true;
+  }
+
+#ifndef MOZILLA_OFFICIAL
+  // Local developer builds: non-official builds on the "default" channel.
+  if (channel.EqualsLiteral("default")) {
+    return true;
+  }
+#endif
+
+  // Release Candidate builds: builds that think they are release builds, but
+  // are shipped to beta users.
+  if (channel.EqualsLiteral("release")) {
+    nsAutoCString channelPrefValue;
+    Unused << Preferences::GetCString(
+      kChannelPref, channelPrefValue, PrefValueKind::Default);
+    if (channelPrefValue.EqualsLiteral("beta")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* static */ void
+Preferences::SetupTelemetryPref()
+{
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  Preferences::SetBool(
+    kTelemetryPref, TelemetryPrefValue(), PrefValueKind::Default);
+  Preferences::Lock(kTelemetryPref);
+}
+
+static void
+CheckTelemetryPref()
+{
+  MOZ_ASSERT(!XRE_IsParentProcess());
+
+  // Make sure the children got passed the right telemetry pref details.
+  DebugOnly<bool> value;
+  MOZ_ASSERT(NS_SUCCEEDED(Preferences::GetBool(kTelemetryPref, &value)) &&
+             value == TelemetryPrefValue());
+  MOZ_ASSERT(Preferences::IsLocked(kTelemetryPref));
+}
+
+#endif // MOZ_WIDGET_ANDROID
 
 /* static */ already_AddRefed<Preferences>
 Preferences::GetInstanceForService()
@@ -2944,7 +3248,10 @@ Preferences::GetInstanceForService()
   gTelemetryLoadData =
     new nsDataHashtable<nsCStringHashKey, TelemetryLoadData>();
 
-  Result<Ok, const char*> res = InitInitialObjects();
+  gCacheData = new nsTArray<nsAutoPtr<CacheData>>();
+  gCacheDataDesc = "set by GetInstanceForService() (1)";
+
+  Result<Ok, const char*> res = InitInitialObjects(/* isStartup */ true);
   if (res.isErr()) {
     sPreferences = nullptr;
     gCacheDataDesc = res.unwrapErr();
@@ -2952,12 +3259,16 @@ Preferences::GetInstanceForService()
   }
 
   if (!XRE_IsParentProcess()) {
-    MOZ_ASSERT(gEarlyDomPrefs);
-    for (unsigned int i = 0; i < gEarlyDomPrefs->Length(); i++) {
-      Preferences::SetPreference(gEarlyDomPrefs->ElementAt(i));
+    MOZ_ASSERT(gChangedDomPrefs);
+    for (unsigned int i = 0; i < gChangedDomPrefs->Length(); i++) {
+      Preferences::SetPreference(gChangedDomPrefs->ElementAt(i));
     }
-    delete gEarlyDomPrefs;
-    gEarlyDomPrefs = nullptr;
+    delete gChangedDomPrefs;
+    gChangedDomPrefs = nullptr;
+
+#ifndef MOZ_WIDGET_ANDROID
+    CheckTelemetryPref();
+#endif
 
   } else {
     // Check if there is a deployment configuration file. If so, set up the
@@ -2995,8 +3306,7 @@ Preferences::GetInstanceForService()
     }
   }
 
-  gCacheData = new nsTArray<nsAutoPtr<CacheData>>();
-  gCacheDataDesc = "set by GetInstanceForService()";
+  gCacheDataDesc = "set by GetInstanceForService() (2)";
 
   // Preferences::GetInstanceForService() can be called from GetService(), and
   // RegisterStrongMemoryReporter calls GetService(nsIMemoryReporter).  To
@@ -3081,30 +3391,44 @@ NS_IMPL_ISUPPORTS(Preferences,
                   nsISupportsWeakReference)
 
 /* static */ void
-Preferences::SetEarlyPreferences(const nsTArray<dom::Pref>* aDomPrefs)
+Preferences::SerializePreferences(nsCString& aStr)
 {
-  MOZ_ASSERT(!XRE_IsParentProcess());
+  MOZ_RELEASE_ASSERT(InitStaticMembers());
 
-  gEarlyDomPrefs = new InfallibleTArray<dom::Pref>(mozilla::Move(*aDomPrefs));
+  aStr.Truncate();
 
-#ifdef DEBUG
-  MOZ_ASSERT(gPhase == ContentProcessPhase::eNoPrefsSet);
-  gPhase = ContentProcessPhase::eEarlyPrefsSet;
-#endif
+  for (auto iter = gHashTable->Iter(); !iter.Done(); iter.Next()) {
+    Pref* pref = static_cast<PrefEntry*>(iter.Get())->mPref;
+    if (pref->MustSendToContentProcesses() && pref->HasAdvisablySizedValues()) {
+      pref->SerializeAndAppend(aStr);
+    }
+  }
+
+  aStr.Append('\0');
 }
 
 /* static */ void
-Preferences::SetLatePreferences(const nsTArray<dom::Pref>* aDomPrefs)
+Preferences::DeserializePreferences(char* aStr, size_t aPrefsLen)
 {
   MOZ_ASSERT(!XRE_IsParentProcess());
 
-  for (unsigned int i = 0; i < aDomPrefs->Length(); i++) {
-    Preferences::SetPreference(aDomPrefs->ElementAt(i));
+  MOZ_ASSERT(!gChangedDomPrefs);
+  gChangedDomPrefs = new InfallibleTArray<dom::Pref>();
+
+  char* p = aStr;
+  while (*p != '\0') {
+    dom::Pref pref;
+    p = Pref::Deserialize(p, &pref);
+    gChangedDomPrefs->AppendElement(pref);
   }
 
+  // We finished parsing on a '\0'. That should be the last char in the shared
+  // memory. (aPrefsLen includes the '\0'.)
+  MOZ_ASSERT(p == aStr + aPrefsLen - 1);
+
 #ifdef DEBUG
-  MOZ_ASSERT(gPhase == ContentProcessPhase::eEarlyPrefsSet);
-  gPhase = ContentProcessPhase::eEarlyAndLatePrefsSet;
+  MOZ_ASSERT(!gContentProcessPrefsAreInited);
+  gContentProcessPrefsAreInited = true;
 #endif
 }
 
@@ -3163,7 +3487,7 @@ Preferences::Observe(nsISupports* aSubject,
 
   } else if (!nsCRT::strcmp(aTopic, "reload-default-prefs")) {
     // Reload the default prefs from file.
-    Unused << InitInitialObjects();
+    Unused << InitInitialObjects(/* isStartup */ false);
 
   } else if (!nsCRT::strcmp(aTopic, "suspend_process_notification")) {
     // Our process is being suspended. The OS may wake our process later,
@@ -3209,7 +3533,8 @@ Preferences::ResetPrefs()
   gHashTable->ClearAndPrepareForLength(PREF_HASHTABLE_INITIAL_LENGTH);
   gPrefNameArena.Clear();
 
-  return InitInitialObjects().isOk() ? NS_OK : NS_ERROR_FAILURE;
+  return InitInitialObjects(/* isStartup */ false).isOk() ? NS_OK
+                                                          : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
@@ -3341,36 +3666,12 @@ Preferences::GetPreference(dom::Pref* aDomPref)
   }
 }
 
-void
-Preferences::GetPreferences(InfallibleTArray<dom::Pref>* aDomPrefs)
-{
-  MOZ_ASSERT(XRE_IsParentProcess());
-  MOZ_ASSERT(NS_IsMainThread());
-
-  aDomPrefs->SetCapacity(gHashTable->EntryCount());
-  for (auto iter = gHashTable->Iter(); !iter.Done(); iter.Next()) {
-    Pref* pref = static_cast<PrefEntry*>(iter.Get())->mPref;
-
-    if (!pref->MustSendToContentProcesses()) {
-      // The pref value hasn't changed since it was initialized at startup.
-      // Don't bother sending it, because the content process will initialize
-      // it the same way.
-      continue;
-    }
-
-    if (pref->HasAdvisablySizedValues()) {
-      dom::Pref* setting = aDomPrefs->AppendElement();
-      pref->ToDomPref(setting);
-    }
-  }
-}
-
 #ifdef DEBUG
 bool
-Preferences::AreAllPrefsSetInContentProcess()
+Preferences::ArePrefsInitedInContentProcess()
 {
   MOZ_ASSERT(!XRE_IsParentProcess());
-  return gPhase == ContentProcessPhase::eEarlyAndLatePrefsSet;
+  return gContentProcessPrefsAreInited;
 }
 #endif
 
@@ -3411,6 +3712,34 @@ Preferences::GetDefaultBranch(const char* aPrefRoot, nsIPrefBranch** aRetVal)
 
   prefBranch.forget(aRetVal);
   return NS_OK;
+}
+
+NS_IMETHODIMP
+Preferences::ReadStats(nsIPrefStatsCallback* aCallback)
+{
+#ifdef DEBUG
+  for (auto iter = gHashTable->Iter(); !iter.Done(); iter.Next()) {
+    PrefEntry* entry = static_cast<PrefEntry*>(iter.Get());
+    aCallback->Visit(entry->mPref->Name(), entry->mAccessCount);
+  }
+
+  return NS_OK;
+#else
+  return NS_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+NS_IMETHODIMP
+Preferences::ResetStats()
+{
+#ifdef DEBUG
+  for (auto iter = gHashTable->Iter(); !iter.Done(); iter.Next()) {
+    static_cast<PrefEntry*>(iter.Get())->mAccessCount = 0;
+  }
+  return NS_OK;
+#else
+  return NS_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 NS_IMETHODIMP
@@ -3780,8 +4109,12 @@ pref_ReadPrefFromJar(nsZipArchive* aJarReader, const char* aName)
 // Initialize default preference JavaScript buffers from appropriate TEXT
 // resources.
 /* static */ Result<Ok, const char*>
-Preferences::InitInitialObjects()
+Preferences::InitInitialObjects(bool aIsStartup)
 {
+  // Initialize static prefs before prefs from data files so that the latter
+  // will override the former.
+  StaticPrefs::InitAll(aIsStartup);
+
   // In the omni.jar case, we load the following prefs:
   // - jar:$gre/omni.jar!/greprefs.js
   // - jar:$gre/omni.jar!/defaults/pref/*.js
@@ -3944,58 +4277,9 @@ Preferences::InitInitialObjects()
     }
   }
 
-#ifdef MOZ_WIDGET_ANDROID
-  // Set up the correct default for toolkit.telemetry.enabled. If this build
-  // has MOZ_TELEMETRY_ON_BY_DEFAULT *or* we're on the beta channel, telemetry
-  // is on by default, otherwise not. This is necessary so that beta users who
-  // are testing final release builds don't flipflop defaults.
-  if (Preferences::GetType(kTelemetryPref) == nsIPrefBranch::PREF_INVALID) {
-    bool prerelease = false;
-#ifdef MOZ_TELEMETRY_ON_BY_DEFAULT
-    prerelease = true;
-#else
-    nsAutoCString prefValue;
-    Preferences::GetCString(kChannelPref, prefValue, PrefValueKind::Default);
-    if (prefValue.EqualsLiteral("beta")) {
-      prerelease = true;
-    }
-#endif
-    Preferences::SetBoolInAnyProcess(
-      kTelemetryPref, prerelease, PrefValueKind::Default);
+  if (XRE_IsParentProcess()) {
+    SetupTelemetryPref();
   }
-#else
-  // For platforms with Unified Telemetry (here meaning not-Android),
-  // toolkit.telemetry.enabled determines whether we send "extended" data.
-  // We only want extended data from pre-release channels due to size. We
-  // also want it to be recorded for local developer builds (non-official builds
-  // on the "default" channel).
-  bool developerBuild = false;
-#ifndef MOZILLA_OFFICIAL
-  developerBuild = !strcmp(NS_STRINGIFY(MOZ_UPDATE_CHANNEL), "default");
-#endif
-
-  // Release Candidate builds are builds that think they are release builds, but
-  // are shipped to beta users. We still need extended data from these users.
-  bool releaseCandidateOnBeta = false;
-  if (!strcmp(NS_STRINGIFY(MOZ_UPDATE_CHANNEL), "release")) {
-    nsAutoCString updateChannelPrefValue;
-    Preferences::GetCString(
-      kChannelPref, updateChannelPrefValue, PrefValueKind::Default);
-    releaseCandidateOnBeta = updateChannelPrefValue.EqualsLiteral("beta");
-  }
-
-  if (!strcmp(NS_STRINGIFY(MOZ_UPDATE_CHANNEL), "nightly") ||
-      !strcmp(NS_STRINGIFY(MOZ_UPDATE_CHANNEL), "aurora") ||
-      !strcmp(NS_STRINGIFY(MOZ_UPDATE_CHANNEL), "beta") || developerBuild ||
-      releaseCandidateOnBeta) {
-    Preferences::SetBoolInAnyProcess(
-      kTelemetryPref, true, PrefValueKind::Default);
-  } else {
-    Preferences::SetBoolInAnyProcess(
-      kTelemetryPref, false, PrefValueKind::Default);
-  }
-  Preferences::LockInAnyProcess(kTelemetryPref);
-#endif // MOZ_WIDGET_ANDROID
 
   NS_CreateServicesFromCategory(NS_PREFSERVICE_APPDEFAULTS_TOPIC_ID,
                                 nullptr,
@@ -4116,10 +4400,11 @@ Preferences::GetComplex(const char* aPrefName,
 }
 
 /* static */ nsresult
-Preferences::SetCStringInAnyProcess(const char* aPrefName,
-                                    const nsACString& aValue,
-                                    PrefValueKind aKind)
+Preferences::SetCString(const char* aPrefName,
+                        const nsACString& aValue,
+                        PrefValueKind aKind)
 {
+  ENSURE_PARENT_PROCESS("SetCString", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   if (aValue.Length() > MAX_PREF_LENGTH) {
@@ -4137,23 +4422,13 @@ Preferences::SetCStringInAnyProcess(const char* aPrefName,
                       prefValue,
                       /* isSticky */ false,
                       /* isLocked */ false,
-                      /* fromFile */ false);
+                      /* fromInit */ false);
 }
 
 /* static */ nsresult
-Preferences::SetCString(const char* aPrefName,
-                        const nsACString& aValue,
-                        PrefValueKind aKind)
+Preferences::SetBool(const char* aPrefName, bool aValue, PrefValueKind aKind)
 {
-  ENSURE_PARENT_PROCESS("SetCString", aPrefName);
-  return SetCStringInAnyProcess(aPrefName, aValue, aKind);
-}
-
-/* static */ nsresult
-Preferences::SetBoolInAnyProcess(const char* aPrefName,
-                                 bool aValue,
-                                 PrefValueKind aKind)
-{
+  ENSURE_PARENT_PROCESS("SetBool", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   PrefValue prefValue;
@@ -4164,21 +4439,13 @@ Preferences::SetBoolInAnyProcess(const char* aPrefName,
                       prefValue,
                       /* isSticky */ false,
                       /* isLocked */ false,
-                      /* fromFile */ false);
+                      /* fromInit */ false);
 }
 
 /* static */ nsresult
-Preferences::SetBool(const char* aPrefName, bool aValue, PrefValueKind aKind)
+Preferences::SetInt(const char* aPrefName, int32_t aValue, PrefValueKind aKind)
 {
-  ENSURE_PARENT_PROCESS("SetBool", aPrefName);
-  return SetBoolInAnyProcess(aPrefName, aValue, aKind);
-}
-
-/* static */ nsresult
-Preferences::SetIntInAnyProcess(const char* aPrefName,
-                                int32_t aValue,
-                                PrefValueKind aKind)
-{
+  ENSURE_PARENT_PROCESS("SetInt", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   PrefValue prefValue;
@@ -4189,14 +4456,7 @@ Preferences::SetIntInAnyProcess(const char* aPrefName,
                       prefValue,
                       /* isSticky */ false,
                       /* isLocked */ false,
-                      /* fromFile */ false);
-}
-
-/* static */ nsresult
-Preferences::SetInt(const char* aPrefName, int32_t aValue, PrefValueKind aKind)
-{
-  ENSURE_PARENT_PROCESS("SetInt", aPrefName);
-  return SetIntInAnyProcess(aPrefName, aValue, aKind);
+                      /* fromInit */ false);
 }
 
 /* static */ nsresult
@@ -4210,8 +4470,9 @@ Preferences::SetComplex(const char* aPrefName,
 }
 
 /* static */ nsresult
-Preferences::LockInAnyProcess(const char* aPrefName)
+Preferences::Lock(const char* aPrefName)
 {
+  ENSURE_PARENT_PROCESS("Lock", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   Pref* pref = pref_HashTableLookup(aPrefName);
@@ -4225,13 +4486,6 @@ Preferences::LockInAnyProcess(const char* aPrefName)
   }
 
   return NS_OK;
-}
-
-/* static */ nsresult
-Preferences::Lock(const char* aPrefName)
-{
-  ENSURE_PARENT_PROCESS("Lock", aPrefName);
-  return Preferences::LockInAnyProcess(aPrefName);
 }
 
 /* static */ nsresult
@@ -4263,8 +4517,9 @@ Preferences::IsLocked(const char* aPrefName)
 }
 
 /* static */ nsresult
-Preferences::ClearUserInAnyProcess(const char* aPrefName)
+Preferences::ClearUser(const char* aPrefName)
 {
+  ENSURE_PARENT_PROCESS("ClearUser", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   PrefEntry* entry = pref_HashTableLookupInner(aPrefName);
@@ -4282,13 +4537,6 @@ Preferences::ClearUserInAnyProcess(const char* aPrefName)
   return NS_OK;
 }
 
-/* static */ nsresult
-Preferences::ClearUser(const char* aPrefName)
-{
-  ENSURE_PARENT_PROCESS("ClearUser", aPrefName);
-  return ClearUserInAnyProcess(aPrefName);
-}
-
 /* static */ bool
 Preferences::HasUserValue(const char* aPrefName)
 {
@@ -4296,15 +4544,6 @@ Preferences::HasUserValue(const char* aPrefName)
 
   Pref* pref = pref_HashTableLookup(aPrefName);
   return pref && pref->HasUserValue();
-}
-
-/* static */ bool
-Preferences::MustSendToContentProcesses(const char* aPrefName)
-{
-  NS_ENSURE_TRUE(InitStaticMembers(), false);
-
-  Pref* pref = pref_HashTableLookup(aPrefName);
-  return pref && pref->MustSendToContentProcesses();
 }
 
 /* static */ int32_t
@@ -4506,13 +4745,15 @@ BoolVarChanged(const char* aPref, void* aClosure)
 }
 
 /* static */ nsresult
-Preferences::AddBoolVarCache(bool* aCache, const char* aPref, bool aDefault)
+Preferences::AddBoolVarCache(bool* aCache,
+                             const char* aPref,
+                             bool aDefault,
+                             bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("bool", aPref, aCache);
-#endif
-  *aCache = GetBool(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetBool(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueBool = aDefault;
@@ -4538,13 +4779,13 @@ template<MemoryOrdering Order>
 /* static */ nsresult
 Preferences::AddAtomicBoolVarCache(Atomic<bool, Order>* aCache,
                                    const char* aPref,
-                                   bool aDefault)
+                                   bool aDefault,
+                                   bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("bool", aPref, aCache);
-#endif
-  *aCache = Preferences::GetBool(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetBool(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueBool = aDefault;
@@ -4568,13 +4809,13 @@ IntVarChanged(const char* aPref, void* aClosure)
 /* static */ nsresult
 Preferences::AddIntVarCache(int32_t* aCache,
                             const char* aPref,
-                            int32_t aDefault)
+                            int32_t aDefault,
+                            bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("int", aPref, aCache);
-#endif
-  *aCache = Preferences::GetInt(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetInt(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueInt = aDefault;
@@ -4597,13 +4838,13 @@ template<MemoryOrdering Order>
 /* static */ nsresult
 Preferences::AddAtomicIntVarCache(Atomic<int32_t, Order>* aCache,
                                   const char* aPref,
-                                  int32_t aDefault)
+                                  int32_t aDefault,
+                                  bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("int", aPref, aCache);
-#endif
-  *aCache = Preferences::GetInt(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetInt(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueUint = aDefault;
@@ -4627,13 +4868,13 @@ UintVarChanged(const char* aPref, void* aClosure)
 /* static */ nsresult
 Preferences::AddUintVarCache(uint32_t* aCache,
                              const char* aPref,
-                             uint32_t aDefault)
+                             uint32_t aDefault,
+                             bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("uint", aPref, aCache);
-#endif
-  *aCache = Preferences::GetUint(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetUint(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueUint = aDefault;
@@ -4659,13 +4900,13 @@ template<MemoryOrdering Order>
 /* static */ nsresult
 Preferences::AddAtomicUintVarCache(Atomic<uint32_t, Order>* aCache,
                                    const char* aPref,
-                                   uint32_t aDefault)
+                                   uint32_t aDefault,
+                                   bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("uint", aPref, aCache);
-#endif
-  *aCache = Preferences::GetUint(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetUint(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueUint = aDefault;
@@ -4682,32 +4923,46 @@ Preferences::AddAtomicUintVarCache(Atomic<uint32_t, Order>* aCache,
 // need to explicitly specify the instantiations that are required. Currently
 // limited orders are needed and therefore implemented.
 template nsresult
-Preferences::AddAtomicBoolVarCache(Atomic<bool, Relaxed>*, const char*, bool);
+Preferences::AddAtomicBoolVarCache(Atomic<bool, Relaxed>*,
+                                   const char*,
+                                   bool,
+                                   bool);
 
 template nsresult
 Preferences::AddAtomicBoolVarCache(Atomic<bool, ReleaseAcquire>*,
                                    const char*,
+                                   bool,
                                    bool);
 
 template nsresult
 Preferences::AddAtomicBoolVarCache(Atomic<bool, SequentiallyConsistent>*,
                                    const char*,
+                                   bool,
                                    bool);
 
 template nsresult
 Preferences::AddAtomicIntVarCache(Atomic<int32_t, Relaxed>*,
                                   const char*,
-                                  int32_t);
+                                  int32_t,
+                                  bool);
 
 template nsresult
 Preferences::AddAtomicUintVarCache(Atomic<uint32_t, Relaxed>*,
                                    const char*,
-                                   uint32_t);
+                                   uint32_t,
+                                   bool);
 
 template nsresult
 Preferences::AddAtomicUintVarCache(Atomic<uint32_t, ReleaseAcquire>*,
                                    const char*,
-                                   uint32_t);
+                                   uint32_t,
+                                   bool);
+
+template nsresult
+Preferences::AddAtomicUintVarCache(Atomic<uint32_t, SequentiallyConsistent>*,
+                                   const char*,
+                                   uint32_t,
+                                   bool);
 
 static void
 FloatVarChanged(const char* aPref, void* aClosure)
@@ -4718,13 +4973,15 @@ FloatVarChanged(const char* aPref, void* aClosure)
 }
 
 /* static */ nsresult
-Preferences::AddFloatVarCache(float* aCache, const char* aPref, float aDefault)
+Preferences::AddFloatVarCache(float* aCache,
+                              const char* aPref,
+                              float aDefault,
+                              bool aSkipAssignment)
 {
-  MOZ_ASSERT(aCache);
-#ifdef DEBUG
   AssertNotAlreadyCached("float", aPref, aCache);
-#endif
-  *aCache = Preferences::GetFloat(aPref, aDefault);
+  if (!aSkipAssignment) {
+    *aCache = GetFloat(aPref, aDefault);
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueFloat = aDefault;
@@ -4735,6 +4992,204 @@ Preferences::AddFloatVarCache(float* aCache, const char* aPref, float aDefault)
                                 Preferences::ExactMatch,
                                 /* isPriority */ true);
   return NS_OK;
+}
+
+// For a VarCache pref like this:
+//
+//   VARCACHE_PREF("my.varcache", my_varcache, int32_t, 99)
+//
+// we generate a static variable definition:
+//
+//   int32_t StaticPrefs::sVarCache_my_varcache(99);
+//
+#define PREF(name, cpp_type, value)
+#define VARCACHE_PREF(name, id, cpp_type, value)                               \
+  cpp_type StaticPrefs::sVarCache_##id(value);
+#include "mozilla/StaticPrefList.h"
+#undef PREF
+#undef VARCACHE_PREF
+
+// The SetPref_*() functions below end in a `_<type>` suffix because they are
+// used by the PREF macro definition in InitAll() below.
+
+static void
+SetPref_bool(const char* aName, bool aDefaultValue)
+{
+  PrefValue value;
+  value.mBoolVal = aDefaultValue;
+  pref_SetPref(aName,
+               PrefType::Bool,
+               PrefValueKind::Default,
+               value,
+               /* isSticky */ false,
+               /* isLocked */ false,
+               /* fromInit */ true);
+}
+
+static void
+SetPref_int32_t(const char* aName, int32_t aDefaultValue)
+{
+  PrefValue value;
+  value.mIntVal = aDefaultValue;
+  pref_SetPref(aName,
+               PrefType::Int,
+               PrefValueKind::Default,
+               value,
+               /* isSticky */ false,
+               /* isLocked */ false,
+               /* fromInit */ true);
+}
+
+static void
+SetPref_float(const char* aName, float aDefaultValue)
+{
+  PrefValue value;
+  nsPrintfCString defaultValue("%f", aDefaultValue);
+  value.mStringVal = defaultValue.get();
+  pref_SetPref(aName,
+               PrefType::String,
+               PrefValueKind::Default,
+               value,
+               /* isSticky */ false,
+               /* isLocked */ false,
+               /* fromInit */ true);
+}
+
+// XXX: this will eventually become used
+MOZ_MAYBE_UNUSED static void
+SetPref_String(const char* aName, const char* aDefaultValue)
+{
+  PrefValue value;
+  value.mStringVal = aDefaultValue;
+  pref_SetPref(aName,
+               PrefType::String,
+               PrefValueKind::Default,
+               value,
+               /* isSticky */ false,
+               /* isLocked */ false,
+               /* fromInit */ true);
+}
+
+static void
+InitVarCachePref(const char* aName,
+                 bool* aCache,
+                 bool aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_bool(aName, aDefaultValue);
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddBoolVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+template<MemoryOrdering Order>
+static void
+InitVarCachePref(const char* aName,
+                 Atomic<bool, Order>* aCache,
+                 bool aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_bool(aName, aDefaultValue);
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddAtomicBoolVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+// XXX: this will eventually become used
+MOZ_MAYBE_UNUSED static void
+InitVarCachePref(const char* aName,
+                 int32_t* aCache,
+                 int32_t aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_int32_t(aName, aDefaultValue);
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddIntVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+template<MemoryOrdering Order>
+static void
+InitVarCachePref(const char* aName,
+                 Atomic<int32_t, Order>* aCache,
+                 int32_t aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_int32_t(aName, aDefaultValue);
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddAtomicIntVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+static void
+InitVarCachePref(const char* aName,
+                 uint32_t* aCache,
+                 uint32_t aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_int32_t(aName, static_cast<int32_t>(aDefaultValue));
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddUintVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+template<MemoryOrdering Order>
+static void
+InitVarCachePref(const char* aName,
+                 Atomic<uint32_t, Order>* aCache,
+                 uint32_t aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_int32_t(aName, static_cast<int32_t>(aDefaultValue));
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddAtomicUintVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+// XXX: this will eventually become used
+MOZ_MAYBE_UNUSED static void
+InitVarCachePref(const char* aName,
+                 float* aCache,
+                 float aDefaultValue,
+                 bool aIsStartup)
+{
+  SetPref_float(aName, aDefaultValue);
+  *aCache = aDefaultValue;
+  if (aIsStartup) {
+    Preferences::AddFloatVarCache(aCache, aName, aDefaultValue, true);
+  }
+}
+
+/* static */ void
+StaticPrefs::InitAll(bool aIsStartup)
+{
+// For prefs like these:
+//
+//   PREF("foo.bar.baz", bool, true)
+//   VARCACHE_PREF("my.varcache", my_varcache, int32_t, 99)
+//
+// we generate registration calls:
+//
+//   SetPref_bool("foo.bar.baz", true);
+//   InitVarCachePref("my.varcache", &StaticPrefs::sVarCache_my_varcache, 99,
+//                    aIsStartup);
+//
+// The SetPref_*() functions have a type suffix to avoid ambiguity between
+// prefs having int32_t and float default values. That suffix is not needed for
+// the InitVarCachePref() functions because they take a pointer parameter,
+// which prevents automatic int-to-float coercion.
+#define PREF(name, cpp_type, value) SetPref_##cpp_type(name, value);
+#define VARCACHE_PREF(name, id, cpp_type, value)                               \
+  InitVarCachePref(name, &StaticPrefs::sVarCache_##id, value, aIsStartup);
+#include "mozilla/StaticPrefList.h"
+#undef PREF
+#undef VARCACHE_PREF
 }
 
 } // namespace mozilla

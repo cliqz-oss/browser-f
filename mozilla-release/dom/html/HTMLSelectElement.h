@@ -24,63 +24,18 @@ class nsContentList;
 class nsIDOMHTMLOptionElement;
 class nsIHTMLCollection;
 class nsISelectControlFrame;
-class nsPresState;
 
 namespace mozilla {
 
 class EventChainPostVisitor;
 class EventChainPreVisitor;
+class SelectContentData;
+class PresState;
 
 namespace dom {
 
 class HTMLFormSubmission;
 class HTMLSelectElement;
-
-#define NS_SELECT_STATE_IID                        \
-{ /* 4db54c7c-d159-455f-9d8e-f60ee466dbf3 */       \
-  0x4db54c7c,                                      \
-  0xd159,                                          \
-  0x455f,                                          \
-  {0x9d, 0x8e, 0xf6, 0x0e, 0xe4, 0x66, 0xdb, 0xf3} \
-}
-
-/**
- * The restore state used by select
- */
-class SelectState : public nsISupports
-{
-public:
-  SelectState()
-  {
-  }
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_SELECT_STATE_IID)
-  NS_DECL_ISUPPORTS
-
-  void PutOption(int32_t aIndex, const nsAString& aValue)
-  {
-    // If the option is empty, store the index.  If not, store the value.
-    if (aValue.IsEmpty()) {
-      mIndices.Put(aIndex);
-    } else {
-      mValues.Put(aValue);
-    }
-  }
-
-  bool ContainsOption(int32_t aIndex, const nsAString& aValue)
-  {
-    return mValues.Contains(aValue) || mIndices.Contains(aIndex);
-  }
-
-private:
-  virtual ~SelectState()
-  {
-  }
-
-  nsCheapSet<nsStringHashKey> mValues;
-  nsCheapSet<nsUint32HashKey> mIndices;
-};
-
-NS_DEFINE_STATIC_IID_ACCESSOR(SelectState, NS_SELECT_STATE_IID)
 
 class MOZ_STACK_CLASS SafeOptionListMutation
 {
@@ -150,7 +105,7 @@ public:
   explicit HTMLSelectElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                              FromParser aFromParser = NOT_FROM_PARSER);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLSelectElement, select)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLSelectElement, select)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -285,8 +240,7 @@ public:
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // nsIContent
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
 
@@ -302,7 +256,7 @@ public:
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(HTMLFormSubmission* aFormSubmission) override;
   NS_IMETHOD SaveState() override;
-  virtual bool RestoreState(nsPresState* aState) override;
+  virtual bool RestoreState(PresState* aState) override;
   virtual bool IsDisabledForEvents(EventMessage aMessage) override;
 
   virtual void FieldSetDisabledChanged(bool aNotify) override;
@@ -420,7 +374,7 @@ public:
     // If item index is out of range, insert to last.
     // (since beforeElement becomes null, it is inserted to last)
     nsIContent* beforeContent = mOptions->GetElementAt(aIndex);
-    return Add(aElement, nsGenericHTMLElement::FromContentOrNull(beforeContent),
+    return Add(aElement, nsGenericHTMLElement::FromNodeOrNull(beforeContent),
                aError);
   }
 
@@ -490,7 +444,7 @@ protected:
    * Restore state to a particular state string (representing the options)
    * @param aNewSelected the state string to restore to
    */
-  void RestoreStateTo(SelectState* aNewSelected);
+  void RestoreStateTo(const SelectContentData& aNewSelected);
 
   // Adding options
   /**
@@ -648,7 +602,7 @@ protected:
    * The temporary restore state in case we try to restore before parser is
    * done adding options
    */
-  nsCOMPtr<SelectState> mRestoreState;
+  UniquePtr<SelectContentData> mRestoreState;
 
   /**
    * The live list of selected options.

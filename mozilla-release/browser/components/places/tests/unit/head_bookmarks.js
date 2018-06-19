@@ -20,9 +20,6 @@ XPCOMUtils.defineLazyGetter(this, "PlacesUIUtils", function() {
   return PlacesUIUtils;
 });
 
-const ORGANIZER_FOLDER_ANNO = "PlacesOrganizer/OrganizerFolder";
-const ORGANIZER_QUERY_ANNO = "PlacesOrganizer/OrganizerQuery";
-
 // Needed by some test that relies on having an app registered.
 ChromeUtils.import("resource://testing-common/AppInfo.jsm", this);
 updateAppInfo({
@@ -79,7 +76,7 @@ function rebuildSmartBookmarks() {
       }
       do_throw("Got console message: " + aMsg.message);
     },
-    QueryInterface: XPCOMUtils.generateQI([ Ci.nsIConsoleListener ]),
+    QueryInterface: ChromeUtils.generateQI([ Ci.nsIConsoleListener ]),
   };
   Services.console.reset();
   Services.console.registerListener(consoleListener);

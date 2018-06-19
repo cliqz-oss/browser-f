@@ -14,14 +14,11 @@
 #include "mozilla/GuardObjects.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
-#include "nsIDOMNode.h"
 #include "nsIEditor.h"
 #include "nscore.h"
 
 class nsAtom;
 class nsIContentIterator;
-class nsIDOMDocument;
-class nsIDOMEvent;
 class nsISimpleEnumerator;
 class nsITransferable;
 class nsRange;
@@ -143,7 +140,8 @@ EditActionCanceled(nsresult aRv = NS_OK)
 }
 
 /***************************************************************************
- * SplitNodeResult is a simple class for EditorBase::SplitNodeDeep().
+ * SplitNodeResult is a simple class for
+ * EditorBase::SplitNodeDeepWithTransaction().
  * This makes the callers' code easier to read.
  */
 class MOZ_STACK_CLASS SplitNodeResult final
@@ -209,7 +207,7 @@ public:
   /**
    * SplitPoint() returns the split point in the container.
    * This is useful when callers insert an element at split point with
-   * EditorBase::CreateNode() or something similar methods.
+   * EditorBase::CreateNodeWithTransaction() or something similar methods.
    *
    * Note that the result is EditorRawDOMPoint but the nodes are grabbed
    * by this instance.  Therefore, the life time of both container node
@@ -221,7 +219,7 @@ public:
       return EditorRawDOMPoint();
     }
     if (mGivenSplitPoint.IsSet()) {
-      return mGivenSplitPoint.AsRaw();
+      return EditorRawDOMPoint(mGivenSplitPoint);
     }
     if (!mPreviousNode) {
       return EditorRawDOMPoint(mNextNode);
@@ -544,18 +542,6 @@ public:
   static bool IsDescendantOf(const nsINode& aNode,
                              const nsINode& aParent,
                              EditorDOMPoint* aOutPoint);
-};
-
-class EditorHookUtils final
-{
-public:
-  static bool DoInsertionHook(nsIDOMDocument* aDoc, nsIDOMEvent* aEvent,
-                              nsITransferable* aTrans);
-
-private:
-  static nsresult GetHookEnumeratorFromDocument(
-                    nsIDOMDocument*aDoc,
-                    nsISimpleEnumerator** aEnumerator);
 };
 
 } // namespace mozilla

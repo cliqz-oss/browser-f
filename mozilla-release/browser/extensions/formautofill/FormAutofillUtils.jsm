@@ -119,7 +119,7 @@ let AddressDataLoader = {
    *               "data/TW/台北市": {} // Other supported country level 1 metadata
    *              }
    * @param   {string} country
-   * @param   {string} level1
+   * @param   {string?} level1
    * @returns {object} Default locale metadata
    */
   _loadData(country, level1 = null) {
@@ -144,10 +144,10 @@ let AddressDataLoader = {
   /**
    * Return the region metadata with default locale and other locales (if exists).
    * @param   {string} country
-   * @param   {string} level1
+   * @param   {string?} level1
    * @returns {object} Return default locale and other locales metadata.
    */
-  getData(country, level1) {
+  getData(country, level1 = null) {
     let defaultLocale = this._loadData(country, level1);
     if (!defaultLocale) {
       return null;
@@ -602,6 +602,10 @@ this.FormAutofillUtils = {
     let collators = this.getCollators(country);
     for (let metadata of this.getCountryAddressDataWithLocales(country)) {
       let {sub_keys: subKeys, sub_names: subNames, sub_lnames: subLnames} = metadata;
+      if (!subKeys) {
+        // Not all regions have sub_keys. e.g. DE
+        continue;
+      }
       // Apply sub_lnames if sub_names does not exist
       subNames = subNames || subLnames;
 
@@ -665,6 +669,10 @@ this.FormAutofillUtils = {
         }
         for (let dataset of this.getCountryAddressDataWithLocales(country)) {
           let keys = dataset.sub_keys;
+          if (!keys) {
+            // Not all regions have sub_keys. e.g. DE
+            continue;
+          }
           // Apply sub_lnames if sub_names does not exist
           let names = dataset.sub_names || dataset.sub_lnames;
 
@@ -828,16 +836,42 @@ this.FormAutofillUtils = {
   },
 
   /**
-   * Localize elements with "data-localization" attribute
-   * @param   {string} bundleURI
-   * @param   {DOMElement} root
+   * Localize "data-localization" or "data-localization-region" attributes.
+   * @param {Element} element
+   * @param {string} attributeName
    */
-  localizeMarkup(bundleURI, root) {
-    const bundle = Services.strings.createBundle(bundleURI);
+  localizeAttributeForElement(element, attributeName) {
+    switch (attributeName) {
+      case "data-localization": {
+        element.textContent =
+          this.stringBundle.GetStringFromName(element.getAttribute(attributeName));
+        element.removeAttribute(attributeName);
+        break;
+      }
+      case "data-localization-region": {
+        let regionCode = element.getAttribute(attributeName);
+        element.textContent = Services.intl.getRegionDisplayNames(undefined, [regionCode]);
+        element.removeAttribute(attributeName);
+        return;
+      }
+      default:
+        throw new Error("Unexpected attributeName");
+    }
+  },
+
+  /**
+   * Localize elements with "data-localization" or "data-localization-region" attributes.
+   * @param {Element} root
+   */
+  localizeMarkup(root) {
     let elements = root.querySelectorAll("[data-localization]");
     for (let element of elements) {
-      element.textContent = bundle.GetStringFromName(element.getAttribute("data-localization"));
-      element.removeAttribute("data-localization");
+      this.localizeAttributeForElement(element, "data-localization");
+    }
+
+    elements = root.querySelectorAll("[data-localization-region]");
+    for (let element of elements) {
+      this.localizeAttributeForElement(element, "data-localization-region");
     }
   },
 };

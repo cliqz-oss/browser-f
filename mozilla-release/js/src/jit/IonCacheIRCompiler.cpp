@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/DebugOnly.h"
+#include "mozilla/Maybe.h"
 
 #include "jit/BaselineIC.h"
 #include "jit/CacheIRCompiler.h"
@@ -12,6 +13,7 @@
 #include "jit/JSJitFrameIter.h"
 #include "jit/Linker.h"
 #include "jit/SharedICHelpers.h"
+#include "proxy/DeadObjectProxy.h"
 #include "proxy/Proxy.h"
 
 #include "jit/JSJitFrameIter-inl.h"
@@ -23,6 +25,7 @@ using namespace js;
 using namespace js::jit;
 
 using mozilla::DebugOnly;
+using mozilla::Maybe;
 
 namespace js {
 namespace jit {
@@ -542,6 +545,19 @@ IonCacheIRCompiler::init()
                                                             AnyRegister(ic->rhs())));
         break;
       }
+      case CacheKind::UnaryArith: {
+        IonUnaryArithIC *ic = ic_->asUnaryArithIC();
+        ValueOperand output = ic->output();
+
+        available.add(output);
+
+        liveRegs_.emplace(ic->liveRegs());
+        outputUnchecked_.emplace(TypedOrValueRegister(output));
+
+        MOZ_ASSERT(numInputs == 1);
+        allocator.initInputLocation(0, ic->input());
+        break;
+      }
       case CacheKind::Call:
       case CacheKind::Compare:
       case CacheKind::TypeOf:
@@ -718,14 +734,19 @@ bool
 IonCacheIRCompiler::emitGuardCompartment()
 {
     Register obj = allocator.useRegister(masm, reader.objOperandId());
-    objectStubField(reader.stubOffset()); // Read global wrapper.
+    JSObject* globalWrapper = objectStubField(reader.stubOffset());
     JSCompartment* compartment = compartmentStubField(reader.stubOffset());
-
     AutoScratchRegister scratch(allocator, masm);
 
     FailurePath* failure;
     if (!addFailurePath(&failure))
         return false;
+
+    // Verify that the global wrapper is still valid, as
+    // it is pre-requisite for doing the compartment check.
+    masm.movePtr(ImmGCPtr(globalWrapper), scratch);
+    Address handlerAddr(scratch, ProxyObject::offsetOfHandler());
+    masm.branchPtr(Assembler::Equal, handlerAddr, ImmPtr(&DeadObjectProxy::singleton), failure->label());
 
     masm.branchTestObjCompartment(Assembler::NotEqual, obj, compartment, scratch,
                                   failure->label());
@@ -1471,11 +1492,12 @@ EmitCheckPropertyTypes(MacroAssembler& masm, const PropertyTypeCheckInfo* typeCh
         return;
 
     ObjectGroup* group = typeCheckInfo->group();
-    if (group->unknownProperties())
+    AutoSweepObjectGroup sweep(group);
+    if (group->unknownProperties(sweep))
         return;
 
     jsid id = typeCheckInfo->id();
-    HeapTypeSet* propTypes = group->maybeGetProperty(id);
+    HeapTypeSet* propTypes = group->maybeGetProperty(sweep, id);
     if (propTypes && propTypes->unknown())
         return;
 

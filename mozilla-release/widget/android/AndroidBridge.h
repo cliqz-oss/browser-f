@@ -24,7 +24,6 @@
 #include "gfxRect.h"
 
 #include "nsIAndroidBridge.h"
-#include "nsIDOMDOMCursor.h"
 
 #include "mozilla/Likely.h"
 #include "mozilla/Mutex.h"
@@ -69,24 +68,6 @@ typedef struct AndroidSystemColors {
     nscolor panelColorForeground;
     nscolor panelColorBackground;
 } AndroidSystemColors;
-
-class MessageCursorContinueCallback : public nsICursorContinueCallback
-{
-public:
-    NS_DECL_ISUPPORTS
-    NS_DECL_NSICURSORCONTINUECALLBACK
-
-    MessageCursorContinueCallback(int aRequestId)
-        : mRequestId(aRequestId)
-    {
-    }
-private:
-    virtual ~MessageCursorContinueCallback()
-    {
-    }
-
-    int mRequestId;
-};
 
 class AndroidBridge final
 {
@@ -258,7 +239,7 @@ public:
 
 class AutoJObject {
 public:
-    AutoJObject(JNIEnv* aJNIEnv = nullptr) : mObject(nullptr)
+    explicit AutoJObject(JNIEnv* aJNIEnv = nullptr) : mObject(nullptr)
     {
         mJNIEnv = aJNIEnv ? aJNIEnv : jni::GetGeckoThreadEnv();
     }
@@ -292,7 +273,7 @@ private:
 
 class AutoLocalJNIFrame {
 public:
-    AutoLocalJNIFrame(int nEntries = 15)
+    explicit AutoLocalJNIFrame(int nEntries = 15)
         : mEntries(nEntries)
         , mJNIEnv(jni::GetGeckoThreadEnv())
         , mHasFrameBeenPushed(false)
@@ -301,7 +282,7 @@ public:
         Push();
     }
 
-    AutoLocalJNIFrame(JNIEnv* aJNIEnv, int nEntries = 15)
+    explicit AutoLocalJNIFrame(JNIEnv* aJNIEnv, int nEntries = 15)
         : mEntries(nEntries)
         , mJNIEnv(aJNIEnv ? aJNIEnv : jni::GetGeckoThreadEnv())
         , mHasFrameBeenPushed(false)

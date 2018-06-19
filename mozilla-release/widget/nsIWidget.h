@@ -165,6 +165,7 @@ enum nsTransparencyMode {
   eTransparencyTransparent, // Parts of the window may be transparent
   eTransparencyGlass,       // Transparent parts of the window have Vista AeroGlass effect applied
   eTransparencyBorderlessGlass // As above, but without a border around the opaque areas when there would otherwise be one with eTransparencyGlass
+  // If you add to the end here, you must update the serialization code in WidgetMessageUtils.h
 };
 
 /**
@@ -1455,24 +1456,6 @@ class nsIWidget : public nsISupports
      * included, including those not targeted at this nsIwidget instance.
      */
     virtual bool HasPendingInputEvent() = 0;
-
-    /**
-     * Set the background color of the window titlebar for this widget. On Mac,
-     * for example, this will remove the grey gradient and bottom border and
-     * instead show a single, solid color.
-     *
-     * Ignored on any platform that does not support it. Ignored by widgets that
-     * do not represent windows.
-     *
-     * @param aColor  The color to set the title bar background to. Alpha values
-     *                other than fully transparent (0) are respected if possible
-     *                on the platform. An alpha of 0 will cause the window to
-     *                draw with the default style for the platform.
-     *
-     * @param aActive Whether the color should be applied to active or inactive
-     *                windows.
-     */
-    virtual void SetWindowTitlebarColor(nscolor aColor, bool aActive) = 0;
 
     /**
      * If set to true, the window will draw its contents into the titlebar

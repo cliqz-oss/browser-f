@@ -94,8 +94,7 @@ PerformanceMainThread::DispatchBufferFullEvent()
   // it bubbles, and it isn't cancelable
   event->InitEvent(NS_LITERAL_STRING("resourcetimingbufferfull"), true, false);
   event->SetTrusted(true);
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
 }
 
 PerformanceNavigation*
@@ -298,6 +297,20 @@ PerformanceMainThread::EnsureDocEntry()
   }
 }
 
+void
+PerformanceMainThread::CreateDocumentEntry(nsITimedChannel* aChannel)
+{
+  MOZ_ASSERT(aChannel);
+  MOZ_ASSERT(!mDocEntry, "mDocEntry should be null.");
+
+  if (!nsContentUtils::IsPerformanceNavigationTimingEnabled()) {
+    return;
+  }
+
+  UniquePtr<PerformanceTimingData> timing(
+      new PerformanceTimingData(aChannel, nullptr, 0));
+  mDocEntry = new PerformanceNavigationTiming(Move(timing), this);
+}
 
 void
 PerformanceMainThread::GetEntries(nsTArray<RefPtr<PerformanceEntry>>& aRetval)

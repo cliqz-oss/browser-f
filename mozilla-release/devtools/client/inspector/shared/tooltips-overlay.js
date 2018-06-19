@@ -11,7 +11,6 @@
  * editor tooltips that appear when clicking swatch based editors.
  */
 
-const { Task } = require("devtools/shared/task");
 const Services = require("Services");
 const {
   VIEW_NODE_VALUE_TYPE,
@@ -78,7 +77,7 @@ TooltipsOverlay.prototype = {
    * Add the tooltips overlay to the view. This will start tracking mouse
    * movements and display tooltips when needed
    */
-  addToView: function () {
+  addToView: function() {
     if (this._isStarted || this._isDestroyed) {
       return;
     }
@@ -99,7 +98,7 @@ TooltipsOverlay.prototype = {
    * @param {String} name
    *        Identifier name for the tooltip
    */
-  getTooltip: function (name) {
+  getTooltip: function(name) {
     let tooltip = this._instances.get(name);
     if (tooltip) {
       return tooltip;
@@ -142,7 +141,7 @@ TooltipsOverlay.prototype = {
    * Remove the tooltips overlay from the view. This will stop tracking mouse
    * movements and displaying tooltips
    */
-  removeFromView: function () {
+  removeFromView: function() {
     if (!this._isStarted || this._isDestroyed) {
       return;
     }
@@ -161,13 +160,11 @@ TooltipsOverlay.prototype = {
    * @param {Object} nodeInfo
    * @return {String} The tooltip type to be shown, or null
    */
-  _getTooltipType: function ({type, value: prop}) {
+  _getTooltipType: function({type, value: prop}) {
     let tooltipType = null;
-    let inspector = this.view.inspector;
 
     // Image preview tooltip
-    if (type === VIEW_NODE_IMAGE_URL_TYPE &&
-        inspector.hasUrlToImageDataResolver) {
+    if (type === VIEW_NODE_IMAGE_URL_TYPE) {
       tooltipType = TOOLTIP_IMAGE_TYPE;
     }
 
@@ -197,7 +194,7 @@ TooltipsOverlay.prototype = {
    * @param {DOMNode} target The currently hovered node
    * @return {Promise}
    */
-  _onPreviewTooltipTargetHover: Task.async(function* (target) {
+  async _onPreviewTooltipTargetHover(target) {
     let nodeInfo = this.view.getNodeInfo(target);
     if (!nodeInfo) {
       // The hovered node isn't something we care about
@@ -221,9 +218,9 @@ TooltipsOverlay.prototype = {
 
     if (type === TOOLTIP_IMAGE_TYPE) {
       try {
-        yield this._setImagePreviewTooltip(nodeInfo.value.url);
+        await this._setImagePreviewTooltip(nodeInfo.value.url);
       } catch (e) {
-        yield setBrokenImageTooltip(this.getTooltip("previewTooltip"),
+        await setBrokenImageTooltip(this.getTooltip("previewTooltip"),
           this.view.inspector.panelDoc);
       }
       return true;
@@ -232,7 +229,7 @@ TooltipsOverlay.prototype = {
     if (type === TOOLTIP_FONTFAMILY_TYPE) {
       let font = nodeInfo.value.value;
       let nodeFront = inspector.selection.nodeFront;
-      yield this._setFontPreviewTooltip(font, nodeFront);
+      await this._setFontPreviewTooltip(font, nodeFront);
 
       if (nodeInfo.type === VIEW_NODE_FONT_TYPE) {
         // If the hovered element is on the font family span, anchor
@@ -244,12 +241,12 @@ TooltipsOverlay.prototype = {
 
     if (type === TOOLTIP_VARIABLE_TYPE && nodeInfo.value.value.startsWith("--")) {
       let variable = nodeInfo.value.variable;
-      yield this._setVariablePreviewTooltip(variable);
+      await this._setVariablePreviewTooltip(variable);
       return true;
     }
 
     return false;
-  }),
+  },
 
   /**
    * Set the content of the preview tooltip to display an image preview. The image URL can
@@ -260,27 +257,27 @@ TooltipsOverlay.prototype = {
    *        The image url value (may be relative or absolute).
    * @return {Promise} A promise that resolves when the preview tooltip content is ready
    */
-  _setImagePreviewTooltip: Task.async(function* (imageUrl) {
+  async _setImagePreviewTooltip(imageUrl) {
     let doc = this.view.inspector.panelDoc;
     let maxDim = Services.prefs.getIntPref(PREF_IMAGE_TOOLTIP_SIZE);
 
     let naturalWidth, naturalHeight;
     if (imageUrl.startsWith("data:")) {
       // If the imageUrl already is a data-url, save ourselves a round-trip
-      let size = yield getImageDimensions(doc, imageUrl);
+      let size = await getImageDimensions(doc, imageUrl);
       naturalWidth = size.naturalWidth;
       naturalHeight = size.naturalHeight;
     } else {
       let inspectorFront = this.view.inspector.inspector;
-      let {data, size} = yield inspectorFront.getImageDataFromURL(imageUrl, maxDim);
-      imageUrl = yield data.string();
+      let {data, size} = await inspectorFront.getImageDataFromURL(imageUrl, maxDim);
+      imageUrl = await data.string();
       naturalWidth = size.naturalWidth;
       naturalHeight = size.naturalHeight;
     }
 
-    yield setImageTooltip(this.getTooltip("previewTooltip"), doc, imageUrl,
+    await setImageTooltip(this.getTooltip("previewTooltip"), doc, imageUrl,
       {maxDim, naturalWidth, naturalHeight});
-  }),
+  },
 
   /**
    * Set the content of the preview tooltip to display a font family preview.
@@ -292,7 +289,7 @@ TooltipsOverlay.prototype = {
    *        family tooltip contents.
    * @return {Promise} A promise that resolves when the preview tooltip content is ready
    */
-  _setFontPreviewTooltip: Task.async(function* (font, nodeFront) {
+  async _setFontPreviewTooltip(font, nodeFront) {
     if (!font || !nodeFront || typeof nodeFront.getFontFamilyDataURL !== "function") {
       throw new Error("Unable to create font preview tooltip content.");
     }
@@ -302,16 +299,16 @@ TooltipsOverlay.prototype = {
     font = font.trim();
 
     let fillStyle = getColor("body-color");
-    let {data, size: maxDim} = yield nodeFront.getFontFamilyDataURL(font, fillStyle);
+    let {data, size: maxDim} = await nodeFront.getFontFamilyDataURL(font, fillStyle);
 
-    let imageUrl = yield data.string();
+    let imageUrl = await data.string();
     let doc = this.view.inspector.panelDoc;
-    let {naturalWidth, naturalHeight} = yield getImageDimensions(doc, imageUrl);
+    let {naturalWidth, naturalHeight} = await getImageDimensions(doc, imageUrl);
 
-    yield setImageTooltip(this.getTooltip("previewTooltip"), doc, imageUrl,
+    await setImageTooltip(this.getTooltip("previewTooltip"), doc, imageUrl,
       {hideDimensionLabel: true, hideCheckeredBackground: true,
        maxDim, naturalWidth, naturalHeight});
-  }),
+  },
 
   /**
    * Set the content of the preview tooltip to display a variable preview.
@@ -320,12 +317,12 @@ TooltipsOverlay.prototype = {
    *        The text to display for the variable tooltip
    * @return {Promise} A promise that resolves when the preview tooltip content is ready
    */
-  _setVariablePreviewTooltip: Task.async(function* (text) {
+  async _setVariablePreviewTooltip(text) {
     let doc = this.view.inspector.panelDoc;
-    yield setVariableTooltip(this.getTooltip("previewTooltip"), doc, text);
-  }),
+    await setVariableTooltip(this.getTooltip("previewTooltip"), doc, text);
+  },
 
-  _onNewSelection: function () {
+  _onNewSelection: function() {
     for (let [, tooltip] of this._instances) {
       tooltip.hide();
     }
@@ -334,7 +331,7 @@ TooltipsOverlay.prototype = {
   /**
    * Destroy this overlay instance, removing it from the view
    */
-  destroy: function () {
+  destroy: function() {
     this.removeFromView();
 
     this.view.inspector.selection.off("new-node-front", this._onNewSelection);

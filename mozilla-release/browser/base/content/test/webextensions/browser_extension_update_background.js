@@ -79,7 +79,7 @@ async function backgroundUpdateTest(url, id, checkIconFn) {
   is(getBadgeStatus(), "addon-alert", "Should have addon alert badge");
 
   // Find the menu entry for the update
-  await PanelUI.show();
+  await gCUITestUtils.openMainMenu();
 
   let addons = PanelUI.addonNotificationContainer;
   is(addons.children.length, 1, "Have a menu entry for the update");
@@ -118,15 +118,15 @@ async function backgroundUpdateTest(url, id, checkIconFn) {
   addon = await AddonManager.getAddonByID(id);
   is(addon.version, "1.0", "Should still be running the old version");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   // Alert badge and hamburger menu items should be gone
   is(getBadgeStatus(), "", "Addon alert badge should be gone");
 
-  await PanelUI.show();
+  await gCUITestUtils.openMainMenu();
   addons = PanelUI.addonNotificationContainer;
   is(addons.children.length, 0, "Update menu entries should be gone");
-  await PanelUI.hide();
+  await gCUITestUtils.hideMainMenu();
 
   // Re-check for an update
   updatePromise = promiseInstallEvent(addon, "onDownloadEnded");
@@ -136,7 +136,7 @@ async function backgroundUpdateTest(url, id, checkIconFn) {
   is(getBadgeStatus(), "addon-alert", "Should have addon alert badge");
 
   // Find the menu entry for the update
-  await PanelUI.show();
+  await gCUITestUtils.openMainMenu();
 
   addons = PanelUI.addonNotificationContainer;
   is(addons.children.length, 1, "Have a menu entry for the update");
@@ -163,7 +163,7 @@ async function backgroundUpdateTest(url, id, checkIconFn) {
   addon = await updatePromise;
   is(addon.version, "2.0", "Should have upgraded to the new version");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   is(getBadgeStatus(), "", "Addon alert badge should be gone");
 

@@ -81,12 +81,9 @@ struct Register {
         return 1;
     }
 
-    // N.B. FloatRegister is an explicit outparam here because msvc-2010
-    // miscompiled it on win64 when the value was simply returned.  This
-    // now has an explicit outparam for compatability.
-    void aliased(uint32_t aliasIdx, Register* ret) const {
+    Register aliased(uint32_t aliasIdx) const {
         MOZ_ASSERT(aliasIdx == 0);
-        *ret = *this;
+        return *this;
     }
 
     SetType alignedOrDominatedAliasedSet() const {
@@ -125,7 +122,7 @@ struct RegisterOrSP
 {
     // The register code -- but possibly one that cannot be represented as a bit
     // position in a 32-bit vector.
-    const uint32_t code;
+    uint32_t code;
 
     explicit RegisterOrSP(uint32_t code) : code(code) {}
     explicit RegisterOrSP(Register r) : code(r.code()) {}

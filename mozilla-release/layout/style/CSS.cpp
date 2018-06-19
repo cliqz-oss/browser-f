@@ -10,7 +10,6 @@
 
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/ServoBindings.h"
-#include "nsCSSParser.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "nsIURI.h"
@@ -25,7 +24,6 @@ struct SupportsParsingInfo
   nsIURI* mDocURI;
   nsIURI* mBaseURI;
   nsIPrincipal* mPrincipal;
-  StyleBackendType mStyleBackendType;
 };
 
 static nsresult
@@ -45,7 +43,6 @@ GetParsingInfo(const GlobalObject& aGlobal,
   aInfo.mDocURI = nsCOMPtr<nsIURI>(doc->GetDocumentURI()).get();
   aInfo.mBaseURI = nsCOMPtr<nsIURI>(doc->GetBaseURI()).get();
   aInfo.mPrincipal = win->GetPrincipal();
-  aInfo.mStyleBackendType = doc->GetStyleBackendType();
   return NS_OK;
 }
 
@@ -63,19 +60,9 @@ CSS::Supports(const GlobalObject& aGlobal,
     return false;
   }
 
-  if (info.mStyleBackendType == StyleBackendType::Servo) {
-    NS_ConvertUTF16toUTF8 property(aProperty);
-    NS_ConvertUTF16toUTF8 value(aValue);
-    return Servo_CSSSupports2(&property, &value);
-  }
-
-#ifdef MOZ_OLD_STYLE
-  nsCSSParser parser;
-  return parser.EvaluateSupportsDeclaration(aProperty, aValue, info.mDocURI,
-                                            info.mBaseURI, info.mPrincipal);
-#else
-  MOZ_CRASH("old style system disabled");
-#endif
+  NS_ConvertUTF16toUTF8 property(aProperty);
+  NS_ConvertUTF16toUTF8 value(aValue);
+  return Servo_CSSSupports2(&property, &value);
 }
 
 /* static */ bool
@@ -91,20 +78,8 @@ CSS::Supports(const GlobalObject& aGlobal,
     return false;
   }
 
-  if (info.mStyleBackendType == StyleBackendType::Servo) {
-    NS_ConvertUTF16toUTF8 cond(aCondition);
-    return Servo_CSSSupports(&cond);
-  }
-
-#ifdef MOZ_OLD_STYLE
-  nsCSSParser parser;
-  return parser.EvaluateSupportsCondition(aCondition, info.mDocURI,
-                                          info.mBaseURI, info.mPrincipal,
-                                          css::SupportsParsingSettings::ImpliedParentheses);
-#else
-  MOZ_CRASH("old style system disabled");
-  return false;
-#endif
+  NS_ConvertUTF16toUTF8 cond(aCondition);
+  return Servo_CSSSupports(&cond);
 }
 
 /* static */ void

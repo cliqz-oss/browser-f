@@ -931,14 +931,19 @@ KeymapWrapper::ComputeDOMCodeNameIndex(const GdkEventKey* aGdkKeyEvent)
 
 /* static */ void
 KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
-                            GdkEventKey* aGdkKeyEvent)
+                            GdkEventKey* aGdkKeyEvent,
+                            bool aIsProcessedByIME)
 {
+    MOZ_ASSERT(!aIsProcessedByIME || aKeyEvent.mMessage != eKeyPress,
+      "If the key event is handled by IME, keypress event shouldn't be fired");
+
     KeymapWrapper* keymapWrapper = GetInstance();
 
     aKeyEvent.mCodeNameIndex = ComputeDOMCodeNameIndex(aGdkKeyEvent);
     MOZ_ASSERT(aKeyEvent.mCodeNameIndex != CODE_NAME_INDEX_USE_STRING);
     aKeyEvent.mKeyNameIndex =
-        keymapWrapper->ComputeDOMKeyNameIndex(aGdkKeyEvent);
+        aIsProcessedByIME ? KEY_NAME_INDEX_Process :
+                            keymapWrapper->ComputeDOMKeyNameIndex(aGdkKeyEvent);
     if (aKeyEvent.mKeyNameIndex == KEY_NAME_INDEX_Unidentified) {
         uint32_t charCode = GetCharCodeFor(aGdkKeyEvent);
         if (!charCode) {
@@ -951,10 +956,11 @@ KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
             AppendUCS4ToUTF16(charCode, aKeyEvent.mKeyValue);
         }
     }
-    aKeyEvent.mKeyCode = ComputeDOMKeyCode(aGdkKeyEvent);
 
-    if (aKeyEvent.mKeyNameIndex != KEY_NAME_INDEX_USE_STRING ||
-        aKeyEvent.mMessage != eKeyPress) {
+    if (aIsProcessedByIME) {
+        aKeyEvent.mKeyCode = NS_VK_PROCESSKEY;
+    } else if (aKeyEvent.mKeyNameIndex != KEY_NAME_INDEX_USE_STRING ||
+               aKeyEvent.mMessage != eKeyPress) {
         aKeyEvent.mKeyCode = ComputeDOMKeyCode(aGdkKeyEvent);
     } else {
         aKeyEvent.mKeyCode = 0;
@@ -1405,6 +1411,14 @@ void
 KeymapWrapper::WillDispatchKeyboardEventInternal(WidgetKeyboardEvent& aKeyEvent,
                                                  GdkEventKey* aGdkKeyEvent)
 {
+    if (!aGdkKeyEvent) {
+        // If aGdkKeyEvent is nullptr, we're trying to dispatch a fake keyboard
+        // event in such case, we don't need to set alternative char codes.
+        // So, we don't need to do nothing here.  This case is typically we're
+        // dispatching eKeyDown or eKeyUp event during composition.
+        return;
+    }
+
     uint32_t charCode = GetCharCodeFor(aGdkKeyEvent);
     if (!charCode) {
         MOZ_LOG(gKeymapWrapperLog, LogLevel::Info,

@@ -27,6 +27,7 @@ public:
     }
 
     bool UsesTiling() const override;
+    bool ContentUsesTiling() const override;
 
     virtual already_AddRefed<gfxASurface>
       CreateOffscreenSurface(const IntSize& aSize,
@@ -82,6 +83,10 @@ public:
 
 protected:
     bool AccelerateLayersByDefault() override;
+
+    BackendPrefsData GetBackendPrefs() const override;
+
+    bool CheckVariationFontSupport() override;
 
 private:
     virtual void GetPlatformCMSOutputProfile(void* &mem, size_t &size) override;

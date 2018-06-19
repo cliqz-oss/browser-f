@@ -16,6 +16,7 @@
 #include "nsIIPCSerializableInputStream.h"
 #include "nsIAsyncInputStream.h"
 #include "nsICloneableInputStream.h"
+#include "mozilla/Mutex.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,13 +62,14 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class nsBufferedInputStream : public nsBufferedStream,
-                              public nsIBufferedInputStream,
-                              public nsIStreamBufferAccess,
-                              public nsIIPCSerializableInputStream,
-                              public nsIAsyncInputStream,
-                              public nsIInputStreamCallback,
-                              public nsICloneableInputStream
+class nsBufferedInputStream final
+    : public nsBufferedStream,
+      public nsIBufferedInputStream,
+      public nsIStreamBufferAccess,
+      public nsIIPCSerializableInputStream,
+      public nsIAsyncInputStream,
+      public nsIInputStreamCallback,
+      public nsICloneableInputStream
 {
 public:
     NS_DECL_ISUPPORTS_INHERITED
@@ -89,12 +91,16 @@ public:
     }
 
 protected:
-    virtual ~nsBufferedInputStream() {}
+    virtual ~nsBufferedInputStream() = default;
 
     NS_IMETHOD Fill() override;
     NS_IMETHOD Flush() override { return NS_OK; } // no-op for input streams
 
+    mozilla::Mutex mMutex;
+
+    // This value is protected by mutex.
     nsCOMPtr<nsIInputStreamCallback> mAsyncWaitCallback;
+
     bool mIsIPCSerializable;
     bool mIsAsyncInputStream;
     bool mIsCloneableInputStream;

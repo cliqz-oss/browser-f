@@ -5,7 +5,7 @@
 
 <!ENTITY search.placeholder2                  "Search on addons.mozilla.org">
 <!ENTITY search.buttonlabel                   "Search">
-<!-- LOCALIZATION NOTE (search.commandKey):
+<!-- LOCALIZATION NOTE (search.commandkey):
      The search command key should match findOnCmd.commandkey from browser.dtd -->
 <!ENTITY search.commandkey                    "f">
 
@@ -80,8 +80,6 @@
 <!ENTITY cmd.preferencesWin.accesskey         "O">
 <!ENTITY cmd.preferencesUnix.label            "Preferences">
 <!ENTITY cmd.preferencesUnix.accesskey        "P">
-<!ENTITY cmd.about.label                      "About">
-<!ENTITY cmd.about.accesskey                  "A">
 
 <!ENTITY cmd.enableAddon.label                "Enable">
 <!ENTITY cmd.enableAddon.accesskey            "E">
@@ -163,13 +161,6 @@
 <!ENTITY progress.pause.tooltip               "Pause">
 <!ENTITY progress.cancel.tooltip              "Cancel">
 
-
-<!-- list sorting -->
-<!ENTITY sort.name.label                      "Name">
-<!ENTITY sort.name.tooltip                    "Sort by name">
-<!ENTITY sort.dateUpdated.label               "Last Updated">
-<!ENTITY sort.dateUpdated.tooltip             "Sort by date updated">
-
 <!ENTITY addon.homepage                       "Homepage">
 <!ENTITY addon.details.label                  "More">
 <!ENTITY addon.details.tooltip                "Show more details about this add-on">
@@ -211,17 +202,6 @@
 <!ENTITY eula.accept                          "Accept and Install…">
 
 <!ENTITY settings.path.button.label           "Browse…">
-
-<!-- LOCALIZATION NOTE (experiment.info.label): The strings related to
-     experiments are present on the "Experiments" tab of the add-ons manager.
-     This tab won't be displayed unless an Experiment add-on is installed.
-     Install https://people.mozilla.org/~gszorc/dummy-experiment-addon.xpi
-     to cause this tab to appear. -->
-<!ENTITY experiment.info.label "What’s this? Telemetry may install and run experiments from time to time.">
-<!ENTITY experiment.info.learnmore "Learn More">
-<!ENTITY experiment.info.learnmore.accesskey "L">
-<!ENTITY experiment.info.changetelemetry "Telemetry Settings">
-<!ENTITY experiment.info.changetelemetry.accesskey "T">
 
 <!ENTITY setting.learnmore "Learn More…">
 

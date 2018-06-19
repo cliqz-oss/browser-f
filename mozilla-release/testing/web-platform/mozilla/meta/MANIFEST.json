@@ -469,6 +469,12 @@
      {}
     ]
    ],
+   "editor/cloning_attributes.html": [
+    [
+     "/_mozilla/editor/cloning_attributes.html",
+     {}
+    ]
+   ],
    "editor/initial_selection_on_focus.html": [
     [
      "/_mozilla/editor/initial_selection_on_focus.html",
@@ -987,7 +993,7 @@
    "support"
   ],
   "dom/classList.html": [
-   "f289334e7b3486259b9aae54b4282a7211b8813e",
+   "17c65652a2943738a0cc5152aec737f243a02d3d",
    "testharness"
   ],
   "dom/throttling/resources/test.html": [
@@ -1032,6 +1038,10 @@
   ],
   "dom/throttling/throttling-ws.window.js": [
    "67a981ba2a4d08b684947ed42aba6648dcd262b4",
+   "testharness"
+  ],
+  "editor/cloning_attributes.html": [
+   "257023d742dd84a93816e05d24f380e27405db66",
    "testharness"
   ],
   "editor/initial_selection_on_focus.html": [
@@ -1439,11 +1449,11 @@
    "support"
   ],
   "wasm/js/globals.wast.js": [
-   "86b3c907edd8bb3867c5a5aaaebf6066a215b154",
+   "1cb0dc48bd61564325053bf49ae7a1bdb27f5c49",
    "support"
   ],
   "wasm/js/harness/index.js": [
-   "b1af046bac238e99d0bc73cc89faf3030149340f",
+   "c1f8ca410de85f15e1d9e57748a2fb9f607be40f",
    "support"
   ],
   "wasm/js/harness/wasm-constants.js": [

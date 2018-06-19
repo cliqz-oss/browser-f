@@ -23,6 +23,7 @@
 #include "nsIPrincipal.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/SVGDocument.h"
 #include "mozilla/LoadInfo.h"
 #include "nsSVGUtils.h"
 #include "nsHostObjectProtocolHandler.h"
@@ -215,10 +216,11 @@ gfxSVGGlyphs::RenderGlyph(gfxContext *aContext, uint32_t aGlyphId,
 {
     gfxContextAutoSaveRestore aContextRestorer(aContext);
 
-    Element *glyph = mGlyphIdMap.Get(aGlyphId);
+    Element* glyph = mGlyphIdMap.Get(aGlyphId);
     MOZ_ASSERT(glyph, "No glyph element. Should check with HasSVGGlyph() first!");
 
-    AutoSetRestoreSVGContextPaint autoSetRestore(aContextPaint, glyph->OwnerDoc());
+    AutoSetRestoreSVGContextPaint autoSetRestore(
+        *aContextPaint, *glyph->OwnerDoc()->AsSVGDocument());
 
     nsSVGUtils::PaintSVGGlyph(glyph, aContext);
 }
@@ -357,7 +359,7 @@ gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer, uint32_t aBufLen)
     rv = NS_NewURI(getter_AddRefs(uri), mSVGGlyphsDocumentURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIPrincipal> principal = NullPrincipal::Create();
+    nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
 
     nsCOMPtr<nsIDOMDocument> domDoc;
     rv = NS_NewDOMDocument(getter_AddRefs(domDoc),

@@ -14,12 +14,11 @@ namespace jit {
 
 class LIRGeneratorX64 : public LIRGeneratorX86Shared
 {
-  public:
+  protected:
     LIRGeneratorX64(MIRGenerator* gen, MIRGraph& graph, LIRGraph& lirGraph)
       : LIRGeneratorX86Shared(gen, graph, lirGraph)
     { }
 
-  protected:
     void lowerUntypedPhiInput(MPhi* phi, uint32_t inputPosition, LBlock* block, size_t lirIndex);
     void defineUntypedPhi(MPhi* phi, size_t lirIndex);
     void lowerInt64PhiInput(MPhi* phi, uint32_t inputPosition, LBlock* block, size_t lirIndex);
@@ -47,29 +46,6 @@ class LIRGeneratorX64 : public LIRGeneratorX86Shared
     void lowerModI64(MMod* mod);
     void lowerUDivI64(MDiv* div);
     void lowerUModI64(MMod* mod);
-
-  public:
-    void visitBox(MBox* box) override;
-    void visitUnbox(MUnbox* unbox) override;
-    void visitReturn(MReturn* ret) override;
-    void visitCompareExchangeTypedArrayElement(MCompareExchangeTypedArrayElement* ins) override;
-    void visitAtomicExchangeTypedArrayElement(MAtomicExchangeTypedArrayElement* ins) override;
-    void visitAtomicTypedArrayElementBinop(MAtomicTypedArrayElementBinop* ins) override;
-    void visitWasmUnsignedToDouble(MWasmUnsignedToDouble* ins) override;
-    void visitWasmUnsignedToFloat32(MWasmUnsignedToFloat32* ins) override;
-    void visitAsmJSLoadHeap(MAsmJSLoadHeap* ins) override;
-    void visitAsmJSStoreHeap(MAsmJSStoreHeap* ins) override;
-    void visitWasmCompareExchangeHeap(MWasmCompareExchangeHeap* ins) override;
-    void visitWasmAtomicExchangeHeap(MWasmAtomicExchangeHeap* ins) override;
-    void visitWasmAtomicBinopHeap(MWasmAtomicBinopHeap* ins) override;
-    void visitWasmLoad(MWasmLoad* ins) override;
-    void visitWasmStore(MWasmStore* ins) override;
-    void visitSubstr(MSubstr* ins) override;
-    void visitRandom(MRandom* ins) override;
-    void visitWasmTruncateToInt64(MWasmTruncateToInt64* ins) override;
-    void visitInt64ToFloatingPoint(MInt64ToFloatingPoint* ins) override;
-    void visitExtendInt32ToInt64(MExtendInt32ToInt64* ins) override;
-    void visitSignExtendInt64(MSignExtendInt64* ins) override;
 };
 
 typedef LIRGeneratorX64 LIRGeneratorSpecific;

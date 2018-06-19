@@ -7,54 +7,49 @@
 // * element existance
 // * path
 
-const TEST_CASES = [
+const TEST_DATA = [
   {
-    targetClassName: "cssanimation-linear",
+    targetClass: "cssanimation-linear",
   },
   {
-    targetClassName: "delay-negative",
+    targetClass: "delay-negative",
   },
   {
-    targetClassName: "easing-step",
+    targetClass: "easing-step",
     expectedPath: [
       { x: 0, y: 0 },
-      { x: 49900, y: 0 },
-      { x: 50000, y: 50 },
-      { x: 99999, y: 50 },
-      { x: 100000, y: 0 },
+      { x: 499999, y: 0 },
+      { x: 500000, y: 50 },
+      { x: 999999, y: 50 },
+      { x: 1000000, y: 0 },
     ],
   },
   {
-    targetClassName: "keyframes-easing-step",
+    targetClass: "keyframes-easing-step",
   },
 ];
 
-add_task(async function () {
+add_task(async function() {
   await addTab(URL_ROOT + "doc_multi_timings.html");
-
+  await removeAnimatedElementsExcept(TEST_DATA.map(t => `.${ t.targetClass }`));
   const { panel } = await openAnimationInspector();
 
-  for (const testCase of TEST_CASES) {
-    const {
-      expectedPath,
-      targetClassName,
-    } = testCase;
-
+  for (const { targetClass, expectedPath } of TEST_DATA) {
     const animationItemEl =
-      findAnimationItemElementsByTargetClassName(panel, targetClassName);
+      findAnimationItemElementsByTargetSelector(panel, `.${ targetClass }`);
 
-    info(`Checking effect timing path existance for ${ targetClassName }`);
+    info(`Checking effect timing path existance for ${ targetClass }`);
     const effectTimingPathEl =
       animationItemEl.querySelector(".animation-effect-timing-path");
 
     if (expectedPath) {
       ok(effectTimingPathEl,
-         "The effect timing path element should be in animation item element");
+        "The effect timing path element should be in animation item element");
       const pathEl = effectTimingPathEl.querySelector(".animation-iteration-path");
       assertPathSegments(pathEl, false, expectedPath);
     } else {
       ok(!effectTimingPathEl,
-         "The effect timing path element should not be in animation item element");
+        "The effect timing path element should not be in animation item element");
     }
   }
 });

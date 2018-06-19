@@ -3,36 +3,47 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{BorderRadius, ClipMode, ComplexClipRegion, DeviceIntRect, DevicePixelScale, ImageMask};
-use api::{ImageRendering, LayerRect, LayerSize, LayoutPoint, LayoutVector2D, LocalClip};
-use api::{BoxShadowClipMode, LayerPoint, LayerToWorldScale};
+use api::{ImageRendering, LayoutRect, LayoutSize, LayoutPoint, LayoutVector2D, LocalClip};
+use api::{BoxShadowClipMode, LayoutToWorldScale, LineOrientation, LineStyle};
 use border::{BorderCornerClipSource, ensure_no_corner_overlap};
 use box_shadow::{BLUR_SAMPLE_SCALE, BoxShadowClipSource, BoxShadowCacheKey};
 use clip_scroll_tree::{ClipChainIndex, CoordinateSystemId};
 use ellipse::Ellipse;
 use freelist::{FreeList, FreeListHandle, WeakFreeListHandle};
 use gpu_cache::{GpuCache, GpuCacheHandle, ToGpuBlocks};
-use gpu_types::ClipScrollNodeIndex;
+use gpu_types::{BoxShadowStretchMode, ClipScrollNodeIndex};
 use prim_store::{ClipData, ImageMaskData};
 use render_task::to_cache_size;
-use resource_cache::{CacheItem, ImageRequest, ResourceCache};
-use util::{LayerToWorldFastTransform, MaxRect, calculate_screen_bounding_rect};
-use util::extract_inner_rect_safe;
+use resource_cache::{ImageRequest, ResourceCache};
+use util::{LayoutToWorldFastTransform, MaxRect, calculate_screen_bounding_rect};
+use util::{extract_inner_rect_safe, pack_as_float};
 use std::sync::Arc;
 
-pub type ClipStore = FreeList<ClipSources>;
-pub type ClipSourcesHandle = FreeListHandle<ClipSources>;
-pub type ClipSourcesWeakHandle = WeakFreeListHandle<ClipSources>;
+#[derive(Debug)]
+pub enum ClipStoreMarker {}
+
+pub type ClipStore = FreeList<ClipSources, ClipStoreMarker>;
+pub type ClipSourcesHandle = FreeListHandle<ClipStoreMarker>;
+pub type ClipSourcesWeakHandle = WeakFreeListHandle<ClipStoreMarker>;
+
+#[derive(Debug)]
+pub struct LineDecorationClipSource {
+    rect: LayoutRect,
+    style: LineStyle,
+    orientation: LineOrientation,
+    wavy_line_thickness: f32,
+}
 
 #[derive(Clone, Debug)]
 pub struct ClipRegion {
-    pub main: LayerRect,
+    pub main: LayoutRect,
     pub image_mask: Option<ImageMask>,
     pub complex_clips: Vec<ComplexClipRegion>,
 }
 
 impl ClipRegion {
     pub fn create_for_clip_node(
-        rect: LayerRect,
+        rect: LayoutRect,
         mut complex_clips: Vec<ComplexClipRegion>,
         mut image_mask: Option<ImageMask>,
         reference_frame_relative_offset: &LayoutVector2D,
@@ -58,9 +69,9 @@ impl ClipRegion {
         local_clip: &LocalClip,
         reference_frame_relative_offset: &LayoutVector2D
     ) -> ClipRegion {
-        let complex_clips = match local_clip {
-            &LocalClip::Rect(_) => Vec::new(),
-            &LocalClip::RoundedRect(_, ref region) => vec![region.clone()],
+        let complex_clips = match *local_clip {
+            LocalClip::Rect(_) => Vec::new(),
+            LocalClip::RoundedRect(_, ref region) => vec![region.clone()],
         };
         ClipRegion::create_for_clip_node(
             *local_clip.clip_rect(),
@@ -73,8 +84,8 @@ impl ClipRegion {
 
 #[derive(Debug)]
 pub enum ClipSource {
-    Rectangle(LayerRect),
-    RoundedRectangle(LayerRect, BorderRadius, ClipMode),
+    Rectangle(LayoutRect, ClipMode),
+    RoundedRectangle(LayoutRect, BorderRadius, ClipMode),
     Image(ImageMask),
     /// TODO(gw): This currently only handles dashed style
     /// clips, where the border style is dashed for both
@@ -82,6 +93,7 @@ pub enum ClipSource {
     /// and different styles per edge.
     BorderCorner(BorderCornerClipSource),
     BoxShadow(BoxShadowClipSource),
+    LineDecoration(LineDecorationClipSource),
 }
 
 impl From<ClipRegion> for ClipSources {
@@ -92,7 +104,7 @@ impl From<ClipRegion> for ClipSources {
             clips.push(ClipSource::Image(info));
         }
 
-        clips.push(ClipSource::Rectangle(region.main));
+        clips.push(ClipSource::Rectangle(region.main, ClipMode::Clip));
 
         for complex in region.complex_clips {
             clips.push(ClipSource::new_rounded_rect(
@@ -108,32 +120,52 @@ impl From<ClipRegion> for ClipSources {
 
 impl ClipSource {
     pub fn new_rounded_rect(
-        rect: LayerRect,
+        rect: LayoutRect,
         mut radii: BorderRadius,
         clip_mode: ClipMode
     ) -> ClipSource {
-        ensure_no_corner_overlap(&mut radii, &rect);
-        ClipSource::RoundedRectangle(
-            rect,
-            radii,
-            clip_mode,
+        if radii.is_zero() {
+            ClipSource::Rectangle(rect, clip_mode)
+        } else {
+            ensure_no_corner_overlap(&mut radii, &rect);
+            ClipSource::RoundedRectangle(
+                rect,
+                radii,
+                clip_mode,
+            )
+        }
+    }
+
+    pub fn new_line_decoration(
+        rect: LayoutRect,
+        style: LineStyle,
+        orientation: LineOrientation,
+        wavy_line_thickness: f32,
+    ) -> ClipSource {
+        ClipSource::LineDecoration(
+            LineDecorationClipSource {
+                rect,
+                style,
+                orientation,
+                wavy_line_thickness,
+            }
         )
     }
 
     pub fn new_box_shadow(
-        shadow_rect: LayerRect,
+        shadow_rect: LayoutRect,
         shadow_radius: BorderRadius,
-        prim_shadow_rect: LayerRect,
+        prim_shadow_rect: LayoutRect,
         blur_radius: f32,
         clip_mode: BoxShadowClipMode,
     ) -> ClipSource {
         // Get the fractional offsets required to match the
         // source rect with a minimal rect.
-        let fract_offset = LayerPoint::new(
+        let fract_offset = LayoutPoint::new(
             shadow_rect.origin.x.fract().abs(),
             shadow_rect.origin.y.fract().abs(),
         );
-        let fract_size = LayerSize::new(
+        let fract_size = LayoutSize::new(
             shadow_rect.size.width.fract().abs(),
             shadow_rect.size.height.fract().abs(),
         );
@@ -160,32 +192,42 @@ impl ClipSource {
         let used_corner_height = max_corner_height.max(blur_region);
 
         // Minimal nine-patch size, corner + internal + corner.
-        let min_shadow_rect_size = LayerSize::new(
+        let min_shadow_rect_size = LayoutSize::new(
             2.0 * used_corner_width + blur_region,
             2.0 * used_corner_height + blur_region,
         );
 
         // The minimal rect to blur.
-        let mut minimal_shadow_rect = LayerRect::new(
-            LayerPoint::new(
+        let mut minimal_shadow_rect = LayoutRect::new(
+            LayoutPoint::new(
                 blur_region + fract_offset.x,
                 blur_region + fract_offset.y,
             ),
-            LayerSize::new(
+            LayoutSize::new(
                 min_shadow_rect_size.width + fract_size.width,
                 min_shadow_rect_size.height + fract_size.height,
             ),
         );
 
         // If the width or height ends up being bigger than the original
-        // primitive shadow rect, just blur the entire rect and draw that
-        // as a simple blit. This is necessary for correctness, since the
-        // blur of one corner may affect the blur in another corner.
-        minimal_shadow_rect.size.width = minimal_shadow_rect.size.width.min(shadow_rect.size.width);
-        minimal_shadow_rect.size.height = minimal_shadow_rect.size.height.min(shadow_rect.size.height);
+        // primitive shadow rect, just blur the entire rect along that
+        // axis and draw that as a simple blit. This is necessary for
+        // correctness, since the blur of one corner may affect the blur
+        // in another corner.
+        let mut stretch_mode_x = BoxShadowStretchMode::Stretch;
+        if shadow_rect.size.width < minimal_shadow_rect.size.width {
+            minimal_shadow_rect.size.width = shadow_rect.size.width;
+            stretch_mode_x = BoxShadowStretchMode::Simple;
+        }
+
+        let mut stretch_mode_y = BoxShadowStretchMode::Stretch;
+        if shadow_rect.size.height < minimal_shadow_rect.size.height {
+            minimal_shadow_rect.size.height = shadow_rect.size.height;
+            stretch_mode_y = BoxShadowStretchMode::Simple;
+        }
 
         // Expand the shadow rect by enough room for the blur to take effect.
-        let shadow_rect_alloc_size = LayerSize::new(
+        let shadow_rect_alloc_size = LayoutSize::new(
             2.0 * blur_region + minimal_shadow_rect.size.width.ceil(),
             2.0 * blur_region + minimal_shadow_rect.size.height.ceil(),
         );
@@ -196,19 +238,37 @@ impl ClipSource {
             prim_shadow_rect,
             blur_radius,
             clip_mode,
-            cache_item: CacheItem::invalid(),
+            stretch_mode_x,
+            stretch_mode_y,
+            cache_handle: None,
             cache_key: None,
             clip_data_handle: GpuCacheHandle::new(),
             minimal_shadow_rect,
         })
+    }
+
+    // Return a modified clip source that is the same as self
+    // but offset in local-space by a specified amount.
+    pub fn offset(&self, offset: &LayoutVector2D) -> ClipSource {
+        match *self {
+            ClipSource::LineDecoration(ref info) => {
+                ClipSource::LineDecoration(LineDecorationClipSource {
+                    rect: info.rect.translate(offset),
+                    ..*info
+                })
+            }
+            _ => {
+                panic!("bug: other clip sources not expected here yet");
+            }
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct ClipSources {
     pub clips: Vec<(ClipSource, GpuCacheHandle)>,
-    pub local_inner_rect: LayerRect,
-    pub local_outer_rect: Option<LayerRect>
+    pub local_inner_rect: LayoutRect,
+    pub local_outer_rect: Option<LayoutRect>
 }
 
 impl ClipSources {
@@ -231,16 +291,16 @@ impl ClipSources {
         &self.clips
     }
 
-    fn calculate_inner_and_outer_rects(clips: &Vec<ClipSource>) -> (LayerRect, Option<LayerRect>) {
+    fn calculate_inner_and_outer_rects(clips: &Vec<ClipSource>) -> (LayoutRect, Option<LayoutRect>) {
         if clips.is_empty() {
-            return (LayerRect::zero(), None);
+            return (LayoutRect::zero(), None);
         }
 
         // Depending on the complexity of the clip, we may either know the outer and/or inner
         // rect, or neither or these.  In the case of a clip-out, we currently set the mask bounds
         // to be unknown. This is conservative, but ensures correctness. In the future we can make
         // this a lot more clever with some proper region handling.
-        let mut local_outer = Some(LayerRect::max_rect());
+        let mut local_outer = Some(LayoutRect::max_rect());
         let mut local_inner = local_outer;
         let mut can_calculate_inner_rect = true;
         let mut can_calculate_outer_rect = false;
@@ -253,7 +313,14 @@ impl ClipSources {
                     }
                     local_inner = None;
                 }
-                ClipSource::Rectangle(rect) => {
+                ClipSource::Rectangle(rect, mode) => {
+                    // Once we encounter a clip-out, we just assume the worst
+                    // case clip mask size, for now.
+                    if mode == ClipMode::ClipOut {
+                        can_calculate_inner_rect = false;
+                        break;
+                    }
+
                     can_calculate_outer_rect = true;
                     local_outer = local_outer.and_then(|r| r.intersection(&rect));
                     local_inner = local_inner.and_then(|r| r.intersection(&rect));
@@ -274,21 +341,24 @@ impl ClipSources {
                         .and_then(|r| inner_rect.and_then(|ref inner| r.intersection(inner)));
                 }
                 ClipSource::BoxShadow(..) |
-                ClipSource::BorderCorner { .. } => {
+                ClipSource::BorderCorner { .. } |
+                ClipSource::LineDecoration(..) => {
                     can_calculate_inner_rect = false;
                     break;
                 }
             }
         }
 
-        let outer = match can_calculate_outer_rect {
-            true => Some(local_outer.unwrap_or_else(LayerRect::zero)),
-            false => None,
+        let outer = if can_calculate_outer_rect {
+            Some(local_outer.unwrap_or_else(LayoutRect::zero))
+        } else {
+            None
         };
 
-        let inner = match can_calculate_inner_rect {
-            true => local_inner.unwrap_or_else(LayerRect::zero),
-            false => LayerRect::zero(),
+        let inner = if can_calculate_inner_rect {
+            local_inner.unwrap_or_else(LayoutRect::zero)
+        } else {
+            LayoutRect::zero()
         };
 
         (inner, outer)
@@ -314,10 +384,16 @@ impl ClipSources {
                             info.clip_mode as i32 as f32,
                             0.0,
                         ]);
+                        request.push([
+                            info.stretch_mode_x as i32 as f32,
+                            info.stretch_mode_y as i32 as f32,
+                            0.0,
+                            0.0,
+                        ]);
                         request.push(info.prim_shadow_rect);
                     }
-                    ClipSource::Rectangle(rect) => {
-                        let data = ClipData::uniform(rect, 0.0, ClipMode::Clip);
+                    ClipSource::Rectangle(rect, mode) => {
+                        let data = ClipData::uniform(rect, 0.0, mode);
                         data.write(&mut request);
                     }
                     ClipSource::RoundedRectangle(ref rect, ref radius, mode) => {
@@ -326,6 +402,15 @@ impl ClipSources {
                     }
                     ClipSource::BorderCorner(ref mut source) => {
                         source.write(request);
+                    }
+                    ClipSource::LineDecoration(ref info) => {
+                        request.push(info.rect);
+                        request.push([
+                            info.wavy_line_thickness,
+                            pack_as_float(info.style as u32),
+                            pack_as_float(info.orientation as u32),
+                            0.0,
+                        ]);
                     }
                 }
             }
@@ -348,7 +433,7 @@ impl ClipSources {
                     let blur_radius_dp = (info.blur_radius * 0.5 * device_pixel_scale.0).round();
 
                     // Create the cache key for this box-shadow render task.
-                    let content_scale = LayerToWorldScale::new(1.0) * device_pixel_scale;
+                    let content_scale = LayoutToWorldScale::new(1.0) * device_pixel_scale;
                     let cache_size = to_cache_size(info.shadow_rect_alloc_size * content_scale);
                     let bs_cache_key = BoxShadowCacheKey {
                         blur_radius_dp: blur_radius_dp as i32,
@@ -379,7 +464,7 @@ impl ClipSources {
 
     pub fn get_screen_bounds(
         &self,
-        transform: &LayerToWorldFastTransform,
+        transform: &LayoutToWorldFastTransform,
         device_pixel_scale: DevicePixelScale,
     ) -> (DeviceIntRect, Option<DeviceIntRect>) {
         // If this translation isn't axis aligned or has a perspective component, don't try to
@@ -408,12 +493,12 @@ impl ClipSources {
 /// rectangles that are either outside or inside bounds.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Geometry {
-    pub local_rect: LayerRect,
+    pub local_rect: LayoutRect,
     pub device_rect: DeviceIntRect,
 }
 
-impl From<LayerRect> for Geometry {
-    fn from(local_rect: LayerRect) -> Self {
+impl From<LayoutRect> for Geometry {
+    fn from(local_rect: LayoutRect) -> Self {
         Geometry {
             local_rect,
             device_rect: DeviceIntRect::zero(),
@@ -421,32 +506,11 @@ impl From<LayerRect> for Geometry {
     }
 }
 
-pub trait Contains {
-    fn contains(&self, point: &LayoutPoint) -> bool;
-}
-
-impl Contains for LocalClip {
-    fn contains(&self, point: &LayoutPoint) -> bool {
-        if !self.clip_rect().contains(point) {
-            return false;
-        }
-        match self {
-            &LocalClip::Rect(..) => true,
-            &LocalClip::RoundedRect(_, complex_clip) => complex_clip.contains(point),
-        }
-    }
-}
-
-impl Contains for ComplexClipRegion {
-    fn contains(&self, point: &LayoutPoint) -> bool {
-        rounded_rectangle_contains_point(point, &self.rect, &self.radii)
-    }
-}
-
-pub fn rounded_rectangle_contains_point(point: &LayoutPoint,
-                                        rect: &LayerRect,
-                                        radii: &BorderRadius)
-                                        -> bool {
+pub fn rounded_rectangle_contains_point(
+    point: &LayoutPoint,
+    rect: &LayoutRect,
+    radii: &BorderRadius
+) -> bool {
     if !rect.contains(point) {
         return false;
     }
@@ -485,7 +549,7 @@ pub type ClipChainNodeRef = Option<Arc<ClipChainNode>>;
 #[derive(Debug, Clone)]
 pub struct ClipChainNode {
     pub work_item: ClipWorkItem,
-    pub local_clip_rect: LayerRect,
+    pub local_clip_rect: LayoutRect,
     pub screen_outer_rect: DeviceIntRect,
     pub screen_inner_rect: DeviceIntRect,
     pub prev: ClipChainNodeRef,
@@ -497,6 +561,7 @@ pub struct ClipChain {
     pub combined_outer_screen_rect: DeviceIntRect,
     pub combined_inner_screen_rect: DeviceIntRect,
     pub nodes: ClipChainNodeRef,
+    pub has_non_root_coord_system: bool,
 }
 
 impl ClipChain {
@@ -506,6 +571,7 @@ impl ClipChain {
             combined_inner_screen_rect: *screen_rect,
             combined_outer_screen_rect: *screen_rect,
             nodes: None,
+            has_non_root_coord_system: false,
         }
     }
 
@@ -537,6 +603,8 @@ impl ClipChain {
         self.combined_inner_screen_rect =
             self.combined_inner_screen_rect.intersection(&new_node.screen_inner_rect)
             .unwrap_or_else(DeviceIntRect::zero);
+
+        self.has_non_root_coord_system |= new_node.work_item.coordinate_system_id != CoordinateSystemId::root();
 
         self.nodes = Some(Arc::new(new_node));
     }

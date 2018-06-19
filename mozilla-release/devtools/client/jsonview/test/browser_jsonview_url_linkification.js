@@ -7,12 +7,11 @@
 
 const {ELLIPSIS} = require("devtools/shared/l10n");
 
-add_task(async function () {
+add_task(async function() {
   info("Test short URL linkification JSON started");
 
   let url = "http://example.com/";
   let tab = await addJsonViewTab("data:application/json," + JSON.stringify([url]));
-
   await testLinkNavigation({ browser: tab.linkedBrowser, url });
 
   info("Switch back to the JSONViewer");
@@ -21,7 +20,7 @@ add_task(async function () {
   await testLinkNavigation({ browser: tab.linkedBrowser, url, clickLabel: true });
 });
 
-add_task(async function () {
+add_task(async function() {
   info("Test long URL linkification JSON started");
 
   let url = "http://example.com/" + "a".repeat(100);

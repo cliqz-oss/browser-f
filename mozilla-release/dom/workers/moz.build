@@ -21,6 +21,7 @@ EXPORTS.mozilla.dom += [
     'WorkerLocation.h',
     'WorkerNavigator.h',
     'WorkerPrivate.h',
+    'WorkerRef.h',
     'WorkerRunnable.h',
     'WorkerScope.h',
 ]
@@ -59,17 +60,19 @@ UNIFIED_SOURCES += [
     'WorkerLocation.cpp',
     'WorkerNavigator.cpp',
     'WorkerPrivate.cpp',
+    'WorkerRef.cpp',
     'WorkerRunnable.cpp',
     'WorkerScope.cpp',
     'WorkerThread.cpp',
 ]
 
 LOCAL_INCLUDES += [
-    '../base',
-    '../system',
+    '/caps',
     '/dom/base',
     '/dom/bindings',
+    '/dom/system',
     '/js/xpconnect/loader',
+    '/netwerk/base',
     '/xpcom/build',
     '/xpcom/threads',
 ]
@@ -80,7 +83,6 @@ FINAL_LIBRARY = 'xul'
 
 TEST_DIRS += [
     'test/extensions/bootstrap',
-    'test/extensions/traditional',
 ]
 
 MOCHITEST_MANIFESTS += [
@@ -95,7 +97,8 @@ XPCSHELL_TESTS_MANIFESTS += ['test/xpcshell/xpcshell.ini']
 
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 
-TEST_DIRS += ['test/gtest']
-
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['NIGHTLY_BUILD']:
+    DEFINES['ENABLE_WASM_GC'] = True

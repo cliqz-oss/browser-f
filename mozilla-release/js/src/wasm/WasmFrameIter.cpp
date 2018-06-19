@@ -49,34 +49,16 @@ WasmFrameIter::WasmFrameIter(JitActivation* activation, wasm::Frame* fp)
     // signal handler in the runtime.
 
     if (activation->isWasmTrapping()) {
-        code_ = &fp_->tls->instance->code();
-        MOZ_ASSERT(code_ == LookupCode(activation->wasmTrapPC()));
+        const TrapData& trapData = activation->wasmTrapData();
+        void* unwoundPC = trapData.unwoundPC;
 
-        codeRange_ = code_->lookupFuncRange(activation->wasmTrapPC());
+        code_ = &fp_->tls->instance->code();
+        MOZ_ASSERT(code_ == LookupCode(unwoundPC));
+
+        codeRange_ = code_->lookupFuncRange(unwoundPC);
         MOZ_ASSERT(codeRange_);
 
-        lineOrBytecode_ = activation->wasmTrapBytecodeOffset();
-
-        MOZ_ASSERT(!done());
-        return;
-    }
-
-    // When asynchronously interrupted, exitFP is set to the interrupted frame
-    // itself and so we do not want to skip it. Instead, we can recover the
-    // Code and CodeRange from the JitActivation, which are set when control
-    // flow was interrupted. There is no CallSite (b/c the interrupt was
-    // async), but this is fine because CallSite is only used for line number
-    // for which we can use the beginning of the function from the CodeRange
-    // instead.
-
-    if (activation->isWasmInterrupted()) {
-        code_ = &fp_->tls->instance->code();
-        MOZ_ASSERT(code_ == LookupCode(activation->wasmInterruptUnwindPC()));
-
-        codeRange_ = code_->lookupFuncRange(activation->wasmInterruptUnwindPC());
-        MOZ_ASSERT(codeRange_);
-
-        lineOrBytecode_ = codeRange_->funcLineOrBytecode();
+        lineOrBytecode_ = trapData.bytecodeOffset;
 
         MOZ_ASSERT(!done());
         return;
@@ -111,14 +93,12 @@ WasmFrameIter::operator++()
     // popping each frame and, once onLeaveFrame is called for a given frame,
     // that frame must not be visible to subsequent stack iteration (or it
     // could be added as a "new" frame just as it becomes garbage).  When the
-    // frame is "interrupted", then exitFP is included in the callstack
-    // (otherwise, it is skipped, as explained above). So to unwind the
-    // innermost frame, we just clear the interrupt state.
+    // frame is trapping, then exitFP is included in the callstack (otherwise,
+    // it is skipped, as explained above). So to unwind the innermost frame, we
+    // just clear the trapping state.
 
     if (unwind_ == Unwind::True) {
-        if (activation_->isWasmInterrupted())
-            activation_->finishWasmInterrupt();
-        else if (activation_->isWasmTrapping())
+        if (activation_->isWasmTrapping())
             activation_->finishWasmTrap();
         activation_->setWasmExitFP(fp_);
     }
@@ -289,13 +269,21 @@ static const unsigned SetFP = 16;
 static const unsigned PoppedFP = 4;
 static const unsigned PoppedTLSReg = 0;
 #elif defined(JS_CODEGEN_ARM64)
+// On ARM64 we do not use push or pop; the prologues and epilogues are
+// structured differently due to restrictions on SP alignment.  Even so,
+// PushedRetAddr, PushedTLS, and PushedFP are used in some restricted contexts
+// and must be superficially meaningful.
 static const unsigned BeforePushRetAddr = 0;
-static const unsigned PushedRetAddr = 0;
-static const unsigned PushedTLS = 1;
-static const unsigned PushedFP = 1;
-static const unsigned SetFP = 0;
-static const unsigned PoppedFP = 0;
-static const unsigned PoppedTLSReg = 0;
+static const unsigned PushedRetAddr = 8;
+static const unsigned PushedTLS = 12;
+static const unsigned PushedFP = 16;
+static const unsigned SetFP = 20;
+static const unsigned PoppedFP = 8;
+static const unsigned PoppedTLSReg = 4;
+static_assert(BeforePushRetAddr == 0, "Required by StartUnwinding");
+static_assert(PushedFP > PushedRetAddr, "Required by StartUnwinding");
+static_assert(PushedFP > PushedTLS, "Required by StartUnwinding");
+static_assert(PoppedFP > PoppedTLSReg, "Required by StartUnwinding");
 #elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
 static const unsigned PushedRetAddr = 8;
 static const unsigned PushedTLS = 12;
@@ -359,6 +347,7 @@ GenerateCallablePrologue(MacroAssembler& masm, uint32_t* entry)
     // this requires AutoForbidPools to prevent a constant pool from being
     // randomly inserted between two instructions.
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+    {
         *entry = masm.currentOffset();
 
         masm.subFromStackPtr(Imm32(sizeof(Frame)));
@@ -370,6 +359,26 @@ GenerateCallablePrologue(MacroAssembler& masm, uint32_t* entry)
         MOZ_ASSERT_IF(!masm.oom(), PushedFP == masm.currentOffset() - *entry);
         masm.moveStackPtrTo(FramePointer);
         MOZ_ASSERT_IF(!masm.oom(), SetFP == masm.currentOffset() - *entry);
+    }
+#elif defined(JS_CODEGEN_ARM64)
+    {
+        // We do not use the PseudoStackPointer.
+        MOZ_ASSERT(masm.GetStackPointer64().code() == sp.code());
+
+        AutoForbidPools afp(&masm, /* number of instructions in scope = */ 5);
+
+        *entry = masm.currentOffset();
+
+        masm.Sub(sp, sp, sizeof(Frame));
+        masm.Str(ARMRegister(lr, 64), MemOperand(sp, offsetof(Frame, returnAddress)));
+        MOZ_ASSERT_IF(!masm.oom(), PushedRetAddr == masm.currentOffset() - *entry);
+        masm.Str(ARMRegister(WasmTlsReg, 64), MemOperand(sp, offsetof(Frame, tls)));
+        MOZ_ASSERT_IF(!masm.oom(), PushedTLS == masm.currentOffset() - *entry);
+        masm.Str(ARMRegister(FramePointer, 64), MemOperand(sp, offsetof(Frame, callerFP)));
+        MOZ_ASSERT_IF(!masm.oom(), PushedFP == masm.currentOffset() - *entry);
+        masm.Mov(ARMRegister(FramePointer, 64), sp);
+        MOZ_ASSERT_IF(!masm.oom(), SetFP == masm.currentOffset() - *entry);
+    }
 #else
     {
 # if defined(JS_CODEGEN_ARM)
@@ -420,6 +429,25 @@ GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason 
     masm.as_jr(ra);
     masm.addToStackPtr(Imm32(sizeof(Frame)));
 
+#elif defined(JS_CODEGEN_ARM64)
+
+    // We do not use the PseudoStackPointer.
+    MOZ_ASSERT(masm.GetStackPointer64().code() == sp.code());
+
+    AutoForbidPools afp(&masm, /* number of instructions in scope = */ 5);
+
+    masm.Ldr(ARMRegister(FramePointer, 64), MemOperand(sp, offsetof(Frame, callerFP)));
+    poppedFP = masm.currentOffset();
+
+    masm.Ldr(ARMRegister(WasmTlsReg, 64), MemOperand(sp, offsetof(Frame, tls)));
+    poppedTlsReg = masm.currentOffset();
+
+    masm.Ldr(ARMRegister(lr, 64), MemOperand(sp, offsetof(Frame, returnAddress)));
+    *ret = masm.currentOffset();
+
+    masm.Add(sp, sp, sizeof(Frame));
+    masm.Ret(ARMRegister(lr, 64));
+
 #else
     // Forbid pools for the same reason as described in GenerateCallablePrologue.
 # if defined(JS_CODEGEN_ARM)
@@ -449,9 +477,8 @@ GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason 
 }
 
 void
-wasm::GenerateFunctionPrologue(MacroAssembler& masm, uint32_t framePushed, IsLeaf isLeaf,
-                               const SigIdDesc& sigId, BytecodeOffset trapOffset,
-                               FuncOffsets* offsets, const Maybe<uint32_t>& tier1FuncIndex)
+wasm::GenerateFunctionPrologue(MacroAssembler& masm, const SigIdDesc& sigId,
+                               const Maybe<uint32_t>& tier1FuncIndex, FuncOffsets* offsets)
 {
     // Flush pending pools so they do not get dumped between the 'begin' and
     // 'normalEntry' offsets since the difference must be less than UINT8_MAX
@@ -515,34 +542,7 @@ wasm::GenerateFunctionPrologue(MacroAssembler& masm, uint32_t framePushed, IsLea
 
     offsets->tierEntry = masm.currentOffset();
 
-    // The framePushed value is tier-variant and thus the stack increment must
-    // go after the tiering jump/entry.
-    if (framePushed > 0) {
-        // If the frame is large, don't bump sp until after the stack limit check so
-        // that the trap handler isn't called with a wild sp.
-        if (framePushed > MAX_UNCHECKED_LEAF_FRAME_SIZE) {
-            Label ok;
-            Register scratch = ABINonArgReg0;
-            masm.moveStackPtrTo(scratch);
-            masm.subPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, stackLimit)), scratch);
-            masm.branchPtr(Assembler::GreaterThan, scratch, Imm32(framePushed), &ok);
-            masm.wasmTrap(wasm::Trap::StackOverflow, trapOffset);
-            masm.bind(&ok);
-        }
-
-        masm.reserveStack(framePushed);
-
-        if (framePushed <= MAX_UNCHECKED_LEAF_FRAME_SIZE && !isLeaf) {
-            Label ok;
-            masm.branchStackPtrRhs(Assembler::Below,
-                                   Address(WasmTlsReg, offsetof(wasm::TlsData, stackLimit)),
-                                   &ok);
-            masm.wasmTrap(wasm::Trap::StackOverflow, trapOffset);
-            masm.bind(&ok);
-        }
-    }
-
-    MOZ_ASSERT(masm.framePushed() == framePushed);
+    MOZ_ASSERT(masm.framePushed() == 0);
 }
 
 void
@@ -637,6 +637,14 @@ wasm::GenerateJitEntryPrologue(MacroAssembler& masm, Offsets* offsets)
 #elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
         offsets->begin = masm.currentOffset();
         masm.push(ra);
+#elif defined(JS_CODEGEN_ARM64)
+        AutoForbidPools afp(&masm, /* number of instructions in scope = */ 3);
+        offsets->begin = masm.currentOffset();
+        MOZ_ASSERT(BeforePushRetAddr == 0);
+        // Subtract from SP first as SP must be aligned before offsetting.
+        masm.Sub(sp, sp, 8);
+        masm.storePtr(lr, Address(masm.getStackPointer(), 0));
+        masm.adjustFrame(8);
 #else
         // The x86/x64 call instruction pushes the return address.
         offsets->begin = masm.currentOffset();
@@ -732,10 +740,8 @@ ProfilingFrameIterator::initFromExitFP(const Frame* fp)
     // This means that the innermost frame is skipped. This is fine because:
     //  - for import exit calls, the innermost frame is a thunk, so the first
     //    frame that shows up is the function calling the import;
-    //  - for Math and other builtin calls as well as interrupts, we note the
-    //    absence of an exit reason and inject a fake "builtin" frame; and
-    //  - for async interrupts, we just accept that we'll lose the innermost
-    //    frame.
+    //  - for Math and other builtin calls, we note the absence of an exit
+    //    reason and inject a fake "builtin" frame; and
     switch (codeRange_->kind()) {
       case CodeRange::InterpEntry:
         callerPC_ = nullptr;
@@ -758,12 +764,10 @@ ProfilingFrameIterator::initFromExitFP(const Frame* fp)
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
-      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
       case CodeRange::OutOfBoundsExit:
       case CodeRange::UnalignedExit:
       case CodeRange::Throw:
-      case CodeRange::Interrupt:
       case CodeRange::FarJumpIsland:
         MOZ_CRASH("Unexpected CodeRange kind");
     }
@@ -837,11 +841,17 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
       case CodeRange::ImportJitExit:
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
-      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
 #if defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
-        if (offsetFromEntry < PushedFP || codeRange->isThunk()) {
-            // On MIPS we relay on register state instead of state saved on
+        if (codeRange->isThunk()) {
+            // The FarJumpIsland sequence temporary scrambles ra.
+            // Don't unwind to caller.
+            fixedPC = pc;
+            fixedFP = fp;
+            *unwoundCaller = false;
+            AssertMatchesCallSite(fp->returnAddress, fp->callerFP);
+        } else if (offsetFromEntry < PushedFP) {
+            // On MIPS we rely on register state instead of state saved on
             // stack until the wasm::Frame is completely built.
             // On entry the return address is in ra (registers.lr) and
             // fp holds the caller's fp.
@@ -849,7 +859,20 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
             fixedFP = fp;
             AssertMatchesCallSite(fixedPC, fixedFP);
         } else
-#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64)
+#elif defined(JS_CODEGEN_ARM64)
+        if (offsetFromEntry < PushedFP || codeRange->isThunk()) {
+            // Constraints above ensure that this covers BeforePushRetAddr,
+            // PushedRetAddr, and PushedTLS.
+            //
+            // On ARM64 we subtract the size of the Frame from SP and then store
+            // values into the stack.  Execution can be interrupted at various
+            // places in that sequence.  We rely on the register state for our
+            // values.
+            fixedPC = (uint8_t*) registers.lr;
+            fixedFP = fp;
+            AssertMatchesCallSite(fixedPC, fixedFP);
+        } else
+#elif defined(JS_CODEGEN_ARM)
         if (offsetFromEntry == BeforePushRetAddr || codeRange->isThunk()) {
             // The return address is still in lr and fp holds the caller's fp.
             fixedPC = (uint8_t*) registers.lr;
@@ -884,6 +907,15 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
             // The ra and TLS might also be loaded, but the Frame structure is
             // still on stack, so we can acess the ra form there.
             MOZ_ASSERT(fp == reinterpret_cast<Frame*>(sp)->callerFP);
+            fixedPC = reinterpret_cast<Frame*>(sp)->returnAddress;
+            fixedFP = fp;
+            AssertMatchesCallSite(fixedPC, fixedFP);
+#elif defined(JS_CODEGEN_ARM64)
+        // The stack pointer does not move until all values have
+        // been restored so several cases can be coalesced here.
+        } else if (offsetInCode >= codeRange->ret() - PoppedFP &&
+                   offsetInCode <= codeRange->ret())
+        {
             fixedPC = reinterpret_cast<Frame*>(sp)->returnAddress;
             fixedFP = fp;
             AssertMatchesCallSite(fixedPC, fixedFP);
@@ -940,7 +972,8 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
         // There's a jit frame above the current one; we don't care about pc
         // since the Jit entry frame is a jit frame which can be considered as
         // an exit frame.
-#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) || \
+    defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
         if (offsetFromEntry < PushedRetAddr) {
             // We haven't pushed the jit return address yet, thus the jit
             // frame is incomplete. During profiling frame iteration, it means
@@ -960,11 +993,6 @@ js::wasm::StartUnwinding(const RegisterState& registers, UnwindState* unwindStat
         // The throw stub executes a small number of instructions before popping
         // the entire activation. To simplify testing, we simply pretend throw
         // stubs have already popped the entire stack.
-        return false;
-      case CodeRange::Interrupt:
-        // When the PC is in the async interrupt stub, the fp may be garbage and
-        // so we cannot blindly unwind it. Since the percent of time spent in
-        // the interrupt stub is extremely small, just ignore the stack.
         return false;
     }
 
@@ -1077,7 +1105,6 @@ ProfilingFrameIterator::operator++()
       case CodeRange::ImportInterpExit:
       case CodeRange::BuiltinThunk:
       case CodeRange::TrapExit:
-      case CodeRange::OldTrapExit:
       case CodeRange::DebugTrap:
       case CodeRange::OutOfBoundsExit:
       case CodeRange::UnalignedExit:
@@ -1091,7 +1118,6 @@ ProfilingFrameIterator::operator++()
         MOZ_CRASH("should have had null caller fp");
       case CodeRange::JitEntry:
         MOZ_CRASH("should have been guarded above");
-      case CodeRange::Interrupt:
       case CodeRange::Throw:
         MOZ_CRASH("code range doesn't have frame");
     }
@@ -1104,17 +1130,16 @@ ThunkedNativeToDescription(SymbolicAddress func)
 {
     MOZ_ASSERT(NeedsBuiltinThunk(func));
     switch (func) {
-      case SymbolicAddress::HandleExecutionInterrupt:
       case SymbolicAddress::HandleDebugTrap:
       case SymbolicAddress::HandleThrow:
-      case SymbolicAddress::ReportTrap:
-      case SymbolicAddress::OldReportTrap:
+      case SymbolicAddress::HandleTrap:
       case SymbolicAddress::ReportOutOfBounds:
       case SymbolicAddress::ReportUnalignedAccess:
       case SymbolicAddress::CallImport_Void:
       case SymbolicAddress::CallImport_I32:
       case SymbolicAddress::CallImport_I64:
       case SymbolicAddress::CallImport_F64:
+      case SymbolicAddress::CallImport_Ref:
       case SymbolicAddress::CoerceInPlace_ToInt32:
       case SymbolicAddress::CoerceInPlace_ToNumber:
         MOZ_ASSERT(!NeedsBuiltinThunk(func), "not in sync with NeedsBuiltinThunk");
@@ -1255,13 +1280,11 @@ ProfilingFrameIterator::label() const
       case CodeRange::BuiltinThunk:      return builtinNativeDescription;
       case CodeRange::ImportInterpExit:  return importInterpDescription;
       case CodeRange::TrapExit:          return trapDescription;
-      case CodeRange::OldTrapExit:       return trapDescription;
       case CodeRange::DebugTrap:         return debugTrapDescription;
       case CodeRange::OutOfBoundsExit:   return "out-of-bounds stub (in wasm)";
       case CodeRange::UnalignedExit:     return "unaligned trap stub (in wasm)";
       case CodeRange::FarJumpIsland:     return "interstitial (in wasm)";
-      case CodeRange::Throw:             MOZ_FALLTHROUGH;
-      case CodeRange::Interrupt:         MOZ_CRASH("does not have a frame");
+      case CodeRange::Throw:             MOZ_CRASH("does not have a frame");
     }
 
     MOZ_CRASH("bad code range kind");

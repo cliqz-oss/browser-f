@@ -5,9 +5,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/MouseScrollEvent.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/MouseEvents.h"
 #include "prtime.h"
-#include "nsIDOMMouseScrollEvent.h"
 
 namespace mozilla {
 namespace dom {
@@ -26,7 +26,7 @@ MouseScrollEvent::MouseScrollEvent(EventTarget* aOwner,
     mEvent->mTime = PR_Now();
     mEvent->mRefPoint = LayoutDeviceIntPoint(0, 0);
     static_cast<WidgetMouseEventBase*>(mEvent)->inputSource =
-      nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+      MouseEventBinding::MOZ_SOURCE_UNKNOWN;
   }
 
   mDetail = mEvent->AsMouseScrollEvent()->mDelta;
@@ -57,15 +57,15 @@ MouseScrollEvent::InitMouseScrollEvent(const nsAString& aType,
                              aCtrlKey, aAltKey, aShiftKey, aMetaKey, aButton,
                              aRelatedTarget);
   mEvent->AsMouseScrollEvent()->mIsHorizontal =
-    (aAxis == nsIDOMMouseScrollEvent::HORIZONTAL_AXIS);
+    (aAxis == MouseScrollEventBinding::HORIZONTAL_AXIS);
 }
 
 int32_t
 MouseScrollEvent::Axis()
 {
   return mEvent->AsMouseScrollEvent()->mIsHorizontal ?
-          static_cast<int32_t>(nsIDOMMouseScrollEvent::HORIZONTAL_AXIS) :
-          static_cast<int32_t>(nsIDOMMouseScrollEvent::VERTICAL_AXIS);
+    MouseScrollEventBinding::HORIZONTAL_AXIS :
+    MouseScrollEventBinding::VERTICAL_AXIS;
 }
 
 } // namespace dom

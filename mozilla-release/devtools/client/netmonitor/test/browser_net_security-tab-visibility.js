@@ -7,7 +7,7 @@
  * Test that security details tab is visible only when it should.
  */
 
-add_task(async function () {
+add_task(async function() {
   const TEST_DATA = [
     {
       desc: "http request",
@@ -41,13 +41,13 @@ add_task(async function () {
 
   for (let testcase of TEST_DATA) {
     info("Testing Security tab visibility for " + testcase.desc);
-    let onNewItem = monitor.panelWin.once(EVENTS.NETWORK_EVENT);
+    let onNewItem = monitor.panelWin.api.once(EVENTS.NETWORK_EVENT);
     let onComplete = testcase.isBroken ?
                        waitForSecurityBrokenNetworkEvent() :
                        waitForNetworkEvents(monitor, 1);
 
     info("Performing a request to " + testcase.uri);
-    await ContentTask.spawn(tab.linkedBrowser, testcase.uri, async function (url) {
+    await ContentTask.spawn(tab.linkedBrowser, testcase.uri, async function(url) {
       content.wrappedJSObject.performRequests(1, url);
     });
 
@@ -106,7 +106,7 @@ add_task(async function () {
     ];
 
     let promises = awaitedEvents.map((event) => {
-      return monitor.panelWin.once(EVENTS[event]);
+      return monitor.panelWin.api.once(EVENTS[event]);
     });
 
     return Promise.all(promises);

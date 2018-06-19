@@ -15,7 +15,7 @@ Services.prefs.setIntPref("extensions.enabledScopes",
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
-const globalDir = Services.dirsvc.get("XREAddonAppDir", AM_Ci.nsIFile);
+const globalDir = Services.dirsvc.get("XREAddonAppDir", Ci.nsIFile);
 globalDir.append("extensions");
 
 var gGlobalExisted = globalDir.exists();
@@ -28,6 +28,7 @@ function run_test() {
   writeInstallRDFForExtension({
     id: "addon1@tests.mozilla.org",
     version: "1.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -44,6 +45,7 @@ function run_test() {
   writeInstallRDFForExtension({
     id: "addon2@tests.mozilla.org",
     version: "1.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -59,6 +61,7 @@ function run_test() {
   writeInstallRDFForExtension({
     id: "addon3@tests.mozilla.org",
     version: "1.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "2",
@@ -71,6 +74,7 @@ function run_test() {
   var dest = writeInstallRDFForExtension({
     id: "addon4@tests.mozilla.org",
     version: "1.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -99,27 +103,24 @@ function end_test() {
 async function run_test_1() {
   await promiseStartupManager();
 
-  AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
-                               "addon2@tests.mozilla.org",
-                               "addon3@tests.mozilla.org",
-                               "addon4@tests.mozilla.org"],
-                               function([a1, a2, a3, a4]) {
+  let [a1, a2, a3, a4] = await AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
+                                                            "addon2@tests.mozilla.org",
+                                                            "addon3@tests.mozilla.org",
+                                                            "addon4@tests.mozilla.org"]);
+  Assert.notEqual(a1, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a1.id));
 
-    Assert.notEqual(a1, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a1.id));
+  Assert.notEqual(a2, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a2.id));
 
-    Assert.notEqual(a2, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a2.id));
+  Assert.notEqual(a3, null);
+  Assert.ok(!isExtensionInBootstrappedList(profileDir, a3.id));
 
-    Assert.notEqual(a3, null);
-    Assert.ok(!isExtensionInAddonsList(profileDir, a3.id));
+  Assert.notEqual(a4, null);
+  Assert.ok(isExtensionInBootstrappedList(globalDir, a4.id));
+  Assert.equal(a4.version, "1.0");
 
-    Assert.notEqual(a4, null);
-    Assert.ok(isExtensionInAddonsList(globalDir, a4.id));
-    Assert.equal(a4.version, "1.0");
-
-    executeSoon(run_test_2);
-  });
+  executeSoon(run_test_2);
 }
 
 // Test that upgrading the application doesn't disable now incompatible add-ons
@@ -128,6 +129,7 @@ async function run_test_2() {
   var dest = writeInstallRDFForExtension({
     id: "addon4@tests.mozilla.org",
     version: "2.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "2",
@@ -138,35 +140,33 @@ async function run_test_2() {
   setExtensionModifiedTime(dest, gInstallTime);
 
   await promiseRestartManager("2");
-  AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
-                               "addon2@tests.mozilla.org",
-                               "addon3@tests.mozilla.org",
-                               "addon4@tests.mozilla.org"],
-                               function([a1, a2, a3, a4]) {
+  let [a1, a2, a3, a4] = await AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
+                                                            "addon2@tests.mozilla.org",
+                                                            "addon3@tests.mozilla.org",
+                                                            "addon4@tests.mozilla.org"]);
+  Assert.notEqual(a1, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a1.id));
 
-    Assert.notEqual(a1, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a1.id));
+  Assert.notEqual(a2, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a2.id));
 
-    Assert.notEqual(a2, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a2.id));
+  Assert.notEqual(a3, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a3.id));
 
-    Assert.notEqual(a3, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a3.id));
+  Assert.notEqual(a4, null);
+  Assert.ok(isExtensionInBootstrappedList(globalDir, a4.id));
+  Assert.equal(a4.version, "2.0");
 
-    Assert.notEqual(a4, null);
-    Assert.ok(isExtensionInAddonsList(globalDir, a4.id));
-    Assert.equal(a4.version, "2.0");
-
-    executeSoon(run_test_3);
-  });
+  executeSoon(run_test_3);
 }
 
 // Test that nothing changes when only the build ID changes.
-function run_test_3() {
+async function run_test_3() {
   // Upgrade the extension
   var dest = writeInstallRDFForExtension({
     id: "addon4@tests.mozilla.org",
     version: "3.0",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "3",
@@ -181,25 +181,24 @@ function run_test_3() {
   gAddonStartup.remove(true);
   restartManager();
 
-  AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
-                               "addon2@tests.mozilla.org",
-                               "addon3@tests.mozilla.org",
-                               "addon4@tests.mozilla.org"],
-                               function([a1, a2, a3, a4]) {
+  let [a1, a2, a3, a4] = await AddonManager.getAddonsByIDs(["addon1@tests.mozilla.org",
+                                                            "addon2@tests.mozilla.org",
+                                                            "addon3@tests.mozilla.org",
+                                                            "addon4@tests.mozilla.org"]);
+  Assert.notEqual(a1, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a1.id));
 
-    Assert.notEqual(a1, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a1.id));
+  Assert.notEqual(a2, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a2.id));
 
-    Assert.notEqual(a2, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a2.id));
+  Assert.notEqual(a3, null);
+  Assert.ok(isExtensionInBootstrappedList(profileDir, a3.id));
 
-    Assert.notEqual(a3, null);
-    Assert.ok(isExtensionInAddonsList(profileDir, a3.id));
+  Assert.notEqual(a4, null);
+  Assert.ok(isExtensionInBootstrappedList(globalDir, a4.id));
+  Assert.equal(a4.version, "2.0");
 
-    Assert.notEqual(a4, null);
-    Assert.ok(isExtensionInAddonsList(globalDir, a4.id));
-    Assert.equal(a4.version, "2.0");
+  shutdownManager();
 
-    end_test();
-  });
+  end_test();
 }

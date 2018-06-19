@@ -48,9 +48,7 @@ public:
   nsresult Dispatch();
 
 private:
-  virtual ~DoomCallbackSynchronizer()
-  {
-  }
+  virtual ~DoomCallbackSynchronizer() = default;
 
   NS_DECL_NSIRUNNABLE
   nsCOMPtr<nsICacheEntryDoomCallback> mCB;
@@ -98,9 +96,7 @@ class DoomCallbackWrapper : public nsICacheListener
   }
 
 private:
-  virtual ~DoomCallbackWrapper()
-  {
-  }
+  virtual ~DoomCallbackWrapper() = default;
 
   nsCOMPtr<nsICacheEntryDoomCallback> mCB;
 };
@@ -448,6 +444,7 @@ NS_IMETHODIMP _OldCacheEntryWrapper::OpenInputStream(int64_t offset,
   return OpenInputStream(uint32_t(offset), _retval);
 }
 NS_IMETHODIMP _OldCacheEntryWrapper::OpenOutputStream(int64_t offset,
+                                                      int64_t predictedSize,
                                                       nsIOutputStream * *_retval)
 {
   if (offset > PR_UINT32_MAX)
@@ -495,7 +492,7 @@ namespace {
 
 class MetaDataVisitorWrapper : public nsICacheMetaDataVisitor
 {
-  virtual ~MetaDataVisitorWrapper() {}
+  virtual ~MetaDataVisitorWrapper() = default;
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSICACHEMETADATAVISITOR
@@ -908,9 +905,7 @@ _OldStorage::_OldStorage(nsILoadContextInfo* aInfo,
 {
 }
 
-_OldStorage::~_OldStorage()
-{
-}
+_OldStorage::~_OldStorage() = default;
 
 NS_IMETHODIMP _OldStorage::AsyncOpenURI(nsIURI *aURI,
                                         const nsACString & aIdExtension,

@@ -460,7 +460,7 @@ public:
     return mTarget->Snapshot();
   }
 
-  virtual void SetIsOpaque(bool aIsOpaque) override;
+  virtual void SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue) override;
   bool GetIsOpaque() override { return mOpaque; }
   NS_IMETHOD Reset() override;
   already_AddRefed<Layer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
@@ -619,6 +619,9 @@ protected:
   // Returns whether the font was successfully updated.
   bool SetFontInternal(const nsAString& aFont, mozilla::ErrorResult& aError);
 
+  // Clears the target and updates mOpaque based on mOpaqueAttrValue and
+  // mContextAttributesHasAlpha.
+  void UpdateIsOpaque();
 
   /**
    * Creates the error target, if it doesn't exist
@@ -687,8 +690,11 @@ protected:
 
   /**
    * Disposes an old target and prepares to lazily create a new target.
+   *
+   * Parameters are the new dimensions to be used, or if either is negative,
+   * existing dimensions will be left unchanged.
    */
-  void ClearTarget();
+  void ClearTarget(int32_t aWidth = -1, int32_t aHeight = -1);
 
   /*
    * Returns the target to the buffer provider. i.e. this will queue a frame for
@@ -764,6 +770,17 @@ protected:
   // specific behavior on some operations.
   bool mZero;
 
+  // The two ways to set the opaqueness of the canvas.
+  // mOpaqueAttrValue: Whether the <canvas> element has the moz-opaque attribute
+  // set. Can change during the lifetime of the context. Non-standard, should
+  // hopefully go away soon.
+  // mContextAttributesHasAlpha: The standard way of setting canvas opaqueness.
+  // Set at context initialization time and never changes.
+  bool mOpaqueAttrValue;
+  bool mContextAttributesHasAlpha;
+
+  // Determines the context's opaqueness. Is computed from mOpaqueAttrValue and
+  // mContextAttributesHasAlpha in UpdateIsOpaque().
   bool mOpaque;
 
   // This is true when the next time our layer is retrieved we need to
@@ -1157,7 +1174,7 @@ protected:
     pc = ps->GetPresContext();
     if (!pc) goto FINISH;
     devPixel = pc->AppUnitsPerDevPixel();
-    cssPixel = pc->AppUnitsPerCSSPixel();
+    cssPixel = nsPresContext::AppUnitsPerCSSPixel();
 
   FINISH:
     if (aPerDevPixel)

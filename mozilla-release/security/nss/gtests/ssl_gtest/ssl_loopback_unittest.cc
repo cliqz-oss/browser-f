@@ -56,8 +56,8 @@ TEST_P(TlsConnectGeneric, CipherSuiteMismatch) {
 
 class TlsAlertRecorder : public TlsRecordFilter {
  public:
-  TlsAlertRecorder(const std::shared_ptr<TlsAgent>& agent)
-      : TlsRecordFilter(agent), level_(255), description_(255) {}
+  TlsAlertRecorder(const std::shared_ptr<TlsAgent>& a)
+      : TlsRecordFilter(a), level_(255), description_(255) {}
 
   PacketFilter::Action FilterRecord(const TlsRecordHeader& header,
                                     const DataBuffer& input,
@@ -87,9 +87,9 @@ class TlsAlertRecorder : public TlsRecordFilter {
 
 class HelloTruncator : public TlsHandshakeFilter {
  public:
-  HelloTruncator(const std::shared_ptr<TlsAgent>& agent)
+  HelloTruncator(const std::shared_ptr<TlsAgent>& a)
       : TlsHandshakeFilter(
-            agent, {kTlsHandshakeClientHello, kTlsHandshakeServerHello}) {}
+            a, {kTlsHandshakeClientHello, kTlsHandshakeServerHello}) {}
   PacketFilter::Action FilterHandshake(const HandshakeHeader& header,
                                        const DataBuffer& input,
                                        DataBuffer* output) override {
@@ -149,12 +149,60 @@ TEST_P(TlsConnectGeneric, ConnectAlpn) {
   CheckAlpn("a");
 }
 
+TEST_P(TlsConnectGeneric, ConnectAlpnPriorityA) {
+  // "alpn" "npn"
+  // alpn is the fallback here. npn has the highest priority and should be
+  // picked.
+  const std::vector<uint8_t> alpn = {0x04, 0x61, 0x6c, 0x70, 0x6e,
+                                     0x03, 0x6e, 0x70, 0x6e};
+  EnableAlpn(alpn);
+  Connect();
+  CheckAlpn("npn");
+}
+
+TEST_P(TlsConnectGeneric, ConnectAlpnPriorityB) {
+  // "alpn" "npn" "http"
+  // npn has the highest priority and should be picked.
+  const std::vector<uint8_t> alpn = {0x04, 0x61, 0x6c, 0x70, 0x6e, 0x03, 0x6e,
+                                     0x70, 0x6e, 0x04, 0x68, 0x74, 0x74, 0x70};
+  EnableAlpn(alpn);
+  Connect();
+  CheckAlpn("npn");
+}
+
 TEST_P(TlsConnectGeneric, ConnectAlpnClone) {
   EnsureModelSockets();
   client_model_->EnableAlpn(alpn_dummy_val_, sizeof(alpn_dummy_val_));
   server_model_->EnableAlpn(alpn_dummy_val_, sizeof(alpn_dummy_val_));
   Connect();
   CheckAlpn("a");
+}
+
+TEST_P(TlsConnectGeneric, ConnectAlpnWithCustomCallbackA) {
+  // "ab" "alpn"
+  const std::vector<uint8_t> client_alpn = {0x02, 0x61, 0x62, 0x04,
+                                            0x61, 0x6c, 0x70, 0x6e};
+  EnableAlpnWithCallback(client_alpn, "alpn");
+  Connect();
+  CheckAlpn("alpn");
+}
+
+TEST_P(TlsConnectGeneric, ConnectAlpnWithCustomCallbackB) {
+  // "ab" "alpn"
+  const std::vector<uint8_t> client_alpn = {0x02, 0x61, 0x62, 0x04,
+                                            0x61, 0x6c, 0x70, 0x6e};
+  EnableAlpnWithCallback(client_alpn, "ab");
+  Connect();
+  CheckAlpn("ab");
+}
+
+TEST_P(TlsConnectGeneric, ConnectAlpnWithCustomCallbackC) {
+  // "cd" "npn" "alpn"
+  const std::vector<uint8_t> client_alpn = {0x02, 0x63, 0x64, 0x03, 0x6e, 0x70,
+                                            0x6e, 0x04, 0x61, 0x6c, 0x70, 0x6e};
+  EnableAlpnWithCallback(client_alpn, "npn");
+  Connect();
+  CheckAlpn("npn");
 }
 
 TEST_P(TlsConnectDatagram, ConnectSrtp) {
@@ -171,8 +219,8 @@ TEST_P(TlsConnectGeneric, ConnectSendReceive) {
 
 class SaveTlsRecord : public TlsRecordFilter {
  public:
-  SaveTlsRecord(const std::shared_ptr<TlsAgent>& agent, size_t index)
-      : TlsRecordFilter(agent), index_(index), count_(0), contents_() {}
+  SaveTlsRecord(const std::shared_ptr<TlsAgent>& a, size_t index)
+      : TlsRecordFilter(a), index_(index), count_(0), contents_() {}
 
   const DataBuffer& contents() const { return contents_; }
 
@@ -227,8 +275,8 @@ TEST_F(TlsConnectStreamTls13, DecryptRecordServer) {
 
 class DropTlsRecord : public TlsRecordFilter {
  public:
-  DropTlsRecord(const std::shared_ptr<TlsAgent>& agent, size_t index)
-      : TlsRecordFilter(agent), index_(index), count_(0) {}
+  DropTlsRecord(const std::shared_ptr<TlsAgent>& a, size_t index)
+      : TlsRecordFilter(a), index_(index), count_(0) {}
 
  protected:
   PacketFilter::Action FilterRecord(const TlsRecordHeader& header,
@@ -373,8 +421,8 @@ TEST_P(TlsHolddownTest, TestDtlsHolddownExpiryResumption) {
 
 class TlsPreCCSHeaderInjector : public TlsRecordFilter {
  public:
-  TlsPreCCSHeaderInjector(const std::shared_ptr<TlsAgent>& agent)
-      : TlsRecordFilter(agent) {}
+  TlsPreCCSHeaderInjector(const std::shared_ptr<TlsAgent>& a)
+      : TlsRecordFilter(a) {}
   virtual PacketFilter::Action FilterRecord(
       const TlsRecordHeader& record_header, const DataBuffer& input,
       size_t* offset, DataBuffer* output) override {
@@ -383,7 +431,8 @@ class TlsPreCCSHeaderInjector : public TlsRecordFilter {
     std::cerr << "Injecting Finished header before CCS\n";
     const uint8_t hhdr[] = {kTlsHandshakeFinished, 0x00, 0x00, 0x0c};
     DataBuffer hhdr_buf(hhdr, sizeof(hhdr));
-    TlsRecordHeader nhdr(record_header.version(), kTlsHandshakeType, 0);
+    TlsRecordHeader nhdr(record_header.variant(), record_header.version(),
+                         kTlsHandshakeType, 0);
     *offset = nhdr.Write(output, *offset, hhdr_buf);
     *offset = record_header.Write(output, *offset, input);
     return CHANGE;

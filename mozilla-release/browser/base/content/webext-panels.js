@@ -40,8 +40,12 @@ function getBrowser(sidebar) {
   browser.setAttribute("selectmenulist", "ContentSelectDropdown");
   browser.setAttribute("onclick", "window.parent.contentAreaClick(event, true);");
 
+  // Ensure that the browser is going to run in the same process of the other
+  // extension pages from the same addon.
+  browser.sameProcessAsFrameLoader = sidebar.extension.groupFrameLoader;
+
   let readyPromise;
-  if (sidebar.remote) {
+  if (sidebar.extension.remote) {
     browser.setAttribute("remote", "true");
     browser.setAttribute("remoteType",
                          E10SUtils.getRemoteTypeForURI(sidebar.uri, true,
@@ -89,6 +93,17 @@ var gBrowser = {
   },
 };
 
+function updatePosition() {
+  // We need both of these to make sure we update the position
+  // after any lower level updates have finished.
+  requestAnimationFrame(() => setTimeout(() => {
+    let browser = document.getElementById("webext-panels-browser");
+    if (browser && browser.isRemoteBrowser) {
+      browser.frameLoader.requestUpdatePosition();
+    }
+  }, 0));
+}
+
 function loadPanel(extensionId, extensionUrl, browserStyle) {
   let browserEl = document.getElementById("webext-panels-browser");
   if (browserEl) {
@@ -102,12 +117,12 @@ function loadPanel(extensionId, extensionUrl, browserStyle) {
   let policy = WebExtensionPolicy.getByID(extensionId);
   let sidebar = {
     uri: extensionUrl,
-    remote: policy.extension.remote,
+    extension: policy.extension,
     browserStyle,
   };
   getBrowser(sidebar).then(browser => {
     let uri = Services.io.newURI(policy.getURL());
     let triggeringPrincipal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
-    browser.loadURIWithFlags(extensionUrl, {triggeringPrincipal});
+    browser.loadURI(extensionUrl, {triggeringPrincipal});
   });
 }

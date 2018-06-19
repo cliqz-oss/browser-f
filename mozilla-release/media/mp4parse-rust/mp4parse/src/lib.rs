@@ -45,7 +45,7 @@ const TABLE_SIZE_LIMIT: u32 = 30 * 60 * 60 * 24 * 7;
 pub fn vec_push<T>(vec: &mut Vec<T>, val: T) -> std::result::Result<(), ()> {
     #[cfg(feature = "mp4parse_fallible")]
     {
-        return vec.try_push(val);
+        return FallibleVec::try_push(vec, val);
     }
 
     vec.push(val);
@@ -56,7 +56,7 @@ pub fn vec_push<T>(vec: &mut Vec<T>, val: T) -> std::result::Result<(), ()> {
 pub fn vec_reserve<T>(vec: &mut Vec<T>, size: usize) -> std::result::Result<(), ()> {
     #[cfg(feature = "mp4parse_fallible")]
     {
-        return vec.try_reserve(size);
+        return FallibleVec::try_reserve(vec, size);
     }
 
     vec.reserve(size);
@@ -68,7 +68,7 @@ fn allocate_read_buf(size: usize) -> std::result::Result<Vec<u8>, ()> {
     #[cfg(feature = "mp4parse_fallible")]
     {
         let mut buf: Vec<u8> = Vec::new();
-        buf.try_reserve(size)?;
+        FallibleVec::try_reserve(&mut buf, size)?;
         unsafe { buf.set_len(size); }
         return Ok(buf);
     }
@@ -835,24 +835,30 @@ fn read_edts<T: Read>(f: &mut BMFFBox<T>, track: &mut Track) -> Result<()> {
         match b.head.name {
             BoxType::EditListBox => {
                 let elst = read_elst(&mut b)?;
+                if elst.edits.len() < 1 {
+                    debug!("empty edit list");
+                    continue;
+                }
                 let mut empty_duration = 0;
                 let mut idx = 0;
-                if elst.edits.len() > 2 {
-                    return Err(Error::Unsupported("more than two edits"));
-                }
                 if elst.edits[idx].media_time == -1 {
-                    empty_duration = elst.edits[idx].segment_duration;
                     if elst.edits.len() < 2 {
-                        return Err(Error::InvalidData("expected additional edit"));
+                        debug!("expected additional edit, ignoring edit list");
+                        continue;
                     }
+                    empty_duration = elst.edits[idx].segment_duration;
                     idx += 1;
                 }
                 track.empty_duration = Some(MediaScaledTime(empty_duration));
-                if elst.edits[idx].media_time < 0 {
-                    return Err(Error::InvalidData("unexpected negative media time in edit"));
+                let media_time = elst.edits[idx].media_time;
+                if media_time < 0 {
+                    debug!("unexpected negative media time in edit");
                 }
-                track.media_time = Some(TrackScaledTime::<u64>(elst.edits[idx].media_time as u64,
+                track.media_time = Some(TrackScaledTime::<u64>(std::cmp::max(0, media_time) as u64,
                                                         track.id));
+                if elst.edits.len() > 2 {
+                    debug!("ignoring edit list with {} entries", elst.edits.len());
+                }
                 debug!("{:?}", elst);
             }
             _ => skip_box_content(&mut b)?,
@@ -1068,9 +1074,6 @@ fn read_tkhd<T: Read>(src: &mut BMFFBox<T>) -> Result<TrackHeaderBox> {
 fn read_elst<T: Read>(src: &mut BMFFBox<T>) -> Result<EditListBox> {
     let (version, _) = read_fullbox_extra(src)?;
     let edit_count = be_u32_with_limit(src)?;
-    if edit_count == 0 {
-        return Err(Error::InvalidData("invalid edit count"));
-    }
     let mut edits = Vec::new();
     for _ in 0..edit_count {
         let (segment_duration, media_time) = match version {
@@ -1093,6 +1096,9 @@ fn read_elst<T: Read>(src: &mut BMFFBox<T>) -> Result<EditListBox> {
             media_rate_fraction: media_rate_fraction,
         })?;
     }
+
+    // Padding could be added in some contents.
+    skip_box_remain(src)?;
 
     Ok(EditListBox {
         edits: edits,
@@ -1377,6 +1383,12 @@ fn find_descriptor(data: &[u8], esds: &mut ES_Descriptor) -> Result<()> {
         let mut end: u32 = 0;   // It's u8 without declaration type that is incorrect.
         // MSB of extend_or_len indicates more bytes, up to 4 bytes.
         for _ in 0..4 {
+            if (des.position() as usize) == remains.len() {
+                // There's nothing more to read, the 0x80 was actually part of
+                // the content, and not an extension size.
+                end = des.position() as u32;
+                break;
+            }
             let extend_or_len = des.read_u8()?;
             end = (end << 7) + (extend_or_len & 0x7F) as u32;
             if (extend_or_len & 0x80) == 0 {

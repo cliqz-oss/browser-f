@@ -124,7 +124,7 @@ TransceiverImpl::UpdateSinkIdentity(const dom::MediaStreamTrack* aTrack,
                                     nsIPrincipal* aPrincipal,
                                     const PeerIdentity* aSinkIdentity)
 {
-  if (mJsepTransceiver->IsStopped()) {
+  if (!(mJsepTransceiver->mJsDirection & sdp::kSend)) {
     return NS_OK;
   }
 
@@ -140,6 +140,9 @@ TransceiverImpl::Shutdown_m()
   mReceivePipeline = nullptr;
   mTransmitPipeline = nullptr;
   mSendTrack = nullptr;
+  if (mConduit) {
+    mConduit->DeleteStreams();
+  }
   mConduit = nullptr;
   RUN_ON_THREAD(mStsThread, WrapRelease(mRtpFlow.forget()), NS_DISPATCH_NORMAL);
   RUN_ON_THREAD(mStsThread, WrapRelease(mRtcpFlow.forget()), NS_DISPATCH_NORMAL);
@@ -572,13 +575,13 @@ TransceiverImpl::InsertDTMFTone(int tone, uint32_t duration)
     return;
   }
 
+  MOZ_ASSERT(mConduit->type() == MediaSessionConduit::AUDIO);
+
   RefPtr<AudioSessionConduit> conduit(static_cast<AudioSessionConduit*>(
         mConduit.get()));
-  mStsThread->Dispatch(WrapRunnableNM([conduit, tone, duration] () {
-        //Note: We default to channel 0, not inband, and 6dB attenuation.
-        //      here. We might want to revisit these choices in the future.
-        conduit->InsertDTMFTone(0, tone, true, duration, 6);
-        }), NS_DISPATCH_NORMAL);
+  //Note: We default to channel 0, not inband, and 6dB attenuation.
+  //      here. We might want to revisit these choices in the future.
+  conduit->InsertDTMFTone(0, tone, true, duration, 6);
 }
 
 bool
@@ -861,6 +864,15 @@ TransceiverImpl::UpdateVideoConduit()
               " Setting remote SSRC " <<
               mJsepTransceiver->mRecvTrack.GetSsrcs().front());
     conduit->SetRemoteSSRC(mJsepTransceiver->mRecvTrack.GetSsrcs().front());
+  }
+
+  // TODO (bug 1423041) once we pay attention to receiving MID's in RTP packets
+  // (see bug 1405495) we could make this depending on the presence of MID in
+  // the RTP packets instead of relying on the signaling.
+  if (mJsepTransceiver->HasBundleLevel() &&
+      (!mJsepTransceiver->mRecvTrack.GetNegotiatedDetails() ||
+       !mJsepTransceiver->mRecvTrack.GetNegotiatedDetails()->GetExt(webrtc::RtpExtension::kMIdUri))) {
+    conduit->DisableSsrcChanges();
   }
 
   if (mJsepTransceiver->mRecvTrack.GetNegotiatedDetails() &&

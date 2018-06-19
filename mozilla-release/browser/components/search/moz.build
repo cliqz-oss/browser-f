@@ -7,7 +7,10 @@
 BROWSER_CHROME_MANIFESTS += [
     'test/browser.ini',
     'test/google_codes/browser.ini',
-    'test/google_nocodes/browser.ini',
+]
+
+TESTING_JS_MODULES += [
+    'test/SearchTestUtils.jsm',
 ]
 
 JAR_MANIFESTS += ['jar.mn']

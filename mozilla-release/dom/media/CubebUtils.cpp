@@ -29,6 +29,9 @@
 #include "GeneratedJNIWrappers.h"
 #endif
 
+#define AUDIOIPC_POOL_SIZE_DEFAULT 1
+#define AUDIOIPC_STACK_SIZE_DEFAULT (64*1024)
+
 #define PREF_VOLUME_SCALE "media.volume_scale"
 #define PREF_CUBEB_BACKEND "media.cubeb.backend"
 #define PREF_CUBEB_LATENCY_PLAYBACK "media.cubeb_latency_playback_ms"
@@ -37,36 +40,32 @@
 // troubleshooting in the field and testing.
 #define PREF_CUBEB_FORCE_SAMPLE_RATE "media.cubeb.force_sample_rate"
 #define PREF_CUBEB_LOGGING_LEVEL "media.cubeb.logging_level"
+// Hidden pref used by tests to force failure to obtain cubeb context
+#define PREF_CUBEB_FORCE_NULL_CONTEXT "media.cubeb.force_null_context"
+// Hidden pref to disable BMO 1427011 experiment; can be removed once proven.
+#define PREF_CUBEB_DISABLE_DEVICE_SWITCHING "media.cubeb.disable_device_switching"
 #define PREF_CUBEB_SANDBOX "media.cubeb.sandbox"
-
-#define MASK_MONO       (1 << AudioConfig::CHANNEL_MONO)
-#define MASK_MONO_LFE   (MASK_MONO | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_STEREO     ((1 << AudioConfig::CHANNEL_LEFT) | (1 << AudioConfig::CHANNEL_RIGHT))
-#define MASK_STEREO_LFE (MASK_STEREO | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_3F         (MASK_STEREO | (1 << AudioConfig::CHANNEL_CENTER))
-#define MASK_3F_LFE     (MASK_3F | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_2F1        (MASK_STEREO | (1 << AudioConfig::CHANNEL_RCENTER))
-#define MASK_2F1_LFE    (MASK_2F1 | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_3F1        (MASK_3F | (1 < AudioConfig::CHANNEL_RCENTER))
-#define MASK_3F1_LFE    (MASK_3F1 | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_2F2        (MASK_STEREO | (1 << AudioConfig::CHANNEL_LS) | (1 << AudioConfig::CHANNEL_RS))
-#define MASK_2F2_LFE    (MASK_2F2 | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_3F2        (MASK_3F | (1 << AudioConfig::CHANNEL_LS) | (1 << AudioConfig::CHANNEL_RS))
-#define MASK_3F2_LFE    (MASK_3F2 | (1 << AudioConfig::CHANNEL_LFE))
-#define MASK_3F3R_LFE   (MASK_3F2_LFE | (1 << AudioConfig::CHANNEL_RCENTER))
-#define MASK_3F4_LFE    (MASK_3F2_LFE | (1 << AudioConfig::CHANNEL_RLS) | (1 << AudioConfig::CHANNEL_RRS))
+#define PREF_AUDIOIPC_POOL_SIZE "media.audioipc.pool_size"
+#define PREF_AUDIOIPC_STACK_SIZE "media.audioipc.stack_size"
 
 #if (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)) || defined(XP_MACOSX)
 #define MOZ_CUBEB_REMOTING
 #endif
 
 extern "C" {
+
+struct AudioIpcInitParams {
+  int mServerConnection;
+  size_t mPoolSize;
+  size_t mStackSize;
+};
+
 // These functions are provided by audioipc-server crate
 extern void* audioipc_server_start();
 extern mozilla::ipc::FileDescriptor::PlatformHandleType audioipc_server_new_client(void*);
 extern void audioipc_server_stop(void*);
 // These functions are provided by audioipc-client crate
-extern int audioipc_client_init(cubeb**, const char*, int);
+extern int audioipc_client_init(cubeb**, const char*, const AudioIpcInitParams*);
 }
 
 namespace mozilla {
@@ -132,8 +131,12 @@ uint32_t sCubebForcedSampleRate = 0;
 bool sCubebPlaybackLatencyPrefSet = false;
 bool sCubebMSGLatencyPrefSet = false;
 bool sAudioStreamInitEverSucceeded = false;
+bool sCubebForceNullContext = false;
+bool sCubebDisableDeviceSwitching = true;
 #ifdef MOZ_CUBEB_REMOTING
-bool sCubebSandbox;
+bool sCubebSandbox = false;
+size_t sAudioIPCPoolSize;
+size_t sAudioIPCStackSize;
 #endif
 StaticAutoPtr<char> sBrandName;
 StaticAutoPtr<char> sCubebBackendName;
@@ -162,34 +165,6 @@ const int CUBEB_BACKEND_INIT_FAILURE_OTHER = CUBEB_BACKEND_INIT_FAILURE_FIRST + 
 /* Index for an unknown backend. */
 const int CUBEB_BACKEND_UNKNOWN = CUBEB_BACKEND_INIT_FAILURE_FIRST + 2;
 
-typedef struct {
-  const char* name;
-  const unsigned int channels;
-  const uint32_t mask;
-} layoutInfo;
-
-const layoutInfo kLayoutInfos[CUBEB_LAYOUT_MAX] = {
-  { "undefined",      0, 0 },               // CUBEB_LAYOUT_UNDEFINED
-  { "dual mono",      2, MASK_STEREO },     // CUBEB_LAYOUT_DUAL_MONO
-  { "dual mono lfe",  3, MASK_STEREO_LFE }, // CUBEB_LAYOUT_DUAL_MONO_LFE
-  { "mono",           1, MASK_MONO },       // CUBEB_LAYOUT_MONO
-  { "mono lfe",       2, MASK_MONO_LFE },   // CUBEB_LAYOUT_MONO_LFE
-  { "stereo",         2, MASK_STEREO },     // CUBEB_LAYOUT_STEREO
-  { "stereo lfe",     3, MASK_STEREO_LFE }, // CUBEB_LAYOUT_STEREO_LFE
-  { "3f",             3, MASK_3F },         // CUBEB_LAYOUT_3F
-  { "3f lfe",         4, MASK_3F_LFE },     // CUBEB_LAYOUT_3F_LFE
-  { "2f1",            3, MASK_2F1 },        // CUBEB_LAYOUT_2F1
-  { "2f1 lfe",        4, MASK_2F1_LFE },    // CUBEB_LAYOUT_2F1_LFE
-  { "3f1",            4, MASK_3F1 },        // CUBEB_LAYOUT_3F1
-  { "3f1 lfe",        5, MASK_3F1_LFE },    // CUBEB_LAYOUT_3F1_LFE
-  { "2f2",            4, MASK_2F2_LFE },    // CUBEB_LAYOUT_2F2
-  { "2f2 lfe",        5, MASK_2F2_LFE },    // CUBEB_LAYOUT_2F2_LFE
-  { "3f2",            5, MASK_3F2 },        // CUBEB_LAYOUT_3F2
-  { "3f2 lfe",        6, MASK_3F2_LFE },    // CUBEB_LAYOUT_3F2_LFE
-  { "3f3r lfe",       7, MASK_3F3R_LFE },   // CUBEB_LAYOUT_3F3R_LFE
-  { "3f4 lfe",        8, MASK_3F4_LFE }     // CUBEB_LAYOUT_3F4_LFE
-};
-
 // Prefered samplerate, in Hz (characteristic of the hardware, mixer, platform,
 // and API used).
 //
@@ -201,11 +176,6 @@ const layoutInfo kLayoutInfos[CUBEB_LAYOUT_MAX] = {
 // sufficient memory barriers have occurred to ensure the correct value is
 // visible on the querying thread/CPU.
 uint32_t sPreferredSampleRate;
-
-// We only support SMPTE layout in cubeb for now. If the value is
-// CUBEB_LAYOUT_UNDEFINED, then it implies that the preferred layout is
-// non-SMPTE format.
-cubeb_channel_layout sPreferredChannelLayout;
 
 } // namespace
 
@@ -271,7 +241,17 @@ void PrefChanged(const char* aPref, void* aClosure)
       PodCopy(sCubebBackendName.get(), value.get(), value.Length());
       sCubebBackendName[value.Length()] = 0;
     }
-  }
+  } else if (strcmp(aPref, PREF_CUBEB_FORCE_NULL_CONTEXT) == 0) {
+    StaticMutexAutoLock lock(sMutex);
+    sCubebForceNullContext = Preferences::GetBool(aPref, false);
+    MOZ_LOG(gCubebLog, LogLevel::Verbose,
+            ("%s: %s", PREF_CUBEB_FORCE_NULL_CONTEXT, sCubebForceNullContext ? "true" : "false"));
+  } else if (strcmp(aPref, PREF_CUBEB_DISABLE_DEVICE_SWITCHING) == 0) {
+    StaticMutexAutoLock lock(sMutex);
+    sCubebDisableDeviceSwitching = Preferences::GetBool(aPref, true);
+    MOZ_LOG(gCubebLog, LogLevel::Verbose,
+            ("%s: %s", PREF_CUBEB_DISABLE_DEVICE_SWITCHING, sCubebDisableDeviceSwitching ? "true" : "false"));
+ }
 #ifdef MOZ_CUBEB_REMOTING
   else if (strcmp(aPref, PREF_CUBEB_SANDBOX) == 0) {
     StaticMutexAutoLock lock(sMutex);
@@ -282,6 +262,16 @@ void PrefChanged(const char* aPref, void* aClosure)
       MOZ_LOG(gCubebLog, LogLevel::Debug, ("Starting cubeb server..."));
       StartSoundServer();
     }
+  }
+  else if (strcmp(aPref, PREF_AUDIOIPC_POOL_SIZE) == 0) {
+    StaticMutexAutoLock lock(sMutex);
+    sAudioIPCPoolSize =  Preferences::GetUint(PREF_AUDIOIPC_POOL_SIZE,
+                                             AUDIOIPC_POOL_SIZE_DEFAULT);
+  }
+  else if (strcmp(aPref, PREF_AUDIOIPC_STACK_SIZE) == 0) {
+    StaticMutexAutoLock lock(sMutex);
+    sAudioIPCStackSize = Preferences::GetUint(PREF_AUDIOIPC_STACK_SIZE,
+                                             AUDIOIPC_STACK_SIZE_DEFAULT);
   }
 #endif
 }
@@ -341,59 +331,6 @@ uint32_t PreferredSampleRate()
   }
   MOZ_ASSERT(sPreferredSampleRate);
   return sPreferredSampleRate;
-}
-
-bool InitPreferredChannelLayout()
-{
-  {
-    StaticMutexAutoLock lock(sMutex);
-    if (sPreferredChannelLayout != 0) {
-      return true;
-    }
-  }
-
-  cubeb* context = GetCubebContext();
-  if (!context) {
-    return false;
-  }
-
-  // Favor calling cubeb api with the mutex unlock, potential deadlock.
-  cubeb_channel_layout layout;
-  if (cubeb_get_preferred_channel_layout(context, &layout) != CUBEB_OK) {
-    return false;
-  }
-
-  StaticMutexAutoLock lock(sMutex);
-  sPreferredChannelLayout = layout;
-  return true;
-}
-
-uint32_t PreferredChannelMap(uint32_t aChannels)
-{
-  // Use SMPTE default channel map if we can't get preferred layout
-  // or the channel counts of preferred layout is different from input's one
-  if (!InitPreferredChannelLayout() ||
-      kLayoutInfos[sPreferredChannelLayout].channels != aChannels) {
-    AudioConfig::ChannelLayout smpteLayout(aChannels);
-    return smpteLayout.Map();
-  }
-
-  return kLayoutInfos[sPreferredChannelLayout].mask;
-}
-
-cubeb_channel_layout GetPreferredChannelLayoutOrSMPTE(cubeb* context, uint32_t aChannels)
-{
-  cubeb_channel_layout layout = CUBEB_LAYOUT_UNDEFINED;
-  if (cubeb_get_preferred_channel_layout(context, &layout) != CUBEB_OK) {
-    return layout; //undefined
-  }
-
-  if (kLayoutInfos[layout].channels != aChannels) {
-    AudioConfig::ChannelLayout smpteLayout(aChannels);
-    return ConvertChannelMapToCubebLayout(smpteLayout.Map());
-  }
-
-  return layout;
 }
 
 void InitBrandName()
@@ -456,6 +393,12 @@ ipc::FileDescriptor CreateAudioIPCConnection()
 cubeb* GetCubebContextUnlocked()
 {
   sMutex.AssertCurrentThreadOwns();
+  if (sCubebForceNullContext) {
+    // Pref set such that we should return a null context
+    MOZ_LOG(gCubebLog, LogLevel::Debug,
+            ("%s: returning null context due to %s!", __func__, PREF_CUBEB_FORCE_NULL_CONTEXT));
+    return nullptr;
+  }
   if (sCubebState != CubebState::Uninitialized) {
     // If we have already passed the initialization point (below), just return
     // the current context, which may be null (e.g., after error or shutdown.)
@@ -470,6 +413,9 @@ cubeb* GetCubebContextUnlocked()
   }
 
 #ifdef MOZ_CUBEB_REMOTING
+  MOZ_LOG(gCubebLog, LogLevel::Info, ("%s: %s", PREF_CUBEB_SANDBOX, sCubebSandbox ? "true" : "false"));
+
+  int rv = CUBEB_OK;
   if (sCubebSandbox) {
     if (XRE_IsParentProcess()) {
       // TODO: Don't use audio IPC when within the same process.
@@ -478,14 +424,19 @@ cubeb* GetCubebContextUnlocked()
     } else {
       MOZ_DIAGNOSTIC_ASSERT(sIPCConnection);
     }
+
+    AudioIpcInitParams initParams;
+    initParams.mPoolSize = sAudioIPCPoolSize;
+    initParams.mStackSize = sAudioIPCStackSize;
+    initParams.mServerConnection = sIPCConnection->ClonePlatformHandle().release();
+
+    MOZ_LOG(gCubebLog, LogLevel::Debug, ("%s: %d", PREF_AUDIOIPC_POOL_SIZE, (int) initParams.mPoolSize));
+    MOZ_LOG(gCubebLog, LogLevel::Debug, ("%s: %d", PREF_AUDIOIPC_STACK_SIZE, (int) initParams.mStackSize));
+
+    rv = audioipc_client_init(&sCubebContext, sBrandName, &initParams);
+  } else {
+    rv = cubeb_init(&sCubebContext, sBrandName, sCubebBackendName.get());
   }
-
-  MOZ_LOG(gCubebLog, LogLevel::Info, ("%s: %s", PREF_CUBEB_SANDBOX, sCubebSandbox ? "true" : "false"));
-
-  int rv = sCubebSandbox
-    ? audioipc_client_init(&sCubebContext, sBrandName,
-                           sIPCConnection->ClonePlatformHandle().release())
-    : cubeb_init(&sCubebContext, sBrandName, sCubebBackendName.get());
   sIPCConnection = nullptr;
 #else // !MOZ_CUBEB_REMOTING
   int rv = cubeb_init(&sCubebContext, sBrandName, sCubebBackendName.get());
@@ -578,7 +529,10 @@ void InitLibrary()
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_LATENCY_MSG);
   Preferences::RegisterCallback(PrefChanged, PREF_CUBEB_FORCE_SAMPLE_RATE);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_BACKEND);
+  Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_FORCE_NULL_CONTEXT);
   Preferences::RegisterCallbackAndCall(PrefChanged, PREF_CUBEB_SANDBOX);
+  Preferences::RegisterCallbackAndCall(PrefChanged, PREF_AUDIOIPC_POOL_SIZE);
+  Preferences::RegisterCallbackAndCall(PrefChanged, PREF_AUDIOIPC_STACK_SIZE);
   if (MOZ_LOG_TEST(gCubebLog, LogLevel::Verbose)) {
     cubeb_set_log_callback(CUBEB_LOG_VERBOSE, CubebLogCallback);
   } else if (MOZ_LOG_TEST(gCubebLog, LogLevel::Error)) {
@@ -603,12 +557,15 @@ void InitLibrary()
 void ShutdownLibrary()
 {
   Preferences::UnregisterCallback(PrefChanged, PREF_VOLUME_SCALE);
+  Preferences::UnregisterCallback(PrefChanged, PREF_AUDIOIPC_STACK_SIZE);
+  Preferences::UnregisterCallback(PrefChanged, PREF_AUDIOIPC_POOL_SIZE);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_SANDBOX);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_BACKEND);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LATENCY_PLAYBACK);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_FORCE_SAMPLE_RATE);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LATENCY_MSG);
   Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_LOGGING_LEVEL);
+  Preferences::UnregisterCallback(PrefChanged, PREF_CUBEB_FORCE_NULL_CONTEXT);
 
   StaticMutexAutoLock lock(sMutex);
   if (sCubebContext) {
@@ -639,31 +596,6 @@ uint32_t MaxNumberOfChannels()
   return 0;
 }
 
-cubeb_channel_layout ConvertChannelMapToCubebLayout(uint32_t aChannelMap)
-{
-  switch(aChannelMap) {
-    case MASK_MONO: return CUBEB_LAYOUT_MONO;
-    case MASK_MONO_LFE: return CUBEB_LAYOUT_MONO_LFE;
-    case MASK_STEREO: return CUBEB_LAYOUT_STEREO;
-    case MASK_STEREO_LFE: return CUBEB_LAYOUT_STEREO_LFE;
-    case MASK_3F: return CUBEB_LAYOUT_3F;
-    case MASK_3F_LFE: return CUBEB_LAYOUT_3F_LFE;
-    case MASK_2F1: return CUBEB_LAYOUT_2F1;
-    case MASK_2F1_LFE: return CUBEB_LAYOUT_2F1_LFE;
-    case MASK_3F1: return CUBEB_LAYOUT_3F1;
-    case MASK_3F1_LFE: return CUBEB_LAYOUT_3F1_LFE;
-    case MASK_2F2: return CUBEB_LAYOUT_2F2;
-    case MASK_2F2_LFE: return CUBEB_LAYOUT_2F2_LFE;
-    case MASK_3F2: return CUBEB_LAYOUT_3F2;
-    case MASK_3F2_LFE: return CUBEB_LAYOUT_3F2_LFE;
-    case MASK_3F3R_LFE: return CUBEB_LAYOUT_3F3R_LFE;
-    case MASK_3F4_LFE: return CUBEB_LAYOUT_3F4_LFE;
-    default:
-      NS_ERROR("The channel map is unsupported");
-      return CUBEB_LAYOUT_UNDEFINED;
-  }
-}
-
 void GetCurrentBackend(nsAString& aBackend)
 {
   cubeb* cubebContext = GetCubebContext();
@@ -675,13 +607,6 @@ void GetCurrentBackend(nsAString& aBackend)
     }
   }
   aBackend.AssignLiteral("unknown");
-}
-
-void GetPreferredChannelLayout(nsAString& aLayout)
-{
-  const char* layout = InitPreferredChannelLayout() ?
-    kLayoutInfos[sPreferredChannelLayout].name : "unknown";
-  aLayout.AssignASCII(layout);
 }
 
 uint16_t ConvertCubebType(cubeb_device_type aType)
@@ -775,6 +700,19 @@ void GetDeviceCollection(nsTArray<RefPtr<AudioDeviceInfo>>& aDeviceInfos,
     }
     cubeb_device_collection_destroy(context, &collection);
   }
+}
+
+cubeb_stream_prefs GetDefaultStreamPrefs()
+{
+#ifdef XP_WIN
+  // Investigation for bug 1427011 - if we're in E10S mode, rely on the
+  // AudioNotification IPC to detect device changes.
+  if (sCubebDisableDeviceSwitching &&
+      (XRE_IsE10sParentProcess() || XRE_IsContentProcess())) {
+    return CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING;
+  }
+#endif
+  return CUBEB_STREAM_PREF_NONE;
 }
 
 #ifdef MOZ_WIDGET_ANDROID

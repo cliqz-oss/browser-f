@@ -51,9 +51,9 @@ var gSitePermissionsManager = {
     this._checkbox = document.getElementById("permissionsDisableCheckbox");
 
     let permissionsText = document.getElementById("permissionsText");
-    while (permissionsText.hasChildNodes())
-      permissionsText.firstChild.remove();
-    permissionsText.appendChild(document.createTextNode(params.introText));
+    permissionsText.textContent = params.introText;
+
+
 
     this._checkbox.setAttribute("label", params.disablePermissionsLabel);
     let permissionsDisableDescription = document.getElementById("permissionsDisableDescription");
@@ -150,7 +150,9 @@ var gSitePermissionsManager = {
   _removePermissionFromList(origin) {
     this._permissions.delete(origin);
     let permissionlistitem = document.getElementsByAttribute("origin", origin)[0];
-    this._list.removeItemAt(this._list.getIndexOfItem(permissionlistitem));
+    if (permissionlistitem) {
+      permissionlistitem.remove();
+    }
   },
 
   _loadPermissions() {

@@ -49,14 +49,15 @@ function startupRecorder() {
       "image-drawing": new Set(),
       "image-loading": new Set(),
     },
-    code: {}
+    code: {},
+    prefStats: {},
   };
   this.done = new Promise(resolve => { this._resolve = resolve; });
 }
 startupRecorder.prototype = {
   classID: Components.ID("{11c095b2-e42e-4bdf-9dd0-aed87595f6a4}"),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   record(name) {
     if (!Services.prefs.getBoolPref("browser.startup.record", false))
@@ -138,6 +139,10 @@ startupRecorder.prototype = {
         win.removeEventListener("MozAfterPaint", afterPaintListener);
         win = null;
         this.data.frames = paints;
+        this.data.prefStats = {};
+        if (AppConstants.DEBUG) {
+          Services.prefs.readStats((key, value) => this.data.prefStats[key] = value);
+        }
         paints = null;
         this._resolve();
         this._resolve = null;

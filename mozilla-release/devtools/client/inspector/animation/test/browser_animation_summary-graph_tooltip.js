@@ -5,193 +5,188 @@
 
 // Test for existance and content of tooltip on summary graph element.
 
-const TEST_CASES = [
+const TEST_DATA = [
   {
-    targetClassName: "cssanimation-normal",
+    targetClass: "cssanimation-normal",
     expectedResult: {
       nameAndType: "cssanimation - CSS Animation",
-      duration: "100s",
+      duration: "1,000s",
     },
   },
   {
-    targetClassName: "cssanimation-linear",
+    targetClass: "cssanimation-linear",
     expectedResult: {
       nameAndType: "cssanimation - CSS Animation",
-      duration: "100s",
+      duration: "1,000s",
       animationTimingFunction: "linear",
     },
   },
   {
-    targetClassName: "delay-positive",
+    targetClass: "delay-positive",
     expectedResult: {
       nameAndType: "test-delay-animation - Script Animation",
-      delay: "50s",
-      duration: "100s",
+      delay: "500s",
+      duration: "1,000s",
     },
   },
   {
-    targetClassName: "delay-negative",
+    targetClass: "delay-negative",
     expectedResult: {
       nameAndType: "test-negative-delay-animation - Script Animation",
-      delay: "-50s",
-      duration: "100s",
+      delay: "-500s",
+      duration: "1,000s",
     },
   },
   {
-    targetClassName: "easing-step",
+    targetClass: "easing-step",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       easing: "steps(2)",
     },
   },
   {
-    targetClassName: "enddelay-positive",
+    targetClass: "enddelay-positive",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
-      endDelay: "50s",
+      duration: "1,000s",
+      endDelay: "500s",
     },
   },
   {
-    targetClassName: "enddelay-negative",
+    targetClass: "enddelay-negative",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
-      endDelay: "-50s",
+      duration: "1,000s",
+      endDelay: "-500s",
     },
   },
   {
-    targetClassName: "enddelay-with-fill-forwards",
+    targetClass: "enddelay-with-fill-forwards",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
-      endDelay: "50s",
+      duration: "1,000s",
+      endDelay: "500s",
       fill: "forwards",
     },
   },
   {
-    targetClassName: "enddelay-with-iterations-infinity",
+    targetClass: "enddelay-with-iterations-infinity",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
-      endDelay: "50s",
+      duration: "1,000s",
+      endDelay: "500s",
       iterations: "\u221E",
     },
   },
   {
-    targetClassName: "direction-alternate-with-iterations-infinity",
+    targetClass: "direction-alternate-with-iterations-infinity",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       direction: "alternate",
       iterations: "\u221E",
     },
   },
   {
-    targetClassName: "direction-alternate-reverse-with-iterations-infinity",
+    targetClass: "direction-alternate-reverse-with-iterations-infinity",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       direction: "alternate-reverse",
       iterations: "\u221E",
     },
   },
   {
-    targetClassName: "direction-reverse-with-iterations-infinity",
+    targetClass: "direction-reverse-with-iterations-infinity",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       direction: "reverse",
       iterations: "\u221E",
     },
   },
   {
-    targetClassName: "fill-backwards",
+    targetClass: "fill-backwards",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       fill: "backwards",
     },
   },
   {
-    targetClassName: "fill-backwards-with-delay-iterationstart",
+    targetClass: "fill-backwards-with-delay-iterationstart",
     expectedResult: {
       nameAndType: "Script Animation",
-      delay: "50s",
-      duration: "100s",
+      delay: "500s",
+      duration: "1,000s",
       fill: "backwards",
       iterationStart: "0.5",
     },
   },
   {
-    targetClassName: "fill-both",
+    targetClass: "fill-both",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       fill: "both",
     },
   },
   {
-    targetClassName: "fill-both-width-delay-iterationstart",
+    targetClass: "fill-both-width-delay-iterationstart",
     expectedResult: {
       nameAndType: "Script Animation",
-      delay: "50s",
-      duration: "100s",
+      delay: "500s",
+      duration: "1,000s",
       fill: "both",
       iterationStart: "0.5",
     },
   },
   {
-    targetClassName: "fill-forwards",
+    targetClass: "fill-forwards",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       fill: "forwards",
     },
   },
   {
-    targetClassName: "iterationstart",
+    targetClass: "iterationstart",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
       iterationStart: "0.5",
     },
   },
   {
-    targetClassName: "no-compositor",
+    targetClass: "no-compositor",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
     },
   },
   {
-    targetClassName: "keyframes-easing-step",
+    targetClass: "keyframes-easing-step",
     expectedResult: {
       nameAndType: "Script Animation",
-      duration: "100s",
+      duration: "1,000s",
     },
   },
 ];
 
-add_task(async function () {
+add_task(async function() {
   await addTab(URL_ROOT + "doc_multi_timings.html");
-
+  await removeAnimatedElementsExcept(TEST_DATA.map(t => `.${ t.targetClass }`));
   const { panel } = await openAnimationInspector();
 
-  for (const testCase of TEST_CASES) {
-    const {
-      expectedResult,
-      targetClassName,
-    } = testCase;
-
+  for (const { targetClass, expectedResult } of TEST_DATA) {
     const animationItemEl =
-      findAnimationItemElementsByTargetClassName(panel, targetClassName);
+      findAnimationItemElementsByTargetSelector(panel, `.${ targetClass }`);
     const summaryGraphEl = animationItemEl.querySelector(".animation-summary-graph");
 
-    info(`Checking tooltip for ${ targetClassName }`);
+    info(`Checking tooltip for ${ targetClass }`);
     ok(summaryGraphEl.hasAttribute("title"),
-       "Summary graph should have 'title' attribute");
+      "Summary graph should have 'title' attribute");
 
     const tooltip = summaryGraphEl.getAttribute("title");
     const {
@@ -214,7 +209,7 @@ add_task(async function () {
       ok(tooltip.includes(expected), `Tooltip should include '${ expected }'`);
     } else {
       ok(!tooltip.includes("Animation timing function:"),
-         "Tooltip should not include animation timing function");
+        "Tooltip should not include animation timing function");
     }
 
     if (delay) {
@@ -271,7 +266,7 @@ add_task(async function () {
       ok(tooltip.includes(expected), `Tooltip should include '${ expected }'`);
     } else {
       ok(!tooltip.includes("Iteration start:"),
-         "Tooltip should not include iterationStart");
+        "Tooltip should not include iterationStart");
     }
   }
 });

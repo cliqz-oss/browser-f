@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-add_task(async function test_resolveNullBookmarkTitles() {
+add_task(async function() {
   let uri1 = uri("http://foo.tld/");
   let uri2 = uri("https://bar.tld/");
 
@@ -25,20 +25,15 @@ add_task(async function test_resolveNullBookmarkTitles() {
 
   PlacesUtils.tagging.tagURI(uri1, ["tag 1"]);
   PlacesUtils.tagging.tagURI(uri2, ["tag 2"]);
+});
 
+add_task(async function testTagQuery() {
   let options = PlacesUtils.history.getNewQueryOptions();
-  options.queryType = Ci.nsINavHistoryQueryOptions.QUERY_TYPE_BOOKMARKS;
-  options.resultType = options.RESULTS_AS_TAG_CONTENTS;
-
   let query = PlacesUtils.history.getNewQuery();
-  // if we don't set a tag folder, RESULTS_AS_TAG_CONTENTS will return all
-  // tagged URIs
+  query.tags = ["tag 1"];
   let root = PlacesUtils.history.executeQuery(query, options).root;
   root.containerOpen = true;
-  Assert.equal(root.childCount, 2);
-  // actually RESULTS_AS_TAG_CONTENTS return results ordered by place_id DESC
-  // so they are reversed
+  Assert.equal(root.childCount, 1);
   Assert.equal(root.getChild(0).title, "");
-  Assert.equal(root.getChild(1).title, "");
   root.containerOpen = false;
 });

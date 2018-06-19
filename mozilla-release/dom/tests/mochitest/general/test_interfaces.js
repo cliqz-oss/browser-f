@@ -313,10 +313,6 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DocumentType", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "DOMConstructor", insecureContext: true, xbl: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "DOMCursor", insecureContext: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DOMError", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DOMException", insecureContext: true},
@@ -773,6 +769,8 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PerformanceResourceTiming", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "PerformanceServerTiming", insecureContext: false},
+// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PerformanceTiming", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PeriodicWave", insecureContext: true},
@@ -790,8 +788,6 @@ var interfaceNamesInGlobalScope =
     {name: "PopStateEvent", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PopupBlockedEvent", insecureContext: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "PopupBoxObject", insecureContext: true, xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "Presentation", insecureContext: true, desktop: false, release: false },
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1271,6 +1267,8 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "XULElement", insecureContext: true, xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "XULPopupElement", insecureContext: true, xbl: true},
+// IMPORTANT: Do not change this list without review from a DOM peer!
   ];
 // IMPORTANT: Do not change the list above without review from a DOM peer!
 
@@ -1311,12 +1309,6 @@ function createInterfaceMap(isXBLScope) {
 
   addInterfaces(ecmaGlobals);
   addInterfaces(interfaceNamesInGlobalScope);
-  if (isXBLScope) {
-    // We expose QueryInterface to XBL scopes. It's not an interface but we
-    // need to handle it because it's an own property of the global and the
-    // property name starts with an uppercase letter.
-    interfaceMap["QueryInterface"] = true;
-  }
 
   return interfaceMap;
 }

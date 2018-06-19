@@ -3,15 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Listeners for the compact theme.  This adds an extra stylesheet
- * to browser.xul if a pref is set and no other themes are applied.
+ * Enables compacttheme.css when needed.
  */
 var CompactTheme = {
-  styleSheetLocation: "chrome://browser/skin/compacttheme.css",
-  styleSheet: null,
+  get styleSheet() {
+    delete this.styleSheet;
+    for (let styleSheet of document.styleSheets) {
+      if (styleSheet.href == "chrome://browser/skin/compacttheme.css") {
+        this.styleSheet = styleSheet;
+        break;
+      }
+    }
+    return this.styleSheet;
+  },
 
   get isStyleSheetEnabled() {
-    return this.styleSheet && !this.styleSheet.sheet.disabled;
+    return this.styleSheet && !this.styleSheet.disabled;
   },
 
   get isThemeCurrentlyApplied() {
@@ -29,6 +36,7 @@ var CompactTheme = {
     }
   },
 
+<<<<<<< HEAD
   createStyleSheet() {
     let styleSheetAttr = `href="${this.styleSheetLocation}" type="text/css"`;
     this.styleSheet = document.createProcessingInstruction(
@@ -45,6 +53,17 @@ var CompactTheme = {
     document.insertBefore(this.cliqzStyleSheet, document.documentElement);
   },
 
+||||||| merged common ancestors
+  createStyleSheet() {
+    let styleSheetAttr = `href="${this.styleSheetLocation}" type="text/css"`;
+    this.styleSheet = document.createProcessingInstruction(
+      "xml-stylesheet", styleSheetAttr);
+    document.insertBefore(this.styleSheet, document.documentElement);
+    this.styleSheet.sheet.disabled = true;
+  },
+
+=======
+>>>>>>> origin/upstream-releases
   observe(subject, topic, data) {
     if (topic == "lightweight-theme-styling-update") {
       let newTheme = JSON.parse(data);
@@ -64,6 +83,7 @@ var CompactTheme = {
   _toggleStyleSheet(enabled) {
     let wasEnabled = this.isStyleSheetEnabled;
     if (enabled) {
+<<<<<<< HEAD
       // The stylesheet may not have been created yet if it wasn't
       // needed on initial load.  Make it now.
       if (!this.styleSheet) {
@@ -71,8 +91,18 @@ var CompactTheme = {
         this.createCliqzStyleSheet();
       }
       this.styleSheet.sheet.disabled = false;
+||||||| merged common ancestors
+      // The stylesheet may not have been created yet if it wasn't
+      // needed on initial load.  Make it now.
+      if (!this.styleSheet) {
+        this.createStyleSheet();
+      }
+      this.styleSheet.sheet.disabled = false;
+=======
+      this.styleSheet.disabled = false;
+>>>>>>> origin/upstream-releases
     } else if (!enabled && wasEnabled) {
-      this.styleSheet.sheet.disabled = true;
+      this.styleSheet.disabled = true;
     }
   },
 
@@ -81,6 +111,7 @@ var CompactTheme = {
     this.styleSheet = null;
   }
 };
+<<<<<<< HEAD
 
 // If the compact theme is going to be applied in gBrowserInit.onLoad,
 // then preload it now.  This prevents a flash of unstyled content where the
@@ -89,3 +120,13 @@ if (this != Services.appShell.hiddenDOMWindow && CompactTheme.isThemeCurrentlyAp
   CompactTheme.createStyleSheet();
   CompactTheme.createCliqzStyleSheet();
 }
+||||||| merged common ancestors
+
+// If the compact theme is going to be applied in gBrowserInit.onLoad,
+// then preload it now.  This prevents a flash of unstyled content where the
+// normal theme is applied while the compact theme stylesheet is loading.
+if (this != Services.appShell.hiddenDOMWindow && CompactTheme.isThemeCurrentlyApplied) {
+  CompactTheme.createStyleSheet();
+}
+=======
+>>>>>>> origin/upstream-releases

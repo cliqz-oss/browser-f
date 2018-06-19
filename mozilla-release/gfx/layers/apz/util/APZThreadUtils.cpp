@@ -6,8 +6,6 @@
 
 #include "mozilla/layers/APZThreadUtils.h"
 
-#include "mozilla/layers/CompositorThread.h"
-
 namespace mozilla {
 namespace layers {
 
@@ -40,14 +38,6 @@ APZThreadUtils::AssertOnControllerThread() {
   }
 
   MOZ_ASSERT(sControllerThread == MessageLoop::current());
-}
-
-/*static*/ void
-APZThreadUtils::AssertOnSamplerThread()
-{
-  if (GetThreadAssertionsEnabled()) {
-    MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
-  }
 }
 
 /*static*/ void

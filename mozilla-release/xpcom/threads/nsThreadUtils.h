@@ -22,12 +22,13 @@
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "mozilla/Atomics.h"
-#include "mozilla/IndexSequence.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Move.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Tuple.h"
 #include "mozilla/TypeTraits.h"
+
+#include <utility>
 
 //-----------------------------------------------------------------------------
 // These methods are alternatives to the methods on nsIThreadManager, provided
@@ -425,26 +426,39 @@ enum RunnableKind
   IdleWithTimer
 };
 
+// Implementing nsINamed on Runnable bloats vtables for the hundreds of
+// Runnable subclasses that we have, so we want to avoid that overhead
+// when we're not using nsINamed for anything.
+#ifndef RELEASE_OR_BETA
+#define MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#endif
+
 // This class is designed to be subclassed.
-class Runnable : public nsIRunnable, public nsINamed
+class Runnable
+  : public nsIRunnable
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+  , public nsINamed
+#endif
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIRUNNABLE
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_DECL_NSINAMED
+#endif
 
   Runnable() = delete;
 
-#ifdef RELEASE_OR_BETA
-  explicit Runnable(const char* aName) {}
-#else
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   explicit Runnable(const char* aName) : mName(aName) {}
+#else
+  explicit Runnable(const char* aName) {}
 #endif
 
 protected:
   virtual ~Runnable() {}
 
-#ifndef RELEASE_OR_BETA
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   const char* mName = nullptr;
 #endif
 
@@ -503,7 +517,9 @@ public:
   PrioritizableRunnable(already_AddRefed<nsIRunnable>&& aRunnable,
                         uint32_t aPriority);
 
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_IMETHOD GetName(nsACString& aName) override;
+#endif
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
@@ -1143,17 +1159,17 @@ struct RunnableMethodArguments final
   {}
   template<typename C, typename M, typename... Args, size_t... Indices>
   static auto
-  applyImpl(C* o, M m, Tuple<Args...>& args, IndexSequence<Indices...>)
+  applyImpl(C* o, M m, Tuple<Args...>& args, std::index_sequence<Indices...>)
       -> decltype(((*o).*m)(Get<Indices>(args).PassAsParameter()...))
   {
     return ((*o).*m)(Get<Indices>(args).PassAsParameter()...);
   }
   template<class C, typename M> auto apply(C* o, M m)
       -> decltype(applyImpl(o, m, mArguments,
-                  typename IndexSequenceFor<Ts...>::Type()))
+                  std::index_sequence_for<Ts...>{}))
   {
     return applyImpl(o, m, mArguments,
-        typename IndexSequenceFor<Ts...>::Type());
+        std::index_sequence_for<Ts...>{});
   }
 };
 

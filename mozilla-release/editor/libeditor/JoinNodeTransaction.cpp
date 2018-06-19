@@ -6,11 +6,11 @@
 #include "JoinNodeTransaction.h"
 
 #include "mozilla/EditorBase.h"         // for EditorBase
+#include "mozilla/dom/Text.h"
 #include "nsAString.h"
 #include "nsDebug.h"                    // for NS_ASSERTION, etc.
 #include "nsError.h"                    // for NS_ERROR_NULL_POINTER, etc.
 #include "nsIContent.h"                 // for nsIContent
-#include "nsIDOMCharacterData.h"        // for nsIDOMCharacterData
 #include "nsIEditor.h"                  // for EditorBase::IsModifiableNode
 #include "nsISupportsImpl.h"            // for QueryInterface, etc.
 
@@ -89,7 +89,7 @@ JoinNodeTransaction::DoTransaction()
   mParent = leftParent;
   mOffset = mLeftNode->Length();
 
-  return mEditorBase->JoinNodesImpl(mRightNode, mLeftNode, mParent);
+  return mEditorBase->DoJoinNodes(mRightNode, mLeftNode, mParent);
 }
 
 //XXX: What if instead of split, we just deleted the unneeded children of
@@ -106,7 +106,10 @@ JoinNodeTransaction::UndoTransaction()
   // First, massage the existing node so it is in its post-split state
   ErrorResult rv;
   if (mRightNode->GetAsText()) {
-    rv = mRightNode->GetAsText()->DeleteData(0, mOffset);
+    mRightNode->GetAsText()->DeleteData(0, mOffset, rv);
+    if (rv.Failed()) {
+      return rv.StealNSResult();
+    }
   } else {
     nsCOMPtr<nsIContent> child = mRightNode->GetFirstChild();
     for (uint32_t i = 0; i < mOffset; i++) {

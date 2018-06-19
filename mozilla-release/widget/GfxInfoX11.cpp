@@ -275,14 +275,18 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
                               OperatingSystem* aOS /* = nullptr */)
 
 {
-  GetData();
-
   NS_ENSURE_ARG_POINTER(aStatus);
   *aStatus = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
   aSuggestedDriverVersion.SetIsVoid(true);
   OperatingSystem os = OperatingSystem::Linux;
   if (aOS)
     *aOS = os;
+
+  if (mShutdownOccurred) {
+    return NS_OK;
+  }
+
+  GetData();
 
   if (mGLMajorVersion == 1) {
     // We're on OpenGL 1. In most cases that indicates really old hardware.
@@ -303,6 +307,12 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
     {
       *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
       aFailureId = "FEATURE_FAILURE_SOFTWARE_GL";
+      return NS_OK;
+    }
+
+    if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
+      aFailureId = "FEATURE_UNQUALIFIED_WEBRENDER_LINUX";
       return NS_OK;
     }
 

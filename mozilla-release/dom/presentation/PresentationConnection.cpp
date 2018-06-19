@@ -615,12 +615,13 @@ PresentationConnection::DispatchConnectionCloseEvent(
   closedEvent->SetTrusted(true);
 
   if (aDispatchNow) {
-    bool ignore;
-    return DOMEventTargetHelper::DispatchEvent(closedEvent, &ignore);
+    ErrorResult rv;
+    DispatchEvent(*closedEvent, rv);
+    return rv.StealNSResult();
   }
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, static_cast<Event*>(closedEvent));
+    new AsyncEventDispatcher(this, closedEvent);
   return asyncDispatcher->PostDOMEvent();
 }
 
@@ -649,7 +650,7 @@ PresentationConnection::DispatchMessageEvent(JS::Handle<JS::Value> aData)
   messageEvent->SetTrusted(true);
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, static_cast<Event*>(messageEvent));
+    new AsyncEventDispatcher(this, messageEvent);
   return asyncDispatcher->PostDOMEvent();
 }
 

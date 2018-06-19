@@ -5,10 +5,13 @@
 
 DIRS += [
     'components',
+    'store',
 ]
 
 DevToolsModules(
+    'browser.js',
     'panel.js',
+    'utils.js',
 )
 
 MOCHITEST_CHROME_MANIFESTS += ['test/chrome/chrome.ini']

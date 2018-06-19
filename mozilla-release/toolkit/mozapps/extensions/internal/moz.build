@@ -8,15 +8,15 @@ EXTRA_JS_MODULES.addons += [
     'AddonRepository.jsm',
     'AddonSettings.jsm',
     'AddonUpdateChecker.jsm',
-    'APIExtensionBootstrap.js',
     'Content.js',
     'GMPProvider.jsm',
     'LightweightThemeImageOptimizer.jsm',
     'ProductAddonChecker.jsm',
     'SpellCheckDictionaryBootstrap.js',
+    'UpdateRDFConverter.jsm',
+    'XPIDatabase.jsm',
     'XPIInstall.jsm',
     'XPIProvider.jsm',
-    'XPIProviderUtils.js',
 ]
 
 TESTING_JS_MODULES += [

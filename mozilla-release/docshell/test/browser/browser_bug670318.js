@@ -30,7 +30,7 @@ add_task(async function test() {
               testDone.resolve();
             }, true);
 
-            history.removeSHistoryListener(listener);
+            history.legacySHistory.removeSHistoryListener(listener);
             delete content._testListener;
             content.setTimeout(() => { content.location.reload(); }, 0);
           }
@@ -51,11 +51,11 @@ add_task(async function test() {
           return true;
         },
 
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsISHistoryListener,
-                                               Ci.nsISupportsWeakReference])
+        QueryInterface: ChromeUtils.generateQI([Ci.nsISHistoryListener,
+                                                Ci.nsISupportsWeakReference])
       };
 
-      history.addSHistoryListener(listener);
+      history.legacySHistory.addSHistoryListener(listener);
       // Since listener implements nsISupportsWeakReference, we are
       // responsible for keeping it alive so that the GC doesn't clear
       // it before the test completes. We do this by anchoring the listener

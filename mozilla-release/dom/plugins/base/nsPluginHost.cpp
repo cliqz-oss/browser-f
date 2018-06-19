@@ -52,6 +52,7 @@
 #include "nsPluginStreamListenerPeer.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/FakePluginTagInitBinding.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/LoadInfo.h"
@@ -70,7 +71,6 @@
 
 // for the dialog
 #include "nsIWindowWatcher.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMWindow.h"
 
 #include "nsNetCID.h"
@@ -98,6 +98,8 @@
 #include "nsVersionComparator.h"
 #include "NullPrincipal.h"
 
+#include "mozilla/dom/Promise.h"
+
 #if defined(XP_WIN)
 #include "nsIWindowMediator.h"
 #include "nsIBaseWindow.h"
@@ -113,6 +115,7 @@ using mozilla::plugins::FakePluginTag;
 using mozilla::plugins::PluginTag;
 using mozilla::dom::FakePluginTagInit;
 using mozilla::dom::FakePluginMimeEntry;
+using mozilla::dom::Promise;
 
 // Null out a strong ref to a linked list iteratively to avoid
 // exhausting the stack (bug 486349).
@@ -247,6 +250,109 @@ static bool UnloadPluginsASAP()
   return (Preferences::GetUint(kPrefUnloadPluginTimeoutSecs, kDefaultPluginUnloadingTimeout) == 0);
 }
 
+namespace mozilla {
+namespace plugins {
+class BlocklistPromiseHandler final : public mozilla::dom::PromiseNativeHandler
+{
+  public:
+    NS_DECL_ISUPPORTS
+
+    BlocklistPromiseHandler(nsPluginTag *aTag, const bool aShouldSoftblock)
+      : mTag(aTag)
+      , mShouldDisableWhenSoftblocked(aShouldSoftblock)
+    {
+      MOZ_ASSERT(mTag, "Should always be passed a plugin tag");
+      sPendingBlocklistStateRequests++;
+    }
+
+    void
+    MaybeWriteBlocklistChanges()
+    {
+      // We're called immediately when the promise resolves/rejects, and (as a backup)
+      // when the handler is destroyed. To ensure we only run once, we use mTag as a
+      // sentinel, setting it to nullptr when we run.
+      if (!mTag) {
+        return;
+      }
+      mTag = nullptr;
+      sPendingBlocklistStateRequests--;
+      // If this was the only remaining pending request, check if we need to write
+      // state and if so update the child processes.
+      if (!sPendingBlocklistStateRequests &&
+          sPluginBlocklistStatesChangedSinceLastWrite) {
+        sPluginBlocklistStatesChangedSinceLastWrite = false;
+
+        RefPtr<nsPluginHost> host = nsPluginHost::GetInst();
+        // Write the changed list to disk:
+        host->WritePluginInfo();
+
+        // We update blocklist info in content processes asynchronously
+        // by just sending a new plugin list to content.
+        host->IncrementChromeEpoch();
+        host->SendPluginsToContent();
+      }
+    }
+
+    void
+    ResolvedCallback(JSContext *aCx, JS::Handle<JS::Value> aValue) override
+    {
+      if (!aValue.isInt32()) {
+        MOZ_ASSERT(false, "Blocklist should always return int32");
+        return;
+      }
+      int32_t newState = aValue.toInt32();
+      MOZ_ASSERT(newState >= 0 && newState < nsIBlocklistService::STATE_MAX,
+        "Shouldn't get an out of bounds blocklist state");
+
+      // Check the old and new state and see if there was a change:
+      uint32_t oldState = mTag->GetBlocklistState();
+      bool changed = oldState != (uint32_t)newState;
+      mTag->SetBlocklistState(newState);
+
+      if (newState == nsIBlocklistService::STATE_SOFTBLOCKED && mShouldDisableWhenSoftblocked) {
+        mTag->SetEnabledState(nsIPluginTag::STATE_DISABLED);
+        changed = true;
+      }
+      sPluginBlocklistStatesChangedSinceLastWrite |= changed;
+
+      MaybeWriteBlocklistChanges();
+    }
+    void
+    RejectedCallback(JSContext *aCx, JS::Handle<JS::Value> aValue) override
+    {
+      MOZ_ASSERT(false, "Shouldn't reject plugin blocklist state request");
+      MaybeWriteBlocklistChanges();
+    }
+
+  private:
+    ~BlocklistPromiseHandler() {
+      // If we have multiple plugins and the last pending request is GC'd
+      // and so never resolves/rejects, ensure we still write the blocklist.
+      MaybeWriteBlocklistChanges();
+    }
+
+    RefPtr<nsPluginTag> mTag;
+    bool mShouldDisableWhenSoftblocked;
+
+    // Whether we changed any of the plugins' blocklist states since
+    // we last started fetching them (async). This is reset to false
+    // every time we finish fetching plugin blocklist information.
+    // When this happens, if the previous value was true, we store the
+    // updated list on disk and send it to child processes.
+    static bool sPluginBlocklistStatesChangedSinceLastWrite;
+    // How many pending blocklist state requests we've got
+    static uint32_t sPendingBlocklistStateRequests;
+};
+
+NS_IMPL_ISUPPORTS0(BlocklistPromiseHandler)
+
+
+bool BlocklistPromiseHandler::sPluginBlocklistStatesChangedSinceLastWrite = false;
+uint32_t BlocklistPromiseHandler::sPendingBlocklistStateRequests = 0;
+} // namespace plugins
+} // namespace mozilla
+
+
 nsPluginHost::nsPluginHost()
   : mPluginsLoaded(false)
   , mOverrideInternalTypes(false)
@@ -268,7 +374,6 @@ nsPluginHost::nsPluginHost()
     obsService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
     if (XRE_IsParentProcess()) {
       obsService->AddObserver(this, "blocklist-updated", false);
-      obsService->AddObserver(this, "blocklist-loaded", false);
     }
   }
 
@@ -1508,6 +1613,24 @@ nsPluginHost::RegisterFakePlugin(JS::Handle<JS::Value> aInitDictionary,
 }
 
 NS_IMETHODIMP
+nsPluginHost::CreateFakePlugin(JS::Handle<JS::Value> aInitDictionary,
+                               JSContext* aCx,
+                               nsIFakePluginTag **aResult)
+{
+  FakePluginTagInit initDictionary;
+  if (!initDictionary.Init(aCx, aInitDictionary)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  RefPtr<nsFakePluginTag> newTag;
+  nsresult rv = nsFakePluginTag::Create(initDictionary, getter_AddRefs(newTag));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  newTag.forget(aResult);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsPluginHost::UnregisterFakePlugin(const nsACString& aHandlerURI)
 {
   nsCOMPtr<nsIURI> handlerURI;
@@ -2002,13 +2125,6 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
   nsCOMArray<nsIFile> extensionDirs;
   GetExtensionDirectories(extensionDirs);
 
-  nsCOMPtr<nsIBlocklistService> blocklist =
-    do_GetService("@mozilla.org/extensions/blocklist;1");
-
-  bool isBlocklistLoaded = false;
-  if (blocklist && NS_FAILED(blocklist->GetIsLoaded(&isBlocklistLoaded))) {
-    isBlocklistLoaded = false;
-  }
   for (int32_t i = (pluginFiles.Length() - 1); i >= 0; i--) {
     nsCOMPtr<nsIFile>& localfile = pluginFiles[i];
 
@@ -2026,9 +2142,11 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
     RemoveCachedPluginsInfo(filePath.get(), getter_AddRefs(pluginTag));
 
     bool seenBefore = false;
+    uint32_t blocklistState = nsIBlocklistService::STATE_NOT_BLOCKED;
 
     if (pluginTag) {
       seenBefore = true;
+      blocklistState = pluginTag->GetBlocklistState();
       // If plugin changed, delete cachedPluginTag and don't use cache
       if (fileModTime != pluginTag->mLastModifiedTime) {
         // Plugins has changed. Don't use cached plugin info.
@@ -2100,23 +2218,12 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
         continue;
       }
 
-      uint32_t state = nsIBlocklistService::STATE_NOT_BLOCKED;
-      pluginTag = new nsPluginTag(&info, fileModTime, fromExtension, state);
+      pluginTag = new nsPluginTag(&info, fileModTime, fromExtension, blocklistState);
       pluginTag->mLibrary = library;
-      // If the blocklist is loaded, get the blocklist state now.
-      // If it isn't loaded yet, we'll update it once it loads.
-      if (isBlocklistLoaded &&
-          NS_SUCCEEDED(blocklist->GetPluginBlocklistState(pluginTag, EmptyString(),
-                                                          EmptyString(), &state))) {
-        pluginTag->SetBlocklistState(state);
-      }
       pluginFile.FreePluginInfo(info);
-
-      // If the blocklist says it is risky and we have never seen this
-      // plugin before, then disable it.
-      if (state == nsIBlocklistService::STATE_SOFTBLOCKED && !seenBefore) {
-        pluginTag->SetEnabledState(nsIPluginTag::STATE_DISABLED);
-      }
+      // Pass whether we've seen this plugin before. If the plugin is
+      // softblocked and new (not seen before), it will be disabled.
+      UpdatePluginBlocklistState(pluginTag, !seenBefore);
 
       // Plugin unloading is tag-based. If we created a new tag and loaded
       // the library in the process then we want to attempt to unload it here.
@@ -2149,6 +2256,26 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
   }
 
   return NS_OK;
+}
+
+void
+nsPluginHost::UpdatePluginBlocklistState(nsPluginTag* aPluginTag, bool aShouldSoftblock)
+{
+  nsCOMPtr<nsIBlocklistService> blocklist =
+    do_GetService("@mozilla.org/extensions/blocklist;1");
+  MOZ_ASSERT(blocklist, "Should be able to access the blocklist");
+  if (!blocklist) {
+    return;
+  }
+  // Asynchronously get the blocklist state.
+  nsCOMPtr<nsISupports> result;
+  blocklist->GetPluginBlocklistState(aPluginTag, EmptyString(),
+                                     EmptyString(), getter_AddRefs(result));
+  RefPtr<Promise> promise = do_QueryObject(result);
+  MOZ_ASSERT(promise, "Should always get a promise for plugin blocklist state.");
+  if (promise) {
+    promise->AppendNativeHandler(new mozilla::plugins::BlocklistPromiseHandler(aPluginTag, aShouldSoftblock));
+  }
 }
 
 nsresult nsPluginHost::ScanPluginsDirectoryList(nsISimpleEnumerator *dirEnum,
@@ -3170,15 +3297,14 @@ nsresult nsPluginHost::NewPluginURLStream(const nsString& aURL,
   rv = listenerPeer->Initialize(url, aInstance, aListener);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIDOMElement> element;
+  RefPtr<dom::Element> element;
   nsCOMPtr<nsIDocument> doc;
   if (owner) {
     owner->GetDOMElement(getter_AddRefs(element));
     owner->GetDocument(getter_AddRefs(doc));
   }
 
-  nsCOMPtr<nsINode> requestingNode(do_QueryInterface(element));
-  NS_ENSURE_TRUE(requestingNode, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(element, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIChannel> channel;
   // @arg loadgroup:
@@ -3187,7 +3313,7 @@ nsresult nsPluginHost::NewPluginURLStream(const nsString& aURL,
   // form |nsDocShell::OnLinkClickSync| bug 166613
   rv = NS_NewChannel(getter_AddRefs(channel),
                      url,
-                     requestingNode,
+                     element,
                      nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS |
                      nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL,
                      nsIContentPolicy::TYPE_OBJECT_SUBREQUEST,
@@ -3407,35 +3533,14 @@ NS_IMETHODIMP nsPluginHost::Observe(nsISupports *aSubject,
       LoadPlugins();
     }
   }
-  if (XRE_IsParentProcess() &&
-      (!strcmp("blocklist-updated", aTopic) || !strcmp("blocklist-loaded", aTopic))) {
-    nsCOMPtr<nsIBlocklistService> blocklist =
-      do_GetService("@mozilla.org/extensions/blocklist;1");
-    if (!blocklist) {
-      return NS_OK;
-    }
+  if (XRE_IsParentProcess() && !strcmp("blocklist-updated", aTopic)) {
+    // The blocklist has updated. Asynchronously get blocklist state for all items.
+    // The promise resolution handler takes care of checking if anything changed,
+    // and writing an updated state to file, as well as sending data to child processes.
     nsPluginTag* plugin = mPlugins;
-    bool blocklistAlteredPlugins = false;
     while (plugin) {
-      uint32_t blocklistState = nsIBlocklistService::STATE_NOT_BLOCKED;
-      nsresult rv = blocklist->GetPluginBlocklistState(plugin, EmptyString(),
-                                                       EmptyString(), &blocklistState);
-      NS_ENSURE_SUCCESS(rv, rv);
-      uint32_t oldBlocklistState;
-      plugin->GetBlocklistState(&oldBlocklistState);
-      plugin->SetBlocklistState(blocklistState);
-      blocklistAlteredPlugins |= (oldBlocklistState != blocklistState);
+      UpdatePluginBlocklistState(plugin);
       plugin = plugin->mNext;
-    }
-    if (blocklistAlteredPlugins) {
-      // Write the changed list to disk:
-      WritePluginInfo();
-
-      // We update blocklists asynchronously by just sending a new plugin list to
-      // content.
-      // We'll need to repack our tags and send them to content again.
-      IncrementChromeEpoch();
-      SendPluginsToContent();
     }
   }
   return NS_OK;
@@ -3751,7 +3856,7 @@ nsPluginHost::PluginCrashed(nsNPAPIPlugin* aPlugin,
     if (instance->GetPlugin() == aPlugin) {
       // notify the content node (nsIObjectLoadingContent) that the
       // plugin has crashed
-      nsCOMPtr<nsIDOMElement> domElement;
+      RefPtr<dom::Element> domElement;
       instance->GetDOMElement(getter_AddRefs(domElement));
       nsCOMPtr<nsIObjectLoadingContent> objectContent(do_QueryInterface(domElement));
       if (objectContent) {
@@ -3846,7 +3951,7 @@ nsPluginHost::DestroyRunningInstances(nsPluginTag* aPluginTag)
       nsPluginTag* pluginTag = TagForPlugin(instance->GetPlugin());
       instance->SetWindow(nullptr);
 
-      nsCOMPtr<nsIDOMElement> domElement;
+      RefPtr<dom::Element> domElement;
       instance->GetDOMElement(getter_AddRefs(domElement));
       nsCOMPtr<nsIObjectLoadingContent> objectContent =
         do_QueryInterface(domElement);

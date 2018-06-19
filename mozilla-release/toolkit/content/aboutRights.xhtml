@@ -17,6 +17,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:" />
   <title>&rights.title;</title>
   <link rel="stylesheet" href="chrome://global/skin/in-content/info-pages.css" type="text/css"/>
   <link rel="stylesheet" href="chrome://global/skin/aboutRights.css" type="text/css"/>
@@ -39,8 +40,16 @@
     - Point 4 discusses web service terms, unbranded builds gets a placeholder (for the vendor to replace) -->
     <li>&rights.intro-point2-a;</li>
     <li>&rights.intro-point2.5;</li>
+<<<<<<< HEAD
     <li>&rights.cliqz.intro-point3a;<a href="https://cliqz.com/privacy">&rights.cliqz.intro-point3b;</a>&rights.cliqz.intro-point3c;<a href="https://cliqz.com/privacy-browser">&rights.cliqz.intro-point3d;</a>&rights.cliqz.intro-point3e;<a href="https://cliqz.com/support">&rights.cliqz.intro-point3f;</a>&rights.intro-point3c;</li>
     <li>&rights2.intro-point4a;<a href="about:rights#webservices" onclick="showServices();">&rights.intro-point4b;</a>&rights.intro-point4c;</li>
+||||||| merged common ancestors
+    <li>&rights2.intro-point3a;<a href="https://www.mozilla.org/legal/privacy/firefox.html">&rights2.intro-point3b;</a>&rights.intro-point3c;</li>
+    <li>&rights2.intro-point4a;<a href="about:rights#webservices" onclick="showServices();">&rights.intro-point4b;</a>&rights.intro-point4c;</li>
+=======
+    <li>&rights2.intro-point3a;<a href="https://www.mozilla.org/legal/privacy/firefox.html">&rights2.intro-point3b;</a>&rights.intro-point3c;</li>
+    <li>&rights2.intro-point4a;<a href="about:rights#webservices" id="showWebServices">&rights.intro-point4b;</a>&rights.intro-point4c;</li>
+>>>>>>> origin/upstream-releases
     <li>&rights.intro-point5;</li>
   </ul>
 
@@ -48,9 +57,15 @@
     <a name="webservices"/>
     <h3>&rights2.webservices-header;</h3>
 
+<<<<<<< HEAD
     <p>&rights2.webservices-cliqz;</p>
 
     <p>&rights2.webservices-a;<a href="about:rights#disabling-webservices" onclick="showDisablingServices();">&rights2.webservices-b;</a>&rights3.webservices-c;</p>
+||||||| merged common ancestors
+    <p>&rights2.webservices-a;<a href="about:rights#disabling-webservices" onclick="showDisablingServices();">&rights2.webservices-b;</a>&rights3.webservices-c;</p>
+=======
+    <p>&rights2.webservices-a;<a href="about:rights#disabling-webservices" id="showDisablingWebServices">&rights2.webservices-b;</a>&rights3.webservices-c;</p>
+>>>>>>> origin/upstream-releases
 
     <div id="disabling-webservices-container" style="margin-left:40px;">
       <a name="disabling-webservices"/>
@@ -84,21 +99,6 @@
   </div>
 </div>
 
-<script type="application/javascript"><![CDATA[
-  var servicesDiv = document.getElementById("webservices-container");
-  servicesDiv.style.display = "none";
-
-  function showServices() {
-    servicesDiv.style.display = "";
-  }
-
-  var disablingServicesDiv = document.getElementById("disabling-webservices-container");
-  disablingServicesDiv.style.display = "none";
-
-  function showDisablingServices() {
-    disablingServicesDiv.style.display = "";
-  }
-]]></script>
-
 </body>
+<script type="application/javascript" src="chrome://global/content/aboutRights.js"/>
 </html>

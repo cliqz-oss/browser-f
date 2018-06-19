@@ -76,16 +76,18 @@ export const UserEventAction = Joi.object().keys({
       "BOOKMARK_DELETE",
       "BOOKMARK_ADD",
       "PIN",
+      "PREVIEW_REQUEST",
       "UNPIN",
       "SAVE_TO_POCKET",
-      "SECTION_MENU_MOVE_UP",
-      "SECTION_MENU_MOVE_DOWN",
-      "SECTION_MENU_REMOVE",
-      "SECTION_MENU_COLLAPSE",
-      "SECTION_MENU_EXPAND",
-      "SECTION_MENU_MANAGE",
-      "SECTION_MENU_ADD_TOPSITE",
-      "SECTION_MENU_PRIVACY_NOTICE",
+      "MENU_MOVE_UP",
+      "MENU_MOVE_DOWN",
+      "SCREENSHOT_REQUEST",
+      "MENU_REMOVE",
+      "MENU_COLLAPSE",
+      "MENU_EXPAND",
+      "MENU_MANAGE",
+      "MENU_ADD_TOPSITE",
+      "MENU_PRIVACY_NOTICE",
       "DELETE_FROM_POCKET",
       "ARCHIVE_FROM_POCKET"
     ]).required(),
@@ -170,6 +172,7 @@ export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
 
     // Information about the quality of TopSites images and icons.
     topsites_icon_stats: Joi.object().keys({
+      custom_screenshot: Joi.number(),
       rich_icon: Joi.number(),
       screenshot: Joi.number(),
       screenshot_with_icon: Joi.number(),
@@ -196,6 +199,17 @@ export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     is_prerendered: Joi.bool().required()
   }).required()
 }));
+
+export const ASRouterEventPing = Joi.object().keys({
+  client_id: Joi.string().required(),
+  action: Joi.string().required(),
+  impression_id: Joi.string().required(),
+  source: Joi.string().required(),
+  addon_version: Joi.string().required(),
+  locale: Joi.string().required(),
+  message_id: Joi.string().required(),
+  event: Joi.string().required()
+});
 
 export const UTSessionPing = Joi.array().items(
   Joi.string().required().valid("activity_stream"),

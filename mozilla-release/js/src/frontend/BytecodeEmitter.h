@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 
 #include "ds/InlineTable.h"
+#include "frontend/BCEParserHandle.h"
 #include "frontend/EitherParser.h"
 #include "frontend/SharedContext.h"
 #include "frontend/SourceNotes.h"
@@ -220,7 +221,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     };
     EmitSection prologue, main, *current;
 
-    EitherParser<FullParseHandler> parser;
+    // Private storage for parser wrapper. DO NOT REFERENCE INTERNALLY. May not be initialized.
+    // Use |parser| instead.
+    mozilla::Maybe<EitherParser> ep_;
+    BCEParserHandle *parser;
 
     PooledMapPtr<AtomIndexMap> atomIndices; /* literals indexed for mapping */
     unsigned        firstLine;      /* first line, for JSScript::initFromEmitter */
@@ -236,8 +240,22 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     EmitterScope*    varEmitterScope;
     NestableControl* innermostNestableControl;
-    EmitterScope*    innermostEmitterScope;
+    EmitterScope*    innermostEmitterScope_;
     TDZCheckCache*   innermostTDZCheckCache;
+
+#ifdef DEBUG
+    bool unstableEmitterScope;
+
+    friend class AutoCheckUnstableEmitterScope;
+#endif
+
+    EmitterScope* innermostEmitterScope() const {
+        MOZ_ASSERT(!unstableEmitterScope);
+        return innermostEmitterScopeNoCheck();
+    }
+    EmitterScope* innermostEmitterScopeNoCheck() const {
+        return innermostEmitterScope_;
+    }
 
     CGConstList      constList;      /* constants to be included with the script */
     CGObjectList     objectList;     /* list of emitted objects */
@@ -281,6 +299,9 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     const EmitterMode emitterMode;
 
+    MOZ_INIT_OUTSIDE_CTOR uint32_t scriptStartOffset;
+    bool scriptStartOffsetSet;
+
     // The end location of a function body that is being emitted.
     MOZ_INIT_OUTSIDE_CTOR uint32_t functionBodyEndPos;
     // Whether functionBodyEndPos was set.
@@ -292,29 +313,58 @@ struct MOZ_STACK_CLASS BytecodeEmitter
      * tempLifoAlloc and save the pointer beyond the next BytecodeEmitter
      * destruction.
      */
-    BytecodeEmitter(BytecodeEmitter* parent, const EitherParser<FullParseHandler>& parser,
-                    SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
-                    uint32_t lineNum, EmitterMode emitterMode = Normal);
+  private:
+    // Internal constructor, for delegation use only.
+    BytecodeEmitter(BytecodeEmitter* parent, SharedContext* sc, HandleScript script,
+                    Handle<LazyScript*> lazyScript, uint32_t lineNum, EmitterMode emitterMode);
+
+    void initFromBodyPosition(TokenPos bodyPosition);
+
+  public:
+
+    BytecodeEmitter(BytecodeEmitter* parent, BCEParserHandle* parser, SharedContext* sc,
+                    HandleScript script, Handle<LazyScript*> lazyScript, uint32_t lineNum,
+                    EmitterMode emitterMode = Normal);
+
+    BytecodeEmitter(BytecodeEmitter* parent, const EitherParser& parser, SharedContext* sc,
+                    HandleScript script, Handle<LazyScript*> lazyScript, uint32_t lineNum,
+                    EmitterMode emitterMode = Normal);
 
     template<typename CharT>
     BytecodeEmitter(BytecodeEmitter* parent, Parser<FullParseHandler, CharT>* parser,
                     SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
                     uint32_t lineNum, EmitterMode emitterMode = Normal)
-      : BytecodeEmitter(parent, EitherParser<FullParseHandler>(parser), sc, script, lazyScript,
+      : BytecodeEmitter(parent, EitherParser(parser), sc, script, lazyScript,
                         lineNum, emitterMode)
     {}
 
     // An alternate constructor that uses a TokenPos for the starting
     // line and that sets functionBodyEndPos as well.
-    BytecodeEmitter(BytecodeEmitter* parent, const EitherParser<FullParseHandler>& parser,
-                    SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
-                    TokenPos bodyPosition, EmitterMode emitterMode = Normal);
+    BytecodeEmitter(BytecodeEmitter* parent, BCEParserHandle* parser, SharedContext* sc,
+                    HandleScript script, Handle<LazyScript*> lazyScript, TokenPos bodyPosition,
+                    EmitterMode emitterMode = Normal)
+        : BytecodeEmitter(parent, parser, sc, script, lazyScript,
+                          parser->errorReporter().lineAt(bodyPosition.begin),
+                          emitterMode)
+    {
+        initFromBodyPosition(bodyPosition);
+    }
+
+    BytecodeEmitter(BytecodeEmitter* parent, const EitherParser& parser, SharedContext* sc,
+                    HandleScript script, Handle<LazyScript*> lazyScript, TokenPos bodyPosition,
+                    EmitterMode emitterMode = Normal)
+        : BytecodeEmitter(parent, parser, sc, script, lazyScript,
+                          parser.errorReporter().lineAt(bodyPosition.begin),
+                          emitterMode)
+    {
+        initFromBodyPosition(bodyPosition);
+    }
 
     template<typename CharT>
     BytecodeEmitter(BytecodeEmitter* parent, Parser<FullParseHandler, CharT>* parser,
                     SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
                     TokenPos bodyPosition, EmitterMode emitterMode = Normal)
-      : BytecodeEmitter(parent, EitherParser<FullParseHandler>(parser), sc, script, lazyScript,
+      : BytecodeEmitter(parent, EitherParser(parser), sc, script, lazyScript,
                         bodyPosition, emitterMode)
     {}
 
@@ -343,7 +393,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
                                                                     EmitterScope* source);
 
     mozilla::Maybe<NameLocation> locationOfNameBoundInFunctionScope(JSAtom* name) {
-        return locationOfNameBoundInFunctionScope(name, innermostEmitterScope);
+        return locationOfNameBoundInFunctionScope(name, innermostEmitterScope());
     }
 
     void setVarEmitterScope(EmitterScope* emitterScope) {
@@ -381,11 +431,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     bool needsImplicitThis();
 
-    MOZ_MUST_USE bool maybeSetDisplayURL();
-    MOZ_MUST_USE bool maybeSetSourceMap();
     void tellDebuggerAboutCompiledScript(JSContext* cx);
-
-    inline TokenStreamAnyChars& tokenStream();
 
     BytecodeVector& code() const { return current->code; }
     jsbytecode* code(ptrdiff_t offset) const { return current->code.begin() + offset; }
@@ -415,6 +461,13 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     void setFunctionBodyEndPos(TokenPos pos) {
         functionBodyEndPos = pos.end;
         functionBodyEndPosSet = true;
+    }
+
+    void setScriptStartOffsetIfUnset(TokenPos pos) {
+        if (!scriptStartOffsetSet) {
+            scriptStartOffset = pos.begin;
+            scriptStartOffsetSet = true;
+        }
     }
 
     void reportError(ParseNode* pn, unsigned errorNumber, ...);
@@ -636,14 +689,20 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitFinishIteratorResult(bool done);
     MOZ_MUST_USE bool iteratorResultShape(unsigned* shape);
 
-    MOZ_MUST_USE bool emitGetDotGenerator();
+    MOZ_MUST_USE bool emitGetDotGeneratorInInnermostScope() {
+        return emitGetDotGeneratorInScope(*innermostEmitterScope());
+    }
+    MOZ_MUST_USE bool emitGetDotGeneratorInScope(EmitterScope& currentScope);
 
     MOZ_MUST_USE bool emitInitialYield(ParseNode* pn);
     MOZ_MUST_USE bool emitYield(ParseNode* pn);
     MOZ_MUST_USE bool emitYieldOp(JSOp op);
     MOZ_MUST_USE bool emitYieldStar(ParseNode* iter);
-    MOZ_MUST_USE bool emitAwait();
-    MOZ_MUST_USE bool emitAwait(ParseNode* pn);
+    MOZ_MUST_USE bool emitAwaitInInnermostScope() {
+        return emitAwaitInScope(*innermostEmitterScope());
+    }
+    MOZ_MUST_USE bool emitAwaitInInnermostScope(ParseNode* pn);
+    MOZ_MUST_USE bool emitAwaitInScope(EmitterScope& currentScope);
 
     MOZ_MUST_USE bool emitPropLHS(ParseNode* pn);
     MOZ_MUST_USE bool emitPropOp(ParseNode* pn, JSOp op);
@@ -740,9 +799,16 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     // onto the stack.
     MOZ_MUST_USE bool emitIteratorNext(ParseNode* pn, IteratorKind kind = IteratorKind::Sync,
                                        bool allowSelfHosted = false);
-    MOZ_MUST_USE bool emitIteratorClose(IteratorKind iterKind = IteratorKind::Sync,
-                                        CompletionKind completionKind = CompletionKind::Normal,
-                                        bool allowSelfHosted = false);
+    MOZ_MUST_USE bool emitIteratorCloseInScope(EmitterScope& currentScope,
+                                               IteratorKind iterKind = IteratorKind::Sync,
+                                               CompletionKind completionKind = CompletionKind::Normal,
+                                               bool allowSelfHosted = false);
+    MOZ_MUST_USE bool emitIteratorCloseInInnermostScope(IteratorKind iterKind = IteratorKind::Sync,
+                                                        CompletionKind completionKind = CompletionKind::Normal,
+                                                        bool allowSelfHosted = false) {
+        return emitIteratorCloseInScope(*innermostEmitterScope(), iterKind, completionKind,
+                                        allowSelfHosted);
+    }
 
     template <typename InnerEmitter>
     MOZ_MUST_USE bool wrapWithDestructuringIteratorCloseTryNote(int32_t iterDepth,
@@ -755,8 +821,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     // is called at compile time.
     MOZ_MUST_USE bool emitDefault(ParseNode* defaultExpr, ParseNode* pattern);
 
-    MOZ_MUST_USE bool setOrEmitSetFunName(ParseNode* maybeFun, HandleAtom name,
-                                          FunctionPrefixKind prefixKind);
+    MOZ_MUST_USE bool setOrEmitSetFunName(ParseNode* maybeFun, HandleAtom name);
 
     MOZ_MUST_USE bool emitInitializer(ParseNode* initializer, ParseNode* pattern);
     MOZ_MUST_USE bool emitInitializerInBranch(ParseNode* initializer, ParseNode* pattern);
@@ -841,6 +906,31 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitPipeline(ParseNode* pn);
 
     MOZ_MUST_USE bool emitExportDefault(ParseNode* pn);
+};
+
+class MOZ_RAII AutoCheckUnstableEmitterScope {
+#ifdef DEBUG
+    bool prev_;
+    BytecodeEmitter* bce_;
+#endif
+
+  public:
+    AutoCheckUnstableEmitterScope() = delete;
+    explicit AutoCheckUnstableEmitterScope(BytecodeEmitter* bce)
+#ifdef DEBUG
+      : bce_(bce)
+#endif
+    {
+#ifdef DEBUG
+        prev_ = bce_->unstableEmitterScope;
+        bce_->unstableEmitterScope = true;
+#endif
+    }
+    ~AutoCheckUnstableEmitterScope() {
+#ifdef DEBUG
+        bce_->unstableEmitterScope = prev_;
+#endif
+    }
 };
 
 } /* namespace frontend */

@@ -14,21 +14,21 @@ const { waitForRecordingStartedEvents, waitForRecordingStoppedEvents } = require
 const { times } = require("devtools/client/performance/test/helpers/event-utils");
 const { getSelectedRecording } = require("devtools/client/performance/test/helpers/recording-utils");
 
-add_task(function* () {
-  let { target, console } = yield initConsoleInNewTab({
+add_task(async function() {
+  let { target, console } = await initConsoleInNewTab({
     url: SIMPLE_URL,
     win: window
   });
 
-  let { panel } = yield initPerformanceInTab({ tab: target.tab });
+  let { panel } = await initPerformanceInTab({ tab: target.tab });
   let { EVENTS, PerformanceController, OverviewView } = panel.panelWin;
 
   let started = waitForRecordingStartedEvents(panel, {
     // only emitted for manual recordings
     skipWaitingForBackendReady: true
   });
-  yield console.profile("rust");
-  yield started;
+  await console.profile("rust");
+  await started;
 
   let recordings = PerformanceController.getRecordings();
   is(recordings.length, 1, "One recording found in the performance panel.");
@@ -43,16 +43,16 @@ add_task(function* () {
     "The profile label for the first recording is correct.");
 
   // Ensure overview is still rendering.
-  yield times(OverviewView, EVENTS.UI_OVERVIEW_RENDERED, 3, {
-    expectedArgs: { "1": Constants.FRAMERATE_GRAPH_LOW_RES_INTERVAL }
+  await times(OverviewView, EVENTS.UI_OVERVIEW_RENDERED, 3, {
+    expectedArgs: [Constants.FRAMERATE_GRAPH_LOW_RES_INTERVAL]
   });
 
   let stopped = waitForRecordingStoppedEvents(panel, {
     // only emitted for manual recordings
     skipWaitingForBackendReady: true
   });
-  yield console.profileEnd("rust");
-  yield stopped;
+  await console.profileEnd("rust");
+  await stopped;
 
-  yield teardownToolboxAndRemoveTab(panel);
+  await teardownToolboxAndRemoveTab(panel);
 });

@@ -16,28 +16,29 @@ const TEST_URI = `
     height:100px">
 `;
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let {inspector, view} = yield openBoxModelView();
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let {inspector, boxmodel} = await openLayoutView();
 
-  yield selectNode("#mydiv", inspector);
-  let editPositionButton = view.document.querySelector(".layout-geometry-editor");
+  await selectNode("#mydiv", inspector);
+  let editPositionButton = boxmodel.document.querySelector(".layout-geometry-editor");
 
   ok(isNodeVisible(editPositionButton), "Edit Position button is visible initially");
 
-  let positionLeftTextbox = view.document.querySelector(
+  let positionLeftTextbox = boxmodel.document.querySelector(
       ".boxmodel-editable[title=position-left]"
   );
   ok(isNodeVisible(positionLeftTextbox), "Position-left edit box exists");
 
   info("Change the value of position-left and submit");
   let onUpdate = waitForUpdate(inspector);
-  EventUtils.synthesizeMouseAtCenter(positionLeftTextbox, {}, view.document.defaultView);
-  EventUtils.synthesizeKey("8", {}, view.document.defaultView);
-  EventUtils.synthesizeKey("VK_RETURN", {}, view.document.defaultView);
+  EventUtils.synthesizeMouseAtCenter(positionLeftTextbox, {},
+    boxmodel.document.defaultView);
+  EventUtils.synthesizeKey("8", {}, boxmodel.document.defaultView);
+  EventUtils.synthesizeKey("VK_RETURN", {}, boxmodel.document.defaultView);
 
-  yield onUpdate;
-  editPositionButton = view.document.querySelector(".layout-geometry-editor");
+  await onUpdate;
+  editPositionButton = boxmodel.document.querySelector(".layout-geometry-editor");
   ok(isNodeVisible(editPositionButton),
     "Edit Position button is still visible after layout change");
 });

@@ -652,8 +652,7 @@ ReflowInput::InitResizeFlags(nsPresContext* aPresContext,
       stack.AppendElement(mFrame);
 
       do {
-        nsIFrame *f = stack.ElementAt(stack.Length() - 1);
-        stack.RemoveElementAt(stack.Length() - 1);
+        nsIFrame *f = stack.PopLastElement();
 
         nsIFrame::ChildListIterator lists(f);
         for (; !lists.IsDone(); lists.Next()) {
@@ -1390,7 +1389,8 @@ ReflowInput::CalculateHypotheticalPosition(
     ? aReflowInput->ComputedSizeAsContainerIfConstrained()
     : containingBlock->GetSize();
   LogicalPoint
-    placeholderOffset(wm, aPlaceholderFrame->GetOffsetTo(containingBlock),
+    placeholderOffset(wm,
+                      aPlaceholderFrame->GetOffsetToIgnoringScrolling(containingBlock),
                       containerSize);
 
   // First, determine the hypothetical box's mBStart.  We want to check the
@@ -1403,7 +1403,8 @@ ReflowInput::CalculateHypotheticalPosition(
     // Use a null containerSize to convert a LogicalPoint functioning as a
     // vector into a physical nsPoint vector.
     const nsSize nullContainerSize;
-    LogicalPoint blockOffset(wm, blockFrame->GetOffsetTo(containingBlock),
+    LogicalPoint blockOffset(wm,
+                             blockFrame->GetOffsetToIgnoringScrolling(containingBlock),
                              nullContainerSize);
     bool isValid;
     nsBlockInFlowLineIterator iter(blockFrame, aPlaceholderFrame, &isValid);
@@ -1500,42 +1501,10 @@ ReflowInput::CalculateHypotheticalPosition(
   }
 
   // The current coordinate space is that of the nearest block to the placeholder.
-  // Convert to the coordinate space of the absolute containing block
-  // One weird thing here is that for fixed-positioned elements we want to do
-  // the conversion incorrectly; specifically we want to ignore any scrolling
-  // that may have happened;
-  nsPoint cbOffset;
-  if (mStyleDisplay->mPosition == NS_STYLE_POSITION_FIXED &&
-      // Exclude cases inside -moz-transform where fixed is like absolute.
-      nsLayoutUtils::IsReallyFixedPos(mFrame)) {
-    // In this case, aReflowInput->frame will likely be an ancestor of
-    // containingBlock, so can just walk our way up the frame tree.
-    // Make sure to not add positions of frames whose parent is a
-    // scrollFrame, since we're doing fixed positioning, which assumes
-    // everything is scrolled to (0,0).
-    cbOffset.MoveTo(0, 0);
-    do {
-      cbOffset += containingBlock->GetPositionIgnoringScrolling();
-      nsContainerFrame* parent = containingBlock->GetParent();
-      if (!parent) {
-        // Oops, our absolute containing block isn't an ancestor of the
-        // placeholder's containing block. This can happen if the placeholder
-        // is pushed to a different page in a printing context.  'cbOffset' is
-        // currently relative to the root frame (containingBlock) - so just
-        // subtract the offset to the absolute containing block to make it
-        // relative to that.
-        cbOffset -= containingBlock->GetOffsetTo(aReflowInput->mFrame);
-        break;
-      }
-      containingBlock = parent;
-    } while (containingBlock != aReflowInput->mFrame);
-  } else {
-    // XXXldb We need to either ignore scrolling for the absolute
-    // positioning case too (and take the incompatibility) or figure out
-    // how to make these positioned elements actually *move* when we
-    // scroll, and thus avoid the resulting incremental reflow bugs.
-    cbOffset = containingBlock->GetOffsetTo(aReflowInput->mFrame);
-  }
+  // Convert to the coordinate space of the absolute containing block.
+  nsPoint cbOffset =
+    containingBlock->GetOffsetToIgnoringScrolling(aReflowInput->mFrame);
+
   nsSize reflowSize = aReflowInput->ComputedSizeAsContainerIfConstrained();
   LogicalPoint logCBOffs(wm, cbOffset, reflowSize - containerSize);
   aHypotheticalPos.mIStart += logCBOffs.I(wm);
@@ -2453,8 +2422,8 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
         // in its inline axis.
         auto inlineAxisAlignment =
           wm.IsOrthogonalTo(cbwm)
-            ? mStylePosition->UsedAlignSelf(alignCB->StyleContext())
-            : mStylePosition->UsedJustifySelf(alignCB->StyleContext());
+            ? mStylePosition->UsedAlignSelf(alignCB->Style())
+            : mStylePosition->UsedJustifySelf(alignCB->Style());
         if ((inlineAxisAlignment != NS_STYLE_ALIGN_STRETCH &&
              inlineAxisAlignment != NS_STYLE_ALIGN_NORMAL) ||
             mStyleMargin->mMargin.GetIStartUnit(wm) == eStyleUnit_Auto ||
@@ -2468,7 +2437,7 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
         // Also shrink-wrap blocks that are orthogonal to their container.
         if (isBlock &&
             ((aFrameType == LayoutFrameType::Legend &&
-              mFrame->StyleContext()->GetPseudo() != nsCSSAnonBoxes::scrolledContent) ||
+              mFrame->Style()->GetPseudo() != nsCSSAnonBoxes::scrolledContent) ||
              (aFrameType == LayoutFrameType::Scroll &&
               mFrame->GetContentInsertionFrame()->IsLegendFrame()) ||
              (mCBReflowInput &&
@@ -2532,7 +2501,7 @@ static void
 UpdateProp(nsIFrame* aFrame,
            const FramePropertyDescriptor<nsMargin>* aProperty,
            bool aNeeded,
-           nsMargin& aNewValue)
+           const nsMargin& aNewValue)
 {
   if (aNeeded) {
     nsMargin* propValue = aFrame->GetProperty(aProperty);
@@ -2567,10 +2536,10 @@ SizeComputationInput::InitOffsets(WritingMode aWM,
   // XXX fix to provide 0,0 for the top&bottom margins for
   // inline-non-replaced elements
   bool needMarginProp = ComputeMargin(aWM, aPercentBasis);
-  // XXX We need to include 'auto' horizontal margins in this too!
-  // ... but if we did that, we'd need to fix nsFrame::GetUsedMargin
-  // to use it even when the margins are all zero (since sometimes
-  // they get treated as auto)
+  // Note that ComputeMargin() simplistically resolves 'auto' margins to 0.
+  // In formatting contexts where this isn't correct, some later code will
+  // need to update the UsedMargin() property with the actual resolved value.
+  // One example of this is ::CalculateBlockSideMargins().
   ::UpdateProp(mFrame, nsIFrame::UsedMarginProperty(), needMarginProp,
                ComputedPhysicalMargin());
 
@@ -2801,7 +2770,16 @@ ReflowInput::CalculateBlockSideMargins(LayoutFrameType aFrameType)
   } else if (isAutoEndMargin) {
     margin.IEnd(cbWM) += availMarginSpace;
   }
-  SetComputedLogicalMargin(margin.ConvertTo(mWritingMode, cbWM));
+  LogicalMargin marginInOurWM = margin.ConvertTo(mWritingMode, cbWM);
+  SetComputedLogicalMargin(marginInOurWM);
+
+  if (isAutoStartMargin || isAutoEndMargin) {
+    // Update the UsedMargin property if we were tracking it already.
+    nsMargin* propValue = mFrame->GetProperty(nsIFrame::UsedMarginProperty());
+    if (propValue) {
+      *propValue = marginInOurWM.GetPhysicalMargin(mWritingMode);
+    }
+  }
 }
 
 #define NORMAL_LINE_HEIGHT_FACTOR 1.2f    // in term of emHeight
@@ -2841,11 +2819,12 @@ GetNormalLineHeight(nsFontMetrics* aFontMetrics)
 }
 
 static inline nscoord
-ComputeLineHeight(nsStyleContext* aStyleContext,
+ComputeLineHeight(ComputedStyle* aComputedStyle,
+                  nsPresContext* aPresContext,
                   nscoord aBlockBSize,
                   float aFontSizeInflation)
 {
-  const nsStyleCoord& lhCoord = aStyleContext->StyleText()->mLineHeight;
+  const nsStyleCoord& lhCoord = aComputedStyle->StyleText()->mLineHeight;
 
   if (lhCoord.GetUnit() == eStyleUnit_Coord) {
     nscoord result = lhCoord.GetCoordValue();
@@ -2860,7 +2839,7 @@ ComputeLineHeight(nsStyleContext* aStyleContext,
     // is found by multiplying the factor by the font's computed size
     // (adjusted for min-size prefs and text zoom).
     return NSToCoordRound(lhCoord.GetFactorValue() * aFontSizeInflation *
-                          aStyleContext->StyleFont()->mFont.size);
+                          aComputedStyle->StyleFont()->mFont.size);
 
   NS_ASSERTION(lhCoord.GetUnit() == eStyleUnit_Normal ||
                lhCoord.GetUnit() == eStyleUnit_Enumerated,
@@ -2875,7 +2854,7 @@ ComputeLineHeight(nsStyleContext* aStyleContext,
   }
 
   RefPtr<nsFontMetrics> fm = nsLayoutUtils::
-    GetFontMetricsForStyleContext(aStyleContext, aFontSizeInflation);
+    GetFontMetricsForComputedStyle(aComputedStyle, aPresContext, aFontSizeInflation);
   return GetNormalLineHeight(fm);
 }
 
@@ -2886,29 +2865,36 @@ ReflowInput::CalcLineHeight() const
     nsLayoutUtils::IsNonWrapperBlock(mFrame) ? ComputedBSize() :
     (mCBReflowInput ? mCBReflowInput->ComputedBSize() : NS_AUTOHEIGHT);
 
-  return CalcLineHeight(mFrame->GetContent(), mFrame->StyleContext(), blockBSize,
+  return CalcLineHeight(mFrame->GetContent(),
+                        mFrame->Style(),
+                        mFrame->PresContext(),
+                        blockBSize,
                         nsLayoutUtils::FontSizeInflationFor(mFrame));
 }
 
 /* static */ nscoord
 ReflowInput::CalcLineHeight(nsIContent* aContent,
-                                  nsStyleContext* aStyleContext,
-                                  nscoord aBlockBSize,
-                                  float aFontSizeInflation)
+                            ComputedStyle* aComputedStyle,
+                            nsPresContext* aPresContext,
+                            nscoord aBlockBSize,
+                            float aFontSizeInflation)
 {
-  NS_PRECONDITION(aStyleContext, "Must have a style context");
+  NS_PRECONDITION(aComputedStyle, "Must have a ComputedStyle");
 
   nscoord lineHeight =
-    ComputeLineHeight(aStyleContext, aBlockBSize, aFontSizeInflation);
+    ComputeLineHeight(aComputedStyle,
+                      aPresContext,
+                      aBlockBSize,
+                      aFontSizeInflation);
 
   NS_ASSERTION(lineHeight >= 0, "ComputeLineHeight screwed up");
 
-  HTMLInputElement* input = HTMLInputElement::FromContentOrNull(aContent);
+  HTMLInputElement* input = HTMLInputElement::FromNodeOrNull(aContent);
   if (input && input->IsSingleLineTextControl()) {
     // For Web-compatibility, single-line text input elements cannot
     // have a line-height smaller than one.
     nscoord lineHeightOne =
-      aFontSizeInflation * aStyleContext->StyleFont()->mFont.size;
+      aFontSizeInflation * aComputedStyle->StyleFont()->mFont.size;
     if (lineHeight < lineHeightOne) {
       lineHeight = lineHeightOne;
     }

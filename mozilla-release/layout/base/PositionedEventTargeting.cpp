@@ -10,6 +10,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "nsLayoutUtils.h"
 #include "nsGkAtoms.h"
 #include "nsFontMetrics.h"
@@ -226,7 +227,7 @@ GetClickableAncestor(nsIFrame* aFrame, nsAtom* stopAt = nullptr, nsAutoString* a
     if (content->IsHTMLElement(nsGkAtoms::iframe) &&
         content->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::mozbrowser,
                                           nsGkAtoms::_true, eIgnoreCase) &&
-        content->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::Remote,
+        content->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::remote,
                                           nsGkAtoms::_true, eIgnoreCase)) {
       return content;
     }
@@ -508,11 +509,11 @@ IsElementClickableAndReadable(nsIFrame* aFrame, WidgetGUIEvent* aEvent, const Ev
   if (content) {
     nsINodeList* childNodes = content->ChildNodes();
     uint32_t childNodeCount = childNodes->Length();
-    if ((content->IsNodeOfType(nsINode::eTEXT)) ||
+    if ((content->IsText()) ||
       // click occurs on the text inside <a></a> or other clickable tags with text inside
 
       (childNodeCount == 1 && childNodes->Item(0) &&
-        childNodes->Item(0)->IsNodeOfType(nsINode::eTEXT))) {
+        childNodes->Item(0)->IsText())) {
       // The click occurs on an element with only one text node child. In this case, the font size
       // can be tested.
       // The number of child nodes is tested to avoid the following cases (See bug 1172488):
@@ -577,7 +578,7 @@ FindFrameTargetedByInputEvent(WidgetGUIEvent* aEvent,
   if (aEvent->mClass == eMouseEventClass &&
       prefs->mTouchOnly &&
       aEvent->AsMouseEvent()->inputSource !=
-        nsIDOMMouseEvent::MOZ_SOURCE_TOUCH) {
+        MouseEventBinding::MOZ_SOURCE_TOUCH) {
     PET_LOG("Mouse input event is not from a touch source\n");
     return target;
   }

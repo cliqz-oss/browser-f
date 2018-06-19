@@ -46,7 +46,7 @@ var historyListener = {
     sendAsyncMessage("ss-test:OnHistoryReplaceEntry");
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsISHistoryListener,
     Ci.nsISupportsWeakReference
   ])
@@ -54,7 +54,7 @@ var historyListener = {
 
 var {sessionHistory} = docShell.QueryInterface(Ci.nsIWebNavigation);
 if (sessionHistory) {
-  sessionHistory.addSHistoryListener(historyListener);
+  sessionHistory.legacySHistory.addSHistoryListener(historyListener);
 }
 
 /**

@@ -23,7 +23,6 @@
 #include "mozilla/Preferences.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
-#include "nsIDOMComment.h"
 #include "nsIDOMNode.h"
 #include "nsUnicharUtils.h"
 #include "nsCRT.h"
@@ -32,14 +31,6 @@
 #include "nsContentUtils.h"
 #include "nsStyleUtil.h"
 #include "nsQueryObject.h"
-#include "nsIContentPolicy.h"
-#include "nsMimeTypes.h"
-#include "imgLoader.h"
-#include "MediaContainerType.h"
-#include "DecoderDoctorDiagnostics.h"
-#include "DecoderTraits.h"
-#include "MediaList.h"
-#include "nsAttrValueInlines.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -185,128 +176,11 @@ uint32_t nsStyleLinkElement::ParseLinkTypes(const nsAString& aTypes)
   return linkMask;
 }
 
-// We will use official mime-types from:
-// https://www.iana.org/assignments/media-types/media-types.xhtml#font
-// We do not support old deprecated mime-types for preload feature.
-// (We currectly do not support font/collection)
-static uint32_t StyleLinkElementFontMimeTypesNum = 5;
-static const char* StyleLinkElementFontMimeTypes[] = {
-  "font/otf",
-  "font/sfnt",
-  "font/ttf",
-  "font/woff",
-  "font/woff2"
-};
-
-bool
-IsFontMimeType(const nsAString& aType)
-{
-  if (aType.IsEmpty()) {
-    return true;
-  }
-  for (uint32_t i = 0; i < StyleLinkElementFontMimeTypesNum; i++) {
-    if (aType.EqualsASCII(StyleLinkElementFontMimeTypes[i])) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool
-nsStyleLinkElement::CheckPreloadAttrs(const nsAttrValue& aAs,
-                                      const nsAString& aType,
-                                      const nsAString& aMedia,
-                                      nsIDocument* aDocument)
-{
-  nsContentPolicyType policyType = Link::AsValueToContentPolicy(aAs);
-  if (policyType == nsIContentPolicy::TYPE_INVALID) {
-    return false;
-  }
-
-  // Check if media attribute is valid.
-  if (!aMedia.IsEmpty()) {
-    RefPtr<MediaList> mediaList = MediaList::Create(aDocument->GetStyleBackendType(),
-                                                    aMedia);
-    nsPresContext* presContext = aDocument->GetPresContext();
-    if (!presContext) {
-      return false;
-    }
-    if (!mediaList->Matches(presContext)) {
-      return false;
-    }
-  }
-
-  if (aType.IsEmpty()) {
-    return true;
-  }
-
-  nsString type = nsString(aType);
-  ToLowerCase(type);
-
-  if (policyType == nsIContentPolicy::TYPE_OTHER) {
-    return true;
-
-  } else if (policyType == nsIContentPolicy::TYPE_MEDIA) {
-    if (aAs.GetEnumValue() == DESTINATION_TRACK) {
-      if (type.EqualsASCII("text/vtt")) {
-        return true;
-      } else {
-        return false;
-      }
-    }
-    Maybe<MediaContainerType> mimeType = MakeMediaContainerType(aType);
-    if (!mimeType) {
-      return false;
-    }
-    DecoderDoctorDiagnostics diagnostics;
-    CanPlayStatus status = DecoderTraits::CanHandleContainerType(*mimeType,
-                                                                 &diagnostics);
-    // Preload if this return CANPLAY_YES and CANPLAY_MAYBE.
-    if (status == CANPLAY_NO) {
-      return false;
-    } else {
-      return true;
-    }
-
-  } else if (policyType == nsIContentPolicy::TYPE_FONT) {
-    if (IsFontMimeType(type)) {
-      return true;
-    } else {
-      return false;
-    }
-
-  } else if (policyType == nsIContentPolicy::TYPE_IMAGE) {
-    if (imgLoader::SupportImageWithMimeType(NS_ConvertUTF16toUTF8(type).get(),
-                                            AcceptedMimeTypes::IMAGES_AND_DOCUMENTS)) {
-      return true;
-    } else {
-      return false;
-    }
-
-  } else if (policyType == nsIContentPolicy::TYPE_SCRIPT) {
-    if (nsContentUtils::IsJavascriptMIMEType(type)) {
-      return true;
-    } else {
-      return false;
-    }
-
-  } else if (policyType == nsIContentPolicy::TYPE_STYLESHEET) {
-    if (type.EqualsASCII("text/css")) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-  return false;
-}
-
-nsresult
+Result<nsStyleLinkElement::Update, nsresult>
 nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
-                                     bool* aWillNotify,
-                                     bool* aIsAlternate,
-                                     bool aForceReload)
+                                     ForceUpdate aForceUpdate)
 {
-  if (aForceReload) {
+  if (aForceUpdate == ForceUpdate::Yes) {
     // We remove this stylesheet from the cache to load a new version.
     nsCOMPtr<nsIContent> thisContent = do_QueryInterface(this);
     nsCOMPtr<nsIDocument> doc = thisContent->IsInShadowTree() ?
@@ -316,80 +190,24 @@ nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
       doc->CSSLoader()->ObsoleteSheet(mStyleSheet->GetOriginalURI());
     }
   }
-  return DoUpdateStyleSheet(nullptr, nullptr, aObserver, aWillNotify,
-                            aIsAlternate, aForceReload);
+  return DoUpdateStyleSheet(nullptr, nullptr, aObserver, aForceUpdate);
 }
 
-nsresult
-nsStyleLinkElement::UpdateStyleSheetInternal(nsIDocument *aOldDocument,
-                                             ShadowRoot *aOldShadowRoot,
-                                             bool aForceUpdate)
+Result<nsStyleLinkElement::Update, nsresult>
+nsStyleLinkElement::UpdateStyleSheetInternal(nsIDocument* aOldDocument,
+                                             ShadowRoot* aOldShadowRoot,
+                                             ForceUpdate aForceUpdate)
 {
-  bool notify, alternate;
-  return DoUpdateStyleSheet(aOldDocument, aOldShadowRoot, nullptr, &notify,
-                            &alternate, aForceUpdate);
+  return DoUpdateStyleSheet(
+    aOldDocument, aOldShadowRoot, nullptr, aForceUpdate);
 }
 
-static bool
-IsScopedStyleElement(nsIContent* aContent)
-{
-  // This is quicker than, say, QIing aContent to nsStyleLinkElement
-  // and then calling its virtual GetStyleSheetInfo method to find out
-  // if it is scoped.
-  return (aContent->IsHTMLElement(nsGkAtoms::style) ||
-          aContent->IsSVGElement(nsGkAtoms::style)) &&
-         aContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::scoped) &&
-         aContent->OwnerDoc()->IsScopedStyleEnabled();
-}
-
-static bool
-HasScopedStyleSheetChild(nsIContent* aContent)
-{
-  for (nsIContent* n = aContent->GetFirstChild(); n; n = n->GetNextSibling()) {
-    if (IsScopedStyleElement(n)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Called when aElement has had a <style scoped> child removed.
-static void
-UpdateIsElementInStyleScopeFlagOnSubtree(Element* aElement)
-{
-  NS_ASSERTION(aElement->IsElementInStyleScope(),
-               "only call UpdateIsElementInStyleScopeFlagOnSubtree on a "
-               "subtree that has IsElementInStyleScope boolean flag set");
-
-  if (HasScopedStyleSheetChild(aElement)) {
-    return;
-  }
-
-  aElement->ClearIsElementInStyleScope();
-
-  nsIContent* n = aElement->GetNextNode(aElement);
-  while (n) {
-    if (HasScopedStyleSheetChild(n)) {
-      n = n->GetNextNonChildNode(aElement);
-    } else {
-      if (n->IsElement()) {
-        n->ClearIsElementInStyleScope();
-      }
-      n = n->GetNextNode(aElement);
-    }
-  }
-}
-
-nsresult
+Result<nsStyleLinkElement::Update, nsresult>
 nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
                                        ShadowRoot* aOldShadowRoot,
                                        nsICSSLoaderObserver* aObserver,
-                                       bool* aWillNotify,
-                                       bool* aIsAlternate,
-                                       bool aForceUpdate)
+                                       ForceUpdate aForceUpdate)
 {
-  *aWillNotify = false;
-
   nsCOMPtr<nsIContent> thisContent = do_QueryInterface(this);
   // All instances of nsStyleLinkElement should implement nsIContent.
   MOZ_ASSERT(thisContent);
@@ -398,7 +216,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
       thisContent->IsAnonymousContentInSVGUseSubtree()) {
     // Stylesheets in <use>-cloned subtrees are disabled until we figure out
     // how they should behave.
-    return NS_OK;
+    return Update { };
   }
 
   // Check for a ShadowRoot because link elements are inert in a
@@ -406,21 +224,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   ShadowRoot* containingShadow = thisContent->GetContainingShadow();
   if (thisContent->IsHTMLElement(nsGkAtoms::link) &&
       (aOldShadowRoot || containingShadow)) {
-    return NS_OK;
-  }
-
-  // XXXheycam ServoStyleSheets do not support <style scoped>.
-  Element* oldScopeElement = nullptr;
-  if (mStyleSheet) {
-    if (mStyleSheet->IsServo()) {
-      // XXXheycam ServoStyleSheets don't support <style scoped>.
-    } else {
-#ifdef MOZ_OLD_STYLE
-      oldScopeElement = mStyleSheet->AsGecko()->GetScopeElement();
-#else
-      MOZ_CRASH("old style system disabled");
-#endif
-    }
+    return Update { };
   }
 
   if (mStyleSheet && (aOldDocument || aOldShadowRoot)) {
@@ -442,34 +246,31 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
     }
 
     nsStyleLinkElement::SetStyleSheet(nullptr);
-    if (oldScopeElement) {
-      UpdateIsElementInStyleScopeFlagOnSubtree(oldScopeElement);
-    }
   }
 
   // When static documents are created, stylesheets are cloned manually.
   if (mDontLoadStyle || !mUpdatesEnabled ||
       thisContent->OwnerDoc()->IsStaticDocument()) {
-    return NS_OK;
+    return Update { };
   }
 
   nsCOMPtr<nsIDocument> doc = thisContent->IsInShadowTree() ?
     thisContent->OwnerDoc() : thisContent->GetUncomposedDoc();
-  if (!doc || !doc->CSSLoader()->GetEnabled()) {
-    return NS_OK;
+  // Loader could be null during unlink, see bug 1425866.
+  if (!doc || !doc->CSSLoader() || !doc->CSSLoader()->GetEnabled()) {
+    return Update { };
   }
 
   bool isInline;
   nsCOMPtr<nsIPrincipal> triggeringPrincipal;
   nsCOMPtr<nsIURI> uri = GetStyleSheetURL(&isInline, getter_AddRefs(triggeringPrincipal));
 
-  if (!aForceUpdate && mStyleSheet && !isInline && uri) {
-    nsIURI* oldURI = mStyleSheet->GetSheetURI();
-    if (oldURI) {
+  if (aForceUpdate == ForceUpdate::No && mStyleSheet && !isInline && uri) {
+    if (nsIURI* oldURI = mStyleSheet->GetSheetURI()) {
       bool equal;
       nsresult rv = oldURI->Equals(uri, &equal);
       if (NS_SUCCEEDED(rv) && equal) {
-        return NS_OK; // We already loaded this stylesheet
+        return Update { };
       }
     }
   }
@@ -488,27 +289,16 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   }
 
   if (!uri && !isInline) {
-    return NS_OK; // If href is empty and this is not inline style then just bail
+    // If href is empty and this is not inline style then just bail
+    return Update { };
   }
 
   nsAutoString title, type, media;
-  bool isScoped;
-  bool isAlternate;
-
-  GetStyleSheetInfo(title, type, media, &isScoped, &isAlternate);
-
+  bool hasAlternateRel;
+  GetStyleSheetInfo(title, type, media, &hasAlternateRel);
   if (!type.LowerCaseEqualsLiteral("text/css")) {
-    return NS_OK;
+    return Update { };
   }
-
-  Element* scopeElement = isScoped ? thisContent->GetParentElement() : nullptr;
-  if (scopeElement) {
-    NS_ASSERTION(isInline, "non-inline style must not have scope element");
-    scopeElement->SetIsElementInStyleScopeFlagOnSubtree(true);
-  }
-
-  bool doneLoading = false;
-  nsresult rv = NS_OK;
 
   // Load the link's referrerpolicy attribute. If the link does not provide a
   // referrerpolicy attribute, ignore this and use the document's referrer
@@ -522,115 +312,57 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   if (isInline) {
     nsAutoString text;
     if (!nsContentUtils::GetNodeTextContent(thisContent, false, text, fallible)) {
-      return NS_ERROR_OUT_OF_MEMORY;
+      return Err(NS_ERROR_OUT_OF_MEMORY);
     }
+
 
     MOZ_ASSERT(thisContent->NodeInfo()->NameAtom() != nsGkAtoms::link,
                "<link> is not 'inline', and needs different CSP checks");
     MOZ_ASSERT(thisContent->IsElement());
+    nsresult rv = NS_OK;
     if (!nsStyleUtil::CSPAllowsInlineStyle(thisContent->AsElement(),
                                            thisContent->NodePrincipal(),
                                            triggeringPrincipal,
                                            doc->GetDocumentURI(),
-                                           mLineNumber, text, &rv))
-      return rv;
+                                           mLineNumber, text, &rv)) {
+      if (NS_FAILED(rv)) {
+        return Err(rv);
+      }
+      return Update { };
+    }
 
     // Parse the style sheet.
-    rv = doc->CSSLoader()->
+    return doc->CSSLoader()->
       LoadInlineStyle(thisContent, text, triggeringPrincipal, mLineNumber,
-                      title, media, referrerPolicy, scopeElement,
-                      aObserver, &doneLoading, &isAlternate);
-  } else {
-    nsAutoString integrity;
-    if (thisContent->IsElement()) {
-      thisContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::integrity,
-                                        integrity);
-    }
-    if (!integrity.IsEmpty()) {
-      MOZ_LOG(SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
-              ("nsStyleLinkElement::DoUpdateStyleSheet, integrity=%s",
-               NS_ConvertUTF16toUTF8(integrity).get()));
-    }
-
-    // XXXbz clone the URI here to work around content policies modifying URIs.
-    nsCOMPtr<nsIURI> clonedURI;
-    uri->Clone(getter_AddRefs(clonedURI));
-    NS_ENSURE_TRUE(clonedURI, NS_ERROR_OUT_OF_MEMORY);
-    rv = doc->CSSLoader()->
-      LoadStyleLink(thisContent, clonedURI, triggeringPrincipal, title, media,
-                    isAlternate, GetCORSMode(), referrerPolicy, integrity,
-                    aObserver, &isAlternate);
-    if (NS_FAILED(rv)) {
-      // Don't propagate LoadStyleLink() errors further than this, since some
-      // consumers (e.g. nsXMLContentSink) will completely abort on innocuous
-      // things like a stylesheet load being blocked by the security system.
-      doneLoading = true;
-      isAlternate = false;
-      rv = NS_OK;
-    }
+                      title, media, referrerPolicy,
+                      aObserver);
   }
-
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  *aWillNotify = !doneLoading;
-  *aIsAlternate = isAlternate;
-
-  return NS_OK;
-}
-
-void
-nsStyleLinkElement::UpdateStyleSheetScopedness(bool aIsNowScoped)
-{
-  if (!mStyleSheet) {
-    return;
+  nsAutoString integrity;
+  if (thisContent->IsElement()) {
+    thisContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::integrity,
+                                      integrity);
   }
-
-  if (mStyleSheet->IsServo()) {
-    // XXXheycam ServoStyleSheets don't support <style scoped>.
-    NS_ERROR("stylo: ServoStyleSheets don't support <style scoped>");
-    return;
+  if (!integrity.IsEmpty()) {
+    MOZ_LOG(SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
+            ("nsStyleLinkElement::DoUpdateStyleSheet, integrity=%s",
+             NS_ConvertUTF16toUTF8(integrity).get()));
   }
-
-#ifdef MOZ_OLD_STYLE
-  CSSStyleSheet* sheet = mStyleSheet->AsGecko();
-
-  nsCOMPtr<nsIContent> thisContent = do_QueryInterface(this);
-
-  Element* oldScopeElement = sheet->GetScopeElement();
-  Element* newScopeElement = aIsNowScoped ?
-                               thisContent->GetParentElement() :
-                               nullptr;
-
-  if (oldScopeElement == newScopeElement) {
-    return;
+  auto resultOrError =
+    doc->CSSLoader()->LoadStyleLink(thisContent,
+                                    uri,
+                                    triggeringPrincipal,
+                                    title,
+                                    media,
+                                    hasAlternateRel,
+                                    GetCORSMode(),
+                                    referrerPolicy,
+                                    integrity,
+                                    aObserver);
+  if (resultOrError.isErr()) {
+    // Don't propagate LoadStyleLink() errors further than this, since some
+    // consumers (e.g. nsXMLContentSink) will completely abort on innocuous
+    // things like a stylesheet load being blocked by the security system.
+    return Update { };
   }
-
-  nsIDocument* document = thisContent->GetOwnerDocument();
-
-  if (thisContent->IsInShadowTree()) {
-    ShadowRoot* containingShadow = thisContent->GetContainingShadow();
-    containingShadow->RemoveSheet(mStyleSheet);
-
-    sheet->SetScopeElement(newScopeElement);
-
-    containingShadow->InsertSheet(mStyleSheet, thisContent);
-  } else {
-    document->BeginUpdate(UPDATE_STYLE);
-    document->RemoveStyleSheet(mStyleSheet);
-
-    sheet->SetScopeElement(newScopeElement);
-
-    document->AddStyleSheet(mStyleSheet);
-    document->EndUpdate(UPDATE_STYLE);
-  }
-
-  if (oldScopeElement) {
-    UpdateIsElementInStyleScopeFlagOnSubtree(oldScopeElement);
-  }
-  if (newScopeElement) {
-    newScopeElement->SetIsElementInStyleScopeFlagOnSubtree(true);
-  }
-#else
-  MOZ_CRASH("old style system disabled");
-#endif
+  return resultOrError;
 }

@@ -8,6 +8,7 @@
 #define SlicedInputStream_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/Mutex.h"
 #include "nsCOMPtr.h"
 #include "nsIAsyncInputStream.h"
 #include "nsICloneableInputStream.h"
@@ -56,9 +57,6 @@ private:
   void
   SetSourceStream(already_AddRefed<nsIInputStream> aInputStream);
 
-  nsresult
-  RunAsyncWaitCallback();
-
   nsCOMPtr<nsIInputStream> mInputStream;
 
   // Raw pointers because these are just QI of mInputStream.
@@ -73,11 +71,14 @@ private:
 
   bool mClosed;
 
-  // These four are used for AsyncWait.
+  // These four are used for AsyncWait. They are protected by mutex because
+  // touched on multiple threads.
   nsCOMPtr<nsIInputStreamCallback> mAsyncWaitCallback;
   nsCOMPtr<nsIEventTarget> mAsyncWaitEventTarget;
   uint32_t mAsyncWaitFlags;
   uint32_t mAsyncWaitRequestedCount;
+
+  Mutex mMutex;
 };
 
 } // mozilla namespace

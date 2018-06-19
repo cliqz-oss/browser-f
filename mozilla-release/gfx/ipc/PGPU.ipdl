@@ -6,6 +6,7 @@
 include GraphicsMessages;
 include MemoryReportTypes;
 include HangTypes;
+include protocol PAPZInputBridge;
 include protocol PCompositorManager;
 include protocol PImageBridge;
 include protocol PProfiler;
@@ -24,6 +25,7 @@ using mozilla::Telemetry::ChildEventData from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::DiscardedData from "mozilla/TelemetryComms.h";
 using mozilla::gfx::Feature from "gfxFeature.h";
 using mozilla::gfx::Fallback from "gfxFallback.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 
 namespace mozilla {
 namespace gfx {
@@ -42,13 +44,22 @@ struct GfxPrefSetting {
 };
 
 struct LayerTreeIdMapping {
-  uint64_t layersId;
+  LayersId layersId;
   ProcessId ownerId;
 };
 
+// This protocol allows the UI process to talk to the GPU process. There is one
+// instance of this protocol, with the GPUParent living on the main thread of
+// the GPU process and the GPUChild living on the main thread of the UI process.
 sync protocol PGPU
 {
+  manages PAPZInputBridge;
+
 parent:
+  // Sent from the UI process to initialize a new APZ input bridge when a new
+  // top-level compositor is created.
+  async PAPZInputBridge(LayersId aLayersId);
+
   // Sent by the UI process to initiate core settings.
   async Init(GfxPrefSetting[] prefs,
              GfxVarUpdate[] vars,
@@ -59,7 +70,7 @@ parent:
   async InitVsyncBridge(Endpoint<PVsyncBridgeParent> endpoint);
   async InitImageBridge(Endpoint<PImageBridgeParent> endpoint);
   async InitVRManager(Endpoint<PVRManagerParent> endpoint);
-  async InitUiCompositorController(uint64_t rootLayerTreeId, Endpoint<PUiCompositorControllerParent> endpoint);
+  async InitUiCompositorController(LayersId rootLayerTreeId, Endpoint<PUiCompositorControllerParent> endpoint);
   async InitProfiler(Endpoint<PProfilerChild> endpoint);
 
   // Called to update a gfx preference or variable.

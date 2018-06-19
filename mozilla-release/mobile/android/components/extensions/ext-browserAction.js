@@ -5,9 +5,6 @@
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-utils.js */
 
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
-
 // Import the android BrowserActions module.
 ChromeUtils.defineModuleGetter(this, "BrowserActions",
                                "resource://gre/modules/BrowserActions.jsm");
@@ -156,14 +153,18 @@ this.browserAction = class extends ExtensionAPI {
 
     return {
       browserAction: {
-        onClicked: new EventManager(context, "browserAction.onClicked", fire => {
-          let listener = (event, tab) => {
-            fire.async(tabManager.convert(tab));
-          };
-          browserActionMap.get(extension).on("click", listener);
-          return () => {
-            browserActionMap.get(extension).off("click", listener);
-          };
+        onClicked: new EventManager({
+          context,
+          name: "browserAction.onClicked",
+          register: fire => {
+            let listener = (event, tab) => {
+              fire.async(tabManager.convert(tab));
+            };
+            browserActionMap.get(extension).on("click", listener);
+            return () => {
+              browserActionMap.get(extension).off("click", listener);
+            };
+          },
         }).api(),
 
         setTitle: function(details) {

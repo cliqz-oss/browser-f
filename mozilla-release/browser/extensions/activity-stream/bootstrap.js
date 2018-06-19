@@ -9,6 +9,12 @@ Cu.importGlobalProperties(["fetch"]);
 ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
+XPCOMUtils.defineLazyServiceGetter(this, "resProto",
+                                   "@mozilla.org/network/protocol;1?name=resource",
+                                   "nsISubstitutingProtocolHandler");
+
+const RESOURCE_HOST = "activity-stream";
+
 const BROWSER_READY_NOTIFICATION = "sessionstore-windows-restored";
 const RESOURCE_BASE = "resource://activity-stream";
 
@@ -118,9 +124,15 @@ function onBrowserReady() {
   migratePref("browser.newtabpage.rows", rows => {
     // Just disable top sites if rows are not desired
     if (rows <= 0) {
-      Services.prefs.setBoolPref("browser.newtabpage.activity-stream.showTopSites", false);
+      Services.prefs.setBoolPref("browser.newtabpage.activity-stream.feeds.topsites", false);
     } else {
       Services.prefs.setIntPref("browser.newtabpage.activity-stream.topSitesRows", rows);
+    }
+  });
+
+  migratePref("browser.newtabpage.activity-stream.showTopSites", value => {
+    if (value === false) {
+      Services.prefs.setBoolPref("browser.newtabpage.activity-stream.feeds.topsites", false);
     }
   });
 
@@ -148,6 +160,10 @@ function observe(subject, topic, data) {
 this.install = function install(data, reason) {};
 
 this.startup = function startup(data, reason) {
+  resProto.setSubstitutionWithFlags(RESOURCE_HOST,
+                                    Services.io.newURI("chrome/content/", null, data.resourceURI),
+                                    resProto.ALLOW_CONTENT_ACCESS);
+
   // Cache startup data which contains stuff like the version number, etc.
   // so we can use it when we init
   startupData = data;
@@ -163,6 +179,8 @@ this.startup = function startup(data, reason) {
 };
 
 this.shutdown = function shutdown(data, reason) {
+  resProto.setSubstitution(RESOURCE_HOST, null);
+
   // Uninitialize Activity Stream
   startupData = null;
   startupReason = null;

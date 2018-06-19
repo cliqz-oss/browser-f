@@ -221,14 +221,22 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
     return true;
   }
 
+  PAINTSTRUCT ps;
+
+  // Avoid starting the GPU process for the initial navigator:blank window.
+  if (mIsEarlyBlankWindow) {
+    // Call BeginPaint/EndPaint or Windows will keep sending us messages.
+    ::BeginPaint(mWnd, &ps);
+    ::EndPaint(mWnd, &ps);
+    return true;
+  }
+
   if (GetLayerManager()->AsKnowsCompositor() && !mBounds.IsEqualEdges(mLastPaintBounds)) {
     // Do an early async composite so that we at least have something on the
     // screen in the right place, even if the content is out of date.
     GetLayerManager()->ScheduleComposite();
   }
   mLastPaintBounds = mBounds;
-
-  PAINTSTRUCT ps;
 
 #ifdef MOZ_XUL
   if (!aDC && (eTransparencyTransparent == mTransparencyMode))

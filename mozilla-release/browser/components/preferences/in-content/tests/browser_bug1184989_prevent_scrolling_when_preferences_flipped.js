@@ -1,5 +1,3 @@
-const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-
 const {Utils} = ChromeUtils.import("resource://gre/modules/sessionstore/Utils.jsm", {});
 const triggeringPrincipal_base64 = Utils.SERIALIZED_SYSTEMPRINCIPAL;
 
@@ -9,7 +7,6 @@ add_task(async function() {
   const tabURL = getRootDirectory(gTestPath) + "browser_bug1184989_prevent_scrolling_when_preferences_flipped.xul";
 
   await BrowserTestUtils.withNewTab({ gBrowser, url: tabURL }, async function(browser) {
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = browser.contentDocument;
     let container = doc.getElementById("container");
 
@@ -42,7 +39,6 @@ add_task(async function() {
   });
 
   await BrowserTestUtils.withNewTab({ gBrowser, url: "about:preferences#search" }, async function(browser) {
-    // eslint-disable-next-line mozilla/no-cpows-in-tests
     let doc = browser.contentDocument;
     let container = doc.getElementsByClassName("main-content")[0];
 
@@ -70,7 +66,7 @@ add_task(async function() {
   let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
 
   // Fake a post-crash tab
-  ss.setTabState(tab, JSON.stringify(TAB_STATE));
+  SessionStore.setTabState(tab, JSON.stringify(TAB_STATE));
 
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   let doc = tab.linkedBrowser.contentDocument;

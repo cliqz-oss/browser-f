@@ -112,7 +112,7 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  DataChannelShutdown() {}
+  DataChannelShutdown() = default;
 
   void Init()
     {
@@ -318,6 +318,9 @@ DataChannelConnection::DataChannelConnection(DataConnectionListener *listener,
   mPendingType = PENDING_NONE;
   LOG(("Constructor DataChannelConnection=%p, listener=%p", this, mListener.get()));
   mInternalIOThread = nullptr;
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  mShutdown = false;
+#endif
 }
 
 DataChannelConnection::~DataChannelConnection()
@@ -395,6 +398,9 @@ void DataChannelConnection::DestroyOnSTS(struct socket *aMasterSocket,
 
   usrsctp_deregister_address(static_cast<void *>(this));
   LOG(("Deregistered %p from the SCTP stack.", static_cast<void *>(this)));
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  mShutdown = true;
+#endif
 
   disconnect_all();
 
@@ -831,7 +837,10 @@ int
 DataChannelConnection::SendPacket(unsigned char data[], size_t len, bool release)
 {
   //LOG(("%p: SCTP/DTLS sent %ld bytes", this, len));
-  int res = mTransportFlow->SendPacket(data, len) < 0 ? 1 : 0;
+  int res = 0;
+  if (mTransportFlow) {
+    res = mTransportFlow->SendPacket(data, len) < 0 ? 1 : 0;
+  }
   if (release)
     delete [] data;
   return res;
@@ -844,6 +853,7 @@ DataChannelConnection::SctpDtlsOutput(void *addr, void *buffer, size_t length,
 {
   DataChannelConnection *peer = static_cast<DataChannelConnection *>(addr);
   int res;
+  MOZ_DIAGNOSTIC_ASSERT(!peer->mShutdown);
 
   if (MOZ_LOG_TEST(gSCTPLog, LogLevel::Debug)) {
     char *buf;
@@ -2312,7 +2322,7 @@ DataChannelConnection::ReceiveCallback(struct socket* sock, void *data, size_t d
   ASSERT_WEBRTC(!NS_IsMainThread());
 
   if (!data) {
-    usrsctp_close(sock); // SCTP has finished shutting down
+    LOG(("ReceiveCallback: SCTP has finished shutting down"));
   } else {
     mLock.AssertCurrentThreadOwns();
     if (flags & MSG_NOTIFICATION) {
@@ -2977,10 +2987,9 @@ DataChannelConnection::SendDataMsgCommon(uint16_t stream, const nsACString &aMsg
   if (isBinary) {
     return SendDataMsg(channel, data, len,
                        DATA_CHANNEL_PPID_BINARY_PARTIAL, DATA_CHANNEL_PPID_BINARY);
-  } else {
-    return SendDataMsg(channel, data, len,
-                       DATA_CHANNEL_PPID_DOMSTRING_PARTIAL, DATA_CHANNEL_PPID_DOMSTRING);
   }
+  return SendDataMsg(channel, data, len,
+                     DATA_CHANNEL_PPID_DOMSTRING_PARTIAL, DATA_CHANNEL_PPID_DOMSTRING);
 }
 
 void
@@ -3252,10 +3261,9 @@ DataChannel::EnsureValidStream(ErrorResult& aRv)
   MOZ_ASSERT(mConnection);
   if (mConnection && mStream != INVALID_STREAM) {
     return true;
-  } else {
-    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
-    return false;
   }
+  aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  return false;
 }
 
 } // namespace mozilla

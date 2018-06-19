@@ -183,21 +183,14 @@ static void
 WeakCollection_finalize(FreeOp* fop, JSObject* obj)
 {
     MOZ_ASSERT(fop->maybeOnHelperThread());
-    if (ObjectValueMap* map = obj->as<WeakCollectionObject>().getMap()) {
-#ifdef DEBUG
-        map->~ObjectValueMap();
-        memset(static_cast<void*>(map), 0xdc, sizeof(*map));
-        fop->free_(map);
-#else
+    if (ObjectValueMap* map = obj->as<WeakCollectionObject>().getMap())
         fop->delete_(map);
-#endif
-    }
 }
 
 JS_PUBLIC_API(JSObject*)
 JS::NewWeakMapObject(JSContext* cx)
 {
-    return NewBuiltinClassInstance(cx, &WeakMapObject::class_);
+    return NewBuiltinClassInstance<WeakMapObject>(cx);
 }
 
 JS_PUBLIC_API(bool)
@@ -297,12 +290,8 @@ static const JSFunctionSpec weak_map_methods[] = {
 };
 
 JSObject*
-js::InitWeakMapClass(JSContext* cx, HandleObject obj)
+js::InitWeakMapClass(JSContext* cx, Handle<GlobalObject*> global)
 {
-    MOZ_ASSERT(obj->isNative());
-
-    Handle<GlobalObject*> global = obj.as<GlobalObject>();
-
     RootedPlainObject proto(cx, NewBuiltinClassInstance<PlainObject>(cx));
     if (!proto)
         return nullptr;

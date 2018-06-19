@@ -154,14 +154,18 @@ protected:
                                     BookmarkData* aBookmark,
                                     const nsACString& aName);
 
+  nsresult
+  GetValueFromStatement(nsCOMPtr<mozIStorageStatement>& aStatement,
+                        nsIVariant** _retval);
+
+
 public:
   nsresult GetPagesWithAnnotationCOMArray(const nsACString& aName,
                                           nsCOMArray<nsIURI>* _results);
   nsresult GetItemsWithAnnotationTArray(const nsACString& aName,
                                         nsTArray<int64_t>* _result);
-  nsresult GetAnnotationNamesTArray(nsIURI* aURI,
-                                    int64_t aItemId,
-                                    nsTArray<nsCString>* _result);
+  nsresult GetItemAnnotationNamesTArray(int64_t aItemId,
+                                        nsTArray<nsCString>* _result);
   nsresult RemoveItemAnnotationsWithoutNotifying(int64_t aItemId);
 };
 

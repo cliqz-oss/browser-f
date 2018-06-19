@@ -10,6 +10,7 @@
 #include "gfxFontEntry.h"
 #include "gfxFT2FontBase.h"
 #include "gfxPlatformFontList.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/mozalloc.h"
 #include "nsAutoRef.h"
 #include "nsClassHashtable.h"
@@ -93,9 +94,9 @@ public:
     // used for data fonts where the fontentry takes ownership
     // of the font data and the FT_Face
     explicit gfxFontconfigFontEntry(const nsAString& aFaceName,
-                                    uint16_t aWeight,
-                                    int16_t aStretch,
-                                    uint8_t aStyle,
+                                    WeightRange aWeight,
+                                    StretchRange aStretch,
+                                    SlantStyleRange aStyle,
                                     const uint8_t *aData,
                                     uint32_t aLength,
                                     FT_Face aFace);
@@ -103,9 +104,9 @@ public:
     // used for @font-face local system fonts with explicit patterns
     explicit gfxFontconfigFontEntry(const nsAString& aFaceName,
                                     FcPattern* aFontPattern,
-                                    uint16_t aWeight,
-                                    int16_t aStretch,
-                                    uint8_t aStyle);
+                                    WeightRange aWeight,
+                                    StretchRange aStretch,
+                                    SlantStyleRange aStyle);
 
     gfxFontEntry* Clone() const override;
 
@@ -132,15 +133,13 @@ public:
 protected:
     virtual ~gfxFontconfigFontEntry();
 
-    gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                bool aNeedsBold) override;
+    gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle) override;
 
     // helper method for creating cairo font from pattern
     cairo_scaled_font_t*
     CreateScaledFont(FcPattern* aRenderPattern,
                      gfxFloat aAdjustedSize,
-                     const gfxFontStyle *aStyle,
-                     bool aNeedsBold);
+                     const gfxFontStyle *aStyle);
 
     // override to pull data from FTFace
     virtual nsresult
@@ -166,6 +165,13 @@ protected:
     // include color glyphs that fontconfig would overlook, and for fonts
     // loaded via @font-face.
     bool      mIgnoreFcCharmap;
+
+    // Whether the face supports variations. For system-installed fonts, we
+    // query fontconfig for this (so they will only work if fontconfig is
+    // recent enough to include support); for downloaded user-fonts we query
+    // the FreeType face.
+    bool      mHasVariations;
+    bool      mHasVariationsInitialized;
 
     double    mAspect;
 
@@ -225,7 +231,6 @@ public:
     void
     FindAllFontsForStyle(const gfxFontStyle& aFontStyle,
                          nsTArray<gfxFontEntry*>& aFontEntryList,
-                         bool& aNeedsSyntheticBold,
                          bool aIgnoreSizeTolerance) override;
 
     bool FilterForFontList(nsAtom* aLangGroup,
@@ -253,8 +258,7 @@ public:
                       FcPattern *aPattern,
                       gfxFloat aAdjustedSize,
                       gfxFontEntry *aFontEntry,
-                      const gfxFontStyle *aFontStyle,
-                      bool aNeedsBold);
+                      const gfxFontStyle *aFontStyle);
 
     virtual FontType GetType() const override { return FONT_TYPE_FONTCONFIG; }
     virtual FcPattern *GetPattern() const { return mPattern; }
@@ -287,13 +291,16 @@ public:
         InfallibleTArray<mozilla::dom::SystemFontListEntry>* retValue);
 
     gfxFontEntry*
-    LookupLocalFont(const nsAString& aFontName, uint16_t aWeight,
-                    int16_t aStretch, uint8_t aStyle) override;
+    LookupLocalFont(const nsAString& aFontName,
+                    WeightRange aWeightForEntry,
+                    StretchRange aStretchForEntry,
+                    SlantStyleRange aStyleForEntry) override;
 
     gfxFontEntry*
-    MakePlatformFont(const nsAString& aFontName, uint16_t aWeight,
-                     int16_t aStretch,
-                     uint8_t aStyle,
+    MakePlatformFont(const nsAString& aFontName,
+                     WeightRange aWeightForEntry,
+                     StretchRange aStretchForEntry,
+                     SlantStyleRange aStyleForEntry,
                      const uint8_t* aFontData,
                      uint32_t aLength) override;
 
@@ -319,6 +326,13 @@ public:
     void ClearGenericMappings() {
         mGenericMappings.Clear();
     }
+
+    // map lang group ==> lang string
+    // When aForFontEnumerationThread is true, this method will avoid using
+    // LanguageService::LookupLanguage, because it is not safe for off-main-
+    // thread use (except by stylo traversal, which does the necessary locking)
+    void GetSampleLangForGroup(nsAtom* aLanguage, nsACString& aLangStr,
+                               bool aForFontEnumerationThread = false);
 
     static FT_Library GetFTLibrary();
 
@@ -357,6 +371,10 @@ protected:
     GetDefaultFontForPlatform(const gfxFontStyle* aStyle) override;
 
     gfxFontFamily* CreateFontFamily(const nsAString& aName) const override;
+
+    // helper method for finding an appropriate lang string
+    bool TryLangForGroup(const nsACString& aOSLang, nsAtom* aLangGroup,
+                         nsACString& aLang, bool aForFontEnumerationThread);
 
 #ifdef MOZ_BUNDLED_FONTS
     void ActivateBundledFonts();

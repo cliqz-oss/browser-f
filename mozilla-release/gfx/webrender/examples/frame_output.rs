@@ -70,7 +70,7 @@ impl App {
         let mut resources = ResourceUpdates::new();
         resources.add_image(
             self.external_image_key.unwrap(),
-            ImageDescriptor::new(100, 100, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(100, 100, ImageFormat::BGRA8, true, false),
             ImageData::External(ExternalImageData {
                 id: ExternalImageId(0),
                 channel_index: 0,
@@ -100,12 +100,14 @@ impl App {
 
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         builder.push_rect(&info, ColorF::new(1.0, 1.0, 0.0, 1.0));
@@ -147,12 +149,14 @@ impl Example for App {
         let info = LayoutPrimitiveInfo::new((100, 100).to(200, 200));
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         builder.push_image(

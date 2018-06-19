@@ -6,16 +6,53 @@
 
 const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
+const KeyframesProgressBar = createFactory(require("./KeyframesProgressBar"));
 const KeyframesProgressTickList = createFactory(require("./KeyframesProgressTickList"));
 
 class AnimatedPropertyListHeader extends PureComponent {
+  static get propTypes() {
+    return {
+      addAnimationsCurrentTimeListener: PropTypes.func.isRequired,
+      animation: PropTypes.object.isRequired,
+      getAnimationsCurrentTime: PropTypes.func.isRequired,
+      removeAnimationsCurrentTimeListener: PropTypes.func.isRequired,
+      simulateAnimationForKeyframesProgressBar: PropTypes.func.isRequired,
+      timeScale: PropTypes.object.isRequired,
+    };
+  }
+
   render() {
+    const {
+      addAnimationsCurrentTimeListener,
+      animation,
+      getAnimationsCurrentTime,
+      removeAnimationsCurrentTimeListener,
+      simulateAnimationForKeyframesProgressBar,
+      timeScale,
+    } = this.props;
+
     return dom.div(
       {
-        className: "animated-property-list-header devtools-toolbar"
+        className: "animated-property-list-header"
       },
-      KeyframesProgressTickList()
+      dom.div(
+        {
+          className: "devtools-toolbar"
+        }
+      ),
+      KeyframesProgressTickList(),
+      KeyframesProgressBar(
+        {
+          addAnimationsCurrentTimeListener,
+          animation,
+          getAnimationsCurrentTime,
+          removeAnimationsCurrentTimeListener,
+          simulateAnimationForKeyframesProgressBar,
+          timeScale,
+        }
+      )
     );
   }
 }

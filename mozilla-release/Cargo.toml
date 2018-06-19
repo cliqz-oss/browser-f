@@ -7,6 +7,7 @@
 members = [
   "js/src",
   "js/rust",
+  "js/src/frontend/binsource", # Code generator.
   "testing/geckodriver",
   "toolkit/library/gtest/rust",
   "toolkit/library/rust/",
@@ -58,4 +59,4 @@ codegen-units = 1
 
 [patch.crates-io]
 libudev-sys = { path = "dom/webauthn/libudev-sys" }
-serde_derive = { git = "https://github.com/gankro/serde", branch = "deserialize_from_enums4" }
+serde_derive = { git = "https://github.com/servo/serde", branch = "deserialize_from_enums6" }

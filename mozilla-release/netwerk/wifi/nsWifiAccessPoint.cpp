@@ -21,10 +21,6 @@ nsWifiAccessPoint::nsWifiAccessPoint()
   mSignal = -1000;
 }
 
-nsWifiAccessPoint::~nsWifiAccessPoint()
-{
-}
-
 NS_IMETHODIMP nsWifiAccessPoint::GetMac(nsACString& aMac)
 {
   aMac.Assign(mMac);
@@ -35,7 +31,7 @@ NS_IMETHODIMP nsWifiAccessPoint::GetSsid(nsAString& aSsid)
 {
   // just assign and embedded nulls will truncate resulting
   // in a displayable string.
-  CopyASCIItoUTF16(mSsid, aSsid);
+  aSsid.AssignASCII(mSsid);
   return NS_OK;
 }
 

@@ -6,7 +6,6 @@ add_task(async function() {
   let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
   is(prefs.selectedPane, "paneGeneral", "General pane was selected");
 
-  // eslint-disable-next-line mozilla/no-cpows-in-tests
   let doc = gBrowser.contentDocument;
   let checkbox = doc.querySelector("#checkSpelling");
   is(checkbox.checked,
@@ -21,5 +20,5 @@ add_task(async function() {
      "checkbox should represent pref value after clicking on checkbox");
   ok(!checkbox.checked, "checkbox should not be checked after clicking on checkbox");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

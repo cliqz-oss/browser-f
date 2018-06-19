@@ -8,7 +8,6 @@
 #include "nsIDocument.h"
 #include "nsIDocShell.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentType.h"
 #include "nsIScriptElement.h"
 #include "nsCharsetSource.h"
 #include "nsIRefreshURI.h"
@@ -19,7 +18,6 @@
 #include "nsGkAtoms.h"
 #include "txLog.h"
 #include "nsIConsoleService.h"
-#include "nsIDOMDocumentFragment.h"
 #include "nsNameSpaceManager.h"
 #include "txStringUtils.h"
 #include "txURIUtils.h"
@@ -28,10 +26,13 @@
 #include "nsIDocumentTransformer.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Loader.h"
+#include "mozilla/dom/DocumentType.h"
+#include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/Encoding.h"
 #include "nsContentUtils.h"
+#include "nsDocElementCreatedNotificationRunner.h"
 #include "txXMLUtils.h"
 #include "nsContentSink.h"
 #include "nsINode.h"
@@ -74,7 +75,7 @@ txMozillaXMLOutput::txMozillaXMLOutput(txOutputFormat* aFormat,
 }
 
 txMozillaXMLOutput::txMozillaXMLOutput(txOutputFormat* aFormat,
-                                       nsIDOMDocumentFragment* aFragment,
+                                       DocumentFragment* aFragment,
                                        bool aNoFixup)
     : mTreeDepth(0),
       mBadChildLevel(0),
@@ -88,7 +89,7 @@ txMozillaXMLOutput::txMozillaXMLOutput(txOutputFormat* aFormat,
     mOutputFormat.merge(*aFormat);
     mOutputFormat.setFromDefaults();
 
-    mCurrentNode = do_QueryInterface(aFragment);
+    mCurrentNode = aFragment;
     mDocument = mCurrentNode->OwnerDoc();
     mNodeInfoManager = mDocument->NodeInfoManager();
 }
@@ -321,11 +322,10 @@ txMozillaXMLOutput::endElement()
             do_QueryInterface(mCurrentNode);
         if (ssle) {
             ssle->SetEnableUpdates(true);
-            bool willNotify;
-            bool isAlternate;
-            nsresult rv = ssle->UpdateStyleSheet(mNotifier, &willNotify,
-                                                 &isAlternate);
-            if (mNotifier && NS_SUCCEEDED(rv) && willNotify && !isAlternate) {
+            auto updateOrError = ssle->UpdateStyleSheet(mNotifier);
+            if (mNotifier &&
+                updateOrError.isOk() &&
+                updateOrError.unwrap().ShouldBlock()) {
                 mNotifier->AddPendingStylesheet();
             }
         }
@@ -399,10 +399,10 @@ txMozillaXMLOutput::processingInstruction(const nsString& aTarget, const nsStrin
 
     if (ssle) {
         ssle->SetEnableUpdates(true);
-        bool willNotify;
-        bool isAlternate;
-        rv = ssle->UpdateStyleSheet(mNotifier, &willNotify, &isAlternate);
-        if (mNotifier && NS_SUCCEEDED(rv) && willNotify && !isAlternate) {
+        auto updateOrError = ssle->UpdateStyleSheet(mNotifier);
+        if (mNotifier &&
+            updateOrError.isOk() &&
+            updateOrError.unwrap().ShouldBlock()) {
             mNotifier->AddPendingStylesheet();
         }
     }
@@ -578,7 +578,8 @@ txMozillaXMLOutput::closePrevious(bool aFlushText)
 
         if (currentIsDoc) {
             mRootContentCreated = true;
-            nsContentSink::NotifyDocElementCreated(mDocument);
+            nsContentUtils::AddScriptRunner(
+                  new nsDocElementCreatedNotificationRunner(mDocument));
         }
 
         mCurrentNode = mOpenedElement;
@@ -885,8 +886,6 @@ txMozillaXMLOutput::createResultDocument(const nsAString& aName, int32_t aNsID,
             qName.Assign(aName);
         }
 
-        nsCOMPtr<nsIDOMDocumentType> documentType;
-
         nsresult rv = nsContentUtils::CheckQName(qName);
         if (NS_SUCCEEDED(rv)) {
             RefPtr<nsAtom> doctypeName = NS_Atomize(qName);
@@ -895,16 +894,14 @@ txMozillaXMLOutput::createResultDocument(const nsAString& aName, int32_t aNsID,
             }
 
             // Indicate that there is no internal subset (not just an empty one)
-            rv = NS_NewDOMDocumentType(getter_AddRefs(documentType),
-                                       mNodeInfoManager,
-                                       doctypeName,
-                                       mOutputFormat.mPublicId,
-                                       mOutputFormat.mSystemId,
-                                       VoidString());
-            NS_ENSURE_SUCCESS(rv, rv);
+            RefPtr<DocumentType> documentType =
+                NS_NewDOMDocumentType(mNodeInfoManager,
+                                      doctypeName,
+                                      mOutputFormat.mPublicId,
+                                      mOutputFormat.mSystemId,
+                                      VoidString());
 
-            nsCOMPtr<nsIContent> docType = do_QueryInterface(documentType);
-            rv = mDocument->AppendChildTo(docType, true);
+            rv = mDocument->AppendChildTo(documentType, true);
             NS_ENSURE_SUCCESS(rv, rv);
         }
     }
@@ -977,7 +974,7 @@ txTransformNotifier::ScriptEvaluated(nsresult aResult,
 
 NS_IMETHODIMP
 txTransformNotifier::StyleSheetLoaded(StyleSheet* aSheet,
-                                      bool aWasAlternate,
+                                      bool aWasDeferred,
                                       nsresult aStatus)
 {
     if (mPendingStylesheetCount == 0) {
@@ -988,7 +985,7 @@ txTransformNotifier::StyleSheetLoaded(StyleSheet* aSheet,
     }
 
     // We're never waiting for alternate stylesheets
-    if (!aWasAlternate) {
+    if (!aWasDeferred) {
         --mPendingStylesheetCount;
         SignalTransformEnd();
     }

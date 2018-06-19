@@ -17,15 +17,21 @@
 
 class nsDisplayRangeFocusRing;
 
+namespace mozilla {
+namespace dom {
+class Event;
+} // namespace mozilla
+} // namespace dom
+
 class nsRangeFrame final : public nsContainerFrame,
                            public nsIAnonymousContentCreator
 {
   friend nsIFrame*
-  NS_NewRangeFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewRangeFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   friend class nsDisplayRangeFocusRing;
 
-  explicit nsRangeFrame(nsStyleContext* aContext);
+  explicit nsRangeFrame(ComputedStyle* aStyle);
   virtual ~nsRangeFrame();
 
   typedef mozilla::CSSPseudoElementType CSSPseudoElementType;
@@ -88,9 +94,9 @@ public:
       ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));
   }
 
-  nsStyleContext* GetAdditionalStyleContext(int32_t aIndex) const override;
-  void SetAdditionalStyleContext(int32_t aIndex,
-                                 nsStyleContext* aStyleContext) override;
+  ComputedStyle* GetAdditionalComputedStyle(int32_t aIndex) const override;
+  void SetAdditionalComputedStyle(int32_t aIndex,
+                                  ComputedStyle* aComputedStyle) override;
 
   /**
    * Returns true if the slider's thumb moves horizontally, or else false if it
@@ -183,9 +189,9 @@ private:
   nsCOMPtr<Element> mThumbDiv;
 
   /**
-   * Cached style context for -moz-focus-outer CSS pseudo-element style.
+   * Cached ComputedStyle for -moz-focus-outer CSS pseudo-element style.
    */
-  RefPtr<nsStyleContext> mOuterFocusStyle;
+  RefPtr<ComputedStyle> mOuterFocusStyle;
 
   class DummyTouchListener final : public nsIDOMEventListener
   {
@@ -195,7 +201,7 @@ private:
   public:
     NS_DECL_ISUPPORTS
 
-    NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override
+    NS_IMETHOD HandleEvent(mozilla::dom::Event* aEvent) override
     {
       return NS_OK;
     }

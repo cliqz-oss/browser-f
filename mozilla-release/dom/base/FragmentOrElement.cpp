@@ -5,9 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Base class for all element classes; this provides an implementation
- * of DOM Core's nsIDOMElement, implements nsIContent, provides
- * utility methods for subclasses, and so forth.
+ * Base class for all element classes and DocumentFragment.
  */
 
 #include "mozilla/ArrayUtils.h"
@@ -24,7 +22,7 @@
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/HTMLEditor.h"
-#include "mozilla/ServoRestyleManager.h"
+#include "mozilla/RestyleManager.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/URLExtraData.h"
 #include "mozilla/dom/Attr.h"
@@ -34,7 +32,6 @@
 #include "mozilla/dom/Event.h"
 #include "nsIDocumentInlines.h"
 #include "nsIDocumentEncoder.h"
-#include "nsIDOMNodeList.h"
 #include "nsIContentIterator.h"
 #include "nsFocusManager.h"
 #include "nsILinkHandler.h"
@@ -48,7 +45,6 @@
 #include "nsStyleConsts.h"
 #include "nsString.h"
 #include "nsUnicharUtils.h"
-#include "nsIDOMEvent.h"
 #include "nsDOMCID.h"
 #include "nsIServiceManager.h"
 #include "nsDOMCSSAttrDeclaration.h"
@@ -64,6 +60,7 @@
 #include "nsNodeUtils.h"
 #include "nsDocument.h"
 #include "nsAttrValueOrString.h"
+#include "nsQueryObject.h"
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
 #endif /* MOZ_XUL */
@@ -73,6 +70,7 @@
 #endif
 
 #include "nsBindingManager.h"
+#include "nsFrameLoader.h"
 #include "nsXBLBinding.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIBoxObject.h"
@@ -82,6 +80,7 @@
 #include "nsContentUtils.h"
 #include "nsTextFragment.h"
 #include "nsContentCID.h"
+#include "nsWindowSizes.h"
 
 #include "nsIDOMEventListener.h"
 #include "nsIWebNavigation.h"
@@ -97,10 +96,6 @@
 #include "nsViewManager.h"
 #include "nsIScrollableFrame.h"
 #include "ChildIterator.h"
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/css/StyleRule.h" /* For nsCSSSelectorList */
-#include "nsRuleProcessorData.h"
-#endif
 #include "nsTextNode.h"
 #include "mozilla/dom/NodeListBinding.h"
 
@@ -134,6 +129,34 @@ using namespace mozilla::dom;
 int32_t nsIContent::sTabFocusModel = eTabFocus_any;
 bool nsIContent::sTabFocusModelAppliesToXUL = false;
 uint64_t nsMutationGuard::sGeneration = 0;
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(nsIContent)
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsIContent)
+  MOZ_ASSERT_UNREACHABLE("Our subclasses don't call us");
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsIContent)
+  MOZ_ASSERT_UNREACHABLE("Our subclasses don't call us");
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_INTERFACE_MAP_BEGIN(nsIContent)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  // Don't bother to QI to cycle collection, because our CC impl is
+  // not doing anything anyway.
+  NS_INTERFACE_MAP_ENTRY(nsIContent)
+  NS_INTERFACE_MAP_ENTRY(nsINode)
+  NS_INTERFACE_MAP_ENTRY(mozilla::dom::EventTarget)
+  NS_INTERFACE_MAP_ENTRY_TEAROFF(nsISupportsWeakReference,
+                                 new nsNodeSupportsWeakRefTearoff(this))
+  // DOM bindings depend on the identity pointer being the
+  // same as nsINode (which nsIContent inherits).
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(nsIContent)
+NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(nsIContent,
+                                                                    nsNodeUtils::LastRelease(this))
 
 nsIContent*
 nsIContent::FindFirstNonChromeOnlyAccessContent() const
@@ -183,7 +206,7 @@ nsIContent::GetAssignedSlotByMode() const
 nsIContent::IMEState
 nsIContent::GetDesiredIMEState()
 {
-  if (!IsEditableInternal()) {
+  if (!IsEditable()) {
     // Check for the special case where we're dealing with elements which don't
     // have the editable flag set, but are readwrite (such as text controls).
     if (!IsElement() ||
@@ -228,7 +251,7 @@ dom::Element*
 nsIContent::GetEditingHost()
 {
   // If this isn't editable, return nullptr.
-  if (!IsEditableInternal()) {
+  if (!IsEditable()) {
     return nullptr;
   }
 
@@ -470,7 +493,7 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
 NS_INTERFACE_TABLE_HEAD(nsAttrChildContentList)
   NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
-  NS_INTERFACE_TABLE(nsAttrChildContentList, nsINodeList, nsIDOMNodeList)
+  NS_INTERFACE_TABLE(nsAttrChildContentList, nsINodeList)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsAttrChildContentList)
 NS_INTERFACE_MAP_END
 
@@ -481,25 +504,10 @@ nsAttrChildContentList::WrapObject(JSContext *cx,
   return NodeListBinding::Wrap(cx, this, aGivenProto);
 }
 
-NS_IMETHODIMP
-nsAttrChildContentList::GetLength(uint32_t* aLength)
+uint32_t
+nsAttrChildContentList::Length()
 {
-  *aLength = mNode ? mNode->GetChildCount() : 0;
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsAttrChildContentList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsINode* node = Item(aIndex);
-  if (!node) {
-    *aReturn = nullptr;
-
-    return NS_OK;
-  }
-
-  return CallQueryInterface(node, aReturn);
+  return mNode ? mNode->GetChildCount() : 0;
 }
 
 nsIContent*
@@ -523,30 +531,16 @@ nsAttrChildContentList::IndexOf(nsIContent* aContent)
 }
 
 //----------------------------------------------------------------------
-NS_IMETHODIMP
-nsParentNodeChildContentList::GetLength(uint32_t* aLength)
+uint32_t
+nsParentNodeChildContentList::Length()
 {
   if (!mIsCacheValid && !ValidateCache()) {
-    *aLength = 0;
-    return NS_OK;
+    return 0;
   }
 
   MOZ_ASSERT(mIsCacheValid);
 
-  *aLength = mCachedChildArray.Length();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsParentNodeChildContentList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsINode* node = Item(aIndex);
-  if (!node) {
-    *aReturn = nullptr;
-    return NS_OK;
-  }
-
-  return CallQueryInterface(node, aReturn);
+  return mCachedChildArray.Length();
 }
 
 nsIContent*
@@ -611,34 +605,6 @@ FragmentOrElement::Children()
 
 
 //----------------------------------------------------------------------
-
-
-NS_IMPL_ISUPPORTS(nsNodeWeakReference,
-                  nsIWeakReference)
-
-nsNodeWeakReference::~nsNodeWeakReference()
-{
-  nsINode* node = static_cast<nsINode*>(mObject);
-
-  if (node) {
-    NS_ASSERTION(node->Slots()->mWeakReference == this,
-                 "Weak reference has wrong value");
-    node->Slots()->mWeakReference = nullptr;
-  }
-}
-
-NS_IMETHODIMP
-nsNodeWeakReference::QueryReferentFromScript(const nsIID& aIID, void** aInstancePtr)
-{
-  return QueryReferent(aIID, aInstancePtr);
-}
-
-size_t
-nsNodeWeakReference::SizeOfOnlyThis(mozilla::MallocSizeOf aMallocSizeOf) const
-{
-  return aMallocSizeOf(this);
-}
-
 
 NS_IMPL_CYCLE_COLLECTION(nsNodeSupportsWeakRefTearoff, mNode)
 
@@ -729,7 +695,7 @@ FragmentOrElement::nsDOMSlots::Traverse(nsCycleCollectionTraversalCallback& aCb)
   aCb.NoteXPCOMChild(mAttributeMap.get());
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mSlots->mChildrenList");
-  aCb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIDOMNodeList*, mChildrenList));
+  aCb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsINodeList*, mChildrenList));
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mSlots->mClassList");
   aCb.NoteXPCOMChild(mClassList.get());
@@ -779,9 +745,9 @@ FragmentOrElement::nsExtendedDOMSlots::nsExtendedDOMSlots() = default;
 
 FragmentOrElement::nsExtendedDOMSlots::~nsExtendedDOMSlots()
 {
-  nsCOMPtr<nsIFrameLoader> frameLoader = do_QueryInterface(mFrameLoaderOrOpener);
+  RefPtr<nsFrameLoader> frameLoader = do_QueryObject(mFrameLoaderOrOpener);
   if (frameLoader) {
-    static_cast<nsFrameLoader*>(frameLoader.get())->Destroy();
+    frameLoader->Destroy();
   }
 }
 
@@ -800,10 +766,9 @@ FragmentOrElement::nsExtendedDOMSlots::Unlink()
     mCustomElementData->Unlink();
     mCustomElementData = nullptr;
   }
-  nsCOMPtr<nsIFrameLoader> frameLoader =
-    do_QueryInterface(mFrameLoaderOrOpener);
+  RefPtr<nsFrameLoader> frameLoader = do_QueryObject(mFrameLoaderOrOpener);
   if (frameLoader) {
-    static_cast<nsFrameLoader*>(frameLoader.get())->Destroy();
+    frameLoader->Destroy();
   }
   mFrameLoaderOrOpener = nullptr;
 }
@@ -820,7 +785,7 @@ FragmentOrElement::nsExtendedDOMSlots::Traverse(nsCycleCollectionTraversalCallba
   aCb.NoteXPCOMChild(mControllers);
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mExtendedSlots->mLabelsList");
-  aCb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIDOMNodeList*, mLabelsList));
+  aCb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsINodeList*, mLabelsList));
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mExtendedSlots->mShadowRoot");
   aCb.NoteXPCOMChild(NS_ISUPPORTS_CAST(nsIContent*, mShadowRoot));
@@ -897,7 +862,7 @@ FindChromeAccessOnlySubtreeOwner(EventTarget* aTarget)
   return node.forget();
 }
 
-nsresult
+void
 nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   //FIXME! Document how this event retargeting works, Bug 329124.
@@ -977,7 +942,7 @@ nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor)
               aVisitor.SetParentTarget(nullptr, false);
               // Event should not propagate to non-anon content.
               aVisitor.mCanHandle = isAnonForEvents;
-              return NS_OK;
+              return;
             }
           }
         }
@@ -1081,7 +1046,7 @@ nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor)
             // being false, but in Shadow DOM case mTarget really should
             // point to a node in Shadow DOM.
             aVisitor.mEvent->mTarget = aVisitor.mTargetInKnownToBeHandledScope;
-            return NS_OK;
+            return;
           }
 
           // Part of step 5. Retargeting target has happened already higher
@@ -1125,8 +1090,12 @@ nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor)
             // being false, but in Shadow DOM case mTarget really should
             // point to a node in Shadow DOM.
             aVisitor.mEvent->mTarget = aVisitor.mTargetInKnownToBeHandledScope;
-            return NS_OK;
-          } else {
+            return;
+          } else if (targetInKnownToBeHandledScope) {
+            // Note, if targetInKnownToBeHandledScope is null,
+            // mTargetInKnownToBeHandledScope could be Window object in content
+            // page and we're in chrome document in the same process.
+
             // Step 11.6
             aVisitor.mRetargetedRelatedTarget = retargetedRelatedTarget;
           }
@@ -1139,8 +1108,6 @@ nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor)
     // Inform that we're about to exit the current scope.
     aVisitor.mRelatedTargetRetargetedInCurrentScope = false;
   }
-
-  return NS_OK;
 }
 
 bool
@@ -1285,7 +1252,7 @@ FragmentOrElement::DestroyContent()
   //
   // TODO(emilio): I suspect this can be asserted against instead, with a bit of
   // effort to avoid calling nsDocument::Destroy with a shell...
-  if (IsElement() && document->IsStyledByServo()) {
+  if (IsElement()) {
     AsElement()->ClearServoData();
   }
 
@@ -1457,8 +1424,9 @@ FragmentOrElement::ClearContentUnbinder()
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(FragmentOrElement)
 
+// We purposefully don't UNLINK_BEGIN_INHERITED here.
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(FragmentOrElement)
-  nsINode::Unlink(tmp);
+  nsIContent::Unlink(tmp);
 
   // The XBL binding is removed by RemoveFromBindingManagerRunnable
   // which is dispatched in UnbindFromTree.
@@ -1523,14 +1491,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(FragmentOrElement)
 
 void
-FragmentOrElement::MarkUserData(void* aObject, nsAtom* aKey, void* aChild,
-                               void* aData)
-{
-  uint32_t* gen = static_cast<uint32_t*>(aData);
-  xpc_MarkInCCGeneration(static_cast<nsISupports*>(aChild), *gen);
-}
-
-void
 FragmentOrElement::MarkNodeChildren(nsINode* aNode)
 {
   JSObject* o = GetJSObjectChild(aNode);
@@ -1541,13 +1501,6 @@ FragmentOrElement::MarkNodeChildren(nsINode* aNode)
   EventListenerManager* elm = aNode->GetExistingListenerManager();
   if (elm) {
     elm->MarkForCC();
-  }
-
-  if (aNode->HasProperties()) {
-    nsIDocument* ownerDoc = aNode->OwnerDoc();
-    ownerDoc->PropertyTable(DOM_USER_DATA)->
-      Enumerate(aNode, FragmentOrElement::MarkUserData,
-                &nsCCUncollectableMarker::sGeneration);
   }
 }
 
@@ -1967,6 +1920,8 @@ static const char* kNSURIs[] = {
   " (XML Events)"
 };
 
+// We purposefully don't TRAVERSE_BEGIN_INHERITED here.  All the bits
+// we should traverse should be added here or in nsINode::Traverse.
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(FragmentOrElement)
   if (MOZ_UNLIKELY(cb.WantDebugInfo())) {
     char name[512];
@@ -2019,7 +1974,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(FragmentOrElement)
     NS_IMPL_CYCLE_COLLECTION_DESCRIBE(FragmentOrElement, tmp->mRefCnt.get())
   }
 
-  if (!nsINode::Traverse(tmp, cb)) {
+  if (!nsIContent::Traverse(tmp, cb)) {
     return NS_SUCCESS_INTERRUPTED_TRAVERSE;
   }
 
@@ -2091,22 +2046,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 
 NS_INTERFACE_MAP_BEGIN(FragmentOrElement)
-  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(FragmentOrElement)
-  NS_INTERFACE_MAP_ENTRY(nsIContent)
-  NS_INTERFACE_MAP_ENTRY(nsINode)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMEventTarget)
-  NS_INTERFACE_MAP_ENTRY(mozilla::dom::EventTarget)
-  NS_INTERFACE_MAP_ENTRY_TEAROFF(nsISupportsWeakReference,
-                                 new nsNodeSupportsWeakRefTearoff(this))
-  // DOM bindings depend on the identity pointer being the
-  // same as nsINode (which nsIContent inherits).
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIContent)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(FragmentOrElement)
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(FragmentOrElement,
-                                                                    nsNodeUtils::LastRelease(this))
+NS_INTERFACE_MAP_END_INHERITING(nsIContent)
 
 //----------------------------------------------------------------------
 
@@ -2148,24 +2089,6 @@ FragmentOrElement::TextLength() const
   return 0;
 }
 
-nsresult
-FragmentOrElement::SetText(const char16_t* aBuffer, uint32_t aLength,
-                          bool aNotify)
-{
-  NS_ERROR("called FragmentOrElement::SetText");
-
-  return NS_ERROR_FAILURE;
-}
-
-nsresult
-FragmentOrElement::AppendText(const char16_t* aBuffer, uint32_t aLength,
-                             bool aNotify)
-{
-  NS_ERROR("called FragmentOrElement::AppendText");
-
-  return NS_ERROR_FAILURE;
-}
-
 bool
 FragmentOrElement::TextIsOnlyWhitespace()
 {
@@ -2175,30 +2098,6 @@ FragmentOrElement::TextIsOnlyWhitespace()
 bool
 FragmentOrElement::ThreadSafeTextIsOnlyWhitespace() const
 {
-  return false;
-}
-
-bool
-FragmentOrElement::HasTextForTranslation()
-{
-  return false;
-}
-
-void
-FragmentOrElement::AppendTextTo(nsAString& aResult)
-{
-  // We can remove this assertion if it turns out to be useful to be able
-  // to depend on this appending nothing.
-  NS_NOTREACHED("called FragmentOrElement::TextLength");
-}
-
-bool
-FragmentOrElement::AppendTextTo(nsAString& aResult, const mozilla::fallible_t&)
-{
-  // We can remove this assertion if it turns out to be useful to be able
-  // to depend on this appending nothing.
-  NS_NOTREACHED("called FragmentOrElement::TextLength");
-
   return false;
 }
 
@@ -2466,42 +2365,5 @@ FragmentOrElement::AddSizeOfExcludingThis(nsWindowSizes& aSizes,
   nsDOMSlots* slots = GetExistingDOMSlots();
   if (slots) {
     *aNodeSize += slots->SizeOfIncludingThis(aSizes.mState.mMallocSizeOf);
-  }
-}
-
-void
-FragmentOrElement::SetIsElementInStyleScopeFlagOnSubtree(bool aInStyleScope)
-{
-  if (aInStyleScope && IsElementInStyleScope()) {
-    return;
-  }
-
-  if (IsElement()) {
-    SetIsElementInStyleScope(aInStyleScope);
-    SetIsElementInStyleScopeFlagOnShadowTree(aInStyleScope);
-  }
-
-  nsIContent* n = GetNextNode(this);
-  while (n) {
-    if (n->IsElementInStyleScope()) {
-      n = n->GetNextNonChildNode(this);
-    } else {
-      if (n->IsElement()) {
-        n->SetIsElementInStyleScope(aInStyleScope);
-        n->AsElement()->SetIsElementInStyleScopeFlagOnShadowTree(aInStyleScope);
-      }
-      n = n->GetNextNode(this);
-    }
-  }
-}
-
-void
-FragmentOrElement::SetIsElementInStyleScopeFlagOnShadowTree(bool aInStyleScope)
-{
-  NS_ASSERTION(IsElement(), "calling SetIsElementInStyleScopeFlagOnShadowTree "
-                            "on a non-Element is useless");
-  ShadowRoot* shadowRoot = GetShadowRoot();
-  if (shadowRoot) {
-    shadowRoot->SetIsElementInStyleScopeFlagOnSubtree(aInStyleScope);
   }
 }

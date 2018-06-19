@@ -9,15 +9,15 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/StateMirroring.h"
-#include "mozilla/TaskQueue.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/StateMirroring.h"
+#include "mozilla/StaticPrefs.h"
+#include "mozilla/TaskQueue.h"
 
 #include "FrameStatistics.h"
 #include "MediaEventSource.h"
 #include "MediaDataDemuxer.h"
 #include "MediaMetadataManager.h"
-#include "MediaPrefs.h"
 #include "MediaPromiseDefs.h"
 #include "nsAutoPtr.h"
 #include "PDMFactory.h"
@@ -339,6 +339,7 @@ private:
   size_t SizeOfQueue(TrackType aTrack);
 
   RefPtr<PDMFactory> mPlatform;
+  RefPtr<PDMFactory> mEncryptedPlatform;
 
   enum class DrainState
   {
@@ -487,7 +488,7 @@ private:
         // Allow decode errors to be non-fatal, but give up
         // if we have too many, or if warnings should be treated as errors.
         return mNumOfConsecutiveError > mMaxConsecutiveError ||
-               MediaPrefs::MediaWarningsAsErrors();
+               StaticPrefs::MediaPlaybackWarningsAsErrors();
       } else if (mError.ref() == NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER) {
         // If the caller asked for a new decoder we shouldn't treat
         // it as fatal.
@@ -574,6 +575,22 @@ private:
     bool HasInternalSeekPending() const
     {
       return mTimeThreshold && !mTimeThreshold.ref().mHasSeeked;
+    }
+
+    // Return the current TrackInfo in the stream. If the stream content never
+    // changed since AsyncReadMetadata was called then the TrackInfo used is
+    // mOriginalInfo, other it will be mInfo. The later case is only ever true
+    // with MSE or the WebMDemuxer.
+    const TrackInfo* GetCurrentInfo() const
+    {
+      if (mInfo) {
+        return *mInfo;
+      }
+      return mOriginalInfo.get();
+    }
+    bool IsEncrypted() const
+    {
+      return GetCurrentInfo()->mCrypto.mValid;
     }
 
     // Used by the MDSM for logging purposes.

@@ -9,7 +9,8 @@ XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 EXTRA_JS_MODULES += [
     'ForgetAboutSite.jsm',
+    'ServiceWorkerCleanUp.jsm',
 ]
 
 with Files('**'):
-    BUG_COMPONENT = ('Toolkit', 'Forget About Site')
+    BUG_COMPONENT = ('Toolkit', 'Data Sanitization')

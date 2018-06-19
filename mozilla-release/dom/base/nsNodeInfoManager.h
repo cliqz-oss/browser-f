@@ -21,7 +21,6 @@
 class nsBindingManager;
 class nsAtom;
 class nsIDocument;
-class nsIDOMDocumentType;
 class nsIPrincipal;
 class nsWindowSizes;
 struct PLHashEntry;
@@ -135,14 +134,8 @@ public:
   void AddSizeOfIncludingThis(nsWindowSizes& aSizes) const;
 
 protected:
-  friend class nsDocument;
+  friend class nsIDocument;
   friend class nsXULPrototypeDocument;
-  friend nsresult NS_NewDOMDocumentType(nsIDOMDocumentType** ,
-                                        nsNodeInfoManager *,
-                                        nsAtom *,
-                                        const nsAString& ,
-                                        const nsAString& ,
-                                        const nsAString& );
 
   /**
    * Sets the principal of the document this nodeinfo manager belongs to.

@@ -21,7 +21,6 @@ class gfxGDIFont : public gfxFont
 public:
     gfxGDIFont(GDIFontEntry *aFontEntry,
                const gfxFontStyle *aFontStyle,
-               bool aNeedsBold,
                AntialiasOption anAAOption = kAntialiasDefault);
 
     virtual ~gfxGDIFont();
@@ -99,7 +98,7 @@ protected:
     Metrics              *mMetrics;
     uint32_t              mSpaceGlyph;
 
-    bool                  mNeedsBold;
+    bool                  mNeedsSyntheticBold;
 
     // cache of glyph IDs (used for non-sfnt fonts only)
     mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,uint32_t> > mGlyphIDs;

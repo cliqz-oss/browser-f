@@ -20,12 +20,14 @@ locales = [
     "bs",
     "ca",
     "cak",
+    "crh",
     "cs",
     "cy",
     "da",
     "de",
     "dsb",
     "el",
+    "en-CA",
     "en-GB",
     "en-ZA",
     "eo",
@@ -144,6 +146,11 @@ locales = [
 [[includes]]
     path = "devtools/client/locales/l10n.toml"
 
+[[paths]]
+    reference = "devtools/startup/locales/en-US/**"
+    l10n = "{l}devtools/startup/**"
+
+# for Firefox 60 and older and cross-channel
 [[paths]]
     reference = "devtools/shim/locales/en-US/**"
     l10n = "{l}devtools/shim/**"

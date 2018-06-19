@@ -389,8 +389,7 @@ Performance::TimingNotification(PerformanceEntry* aEntry,
 
   nsCOMPtr<EventTarget> et = do_QueryInterface(GetOwner());
   if (et) {
-    bool dummy = false;
-    et->DispatchEvent(perfEntryEvent, &dummy);
+    et->DispatchEvent(*perfEntryEvent);
   }
 }
 
@@ -413,7 +412,6 @@ void
 Performance::InsertResourceEntry(PerformanceEntry* aEntry)
 {
   MOZ_ASSERT(aEntry);
-  MOZ_ASSERT(mResourceEntries.Length() <= mResourceTimingBufferSize);
 
   // We won't add an entry when 'privacy.resistFingerprint' is true.
   if (nsContentUtils::ShouldResistFingerprinting()) {

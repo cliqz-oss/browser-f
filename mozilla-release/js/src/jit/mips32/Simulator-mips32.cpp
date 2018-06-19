@@ -516,8 +516,6 @@ class AutoLockSimulatorCache : public LockGuard<Mutex>
 
 mozilla::Atomic<size_t, mozilla::ReleaseAcquire>
     SimulatorProcess::ICacheCheckingDisableCount(1); // Checking is disabled by default.
-mozilla::Atomic<bool, mozilla::ReleaseAcquire>
-    SimulatorProcess::cacheInvalidatedBySignalHandler_(false);
 SimulatorProcess* SimulatorProcess::singleton_ = nullptr;
 
 int Simulator::StopSimAt = -1;
@@ -1206,25 +1204,11 @@ SimulatorProcess::checkICacheLocked(SimInstruction* instr)
     bool cache_hit = (*cache_valid_byte == CachePage::LINE_VALID);
     char* cached_line = cache_page->cachedData(offset & ~CachePage::kLineMask);
 
-    // Read all state before considering signal handler effects.
-    int cmpret = 0;
     if (cache_hit) {
         // Check that the data in memory matches the contents of the I-cache.
-        cmpret = memcmp(reinterpret_cast<void*>(instr),
-                        cache_page->cachedData(offset),
-                        SimInstruction::kInstrSize);
-    }
-
-    // Check for signal handler interruption between reading state and asserting.
-    // It is safe for the signal to arrive during the !cache_hit path, since it
-    // will be cleared the next time this function is called.
-    if (cacheInvalidatedBySignalHandler_) {
-        icache().clear();
-        cacheInvalidatedBySignalHandler_ = false;
-        return;
-    }
-
-    if (cache_hit) {
+        int cmpret = memcmp(reinterpret_cast<void*>(instr),
+                            cache_page->cachedData(offset),
+                            SimInstruction::kInstrSize);
         MOZ_ASSERT(cmpret == 0);
     } else {
         // Cache miss.  Load memory into the cache.
@@ -1269,9 +1253,11 @@ Simulator::Simulator()
     pc_modified_ = false;
     icount_ = 0;
     break_count_ = 0;
-    wasm_interrupt_ = false;
     break_pc_ = nullptr;
     break_instr_ = 0;
+    single_stepping_ = false;
+    single_step_callback_ = nullptr;
+    single_step_callback_arg_ = nullptr;
 
     // Set up architecture state.
     // All registers are initialized to zero to start with.
@@ -1642,32 +1628,6 @@ Simulator::registerState()
     return state;
 }
 
-// The signal handler only redirects the PC to the interrupt stub when the PC is
-// in function code. However, this guard is racy for the simulator since the
-// signal handler samples PC in the middle of simulating an instruction and thus
-// the current PC may have advanced once since the signal handler's guard. So we
-// re-check here.
-void
-Simulator::handleWasmInterrupt()
-{
-    if (!wasm::CodeExists)
-        return;
-
-    void* pc = (void*)get_pc();
-    void* fp = (void*)getRegister(Register::fp);
-
-    JitActivation* activation = TlsContext.get()->activation()->asJit();
-    const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
-    if (!segment || !segment->isModule() || !segment->containsCodePC(pc))
-        return;
-
-    if (!activation->startWasmInterrupt(registerState()))
-         return;
-
-    set_pc(int32_t(segment->asModule()->interruptCode()));
-}
-
-
 // WebAssembly memories contain an extra region of guard pages (see
 // WasmArrayRawBuffer comment). The guard pages catch out-of-bounds accesses
 // using a signal handler that redirects PC to a stub that safely reports an
@@ -1704,17 +1664,16 @@ Simulator::handleWasmFault(int32_t addr, unsigned numBytes)
 
     LLBit_ = false;
 
-    const wasm::MemoryAccess* memoryAccess = instance->code().lookupMemoryAccess(pc);
-    if (!memoryAccess) {
-        MOZ_ALWAYS_TRUE(act->startWasmInterrupt(registerState()));
-        if (!instance->code().containsCodePC(pc))
-            MOZ_CRASH("Cannot map PC to trap handler");
+    wasm::Trap trap;
+    wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
+        act->startWasmTrap(wasm::Trap::OutOfBounds, 0, registerState());
         set_pc(int32_t(moduleSegment->outOfBoundsCode()));
         return true;
     }
 
-    MOZ_ASSERT(memoryAccess->hasTrapOutOfLineCode());
-    set_pc(int32_t(memoryAccess->trapOutOfLineCode(moduleSegment->base())));
+    act->startWasmTrap(wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
+    set_pc(int32_t(moduleSegment->trapCode()));
     return true;
 }
 
@@ -1741,7 +1700,7 @@ Simulator::handleWasmTrapFault()
     if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode))
         return false;
 
-    act->startWasmTrap(trap, bytecode.offset, registerState());
+    act->startWasmTrap(trap, bytecode.offset(), registerState());
     set_pc(int32_t(moduleSegment->trapCode()));
     return true;
 }
@@ -2060,7 +2019,7 @@ typedef float (*Prototype_Float32_Float32)(float arg0);
 typedef float (*Prototype_Float32_Float32Float32)(float arg0, float arg1);
 typedef float (*Prototype_Float32_IntInt)(int arg0, int arg1);
 
-typedef double (*Prototype_DoubleInt)(double arg0, int32_t arg1);
+typedef double (*Prototype_Double_DoubleInt)(double arg0, int32_t arg1);
 typedef double (*Prototype_Double_IntInt)(int32_t arg0, int32_t arg1);
 typedef double (*Prototype_Double_IntDouble)(int32_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
@@ -2111,6 +2070,9 @@ Simulator::softwareInterrupt(SimInstruction* instr)
             fprintf(stderr, "Runtime call with unaligned stack!\n");
             MOZ_CRASH();
         }
+
+        if (single_stepping_)
+            single_step_callback_(single_step_callback_arg_, this, nullptr);
 
         switch (redirection->type()) {
           case Args_General0: {
@@ -2272,7 +2234,7 @@ Simulator::softwareInterrupt(SimInstruction* instr)
             double dval0, dval1;
             int32_t ival;
             getFpArgs(&dval0, &dval1, &ival);
-            Prototype_DoubleInt target = reinterpret_cast<Prototype_DoubleInt>(external);
+            Prototype_Double_DoubleInt target = reinterpret_cast<Prototype_Double_DoubleInt>(external);
             double dresult = target(dval0, ival);
             setCallResultDouble(dresult);
             break;
@@ -2328,6 +2290,9 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           default:
             MOZ_CRASH("call");
         }
+
+        if (single_stepping_)
+            single_step_callback_(single_step_callback_arg_, this, nullptr);
 
         setRegister(ra, saved_ra);
         set_pc(getRegister(ra));
@@ -3673,23 +3638,33 @@ Simulator::branchDelayInstructionDecode(SimInstruction* instr)
     instructionDecode(instr);
 }
 
-static void
-FakeInterruptHandler()
+void
+Simulator::enable_single_stepping(SingleStepCallback cb, void* arg)
 {
-    JSContext* cx = TlsContext.get();
-    uint8_t* pc = cx->simulator()->get_pc_as<uint8_t*>();
+    single_stepping_ = true;
+    single_step_callback_ = cb;
+    single_step_callback_arg_ = arg;
+    single_step_callback_(single_step_callback_arg_, this, (void*)get_pc());
+}
 
-    const wasm::ModuleSegment* ms = nullptr;
-    if (!wasm::InInterruptibleCode(cx, pc, &ms))
+void
+Simulator::disable_single_stepping()
+{
+    if (!single_stepping_)
         return;
-
-    cx->simulator()->trigger_wasm_interrupt();
+    single_step_callback_(single_step_callback_arg_, this, (void*)get_pc());
+    single_stepping_ = false;
+    single_step_callback_ = nullptr;
+    single_step_callback_arg_ = nullptr;
 }
 
 template<bool enableStopSimAt>
 void
 Simulator::execute()
 {
+    if (single_stepping_)
+        single_step_callback_(single_step_callback_arg_, this, nullptr);
+
     // Get the PC to simulate. Cannot use the accessor here as we need the
     // raw PC value and not the one used as input to arithmetic instructions.
     int program_counter = get_pc();
@@ -3699,19 +3674,17 @@ Simulator::execute()
             MipsDebugger dbg(this);
             dbg.debug();
         } else {
-            if (MOZ_UNLIKELY(JitOptions.simulatorAlwaysInterrupt))
-                FakeInterruptHandler();
+            if (single_stepping_)
+                single_step_callback_(single_step_callback_arg_, this, (void*)program_counter);
             SimInstruction* instr = reinterpret_cast<SimInstruction*>(program_counter);
             instructionDecode(instr);
             icount_++;
-
-            if (MOZ_UNLIKELY(wasm_interrupt_)) {
-                handleWasmInterrupt();
-                wasm_interrupt_ = false;
-            }
         }
         program_counter = get_pc();
     }
+
+    if (single_stepping_)
+        single_step_callback_(single_step_callback_arg_, this, nullptr);
 }
 
 void

@@ -1,4 +1,3 @@
-/* eslint-disable mozilla/no-cpows-in-tests */
 
 function whenMainPaneLoadedFinished() {
   return new Promise(function(resolve, reject) {
@@ -25,25 +24,21 @@ add_task(async function() {
   ]);
 
   let doc = gBrowser.contentDocument;
-  let win = gBrowser.contentWindow;
   await doc.l10n.ready;
 
-  let processCountPref = win.Preferences.get("dom.ipc.processCount");
-  let defaultProcessCount = processCountPref.defaultValue;
-
   let [ msg ] = await doc.l10n.formatMessages([
-    ["performance-default-content-process-count", { num: defaultProcessCount }]
+    ["category-general"],
   ]);
 
   let elem = doc.querySelector(
-    `#contentProcessCount > menupopup > menuitem[value="${defaultProcessCount}"]`);
+    `#category-general`);
 
   Assert.deepEqual(msg, {
     value: null,
-    attrs: [
-      {name: "label", value: elem.getAttribute("label")}
+    attributes: [
+      {name: "tooltiptext", value: elem.getAttribute("tooltiptext")}
     ]
   });
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

@@ -8,9 +8,7 @@ config = {
         # 'update',
     ],
     'stage_platform': 'linux64-asan-debug',
-    'build_type': 'asan-debug',
     'debug_build': True,
-    'enable_signing': False,
     #### 64 bit build specific #####
     'env': {
         'MOZBUILD_STATE_PATH': os.path.join(os.getcwd(), '.mozbuild'),
@@ -23,9 +21,8 @@ config = {
         'MOZ_CRASHREPORTER_NO_REPORT': '1',
         'LC_ALL': 'C',
         ## 64 bit specific
-        'PATH': '/usr/local/bin:/usr/lib64/ccache:/bin:\
-/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/tools/git/bin:/tools/python27/bin:\
-/tools/python27-mercurial/bin:/home/cltbld/bin',
+        'PATH': '/usr/local/bin:/bin:\
+/usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
     },
     'mozconfig_variant': 'debug-asan',
     #######################

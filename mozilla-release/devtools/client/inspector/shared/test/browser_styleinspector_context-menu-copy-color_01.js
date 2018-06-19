@@ -11,25 +11,25 @@ const TEST_URI = `
   </div>
 `;
 
-add_task(function* () {
+add_task(async function() {
   // Test is slow on Linux EC2 instances - Bug 1137765
   requestLongerTimeout(2);
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let {inspector} = yield openInspector();
-  yield testView("ruleview", inspector);
-  yield testView("computedview", inspector);
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let {inspector} = await openInspector();
+  await testView("ruleview", inspector);
+  await testView("computedview", inspector);
 });
 
-function* testView(viewId, inspector) {
+async function testView(viewId, inspector) {
   info("Testing " + viewId);
 
-  yield inspector.sidebar.select(viewId);
+  await inspector.sidebar.select(viewId);
   let view = inspector.getPanel(viewId).view || inspector.getPanel(viewId).computedView;
-  yield selectNode("div", inspector);
+  await selectNode("div", inspector);
 
   testIsColorValueNode(view);
   testIsColorPopupOnAllNodes(view);
-  yield clearCurrentNodeSelection(inspector);
+  await clearCurrentNodeSelection(inspector);
 }
 
 /**
@@ -68,13 +68,13 @@ function testIsColorPopupOnAllNodes(view) {
 function testIsColorPopupOnNode(view, node) {
   info("Testing node " + node);
   view.styleDocument.popupNode = node;
-  view._contextmenu._colorToCopy = "";
+  view.contextMenu._colorToCopy = "";
 
-  let result = view._contextmenu._isColorPopup();
+  let result = view.contextMenu._isColorPopup();
   let correct = isColorValueNode(node);
 
   is(result, correct, "_isColorPopup returned the expected value " + correct);
-  is(view._contextmenu._colorToCopy, (correct) ? "rgb(18, 58, 188)" : "",
+  is(view.contextMenu._colorToCopy, (correct) ? "rgb(18, 58, 188)" : "",
      "_colorToCopy was set to the expected value");
 }
 

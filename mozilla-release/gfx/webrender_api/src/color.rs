@@ -26,6 +26,8 @@ impl PremultipliedColorF {
     pub const BLACK: Self = PremultipliedColorF { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
     ///
     pub const TRANSPARENT: Self = PremultipliedColorF { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+    ///
+    pub const WHITE: Self = PremultipliedColorF { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
 
     pub fn to_array(&self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a]
@@ -58,6 +60,16 @@ impl ColorF {
             g: self.g * scale,
             b: self.b * scale,
             a: self.a,
+        }
+    }
+
+    // Scale the alpha by a given factor.
+    pub fn scale_alpha(&self, scale: f32) -> Self {
+        ColorF {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a: self.a * scale,
         }
     }
 

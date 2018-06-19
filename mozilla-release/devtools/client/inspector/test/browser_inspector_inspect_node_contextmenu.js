@@ -17,7 +17,7 @@ const HTML = `
 
 const TEST_URI = "data:text/html;charset=utf-8," + encodeURI(HTML);
 
-add_task(async function () {
+add_task(async function() {
   Services.prefs.setBoolPref("devtools.command-button-frames.enabled", true);
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref("devtools.command-button-frames.enabled");

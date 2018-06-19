@@ -17,7 +17,6 @@
 #include "nsIClipboard.h"
 #include "nsICommandParams.h"
 #include "nsID.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocument.h"
 #include "nsIEditor.h"
 #include "nsIEditorMailSupport.h"
@@ -68,8 +67,8 @@ UndoCommand::IsCommandEnabled(const char* aCommandName,
   if (!textEditor->IsSelectionEditable()) {
     return NS_OK;
   }
-  bool isEnabled = false;
-  return editor->CanUndo(&isEnabled, aIsEnabled);
+  *aIsEnabled = textEditor->CanUndo();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -127,8 +126,8 @@ RedoCommand::IsCommandEnabled(const char* aCommandName,
   if (!textEditor->IsSelectionEditable()) {
     return NS_OK;
   }
-  bool isEnabled = false;
-  return editor->CanRedo(&isEnabled, aIsEnabled);
+  *aIsEnabled = textEditor->CanRedo();
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -195,8 +194,10 @@ ClearUndoCommand::DoCommand(const char* aCommandName,
   }
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  textEditor->EnableUndo(false); // Turning off undo clears undo/redo stacks.
-  textEditor->EnableUndo(true);  // This re-enables undo/redo.
+  // XXX Should we return NS_ERROR_FAILURE if ClearUndoRedo() returns false?
+  DebugOnly<bool> clearedUndoRedo = textEditor->ClearUndoRedo();
+  NS_WARNING_ASSERTION(clearedUndoRedo,
+    "Failed to clear undo/redo transactions");
   return NS_OK;
 }
 
@@ -315,7 +316,13 @@ CutOrDeleteCommand::DoCommand(const char* aCommandName,
   MOZ_ASSERT(textEditor);
   dom::Selection* selection = textEditor->GetSelection();
   if (selection && selection->Collapsed()) {
-    return textEditor->DeleteSelection(nsIEditor::eNext, nsIEditor::eStrip);
+    nsresult rv =
+      textEditor->DeleteSelectionAsAction(nsIEditor::eNext,
+                                          nsIEditor::eStrip);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+    return NS_OK;
   }
   return textEditor->Cut();
 }
@@ -427,7 +434,13 @@ CopyOrDeleteCommand::DoCommand(const char* aCommandName,
   MOZ_ASSERT(textEditor);
   dom::Selection* selection = textEditor->GetSelection();
   if (selection && selection->Collapsed()) {
-    return textEditor->DeleteSelection(nsIEditor::eNextWord, nsIEditor::eStrip);
+    nsresult rv =
+      textEditor->DeleteSelectionAsAction(nsIEditor::eNextWord,
+                                          nsIEditor::eStrip);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+    return NS_OK;
   }
   return textEditor->Copy();
 }
@@ -788,7 +801,12 @@ DeleteCommand::DoCommand(const char* aCommandName,
 
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  return textEditor->DeleteSelection(deleteDir, nsIEditor::eStrip);
+  nsresult rv =
+    textEditor->DeleteSelectionAsAction(deleteDir, nsIEditor::eStrip);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1073,7 +1091,15 @@ InsertPlaintextCommand::DoCommand(const char* aCommandName,
   }
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  return textEditor->InsertText(EmptyString());
+  // XXX InsertTextAsAction() is not same as OnInputText().  However, other
+  //     commands to insert line break or paragraph separator use OnInput*().
+  //     According to the semantics of those methods, using *AsAction() is
+  //     better, however, this may not cause two or more placeholder
+  //     transactions to the top transaction since its name may not be
+  //     nsGkAtoms::TypingTxnName.
+  DebugOnly<nsresult> rv = textEditor->InsertTextAsAction(EmptyString());
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert empty string");
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1099,7 +1125,15 @@ InsertPlaintextCommand::DoCommandParams(const char* aCommandName,
 
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  return textEditor->InsertText(text);
+  // XXX InsertTextAsAction() is not same as OnInputText().  However, other
+  //     commands to insert line break or paragraph separator use OnInput*().
+  //     According to the semantics of those methods, using *AsAction() is
+  //     better, however, this may not cause two or more placeholder
+  //     transactions to the top transaction since its name may not be
+  //     nsGkAtoms::TypingTxnName.
+  rv = textEditor->InsertTextAsAction(text);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert the text");
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1151,7 +1185,9 @@ InsertParagraphCommand::DoCommand(const char* aCommandName,
 
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  return textEditor->TypedText(EmptyString(), TextEditor::eTypedBreak);
+  // XXX OnInputParagraphSeparator() is a handler of user input.  So, this
+  //     call may not be expected.
+  return textEditor->OnInputParagraphSeparator();
 }
 
 NS_IMETHODIMP
@@ -1209,9 +1245,13 @@ InsertLineBreakCommand::DoCommand(const char* aCommandName,
     return NS_ERROR_FAILURE;
   }
 
-  TextEditor* textEditor = editor->AsTextEditor();
-  MOZ_ASSERT(textEditor);
-  return textEditor->TypedText(EmptyString(), TextEditor::eTypedBR);
+  HTMLEditor* htmlEditor = editor->AsHTMLEditor();
+  if (!htmlEditor) {
+    return NS_ERROR_FAILURE;
+  }
+  // XXX OnInputLineBreak() is a handler of user input.  So, this call may not
+  //     be expected.
+  return htmlEditor->OnInputLineBreak();
 }
 
 NS_IMETHODIMP

@@ -7,9 +7,6 @@
 #include "nsCSSFrameConstructor.h"
 #include "nsTArray.h"
 #include "nsString.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsIStyleRuleProcessor.h"
-#endif
 #include "nsIDocument.h"
 #include "nsIContent.h"
 #include "nsIPresShell.h"
@@ -20,21 +17,15 @@
 #include "nsIDocumentObserver.h"
 #include "imgILoader.h"
 #include "imgRequestProxy.h"
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Loader.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsGkAtoms.h"
-#include "nsStyleContext.h"
 #include "nsXBLPrototypeBinding.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsCSSRuleProcessor.h"
-#endif
 #include "nsContentUtils.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsStyleSet.h"
-#endif
 #include "nsIScriptSecurityManager.h"
 
 using namespace mozilla;
@@ -104,10 +95,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
   mBoundDocument = aBoundElement->OwnerDoc();
 
   mozilla::css::Loader* cssLoader = doc->CSSLoader();
-  MOZ_ASSERT(cssLoader->GetDocument() &&
-             cssLoader->GetDocument()->GetStyleBackendType()
-               == mBoundDocument->GetStyleBackendType(),
-             "The style backends of the loader and bound document are mismatched!");
+  MOZ_ASSERT(cssLoader->GetDocument(), "Loader must have document");
 
   nsIURI *docURL = doc->GetDocumentURI();
   nsIPrincipal* docPrincipal = doc->NodePrincipal();
@@ -176,7 +164,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
 // nsICSSLoaderObserver
 NS_IMETHODIMP
 nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
-                                      bool aWasAlternate,
+                                      bool aWasDeferred,
                                       nsresult aStatus)
 {
   if (!mResources) {
@@ -191,16 +179,8 @@ nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
 
   if (mPendingSheets == 0) {
     // All stylesheets are loaded.
-    if (aSheet->IsGecko()) {
-#ifdef MOZ_OLD_STYLE
-      mResources->GatherRuleProcessor();
-#else
-      MOZ_CRASH("old style system disabled");
-#endif
-    } else {
-      mResources->ComputeServoStyles(
-        *mBoundDocument->GetShell()->StyleSet()->AsServo());
-    }
+    mResources->ComputeServoStyles(
+      *mBoundDocument->GetShell()->StyleSet());
 
     // XXX Check for mPendingScripts when scripts also come online.
     if (!mInLoadResourcesFunc)
@@ -248,47 +228,21 @@ nsXBLResourceLoader::NotifyBoundElements()
     bool ready = false;
     xblService->BindingReady(content, bindingURI, &ready);
 
-    if (ready) {
-      // We need the document to flush out frame construction and
-      // such, so we want to use the current document.
-      nsIDocument* doc = content->GetUncomposedDoc();
-
-      if (doc) {
-        // Flush first to make sure we can get the frame for content
-        doc->FlushPendingNotifications(FlushType::Frames);
-
-        // If |content| is (in addition to having binding |mBinding|)
-        // also a descendant of another element with binding |mBinding|,
-        // then we might have just constructed it due to the
-        // notification of its parent.  (We can know about both if the
-        // binding loads were triggered from the DOM rather than frame
-        // construction.)  So we have to check both whether the element
-        // has a primary frame and whether it's in the undisplayed map
-        // before sending a ContentInserted notification, or bad things
-        // will happen.
-        nsIPresShell *shell = doc->GetShell();
-        if (shell) {
-          nsIFrame* childFrame = content->GetPrimaryFrame();
-          if (!childFrame) {
-            // Check if it's in the display:none or display:contents maps.
-            nsStyleContext* sc =
-              shell->FrameConstructor()->GetDisplayNoneStyleFor(content);
-
-            if (!sc) {
-              sc = shell->FrameConstructor()->GetDisplayContentsStyleFor(content);
-            }
-
-            if (!sc) {
-              shell->PostRecreateFramesFor(content->AsElement());
-            }
-          }
-        }
-
-        // Flush again
-        // XXXbz why is this needed?
-        doc->FlushPendingNotifications(FlushType::ContentAndNotify);
-      }
+    if (!ready) {
+      continue;
     }
+
+    nsIDocument* doc = content->GetUncomposedDoc();
+    if (!doc) {
+      continue;
+    }
+
+    nsIPresShell* shell = doc->GetShell();
+    if (!shell) {
+      continue;
+    }
+
+    shell->PostRecreateFramesFor(content->AsElement());
   }
 
   // Clear out the whole array.

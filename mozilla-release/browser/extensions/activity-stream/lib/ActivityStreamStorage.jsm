@@ -1,42 +1,107 @@
 ChromeUtils.defineModuleGetter(this, "IndexedDB", "resource://gre/modules/IndexedDB.jsm");
 
 this.ActivityStreamStorage = class ActivityStreamStorage {
-  constructor(storeName) {
-    this.dbName = "ActivityStream";
-    this.dbVersion = 2;
-    this.storeName = storeName;
+  /**
+   * @param storeNames Array of strings used to create all the required stores
+   */
+  constructor({storeNames, telemetry}) {
+    if (!storeNames) {
+      throw new Error("storeNames required");
+    }
 
-    this._db = null;
+    this.dbName = "ActivityStream";
+    this.dbVersion = 3;
+    this.storeNames = storeNames;
+    this.telemetry = telemetry;
   }
 
   get db() {
-    if (!this._db) {
-      throw new Error("It looks like the db connection has not initialized yet. Are you use .init was called?");
+    return this._db || (this._db = this.createOrOpenDb());
+  }
+
+  /**
+   * Public method that binds the store required by the consumer and exposes
+   * the private db getters and setters.
+   *
+   * @param storeName String name of desired store
+   */
+  getDbTable(storeName) {
+    if (this.storeNames.includes(storeName)) {
+      return {
+        get: this._get.bind(this, storeName),
+        getAll: this._getAll.bind(this, storeName),
+        set: this._set.bind(this, storeName)
+      };
     }
-    return this._db;
+
+    throw new Error(`Store name ${storeName} does not exist.`);
   }
 
-  getStore() {
-    return this.db.objectStore(this.storeName, "readwrite");
+  async _getStore(storeName) {
+    return (await this.db).objectStore(storeName, "readwrite");
   }
 
-  get(key) {
-    return this.getStore().get(key);
+  _get(storeName, key) {
+    return this._requestWrapper(async () => (await this._getStore(storeName)).get(key));
   }
 
-  set(key, value) {
-    return this.getStore().put(value, key);
+  _getAll(storeName) {
+    return this._requestWrapper(async () => (await this._getStore(storeName)).getAll());
+  }
+
+  _set(storeName, key, value) {
+    return this._requestWrapper(async () => (await this._getStore(storeName)).put(value, key));
   }
 
   _openDatabase() {
     return IndexedDB.open(this.dbName, {version: this.dbVersion}, db => {
-      db.createObjectStore(this.storeName);
+      // If provided with array of objectStore names we need to create all the
+      // individual stores
+      this.storeNames.forEach(store => {
+        if (!db.objectStoreNames.contains(store)) {
+          this._requestWrapper(() => db.createObjectStore(store));
+        }
+      });
     });
   }
 
-  async init() {
-    this._db = await this._openDatabase();
+  /**
+   * createOrOpenDb - Open a db (with this.dbName) if it exists.
+   *                  If it does not exist, create it.
+   *                  If an error occurs, deleted the db and attempt to
+   *                  re-create it.
+   * @returns Promise that resolves with a db instance
+   */
+  async createOrOpenDb() {
+    try {
+      const db = await this._openDatabase();
+      return db;
+    } catch (e) {
+      if (this.telemetry) {
+        this.telemetry.handleUndesiredEvent({data: {event: "INDEXEDDB_OPEN_FAILED"}});
+      }
+      await IndexedDB.deleteDatabase(this.dbName);
+      return this._openDatabase();
+    }
+  }
+
+  async _requestWrapper(request) {
+    let result = null;
+    try {
+      result = await request();
+    } catch (e) {
+      if (this.telemetry) {
+        this.telemetry.handleUndesiredEvent({data: {event: "TRANSACTION_FAILED"}});
+      }
+      throw e;
+    }
+
+    return result;
   }
 };
 
-const EXPORTED_SYMBOLS = ["ActivityStreamStorage"];
+function getDefaultOptions(options) {
+  return {collapsed: !!options.collapsed};
+}
+
+const EXPORTED_SYMBOLS = ["ActivityStreamStorage", "getDefaultOptions"];

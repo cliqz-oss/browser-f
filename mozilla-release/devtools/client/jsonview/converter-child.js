@@ -6,20 +6,17 @@
 
 "use strict";
 
-const {Cc, Ci, Cu, CC} = require("chrome");
+const {Ci, Cu, CC} = require("chrome");
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 const Services = require("Services");
 
 loader.lazyRequireGetter(this, "NetworkHelper",
                                "devtools/shared/webconsole/network-helper");
-loader.lazyGetter(this, "debug", function () {
+loader.lazyGetter(this, "debugJsModules", function() {
   let {AppConstants} = require("resource://gre/modules/AppConstants.jsm");
-  return !!(AppConstants.DEBUG || AppConstants.DEBUG_JS_MODULES);
+  return !!(AppConstants.DEBUG_JS_MODULES);
 });
 
-const childProcessMessageManager =
-  Cc["@mozilla.org/childprocessmessagemanager;1"]
-    .getService(Ci.nsISyncMessageSender);
 const BinaryInput = CC("@mozilla.org/binaryinputstream;1",
                        "nsIBinaryInputStream", "setInputStream");
 const BufferStream = CC("@mozilla.org/io/arraybuffer-input-stream;1",
@@ -61,26 +58,28 @@ Converter.prototype = {
    * 5. convert does nothing, it's just the synchronous version
    *    of asyncConvertData
    */
-  convert: function (fromStream, fromType, toType, ctx) {
+  convert: function(fromStream, fromType, toType, ctx) {
     return fromStream;
   },
 
-  asyncConvertData: function (fromType, toType, listener, ctx) {
+  asyncConvertData: function(fromType, toType, listener, ctx) {
     this.listener = listener;
   },
 
-  onDataAvailable: function (request, context, inputStream, offset, count) {
+  onDataAvailable: function(request, context, inputStream, offset, count) {
     // Decode and insert data.
     let buffer = new ArrayBuffer(count);
     new BinaryInput(inputStream).readArrayBuffer(count, buffer);
     this.decodeAndInsertBuffer(buffer);
   },
 
-  onStartRequest: function (request, context) {
+  onStartRequest: function(request, context) {
     // Set the content type to HTML in order to parse the doctype, styles
     // and scripts. The JSON will be manually inserted as text.
     request.QueryInterface(Ci.nsIChannel);
     request.contentType = "text/html";
+
+    let headers = getHttpHeaders(request);
 
     // Enforce strict CSP:
     try {
@@ -108,7 +107,7 @@ Converter.prototype = {
 
     // Initialize stuff.
     let win = NetworkHelper.getWindowForRequest(request);
-    this.data = exportData(win, request);
+    this.data = exportData(win, headers);
     insertJsonData(win, this.data.json);
     win.addEventListener("contentMessage", onContentMessage, false, true);
     keepThemeUpdated(win);
@@ -119,7 +118,7 @@ Converter.prototype = {
     this.listener.onDataAvailable(request, context, stream, 0, stream.available());
   },
 
-  onStopRequest: function (request, context, statusCode) {
+  onStopRequest: function(request, context, statusCode) {
     // Flush data.
     this.decodeAndInsertBuffer(new ArrayBuffer(0), true);
 
@@ -131,7 +130,7 @@ Converter.prototype = {
   },
 
   // Decodes an ArrayBuffer into a string and inserts it into the page.
-  decodeAndInsertBuffer: function (buffer, flush = false) {
+  decodeAndInsertBuffer: function(buffer, flush = false) {
     // Decode the buffer into a string.
     let data = this.decoder.decode(buffer, {stream: !flush});
 
@@ -167,13 +166,35 @@ function fixSave(request) {
   request.setProperty("contentType", originalType);
 }
 
+function getHttpHeaders(request) {
+  let headers = {
+    response: [],
+    request: []
+  };
+  // The request doesn't have to be always nsIHttpChannel
+  // (e.g. in case of data: URLs)
+  if (request instanceof Ci.nsIHttpChannel) {
+    request.visitResponseHeaders({
+      visitHeader: function(name, value) {
+        headers.response.push({name: name, value: value});
+      }
+    });
+    request.visitRequestHeaders({
+      visitHeader: function(name, value) {
+        headers.request.push({name: name, value: value});
+      }
+    });
+  }
+  return headers;
+}
+
 // Exports variables that will be accessed by the non-privileged scripts.
-function exportData(win, request) {
+function exportData(win, headers) {
   let data = Cu.createObjectIn(win, {
     defineAs: "JSONView"
   });
 
-  data.debug = debug;
+  data.debugJsModules = debugJsModules;
 
   data.json = new win.Text();
 
@@ -191,24 +212,6 @@ function exportData(win, request) {
   };
   data.Locale = Cu.cloneInto(Locale, win, {cloneFunctions: true});
 
-  let headers = {
-    response: [],
-    request: []
-  };
-  // The request doesn't have to be always nsIHttpChannel
-  // (e.g. in case of data: URLs)
-  if (request instanceof Ci.nsIHttpChannel) {
-    request.visitResponseHeaders({
-      visitHeader: function (name, value) {
-        headers.response.push({name: name, value: value});
-      }
-    });
-    request.visitRequestHeaders({
-      visitHeader: function (name, value) {
-        headers.request.push({name: name, value: value});
-      }
-    });
-  }
   data.headers = Cu.cloneInto(headers, win);
 
   return data;
@@ -268,7 +271,7 @@ function initialHTML(doc) {
 // However, the HTML parser is not synchronous, so this function uses a mutation
 // observer to detect the creation of the element. Then the text node is appended.
 function insertJsonData(win, json) {
-  new win.MutationObserver(function (mutations, observer) {
+  new win.MutationObserver(function(mutations, observer) {
     for (let {target, addedNodes} of mutations) {
       if (target.nodeType == 1 && target.id == "content") {
         for (let node of addedNodes) {
@@ -287,12 +290,12 @@ function insertJsonData(win, json) {
 }
 
 function keepThemeUpdated(win) {
-  let listener = function () {
+  let listener = function() {
     let theme = Services.prefs.getCharPref("devtools.theme");
     win.document.documentElement.className = "theme-" + theme;
   };
   Services.prefs.addObserver("devtools.theme", listener);
-  win.addEventListener("unload", function (event) {
+  win.addEventListener("unload", function(event) {
     Services.prefs.removeObserver("devtools.theme", listener);
     win = null;
   }, {once: true});
@@ -309,7 +312,7 @@ function onContentMessage(e) {
   let value = e.detail.value;
   switch (e.detail.type) {
     case "save":
-      childProcessMessageManager.sendAsyncMessage(
+      Services.cpmm.sendAsyncMessage(
         "devtools:jsonview:save", value);
   }
 }

@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +10,7 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Unused.h"
 #include "CubebUtils.h"
+#include "Tracing.h"
 
 #ifdef MOZ_WEBRTC
 #include "webrtc/MediaEngineWebRTC.h"
@@ -234,11 +236,6 @@ ThreadedDriver::Revive()
 }
 
 void
-ThreadedDriver::RemoveCallback()
-{
-}
-
-void
 ThreadedDriver::Shutdown()
 {
   NS_ASSERTION(NS_IsMainThread(), "Must be called on main thread");
@@ -327,7 +324,6 @@ ThreadedDriver::RunThread()
     MonitorAutoLock lock(GraphImpl()->GetMonitor());
     if (NextDriver()) {
       LOG(LogLevel::Debug, ("Switching to AudioCallbackDriver"));
-      RemoveCallback();
       NextDriver()->SetGraphTime(this, mIterationStart, mIterationEnd);
       mGraphImpl->SetCurrentDriver(NextDriver());
       NextDriver()->Start();
@@ -365,7 +361,7 @@ SystemClockDriver::WaitForNextIteration()
 {
   mGraphImpl->GetMonitor().AssertCurrentThreadOwns();
 
-  PRIntervalTime timeout = PR_INTERVAL_NO_TIMEOUT;
+  TimeDuration timeout = TimeDuration::Forever();
   TimeStamp now = TimeStamp::Now();
 
   // This lets us avoid hitting the Atomic twice when we know we won't sleep
@@ -384,7 +380,7 @@ SystemClockDriver::WaitForNextIteration()
     // Make sure timeoutMS doesn't overflow 32 bits by waking up at
     // least once a minute, if we need to wake up at all
     timeoutMS = std::max<int64_t>(0, std::min<int64_t>(timeoutMS, 60*1000));
-    timeout = PR_MillisecondsToInterval(uint32_t(timeoutMS));
+    timeout = TimeDuration::FromMilliseconds(timeoutMS);
     LOG(LogLevel::Verbose,
         ("Waiting for next iteration; at %f, timeout=%f",
          (now - mInitialTimeStamp).ToSeconds(),
@@ -394,7 +390,7 @@ SystemClockDriver::WaitForNextIteration()
     }
     mWaitState = WAITSTATE_WAITING_FOR_NEXT_ITERATION;
   }
-  if (timeout > 0) {
+  if (!timeout.IsZero()) {
     mGraphImpl->GetMonitor().Wait(timeout);
     LOG(LogLevel::Verbose,
         ("Resuming after timeout; at %f, elapsed=%f",
@@ -493,6 +489,8 @@ AsyncCubebTask::Run()
       LOG(LogLevel::Debug,
           ("AsyncCubebOperation::INIT driver=%p", mDriver.get()));
       if (!mDriver->Init()) {
+        LOG(LogLevel::Warning,
+            ("AsyncCubebOperation::INIT failed for driver=%p", mDriver.get()));
         return NS_ERROR_FAILURE;
       }
       mDriver->CompleteAudioContextOperations(mOperation);
@@ -591,10 +589,13 @@ AudioCallbackDriver::Init()
   cubeb* cubebContext = CubebUtils::GetCubebContext();
   if (!cubebContext) {
     NS_WARNING("Could not get cubeb context.");
+    LOG(LogLevel::Warning, ("%s: Could not get cubeb context", __func__));
     if (!mFromFallback) {
       CubebUtils::ReportCubebStreamInitFailure(true);
     }
-    return false;
+    MonitorAutoLock lock(GraphImpl()->GetMonitor());
+    FallbackToSystemClockDriver();
+    return true;
   }
 
   cubeb_stream_params output;
@@ -604,7 +605,7 @@ AudioCallbackDriver::Init()
   MOZ_ASSERT(!NS_IsMainThread(),
       "This is blocking and should never run on the main thread.");
 
-  mSampleRate = output.rate = CubebUtils::PreferredSampleRate();
+  mSampleRate = output.rate = mGraphImpl->GraphRate();
 
   if (AUDIO_OUTPUT_FORMAT == AUDIO_FORMAT_S16) {
     output.format = CUBEB_SAMPLE_S16NE;
@@ -625,8 +626,8 @@ AudioCallbackDriver::Init()
   mScratchBuffer = SpillBuffer<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 2>(mOutputChannels);
 
   output.channels = mOutputChannels;
-  output.layout = CubebUtils::GetPreferredChannelLayoutOrSMPTE(cubebContext, mOutputChannels);
-  output.prefs = CUBEB_STREAM_PREF_NONE;
+  output.layout = CUBEB_LAYOUT_UNDEFINED;
+  output.prefs = CubebUtils::GetDefaultStreamPrefs();
 
   uint32_t latency_frames = CubebUtils::GetCubebMSGLatencyInFrames(&output);
 
@@ -876,6 +877,9 @@ long
 AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
                                   AudioDataValue* aOutputBuffer, long aFrames)
 {
+   TRACE_AUDIO_CALLBACK_BUDGET(aFrames, mSampleRate);
+   TRACE_AUDIO_CALLBACK();
+
   // Don't add the callback until we're inited and ready
   if (!mAddedMixer) {
     mGraphImpl->mMixer.AddCallback(this);

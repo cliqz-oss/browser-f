@@ -829,7 +829,7 @@ const kInvokerCanceled = 2;
 
 eventQueue.getEventTypeAsString =
   function eventQueue_getEventTypeAsString(aEventOrChecker) {
-  if (aEventOrChecker instanceof nsIDOMEvent)
+  if (Event.isInstance(aEventOrChecker))
     return aEventOrChecker.type;
 
   if (aEventOrChecker instanceof nsIAccessibleEvent)
@@ -841,10 +841,11 @@ eventQueue.getEventTypeAsString =
 
 eventQueue.getEventTargetDescr =
   function eventQueue_getEventTargetDescr(aEventOrChecker, aDontForceTarget) {
-  if (aEventOrChecker instanceof nsIDOMEvent)
+  if (Event.isInstance(aEventOrChecker))
     return prettyName(aEventOrChecker.originalTarget);
 
-  if (aEventOrChecker instanceof nsIDOMEvent)
+  // XXXbz this block doesn't seem to be reachable...
+  if (Event.isInstance(aEventOrChecker))
     return prettyName(aEventOrChecker.accessible);
 
   var descr = aEventOrChecker.targetDescr;
@@ -877,7 +878,7 @@ eventQueue.getEventTarget = function eventQueue_getEventTarget(aChecker) {
 
 eventQueue.compareEventTypes =
   function eventQueue_compareEventTypes(aChecker, aEvent) {
-  var eventType = (aEvent instanceof nsIDOMEvent) ?
+  var eventType = Event.isInstance(aEvent) ?
     aEvent.type : aEvent.eventType;
   return aChecker.type == eventType;
 };
@@ -893,7 +894,7 @@ eventQueue.compareEvents = function eventQueue_compareEvents(aChecker, aEvent) {
 
   var target1 = aChecker.target;
   if (target1 instanceof nsIAccessible) {
-    var target2 = (aEvent instanceof nsIDOMEvent) ?
+    var target2 = Event.isInstance(aEvent) ?
       getAccessible(aEvent.target) : aEvent.accessible;
 
     return target1 == target2;
@@ -901,7 +902,7 @@ eventQueue.compareEvents = function eventQueue_compareEvents(aChecker, aEvent) {
 
   // If original target isn't suitable then extend interface to support target
   // (original target is used in test_elm_media.html).
-  var target2 = (aEvent instanceof nsIDOMEvent) ?
+  var target2 = Event.isInstance(aEvent) ?
     aEvent.originalTarget : aEvent.DOMNode;
   return target1 == target2;
 };
@@ -942,7 +943,7 @@ eventQueue.logEvent = function eventQueue_logEvent(aOrigEvent, aMatchedChecker,
                                                    aInvokerStatus) {
   // Dump DOM event information. Skip a11y event since it is dumped by
   // gA11yEventObserver.
-  if (aOrigEvent instanceof nsIDOMEvent) {
+  if (Event.isInstance(aOrigEvent)) {
     var info = "Event type: " + eventQueue.getEventTypeAsString(aOrigEvent);
     info += ". Target: " + eventQueue.getEventTargetDescr(aOrigEvent);
     gLogger.logToDOM(info);
@@ -1069,7 +1070,7 @@ function synthClick(aNodeOrID, aCheckerOrEventSeq, aArgs) {
     // Scroll the node into view, otherwise synth click may fail.
     if (isHTMLElement(targetNode)) {
       targetNode.scrollIntoView(true);
-    } else if (targetNode instanceof nsIDOMXULElement) {
+    } else if (ChromeUtils.getClassName(targetNode) == "XULElement") {
       var targetAcc = getAccessible(targetNode);
       targetAcc.scrollTo(SCROLL_TYPE_ANYWHERE);
     }
@@ -1078,7 +1079,7 @@ function synthClick(aNodeOrID, aCheckerOrEventSeq, aArgs) {
     if (aArgs && ("where" in aArgs) && aArgs.where == "right") {
       if (isHTMLElement(targetNode))
         x = targetNode.offsetWidth - 1;
-      else if (targetNode instanceof nsIDOMXULElement)
+    else if (ChromeUtils.getClassName(targetNode) == "XULElement")
         x = targetNode.boxObject.width - 1;
     }
     synthesizeMouse(targetNode, x, y, aArgs ? aArgs : {});
@@ -1265,7 +1266,7 @@ function synthFocus(aNodeOrID, aCheckerOrEventSeq) {
   this.invoke = function synthFocus_invoke() {
     if (this.DOMNode instanceof Ci.nsIDOMNSEditableElement &&
         this.DOMNode.editor ||
-        this.DOMNode instanceof Ci.nsIDOMXULTextBoxElement) {
+        this.DOMNode.localName == "textbox") {
       this.DOMNode.selectionStart = this.DOMNode.selectionEnd = this.DOMNode.value.length;
     }
     this.DOMNode.focus();
@@ -1421,8 +1422,8 @@ function synthSelectAll(aNodeOrID, aCheckerOrEventSeq) {
   this.__proto__ = new synthAction(aNodeOrID, aCheckerOrEventSeq);
 
   this.invoke = function synthSelectAll_invoke() {
-    if (this.DOMNode instanceof Ci.nsIDOMHTMLInputElement ||
-        this.DOMNode instanceof Ci.nsIDOMXULTextBoxElement) {
+    if (ChromeUtils.getClassName(this.DOMNode) === "HTMLInputElement" ||
+        this.DOMNode.localName == "textbox") {
       this.DOMNode.select();
 
     } else {

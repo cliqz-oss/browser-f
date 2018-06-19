@@ -98,13 +98,57 @@ NS_ToLower(char aChar)
 bool NS_IsUpper(char aChar);
 bool NS_IsLower(char aChar);
 
-bool NS_IsAscii(char16_t aChar);
-bool NS_IsAscii(const char16_t* aString);
-bool NS_IsAsciiAlpha(char16_t aChar);
-bool NS_IsAsciiDigit(char16_t aChar);
-bool NS_IsAsciiWhitespace(char16_t aChar);
-bool NS_IsAscii(const char* aString);
-bool NS_IsAscii(const char* aString, uint32_t aLength);
+constexpr bool
+NS_IsAscii(char16_t aChar)
+{
+  return (0x0080 > aChar);
+}
+
+constexpr bool
+NS_IsAscii(const char16_t* aString)
+{
+  while (*aString) {
+    if (0x0080 <= *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAscii(const char* aString)
+{
+  while (*aString) {
+    if (0x80 & *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAscii(const char* aString, uint32_t aLength)
+{
+  const char* end = aString + aLength;
+  while (aString < end) {
+    if (0x80 & *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAsciiWhitespace(char16_t aChar)
+{
+  return aChar == ' ' ||
+         aChar == '\r' ||
+         aChar == '\n' ||
+         aChar == '\t';
+}
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
 void NS_MakeRandomString(char* aBuf, int32_t aBufLen);

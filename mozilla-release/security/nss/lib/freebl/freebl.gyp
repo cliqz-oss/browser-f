@@ -272,28 +272,15 @@
         },
       }],
       [ 'cc_use_gnu_ld==1 and OS=="win" and target_arch=="x64"', {
+        # mingw x64
         'defines': [
           'MP_IS_LITTLE_ENDIAN',
-          'NSS_BEVAND_ARCFOUR',
-          'MPI_AMD64',
-          'MP_ASSEMBLY_MULTIPLY',
-          'NSS_USE_COMBA',
-          'USE_HW_AES',
-          'INTEL_GCM',
          ],
       }],
-      [ 'OS!="win"', {
-        'conditions': [
-          [ 'target_arch=="x64" or target_arch=="arm64" or target_arch=="aarch64"', {
-            'defines': [
-              # The Makefile does version-tests on GCC, but we're not doing that here.
-              'HAVE_INT128_SUPPORT',
-            ],
-          }, {
-            'defines': [
-              'KRML_NOUINT128',
-            ],
-          }],
+      [ 'have_int128_support==1', {
+        'defines': [
+          # The Makefile does version-tests on GCC, but we're not doing that here.
+          'HAVE_INT128_SUPPORT',
         ],
       }, {
         'defines': [
@@ -355,5 +342,18 @@
   },
   'variables': {
     'module': 'nss',
+    'conditions': [
+      [ 'OS!="win"', {
+        'conditions': [
+          [ 'target_arch=="x64" or target_arch=="arm64" or target_arch=="aarch64"', {
+            'have_int128_support%': 1,
+          }, {
+            'have_int128_support%': 0,
+          }],
+        ],
+      }, {
+        'have_int128_support%': 0,
+      }],
+    ],
   }
 }

@@ -1,22 +1,40 @@
 activity_stream:
   event:
     objects: [
-      "CLICK",
-      "SEARCH",
+      "ARCHIVE_FROM_POCKET",
       "BLOCK",
+      "BOOKMARK_ADD",
+      "BOOKMARK_DELETE",
+      "CLICK",
+      "CLOSE_NEWTAB_PREFS",
       "DELETE",
+      "DELETE_FROM_POCKET",
       "DELETE_CONFIRM",
       "DIALOG_CANCEL",
       "DIALOG_OPEN",
+      "DRAG",
+      "DROP",
+      "MIGRATION_CANCEL",
+      "MIGRATION_START",
+      "OPEN_NEWTAB_PREFS",
       "OPEN_NEW_WINDOW",
       "OPEN_PRIVATE_WINDOW",
-      "OPEN_NEWTAB_PREFS",
-      "CLOSE_NEWTAB_PREFS",
-      "BOOKMARK_DELETE",
-      "BOOKMARK_ADD",
       "PIN",
-      "UNPIN",
-      "SAVE_TO_POCKET"]
+      "PREVIEW_REQUEST",
+      "SAVE_TO_POCKET",
+      "SEARCH",
+      "DISCLAIMER_ACKED",
+      "MENU_ADD_TOPSITE",
+      "MENU_COLLAPSE",
+      "MENU_EXPAND",
+      "MENU_MANAGE",
+      "MENU_MOVE_DOWN",
+      "MENU_MOVE_UP",
+      "MENU_PRIVACY_NOTICE",
+      "MENU_REMOVE",
+      "TOP_SITES_EDIT",
+      "TOP_SITES_EDIT_CLOSE",
+      "UNPIN"]
     release_channel_collection: opt-out
     record_in_processes: ["main"]
     description: >
@@ -66,6 +84,206 @@ navigation:
     expiry_version: "65"
     extra_keys:
       engine: The id of the search engine used.
+
+# This category contains event entries used for the Savant Shield study.
+savant:
+  # Mostly a dupe of "search" event from "navigation" category to ensure only Savant
+  # code enables/disables it.
+  search:
+    objects: ["about_home", "about_newtab", "contextmenu", "oneoff",
+              "suggestion", "alias", "enter", "searchbar", "urlbar"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded on each search navigation.
+      The value field records the action used to trigger the search:
+        "enter", "oneoff", "suggestion", "alias", null (for contextmenu)
+    bug_numbers: [1316281, 1457226, 1462725]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+      engine: The id of the search engine used.
+  end_study:
+    objects: ["ineligible", "study_disable", "expired"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time a study ending condition occurs for the Savant
+      Shield study. The object field records the reason that caused the ending.
+    bug_numbers: [1457226, 1462725]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  readermode:
+    objects: ["on", "off"]
+    release_channel_collection: opt-out
+    record_in_processes: ["content"]
+    description: >
+      This is recorded any time Reader Mode is turned on or off.
+    bug_numbers: [1457226, 1465698]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  addon:
+    objects: ["install_start", "install_finish", "remove_start", "remove_finish",
+              "enable", "disable" ]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time an addon event as listed in the objects field fires.
+      The value field records the addon ID for the event.
+    bug_numbers: [1457226, 1465707]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  bookmark:
+    objects: ["save", "remove"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time a bookmark is saved or removed.
+    bug_numbers: [1457226, 1465703]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  follow_bookmark:
+    objects: ["open"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time a bookmark is visited.
+    bug_numbers: [1457226, 1465703]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  follow_urlbar_link:
+    objects: ["bookmark", "history"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded when the user selects a urlbar bookmark or history result.
+    bug_numbers: [1457226, 1465704]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  library_menu:
+    objects: ["open"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time the library menu is opened.
+    bug_numbers: [1457226, 1465697]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  hamburger_menu:
+    objects: ["open"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time the hamburger menu is opened.
+    bug_numbers: [1457226, 1465697]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  dotdotdot_menu:
+    objects: ["open"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time the dotdotdot (aka pageAction) menu is opened.
+    bug_numbers: [1457226, 1465697]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+  pwmgr_use:
+    objects: ["use"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      Client uses saved login information from the Password Manager
+    bug_numbers: [1457226, 1465685]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+      flow_id: A tab identifier to associate events occuring in the same tab
+  pwmgr:
+    objects: ["ask", "save", "update"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      Password Manager asks the user to save or update login information.
+      For ask prompts, the value field indicate a save versus update ask.
+    bug_numbers: [1457226, 1465685]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+      flow_id: A tab identifier to associate events occuring in the same tab
+  login_form:
+    objects: ["load", "submit"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      A login form has been loaded or submitted. Login form submit events only
+      fire in non-private windows with Password Manager enabled.
+    bug_numbers: [1457226, 1465685]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
+      flow_id: A tab identifier to associate events occuring in the same tab
+      canRecordSubmit: True if a login form loads in a non-private window with Password Manager enabled.
+  tab:
+    objects: ["open", "close", "select"]
+    release_channel_collection: opt-out
+    record_in_processes: ["main"]
+    description: >
+      This is recorded any time a tab is opened, closed or selected.
+    bug_numbers: [1457226, 1465694]
+    notification_emails:
+      - "bdanforth@mozilla.com"
+      - "shong@mozilla.com"
+    expiry_version: "65"
+    extra_keys:
+      subcategory: The broad event category for this probe. E.g. navigation
 
 # This category contains event entries used for Telemetry tests.
 # They will not be sent out with any pings.
@@ -143,3 +361,81 @@ telemetry.test.second:
     expiry_version: never
     extra_keys:
       key1: This is just a test description.
+
+devtools.main:
+  open:
+    objects: ["tools"]
+    bug_numbers: [1416024]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User opens devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      entrypoint: How was the toolbox opened? CommandLine, ContextMenu, DeveloperToolbar, HamburgerMenu, KeyShortcut, SessionRestore or SystemMenu
+      first_panel: The name of the first panel opened.
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      splitconsole: Indicates whether the split console was open.
+      width: Toolbox width rounded up to the nearest 50px.
+  close:
+    objects: ["tools"]
+    bug_numbers: [1453312]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User closes devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      width: Toolbox width rounded up to the nearest 50px.
+  enter:
+    objects: ["webconsole", "inspector", "jsdebugger", "styleeditor", "netmonitor", "storage", "other"]
+    bug_numbers: [1441070]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User opens a tool in the devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      width: Toolbox width rounded up to the nearest 50px.
+      message_count: The number of cached console messages.
+      start_state: debuggerStatement, breakpoint, exception, tab_switch, toolbox_show, initial_panel, toggle_settings_off, toggle_settings_on, key_shortcut, select_next_key, select_prev_key, tool_unloaded, inspect_dom, unknown etc.
+      panel_name: The name of the panel opened, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other
+      cold: Is this the first time the current panel has been opened in this toolbox?
+  exit:
+    objects: ["webconsole", "inspector", "jsdebugger", "styleeditor", "netmonitor", "storage", "other"]
+    bug_numbers: [1455270]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User closes a tool in the devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      width: Toolbox width rounded up to the nearest 50px.
+      next_panel: The name of the panel closed, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other.
+      panel_name: The name of the panel opened, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other
+      reason: debuggerStatement, breakpoint, exception, tab_switch, toolbox_show, initial_panel, toggle_settings_off, toggle_settings_on, key_shortcut, select_next_key, select_prev_key, tool_unloaded, inspect_dom, toolbox_closed, unknown etc.
+  activate:
+    objects: ["responsive_design", "split_console"]
+    bug_numbers: [1455273]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User activates the responsive_design or split_console in the devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      width: Toolbox width rounded up to the nearest 50px.
+  deactivate:
+    objects: ["responsive_design", "split_console"]
+    bug_numbers: [1455275]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User deactivates the responsive_design or split_console in the devtools toolbox.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      host: "Toolbox host (positioning): bottom, side, window or other."
+      width: Toolbox width rounded up to the nearest 50px.

@@ -9,17 +9,20 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Casting.h"
 #include "mozilla/CheckedInt.h"
+#include "mozilla/DebugOnly.h"
 
 #include "gc/Marking.h"
 #include "js/Value.h"
 #include "vm/Debugger.h"
 #include "vm/TypedArrayObject.h"
+#include "vm/UnboxedObject.h"
 
 #include "gc/Nursery-inl.h"
 #include "vm/ArrayObject-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/Shape-inl.h"
+#include "vm/UnboxedObject-inl.h"
 
 using namespace js;
 
@@ -287,24 +290,6 @@ js::NativeObject::lookupPure(jsid id)
 {
     MOZ_ASSERT(isNative());
     return Shape::searchNoHashify(lastProperty(), id);
-}
-
-uint32_t
-js::NativeObject::numFixedSlotsForCompilation() const
-{
-    // This is an alternative method for getting the number of fixed slots in an
-    // object. It requires more logic and memory accesses than numFixedSlots()
-    // but is safe to be called from the compilation thread, even if the active
-    // thread is mutating the VM.
-
-    // The compiler does not have access to nursery things.
-    MOZ_ASSERT(!IsInsideNursery(this));
-
-    if (this->is<ArrayObject>())
-        return 0;
-
-    gc::AllocKind kind = asTenured().getAllocKind();
-    return gc::GetGCKindSlots(kind, getClass());
 }
 
 void
@@ -1261,7 +1246,8 @@ UpdateShapeTypeAndValue(JSContext* cx, NativeObject* obj, Shape* shape, jsid id,
         // Per the acquired properties analysis, when the shape of a partially
         // initialized object is changed to its fully initialized shape, its
         // group can be updated as well.
-        if (TypeNewScript* newScript = obj->groupRaw()->newScript()) {
+        AutoSweepObjectGroup sweep(obj->groupRaw());
+        if (TypeNewScript* newScript = obj->groupRaw()->newScript(sweep)) {
             if (newScript->initializedShape() == shape)
                 obj->setGroup(newScript->initializedGroup());
         }
@@ -1289,7 +1275,8 @@ UpdateShapeTypeAndValueForWritableDataProp(JSContext* cx, NativeObject* obj, Sha
     // Per the acquired properties analysis, when the shape of a partially
     // initialized object is changed to its fully initialized shape, its
     // group can be updated as well.
-    if (TypeNewScript* newScript = obj->groupRaw()->newScript()) {
+    AutoSweepObjectGroup sweep(obj->groupRaw());
+    if (TypeNewScript* newScript = obj->groupRaw()->newScript(sweep)) {
         if (newScript->initializedShape() == shape)
             obj->setGroup(newScript->initializedGroup());
     }
@@ -1298,11 +1285,13 @@ UpdateShapeTypeAndValueForWritableDataProp(JSContext* cx, NativeObject* obj, Sha
 void
 js::AddPropertyTypesAfterProtoChange(JSContext* cx, NativeObject* obj, ObjectGroup* oldGroup)
 {
+    AutoSweepObjectGroup sweepObjGroup(obj->group());
     MOZ_ASSERT(obj->group() != oldGroup);
-    MOZ_ASSERT(!obj->group()->unknownProperties());
+    MOZ_ASSERT(!obj->group()->unknownProperties(sweepObjGroup));
 
     // First copy the dynamic flags.
-    MarkObjectGroupFlags(cx, obj, oldGroup->flags() &
+    AutoSweepObjectGroup sweepOldGroup(oldGroup);
+    MarkObjectGroupFlags(cx, obj, oldGroup->flags(sweepOldGroup) &
                          (OBJECT_FLAG_DYNAMIC_MASK & ~OBJECT_FLAG_UNKNOWN_PROPERTIES));
 
     // Now update all property types. If the object has many properties, this
@@ -1498,8 +1487,8 @@ AddOrChangeProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
     return CallAddPropertyHook(cx, obj, id, desc.value());
 }
 
-// Version of AddOrChangeProperty optimized for adding a plain data property.
-// This function doesn't handle integer ids as we may have to store them in
+// Versions of AddOrChangeProperty optimized for adding a plain data property.
+// These function doesn't handle integer ids as we may have to store them in
 // dense elements.
 static MOZ_ALWAYS_INLINE bool
 AddDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id, HandleValue v)
@@ -1516,6 +1505,24 @@ AddDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id, HandleValue 
     UpdateShapeTypeAndValueForWritableDataProp(cx, obj, shape, id, v);
 
     return CallAddPropertyHook(cx, obj, id, v);
+}
+
+static MOZ_ALWAYS_INLINE bool
+AddDataPropertyNonDelegate(JSContext* cx, HandlePlainObject obj, HandleId id, HandleValue v)
+{
+    MOZ_ASSERT(!JSID_IS_INT(id));
+    MOZ_ASSERT(!obj->isDelegate());
+
+    // If we know this is a new property we can call addProperty instead of
+    // the slower putProperty.
+    Shape* shape = NativeObject::addEnumerableDataProperty(cx, obj, id);
+    if (!shape)
+        return false;
+
+    UpdateShapeTypeAndValueForWritableDataProp(cx, obj, shape, id, v);
+
+    MOZ_ASSERT(!obj->getClass()->getAddProperty());
+    return true;
 }
 
 static bool IsConfigurable(unsigned attrs) { return (attrs & JSPROP_PERMANENT) == 0; }
@@ -2230,8 +2237,9 @@ Detecting(JSContext* cx, JSScript* script, jsbytecode* pc)
 {
     MOZ_ASSERT(script->containsPC(pc));
 
-    // Skip jump target opcodes.
-    while (pc < script->codeEnd() && BytecodeIsJumpTarget(JSOp(*pc)))
+    // Skip jump target and dup opcodes.
+    while (pc < script->codeEnd() && (BytecodeIsJumpTarget(JSOp(*pc)) ||
+                                      JSOp(*pc) == JSOP_DUP))
         pc = GetNextPc(pc);
 
     MOZ_ASSERT(script->containsPC(pc));
@@ -2254,11 +2262,17 @@ Detecting(JSContext* cx, JSScript* script, jsbytecode* pc)
         return false;
     }
 
+    // Special case #2: don't warn about (obj.prop == undefined).
     if (op == JSOP_GETGNAME || op == JSOP_GETNAME) {
-        // Special case #2: don't warn about (obj.prop == undefined).
         JSAtom* atom = script->getAtom(GET_UINT32_INDEX(pc));
         if (atom == cx->names().undefined &&
             (pc += CodeSpec[op].length) < endpc) {
+            op = JSOp(*pc);
+            return op == JSOP_EQ || op == JSOP_NE || op == JSOP_STRICTEQ || op == JSOP_STRICTNE;
+        }
+    }
+    if (op == JSOP_UNDEFINED) {
+        if ((pc += CodeSpec[op].length) < endpc) {
             op = JSOp(*pc);
             return op == JSOP_EQ || op == JSOP_NE || op == JSOP_STRICTEQ || op == JSOP_STRICTNE;
         }
@@ -2290,8 +2304,10 @@ GetNonexistentProperty(JSContext* cx, HandleId id, IsNameLookup nameLookup, Muta
     vp.setUndefined();
 
     // If we are doing a name lookup, this is a ReferenceError.
-    if (nameLookup)
-        return ReportIsNotDefined(cx, id);
+    if (nameLookup) {
+        ReportIsNotDefined(cx, id);
+        return false;
+    }
 
     // Give a strict warning if foo.bar is evaluated by a script for an object
     // foo with no property named 'bar'.
@@ -2360,8 +2376,10 @@ GeneralizedGetProperty(JSContext* cx, HandleObject obj, HandleId id, HandleValue
         bool found;
         if (!HasProperty(cx, obj, id, &found))
             return false;
-        if (!found)
-            return ReportIsNotDefined(cx, id);
+        if (!found) {
+            ReportIsNotDefined(cx, id);
+            return false;
+        }
     }
 
     return GetProperty(cx, obj, receiver, id, vp);
@@ -2894,4 +2912,144 @@ js::NativeDeleteProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
     }
 
     return SuppressDeletedProperty(cx, obj, id);
+}
+
+bool
+js::CopyDataPropertiesNative(JSContext* cx, HandlePlainObject target, HandleNativeObject from,
+                             HandlePlainObject excludedItems, bool* optimized)
+{
+    MOZ_ASSERT(!target->isDelegate(),
+               "CopyDataPropertiesNative should only be called during object literal construction"
+               "which precludes that |target| is the prototype of any other object");
+
+    *optimized = false;
+
+    // Don't use the fast path if |from| may have extra indexed or lazy
+    // properties.
+    if (from->getDenseInitializedLength() > 0 ||
+        from->isIndexed() ||
+        from->is<TypedArrayObject>() ||
+        from->getClass()->getNewEnumerate() ||
+        from->getClass()->getEnumerate())
+    {
+        return true;
+    }
+
+    // Collect all enumerable data properties.
+    using ShapeVector = GCVector<Shape*, 8>;
+    Rooted<ShapeVector> shapes(cx, ShapeVector(cx));
+
+    RootedShape fromShape(cx, from->lastProperty());
+    for (Shape::Range<NoGC> r(fromShape); !r.empty(); r.popFront()) {
+        Shape* shape = &r.front();
+        jsid id = shape->propid();
+        MOZ_ASSERT(!JSID_IS_INT(id));
+
+        if (!shape->enumerable())
+            continue;
+        if (excludedItems && excludedItems->contains(cx, id))
+            continue;
+
+        // Don't use the fast path if |from| contains non-data properties.
+        //
+        // This enables two optimizations:
+        // 1. We don't need to handle the case when accessors modify |from|.
+        // 2. String and symbol properties can be added in one go.
+        if (!shape->isDataProperty())
+            return true;
+
+        if (!shapes.append(shape))
+            return false;
+    }
+
+    *optimized = true;
+
+    // If |target| contains no own properties, we can directly call
+    // addProperty instead of the slower putProperty.
+    const bool targetHadNoOwnProperties = target->lastProperty()->isEmptyShape();
+
+    RootedId key(cx);
+    RootedValue value(cx);
+    for (size_t i = shapes.length(); i > 0; i--) {
+        Shape* shape = shapes[i - 1];
+        MOZ_ASSERT(shape->isDataProperty());
+        MOZ_ASSERT(shape->enumerable());
+
+        key = shape->propid();
+        MOZ_ASSERT(!JSID_IS_INT(key));
+
+        MOZ_ASSERT(from->isNative());
+        MOZ_ASSERT(from->lastProperty() == fromShape);
+
+        value = from->getSlot(shape->slot());
+        if (targetHadNoOwnProperties) {
+            MOZ_ASSERT(!target->contains(cx, key),
+                       "didn't expect to find an existing property");
+
+            if (!AddDataPropertyNonDelegate(cx, target, key, value))
+                return false;
+        } else {
+            if (!NativeDefineDataProperty(cx, target, key, value, JSPROP_ENUMERATE))
+                return false;
+        }
+    }
+
+    return true;
+}
+
+bool
+js::CopyDataPropertiesNative(JSContext* cx, HandlePlainObject target,
+                             Handle<UnboxedPlainObject*> from, HandlePlainObject excludedItems,
+                             bool* optimized)
+{
+    MOZ_ASSERT(!target->isDelegate(),
+               "CopyDataPropertiesNative should only be called during object literal construction"
+               "which precludes that |target| is the prototype of any other object");
+
+    *optimized = false;
+
+    // Don't use the fast path for unboxed objects with expandos.
+    if (from->maybeExpando())
+        return true;
+
+    *optimized = true;
+
+    // If |target| contains no own properties, we can directly call
+    // addProperty instead of the slower putProperty.
+    const bool targetHadNoOwnProperties = target->lastProperty()->isEmptyShape();
+
+#ifdef DEBUG
+    RootedObjectGroup fromGroup(cx, from->group());
+#endif
+
+    RootedId key(cx);
+    RootedValue value(cx);
+    const UnboxedLayout& layout = from->layout();
+    for (size_t i = 0; i < layout.properties().length(); i++) {
+        const UnboxedLayout::Property& property = layout.properties()[i];
+        key = NameToId(property.name);
+        MOZ_ASSERT(!JSID_IS_INT(key));
+
+        if (excludedItems && excludedItems->contains(cx, key))
+            continue;
+
+        // Ensure the object stays unboxed.
+        MOZ_ASSERT(from->group() == fromGroup);
+
+        // All unboxed properties are enumerable.
+        value = from->getValue(property);
+
+        if (targetHadNoOwnProperties) {
+            MOZ_ASSERT(!target->contains(cx, key),
+                       "didn't expect to find an existing property");
+
+            if (!AddDataPropertyNonDelegate(cx, target, key, value))
+                return false;
+        } else {
+            if (!NativeDefineDataProperty(cx, target, key, value, JSPROP_ENUMERATE))
+                return false;
+        }
+    }
+
+    return true;
 }

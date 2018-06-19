@@ -7,7 +7,6 @@
 #define InputData_h__
 
 #include "nsDebug.h"
-#include "nsIDOMWheelEvent.h"
 #include "nsIScrollableFrame.h"
 #include "nsPoint.h"
 #include "nsTArray.h"
@@ -15,7 +14,9 @@
 #include "mozilla/DefineEnum.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/WheelHandlingHelper.h"   // for WheelDeltaAdjustmentStrategy
 #include "mozilla/gfx/MatrixFwd.h"
+#include "mozilla/layers/APZUtils.h"
 #include "mozilla/layers/KeyboardScrollAction.h"
 
 template<class E> struct already_AddRefed;
@@ -24,8 +25,8 @@ class nsIWidget;
 namespace mozilla {
 
 namespace layers {
-class PAPZCTreeManagerParent;
-class APZCTreeManagerChild;
+class APZInputBridgeChild;
+class PAPZInputBridgeParent;
 }
 
 namespace dom {
@@ -228,8 +229,8 @@ public:
 class MouseInput : public InputData
 {
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
 
   MouseInput();
 
@@ -284,8 +285,8 @@ public:
 class PanGestureInput : public InputData
 {
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
 
   PanGestureInput();
 
@@ -404,8 +405,8 @@ public:
 class PinchGestureInput : public InputData
 {
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
 
   PinchGestureInput();
 
@@ -416,6 +417,18 @@ public:
       PINCHGESTURE_SCALE,
       PINCHGESTURE_END
   ));
+
+  // Construct a pinch gesture from a Screen point.
+  // (Technically, we should take the span values in Screen pixels as well,
+  // but that would require also storing them in Screen pixels and then
+  // converting them in TransformToLocal() like the focus point. Since pinch
+  // gesture events are processed by the root content APZC, the only transform
+  // between Screen and ParentLayer pixels should be a translation, which is
+  // irrelevant to span values, so we don't bother.)
+  PinchGestureInput(PinchGestureType aType, uint32_t aTime, TimeStamp aTimeStamp,
+                    const ScreenPoint& aFocusPoint,
+                    ParentLayerCoord aCurrentSpan,
+                    ParentLayerCoord aPreviousSpan, Modifiers aModifiers);
 
   // Construct a pinch gesture from a ParentLayer point.
   // mFocusPoint remains (0,0) unless it's set later.
@@ -437,7 +450,7 @@ public:
   // are the coordinates on the screen of this midpoint.
   // For PINCHGESTURE_END events, this instead will hold the coordinates of
   // the remaining finger, if there is one. If there isn't one then it will
-  // store -1, -1.
+  // store |BothFingersLifted()|.
   ScreenPoint mFocusPoint;
 
   // |mFocusPoint| transformed to the local coordinates of the APZC targeted
@@ -451,6 +464,20 @@ public:
   // This is only really relevant during a PINCHGESTURE_SCALE because when it is
   // of this type then there must have been a history of spans.
   ParentLayerCoord mPreviousSpan;
+
+  // A special value for mFocusPoint used in PINCHGESTURE_END events to
+  // indicate that both fingers have been lifted. If only one finger has
+  // been lifted, the coordinates of the remaining finger are expected to
+  // be stored in mFocusPoint.
+  // For pinch events that were not triggered by touch gestures, the
+  // value of mFocusPoint in a PINCHGESTURE_END event is always expected
+  // to be this value.
+  // For convenience, we allow retrieving this value in any coordinate system.
+  // Since it's a special value, no conversion is needed.
+  template <typename Units = ParentLayerPixel>
+  static gfx::PointTyped<Units> BothFingersLifted() {
+    return gfx::PointTyped<Units>{-1, -1};
+  }
 };
 
 /**
@@ -461,8 +488,8 @@ public:
 class TapGestureInput : public InputData
 {
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
 
   TapGestureInput();
 
@@ -508,8 +535,10 @@ public:
 class ScrollWheelInput : public InputData
 {
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
+
+  typedef mozilla::layers::APZWheelAction APZWheelAction;
 
   ScrollWheelInput();
 
@@ -533,7 +562,8 @@ public:
   ScrollWheelInput(uint32_t aTime, TimeStamp aTimeStamp, Modifiers aModifiers,
                    ScrollMode aScrollMode, ScrollDeltaType aDeltaType,
                    const ScreenPoint& aOrigin, double aDeltaX, double aDeltaY,
-                   bool aAllowToOverrideSystemScrollSpeed);
+                   bool aAllowToOverrideSystemScrollSpeed,
+                   WheelDeltaAdjustmentStrategy aWheelDeltaAdjustmentStrategy);
   explicit ScrollWheelInput(const WidgetWheelEvent& aEvent);
 
   static ScrollDeltaType DeltaTypeForDeltaMode(uint32_t aDeltaMode);
@@ -544,6 +574,34 @@ public:
   bool TransformToLocal(const ScreenToParentLayerMatrix4x4& aTransform);
 
   bool IsCustomizedByUserPrefs() const;
+
+  // The following two functions are for auto-dir scrolling. For detailed
+  // information on auto-dir, @see mozilla::WheelDeltaAdjustmentStrategy
+  bool IsAutoDir() const
+  {
+    switch (mWheelDeltaAdjustmentStrategy) {
+      case WheelDeltaAdjustmentStrategy::eAutoDir:
+      case WheelDeltaAdjustmentStrategy::eAutoDirWithRootHonour:
+        return true;
+      default:
+        // Prevent compilation errors generated by -Werror=switch
+        break;
+    }
+    return false;
+  }
+  // Indicates which element this scroll honours if it's an auto-dir scroll.
+  // If true, honour the root element; otherwise, honour the currently scrolling
+  // target.
+  // Note that if IsAutoDir() returns false, then this function also returns
+  // false, but false in this case is meaningless as IsAutoDir() indicates it's
+  // not an auto-dir scroll.
+  // For detailed information on auto-dir,
+  // @see mozilla::WheelDeltaAdjustmentStrategy
+  bool HonoursRoot() const
+  {
+    return WheelDeltaAdjustmentStrategy::eAutoDirWithRootHonour ==
+             mWheelDeltaAdjustmentStrategy;
+  }
 
   // Warning, this class is serialized and sent over IPC. Any change to its
   // fields must be reflected in its ParamTraits<>, in nsGUIEventIPC.h
@@ -583,6 +641,12 @@ public:
   bool mMayHaveMomentum;
   bool mIsMomentum;
   bool mAllowToOverrideSystemScrollSpeed;
+
+  // Sometimes a wheel event input's wheel delta should be adjusted. This member
+  // specifies how to adjust the wheel delta.
+  WheelDeltaAdjustmentStrategy mWheelDeltaAdjustmentStrategy;
+
+  APZWheelAction mAPZAction;
 };
 
 class KeyboardInput : public InputData
@@ -590,6 +654,10 @@ class KeyboardInput : public InputData
 public:
   typedef mozilla::layers::KeyboardScrollAction KeyboardScrollAction;
 
+  // Note that if you change the first member in this enum(I.e. KEY_DOWN) to one
+  // other member, don't forget to update the minimum value in
+  // ContiguousEnumSerializer for KeyboardEventType in widget/nsGUIEventIPC
+  // accordingly.
   enum KeyboardEventType
   {
     KEY_DOWN,
@@ -619,8 +687,8 @@ public:
   KeyboardScrollAction mAction;
 
 protected:
-  friend mozilla::layers::PAPZCTreeManagerParent;
-  friend mozilla::layers::APZCTreeManagerChild;
+  friend mozilla::layers::APZInputBridgeChild;
+  friend mozilla::layers::PAPZInputBridgeParent;
 
   KeyboardInput();
 };

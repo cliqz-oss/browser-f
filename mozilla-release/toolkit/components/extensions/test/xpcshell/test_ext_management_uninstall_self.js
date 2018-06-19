@@ -20,13 +20,12 @@ const manifest = {
 
 const waitForUninstalled = () => new Promise(resolve => {
   const listener = {
-    onUninstalled: (addon) => {
+    onUninstalled: async (addon) => {
       equal(addon.id, id, "The expected add-on has been uninstalled");
-      AddonManager.getAddonByID(addon.id, checkedAddon => {
-        equal(checkedAddon, null, "Add-on no longer exists");
-        AddonManager.removeAddonListener(listener);
-        resolve();
-      });
+      let checkedAddon = await AddonManager.getAddonByID(addon.id);
+      equal(checkedAddon, null, "Add-on no longer exists");
+      AddonManager.removeAddonListener(listener);
+      resolve();
     },
   };
   AddonManager.addAddonListener(listener);
@@ -34,7 +33,7 @@ const waitForUninstalled = () => new Promise(resolve => {
 
 let promptService = {
   _response: null,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPromptService]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPromptService]),
   confirmEx: function(...args) {
     this._confirmExArgs = args;
     return this._response;

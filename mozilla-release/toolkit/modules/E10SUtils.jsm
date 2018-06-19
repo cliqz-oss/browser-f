@@ -200,6 +200,49 @@ var E10SUtils = {
     }
   },
 
+  shouldLoadURIInBrowser(browser, uri, multiProcess = true,
+                         flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE) {
+    let currentRemoteType = browser.remoteType;
+    let requiredRemoteType;
+    let uriObject;
+    try {
+      let fixupFlags = Ci.nsIURIFixup.FIXUP_FLAG_NONE;
+      if (flags & Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP) {
+        fixupFlags |= Ci.nsIURIFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP;
+      }
+      if (flags & Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS) {
+        fixupFlags |= Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS;
+      }
+      uriObject = Services.uriFixup.createFixupURI(uri, fixupFlags);
+      // Note that I had thought that we could set uri = uriObject.spec here, to
+      // save on fixup later on, but that changes behavior and breaks tests.
+      requiredRemoteType =
+        this.getRemoteTypeForURIObject(uriObject, multiProcess,
+                                       currentRemoteType, browser.currentURI);
+    } catch (e) {
+      // createFixupURI throws if it can't create a URI. If that's the case then
+      // we still need to pass down the uri because docshell handles this case.
+      requiredRemoteType = multiProcess ? DEFAULT_REMOTE_TYPE : NOT_REMOTE;
+    }
+
+    let mustChangeProcess = requiredRemoteType != currentRemoteType;
+    let newFrameloader = false;
+    if (browser.getAttribute("preloadedState") === "consumed" &&
+        uri != "about:newtab") {
+      // Leaving about:newtab from a used to be preloaded browser should run the process
+      // selecting algorithm again.
+      mustChangeProcess = true;
+      newFrameloader = true;
+    }
+
+    return {
+      uriObject,
+      requiredRemoteType,
+      mustChangeProcess,
+      newFrameloader,
+    };
+  },
+
   shouldLoadURIInThisProcess(aURI) {
     let remoteType = Services.appinfo.remoteType;
     return remoteType == this.getRemoteTypeForURIObject(aURI, true, remoteType);
@@ -224,9 +267,9 @@ var E10SUtils = {
     // Allow history load if loaded in this process before.
     let webNav = aDocShell.QueryInterface(Ci.nsIWebNavigation);
     let sessionHistory = webNav.sessionHistory;
-    let requestedIndex = sessionHistory.requestedIndex;
+    let requestedIndex = sessionHistory.legacySHistory.requestedIndex;
     if (requestedIndex >= 0) {
-      if (sessionHistory.getEntryAtIndex(requestedIndex, false).loadedInThisProcess) {
+      if (sessionHistory.legacySHistory.getEntryAtIndex(requestedIndex, false).loadedInThisProcess) {
         return true;
       }
 
@@ -237,11 +280,15 @@ var E10SUtils = {
         this.getRemoteTypeForURIObject(aURI, true, remoteType, webNav.currentURI);
     }
 
-    if (sessionHistory.count == 1 && webNav.currentURI.spec == "about:newtab") {
+    if (!aHasPostData &&
+        Services.appinfo.remoteType == WEB_REMOTE_TYPE &&
+        sessionHistory.count == 1 &&
+        webNav.currentURI.spec == "about:newtab") {
       // This is possibly a preloaded browser and we're about to navigate away for
       // the first time. On the child side there is no way to tell for sure if that
       // is the case, so let's redirect this request to the parent to decide if a new
-      // process is needed.
+      // process is needed. But we don't currently properly handle POST data in
+      // redirects (bug 1457520), so if there is POST data, don't return false here.
       return false;
     }
 
@@ -265,7 +312,7 @@ var E10SUtils = {
                              : null,
         reloadInFreshProcess: !!aFreshProcess,
       },
-      historyIndex: sessionHistory.requestedIndex,
+      historyIndex: sessionHistory.legacySHistory.requestedIndex,
     });
     return false;
   },

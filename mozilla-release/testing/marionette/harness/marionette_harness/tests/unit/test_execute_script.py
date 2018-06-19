@@ -163,10 +163,8 @@ class TestExecuteContent(MarionetteTestCase):
             self.marionette.execute_script("return b")
 
         # by default execute_script pass the name of the python file
-        self.assertIn(os.path.basename(__file__.replace(".pyc", ".py")),
-                      cm.exception.stacktrace)
+        self.assertIn(os.path.relpath(__file__.replace(".pyc", ".py")), cm.exception.stacktrace)
         self.assertIn("b is not defined", cm.exception.message)
-        self.assertIn("return b", cm.exception.stacktrace)
 
     def test_permission(self):
         for sandbox in ["default", None]:
@@ -268,7 +266,7 @@ class TestExecuteContent(MarionetteTestCase):
             exists = send("return typeof {} != 'undefined'".format(property))
             self.assertTrue(exists, "property {} is undefined".format(property))
 
-        self.assertTrue(send("return typeof Components.utils == 'undefined'"))
+        self.assertTrue(send("return (typeof Components == 'undefined') || (typeof Components.utils == 'undefined')"))
         self.assertTrue(send("return typeof window.wrappedJSObject == 'undefined'"))
 
     def test_no_callback(self):
@@ -427,53 +425,3 @@ class TestExecuteChrome(WindowManagerMixin, TestExecuteContent):
 
     def test_return_value_on_alert(self):
         pass
-
-
-class TestElementCollections(MarionetteTestCase):
-
-    def assertSequenceIsInstance(self, seq, typ):
-        for item in seq:
-            self.assertIsInstance(item, typ)
-
-    def test_array(self):
-        self.marionette.navigate(inline("<p>foo <p>bar"))
-        els = self.marionette.execute_script("return Array.from(document.querySelectorAll('p'))")
-        self.assertIsInstance(els, list)
-        self.assertEqual(2, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)
-
-    def test_html_all_collection(self):
-        self.marionette.navigate(inline("<p>foo <p>bar"))
-        els = self.marionette.execute_script("return document.all")
-        self.assertIsInstance(els, list)
-        # <html>, <head>, <body>, <p>, <p>
-        self.assertEqual(5, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)
-
-    def test_html_collection(self):
-        self.marionette.navigate(inline("<p>foo <p>bar"))
-        els = self.marionette.execute_script("return document.getElementsByTagName('p')")
-        self.assertIsInstance(els, list)
-        self.assertEqual(2, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)
-
-    def test_html_form_controls_collection(self):
-        self.marionette.navigate(inline("<form><input><input></form>"))
-        els = self.marionette.execute_script("return document.forms[0].elements")
-        self.assertIsInstance(els, list)
-        self.assertEqual(2, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)
-
-    def test_html_options_collection(self):
-        self.marionette.navigate(inline("<select><option><option></select>"))
-        els = self.marionette.execute_script("return document.querySelector('select').options")
-        self.assertIsInstance(els, list)
-        self.assertEqual(2, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)
-
-    def test_node_list(self):
-        self.marionette.navigate(inline("<p>foo <p>bar"))
-        els = self.marionette.execute_script("return document.querySelectorAll('p')")
-        self.assertIsInstance(els, list)
-        self.assertEqual(2, len(els))
-        self.assertSequenceIsInstance(els, HTMLElement)

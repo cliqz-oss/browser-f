@@ -20,12 +20,12 @@
 #include <string.h>
 
 #include "jsapi.h"
-#include "jsarray.h"
-#include "jsbool.h"
 #include "jsnum.h"
 #include "jstypes.h"
 #include "jsutil.h"
 
+#include "builtin/Array.h"
+#include "builtin/Boolean.h"
 #include "builtin/intl/CommonFunctions.h"
 #include "builtin/intl/ICUStubs.h"
 #include "builtin/RegExp.h"
@@ -905,9 +905,9 @@ ToLowerCase(JSContext* cx, JSLinearString* str)
         // We don't need extra special casing checks in the loop below,
         // because U+0130 LATIN CAPITAL LETTER I WITH DOT ABOVE and U+03A3
         // GREEK CAPITAL LETTER SIGMA already have simple lower case mappings.
-        MOZ_ASSERT(unicode::CanLowerCase(unicode::LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE),
+        MOZ_ASSERT(unicode::ChangesWhenLowerCased(unicode::LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE),
                    "U+0130 has a simple lower case mapping");
-        MOZ_ASSERT(unicode::CanLowerCase(unicode::GREEK_CAPITAL_LETTER_SIGMA),
+        MOZ_ASSERT(unicode::ChangesWhenLowerCased(unicode::GREEK_CAPITAL_LETTER_SIGMA),
                    "U+03A3 has a simple lower case mapping");
 
         // One element Latin-1 strings can be directly retrieved from the
@@ -930,7 +930,7 @@ ToLowerCase(JSContext* cx, JSLinearString* str)
                 if (unicode::IsLeadSurrogate(c) && i + 1 < length) {
                     CharT trail = chars[i + 1];
                     if (unicode::IsTrailSurrogate(trail)) {
-                        if (unicode::CanLowerCaseNonBMP(c, trail))
+                        if (unicode::ChangesWhenLowerCasedNonBMP(c, trail))
                             break;
 
                         i++;
@@ -938,7 +938,7 @@ ToLowerCase(JSContext* cx, JSLinearString* str)
                     }
                 }
             }
-            if (unicode::CanLowerCase(c))
+            if (unicode::ChangesWhenLowerCased(c))
                 break;
         }
 
@@ -1059,14 +1059,24 @@ js::intl_toLocaleLowerCase(JSContext* cx, unsigned argc, Value* vp)
     static_assert(JSString::MAX_LENGTH < INT32_MAX / 3,
                   "Case conversion doesn't overflow int32_t indices");
 
-    JSString* str =
-        intl::CallICU(cx, [&input, locale](UChar* chars, int32_t size, UErrorCode* status) {
-            return u_strToLower(chars, size, input.begin().get(), input.length(), locale, status);
-        });
-    if (!str)
+    static const size_t INLINE_CAPACITY = js::intl::INITIAL_CHAR_BUFFER_SIZE;
+
+    Vector<char16_t, INLINE_CAPACITY> chars(cx);
+    if (!chars.resize(Max(INLINE_CAPACITY, input.length())))
         return false;
 
-    args.rval().setString(str);
+    int32_t size =
+        intl::CallICU(cx, [&input, locale](UChar* chars, int32_t size, UErrorCode* status) {
+            return u_strToLower(chars, size, input.begin().get(), input.length(), locale, status);
+        }, chars);
+    if (size < 0)
+        return false;
+
+    JSString* result = NewStringCopyN<CanGC>(cx, chars.begin(), size);
+    if (!result)
+        return false;
+
+    args.rval().setString(result);
     return true;
 }
 
@@ -1114,24 +1124,24 @@ js::str_toLocaleLowerCase(JSContext* cx, unsigned argc, Value* vp)
 #endif // EXPOSE_INTL_API
 
 static inline bool
-CanUpperCaseSpecialCasing(Latin1Char charCode)
+ToUpperCaseHasSpecialCasing(Latin1Char charCode)
 {
-    // Handle U+00DF LATIN SMALL LETTER SHARP S inline, all other Latin-1
-    // characters don't have special casing rules.
-    MOZ_ASSERT_IF(charCode != unicode::LATIN_SMALL_LETTER_SHARP_S,
-                  !unicode::CanUpperCaseSpecialCasing(charCode));
+    // U+00DF LATIN SMALL LETTER SHARP S is the only Latin-1 code point with
+    // special casing rules, so detect it inline.
+    bool hasUpperCaseSpecialCasing = charCode == unicode::LATIN_SMALL_LETTER_SHARP_S;
+    MOZ_ASSERT(hasUpperCaseSpecialCasing == unicode::ChangesWhenUpperCasedSpecialCasing(charCode));
 
-    return charCode == unicode::LATIN_SMALL_LETTER_SHARP_S;
+    return hasUpperCaseSpecialCasing;
 }
 
 static inline bool
-CanUpperCaseSpecialCasing(char16_t charCode)
+ToUpperCaseHasSpecialCasing(char16_t charCode)
 {
-    return unicode::CanUpperCaseSpecialCasing(charCode);
+    return unicode::ChangesWhenUpperCasedSpecialCasing(charCode);
 }
 
 static inline size_t
-LengthUpperCaseSpecialCasing(Latin1Char charCode)
+ToUpperCaseLengthSpecialCasing(Latin1Char charCode)
 {
     // U+00DF LATIN SMALL LETTER SHARP S is uppercased to two 'S'.
     MOZ_ASSERT(charCode == unicode::LATIN_SMALL_LETTER_SHARP_S);
@@ -1140,15 +1150,15 @@ LengthUpperCaseSpecialCasing(Latin1Char charCode)
 }
 
 static inline size_t
-LengthUpperCaseSpecialCasing(char16_t charCode)
+ToUpperCaseLengthSpecialCasing(char16_t charCode)
 {
-    MOZ_ASSERT(CanUpperCaseSpecialCasing(charCode));
+    MOZ_ASSERT(ToUpperCaseHasSpecialCasing(charCode));
 
     return unicode::LengthUpperCaseSpecialCasing(charCode);
 }
 
 static inline void
-AppendUpperCaseSpecialCasing(char16_t charCode, Latin1Char* elements, size_t* index)
+ToUpperCaseAppendUpperCaseSpecialCasing(char16_t charCode, Latin1Char* elements, size_t* index)
 {
     // U+00DF LATIN SMALL LETTER SHARP S is uppercased to two 'S'.
     MOZ_ASSERT(charCode == unicode::LATIN_SMALL_LETTER_SHARP_S);
@@ -1159,7 +1169,7 @@ AppendUpperCaseSpecialCasing(char16_t charCode, Latin1Char* elements, size_t* in
 }
 
 static inline void
-AppendUpperCaseSpecialCasing(char16_t charCode, char16_t* elements, size_t* index)
+ToUpperCaseAppendUpperCaseSpecialCasing(char16_t charCode, char16_t* elements, size_t* index)
 {
     unicode::AppendUpperCaseSpecialCasing(charCode, elements, index);
 }
@@ -1191,12 +1201,12 @@ ToUpperCaseImpl(DestChar* destChars, const SrcChar* srcChars, size_t startIndex,
             }
         }
 
-        if (MOZ_UNLIKELY(c > 0x7f && CanUpperCaseSpecialCasing(static_cast<SrcChar>(c)))) {
+        if (MOZ_UNLIKELY(c > 0x7f && ToUpperCaseHasSpecialCasing(static_cast<SrcChar>(c)))) {
             // Return if the output buffer is too small.
             if (srcLength == destLength)
                 return i;
 
-            AppendUpperCaseSpecialCasing(c, destChars, &j);
+            ToUpperCaseAppendUpperCaseSpecialCasing(c, destChars, &j);
             continue;
         }
 
@@ -1226,8 +1236,8 @@ ToUpperCaseLength(const CharT* chars, size_t startIndex, size_t length)
     for (size_t i = startIndex; i < length; i++) {
         char16_t c = chars[i];
 
-        if (c > 0x7f && CanUpperCaseSpecialCasing(static_cast<CharT>(c)))
-            upperLength += LengthUpperCaseSpecialCasing(static_cast<CharT>(c)) - 1;
+        if (c > 0x7f && ToUpperCaseHasSpecialCasing(static_cast<CharT>(c)))
+            upperLength += ToUpperCaseLengthSpecialCasing(static_cast<CharT>(c)) - 1;
     }
     return upperLength;
 }
@@ -1307,7 +1317,7 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
                 }
 
                 MOZ_ASSERT(unicode::ToUpperCase(c) > JSString::MAX_LATIN1_CHAR ||
-                           CanUpperCaseSpecialCasing(c));
+                           ToUpperCaseHasSpecialCasing(c));
             }
         }
 
@@ -1319,7 +1329,7 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
                 if (unicode::IsLeadSurrogate(c) && i + 1 < length) {
                     CharT trail = chars[i + 1];
                     if (unicode::IsTrailSurrogate(trail)) {
-                        if (unicode::CanUpperCaseNonBMP(c, trail))
+                        if (unicode::ChangesWhenUpperCasedNonBMP(c, trail))
                             break;
 
                         i++;
@@ -1327,9 +1337,9 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
                     }
                 }
             }
-            if (unicode::CanUpperCase(c))
+            if (unicode::ChangesWhenUpperCased(c))
                 break;
-            if (MOZ_UNLIKELY(c > 0x7f && CanUpperCaseSpecialCasing(c)))
+            if (MOZ_UNLIKELY(c > 0x7f && ToUpperCaseHasSpecialCasing(c)))
                 break;
         }
 
@@ -1447,14 +1457,24 @@ js::intl_toLocaleUpperCase(JSContext* cx, unsigned argc, Value* vp)
     static_assert(JSString::MAX_LENGTH < INT32_MAX / 3,
                   "Case conversion doesn't overflow int32_t indices");
 
-    JSString* str =
-        intl::CallICU(cx, [&input, locale](UChar* chars, int32_t size, UErrorCode* status) {
-            return u_strToUpper(chars, size, input.begin().get(), input.length(), locale, status);
-        });
-    if (!str)
+    static const size_t INLINE_CAPACITY = js::intl::INITIAL_CHAR_BUFFER_SIZE;
+
+    Vector<char16_t, INLINE_CAPACITY> chars(cx);
+    if (!chars.resize(Max(INLINE_CAPACITY, input.length())))
         return false;
 
-    args.rval().setString(str);
+    int32_t size =
+        intl::CallICU(cx, [&input, locale](UChar* chars, int32_t size, UErrorCode* status) {
+            return u_strToUpper(chars, size, input.begin().get(), input.length(), locale, status);
+        }, chars);
+    if (size < 0)
+        return false;
+
+    JSString* result = NewStringCopyN<CanGC>(cx, chars.begin(), size);
+    if (!result)
+        return false;
+
+    args.rval().setString(result);
     return true;
 }
 
@@ -1614,23 +1634,24 @@ js::str_normalize(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    int32_t spanLength = unorm2_spanQuickCheckYes(normalizer,
-                                                  srcChars.begin().get(), srcChars.length(),
-                                                  &status);
+    int32_t spanLengthInt = unorm2_spanQuickCheckYes(normalizer,
+                                                     srcChars.begin().get(), srcChars.length(),
+                                                     &status);
     if (U_FAILURE(status)) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_INTERNAL_INTL_ERROR);
         return false;
     }
-    MOZ_ASSERT(0 <= spanLength && size_t(spanLength) <= srcChars.length());
+    MOZ_ASSERT(0 <= spanLengthInt && size_t(spanLengthInt) <= srcChars.length());
+    size_t spanLength = size_t(spanLengthInt);
 
     // Return if the input string is already normalized.
-    if (size_t(spanLength) == srcChars.length()) {
+    if (spanLength == srcChars.length()) {
         // Step 7.
         args.rval().setString(str);
         return true;
     }
 
-    static const size_t INLINE_CAPACITY = 32;
+    static const size_t INLINE_CAPACITY = js::intl::INITIAL_CHAR_BUFFER_SIZE;
 
     Vector<char16_t, INLINE_CAPACITY> chars(cx);
     if (!chars.resize(Max(INLINE_CAPACITY, srcChars.length())))
@@ -1638,33 +1659,21 @@ js::str_normalize(JSContext* cx, unsigned argc, Value* vp)
 
     // Copy the already normalized prefix.
     if (spanLength > 0)
-        PodCopy(chars.begin(), srcChars.begin().get(), size_t(spanLength));
+        PodCopy(chars.begin(), srcChars.begin().get(), spanLength);
 
-    mozilla::RangedPtr<const char16_t> remainingStart = srcChars.begin() + spanLength;
-    size_t remainingLength = srcChars.length() - size_t(spanLength);
+    int32_t size =
+        intl::CallICU(cx, [normalizer, &srcChars, spanLength](UChar* chars, uint32_t size,
+                                                              UErrorCode* status)
+        {
+            mozilla::RangedPtr<const char16_t> remainingStart = srcChars.begin() + spanLength;
+            size_t remainingLength = srcChars.length() - spanLength;
 
-    int32_t size = unorm2_normalizeSecondAndAppend(normalizer,
-                                                   chars.begin(), spanLength, chars.length(),
-                                                   remainingStart.get(), remainingLength, &status);
-    if (status == U_BUFFER_OVERFLOW_ERROR) {
-        MOZ_ASSERT(size >= 0);
-        if (!chars.resize(size))
-            return false;
-        status = U_ZERO_ERROR;
-#ifdef DEBUG
-        int32_t finalSize =
-#endif
-        unorm2_normalizeSecondAndAppend(normalizer,
-                                        chars.begin(), spanLength, chars.length(),
-                                        remainingStart.get(), remainingLength, &status);
-        MOZ_ASSERT_IF(!U_FAILURE(status), size == finalSize);
-    }
-    if (U_FAILURE(status)) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_INTERNAL_INTL_ERROR);
+            return unorm2_normalizeSecondAndAppend(normalizer, chars, spanLength, size,
+                                                   remainingStart.get(), remainingLength, status);
+        }, chars);
+    if (size < 0)
         return false;
-    }
 
-    MOZ_ASSERT(size >= 0);
     JSString* ns = NewStringCopyN<CanGC>(cx, chars.begin(), size);
     if (!ns)
         return false;
@@ -3283,13 +3292,8 @@ static const JSFunctionSpec string_methods[] = {
     JS_FN("startsWith",        str_startsWith,        1,0),
     JS_FN("endsWith",          str_endsWith,          1,0),
     JS_FN("trim",              str_trim,              0,0),
-#ifdef NIGHTLY_BUILD
     JS_FN("trimStart",         str_trimStart,         0,0),
     JS_FN("trimEnd",           str_trimEnd,           0,0),
-#else
-    JS_FN("trimLeft",          str_trimStart,         0,0),
-    JS_FN("trimRight",         str_trimEnd,           0,0),
-#endif
 #if EXPOSE_INTL_API
     JS_SELF_HOSTED_FN("toLocaleLowerCase", "String_toLocaleLowerCase", 0,0),
     JS_SELF_HOSTED_FN("toLocaleUpperCase", "String_toLocaleUpperCase", 0,0),
@@ -3618,18 +3622,13 @@ StringObject::assignInitialShape(JSContext* cx, Handle<StringObject*> obj)
 }
 
 JSObject*
-js::InitStringClass(JSContext* cx, HandleObject obj)
+js::InitStringClass(JSContext* cx, Handle<GlobalObject*> global)
 {
-    MOZ_ASSERT(obj->isNative());
-
-    Handle<GlobalObject*> global = obj.as<GlobalObject>();
-
     Rooted<JSString*> empty(cx, cx->runtime()->emptyString);
-    RootedObject proto(cx, GlobalObject::createBlankPrototype(cx, global, &StringObject::class_));
+    Rooted<StringObject*> proto(cx, GlobalObject::createBlankPrototype<StringObject>(cx, global));
     if (!proto)
         return nullptr;
-    Handle<StringObject*> protoObj = proto.as<StringObject>();
-    if (!StringObject::init(cx, protoObj, empty))
+    if (!StringObject::init(cx, proto, empty))
         return nullptr;
 
     /* Now create the String function. */
@@ -3648,13 +3647,12 @@ js::InitStringClass(JSContext* cx, HandleObject obj)
         return nullptr;
     }
 
-#ifdef NIGHTLY_BUILD
     // Create "trimLeft" as an alias for "trimStart".
     RootedValue trimFn(cx);
     RootedId trimId(cx, NameToId(cx->names().trimStart));
     RootedId trimAliasId(cx, NameToId(cx->names().trimLeft));
-    if (!NativeGetProperty(cx, protoObj, trimId, &trimFn) ||
-        !NativeDefineDataProperty(cx, protoObj, trimAliasId, trimFn, 0))
+    if (!NativeGetProperty(cx, proto, trimId, &trimFn) ||
+        !NativeDefineDataProperty(cx, proto, trimAliasId, trimFn, 0))
     {
         return nullptr;
     }
@@ -3662,12 +3660,11 @@ js::InitStringClass(JSContext* cx, HandleObject obj)
     // Create "trimRight" as an alias for "trimEnd".
     trimId = NameToId(cx->names().trimEnd);
     trimAliasId = NameToId(cx->names().trimRight);
-    if (!NativeGetProperty(cx, protoObj, trimId, &trimFn) ||
-        !NativeDefineDataProperty(cx, protoObj, trimAliasId, trimFn, 0))
+    if (!NativeGetProperty(cx, proto, trimId, &trimFn) ||
+        !NativeDefineDataProperty(cx, proto, trimAliasId, trimFn, 0))
     {
         return nullptr;
     }
-#endif
 
     /*
      * Define escape/unescape, the URI encode/decode functions, and maybe

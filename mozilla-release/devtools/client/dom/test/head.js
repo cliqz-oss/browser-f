@@ -57,7 +57,7 @@ function addTestTab(url) {
 /**
  * Open the DOM panel for the given tab.
  *
- * @param {nsIDOMElement} tab
+ * @param {Element} tab
  *        Optional tab element for which you want open the DOM panel.
  *        The default tab is taken from the global variable |tab|.
  * @return a promise that is resolved once the web console is open.
@@ -225,12 +225,12 @@ function waitForDispatch(panel, type, eventRepeat = 1) {
   const actionType = constants[type];
   let count = 0;
 
-  return Task.spawn(function* () {
+  return (async function() {
     info("Waiting for " + type + " to dispatch " + eventRepeat + " time(s)");
     while (count < eventRepeat) {
-      yield _afterDispatchDone(store, actionType);
+      await _afterDispatchDone(store, actionType);
       count++;
       info(type + " dispatched " + count + " time(s)");
     }
-  });
+  })();
 }

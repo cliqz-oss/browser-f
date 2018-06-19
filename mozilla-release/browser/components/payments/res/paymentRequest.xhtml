@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!DOCTYPE html [
+  <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
+  %globalDTD;
+
+  <!ENTITY viewAllItems               "View All Items">
+  <!ENTITY paymentSummaryTitle        "Your Payment">
+  <!ENTITY shippingAddressLabel       "Shipping Address">
+  <!ENTITY deliveryAddressLabel       "Delivery Address">
+  <!ENTITY pickupAddressLabel         "Pickup Address">
+  <!ENTITY shippingOptionsLabel       "Shipping Options">
+  <!ENTITY paymentMethodsLabel        "Payment Method">
+  <!ENTITY address.addLink.label      "Add">
+  <!ENTITY address.editLink.label     "Edit">
+  <!ENTITY basicCard.addLink.label    "Add">
+  <!ENTITY basicCard.editLink.label   "Edit">
+  <!ENTITY payer.addLink.label        "Add">
+  <!ENTITY payer.editLink.label       "Edit">
+  <!ENTITY shippingAddress.addPage.title  "Add Shipping Address">
+  <!ENTITY shippingAddress.editPage.title "Edit Shipping Address">
+  <!ENTITY deliveryAddress.addPage.title  "Add Delivery Address">
+  <!ENTITY deliveryAddress.editPage.title "Edit Delivery Address">
+  <!ENTITY pickupAddress.addPage.title    "Add Pickup Address">
+  <!ENTITY pickupAddress.editPage.title   "Edit Pickup Address">
+  <!ENTITY basicCard.addPage.title    "Add Credit Card">
+  <!ENTITY basicCard.editPage.title   "Edit Credit Card">
+  <!ENTITY payer.addPage.title        "Add Payer Contact">
+  <!ENTITY payer.editPage.title       "Edit Payer Contact">
+  <!ENTITY payerLabel                 "Contact Information">
+  <!ENTITY cancelPaymentButton.label   "Cancel">
+  <!ENTITY approvePaymentButton.label  "Pay">
+  <!ENTITY processingPaymentButton.label "Processing">
+  <!ENTITY successPaymentButton.label    "Done">
+  <!ENTITY failPaymentButton.label       "Fail">
+  <!ENTITY unknownPaymentButton.label    "Unknown">
+  <!ENTITY orderDetailsLabel          "Order Details">
+  <!ENTITY orderTotalLabel            "Total">
+  <!ENTITY basicCardPage.error.genericSave    "There was an error saving the payment card.">
+  <!ENTITY basicCardPage.backButton.label     "Back">
+  <!ENTITY basicCardPage.saveButton.label     "Save">
+  <!ENTITY basicCardPage.persistCheckbox.label     "Save credit card to Firefox (Security code will not be saved)">
+  <!ENTITY addressPage.error.genericSave      "There was an error saving the address.">
+  <!ENTITY addressPage.backButton.label       "Back">
+  <!ENTITY addressPage.saveButton.label       "Save">
+]>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>&paymentSummaryTitle;</title>
+
+  <!-- chrome: is needed for global.dtd -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' chrome:"/>
+
+  <link rel="stylesheet" href="paymentRequest.css"/>
+  <link rel="stylesheet" href="components/rich-select.css"/>
+  <link rel="stylesheet" href="components/address-option.css"/>
+  <link rel="stylesheet" href="components/basic-card-option.css"/>
+  <link rel="stylesheet" href="components/shipping-option.css"/>
+  <link rel="stylesheet" href="components/payment-details-item.css"/>
+  <link rel="stylesheet" href="containers/address-form.css"/>
+  <link rel="stylesheet" href="containers/order-details.css"/>
+
+  <script src="unprivileged-fallbacks.js"></script>
+
+  <script src="formautofill/autofillEditForms.js"></script>
+
+  <script type="module" src="containers/payment-dialog.js"></script>
+  <script type="module" src="paymentRequest.js"></script>
+
+  <template id="payment-dialog-template">
+    <header>
+      <div id="total">
+        <h2 class="label"></h2>
+        <currency-amount></currency-amount>
+        <div id="host-name"></div>
+      </div>
+      <div id="top-buttons" >
+        <button id="view-all" class="closed">&viewAllItems;</button>
+      </div>
+    </header>
+
+    <div id="main-container">
+      <section id="payment-summary" class="page">
+        <h1>&paymentSummaryTitle;</h1>
+
+        <section>
+          <div id="error-text"></div>
+
+          <div class="shipping-related"
+               id="shipping-type-label"
+               data-shipping-address-label="&shippingAddressLabel;"
+               data-delivery-address-label="&deliveryAddressLabel;"
+               data-pickup-address-label="&pickupAddressLabel;"><label></label></div>
+          <address-picker class="shipping-related"
+                          data-add-link-label="&address.addLink.label;"
+                          data-edit-link-label="&address.editLink.label;"
+                          selected-state-key="selectedShippingAddress"></address-picker>
+
+          <div class="shipping-related"><label>&shippingOptionsLabel;</label></div>
+          <shipping-option-picker class="shipping-related"></shipping-option-picker>
+
+          <div><label>&paymentMethodsLabel;</label></div>
+          <payment-method-picker selected-state-key="selectedPaymentCard"
+                                 data-add-basic-card-title="&basicCard.addPage.title;"
+                                 data-edit-basic-card-title="&basicCard.editPage.title;"
+                                 data-add-link-label="&basicCard.addLink.label;"
+                                 data-edit-link-label="&basicCard.editLink.label;">
+          </payment-method-picker>
+
+          <div class="payer-related"><label>&payerLabel;</label></div>
+          <address-picker class="payer-related"
+                          data-add-link-label="&payer.addLink.label;"
+                          data-edit-link-label="&payer.editLink.label;"
+                          selected-state-key="selectedPayerAddress"></address-picker>
+          <div id="error-text"></div>
+        </section>
+
+        <footer id="controls-container">
+          <button id="cancel">&cancelPaymentButton.label;</button>
+          <button id="pay"
+                  data-initial-label="&approvePaymentButton.label;"
+                  data-processing-label="&processingPaymentButton.label;"
+                  data-fail-label="&failPaymentButton.label;"
+                  data-unknown-label="&unknownPaymentButton.label;"
+                  data-success-label="&successPaymentButton.label;"></button>
+        </footer>
+      </section>
+      <section id="order-details-overlay" hidden="hidden">
+        <h1>&orderDetailsLabel;</h1>
+        <order-details></order-details>
+      </section>
+
+      <basic-card-form id="basic-card-page"
+                       class="page"
+                       data-error-generic-save="&basicCardPage.error.genericSave;"
+                       data-back-button-label="&basicCardPage.backButton.label;"
+                       data-save-button-label="&basicCardPage.saveButton.label;"
+                       data-persist-checkbox-label="&basicCardPage.persistCheckbox.label;"
+                       hidden="hidden"></basic-card-form>
+
+      <address-form id="address-page"
+                    class="page"
+                    data-error-generic-save="&addressPage.error.genericSave;"
+                    data-back-button-label="&addressPage.backButton.label;"
+                    data-save-button-label="&addressPage.saveButton.label;"
+                    hidden="hidden"></address-form>
+    </div>
+
+    <div id="disabled-overlay" hidden="hidden">
+      <!-- overlay to prevent changes while waiting for a response from the merchant -->
+    </div>
+  </template>
+
+  <template id="order-details-template">
+    <ul class="main-list"></ul>
+    <ul class="footer-items-list"></ul>
+
+    <div class="details-total">
+      <h2 class="label">&orderTotalLabel;</h2>
+      <currency-amount></currency-amount>
+    </div>
+  </template>
+</head>
+<body dir="&locale.dir;">
+  <iframe id="debugging-console"
+          hidden="hidden"
+          height="400"></iframe>
+  <payment-dialog data-shipping-address-title-add="&shippingAddress.addPage.title;"
+                  data-shipping-address-title-edit="&shippingAddress.editPage.title;"
+                  data-delivery-address-title-add="&deliveryAddress.addPage.title;"
+                  data-delivery-address-title-edit="&deliveryAddress.editPage.title;"
+                  data-pickup-address-title-add="&pickupAddress.addPage.title;"
+                  data-pickup-address-title-edit="&pickupAddress.editPage.title;"
+                  data-payer-title-add="&payer.addPage.title;"
+                  data-payer-title-edit="&payer.editPage.title;"></payment-dialog>
+</body>
+</html>

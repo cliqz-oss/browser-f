@@ -10,6 +10,7 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "EventQueue.h"
 #include "mozilla/ThreadEventQueue.h"
+#include "mozilla/PerformanceCounter.h"
 #include "nsIThreadInternal.h"
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
@@ -227,6 +228,13 @@ WorkerThread::Dispatch(already_AddRefed<nsIRunnable> aRunnable, uint32_t aFlags)
 
   const bool onWorkerThread = PR_GetCurrentThread() == mThread;
 
+  if (GetSchedulerLoggingEnabled() && onWorkerThread && mWorkerPrivate) {
+    PerformanceCounter* performanceCounter = mWorkerPrivate->GetPerformanceCounter();
+    if (performanceCounter) {
+      performanceCounter->IncrementDispatchCounter(DispatchCategory::Worker);
+    }
+  }
+
 #ifdef DEBUG
   if (runnable && !onWorkerThread) {
     nsCOMPtr<nsICancelableRunnable> cancelable = do_QueryInterface(runnable);
@@ -312,6 +320,15 @@ WorkerThread::RecursionDepth(const WorkerThreadFriendKey& /* aKey */) const
   MOZ_ASSERT(PR_GetCurrentThread() == mThread);
 
   return mNestedEventLoopDepth;
+}
+
+PerformanceCounter*
+WorkerThread::GetPerformanceCounter(nsIRunnable* aEvent)
+{
+  if (mWorkerPrivate) {
+    return mWorkerPrivate->GetPerformanceCounter();
+  }
+  return nullptr;
 }
 
 NS_IMPL_ISUPPORTS(WorkerThread::Observer, nsIThreadObserver)

@@ -106,7 +106,7 @@ add_task(async function test_actionContextMenus() {
     is(tab.id, tabId, "Click event tab ID is correct");
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -153,7 +153,7 @@ add_task(async function test_hiddenPageActionContextMenu() {
   await closeChromeContextMenu(menu.id);
   await closeChromeContextMenu(BrowserPageActions.panelNode.id);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -226,7 +226,7 @@ add_task(async function test_tabContextMenu() {
   is(click.tab.id, tabId, "Click event tab ID is correct");
   is(click.info.frameId, undefined, "no frameId on chrome");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await first.unload();
   await second.unload();
 });
@@ -250,9 +250,9 @@ add_task(async function test_onclick_frameid() {
   await extension.startup();
   await extension.awaitMessage("ready");
 
-  async function click(selectorOrId) {
-    const func = (selectorOrId == "body") ? openContextMenu : openContextMenuInFrame;
-    const menu = await func(selectorOrId);
+  async function click(selector) {
+    const func = selector === "body" ? openContextMenu : openContextMenuInFrame;
+    const menu = await func(selector);
     const items = menu.getElementsByAttribute("label", "modify");
     await closeExtensionContextMenu(items[0]);
     return extension.awaitMessage("click");
@@ -260,11 +260,11 @@ add_task(async function test_onclick_frameid() {
 
   let info = await click("body");
   is(info.frameId, 0, "top level click");
-  info = await click("frame");
+  info = await click("#frame");
   isnot(info.frameId, undefined, "frame click, frameId is not undefined");
   isnot(info.frameId, 0, "frame click, frameId probably okay");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -310,7 +310,7 @@ add_task(async function test_multiple_contexts_init() {
   const info = await extension.awaitMessage("click");
   is(info.menuItemId, "child", "onClicked the correct item");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -365,7 +365,7 @@ add_task(async function test_tools_menu() {
   is(click.info.pageUrl, "http://example.com/", "Click info pageUrl is correct");
   is(click.tab.id, tabId, "Click event tab ID is correct");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await first.unload();
   await second.unload();
 });

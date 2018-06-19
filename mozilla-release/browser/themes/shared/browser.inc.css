@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 %include downloads/indicator.inc.css
+%include addons/extension-controlled.inc.css
 
 %filter substitution
 %define navbarTabsShadowSize 1px
+%define themeTransition background-color 0.1s cubic-bezier(.17,.67,.83,.67)
+%define lwtPopupBrighttextLinkColor #45a1ff
 
 :root {
   /* Note: Setting this to 0 (without px) breaks CSS calculations for OSX. */
@@ -14,6 +17,15 @@
 
 :root[extradragspace][tabsintitlebar]:not([inFullscreen]) {
   --space-above-tabbar: 8px;
+}
+
+:root[sessionrestored]:-moz-lwtheme {
+  transition: @themeTransition@;
+}
+
+/* Increase contrast of UI links on dark themes */
+:root[lwt-popup-brighttext] panel .text-link {
+  color: @lwtPopupBrighttextLinkColor@;
 }
 
 /* Toolbar / content area border */
@@ -28,18 +40,28 @@
   border-bottom-style: none;
 }
 
+:root[sessionrestored] #nav-bar:-moz-lwtheme {
+  transition: @themeTransition@;
+}
+
 /* Bookmark toolbar */
 
 #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
   overflow: -moz-hidden-unscrollable;
   max-height: 4em;
-  transition: min-height 170ms ease-out, max-height 170ms ease-out;
   padding: 0 6px 2px;
+}
+
+:root[sessionrestored] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
+  transition: min-height 170ms ease-out, max-height 170ms ease-out, @themeTransition@;
 }
 
 #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar)[collapsed=true] {
   min-height: 0.1px;
   max-height: 0;
+}
+
+:root[sessionrestored] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar)[collapsed=true] {
   transition: min-height 170ms ease-out, max-height 170ms ease-out, visibility 170ms linear;
 }
 
@@ -130,3 +152,13 @@
 }
 
 /* End private browsing and accessibility indicators */
+
+/* Force background for datepicker popup to white so themes don't override it */
+#DateTimePickerPanel[active="true"] > .panel-arrowcontainer > .panel-arrowbox,
+#DateTimePickerPanel[active="true"] > .panel-arrowcontainer > .panel-arrowcontent {
+  --arrowpanel-background: #fff;
+}
+
+#widget-overflow .webextension-popup-browser {
+  background: #fff;
+}

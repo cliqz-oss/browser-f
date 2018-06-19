@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "nsISupports.idl"
 
-interface nsIFrameLoader;
 interface nsIPrincipal;
+
+webidl FrameLoader;
 
 [scriptable, uuid(14e5a0cb-e223-4202-95e8-fe53275193ea)]
 interface nsIBrowser : nsISupports
@@ -16,7 +17,7 @@ interface nsIBrowser : nsISupports
    * browsers set this to the frame loader for the original content to ensure
    * they are loaded in the same process as the content.
    */
-  readonly attribute nsIFrameLoader sameProcessAsFrameLoader;
+  readonly attribute FrameLoader sameProcessAsFrameLoader;
 
   /*
    * Called by the child to inform the parent that links are dropped into

@@ -198,6 +198,10 @@ class Tree extends Component {
       // Handle when item is activated with a keyboard (using Space or Enter)
       onActivate: PropTypes.func,
 
+      // Indicates if pressing ArrowRight key should only expand expandable node
+      // or if the selection should also move to the next node.
+      preventNavigationOnArrowRight: PropTypes.bool,
+
       // The depth to which we should automatically expand new items.
       autoExpandDepth: PropTypes.number,
 
@@ -228,6 +232,7 @@ class Tree extends Component {
   static get defaultProps() {
     return {
       autoExpandDepth: AUTO_EXPAND_DEPTH,
+      preventNavigationOnArrowRight: true,
     };
   }
 
@@ -254,6 +259,7 @@ class Tree extends Component {
     this._autoExpand = this._autoExpand.bind(this);
     this._preventArrowKeyScrolling = this._preventArrowKeyScrolling.bind(this);
     this._updateHeight = this._updateHeight.bind(this);
+    this._onResize = this._onResize.bind(this);
     this._dfs = this._dfs.bind(this);
     this._dfsFromRoots = this._dfsFromRoots.bind(this);
     this._focus = this._focus.bind(this);
@@ -262,7 +268,7 @@ class Tree extends Component {
   }
 
   componentDidMount() {
-    window.addEventListener("resize", this._updateHeight);
+    window.addEventListener("resize", this._onResize);
     this._autoExpand();
     this._updateHeight();
   }
@@ -282,7 +288,7 @@ class Tree extends Component {
   }
 
   componentWillUnmount() {
-    window.removeEventListener("resize", this._updateHeight);
+    window.removeEventListener("resize", this._onResize);
   }
 
   _autoExpand() {
@@ -447,6 +453,20 @@ class Tree extends Component {
   }
 
   /**
+   * Update state height and tree's scrollTop if necessary.
+   */
+  _onResize() {
+    // When tree size changes without direct user action, scroll top cat get re-set to 0
+    // (for example, when tree height changes via CSS rule change). We need to ensure that
+    // the tree's scrollTop is in sync with the scroll state.
+    if (this.state.scroll !== this.refs.tree.scrollTop) {
+      this.refs.tree.scrollTo({ left: 0, top: this.state.scroll });
+    }
+
+    this._updateHeight();
+  }
+
+  /**
    * Sets the state to have no focused item.
    */
   _onBlur() {
@@ -502,9 +522,10 @@ class Tree extends Component {
         break;
 
       case "ArrowRight":
-        if (!this.props.isExpanded(this.props.focused)) {
+        if (this.props.getChildren(this.props.focused).length &&
+            !this.props.isExpanded(this.props.focused)) {
           this._onExpand(this.props.focused);
-        } else {
+        } else if (!this.props.preventNavigationOnArrowRight) {
           this._focusNextNode();
         }
         break;
@@ -847,7 +868,7 @@ const TreeNode = createFactory(TreeNodeClass);
 function oncePerAnimationFrame(fn) {
   let animationId = null;
   let argsToPass = null;
-  return function (...args) {
+  return function(...args) {
     argsToPass = args;
     if (animationId !== null) {
       return;

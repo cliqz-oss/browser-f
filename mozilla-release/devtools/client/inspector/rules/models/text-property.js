@@ -55,7 +55,7 @@ TextProperty.prototype = {
    * Update the editor associated with this text property,
    * if any.
    */
-  updateEditor: function () {
+  updateEditor: function() {
     if (this.editor) {
       this.editor.update();
     }
@@ -64,7 +64,7 @@ TextProperty.prototype = {
   /**
    * Update the list of computed properties for this text property.
    */
-  updateComputed: function () {
+  updateComputed: function() {
     if (!this.name) {
       return;
     }
@@ -101,7 +101,7 @@ TextProperty.prototype = {
    * @param {TextProperty} prop
    *        The other TextProperty instance.
    */
-  set: function (prop) {
+  set: function(prop) {
     let changed = false;
     for (let item of ["name", "value", "priority", "enabled"]) {
       if (this[item] !== prop[item]) {
@@ -115,7 +115,7 @@ TextProperty.prototype = {
     }
   },
 
-  setValue: function (value, priority, force = false) {
+  setValue: function(value, priority, force = false) {
     let store = this.rule.elementStyle.store;
 
     if (this.editor && value !== this.editor.committed.value || force) {
@@ -128,16 +128,19 @@ TextProperty.prototype = {
 
   /**
    * Called when the property's value has been updated externally, and
-   * the property and editor should update.
+   * the property and editor should update to reflect that value.
+   *
+   * @param {String} value
+   *        Property value
    */
-  noticeNewValue: function (value) {
+  updateValue: function(value) {
     if (value !== this.value) {
       this.value = value;
       this.updateEditor();
     }
   },
 
-  setName: function (name) {
+  setName: function(name) {
     let store = this.rule.elementStyle.store;
 
     if (name !== this.name) {
@@ -149,19 +152,19 @@ TextProperty.prototype = {
     this.updateEditor();
   },
 
-  setEnabled: function (value) {
+  setEnabled: function(value) {
     this.rule.setPropertyEnabled(this, value);
     this.updateEditor();
   },
 
-  remove: function () {
+  remove: function() {
     this.rule.removeProperty(this);
   },
 
   /**
    * Return a string representation of the rule property.
    */
-  stringifyProperty: function () {
+  stringifyProperty: function() {
     // Get the displayed property value
     let declaration = this.name + ": " + this.editor.valueSpan.textContent +
       ";";
@@ -179,7 +182,7 @@ TextProperty.prototype = {
    *
    * @return {Boolean} true if the property name is known, false otherwise.
    */
-  isKnownProperty: function () {
+  isKnownProperty: function() {
     return this.cssProperties.isKnown(this.name);
   },
 
@@ -187,17 +190,9 @@ TextProperty.prototype = {
    * Validate this property. Does it make sense for this value to be assigned
    * to this property name?
    *
-   * @return {Boolean} true if the property value is valid, false otherwise.
+   * @return {Boolean} true if the whole CSS declaration is valid, false otherwise.
    */
-  isValid: function () {
-    // Starting with FF49, StyleRuleActors provide a list of parsed
-    // declarations, with data about their validity, but if we don't have this,
-    // compute validity locally (which might not be correct, but better than
-    // nothing).
-    if (!this.rule.domRule.declarations) {
-      return this.cssProperties.isValidOnClient(this.name, this.value, this.panelDoc);
-    }
-
+  isValid: function() {
     let selfIndex = this.rule.textProps.indexOf(this);
 
     // When adding a new property in the rule-view, the TextProperty object is
@@ -209,6 +204,30 @@ TextProperty.prototype = {
     }
 
     return this.rule.domRule.declarations[selfIndex].isValid;
+  },
+
+  /**
+   * Validate the name of this property.
+   *
+   * @return {Boolean} true if the property name is valid, false otherwise.
+   */
+  isNameValid: function() {
+    let selfIndex = this.rule.textProps.indexOf(this);
+
+    // When adding a new property in the rule-view, the TextProperty object is
+    // created right away before the rule gets updated on the server, so we're
+    // not going to find the corresponding declaration object yet. Default to
+    // true.
+    if (!this.rule.domRule.declarations[selfIndex]) {
+      return true;
+    }
+
+    // Starting with FF61, StyleRuleActor provides an accessor to signal if the property
+    // name is valid. If we don't have this, assume the name is valid. In use, rely on
+    // isValid() as a guard against false positives.
+    return (this.rule.domRule.declarations[selfIndex].isNameValid !== undefined)
+      ? this.rule.domRule.declarations[selfIndex].isNameValid
+      : true;
   }
 };
 

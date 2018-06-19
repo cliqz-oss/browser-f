@@ -13,7 +13,7 @@ class nsILoadContext;
 namespace mozilla {
 namespace net {
 
-class LoadContextInfo : public nsILoadContextInfo
+class LoadContextInfo final : public nsILoadContextInfo
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -22,7 +22,7 @@ public:
   LoadContextInfo(bool aIsAnonymous, OriginAttributes aOriginAttributes);
 
 private:
-  virtual ~LoadContextInfo();
+  virtual ~LoadContextInfo() = default;
 
 protected:
   bool mIsAnonymous : 1;
@@ -31,7 +31,7 @@ protected:
 
 class LoadContextInfoFactory : public nsILoadContextInfoFactory
 {
-  virtual ~LoadContextInfoFactory() {}
+  virtual ~LoadContextInfoFactory() = default;
 public:
   NS_DECL_ISUPPORTS // deliberately not thread-safe
   NS_DECL_NSILOADCONTEXTINFOFACTORY

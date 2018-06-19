@@ -53,9 +53,7 @@ var gSync = {
   // if any remote clients exist.
   get syncConfiguredAndLoading() {
     return UIState.get().status == UIState.STATUS_SIGNED_IN &&
-           (!this.syncReady ||
-           // lastSync will be non-zero after the first sync
-           Weave.Service.clientsEngine.lastSync == 0);
+           (!this.syncReady || Weave.Service.clientsEngine.isFirstSync);
   },
 
   get isSignedIn() {
@@ -312,7 +310,7 @@ var gSync = {
 
   async openConnectAnotherDevice(entryPoint) {
     const url = await FxAccounts.config.promiseConnectDeviceURI(entryPoint);
-    openUILinkIn(url, "tab");
+    openTrustedLinkIn(url, "tab");
   },
 
   openSendToDevicePromo() {
@@ -321,10 +319,34 @@ var gSync = {
     switchToTabHavingURI(url, true, { replaceQueryString: true });
   },
 
-  sendTabToDevice(url, clientId, title) {
-    Weave.Service.clientsEngine.sendURIToClientForDisplay(url, clientId, title).catch(e => {
-      console.error("Could not send tab to device", e);
-    });
+  async sendTabToDevice(url, clients, title) {
+    let devices;
+    try {
+      devices = await fxAccounts.getDeviceList();
+    } catch (e) {
+      console.error("Could not get the FxA device list", e);
+      devices = []; // We can still run in degraded mode.
+    }
+    const toSendMessages = [];
+    for (const client of clients) {
+      const device = devices.find(d => d.id == client.fxaDeviceId);
+      if (device && fxAccounts.messages.canReceiveSendTabMessages(device)) {
+        toSendMessages.push(device);
+      } else {
+        try {
+          await Weave.Service.clientsEngine.sendURIToClientForDisplay(url, client.id, title);
+        } catch (e) {
+          console.error("Could not send tab to device", e);
+        }
+      }
+    }
+    if (toSendMessages.length) {
+      try {
+        await fxAccounts.messages.sendTab(toSendMessages, {url, title});
+      } catch (e) {
+        console.error("Could not send tab to device", e);
+      }
+    }
   },
 
   populateSendTabToDevicesMenu(devicesPopup, url, title, createDeviceNodeFn) {
@@ -365,18 +387,23 @@ var gSync = {
     devicesPopup.appendChild(fragment);
   },
 
+  // TODO: once our transition from the old-send tab world is complete,
+  // this list should be built using the FxA device list instead of the client
+  // collection.
   _appendSendTabDeviceList(fragment, createDeviceNodeFn, url, title) {
+    const onSendAllCommand = (event) => {
+      this.sendTabToDevice(url, this.remoteClients, title);
+    };
     const onTargetDeviceCommand = (event) => {
-      let clients = event.target.getAttribute("clientId") ?
-        [event.target.getAttribute("clientId")] :
-        this.remoteClients.map(client => client.id);
-
-      clients.forEach(clientId => this.sendTabToDevice(url, clientId, title));
+      const clientId = event.target.getAttribute("clientId");
+      const client = this.remoteClients.find(c => c.id == clientId);
+      this.sendTabToDevice(url, [client], title);
     };
 
     function addTargetDevice(clientId, name, clientType, lastModified) {
       const targetDevice = createDeviceNodeFn(clientId, name, clientType, lastModified);
-      targetDevice.addEventListener("command", onTargetDeviceCommand, true);
+      targetDevice.addEventListener("command", clientId ? onTargetDeviceCommand :
+                                                          onSendAllCommand, true);
       targetDevice.classList.add("sync-menuitem", "sendtab-target");
       targetDevice.setAttribute("clientId", clientId);
       targetDevice.setAttribute("clientType", clientType);
@@ -386,9 +413,8 @@ var gSync = {
 
     const clients = this.remoteClients;
     for (let client of clients) {
-      const type = client.formfactor && client.formfactor.includes("tablet") ?
-                   "tablet" : client.type;
-      addTargetDevice(client.id, client.name, type, client.serverLastModified * 1000);
+      const type = Weave.Service.clientsEngine.getClientType(client.id);
+      addTargetDevice(client.id, client.name, type, new Date(client.serverLastModified * 1000));
     }
 
     // "Send to All Devices" menu item
@@ -591,6 +617,11 @@ var gSync = {
     }
   },
 
+  refreshSyncButtonsTooltip() {
+    const state = UIState.get();
+    this.updateSyncButtonsTooltip(state);
+  },
+
   /* Update the tooltip for the sync-status broadcaster (which will update the
      Sync Toolbar button and the Sync spinner in the FxA hamburger area.)
      If Sync is configured, the tooltip is when the last sync occurred,
@@ -628,32 +659,17 @@ var gSync = {
     }
   },
 
-  get withinLastWeekFormat() {
-    delete this.withinLastWeekFormat;
-    return this.withinLastWeekFormat = new Intl.DateTimeFormat(undefined,
-      {weekday: "long", hour: "numeric", minute: "numeric"});
-  },
-
-  get oneWeekOrOlderFormat() {
-    delete this.oneWeekOrOlderFormat;
-    return this.oneWeekOrOlderFormat = new Intl.DateTimeFormat(undefined,
-      {month: "long", day: "numeric"});
+  get relativeTimeFormat() {
+    delete this.relativeTimeFormat;
+    return this.relativeTimeFormat = new Services.intl.RelativeTimeFormat(undefined, {style: "short"});
   },
 
   formatLastSyncDate(date) {
-    let sixDaysAgo = (() => {
-      let tempDate = new Date();
-      tempDate.setDate(tempDate.getDate() - 6);
-      tempDate.setHours(0, 0, 0, 0);
-      return tempDate;
-    })();
-
-    // It may be confusing for the user to see "Last Sync: Monday" when the last
-    // sync was indeed a Monday, but 3 weeks ago.
-    let dateFormat = date < sixDaysAgo ? this.oneWeekOrOlderFormat : this.withinLastWeekFormat;
-
-    let lastSyncDateString = dateFormat.format(date);
-    return this.syncStrings.formatStringFromName("lastSync2.label", [lastSyncDateString], 1);
+    if (!date) { // Date can be null before the first sync!
+      return null;
+    }
+    const relativeDateStr = this.relativeTimeFormat.formatBestUnit(date);
+    return this.syncStrings.formatStringFromName("lastSync2.label", [relativeDateStr], 1);
   },
 
   onClientsSynced() {
@@ -674,7 +690,7 @@ var gSync = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIObserver,
     Ci.nsISupportsWeakReference
   ])

@@ -9,6 +9,7 @@
 
 #include "vm/Stack.h"
 
+#include "mozilla/Maybe.h"
 #include "mozilla/PodOperations.h"
 
 #include "jit/BaselineFrame.h"
@@ -973,7 +974,7 @@ InterpreterActivation::resumeGeneratorFrame(HandleFunction callee, HandleValue n
     return true;
 }
 
-/* static */ inline Maybe<LiveSavedFrameCache::FramePtr>
+/* static */ inline mozilla::Maybe<LiveSavedFrameCache::FramePtr>
 LiveSavedFrameCache::FramePtr::create(const FrameIter& iter)
 {
     if (iter.done())
@@ -1034,6 +1035,16 @@ struct LiveSavedFrameCache::FramePtr::SetHasCachedMatcher {
 inline void
 LiveSavedFrameCache::FramePtr::setHasCachedSavedFrame() {
     ptr.match(SetHasCachedMatcher());
+}
+
+struct LiveSavedFrameCache::FramePtr::ClearHasCachedMatcher {
+    template<typename Frame>
+    void match(Frame* f) { f->clearHasCachedSavedFrame(); }
+};
+
+inline void
+LiveSavedFrameCache::FramePtr::clearHasCachedSavedFrame() {
+    ptr.match(ClearHasCachedMatcher());
 }
 
 } /* namespace js */

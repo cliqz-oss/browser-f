@@ -20,6 +20,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/layers/CompositorOptions.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
 #include "mozilla/widget/WinCompositorWidget.h"
 
@@ -82,14 +83,15 @@ WGLLibrary::EnsureInitialized()
 
     mozilla::ScopedGfxFeatureReporter reporter("WGL");
 
-    std::string libGLFilename = "Opengl32.dll";
+    std::wstring libGLFilename = L"Opengl32.dll";
     // SU_SPIES_DIRECTORY is for AMD CodeXL/gDEBugger
-    if (PR_GetEnv("SU_SPIES_DIRECTORY")) {
-        libGLFilename = std::string(PR_GetEnv("SU_SPIES_DIRECTORY")) + "\\opengl32.dll";
+    if (_wgetenv(L"SU_SPIES_DIRECTORY")) {
+        libGLFilename = std::wstring(_wgetenv(L"SU_SPIES_DIRECTORY")) +
+                        L"\\opengl32.dll";
     }
 
     if (!mOGLLibrary) {
-        mOGLLibrary = PR_LoadLibrary(libGLFilename.c_str());
+        mOGLLibrary = LoadLibraryWithFlags(libGLFilename.c_str());
         if (!mOGLLibrary) {
             NS_WARNING("Couldn't load OpenGL library.");
             return false;
@@ -433,7 +435,22 @@ CreateForWidget(const HWND window, const bool isWebRender, const bool requireAcc
             LOCAL_WGL_ACCELERATION_ARB, LOCAL_WGL_FULL_ACCELERATION_ARB,
             0
         };
-        if (!wgl.mSymbols.fChoosePixelFormat(wgl.RootDc(), kAttribs, nullptr, 1,
+        const int kAttribsForWebRender[] = {
+            LOCAL_WGL_DRAW_TO_WINDOW_ARB, true,
+            LOCAL_WGL_SUPPORT_OPENGL_ARB, true,
+            LOCAL_WGL_DOUBLE_BUFFER_ARB, true,
+            LOCAL_WGL_DEPTH_BITS_ARB, 24,
+            LOCAL_WGL_ACCELERATION_ARB, LOCAL_WGL_FULL_ACCELERATION_ARB,
+            0
+        };
+        const int* attribs;
+        if (wr::RenderThread::IsInRenderThread()) {
+            attribs = kAttribsForWebRender;
+        } else {
+            attribs = kAttribs;
+        }
+
+        if (!wgl.mSymbols.fChoosePixelFormat(wgl.RootDc(), attribs, nullptr, 1,
                                              &chosenFormat, &foundFormats))
         {
             foundFormats = 0;
@@ -449,7 +466,22 @@ CreateForWidget(const HWND window, const bool isWebRender, const bool requireAcc
             LOCAL_WGL_DOUBLE_BUFFER_ARB, true,
             0
         };
-        if (!wgl.mSymbols.fChoosePixelFormat(wgl.RootDc(), kAttribs, nullptr, 1,
+        const int kAttribsForWebRender[] = {
+            LOCAL_WGL_DRAW_TO_WINDOW_ARB, true,
+            LOCAL_WGL_SUPPORT_OPENGL_ARB, true,
+            LOCAL_WGL_DOUBLE_BUFFER_ARB, true,
+            LOCAL_WGL_DEPTH_BITS_ARB, 24,
+            0
+        };
+
+        const int* attribs;
+        if (wr::RenderThread::IsInRenderThread()) {
+            attribs = kAttribsForWebRender;
+        } else {
+            attribs = kAttribs;
+        }
+
+        if (!wgl.mSymbols.fChoosePixelFormat(wgl.RootDc(), attribs, nullptr, 1,
                                              &chosenFormat, &foundFormats))
         {
             foundFormats = 0;

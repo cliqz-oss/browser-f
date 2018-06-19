@@ -12,7 +12,6 @@
 
 #include "nsHTMLContentSerializer.h"
 
-#include "nsIDOMElement.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsElementTable.h"
@@ -328,7 +327,7 @@ nsHTMLContentSerializer::AppendElementEnd(Element* aElement, nsAString& aStr)
     /* Though at this point we must always have an state to be deleted as all
     the OL opening tags are supposed to push an olState object to the stack*/
     if (!mOLStateStack.IsEmpty()) {
-      mOLStateStack.RemoveElementAt(mOLStateStack.Length() -1);
+      mOLStateStack.RemoveLastElement();
     }
   }
 

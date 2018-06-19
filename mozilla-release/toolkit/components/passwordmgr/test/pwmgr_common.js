@@ -161,7 +161,7 @@ function registerRunTests() {
       form.appendChild(password);
 
       var observer = SpecialPowers.wrapCallback(function(subject, topic, data) {
-        var formLikeRoot = subject.QueryInterface(SpecialPowers.Ci.nsIDOMNode);
+        var formLikeRoot = subject;
         if (formLikeRoot.id !== "observerforcer")
           return;
         SpecialPowers.removeObserver(observer, "passwordmgr-processed-form");
@@ -412,8 +412,7 @@ if (this.addMessageListener) {
     return rv;
   });
 
-  var globalMM = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
-  globalMM.addMessageListener("RemoteLogins:onFormSubmit", function onFormSubmit(message) {
+  Services.mm.addMessageListener("RemoteLogins:onFormSubmit", function onFormSubmit(message) {
     sendAsyncMessage("formSubmissionProcessed", message.data, message.objects);
   });
 } else {

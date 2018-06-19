@@ -10,7 +10,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 use ws;
 use base64::encode;
-use image;
+use image_loader;
 
 // Messages that are sent from the render backend to the renderer
 // debug command queue. These are sent in a separate queue so
@@ -63,7 +63,7 @@ impl ws::Handler for Server {
                     "fetch_clip_scroll_tree" => DebugCommand::FetchClipScrollTree,
                     "fetch_render_tasks" => DebugCommand::FetchRenderTasks,
                     msg => {
-                        println!("unknown msg {}", msg);
+                        error!("unknown msg {}", msg);
                         return Ok(());
                     }
                 };
@@ -105,9 +105,9 @@ impl DebugServer {
 
         let join_handle = Some(thread::spawn(move || {
             let address = "127.0.0.1:3583";
-            println!("WebRender debug server started: {}", address);
+            debug!("WebRender debug server started: {}", address);
             if let Err(..) = socket.listen(address) {
-                println!("ERROR: Unable to bind debugger websocket (port may be in use).");
+                error!("ERROR: Unable to bind debugger websocket (port may be in use).");
             }
         }));
 
@@ -279,8 +279,8 @@ impl Screenshot {
     pub fn new(width: u32, height: u32, data: Vec<u8>) -> Self {
         let mut output = Vec::with_capacity((width * height) as usize);
         {
-            let encoder = image::png::PNGEncoder::new(&mut output);
-            encoder.encode(&data, width, height, image::ColorType::RGBA(8)).unwrap();
+            let encoder = image_loader::png::PNGEncoder::new(&mut output);
+            encoder.encode(&data, width, height, image_loader::ColorType::RGBA(8)).unwrap();
         }
 
         let data = encode(&output);

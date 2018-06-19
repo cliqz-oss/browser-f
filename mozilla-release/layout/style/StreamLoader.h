@@ -7,6 +7,7 @@
 #ifndef mozilla_css_StreamLoader_h
 #define mozilla_css_StreamLoader_h
 
+#include "nsIStreamListener.h"
 #include "nsString.h"
 #include "mozilla/css/SheetLoadData.h"
 
@@ -37,9 +38,17 @@ private:
                                   uint32_t,
                                   uint32_t*);
 
+  void HandleBOM();
+
   RefPtr<mozilla::css::SheetLoadData> mSheetLoadData;
-  nsCString mBytes;
   nsresult mStatus;
+  Maybe<const Encoding*> mEncodingFromBOM;
+
+  // We store the initial three bytes of the stream into mBOMBytes, and then
+  // use that buffer to detect a BOM. We then shift any non-BOM bytes into
+  // mBytes, and store all subsequent data in that buffer.
+  nsCString mBytes;
+  nsAutoCStringN<3> mBOMBytes;
 };
 
 } // namespace css

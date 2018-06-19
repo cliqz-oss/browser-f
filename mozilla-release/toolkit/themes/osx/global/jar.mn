@@ -5,7 +5,6 @@
 #include ../../shared/jar.inc.mn
 
 toolkit.jar:
-  skin/classic/global/10pct_transparent_grey.png
   skin/classic/global/autocomplete.css
   skin/classic/global/button.css
   skin/classic/global/checkbox.css
@@ -13,7 +12,6 @@ toolkit.jar:
   skin/classic/global/commonDialog.css
   skin/classic/global/dialog.css
   skin/classic/global/dropmarker.css
-  skin/classic/global/filefield.css
 * skin/classic/global/findBar.css
 * skin/classic/global/global.css
   skin/classic/global/groupbox.css
@@ -26,7 +24,6 @@ toolkit.jar:
   skin/classic/global/popup.css
   skin/classic/global/progressmeter.css
   skin/classic/global/radio.css
-  skin/classic/global/resizer.css
   skin/classic/global/richlistbox.css
   skin/classic/global/scrollbars.css                                 (nativescrollbars.css)
   skin/classic/global/scrollbox.css
@@ -48,7 +45,6 @@ toolkit.jar:
   skin/classic/global/arrow/arrow-lft-sharp.gif                      (arrow/arrow-lft-sharp.gif)
   skin/classic/global/arrow/arrow-rit-dis.gif                        (arrow/arrow-rit-dis.gif)
   skin/classic/global/arrow/arrow-rit-sharp.gif                      (arrow/arrow-rit-sharp.gif)
-  skin/classic/global/arrow/arrow-rit.gif                            (arrow/arrow-rit.gif)
   skin/classic/global/arrow/arrow-up-dis.gif                         (arrow/arrow-up-dis.gif)
   skin/classic/global/arrow/arrow-up-sharp.gif                       (arrow/arrow-up-sharp.gif)
   skin/classic/global/arrow/arrow-up.gif                             (arrow/arrow-up.gif)
@@ -63,15 +59,9 @@ toolkit.jar:
   skin/classic/global/icons/blacklist_64.png                         (icons/blacklist_64.png)
   skin/classic/global/icons/glyph-dropdown.png                       (icons/glyph-dropdown.png)
   skin/classic/global/icons/glyph-dropdown@2x.png                    (icons/glyph-dropdown@2x.png)
-  skin/classic/global/icons/notfound.png                             (icons/notfound.png)
   skin/classic/global/icons/panel-dropmarker.png                     (icons/panel-dropmarker.png)
-  skin/classic/global/icons/resizer.png                              (icons/resizer.png)
-  skin/classic/global/icons/resizer@2x.png                           (icons/resizer@2x.png)
-  skin/classic/global/icons/resizer-rtl.png                          (icons/resizer-rtl.png)
-  skin/classic/global/icons/resizer-rtl@2x.png                       (icons/resizer-rtl@2x.png)
   skin/classic/global/icons/search-textbox.svg                       (icons/search-textbox.svg)
   skin/classic/global/icons/searchfield-cancel.svg                   (icons/searchfield-cancel.svg)
-  skin/classic/global/icons/tabprompts-bgtexture.png                 (icons/tabprompts-bgtexture.png)
   skin/classic/global/icons/warning-16.png                           (icons/warning-16.png)
   skin/classic/global/icons/warning-64.png                           (icons/warning-64.png)
   skin/classic/global/icons/warning-large.png                        (icons/warning-large.png)
@@ -83,20 +73,7 @@ toolkit.jar:
   skin/classic/global/icons/sslWarning.png                           (icons/sslWarning.png)
 * skin/classic/global/in-content/common.css                          (in-content/common.css)
 * skin/classic/global/in-content/info-pages.css                      (in-content/info-pages.css)
-  skin/classic/global/splitter/dimple.png                            (splitter/dimple.png)
-  skin/classic/global/splitter/grip-bottom.gif                       (splitter/grip-bottom.gif)
-  skin/classic/global/splitter/grip-top.gif                          (splitter/grip-top.gif)
-  skin/classic/global/splitter/grip-left.gif                         (splitter/grip-left.gif)
-  skin/classic/global/splitter/grip-right.gif                        (splitter/grip-right.gif)
-  skin/classic/global/toolbar/spring.png                             (toolbar/spring.png)
-  skin/classic/global/toolbar/toolbar-separator.png                  (toolbar/toolbar-separator.png)
   skin/classic/global/tree/arrow-disclosure.svg                      (tree/arrow-disclosure.svg)
   skin/classic/global/tree/columnpicker.gif                          (tree/columnpicker.gif)
   skin/classic/global/tree/folder.png                                (tree/folder.png)
   skin/classic/global/tree/folder@2x.png                             (tree/folder@2x.png)
-
-#if MOZ_BUILD_APP == browser
-[browser/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}] chrome.jar:
-#elif MOZ_SEPARATE_MANIFEST_FOR_THEME_OVERRIDES
-[extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}] chrome.jar:
-#endif

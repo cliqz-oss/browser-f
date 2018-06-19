@@ -13,16 +13,9 @@
 #include "gfxFontFeatures.h"
 #include "nsAnimationManager.h"
 #include "nsAttrValueInlines.h"
-#include "nsCSSCounterStyleRule.h"
-#include "nsCSSFontFaceRule.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCSSProps.h"
-#include "nsCSSParser.h"
 #include "nsCSSPseudoElements.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsCSSRuleProcessor.h"
-#include "nsCSSRules.h"
-#endif
 #include "nsContentUtils.h"
 #include "nsDOMTokenList.h"
 #include "nsDeviceContext.h"
@@ -33,6 +26,7 @@
 #include "nsILoadContext.h"
 #include "nsIFrame.h"
 #include "nsIMemoryReporter.h"
+#include "nsIMozBrowserFrame.h"
 #include "nsINode.h"
 #include "nsIPresShell.h"
 #include "nsIPresShellInlines.h"
@@ -44,36 +38,37 @@
 #include "nsMediaFeatures.h"
 #include "nsNameSpaceManager.h"
 #include "nsNetUtil.h"
+#include "nsProxyRelease.h"
 #include "nsString.h"
 #include "nsStyleStruct.h"
 #include "nsStyleUtil.h"
 #include "nsSVGElement.h"
 #include "nsTArray.h"
 #include "nsTransitionManager.h"
+#include "nsWindowSizes.h"
 
 #include "mozilla/CORSMode.h"
 #include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/EventStates.h"
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/GeckoStyleContext.h"
-#endif
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/Keyframe.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoElementSnapshot.h"
-#include "mozilla/ServoRestyleManager.h"
+#include "mozilla/RestyleManager.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/SystemGroup.h"
-#include "mozilla/ServoMediaList.h"
+#include "mozilla/ServoTraversalStatistics.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/RWLock.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "mozilla/dom/HTMLTableCellElement.h"
 #include "mozilla/dom/HTMLBodyElement.h"
+#include "mozilla/dom/MediaList.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/URLExtraData.h"
 #include "mozilla/dom/CSSMozDocumentRule.h"
@@ -94,8 +89,12 @@ using namespace mozilla::dom;
     return result.forget();          \
   }
 #include "mozilla/ServoArcTypeList.h"
-SERVO_ARC_TYPE(StyleContext, ServoStyleContext)
+SERVO_ARC_TYPE(ComputedStyle, ComputedStyle)
 #undef SERVO_ARC_TYPE
+
+// Definitions of the global traversal stats.
+bool ServoTraversalStatistics::sActive = false;
+ServoTraversalStatistics ServoTraversalStatistics::sSingleton;
 
 static RWLock* sServoFFILock = nullptr;
 
@@ -185,16 +184,16 @@ Gecko_DestroyAnonymousContentList(nsTArray<nsIContent*>* aAnonContent)
 }
 
 void
-Gecko_ServoStyleContext_Init(
-    ServoStyleContext* aContext,
-    const ServoStyleContext* aParentContext,
+Gecko_ComputedStyle_Init(
+    mozilla::ComputedStyle* aStyle,
+    const mozilla::ComputedStyle* aParentContext,
     RawGeckoPresContextBorrowed aPresContext,
     const ServoComputedData* aValues,
     mozilla::CSSPseudoElementType aPseudoType,
     nsAtom* aPseudoTag)
 {
   auto* presContext = const_cast<nsPresContext*>(aPresContext);
-  new (KnownNotNull, aContext) ServoStyleContext(
+  new (KnownNotNull, aStyle) mozilla::ComputedStyle(
       presContext, aPseudoTag, aPseudoType,
       ServoComputedDataForgotten(aValues));
 }
@@ -203,13 +202,6 @@ ServoComputedData::ServoComputedData(
     const ServoComputedDataForgotten aValue)
 {
   PodAssign(this, aValue.mPtr);
-}
-
-const nsStyleVariables*
-ServoComputedData::GetStyleVariables() const
-{
-  MOZ_CRASH("ServoComputedData::GetStyleVariables should never need to be "
-            "called");
 }
 
 MOZ_DEFINE_MALLOC_ENCLOSING_SIZE_OF(ServoStyleStructsMallocEnclosingSizeOf)
@@ -222,18 +214,16 @@ ServoComputedData::AddSizeOfExcludingThis(nsWindowSizes& aSizes) const
   // to measure it with a function that can handle an interior pointer. We use
   // ServoStyleStructsEnclosingMallocSizeOf to clearly identify in DMD's
   // output the memory measured here.
-#define STYLE_STRUCT(name_, cb_) \
+#define STYLE_STRUCT(name_) \
   static_assert(alignof(nsStyle##name_) <= sizeof(size_t), \
                 "alignment will break AddSizeOfExcludingThis()"); \
   const void* p##name_ = GetStyle##name_(); \
   if (!aSizes.mState.HaveSeenPtr(p##name_)) { \
-    aSizes.mServoStyleSizes.NS_STYLE_SIZES_FIELD(name_) += \
+    aSizes.mStyleSizes.NS_STYLE_SIZES_FIELD(name_) += \
       ServoStyleStructsMallocEnclosingSizeOf(p##name_); \
   }
-  #define STYLE_STRUCT_LIST_IGNORE_VARIABLES
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
-#undef STYLE_STRUCT_LIST_IGNORE_VARIABLES
 
   if (visited_style.mPtr && !aSizes.mState.HaveSeenPtr(visited_style.mPtr)) {
     visited_style.mPtr->AddSizeOfIncludingThis(
@@ -249,9 +239,9 @@ ServoComputedData::AddSizeOfExcludingThis(nsWindowSizes& aSizes) const
 }
 
 void
-Gecko_ServoStyleContext_Destroy(ServoStyleContext* aContext)
+Gecko_ComputedStyle_Destroy(mozilla::ComputedStyle* aStyle)
 {
-  aContext->~ServoStyleContext();
+  aStyle->~ComputedStyle();
 }
 
 void
@@ -300,13 +290,6 @@ bool
 Gecko_IsRootElement(RawGeckoElementBorrowed aElement)
 {
   return aElement->OwnerDoc()->GetRootElement() == aElement;
-}
-
-bool
-Gecko_MatchesElement(CSSPseudoClassType aType,
-                     RawGeckoElementBorrowed aElement)
-{
-  return nsCSSPseudoClasses::MatchesElement(aType, aElement).value();
 }
 
 // Dirtiness tracking.
@@ -358,24 +341,21 @@ Gecko_GetImplementedPseudo(RawGeckoElementBorrowed aElement)
 }
 
 uint32_t
-Gecko_CalcStyleDifference(ServoStyleContextBorrowed aOldStyle,
-                          ServoStyleContextBorrowed aNewStyle,
-                          bool* aAnyStyleChanged,
+Gecko_CalcStyleDifference(ComputedStyleBorrowed aOldStyle,
+                          ComputedStyleBorrowed aNewStyle,
+                          bool* aAnyStyleStructChanged,
                           bool* aOnlyResetStructsChanged)
 {
   MOZ_ASSERT(aOldStyle);
   MOZ_ASSERT(aNewStyle);
 
   uint32_t equalStructs;
-  uint32_t samePointerStructs;  // unused
-  nsChangeHint result = const_cast<ServoStyleContext*>(aOldStyle)->
+  nsChangeHint result = const_cast<mozilla::ComputedStyle*>(aOldStyle)->
     CalcStyleDifference(
-      const_cast<ServoStyleContext*>(aNewStyle),
-      &equalStructs,
-      &samePointerStructs,
-      /* aIgnoreVariables = */ true);
+      const_cast<mozilla::ComputedStyle*>(aNewStyle),
+      &equalStructs);
 
-  *aAnyStyleChanged = equalStructs != NS_STYLE_INHERIT_MASK;
+  *aAnyStyleStructChanged = equalStructs != NS_STYLE_INHERIT_MASK;
 
   const uint32_t kInheritStructsMask =
     NS_STYLE_INHERIT_MASK & ~NS_STYLE_RESET_STRUCT_MASK;
@@ -415,12 +395,6 @@ Gecko_GetStyleAttrDeclarationBlock(RawGeckoElementBorrowed aElement)
   if (!decl) {
     return nullptr;
   }
-  if (decl->IsGecko()) {
-    // XXX This can happen when nodes are adopted from a Gecko-style-backend
-    //     document into a Servo-style-backend document.  See bug 1330051.
-    NS_WARNING("stylo: requesting a Gecko declaration block?");
-    return nullptr;
-  }
   return decl->AsServo()->RefRawStrong();
 }
 
@@ -429,12 +403,6 @@ Gecko_UnsetDirtyStyleAttr(RawGeckoElementBorrowed aElement)
 {
   DeclarationBlock* decl = aElement->GetInlineStyleDeclaration();
   if (!decl) {
-    return;
-  }
-  if (decl->IsGecko()) {
-    // XXX This can happen when nodes are adopted from a Gecko-style-backend
-    //     document into a Servo-style-backend document.  See bug 1330051.
-    NS_WARNING("stylo: requesting a Gecko declaration block?");
     return;
   }
   decl->UnsetDirty();
@@ -454,7 +422,7 @@ Gecko_GetHTMLPresentationAttrDeclarationBlock(RawGeckoElementBorrowed aElement)
 {
   const nsMappedAttributes* attrs = aElement->GetMappedAttributes();
   if (!attrs) {
-    auto* svg = nsSVGElement::FromContentOrNull(aElement);
+    auto* svg = nsSVGElement::FromNodeOrNull(aElement);
     if (svg) {
       if (auto decl = svg->GetContentDeclarationBlock()) {
         return decl->AsServo()->RefRawStrong();
@@ -490,9 +458,9 @@ Gecko_GetUnvisitedLinkAttrDeclarationBlock(RawGeckoElementBorrowed aElement)
   return AsRefRawStrong(sheet->GetServoUnvisitedLinkDecl());
 }
 
-ServoStyleSheet* Gecko_StyleSheet_Clone(
-    const ServoStyleSheet* aSheet,
-    const ServoStyleSheet* aNewParentSheet)
+StyleSheet* Gecko_StyleSheet_Clone(
+    const StyleSheet* aSheet,
+    const StyleSheet* aNewParentSheet)
 {
   MOZ_ASSERT(aSheet);
   MOZ_ASSERT(aSheet->GetParentSheet(), "Should only be used for @import");
@@ -507,21 +475,21 @@ ServoStyleSheet* Gecko_StyleSheet_Clone(
   //
   // So we _don't_ update neither the parent pointer of the stylesheet, nor the
   // child list (yet). This is fixed up in that same constructor.
-  return static_cast<ServoStyleSheet*>(newSheet.forget().take());
+  return static_cast<StyleSheet*>(newSheet.forget().take());
 }
 
 void
-Gecko_StyleSheet_AddRef(const ServoStyleSheet* aSheet)
+Gecko_StyleSheet_AddRef(const StyleSheet* aSheet)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  const_cast<ServoStyleSheet*>(aSheet)->AddRef();
+  const_cast<StyleSheet*>(aSheet)->AddRef();
 }
 
 void
-Gecko_StyleSheet_Release(const ServoStyleSheet* aSheet)
+Gecko_StyleSheet_Release(const StyleSheet* aSheet)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  const_cast<ServoStyleSheet*>(aSheet)->Release();
+  const_cast<StyleSheet*>(aSheet)->Release();
 }
 
 RawServoDeclarationBlockStrongBorrowedOrNull
@@ -618,8 +586,8 @@ Gecko_SetAnimationName(StyleAnimation* aStyleAnimation,
 
 void
 Gecko_UpdateAnimations(RawGeckoElementBorrowed aElement,
-                       ServoStyleContextBorrowedOrNull aOldComputedData,
-                       ServoStyleContextBorrowedOrNull aComputedData,
+                       ComputedStyleBorrowedOrNull aOldComputedData,
+                       ComputedStyleBorrowedOrNull aComputedData,
                        UpdateAnimationsTasks aTasks)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -659,8 +627,8 @@ Gecko_UpdateAnimations(RawGeckoElementBorrowed aElement,
     MOZ_ASSERT(aOldComputedData);
     presContext->TransitionManager()->
       UpdateTransitions(const_cast<dom::Element*>(aElement), pseudoType,
-                        aOldComputedData,
-                        aComputedData);
+                        *aOldComputedData,
+                        *aComputedData);
   }
 
   if (aTasks & UpdateAnimationsTasks::EffectProperties) {
@@ -680,11 +648,9 @@ Gecko_UpdateAnimations(RawGeckoElementBorrowed aElement,
       // it since we avoid mutating state as part of the Servo parallel
       // traversal.
       presContext->EffectCompositor()
-                 ->UpdateCascadeResults(StyleBackendType::Servo,
-                                        *effectSet,
+                 ->UpdateCascadeResults(*effectSet,
                                         const_cast<Element*>(aElement),
-                                        pseudoType,
-                                        nullptr);
+                                        pseudoType);
     }
   }
 
@@ -855,11 +821,38 @@ Gecko_MatchLang(RawGeckoElementBorrowed aElement,
 {
   MOZ_ASSERT(!(aOverrideLang && !aHasOverrideLang),
              "aHasOverrideLang should only be set when aOverrideLang is null");
+  MOZ_ASSERT(aValue, "null lang parameter");
+  if (!aValue || !*aValue) {
+    return false;
+  }
 
-  return nsCSSPseudoClasses::LangPseudoMatches(
-      aElement,
-      aHasOverrideLang ? aOverrideLang : nullptr,
-      aHasOverrideLang, aValue, aElement->OwnerDoc());
+  // We have to determine the language of the current element.  Since
+  // this is currently no property and since the language is inherited
+  // from the parent we have to be prepared to look at all parent
+  // nodes.  The language itself is encoded in the LANG attribute.
+  if (auto* language = aHasOverrideLang ? aOverrideLang : aElement->GetLang()) {
+    return nsStyleUtil::DashMatchCompare(nsDependentAtomString(language),
+                                         nsDependentString(aValue),
+                                         nsASCIICaseInsensitiveStringComparator());
+  }
+
+  // Try to get the language from the HTTP header or if this
+  // is missing as well from the preferences.
+  // The content language can be a comma-separated list of
+  // language codes.
+  nsAutoString language;
+  aElement->OwnerDoc()->GetContentLanguage(language);
+
+  nsDependentString langString(aValue);
+  language.StripWhitespace();
+  for (auto const& lang : language.Split(char16_t(','))) {
+    if (nsStyleUtil::DashMatchCompare(lang,
+                                      langString,
+                                      nsASCIICaseInsensitiveStringComparator())) {
+      return true;
+    }
+  }
+  return false;
 }
 
 nsAtom*
@@ -882,6 +875,25 @@ nsIDocument::DocumentTheme
 Gecko_GetDocumentLWTheme(const nsIDocument* aDocument)
 {
   return aDocument->ThreadSafeGetDocumentLWTheme();
+}
+
+bool
+Gecko_IsTableBorderNonzero(RawGeckoElementBorrowed aElement)
+{
+  if (!aElement->IsHTMLElement(nsGkAtoms::table)) {
+    return false;
+  }
+  const nsAttrValue *val = aElement->GetParsedAttr(nsGkAtoms::border);
+  return val && (val->Type() != nsAttrValue::eInteger ||
+                 val->GetIntegerValue() != 0);
+}
+
+bool
+Gecko_IsBrowserFrame(RawGeckoElementBorrowed aElement)
+{
+  nsIMozBrowserFrame* browserFrame =
+    const_cast<Element*>(aElement)->GetAsMozBrowserFrame();
+  return browserFrame && browserFrame->GetReallyIsBrowser();
 }
 
 template <typename Implementor>
@@ -1314,6 +1326,68 @@ Gecko_nsFont_SetFontFeatureValuesLookup(nsFont* aFont,
                                         const RawGeckoPresContext* aPresContext)
 {
   aFont->featureValueLookup = aPresContext->GetFontFeatureValuesLookup();
+}
+
+float
+Gecko_FontStretch_ToFloat(mozilla::FontStretch aStretch)
+{
+  // Servo represents percentages with 1. being 100%.
+  return aStretch.Percentage() / 100.0f;
+}
+
+void
+Gecko_FontStretch_SetFloat(mozilla::FontStretch* aStretch, float aFloat)
+{
+  // Servo represents percentages with 1. being 100%.
+  //
+  // Also, the font code assumes a given maximum that style doesn't really need
+  // to know about. So clamp here at the boundary.
+  *aStretch = FontStretch(std::min(aFloat * 100.0f, float(FontStretch::kMax)));
+}
+
+void
+Gecko_FontSlantStyle_SetNormal(mozilla::FontSlantStyle* aStyle)
+{
+  *aStyle = mozilla::FontSlantStyle::Normal();
+}
+
+void
+Gecko_FontSlantStyle_SetItalic(mozilla::FontSlantStyle* aStyle)
+{
+  *aStyle = mozilla::FontSlantStyle::Italic();
+}
+
+void
+Gecko_FontSlantStyle_SetOblique(mozilla::FontSlantStyle* aStyle,
+                                float aAngleInDegrees)
+{
+  *aStyle = mozilla::FontSlantStyle::Oblique(aAngleInDegrees);
+}
+
+void
+Gecko_FontSlantStyle_Get(mozilla::FontSlantStyle aStyle,
+                         bool* aNormal,
+                         bool* aItalic,
+                         float* aObliqueAngle)
+{
+  *aNormal = aStyle.IsNormal();
+  *aItalic = aStyle.IsItalic();
+  if (aStyle.IsOblique()) {
+    *aObliqueAngle = aStyle.ObliqueAngle();
+  }
+}
+
+float
+Gecko_FontWeight_ToFloat(mozilla::FontWeight aWeight)
+{
+  return aWeight.ToFloat();
+}
+
+void
+Gecko_FontWeight_SetFloat(mozilla::FontWeight* aWeight,
+                          float aFloat)
+{
+  *aWeight = mozilla::FontWeight(aFloat);
 }
 
 void
@@ -2296,6 +2370,29 @@ Gecko_CSSValue_Drop(nsCSSValueBorrowedMut aCSSValue)
 }
 
 void
+Gecko_CSSValue_SetFontStretch(nsCSSValueBorrowedMut aCSSValue,
+                              float stretch)
+{
+  aCSSValue->SetFontStretch(
+    FontStretch(std::min(stretch * 100.0f, float(FontStretch::kMax))));
+}
+
+// FIXME(emilio): This function should probably have `Oblique` in its name.
+void
+Gecko_CSSValue_SetFontSlantStyle(nsCSSValueBorrowedMut aCSSValue,
+                                 float aAngle)
+{
+  aCSSValue->SetFontSlantStyle(mozilla::FontSlantStyle::Oblique(aAngle));
+}
+
+void
+Gecko_CSSValue_SetFontWeight(nsCSSValueBorrowedMut aCSSValue,
+                             float weight)
+{
+  aCSSValue->SetFontWeight(mozilla::FontWeight(weight));
+}
+
+void
 Gecko_nsStyleFont_SetLang(nsStyleFont* aFont, nsAtom* aAtom)
 {
   already_AddRefed<nsAtom> atom = already_AddRefed<nsAtom>(aAtom);
@@ -2481,32 +2578,42 @@ Gecko_GetAppUnitsPerPhysicalInch(RawGeckoPresContextBorrowed aPresContext)
   return presContext->DeviceContext()->AppUnitsPerPhysicalInch();
 }
 
-ServoStyleSheet*
-Gecko_LoadStyleSheet(css::Loader* aLoader,
-                     ServoStyleSheet* aParent,
-                     SheetLoadData* aParentLoadData,
-                     css::LoaderReusableStyleSheets* aReusableSheets,
-                     RawGeckoURLExtraData* aURLExtraData,
-                     const uint8_t* aURLString,
-                     uint32_t aURLStringLength,
-                     RawServoMediaListStrong aMediaList)
+NS_IMPL_THREADSAFE_FFI_REFCOUNTING(SheetLoadDataHolder, SheetLoadDataHolder);
+
+void
+Gecko_StyleSheet_FinishAsyncParse(SheetLoadDataHolder* aData,
+                                  RawServoStyleSheetContentsStrong aSheetContents)
+{
+  RefPtr<SheetLoadDataHolder> loadData = aData;
+  RefPtr<RawServoStyleSheetContents> sheetContents = aSheetContents.Consume();
+  NS_DispatchToMainThread(NS_NewRunnableFunction(__func__,
+                                                 [d = Move(loadData),
+                                                  s = Move(sheetContents)]() mutable {
+    MOZ_ASSERT(NS_IsMainThread());
+    d->get()->mSheet->FinishAsyncParse(s.forget());
+  }));
+}
+
+static already_AddRefed<StyleSheet>
+LoadImportSheet(css::Loader* aLoader,
+                StyleSheet* aParent,
+                SheetLoadData* aParentLoadData,
+                css::LoaderReusableStyleSheets* aReusableSheets,
+                css::URLValue* aURL,
+                already_AddRefed<RawServoMediaList> aMediaList)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aLoader, "Should've catched this before");
   MOZ_ASSERT(aParent, "Only used for @import, so parent should exist!");
-  MOZ_ASSERT(aURLString, "Invalid URLs shouldn't be loaded!");
-  MOZ_ASSERT(aURLExtraData, "Need URL extra data");
+  MOZ_ASSERT(aURL, "Invalid URLs shouldn't be loaded!");
 
-  RefPtr<dom::MediaList> media = new ServoMediaList(aMediaList.Consume());
-  nsDependentCSubstring urlSpec(reinterpret_cast<const char*>(aURLString),
-                                aURLStringLength);
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = NS_NewURI(getter_AddRefs(uri), urlSpec, nullptr,
-                          aURLExtraData->BaseURI());
+  RefPtr<dom::MediaList> media = new MediaList(Move(aMediaList));
+  nsCOMPtr<nsIURI> uri = aURL->GetURI();
+  nsresult rv = uri ? NS_OK : NS_ERROR_FAILURE;
 
   StyleSheet* previousFirstChild = aParent->GetFirstChild();
   if (NS_SUCCEEDED(rv)) {
-    rv = aLoader->LoadChildSheet(aParent, aParentLoadData, uri, media, nullptr, aReusableSheets);
+    rv = aLoader->LoadChildSheet(aParent, aParentLoadData, uri, media, aReusableSheets);
   }
 
   if (NS_FAILED(rv) ||
@@ -2518,7 +2625,7 @@ Gecko_LoadStyleSheet(css::Loader* aLoader,
     // sheet object per spec, even if its empty.  DevTools uses the URI to
     // realize it has hit an import cycle, so we mark it complete to make the
     // sheet readable from JS.
-    RefPtr<ServoStyleSheet> emptySheet =
+    RefPtr<StyleSheet> emptySheet =
       aParent->CreateEmptyChildSheet(media.forget());
     // Make a dummy URI if we don't have one because some methods assume
     // non-null URIs.
@@ -2526,22 +2633,57 @@ Gecko_LoadStyleSheet(css::Loader* aLoader,
       NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("about:invalid"));
     }
     emptySheet->SetURIs(uri, uri, uri);
-    emptySheet->SetPrincipal(aURLExtraData->GetPrincipal());
+    emptySheet->SetPrincipal(aURL->mExtraData->GetPrincipal());
     emptySheet->SetComplete();
     aParent->PrependStyleSheet(emptySheet);
-    return emptySheet.forget().take();
+    return emptySheet.forget();
   }
 
-  RefPtr<ServoStyleSheet> sheet =
-    static_cast<ServoStyleSheet*>(aParent->GetFirstChild());
-  return sheet.forget().take();
+  RefPtr<StyleSheet> sheet =
+    static_cast<StyleSheet*>(aParent->GetFirstChild());
+  return sheet.forget();
+}
+
+StyleSheet*
+Gecko_LoadStyleSheet(css::Loader* aLoader,
+                     StyleSheet* aParent,
+                     SheetLoadData* aParentLoadData,
+                     css::LoaderReusableStyleSheets* aReusableSheets,
+                     ServoBundledURI aServoURL,
+                     RawServoMediaListStrong aMediaList)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<css::URLValue> url = aServoURL.IntoCssUrl();
+  return LoadImportSheet(aLoader, aParent, aParentLoadData, aReusableSheets,
+                         url, aMediaList.Consume()).take();
+}
+
+void
+Gecko_LoadStyleSheetAsync(css::SheetLoadDataHolder* aParentData,
+                          ServoBundledURI aServoURL,
+                          RawServoMediaListStrong aMediaList,
+                          RawServoImportRuleStrong aImportRule)
+{
+  RefPtr<SheetLoadDataHolder> loadData = aParentData;
+  RefPtr<css::URLValue> urlVal = aServoURL.IntoCssUrl();
+  RefPtr<RawServoMediaList> mediaList = aMediaList.Consume();
+  RefPtr<RawServoImportRule> importRule = aImportRule.Consume();
+  NS_DispatchToMainThread(NS_NewRunnableFunction(__func__,
+                                                 [data = Move(loadData),
+                                                  url = Move(urlVal),
+                                                  media = Move(mediaList),
+                                                  import = Move(importRule)]() mutable {
+    MOZ_ASSERT(NS_IsMainThread());
+    SheetLoadData* d = data->get();
+    RefPtr<StyleSheet> sheet =
+      LoadImportSheet(d->mLoader, d->mSheet, d, nullptr, url, media.forget());
+    Servo_ImportRule_SetSheet(import, sheet);
+  }));
 }
 
 nsCSSKeyword
 Gecko_LookupCSSKeyword(const uint8_t* aString, uint32_t aLength)
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   nsDependentCSubstring keyword(reinterpret_cast<const char*>(aString), aLength);
   return nsCSSKeywords::LookupKeyword(keyword);
 }
@@ -2556,33 +2698,6 @@ Gecko_CSSKeywordString(nsCSSKeyword aKeyword, uint32_t* aLength)
   return value.get();
 }
 
-nsCSSFontFaceRule*
-Gecko_CSSFontFaceRule_Create(uint32_t aLine, uint32_t aColumn)
-{
-  RefPtr<nsCSSFontFaceRule> rule = new nsCSSFontFaceRule(aLine, aColumn);
-  return rule.forget().take();
-}
-
-nsCSSFontFaceRule*
-Gecko_CSSFontFaceRule_Clone(const nsCSSFontFaceRule* aRule)
-{
-  RefPtr<css::Rule> rule = aRule->Clone();
-  return static_cast<nsCSSFontFaceRule*>(rule.forget().take());
-}
-
-void
-Gecko_CSSFontFaceRule_GetCssText(const nsCSSFontFaceRule* aRule,
-                                 nsAString* aResult)
-{
-  // GetCSSText serializes nsCSSValues, which have a heap write
-  // hazard when dealing with color values (nsCSSKeywords::AddRefTable)
-  // We only serialize on the main thread; assert to convince the analysis
-  // and prevent accidentally calling this elsewhere
-  MOZ_ASSERT(NS_IsMainThread());
-
-  aRule->GetCssText(*aResult);
-}
-
 void
 Gecko_AddPropertyToSet(nsCSSPropertyIDSetBorrowedMut aPropertySet,
                        nsCSSPropertyID aProperty)
@@ -2590,52 +2705,9 @@ Gecko_AddPropertyToSet(nsCSSPropertyIDSetBorrowedMut aPropertySet,
   aPropertySet->AddProperty(aProperty);
 }
 
-int32_t
-Gecko_RegisterNamespace(nsAtom* aNamespace)
-{
-  int32_t id;
-
-  MOZ_ASSERT(NS_IsMainThread());
-
-  nsAutoString str;
-  aNamespace->ToString(str);
-  nsresult rv = nsContentUtils::NameSpaceManager()->RegisterNameSpace(str, id);
-
-  if (NS_FAILED(rv)) {
-    return -1;
-  }
-  return id;
-}
-
-NS_IMPL_FFI_REFCOUNTING(nsCSSFontFaceRule, CSSFontFaceRule);
-
-nsCSSCounterStyleRule*
-Gecko_CSSCounterStyle_Create(nsAtom* aName)
-{
-  RefPtr<nsCSSCounterStyleRule> rule = new nsCSSCounterStyleRule(aName, 0, 0);
-  return rule.forget().take();
-}
-
-nsCSSCounterStyleRule*
-Gecko_CSSCounterStyle_Clone(const nsCSSCounterStyleRule* aRule)
-{
-  RefPtr<css::Rule> rule = aRule->Clone();
-  return static_cast<nsCSSCounterStyleRule*>(rule.forget().take());
-}
-
-void
-Gecko_CSSCounterStyle_GetCssText(const nsCSSCounterStyleRule* aRule,
-                                 nsAString* aResult)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  aRule->GetCssText(*aResult);
-}
-
-NS_IMPL_FFI_REFCOUNTING(nsCSSCounterStyleRule, CSSCounterStyleRule);
-
 NS_IMPL_THREADSAFE_FFI_REFCOUNTING(nsCSSValueSharedList, CSSValueSharedList);
 
-#define STYLE_STRUCT(name, checkdata_cb)                                      \
+#define STYLE_STRUCT(name)                                                    \
                                                                               \
 void                                                                          \
 Gecko_Construct_Default_nsStyle##name(nsStyle##name* ptr,                     \
@@ -2701,22 +2773,14 @@ Gecko_SetJemallocThreadLocalArena(bool enabled)
 
 #undef STYLE_STRUCT
 
-#ifndef MOZ_STYLO
-#define SERVO_BINDING_FUNC(name_, return_, ...)                               \
-  return_ name_(__VA_ARGS__) {                                                \
-    MOZ_CRASH("stylo: shouldn't be calling " #name_ "in a non-stylo build");  \
-  }
-#include "ServoBindingList.h"
-#undef SERVO_BINDING_FUNC
-#endif
 
 ErrorReporter*
-Gecko_CreateCSSErrorReporter(ServoStyleSheet* sheet,
-                             Loader* loader,
-                             nsIURI* uri)
+Gecko_CreateCSSErrorReporter(StyleSheet* aSheet,
+                             Loader* aLoader,
+                             nsIURI* aURI)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  return new ErrorReporter(sheet, loader, uri);
+  return new ErrorReporter(aSheet, aLoader, aURI);
 }
 
 void
@@ -2739,7 +2803,11 @@ Gecko_ReportUnexpectedCSSError(ErrorReporter* reporter,
                                uint32_t lineNumber,
                                uint32_t colNumber)
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  if (!reporter->ShouldReportErrors()) {
+    return;
+  }
+
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
   if (prefix) {
     if (prefixParam) {

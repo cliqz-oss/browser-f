@@ -6,6 +6,8 @@
 
 #include "PerformanceResourceTiming.h"
 #include "mozilla/dom/PerformanceResourceTimingBinding.h"
+#include "nsNetUtil.h"
+#include "nsArrayUtils.h"
 
 using namespace mozilla::dom;
 
@@ -31,6 +33,11 @@ PerformanceResourceTiming::PerformanceResourceTiming(UniquePtr<PerformanceTiming
   , mPerformance(aPerformance)
 {
   MOZ_ASSERT(aPerformance, "Parent performance object should be provided");
+  if (NS_IsMainThread()) {
+    // Used to check if an addon content script has access to this timing.
+    // We don't need it in workers, and ignore mOriginalURI if null.
+    NS_NewURI(getter_AddRefs(mOriginalURI), aName);
+  }
 }
 
 PerformanceResourceTiming::~PerformanceResourceTiming()
@@ -79,4 +86,57 @@ PerformanceResourceTiming::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSize
          (mTimingData
             ? mTimingData->NextHopProtocol().SizeOfExcludingThisIfUnshared(aMallocSizeOf)
             : 0);
+}
+
+void
+PerformanceResourceTiming::GetServerTiming(
+                            nsTArray<RefPtr<PerformanceServerTiming>>& aRetval,
+                            Maybe<nsIPrincipal*>& aSubjectPrincipal)
+{
+  aRetval.Clear();
+  if (!TimingAllowedForCaller(aSubjectPrincipal)) {
+    return;
+  }
+
+  nsTArray<nsCOMPtr<nsIServerTiming>> serverTimingArray = mTimingData->GetServerTiming();
+  uint32_t length = serverTimingArray.Length();
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsIServerTiming> serverTiming = serverTimingArray.ElementAt(index);
+    MOZ_ASSERT(serverTiming);
+
+    aRetval.AppendElement(
+      new PerformanceServerTiming(GetParentObject(), serverTiming));
+  }
+}
+
+bool
+PerformanceResourceTiming::TimingAllowedForCaller(Maybe<nsIPrincipal*>& aCaller) const
+{
+  if (!mTimingData) {
+    return false;
+  }
+
+  if (mTimingData->TimingAllowed()) {
+    return true;
+  }
+
+  // Check if the addon has permission to access the cross-origin resource.
+  return mOriginalURI && aCaller.isSome() &&
+      BasePrincipal::Cast(aCaller.value())->AddonAllowsLoad(mOriginalURI);
+}
+
+bool
+PerformanceResourceTiming::ReportRedirectForCaller(Maybe<nsIPrincipal*>& aCaller) const
+{
+  if (!mTimingData) {
+    return false;
+  }
+
+  if (mTimingData->ShouldReportCrossOriginRedirect()) {
+    return true;
+  }
+
+  // Only report cross-origin redirect if the addon has <all_urls> permission.
+  return aCaller.isSome() &&
+      BasePrincipal::Cast(aCaller.value())->AddonHasPermission(nsGkAtoms::all_urlsPermission);
 }

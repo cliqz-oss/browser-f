@@ -25,6 +25,7 @@
 #include "nsIObserver.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/TypedEnumBits.h"
 #include "MainThreadUtils.h"
 #include <algorithm>
@@ -54,8 +55,6 @@ class gfxMathTable;
 
 #define FONT_MAX_SIZE                  2000.0
 
-#define NO_FONT_LANGUAGE_OVERRIDE      0
-
 #define SMALL_CAPS_SCALE_FACTOR        0.8
 
 // The skew factor used for synthetic-italic [oblique] fonts;
@@ -75,8 +74,12 @@ class SVGContextPaint;
 } // namespace mozilla
 
 struct gfxFontStyle {
+    typedef mozilla::FontStretch FontStretch;
+    typedef mozilla::FontSlantStyle FontSlantStyle;
+    typedef mozilla::FontWeight FontWeight;
+
     gfxFontStyle();
-    gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
+    gfxFontStyle(FontSlantStyle aStyle, FontWeight aWeight, FontStretch aStretch,
                  gfxFloat aSize, nsAtom *aLanguage, bool aExplicitLanguage,
                  float aSizeAdjust, bool aSystemFont,
                  bool aPrinterFont,
@@ -136,21 +139,26 @@ struct gfxFontStyle {
     // rendering mode when NS_GET_A(.) > 0. Only used for text in the chrome.
     nscolor fontSmoothingBackgroundColor;
 
+    // The Font{Weight,Stretch,SlantStyle} fields are each a 16-bit type.
+
     // The weight of the font: 100, 200, ... 900.
-    uint16_t weight;
+    FontWeight weight;
 
-    // The stretch of the font (the sum of various NS_FONT_STRETCH_*
-    // constants; see gfxFontConstants.h).
-    int8_t stretch;
+    // The stretch of the font
+    FontStretch stretch;
 
-    // The style of font (normal, italic, oblique)
-    uint8_t style;
+    // The style of font
+    FontSlantStyle style;
+
+    // We pack these two small-integer fields into a single byte to avoid
+    // overflowing an 8-byte boundary [in a 64-bit build] and ending up with
+    // 7 bytes of padding at the end of the struct.
 
     // caps variant (small-caps, petite-caps, etc.)
-    uint8_t variantCaps;
+    uint8_t variantCaps : 4; // uses range 0..6
 
     // sub/superscript variant
-    uint8_t variantSubSuper;
+    uint8_t variantSubSuper : 4; // uses range 0..2
 
     // Say that this font is a system font and therefore does not
     // require certain fixup that we do for fonts from untrusted
@@ -183,17 +191,18 @@ struct gfxFontStyle {
         return std::min(adjustedSize, FONT_MAX_SIZE);
     }
 
-    PLDHashNumber Hash() const {
-        return ((style + (systemFont << 7) +
-            (weight << 8)) + uint32_t(size*1000) + int32_t(sizeAdjust*1000)) ^
-            nsRefPtrHashKey<nsAtom>::HashKey(language);
-    }
-
-    int8_t ComputeWeight() const;
+    PLDHashNumber Hash() const;
 
     // Adjust this style to simulate sub/superscript (as requested in the
     // variantSubSuper field) using size and baselineOffset instead.
     void AdjustForSubSuperscript(int32_t aAppUnitsPerDevPixel);
+
+    // Should this style cause the given font entry to use synthetic bold?
+    bool NeedsSyntheticBold(gfxFontEntry* aFontEntry) const {
+        return weight.IsBold() &&
+               allowSyntheticWeight &&
+               !aFontEntry->SupportsBold();
+    }
 
     bool Equals(const gfxFontStyle& other) const {
         return
@@ -1453,6 +1462,8 @@ protected:
     typedef gfxFontShaper::RoundingFlags RoundingFlags;
 
 public:
+    typedef mozilla::FontSlantStyle FontSlantStyle;
+
     nsrefcnt AddRef(void) {
         NS_PRECONDITION(int32_t(mRefCnt) >= 0, "illegal refcnt");
         if (mExpirationState.IsTracked()) {
@@ -1477,7 +1488,7 @@ public:
     int32_t GetRefCount() { return mRefCnt; }
 
     // options to specify the kind of AA to be used when creating a font
-    typedef enum {
+    typedef enum : uint8_t {
         kAntialiasDefault,
         kAntialiasNone,
         kAntialiasGrayscale,
@@ -1813,7 +1824,7 @@ public:
 
     bool IsSyntheticOblique() {
         return mFontEntry->IsUpright() &&
-               mStyle.style != NS_FONT_STYLE_NORMAL &&
+               mStyle.style != FontSlantStyle::Normal() &&
                mStyle.allowSyntheticStyle;
     }
 
@@ -2241,32 +2252,9 @@ protected:
 
     static const uint32_t  kShapedWordCacheMaxAge = 3;
 
-    bool                       mIsValid;
-
-    // use synthetic bolding for environments where this is not supported
-    // by the platform
-    bool                       mApplySyntheticBold;
-
-    bool                       mKerningSet;     // kerning explicitly set?
-    bool                       mKerningEnabled; // if set, on or off?
-
-    bool                       mMathInitialized; // TryGetMathTable() called?
-
-    nsExpirationState          mExpirationState;
-    gfxFontStyle               mStyle;
     nsTArray<mozilla::UniquePtr<gfxGlyphExtents>> mGlyphExtentsArray;
     mozilla::UniquePtr<nsTHashtable<nsPtrHashKey<GlyphChangeObserver>>>
                                mGlyphChangeObservers;
-
-    gfxFloat                   mAdjustedSize;
-
-    // Conversion factor from font units to dev units; note that this may be
-    // zero (in the degenerate case where mAdjustedSize has become zero).
-    // This is OK because we only multiply by this factor, never divide.
-    float                      mFUnitsConvFactor;
-
-    // the AA setting requested for this font - may affect glyph bounds
-    AntialiasOption            mAntialiasOption;
 
     // a copy of the font without antialiasing, if needed for separate
     // measurement by mathml code
@@ -2290,6 +2278,30 @@ protected:
 
     // Table used for MathML layout.
     mozilla::UniquePtr<gfxMathTable> mMathTable;
+
+    gfxFontStyle               mStyle;
+    gfxFloat                   mAdjustedSize;
+
+    // Conversion factor from font units to dev units; note that this may be
+    // zero (in the degenerate case where mAdjustedSize has become zero).
+    // This is OK because we only multiply by this factor, never divide.
+    float                      mFUnitsConvFactor;
+
+    nsExpirationState          mExpirationState;
+
+    // the AA setting requested for this font - may affect glyph bounds
+    AntialiasOption            mAntialiasOption;
+
+    bool                       mIsValid;
+
+    // use synthetic bolding for environments where this is not supported
+    // by the platform
+    bool                       mApplySyntheticBold;
+
+    bool                       mKerningSet;     // kerning explicitly set?
+    bool                       mKerningEnabled; // if set, on or off?
+
+    bool                       mMathInitialized; // TryGetMathTable() called?
 
     // Helper for subclasses that want to initialize standard metrics from the
     // tables of sfnt (TrueType/OpenType) fonts.

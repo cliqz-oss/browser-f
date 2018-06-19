@@ -72,7 +72,6 @@ static sslOptions ssl_defaults = {
     .enableFalseStart = PR_FALSE,
     .cbcRandomIV = PR_TRUE,
     .enableOCSPStapling = PR_FALSE,
-    .enableNPN = PR_FALSE,
     .enableALPN = PR_TRUE,
     .reuseServerECDHEKey = PR_TRUE,
     .enableFallbackSCSV = PR_FALSE,
@@ -81,7 +80,8 @@ static sslOptions ssl_defaults = {
     .enableSignedCertTimestamps = PR_FALSE,
     .requireDHENamedGroups = PR_FALSE,
     .enable0RttData = PR_FALSE,
-    .enableTls13CompatMode = PR_FALSE
+    .enableTls13CompatMode = PR_FALSE,
+    .enableDtlsShortHeader = PR_FALSE
 };
 
 /*
@@ -807,6 +807,10 @@ SSL_OptionSet(PRFileDesc *fd, PRInt32 which, PRIntn val)
             ss->opt.enableTls13CompatMode = val;
             break;
 
+        case SSL_ENABLE_DTLS_SHORT_HEADER:
+            ss->opt.enableDtlsShortHeader = val;
+            break;
+
         default:
             PORT_SetError(SEC_ERROR_INVALID_ARGS);
             rv = SECFailure;
@@ -914,7 +918,7 @@ SSL_OptionGet(PRFileDesc *fd, PRInt32 which, PRIntn *pVal)
             val = ss->opt.enableOCSPStapling;
             break;
         case SSL_ENABLE_NPN:
-            val = ss->opt.enableNPN;
+            val = PR_FALSE;
             break;
         case SSL_ENABLE_ALPN:
             val = ss->opt.enableALPN;
@@ -942,6 +946,9 @@ SSL_OptionGet(PRFileDesc *fd, PRInt32 which, PRIntn *pVal)
             break;
         case SSL_ENABLE_TLS13_COMPAT_MODE:
             val = ss->opt.enableTls13CompatMode;
+            break;
+        case SSL_ENABLE_DTLS_SHORT_HEADER:
+            val = ss->opt.enableDtlsShortHeader;
             break;
         default:
             PORT_SetError(SEC_ERROR_INVALID_ARGS);
@@ -1037,7 +1044,7 @@ SSL_OptionGetDefault(PRInt32 which, PRIntn *pVal)
             val = ssl_defaults.enableOCSPStapling;
             break;
         case SSL_ENABLE_NPN:
-            val = ssl_defaults.enableNPN;
+            val = PR_FALSE;
             break;
         case SSL_ENABLE_ALPN:
             val = ssl_defaults.enableALPN;
@@ -1062,6 +1069,9 @@ SSL_OptionGetDefault(PRInt32 which, PRIntn *pVal)
             break;
         case SSL_ENABLE_TLS13_COMPAT_MODE:
             val = ssl_defaults.enableTls13CompatMode;
+            break;
+        case SSL_ENABLE_DTLS_SHORT_HEADER:
+            val = ssl_defaults.enableDtlsShortHeader;
             break;
         default:
             PORT_SetError(SEC_ERROR_INVALID_ARGS);
@@ -1244,6 +1254,10 @@ SSL_OptionSetDefault(PRInt32 which, PRIntn val)
 
         case SSL_ENABLE_TLS13_COMPAT_MODE:
             ssl_defaults.enableTls13CompatMode = val;
+            break;
+
+        case SSL_ENABLE_DTLS_SHORT_HEADER:
+            ssl_defaults.enableDtlsShortHeader = val;
             break;
 
         default:
@@ -1895,10 +1909,7 @@ DTLS_ImportFD(PRFileDesc *model, PRFileDesc *fd)
 }
 
 /* SSL_SetNextProtoCallback is used to select an application protocol
- * for ALPN and NPN.  For ALPN, this runs on the server; for NPN it
- * runs on the client. */
-/* Note: The ALPN version doesn't allow for the use of a default, setting a
- * status of SSL_NEXT_PROTO_NO_OVERLAP is treated as a failure. */
+ * for ALPN. */
 SECStatus
 SSL_SetNextProtoCallback(PRFileDesc *fd, SSLNextProtoCallback callback,
                          void *arg)
@@ -1919,7 +1930,7 @@ SSL_SetNextProtoCallback(PRFileDesc *fd, SSLNextProtoCallback callback,
     return SECSuccess;
 }
 
-/* ssl_NextProtoNegoCallback is set as an ALPN/NPN callback when
+/* ssl_NextProtoNegoCallback is set as an ALPN callback when
  * SSL_SetNextProtoNego is used.
  */
 static SECStatus
@@ -1929,7 +1940,6 @@ ssl_NextProtoNegoCallback(void *arg, PRFileDesc *fd,
                           unsigned int protoMaxLen)
 {
     unsigned int i, j;
-    const unsigned char *result;
     sslSocket *ss = ssl_FindSocket(fd);
 
     if (!ss) {
@@ -1937,37 +1947,29 @@ ssl_NextProtoNegoCallback(void *arg, PRFileDesc *fd,
                  SSL_GETPID(), fd));
         return SECFailure;
     }
+    PORT_Assert(protoMaxLen <= 255);
+    if (protoMaxLen > 255) {
+        PORT_SetError(SEC_ERROR_OUTPUT_LEN);
+        return SECFailure;
+    }
 
-    /* For each protocol in server preference, see if we support it. */
-    for (i = 0; i < protos_len;) {
-        for (j = 0; j < ss->opt.nextProtoNego.len;) {
+    /* For each protocol in client preference, see if we support it. */
+    for (j = 0; j < ss->opt.nextProtoNego.len;) {
+        for (i = 0; i < protos_len;) {
             if (protos[i] == ss->opt.nextProtoNego.data[j] &&
                 PORT_Memcmp(&protos[i + 1], &ss->opt.nextProtoNego.data[j + 1],
                             protos[i]) == 0) {
                 /* We found a match. */
-                ss->xtnData.nextProtoState = SSL_NEXT_PROTO_NEGOTIATED;
-                result = &protos[i];
-                goto found;
+                const unsigned char *result = &protos[i];
+                memcpy(protoOut, result + 1, result[0]);
+                *protoOutLen = result[0];
+                return SECSuccess;
             }
-            j += 1 + (unsigned int)ss->opt.nextProtoNego.data[j];
+            i += 1 + (unsigned int)protos[i];
         }
-        i += 1 + (unsigned int)protos[i];
+        j += 1 + (unsigned int)ss->opt.nextProtoNego.data[j];
     }
 
-    /* The other side supports the extension, and either doesn't have any
-     * protocols configured, or none of its options match ours. In this case we
-     * request our favoured protocol. */
-    /* This will be treated as a failure for ALPN. */
-    ss->xtnData.nextProtoState = SSL_NEXT_PROTO_NO_OVERLAP;
-    result = ss->opt.nextProtoNego.data;
-
-found:
-    if (protoMaxLen < result[0]) {
-        PORT_SetError(SEC_ERROR_OUTPUT_LEN);
-        return SECFailure;
-    }
-    memcpy(protoOut, result + 1, result[0]);
-    *protoOutLen = result[0];
     return SECSuccess;
 }
 
@@ -1976,8 +1978,6 @@ SSL_SetNextProtoNego(PRFileDesc *fd, const unsigned char *data,
                      unsigned int length)
 {
     sslSocket *ss;
-    SECStatus rv;
-    SECItem dataItem = { siBuffer, (unsigned char *)data, length };
 
     ss = ssl_FindSocket(fd);
     if (!ss) {
@@ -1986,16 +1986,21 @@ SSL_SetNextProtoNego(PRFileDesc *fd, const unsigned char *data,
         return SECFailure;
     }
 
-    if (ssl3_ValidateNextProtoNego(data, length) != SECSuccess)
+    if (ssl3_ValidateAppProtocol(data, length) != SECSuccess) {
         return SECFailure;
+    }
 
+    /* NPN required that the client's fallback protocol is first in the
+     * list. However, ALPN sends protocols in preference order. So move the
+     * first protocol to the end of the list. */
     ssl_GetSSL3HandshakeLock(ss);
     SECITEM_FreeItem(&ss->opt.nextProtoNego, PR_FALSE);
-    rv = SECITEM_CopyItem(NULL, &ss->opt.nextProtoNego, &dataItem);
+    SECITEM_AllocItem(NULL, &ss->opt.nextProtoNego, length);
+    size_t firstLen = data[0] + 1;
+    /* firstLen <= length is ensured by ssl3_ValidateAppProtocol. */
+    PORT_Memcpy(ss->opt.nextProtoNego.data + (length - firstLen), data, firstLen);
+    PORT_Memcpy(ss->opt.nextProtoNego.data, data + firstLen, length - firstLen);
     ssl_ReleaseSSL3HandshakeLock(ss);
-
-    if (rv != SECSuccess)
-        return rv;
 
     return SSL_SetNextProtoCallback(fd, ssl_NextProtoNegoCallback, NULL);
 }

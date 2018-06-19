@@ -8,6 +8,7 @@
 #include "mozilla/dom/HTMLSourceElementBinding.h"
 
 #include "mozilla/dom/HTMLImageElement.h"
+#include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/ResponsiveImageSelector.h"
 #include "mozilla/dom/MediaList.h"
 #include "mozilla/dom/MediaSource.h"
@@ -61,8 +62,7 @@ HTMLSourceElement::WouldMatchMediaForDocument(const nsAString& aMedia,
 
   nsPresContext* pctx = aDocument->GetPresContext();
 
-  RefPtr<MediaList> mediaList =
-    MediaList::Create(aDocument->GetStyleBackendType(), aMedia);
+  RefPtr<MediaList> mediaList = MediaList::Create(aMedia);
   return pctx && mediaList->Matches(pctx);
 }
 
@@ -75,7 +75,7 @@ HTMLSourceElement::UpdateMediaList(const nsAttrValue* aValue)
     return;
   }
 
-  mMediaList = MediaList::Create(OwnerDoc()->GetStyleBackendType(), mediaStr);
+  mMediaList = MediaList::Create(mediaStr);
 }
 
 nsresult
@@ -153,8 +153,7 @@ HTMLSourceElement::BindToTree(nsIDocument *aDocument,
                                                  aCompileEventHandlers);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (aParent && aParent->IsNodeOfType(nsINode::eMEDIA)) {
-    HTMLMediaElement* media = static_cast<HTMLMediaElement*>(aParent);
+  if (auto* media = HTMLMediaElement::FromNodeOrNull(aParent)) {
     media->NotifyAddedSource();
   }
 

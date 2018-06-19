@@ -5,27 +5,6 @@ ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
 ChromeUtils.defineModuleGetter(this, "TestUtils",
   "resource://testing-common/TestUtils.jsm");
 
-// We need to cache these before test runs...
-let leftPaneGetters = new Map([["leftPaneFolderId", null]]);
-for (let [key, val] of leftPaneGetters) {
-  if (!val) {
-    let getter = Object.getOwnPropertyDescriptor(PlacesUIUtils, key).get;
-    if (typeof getter == "function") {
-      leftPaneGetters.set(key, getter);
-    }
-  }
-}
-
-// ...And restore them when test ends.
-function restoreLeftPaneGetters() {
-  for (let [key, getter] of leftPaneGetters) {
-    Object.defineProperty(PlacesUIUtils, key, {
-      enumerable: true, configurable: true, get: getter
-    });
-  }
-}
-registerCleanupFunction(restoreLeftPaneGetters);
-
 function openLibrary(callback, aLeftPaneRoot) {
   let library = window.openDialog("chrome://browser/content/places/places.xul",
                                   "", "chrome,toolbar=yes,dialog=no,resizable",
@@ -230,7 +209,7 @@ var withBookmarksDialog = async function(autoCancel, openFn, taskFn, closeFn,
         let win = subject.QueryInterface(Ci.nsIDOMWindow);
         win.addEventListener("load", function() {
           ok(win.location.href.startsWith(dialogUrl),
-             "The bookmark properties dialog is open");
+             "The bookmark properties dialog is open: " + win.location.href);
           // This is needed for the overlay.
           waitForFocus(() => {
             resolve(win);
@@ -276,19 +255,14 @@ var withBookmarksDialog = async function(autoCancel, openFn, taskFn, closeFn,
   try {
     await taskFn(dialogWin);
   } finally {
-    if (!closed && !autoCancel) {
-      // Give the dialog a little time to close itself in the manually closing
-      // case.
-      await BrowserTestUtils.waitForCondition(() => closed,
-        "The test should have closed the dialog!");
-    }
-    if (!closed) {
+    if (!closed && autoCancel) {
       info("withBookmarksDialog: canceling the dialog");
-
       doc.documentElement.cancelDialog();
-
       await closePromise;
     }
+    // Give the dialog a little time to close itself.
+    await BrowserTestUtils.waitForCondition(() => closed,
+                                            "The dialog should be closed!");
   }
 };
 

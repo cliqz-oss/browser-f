@@ -760,15 +760,14 @@ PuppetWidget::SetInputContext(const InputContext& aContext,
   if (!mTabChild) {
     return;
   }
-  mTabChild->SendSetInputContext(
-    static_cast<int32_t>(aContext.mIMEState.mEnabled),
-    static_cast<int32_t>(aContext.mIMEState.mOpen),
-    aContext.mHTMLInputType,
-    aContext.mHTMLInputInputmode,
-    aContext.mActionHint,
-    aContext.mInPrivateBrowsing,
-    static_cast<int32_t>(aAction.mCause),
-    static_cast<int32_t>(aAction.mFocusChange));
+  mTabChild->SendSetInputContext(aContext.mIMEState.mEnabled,
+                                 aContext.mIMEState.mOpen,
+                                 aContext.mHTMLInputType,
+                                 aContext.mHTMLInputInputmode,
+                                 aContext.mActionHint,
+                                 aContext.mInPrivateBrowsing,
+                                 aAction.mCause,
+                                 aAction.mFocusChange);
 }
 
 InputContext
@@ -792,10 +791,11 @@ PuppetWidget::GetInputContext()
   // chrome widget is set to new context.
   InputContext context;
   if (mTabChild) {
-    int32_t enabled, open;
+    IMEState::Enabled enabled;
+    IMEState::Open open;
     mTabChild->SendGetInputContext(&enabled, &open);
-    context.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
-    context.mIMEState.mOpen = static_cast<IMEState::Open>(open);
+    context.mIMEState.mEnabled = enabled;
+    context.mIMEState.mOpen = open;
   }
   return context;
 }
@@ -1034,7 +1034,7 @@ PuppetWidget::SetCursor(imgIContainer* aCursor,
   nsDependentCString cursorData(surfaceData.get(), length);
   mozilla::gfx::IntSize size = dataSurface->GetSize();
   if (!mTabChild->SendSetCustomCursor(cursorData, size.width, size.height, stride,
-                                      static_cast<uint8_t>(dataSurface->GetFormat()),
+                                      dataSurface->GetFormat(),
                                       aHotspotX, aHotspotY, mUpdateCursor)) {
     return NS_ERROR_FAILURE;
   }

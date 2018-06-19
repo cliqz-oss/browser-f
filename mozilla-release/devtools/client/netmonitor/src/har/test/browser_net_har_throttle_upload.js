@@ -5,7 +5,7 @@
 
 "use strict";
 
-add_task(async function () {
+add_task(async function() {
   await throttleUploadTest(true);
   await throttleUploadTest(false);
 });
@@ -18,8 +18,8 @@ async function throttleUploadTest(actuallyThrottle) {
 
   let { connector, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  let RequestListContextMenu = windowRequire(
-    "devtools/client/netmonitor/src/widgets/RequestListContextMenu");
+  let { HarMenuUtils } = windowRequire(
+    "devtools/client/netmonitor/src/har/har-menu-utils");
   let { getSortedRequests } = windowRequire(
     "devtools/client/netmonitor/src/selectors/index");
 
@@ -47,17 +47,17 @@ async function throttleUploadTest(actuallyThrottle) {
   });
 
   // Execute one POST request on the page and wait till its done.
-  let onEventTimings = monitor.panelWin.once(EVENTS.RECEIVED_EVENT_TIMINGS);
+  let onEventTimings = monitor.panelWin.api.once(EVENTS.RECEIVED_EVENT_TIMINGS);
   let wait = waitForNetworkEvents(monitor, 1);
-  await ContentTask.spawn(tab.linkedBrowser, { size }, async function (args) {
+  await ContentTask.spawn(tab.linkedBrowser, { size }, async function(args) {
     content.wrappedJSObject.executeTest2(args.size);
   });
   await wait;
   await onEventTimings;
 
   // Copy HAR into the clipboard (asynchronous).
-  let contextMenu = new RequestListContextMenu({ connector });
-  let jsonString = await contextMenu.copyAllAsHar(getSortedRequests(store.getState()));
+  let jsonString = await HarMenuUtils.copyAllAsHar(
+    getSortedRequests(store.getState()), connector);
   let har = JSON.parse(jsonString);
 
   // Check out the HAR log.

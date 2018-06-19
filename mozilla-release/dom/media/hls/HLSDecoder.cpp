@@ -15,11 +15,11 @@
 #include "MediaContainerType.h"
 #include "MediaDecoderStateMachine.h"
 #include "MediaFormatReader.h"
-#include "MediaPrefs.h"
 #include "MediaShutdownManager.h"
 #include "nsContentUtils.h"
 #include "nsNetUtil.h"
 #include "nsThreadUtils.h"
+#include "mozilla/StaticPrefs.h"
 
 using namespace mozilla::java;
 
@@ -34,7 +34,7 @@ public:
   using NativeCallbacks::DisposeNative;
   using NativeCallbacks::AttachNative;
 
-  HLSResourceCallbacksSupport(HLSDecoder* aResource);
+  explicit HLSResourceCallbacksSupport(HLSDecoder* aResource);
   void Detach();
   void OnDataArrived();
   void OnError(int aErrorCode);
@@ -127,7 +127,7 @@ HLSDecoder::CreateStateMachine()
 bool
 HLSDecoder::IsEnabled()
 {
-  return MediaPrefs::HLSEnabled() && (jni::GetAPIVersion() >= 16);
+  return StaticPrefs::MediaHlsEnabled() && (jni::GetAPIVersion() >= 16);
 }
 
 bool
@@ -192,7 +192,7 @@ HLSDecoder::GetCurrentPrincipal()
   return principal.forget();
 }
 
-nsresult
+void
 HLSDecoder::Play()
 {
   MOZ_ASSERT(NS_IsMainThread());

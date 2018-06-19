@@ -17,6 +17,7 @@ structures.
 
 from __future__ import absolute_import, unicode_literals
 
+from mozbuild.frontend.context import ObjDirPath
 from mozbuild.util import StrictOrderingOnAppendList
 from mozpack.chrome.manifest import ManifestEntry
 
@@ -84,6 +85,10 @@ class ContextDerived(TreeMetadata):
     @property
     def install_target(self):
         return self._context['FINAL_TARGET']
+
+    @property
+    def installed(self):
+        return self._context['DIST_INSTALL'] is not False
 
     @property
     def defines(self):
@@ -191,16 +196,14 @@ class XPIDLFile(ContextDerived):
         'source_path',
         'basename',
         'module',
-        'add_to_manifest',
     )
 
-    def __init__(self, context, source, module, add_to_manifest):
+    def __init__(self, context, source, module):
         ContextDerived.__init__(self, context)
 
         self.source_path = source
         self.basename = mozpath.basename(source)
         self.module = module
-        self.add_to_manifest = add_to_manifest
 
 class BaseDefines(ContextDerived):
     """Context derived container object for DEFINES/HOST_DEFINES,
@@ -383,6 +386,8 @@ class Linkable(ContextDerived):
         'lib_defines',
         'linked_libraries',
         'linked_system_libs',
+        'no_pgo_sources',
+        'no_pgo',
         'sources',
     )
 
@@ -393,6 +398,8 @@ class Linkable(ContextDerived):
         self.linked_system_libs = []
         self.lib_defines = Defines(context, {})
         self.sources = defaultdict(list)
+        self.no_pgo_sources = []
+        self.no_pgo = False
 
     def link_library(self, obj):
         assert isinstance(obj, BaseLibrary)
@@ -432,8 +439,7 @@ class Linkable(ContextDerived):
             all_sources += self.sources.get(suffix, [])
         return all_sources
 
-    @property
-    def objs(self):
+    def _get_objs(self, sources):
         obj_prefix = ''
         if self.KIND == 'host':
             obj_prefix = 'host_'
@@ -441,7 +447,15 @@ class Linkable(ContextDerived):
         return [mozpath.join(self.objdir, '%s%s.%s' % (obj_prefix,
                                                        mozpath.splitext(mozpath.basename(f))[0],
                                                        self.config.substs.get('OBJ_SUFFIX', '')))
-                for f in self.source_files()]
+                for f in sources]
+
+    @property
+    def no_pgo_objs(self):
+        return self._get_objs(self.no_pgo_sources)
+
+    @property
+    def objs(self):
+        return self._get_objs(self.source_files())
 
 
 class BaseProgram(Linkable):
@@ -472,8 +486,19 @@ class BaseProgram(Linkable):
         self.program = program
         self.is_unit_test = is_unit_test
 
+    @property
+    def output_path(self):
+        if self.installed:
+            return ObjDirPath(self._context, '!/' + mozpath.join(self.install_target, self.program))
+        else:
+            return ObjDirPath(self._context, '!' + self.program)
+
     def __repr__(self):
         return '<%s: %s/%s>' % (type(self).__name__, self.relobjdir, self.program)
+
+    @property
+    def name(self):
+        return self.program
 
 
 class Program(BaseProgram):
@@ -506,6 +531,14 @@ class HostSimpleProgram(HostMixin, BaseProgram):
     HOST_SIMPLE_PROGRAMS"""
     SUFFIX_VAR = 'HOST_BIN_SUFFIX'
     KIND = 'host'
+
+    def source_files(self):
+        for srcs in self.sources.values():
+            for f in srcs:
+                if ('host_%s' % mozpath.basename(mozpath.splitext(f)[0]) ==
+                    mozpath.splitext(self.program)[0]):
+                    return [f]
+        return []
 
 
 def cargo_output_directory(context, target_var):
@@ -551,15 +584,15 @@ class HostRustProgram(BaseRustProgram):
     TARGET_SUBST_VAR = 'RUST_HOST_TARGET'
 
 
-class RustTest(ContextDerived):
+class RustTests(ContextDerived):
     __slots__ = (
-        'name',
+        'names',
         'features',
     )
 
-    def __init__(self, context, name, features):
+    def __init__(self, context, names, features):
         ContextDerived.__init__(self, context)
-        self.name = name
+        self.names = names
         self.features = features
 
 
@@ -588,6 +621,10 @@ class BaseLibrary(Linkable):
 
     def __repr__(self):
         return '<%s: %s/%s>' % (type(self).__name__, self.relobjdir, self.lib_name)
+
+    @property
+    def name(self):
+        return self.lib_name
 
 
 class Library(BaseLibrary):
@@ -1110,9 +1147,11 @@ class GeneratedFile(ContextDerived):
         'flags',
         'required_for_compile',
         'localized',
+        'force',
     )
 
-    def __init__(self, context, script, method, outputs, inputs, flags=(), localized=False):
+    def __init__(self, context, script, method, outputs, inputs,
+                 flags=(), localized=False, force=False):
         ContextDerived.__init__(self, context)
         self.script = script
         self.method = method
@@ -1120,6 +1159,7 @@ class GeneratedFile(ContextDerived):
         self.inputs = inputs
         self.flags = flags
         self.localized = localized
+        self.force = force
 
         suffixes = (
             '.c',

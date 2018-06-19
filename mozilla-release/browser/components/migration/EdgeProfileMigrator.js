@@ -52,14 +52,14 @@ XPCOMUtils.defineLazyGetter(this, "gEdgeDatabase", function() {
  *                                      (see ESEDBReader.jsm) or a function that
  *                                      generates them based on the database
  *                                      reference once opened.
- * @param {function}          filterFn  a function that is called for each row.
- *                                      Only rows for which it returns a truthy
- *                                      value are included in the result.
  * @param {nsIFile}           dbFile    the database file to use. Defaults to
  *                                      the main Edge database.
+ * @param {function}          filterFn  Optional. A function that is called for each row.
+ *                                      Only rows for which it returns a truthy
+ *                                      value are included in the result.
  * @returns {Array} An array of row objects.
  */
-function readTableFromEdgeDB(tableName, columns, filterFn, dbFile = gEdgeDatabase) {
+function readTableFromEdgeDB(tableName, columns, dbFile = gEdgeDatabase, filterFn = null) {
   let database;
   let rows = [];
   try {
@@ -73,7 +73,7 @@ function readTableFromEdgeDB(tableName, columns, filterFn, dbFile = gEdgeDatabas
 
     let tableReader = database.tableItems(tableName, columns);
     for (let row of tableReader) {
-      if (filterFn(row)) {
+      if (!filterFn || filterFn(row)) {
         rows.push(row);
       }
     }
@@ -109,12 +109,12 @@ EdgeTypedURLMigrator.prototype = {
 
   migrate(aCallback) {
     let typedURLs = this._typedURLs;
-    let places = [];
+    let pageInfos = [];
     for (let [urlString, time] of typedURLs) {
-      let uri;
+      let url;
       try {
-        uri = Services.io.newURI(urlString);
-        if (!["http", "https", "ftp"].includes(uri.scheme)) {
+        url = new URL(urlString);
+        if (!["http:", "https:", "ftp:"].includes(url.protocol)) {
           continue;
         }
       } catch (ex) {
@@ -122,29 +122,103 @@ EdgeTypedURLMigrator.prototype = {
         continue;
       }
 
-      // Note that the time will be in microseconds (PRTime),
-      // and Date.now() returns milliseconds. Places expects PRTime,
-      // so we multiply the Date.now return value to make up the difference.
-      let visitDate = time || (Date.now() * 1000);
-      places.push({
-        uri,
-        visits: [{ transitionType: Ci.nsINavHistoryService.TRANSITION_TYPED,
-                   visitDate}],
+      pageInfos.push({
+        url,
+        visits: [{
+          transition: PlacesUtils.history.TRANSITIONS.TYPED,
+          date: time ? PlacesUtils.toDate(time) : new Date(),
+        }],
       });
     }
 
-    if (places.length == 0) {
+    if (pageInfos.length == 0) {
       aCallback(typedURLs.size == 0);
       return;
     }
 
-    MigrationUtils.insertVisitsWrapper(places, {
-      ignoreErrors: true,
-      ignoreResults: true,
-      handleCompletion(updatedCount) {
-        aCallback(updatedCount > 0);
-      },
-    });
+    MigrationUtils.insertVisitsWrapper(pageInfos).then(
+      () => aCallback(true),
+      () => aCallback(false));
+  },
+};
+
+function EdgeTypedURLDBMigrator() {
+}
+
+EdgeTypedURLDBMigrator.prototype = {
+  type: MigrationUtils.resourceTypes.HISTORY,
+
+  get db() { return gEdgeDatabase; },
+
+  get exists() {
+    return !!this.db;
+  },
+
+  migrate(callback) {
+    this._migrateTypedURLsFromDB().then(
+      () => callback(true),
+      ex => {
+        Cu.reportError(ex);
+        callback(false);
+      }
+    );
+  },
+
+  async _migrateTypedURLsFromDB() {
+    if (await ESEDBReader.dbLocked(this.db)) {
+      throw new Error("Edge seems to be running - its database is locked.");
+    }
+    let columns = [
+      {name: "URL", type: "string"},
+      {name: "AccessDateTimeUTC", type: "date"},
+    ];
+
+    let typedUrls = [];
+    try {
+      typedUrls = readTableFromEdgeDB("TypedUrls", columns, this.db);
+    } catch (ex) {
+      // Maybe the table doesn't exist (older versions of Win10).
+      // Just fall through and we'll return because there's no data.
+      // The `readTableFromEdgeDB` helper will report errors to the
+      // console anyway.
+    }
+    if (!typedUrls.length) {
+      return;
+    }
+
+    let pageInfos = [];
+    // Sometimes the values are bogus (e.g. 0 becomes some date in 1600),
+    // and places will throw *everything* away, not just the bogus ones,
+    // so deal with that by having a cutoff date. Also, there's not much
+    // point importing really old entries. The cut-off date is related to
+    // Edge's launch date.
+    const kDateCutOff = new Date("2016", 0, 1);
+    for (let typedUrlInfo of typedUrls) {
+      try {
+        let url = new URL(typedUrlInfo.URL);
+        if (!["http:", "https:", "ftp:"].includes(url.protocol)) {
+          continue;
+        }
+
+        let date = typedUrlInfo.AccessDateTimeUTC;
+        if (!date) {
+          date = kDateCutOff;
+        } else if (date < kDateCutOff) {
+          continue;
+        }
+
+        pageInfos.push({
+          url,
+          visits: [{
+            transition: PlacesUtils.history.TRANSITIONS.TYPED,
+            date,
+          }],
+        });
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
+    }
+    await MigrationUtils.insertVisitsWrapper(pageInfos);
   },
 };
 
@@ -194,7 +268,7 @@ EdgeReadingListMigrator.prototype = {
       return !row.IsDeleted;
     };
 
-    let readingListItems = readTableFromEdgeDB("ReadingList", columnFn, filterFn, this.db);
+    let readingListItems = readTableFromEdgeDB("ReadingList", columnFn, this.db, filterFn);
     if (!readingListItems.length) {
       return;
     }
@@ -293,7 +367,7 @@ EdgeBookmarksMigrator.prototype = {
       }
       return true;
     };
-    let bookmarks = readTableFromEdgeDB(this.TABLE_NAME, columns, filterFn, this.db);
+    let bookmarks = readTableFromEdgeDB(this.TABLE_NAME, columns, this.db, filterFn);
     let toplevelBMs = [], toolbarBMs = [];
     for (let bookmark of bookmarks) {
       let bmToInsert;
@@ -363,6 +437,7 @@ EdgeProfileMigrator.prototype.getResources = function() {
     new EdgeBookmarksMigrator(),
     MSMigrationUtils.getCookiesMigrator(MSMigrationUtils.MIGRATION_TYPE_EDGE),
     new EdgeTypedURLMigrator(),
+    new EdgeTypedURLDBMigrator(),
     new EdgeReadingListMigrator(),
   ];
   let windowsVaultFormPasswordsMigrator =

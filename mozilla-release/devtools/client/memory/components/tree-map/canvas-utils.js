@@ -16,7 +16,7 @@
  * in view of the tree map.
  */
 const { debounce } = require("devtools/shared/debounce");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const FULLSCREEN_STYLE = {
@@ -51,7 +51,7 @@ Canvases.prototype = {
    *
    * @return {type}  description
    */
-  destroy: function () {
+  destroy: function() {
     this.removeHandlers();
     this.container.removeChild(this.main.canvas);
     this.container.removeChild(this.zoom.canvas);

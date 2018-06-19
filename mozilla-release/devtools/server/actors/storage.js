@@ -13,6 +13,9 @@ const defer = require("devtools/shared/defer");
 const {isWindowIncluded} = require("devtools/shared/layout/utils");
 const specs = require("devtools/shared/specs/storage");
 
+const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
+const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
+
 const DEFAULT_VALUE = "value";
 
 loader.lazyRequireGetter(this, "naturalSortCaseInsensitive",
@@ -25,6 +28,9 @@ const COOKIE_SAMESITE = {
   STRICT: "Strict",
   UNSET: "Unset"
 };
+
+const SAFE_HOSTS_PREFIXES_REGEX =
+  /^(about\+|https?\+|file\+|moz-extension\+)/;
 
 // GUID to be used as a separator in compound keys. This must match the same
 // constant in devtools/client/storage/ui.js,
@@ -120,7 +126,7 @@ var StorageActors = {};
  * @param {array} observationTopics
  *        An array of topics which this actor listens to via Notification Observers.
  */
-StorageActors.defaults = function (typeName, observationTopics) {
+StorageActors.defaults = function(typeName, observationTopics) {
   return {
     typeName: typeName,
 
@@ -129,8 +135,9 @@ StorageActors.defaults = function (typeName, observationTopics) {
     },
 
     /**
-     * Returns a list of currently knwon hosts for the target window. This list
-     * contains unique hosts from the window + all inner windows.
+     * Returns a list of currently known hosts for the target window. This list
+     * contains unique hosts from the window + all inner windows. If
+     * this._internalHosts is defined then these will also be added to the list.
      */
     get hosts() {
       let hosts = new Set();
@@ -138,6 +145,11 @@ StorageActors.defaults = function (typeName, observationTopics) {
         let host = this.getHostName(location);
 
         if (host) {
+          hosts.add(host);
+        }
+      }
+      if (this._internalHosts) {
+        for (let host of this._internalHosts) {
           hosts.add(host);
         }
       }
@@ -163,21 +175,22 @@ StorageActors.defaults = function (typeName, observationTopics) {
       }
 
       switch (location.protocol) {
+        case "about:":
+          return `${location.protocol}${location.pathname}`;
+        case "chrome:":
+          // chrome: URLs do not support storage of any type.
+          return null;
         case "data:":
           // data: URLs do not support storage of any type.
           return null;
-        case "about:":
-          // Fallthrough.
-        case "chrome:":
-          // Fallthrough.
         case "file:":
-          return location.protocol + location.pathname;
-        case "resource:":
-          return location.origin + location.pathname;
-        case "moz-extension:":
-          return location.origin;
+          return `${location.protocol}//${location.pathname}`;
         case "javascript:":
           return location.href;
+        case "moz-extension:":
+          return location.origin;
+        case "resource:":
+          return `${location.origin}${location.pathname}`;
         default:
           // http: or unknown protocol.
           return `${location.protocol}//${location.host}`;
@@ -342,9 +355,7 @@ StorageActors.defaults = function (typeName, observationTopics) {
         // We only acquire principal when the type of the storage is indexedDB
         // because the principal only matters the indexedDB.
         let win = this.storageActor.getWindowFromHost(host);
-        if (win) {
-          principal = win.document.nodePrincipal;
-        }
+        principal = this.getPrincipal(win);
       }
 
       if (names) {
@@ -407,6 +418,16 @@ StorageActors.defaults = function (typeName, observationTopics) {
       }
 
       return toReturn;
+    },
+
+    getPrincipal(win) {
+      if (win) {
+        return win.document.nodePrincipal;
+      }
+      // We are running in the browser toolbox and viewing system DBs so we
+      // need to use system principal.
+      return Cc["@mozilla.org/systemprincipal;1"]
+                .createInstance(Ci.nsIPrincipal);
     }
   };
 };
@@ -428,7 +449,7 @@ StorageActors.defaults = function (typeName, observationTopics) {
  *        All the methods which you want to be different from the ones in
  *        StorageActors.defaults method plus the required ones described there.
  */
-StorageActors.createActor = function (options = {}, overrides = {}) {
+StorageActors.createActor = function(options = {}, overrides = {}) {
   let actorObject = StorageActors.defaults(
     options.typeName,
     options.observationTopics || null
@@ -1074,7 +1095,7 @@ var cookieHelpers = {
  * E10S parent/child setup helpers
  */
 
-exports.setupParentProcessForCookies = function ({ mm, prefix }) {
+exports.setupParentProcessForCookies = function({ mm, prefix }) {
   cookieHelpers.onCookieChanged =
     callChildProcess.bind(null, "onCookieChanged");
 
@@ -1147,10 +1168,20 @@ function getObjectForLocalOrSessionStorage(type) {
       if (!storage) {
         return [];
       }
-      return Object.keys(storage).map(key => ({
-        name: key,
-        value: storage.getItem(key)
-      }));
+
+      // local and session storage cannot be iterated over using Object.keys()
+      // because it skips keys that are duplicated on the prototype
+      // e.g. "key", "getKeys" so we need to gather the real keys using the
+      // storage.key() function.
+      const storageArray = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        storageArray.push({
+          name: key,
+          value: storage.getItem(key)
+        });
+      }
+      return storageArray;
     },
 
     populateStoresForHost(host, window) {
@@ -1617,6 +1648,21 @@ StorageActors.createActor({
   },
 
   /**
+   * Returns a list of currently known hosts for the target window. This list
+   * contains unique hosts from the window, all inner windows and all permanent
+   * indexedDB hosts defined inside the browser.
+   */
+  async getHosts() {
+    // Add internal hosts to this._internalHosts, which will be picked up by
+    // the this.hosts getter. Because this.hosts is a property on the default
+    // storage actor and inherited by all storage actors we have to do it this
+    // way.
+    this._internalHosts = await this.getInternalHosts();
+
+    return this.hosts;
+  },
+
+  /**
    * Remove an indexedDB database from given host with a given name.
    */
   async removeDatabase(host, name) {
@@ -1734,7 +1780,7 @@ StorageActors.createActor({
   async preListStores() {
     this.hostVsStores = new Map();
 
-    for (let host of this.hosts) {
+    for (let host of await this.getHosts()) {
       await this.populateStoresForHost(host);
     }
   },
@@ -1743,17 +1789,16 @@ StorageActors.createActor({
     let storeMap = new Map();
 
     let win = this.storageActor.getWindowFromHost(host);
-    if (win) {
-      let principal = win.document.nodePrincipal;
-      let {names} = await this.getDBNamesForHost(host, principal);
+    let principal = this.getPrincipal(win);
 
-      for (let {name, storage} of names) {
-        let metadata = await this.getDBMetaData(host, principal, name, storage);
+    let {names} = await this.getDBNamesForHost(host, principal);
 
-        metadata = indexedDBHelpers.patchMetadataMapsAndProtos(metadata);
+    for (let {name, storage} of names) {
+      let metadata = await this.getDBMetaData(host, principal, name, storage);
 
-        storeMap.set(`${name} (${storage})`, metadata);
-      }
+      metadata = indexedDBHelpers.patchMetadataMapsAndProtos(metadata);
+
+      storeMap.set(`${name} (${storage})`, metadata);
     }
 
     this.hostVsStores.set(host, storeMap);
@@ -1852,6 +1897,7 @@ StorageActors.createActor({
       this.removeDB = indexedDBHelpers.removeDB;
       this.removeDBRecord = indexedDBHelpers.removeDBRecord;
       this.splitNameAndStorage = indexedDBHelpers.splitNameAndStorage;
+      this.getInternalHosts = indexedDBHelpers.getInternalHosts;
       return;
     }
 
@@ -1865,6 +1911,7 @@ StorageActors.createActor({
 
     this.getDBMetaData = callParentProcessAsync.bind(null, "getDBMetaData");
     this.splitNameAndStorage = callParentProcessAsync.bind(null, "splitNameAndStorage");
+    this.getInternalHosts = callParentProcessAsync.bind(null, "getInternalHosts");
     this.getDBNamesForHost = callParentProcessAsync.bind(null, "getDBNamesForHost");
     this.getValuesForHost = callParentProcessAsync.bind(null, "getValuesForHost");
     this.removeDB = callParentProcessAsync.bind(null, "removeDB");
@@ -1938,20 +1985,14 @@ StorageActors.createActor({
 
 var indexedDBHelpers = {
   backToChild(...args) {
-    let mm = Cc["@mozilla.org/globalmessagemanager;1"]
-               .getService(Ci.nsIMessageListenerManager);
-
-    mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
+    Services.mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
       method: "backToChild",
       args: args
     });
   },
 
   onItemUpdated(action, host, path) {
-    let mm = Cc["@mozilla.org/globalmessagemanager;1"]
-               .getService(Ci.nsIMessageListenerManager);
-
-    mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
+    Services.mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
       method: "onItemUpdated",
       args: [ action, host, path ]
     });
@@ -1981,7 +2022,7 @@ var indexedDBHelpers = {
     return success.promise;
   },
 
-  splitNameAndStorage: function (name) {
+  splitNameAndStorage: function(name) {
     let lastOpenBracketIndex = name.lastIndexOf("(");
     let lastCloseBracketIndex = name.lastIndexOf(")");
     let delta = lastCloseBracketIndex - lastOpenBracketIndex - 1;
@@ -1994,10 +2035,36 @@ var indexedDBHelpers = {
   },
 
   /**
+   * Get all "internal" hosts. Internal hosts are database namespaces used by
+   * the browser.
+   */
+  async getInternalHosts() {
+    // Return an empty array if the browser toolbox is not enabled.
+    if (!Services.prefs.getBoolPref(CHROME_ENABLED_PREF) ||
+        !Services.prefs.getBoolPref(REMOTE_ENABLED_PREF)) {
+      return this.backToChild("getInternalHosts", []);
+    }
+
+    let profileDir = OS.Constants.Path.profileDir;
+    let storagePath = OS.Path.join(profileDir, "storage", "permanent");
+    let iterator = new OS.File.DirectoryIterator(storagePath);
+    let hosts = [];
+
+    await iterator.forEach(entry => {
+      if (entry.isDir && !SAFE_HOSTS_PREFIXES_REGEX.test(entry.name)) {
+        hosts.push(entry.name);
+      }
+    });
+    iterator.close();
+
+    return this.backToChild("getInternalHosts", hosts);
+  },
+
+  /**
    * Opens an indexed db connection for the given `principal` and
    * database `name`.
    */
-  openWithPrincipal: function (principal, name, storage) {
+  openWithPrincipal: function(principal, name, storage) {
     return indexedDBForStorage.openForPrincipal(principal, name,
                                                 { storage: storage });
   },
@@ -2432,6 +2499,9 @@ var indexedDBHelpers = {
         let [host, principal, name, storage] = args;
         return indexedDBHelpers.getDBMetaData(host, principal, name, storage);
       }
+      case "getInternalHosts": {
+        return indexedDBHelpers.getInternalHosts();
+      }
       case "splitNameAndStorage": {
         let [name] = args;
         return indexedDBHelpers.splitNameAndStorage(name);
@@ -2468,7 +2538,7 @@ var indexedDBHelpers = {
  * E10S parent/child setup helpers
  */
 
-exports.setupParentProcessForIndexedDB = function ({ mm, prefix }) {
+exports.setupParentProcessForIndexedDB = function({ mm, prefix }) {
   // listen for director-script requests from the child process
   setMessageManager(mm);
 

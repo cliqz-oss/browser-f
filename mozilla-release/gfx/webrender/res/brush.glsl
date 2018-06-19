@@ -8,14 +8,21 @@ void brush_vs(
     VertexInfo vi,
     int prim_address,
     RectWithSize local_rect,
+    RectWithSize segment_rect,
     ivec3 user_data,
-    PictureTask pic_task
+    mat4 transform,
+    PictureTask pic_task,
+    int brush_flags,
+    vec4 segment_data
 );
 
 #define VECS_PER_BRUSH_PRIM                 2
 #define VECS_PER_SEGMENT                    2
 
 #define BRUSH_FLAG_PERSPECTIVE_INTERPOLATION    1
+#define BRUSH_FLAG_SEGMENT_RELATIVE             2
+#define BRUSH_FLAG_SEGMENT_REPEAT_X             4
+#define BRUSH_FLAG_SEGMENT_REPEAT_Y             8
 
 struct BrushInstance {
     int picture_address;
@@ -89,109 +96,99 @@ void main(void) {
     PictureTask pic_task = fetch_picture_task(brush.picture_address);
     ClipArea clip_area = fetch_clip_area(brush.clip_address);
 
-    if (pic_task.pic_kind_and_raster_mode > 0.0) {
-        vec2 local_pos = local_segment_rect.p0 + aPosition.xy * local_segment_rect.size;
+    ClipScrollNode scroll_node = fetch_clip_scroll_node(brush.scroll_node_id);
 
-        vec2 device_pos = uDevicePixelRatio * local_pos;
+    // Write the normal vertex information out.
+    if (scroll_node.is_axis_aligned) {
+        vi = write_vertex(
+            local_segment_rect,
+            brush_prim.local_clip_rect,
+            float(brush.z),
+            scroll_node,
+            pic_task,
+            brush_prim.local_rect
+        );
 
-        vec2 final_pos = device_pos +
-                         pic_task.common_data.task_rect.p0 -
-                         uDevicePixelRatio * pic_task.content_origin;
-
+        // TODO(gw): transform bounds may be referenced by
+        //           the fragment shader when running in
+        //           the alpha pass, even on non-transformed
+        //           items. For now, just ensure it has no
+        //           effect. We can tidy this up as we move
+        //           more items to be brush shaders.
 #ifdef WR_FEATURE_ALPHA_PASS
-        write_clip(
-            vec2(0.0),
-            clip_area
-        );
+        init_transform_vs(vec4(vec2(-1000000.0), vec2(1000000.0)));
 #endif
-
-        vi = VertexInfo(
-            local_pos,
-            device_pos,
-            1.0,
-            device_pos
-        );
-
-        // Write the final position transformed by the orthographic device-pixel projection.
-        gl_Position = uTransform * vec4(final_pos, 0.0, 1.0);
     } else {
-        ClipScrollNode scroll_node = fetch_clip_scroll_node(brush.scroll_node_id);
+        bvec4 edge_mask = notEqual(brush.edge_mask & ivec4(1, 2, 4, 8), ivec4(0));
+        bool do_perspective_interpolation = (brush.flags & BRUSH_FLAG_PERSPECTIVE_INTERPOLATION) != 0;
 
-        // Write the normal vertex information out.
-        if (scroll_node.is_axis_aligned) {
-            vi = write_vertex(
-                local_segment_rect,
-                brush_prim.local_clip_rect,
-                float(brush.z),
-                scroll_node,
-                pic_task,
-                brush_prim.local_rect
-            );
-
-            // TODO(gw): vLocalBounds may be referenced by
-            //           the fragment shader when running in
-            //           the alpha pass, even on non-transformed
-            //           items. For now, just ensure it has no
-            //           effect. We can tidy this up as we move
-            //           more items to be brush shaders.
-#ifdef WR_FEATURE_ALPHA_PASS
-            vLocalBounds = vec4(vec2(-1000000.0), vec2(1000000.0));
-#endif
-        } else {
-            bvec4 edge_mask = notEqual(brush.edge_mask & ivec4(1, 2, 4, 8), ivec4(0));
-            bool do_perspective_interpolation = (brush.flags & BRUSH_FLAG_PERSPECTIVE_INTERPOLATION) != 0;
-
-            vi = write_transform_vertex(
-                local_segment_rect,
-                brush_prim.local_rect,
-                brush_prim.local_clip_rect,
-                mix(vec4(0.0), vec4(1.0), edge_mask),
-                float(brush.z),
-                scroll_node,
-                pic_task,
-                do_perspective_interpolation
-            );
-        }
-
-        // For brush instances in the alpha pass, always write
-        // out clip information.
-        // TODO(gw): It's possible that we might want alpha
-        //           shaders that don't clip in the future,
-        //           but it's reasonable to assume that one
-        //           implies the other, for now.
-#ifdef WR_FEATURE_ALPHA_PASS
-        write_clip(
-            vi.screen_pos,
-            clip_area
+        vi = write_transform_vertex(
+            local_segment_rect,
+            brush_prim.local_rect,
+            brush_prim.local_clip_rect,
+            mix(vec4(0.0), vec4(1.0), edge_mask),
+            float(brush.z),
+            scroll_node,
+            pic_task,
+            do_perspective_interpolation
         );
-#endif
     }
+
+    // For brush instances in the alpha pass, always write
+    // out clip information.
+    // TODO(gw): It's possible that we might want alpha
+    //           shaders that don't clip in the future,
+    //           but it's reasonable to assume that one
+    //           implies the other, for now.
+#ifdef WR_FEATURE_ALPHA_PASS
+    write_clip(
+        vi.screen_pos,
+        clip_area
+    );
+#endif
 
     // Run the specific brush VS code to write interpolators.
     brush_vs(
         vi,
         brush.prim_address + VECS_PER_BRUSH_PRIM,
         brush_prim.local_rect,
+        local_segment_rect,
         brush.user_data,
-        pic_task
+        scroll_node.transform,
+        pic_task,
+        brush.flags,
+        segment_data[1]
     );
 }
 #endif
 
 #ifdef WR_FRAGMENT_SHADER
 
-vec4 brush_fs();
+struct Fragment {
+    vec4 color;
+#ifdef WR_FEATURE_DUAL_SOURCE_BLENDING
+    vec4 blend;
+#endif
+};
+
+Fragment brush_fs();
 
 void main(void) {
     // Run the specific brush FS code to output the color.
-    vec4 color = brush_fs();
+    Fragment frag = brush_fs();
 
 #ifdef WR_FEATURE_ALPHA_PASS
     // Apply the clip mask
-    color *= do_clip();
+    float clip_alpha = do_clip();
+
+    frag.color *= clip_alpha;
+
+    #ifdef WR_FEATURE_DUAL_SOURCE_BLENDING
+        oFragBlend = frag.blend * clip_alpha;
+    #endif
 #endif
 
     // TODO(gw): Handle pre-multiply common code here as required.
-    oFragColor = color;
+    oFragColor = frag.color;
 }
 #endif

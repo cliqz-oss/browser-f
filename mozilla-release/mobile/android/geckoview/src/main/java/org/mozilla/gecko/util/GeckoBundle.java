@@ -35,6 +35,7 @@ public final class GeckoBundle implements Parcelable {
     @WrapForJNI(calledFrom = "gecko")
     private static final boolean[] EMPTY_BOOLEAN_ARRAY = new boolean[0];
     private static final int[] EMPTY_INT_ARRAY = new int[0];
+    private static final long[] EMPTY_LONG_ARRAY = new long[0];
     private static final double[] EMPTY_DOUBLE_ARRAY = new double[0];
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
     private static final GeckoBundle[] EMPTY_BUNDLE_ARRAY = new GeckoBundle[0];
@@ -245,6 +246,52 @@ public final class GeckoBundle implements Parcelable {
         final Object value = mMap.get(key);
         return value == null ? null : Array.getLength(value) == 0 ? EMPTY_INT_ARRAY :
                value instanceof double[] ? getIntArray((double[]) value) : (int[]) value;
+    }
+
+    /**
+     * Returns the value associated with an int/double mapping as a long value, or
+     * defaultValue if the mapping does not exist.
+     *
+     * @param key Key to look for.
+     * @param defaultValue Value to return if mapping does not exist.
+     * @return Long value
+     */
+    public long getLong(final String key, final long defaultValue) {
+        final Object value = mMap.get(key);
+        return value == null ? defaultValue : ((Number) value).longValue();
+    }
+
+    /**
+     * Returns the value associated with an int/double mapping as a long value, or
+     * 0 if the mapping does not exist.
+     *
+     * @param key Key to look for.
+     * @return Long value
+     */
+    public long getLong(final String key) {
+        return getLong(key, 0L);
+    }
+
+    private static long[] getLongArray(final Object array) {
+        final int len = Array.getLength(array);
+        final long[] ret = new long[len];
+        for (int i = 0; i < len; i++) {
+            ret[i] = ((Number) Array.get(array, i)).longValue();
+        }
+        return ret;
+    }
+
+    /**
+     * Returns the value associated with an int/double array mapping as a long array, or
+     * null if the mapping does not exist.
+     *
+     * @param key Key to look for.
+     * @return Long array value
+     */
+    public long[] getLongArray(final String key) {
+        final Object value = mMap.get(key);
+        return value == null ? null :
+               Array.getLength(value) == 0 ? EMPTY_LONG_ARRAY : getLongArray(value);
     }
 
     /**
@@ -460,15 +507,7 @@ public final class GeckoBundle implements Parcelable {
      * @param value Value to map to.
      */
     public void putDoubleArray(final String key, final Double[] value) {
-        if (value == null) {
-            mMap.put(key, null);
-            return;
-        }
-        final double[] array = new double[value.length];
-        for (int i = 0; i < value.length; i++) {
-            array[i] = value[i];
-        }
-        mMap.put(key, array);
+        putDoubleArray(key, Arrays.asList(value));
     }
 
     /**
@@ -517,15 +556,7 @@ public final class GeckoBundle implements Parcelable {
      * @param value Value to map to.
      */
     public void putIntArray(final String key, final Integer[] value) {
-        if (value == null) {
-            mMap.put(key, null);
-            return;
-        }
-        final int[] array = new int[value.length];
-        for (int i = 0; i < value.length; i++) {
-            array[i] = value[i];
-        }
-        mMap.put(key, array);
+        putIntArray(key, Arrays.asList(value));
     }
 
     /**
@@ -543,6 +574,63 @@ public final class GeckoBundle implements Parcelable {
         int i = 0;
         for (final Integer element : value) {
             array[i++] = element;
+        }
+        mMap.put(key, array);
+    }
+
+    /**
+     * Map a key to a long value stored as a double value.
+     *
+     * @param key Key to map.
+     * @param value Value to map to.
+     */
+    public void putLong(final String key, final long value) {
+        mMap.put(key, (double) value);
+    }
+
+    /**
+     * Map a key to a long array value stored as a double array value.
+     *
+     * @param key Key to map.
+     * @param value Value to map to.
+     */
+    public void putLongArray(final String key, final long[] value) {
+        if (value == null) {
+            mMap.put(key, null);
+            return;
+        }
+        final double[] array = new double[value.length];
+        for (int i = 0; i < value.length; i++) {
+            array[i] = (double) value[i];
+        }
+        mMap.put(key, array);
+    }
+
+    /**
+     * Map a key to a long array value stored as a double array value.
+     *
+     * @param key Key to map.
+     * @param value Value to map to.
+     */
+    public void putLongArray(final String key, final Long[] value) {
+        putLongArray(key, Arrays.asList(value));
+    }
+
+    /**
+     * Map a key to a long array value stored as a double array value.
+     *
+     * @param key Key to map.
+     * @param value Value to map to.
+     */
+    public void putLongArray(final String key, final Collection<Long> value) {
+        if (value == null) {
+            mMap.put(key, null);
+            return;
+        }
+        final double[] array = new double[value.size()];
+        int i = 0;
+        for (final Long element : value) {
+            array[i++] = (double) element;
         }
         mMap.put(key, array);
     }

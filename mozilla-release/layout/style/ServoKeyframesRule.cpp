@@ -39,7 +39,7 @@ public:
       }
     }
   }
-  void SetStyleSheet(ServoStyleSheet* aSheet)
+  void SetStyleSheet(StyleSheet* aSheet)
   {
     mStyleSheet = aSheet;
     for (css::Rule* rule : mRules) {
@@ -49,7 +49,7 @@ public:
     }
   }
 
-  ServoStyleSheet* GetParentObject() final { return mStyleSheet; }
+  StyleSheet* GetParentObject() final { return mStyleSheet; }
 
   ServoKeyframeRule* GetRule(uint32_t aIndex) {
     if (!mRules[aIndex]) {
@@ -124,7 +124,7 @@ private:
   }
 
   // may be nullptr when the style sheet drops the reference to us.
-  ServoStyleSheet* mStyleSheet = nullptr;
+  StyleSheet* mStyleSheet = nullptr;
   ServoKeyframesRule* mParentRule = nullptr;
   RefPtr<RawServoKeyframesRule> mRawRule;
   nsCOMArray<css::Rule> mRules;
@@ -158,10 +158,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 ServoKeyframesRule::ServoKeyframesRule(RefPtr<RawServoKeyframesRule> aRawRule,
                                        uint32_t aLine, uint32_t aColumn)
-  // Although this class inherits from GroupRule, we don't want to use
-  // it at all, so it is fine to call the constructor for Gecko. We can
-  // make CSSKeyframesRule inherit from Rule directly once we can get
-  // rid of nsCSSKeyframeRule.
   : dom::CSSKeyframesRule(aLine, aColumn)
   , mRawRule(Move(aRawRule))
 {
@@ -201,16 +197,6 @@ ServoKeyframesRule::IsCCLeaf() const
   return Rule::IsCCLeaf() && !mKeyframeList;
 }
 
-/* virtual */ already_AddRefed<css::Rule>
-ServoKeyframesRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoKeyframesRule");
-  return nullptr;
-}
-
 #ifdef DEBUG
 /* virtual */ void
 ServoKeyframesRule::List(FILE* out, int32_t aIndent) const
@@ -228,7 +214,7 @@ ServoKeyframesRule::List(FILE* out, int32_t aIndent) const
 ServoKeyframesRule::SetStyleSheet(StyleSheet* aSheet)
 {
   if (mKeyframeList) {
-    mKeyframeList->SetStyleSheet(aSheet ? aSheet->AsServo() : nullptr);
+    mKeyframeList->SetStyleSheet(aSheet);
   }
   dom::CSSKeyframesRule::SetStyleSheet(aSheet);
 }
@@ -289,7 +275,7 @@ ServoKeyframesRule::AppendRule(const nsAString& aRule)
   NS_ConvertUTF16toUTF8 rule(aRule);
   UpdateRule([this, sheet, &rule]() {
     bool parsedOk = Servo_KeyframesRule_AppendRule(
-      mRawRule, sheet->AsServo()->RawContents(), &rule);
+      mRawRule, sheet->RawContents(), &rule);
     if (parsedOk && mKeyframeList) {
       mKeyframeList->AppendRule();
     }
@@ -325,7 +311,7 @@ ServoKeyframesRule::CssRules()
     mKeyframeList = new ServoKeyframeList(do_AddRef(mRawRule));
     mKeyframeList->SetParentRule(this);
     if (StyleSheet* sheet = GetStyleSheet()) {
-      mKeyframeList->SetStyleSheet(sheet->AsServo());
+      mKeyframeList->SetStyleSheet(sheet);
     }
   }
   return mKeyframeList;
@@ -347,7 +333,6 @@ ServoKeyframesRule::FindRule(const nsAString& aKey)
 ServoKeyframesRule::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 {
   size_t n = aMallocSizeOf(this);
-  n += GroupRule::SizeOfExcludingThis(aMallocSizeOf);
   if (mKeyframeList) {
     n += mKeyframeList->SizeOfIncludingThis(aMallocSizeOf);
   }

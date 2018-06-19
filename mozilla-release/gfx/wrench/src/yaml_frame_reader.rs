@@ -104,7 +104,7 @@ fn generate_checkerboard_image(
     }
 
     (
-        ImageDescriptor::new(width, height, ImageFormat::BGRA8, true),
+        ImageDescriptor::new(width, height, ImageFormat::BGRA8, true, false),
         ImageData::new(pixels),
     )
 }
@@ -122,7 +122,7 @@ fn generate_xy_gradient_image(w: u32, h: u32) -> (ImageDescriptor, ImageData) {
     }
 
     (
-        ImageDescriptor::new(w, h, ImageFormat::BGRA8, true),
+        ImageDescriptor::new(w, h, ImageFormat::BGRA8, true, false),
         ImageData::new(pixels),
     )
 }
@@ -152,7 +152,7 @@ fn generate_solid_color_image(
     }
 
     (
-        ImageDescriptor::new(w, h, ImageFormat::BGRA8, a == 255),
+        ImageDescriptor::new(w, h, ImageFormat::BGRA8, a == 255, false),
         ImageData::new(pixels),
     )
 }
@@ -193,13 +193,14 @@ pub struct YamlFrameReader {
 
     /// A HashMap of offsets which specify what scroll offsets particular
     /// scroll layers should be initialized with.
-    scroll_offsets: HashMap<ExternalScrollId, LayerPoint>,
+    scroll_offsets: HashMap<ExternalScrollId, LayoutPoint>,
 
     image_map: HashMap<(PathBuf, Option<i64>), (ImageKey, LayoutSize)>,
 
     fonts: HashMap<FontDescriptor, FontKey>,
-    font_instances: HashMap<(FontKey, Au, FontInstanceFlags), FontInstanceKey>,
+    font_instances: HashMap<(FontKey, Au, FontInstanceFlags, Option<ColorU>), FontInstanceKey>,
     font_render_mode: Option<FontRenderMode>,
+    allow_mipmaps: bool,
 
     /// A HashMap that allows specifying a numeric id for clip and clip chains in YAML
     /// and having each of those ids correspond to a unique ClipId.
@@ -224,6 +225,7 @@ impl YamlFrameReader {
             font_render_mode: None,
             image_map: HashMap::new(),
             clip_id_map: HashMap::new(),
+            allow_mipmaps: false,
         }
     }
 
@@ -371,6 +373,19 @@ impl YamlFrameReader {
         }
     }
 
+    fn to_hit_testing_tag(&self, item: &Yaml) -> Option<ItemTag> {
+        match *item {
+            Yaml::Array(ref array) if array.len() == 2 => {
+                match (array[0].as_i64(), array[1].as_i64()) {
+                    (Some(first), Some(second)) => Some((first as u64, second as u16)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+
+    }
+
     pub fn add_or_get_image(
             &mut self,
             file: &Path,
@@ -385,7 +400,7 @@ impl YamlFrameReader {
         if self.list_resources { println!("{}", file.to_string_lossy()); }
         let (descriptor, image_data) = match image::open(file) {
             Ok(image) => {
-                let image_dims = image.dimensions();
+                let (image_width, image_height) = image.dimensions();
                 let (format, bytes) = match image {
                     image::ImageLuma8(_) => {
                         (ImageFormat::R8, image.raw_pixels())
@@ -397,7 +412,7 @@ impl YamlFrameReader {
                     }
                     image::ImageRgb8(_) => {
                         let bytes = image.raw_pixels();
-                        let mut pixels = Vec::new();
+                        let mut pixels = Vec::with_capacity(image_width as usize * image_height as usize * 4);
                         for bgr in bytes.chunks(3) {
                             pixels.extend_from_slice(&[
                                 bgr[2],
@@ -411,10 +426,11 @@ impl YamlFrameReader {
                     _ => panic!("We don't support whatever your crazy image type is, come on"),
                 };
                 let descriptor = ImageDescriptor::new(
-                    image_dims.0,
-                    image_dims.1,
+                    image_width,
+                    image_height,
                     format,
                     is_image_opaque(format, &bytes[..]),
+                    self.allow_mipmaps,
                 );
                 let data = ImageData::new(bytes);
                 (descriptor, data)
@@ -516,6 +532,10 @@ impl YamlFrameReader {
             })
     }
 
+    pub fn allow_mipmaps(&mut self, allow_mipmaps: bool) {
+        self.allow_mipmaps = allow_mipmaps;
+    }
+
     pub fn set_font_render_mode(&mut self, render_mode: Option<FontRenderMode>) {
         self.font_render_mode = render_mode;
     }
@@ -524,19 +544,21 @@ impl YamlFrameReader {
         &mut self,
         font_key: FontKey,
         size: Au,
+        bg_color: Option<ColorU>,
         flags: FontInstanceFlags,
         wrench: &mut Wrench,
     ) -> FontInstanceKey {
         let font_render_mode = self.font_render_mode;
 
         *self.font_instances
-            .entry((font_key, size, flags))
+            .entry((font_key, size, flags, bg_color))
             .or_insert_with(|| {
                 wrench.add_font_instance(
                     font_key,
                     size,
                     flags,
                     font_render_mode,
+                    bg_color,
                 )
             })
     }
@@ -599,80 +621,30 @@ impl YamlFrameReader {
     }
 
     fn to_radial_gradient(&mut self, dl: &mut DisplayListBuilder, item: &Yaml) -> RadialGradient {
-        if item["start-center"].is_badvalue() {
-            let center = item["center"]
-                .as_point()
-                .expect("radial gradient must have start center");
-            let radius = item["radius"]
-                .as_size()
-                .expect("radial gradient must have start radius");
-            let stops = item["stops"]
-                .as_vec()
-                .expect("radial gradient must have stops")
-                .chunks(2)
-                .map(|chunk| {
-                    GradientStop {
-                        offset: chunk[0]
-                            .as_force_f32()
-                            .expect("gradient stop offset is not f32"),
-                        color: chunk[1]
-                            .as_colorf()
-                            .expect("gradient stop color is not color"),
-                    }
-                })
-                .collect::<Vec<_>>();
-            let extend_mode = if item["repeat"].as_bool().unwrap_or(false) {
-                ExtendMode::Repeat
-            } else {
-                ExtendMode::Clamp
-            };
-
-            dl.create_radial_gradient(center, radius, stops, extend_mode)
+        let center = item["center"].as_point().expect("radial gradient must have center");
+        let radius = item["radius"].as_size().expect("radial gradient must have a radius");
+        let stops = item["stops"]
+            .as_vec()
+            .expect("radial gradient must have stops")
+            .chunks(2)
+            .map(|chunk| {
+                GradientStop {
+                    offset: chunk[0]
+                        .as_force_f32()
+                        .expect("gradient stop offset is not f32"),
+                    color: chunk[1]
+                        .as_colorf()
+                        .expect("gradient stop color is not color"),
+                }
+            })
+            .collect::<Vec<_>>();
+        let extend_mode = if item["repeat"].as_bool().unwrap_or(false) {
+            ExtendMode::Repeat
         } else {
-            let start_center = item["start-center"]
-                .as_point()
-                .expect("radial gradient must have start center");
-            let start_radius = item["start-radius"]
-                .as_force_f32()
-                .expect("radial gradient must have start radius");
-            let end_center = item["end-center"]
-                .as_point()
-                .expect("radial gradient must have end center");
-            let end_radius = item["end-radius"]
-                .as_force_f32()
-                .expect("radial gradient must have end radius");
-            let ratio_xy = item["ratio-xy"].as_force_f32().unwrap_or(1.0);
-            let stops = item["stops"]
-                .as_vec()
-                .expect("radial gradient must have stops")
-                .chunks(2)
-                .map(|chunk| {
-                    GradientStop {
-                        offset: chunk[0]
-                            .as_force_f32()
-                            .expect("gradient stop offset is not f32"),
-                        color: chunk[1]
-                            .as_colorf()
-                            .expect("gradient stop color is not color"),
-                    }
-                })
-                .collect::<Vec<_>>();
-            let extend_mode = if item["repeat"].as_bool().unwrap_or(false) {
-                ExtendMode::Repeat
-            } else {
-                ExtendMode::Clamp
-            };
+            ExtendMode::Clamp
+        };
 
-            dl.create_complex_radial_gradient(
-                start_center,
-                start_radius,
-                end_center,
-                end_radius,
-                ratio_xy,
-                stops,
-                extend_mode,
-            )
-        }
+        dl.create_radial_gradient(center, radius, stops, extend_mode)
     }
 
     fn handle_rect(
@@ -1147,6 +1119,8 @@ impl YamlFrameReader {
     ) {
         let size = item["size"].as_pt_to_au().unwrap_or(Au::from_f32_px(16.0));
         let color = item["color"].as_colorf().unwrap_or(*BLACK_COLOR);
+        let bg_color = item["bg-color"].as_colorf().map(|c| c.into());
+
         let mut flags = FontInstanceFlags::empty();
         if item["synthetic-italics"].as_bool().unwrap_or(false) {
             flags |= FontInstanceFlags::SYNTHETIC_ITALICS;
@@ -1176,6 +1150,7 @@ impl YamlFrameReader {
         let font_key = self.get_or_create_font(desc, wrench);
         let font_instance_key = self.get_or_create_font_instance(font_key,
                                                                  size,
+                                                                 bg_color,
                                                                  flags,
                                                                  wrench);
 
@@ -1257,14 +1232,12 @@ impl YamlFrameReader {
         dl.push_iframe(&info, pipeline_id);
     }
 
-    pub fn get_local_clip_for_item(&mut self, yaml: &Yaml, full_clip: LayoutRect) -> LocalClip {
-        let rect = yaml["clip-rect"].as_rect().unwrap_or(full_clip);
+    pub fn get_complex_clip_for_item(&mut self, yaml: &Yaml) -> Option<ComplexClipRegion> {
         let complex_clip = &yaml["complex-clip"];
-        if !complex_clip.is_badvalue() {
-            LocalClip::RoundedRect(rect, self.to_complex_clip_region(complex_clip))
-        } else {
-            LocalClip::from(rect)
+        if complex_clip.is_badvalue() {
+            return None;
         }
+        Some(self.to_complex_clip_region(complex_clip))
     }
 
     pub fn add_display_list_items_from_yaml(
@@ -1317,9 +1290,26 @@ impl YamlFrameReader {
             if let Some(clip_scroll_info) = clip_scroll_info {
                 dl.push_clip_and_scroll_info(clip_scroll_info);
             }
-            let local_clip = self.get_local_clip_for_item(item, full_clip);
-            let mut info = LayoutPrimitiveInfo::with_clip(LayoutRect::zero(), local_clip);
+
+            let complex_clip = self.get_complex_clip_for_item(item);
+            let clip_rect = item["clip-rect"].as_rect().unwrap_or(full_clip);
+
+            let mut pushed_clip = false;
+            if let Some(complex_clip) = complex_clip {
+                match item_type {
+                    "clip" | "clip-chain" | "scroll-frame" => {},
+                    _ => {
+                        let id = dl.define_clip(clip_rect, vec![complex_clip], None);
+                        dl.push_clip_id(id);
+                        pushed_clip = true;
+                    }
+                }
+            }
+
+            let mut info = LayoutPrimitiveInfo::with_clip_rect(LayoutRect::zero(), clip_rect);
             info.is_backface_visible = item["backface-visible"].as_bool().unwrap_or(true);;
+            info.tag = self.to_hit_testing_tag(&item["hit-testing-tag"]);
+
             match item_type {
                 "rect" => self.handle_rect(dl, item, &mut info),
                 "clear-rect" => self.handle_clear_rect(dl, item, &mut info),
@@ -1344,9 +1334,15 @@ impl YamlFrameReader {
                 _ => println!("Skipping unknown item type: {:?}", item),
             }
 
+            if pushed_clip {
+                dl.pop_clip_id();
+
+            }
+
             if clip_scroll_info.is_some() {
                 dl.pop_clip_id();
             }
+
         }
     }
 
@@ -1360,7 +1356,7 @@ impl YamlFrameReader {
             .as_rect()
             .expect("scroll frame must have a bounds");
         let content_size = yaml["content-size"].as_size().unwrap_or(clip_rect.size);
-        let content_rect = LayerRect::new(clip_rect.origin, content_size);
+        let content_rect = LayoutRect::new(clip_rect.origin, content_size);
 
         let numeric_id = yaml["id"].as_i64().map(|id| id as u64);
 
@@ -1369,7 +1365,7 @@ impl YamlFrameReader {
 
         let external_id =  yaml["scroll-offset"].as_point().map(|size| {
             let id = ExternalScrollId((self.scroll_offsets.len() + 1) as u64, dl.pipeline_id);
-            self.scroll_offsets.insert(id, LayerPoint::new(size.x, size.y));
+            self.scroll_offsets.insert(id, LayoutPoint::new(size.x, size.y));
             id
         });
 
@@ -1431,11 +1427,6 @@ impl YamlFrameReader {
         yaml: &Yaml,
         info: &mut LayoutPrimitiveInfo,
     ) {
-        let rect = yaml["bounds"]
-            .as_rect()
-            .expect("Text shadows require bounds");
-        info.rect = rect;
-        info.local_clip = LocalClip::from(rect);
         let blur_radius = yaml["blur-radius"].as_f32().unwrap_or(0.0);
         let offset = yaml["offset"].as_vector().unwrap_or(LayoutVector2D::zero());
         let color = yaml["color"].as_colorf().unwrap_or(*BLACK_COLOR);
@@ -1528,6 +1519,9 @@ impl YamlFrameReader {
             .as_transform(&transform_origin)
             .map(|transform| transform.into());
 
+        let clip_node_id =
+            yaml["clip-node"].as_i64().map(|id| self.to_clip_id(id as u64, dl.pipeline_id));
+
         let perspective = match yaml["perspective"].as_f32() {
             Some(value) if value != 0.0 => {
                 Some(make_perspective(perspective_origin, value as f32))
@@ -1545,26 +1539,31 @@ impl YamlFrameReader {
         let scroll_policy = yaml["scroll-policy"]
             .as_scroll_policy()
             .unwrap_or(ScrollPolicy::Scrollable);
+        let glyph_raster_space = yaml["glyph-raster-space"]
+            .as_glyph_raster_space()
+            .unwrap_or(GlyphRasterSpace::Screen);
 
         if is_root {
             if let Some(size) = yaml["scroll-offset"].as_point() {
                 let external_id = ExternalScrollId(0, dl.pipeline_id);
-                self.scroll_offsets.insert(external_id, LayerPoint::new(size.x, size.y));
+                self.scroll_offsets.insert(external_id, LayoutPoint::new(size.x, size.y));
             }
         }
 
         let filters = yaml["filters"].as_vec_filter_op().unwrap_or(vec![]);
         info.rect = bounds;
-        info.local_clip = LocalClip::from(bounds);
+        info.clip_rect = bounds;
 
         dl.push_stacking_context(
             &info,
+            clip_node_id,
             scroll_policy,
             transform.into(),
             transform_style,
             perspective,
             mix_blend_mode,
             filters,
+            glyph_raster_space,
         );
 
         if !yaml["items"].is_badvalue() {

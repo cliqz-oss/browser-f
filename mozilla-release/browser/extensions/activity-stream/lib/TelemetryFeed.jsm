@@ -24,11 +24,12 @@ XPCOMUtils.defineLazyServiceGetter(this, "gUUIDGenerator",
 
 const ACTIVITY_STREAM_ID = "activity-stream";
 const ACTIVITY_STREAM_ENDPOINT_PREF = "browser.newtabpage.activity-stream.telemetry.ping.endpoint";
+const ACTIVITY_STREAM_ROUTER_ID = "activity-stream-router";
 
 // This is a mapping table between the user preferences and its encoding code
 const USER_PREFS_ENCODING = {
   "showSearch": 1 << 0,
-  "showTopSites": 1 << 1,
+  "feeds.topsites": 1 << 1,
   "feeds.section.topstories": 1 << 2,
   "feeds.section.highlights": 1 << 3,
   "feeds.snippets": 1 << 4,
@@ -114,7 +115,7 @@ this.TelemetryFeed = class TelemetryFeed {
   }
 
   /**
-   * Lazily initialize PingCentre to send pings
+   * Lazily initialize PingCentre for Activity Stream to send pings
    */
   get pingCentre() {
     Object.defineProperty(this, "pingCentre",
@@ -125,6 +126,18 @@ this.TelemetryFeed = class TelemetryFeed {
         })
       });
     return this.pingCentre;
+  }
+
+  /**
+   * Lazily initialize a PingCentre client for Activity Stream Router to send pings.
+   *
+   * Unlike the PingCentre client for Activity Stream, Activity Stream Router
+   * uses a separate client with the standard PingCentre endpoint.
+   */
+  get pingCentreForASRouter() {
+    Object.defineProperty(this, "pingCentreForASRouter",
+      {value: new PingCentre({topic: ACTIVITY_STREAM_ROUTER_ID})});
+    return this.pingCentreForASRouter;
   }
 
   /**
@@ -352,6 +365,17 @@ this.TelemetryFeed = class TelemetryFeed {
     );
   }
 
+  createASRouterEvent(action) {
+    const appInfo = this.store.getState().App;
+    const ping = {
+      client_id: "n/a",
+      addon_version: appInfo.version,
+      locale: Services.locale.getAppLocaleAsLangTag(),
+      impression_id: this._impressionId
+    };
+    return Object.assign(ping, action.data);
+  }
+
   sendEvent(event_object) {
     if (this.telemetryEnabled) {
       this.pingCentre.sendPing(event_object,
@@ -365,6 +389,13 @@ this.TelemetryFeed = class TelemetryFeed {
     }
   }
 
+  sendASRouterEvent(event_object) {
+    if (this.telemetryEnabled) {
+      this.pingCentreForASRouter.sendPing(event_object,
+      {filter: ACTIVITY_STREAM_ID});
+    }
+  }
+
   handleImpressionStats(action) {
     this.sendEvent(this.createImpressionStats(action));
   }
@@ -373,6 +404,11 @@ this.TelemetryFeed = class TelemetryFeed {
     let userEvent = this.createUserEvent(action);
     this.sendEvent(userEvent);
     this.sendUTEvent(userEvent, this.utEvents.sendUserEvent);
+  }
+
+  handleASRouterUserEvent(action) {
+    let event = this.createASRouterEvent(action);
+    this.sendASRouterEvent(event);
   }
 
   handleUndesiredEvent(action) {
@@ -404,6 +440,9 @@ this.TelemetryFeed = class TelemetryFeed {
         break;
       case at.TELEMETRY_USER_EVENT:
         this.handleUserEvent(action);
+        break;
+      case at.AS_ROUTER_TELEMETRY_USER_EVENT:
+        this.handleASRouterUserEvent(action);
         break;
       case at.TELEMETRY_PERFORMANCE_EVENT:
         this.sendEvent(this.createPerformanceEvent(action));
@@ -460,6 +499,9 @@ this.TelemetryFeed = class TelemetryFeed {
     }
     if (Object.prototype.hasOwnProperty.call(this, "utEvents")) {
       this.utEvents.uninit();
+    }
+    if (Object.prototype.hasOwnProperty.call(this, "pingCentreForASRouter")) {
+      this.pingCentreForASRouter.uninit();
     }
 
     try {

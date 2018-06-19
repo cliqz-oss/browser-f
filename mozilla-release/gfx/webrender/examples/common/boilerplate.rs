@@ -34,7 +34,7 @@ impl RenderNotifier for Notifier {
         let _ = self.events_proxy.wakeup();
     }
 
-    fn new_document_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool) {
+    fn new_frame_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool) {
         self.wake_up();
     }
 }
@@ -138,11 +138,11 @@ pub fn main_wrapper<E: Example>(
     println!("Loading shaders...");
     let opts = webrender::RendererOptions {
         resource_override_path: res_path,
-        debug: true,
         precache_shaders: E::PRECACHE_SHADERS,
         device_pixel_ratio,
         clear_color: Some(ColorF::new(0.3, 0.0, 0.0, 1.0)),
         //scatter_gpu_cache_updates: false,
+        debug_flags: webrender::DebugFlags::ECHO_DRIVER_MESSAGES,
         ..options.unwrap_or(webrender::RendererOptions::default())
     };
 

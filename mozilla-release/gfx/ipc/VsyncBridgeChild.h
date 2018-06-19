@@ -31,9 +31,9 @@ public:
   void DeallocPVsyncBridgeChild() override;
   void ProcessingError(Result aCode, const char* aReason) override;
 
-  void NotifyVsync(TimeStamp aTimeStamp, const uint64_t& aLayersId);
+  void NotifyVsync(TimeStamp aTimeStamp, const layers::LayersId& aLayersId);
 
-  virtual void HandleFatalError(const char* aName, const char* aMsg) const override;
+  virtual void HandleFatalError(const char* aMsg) const override;
 
 private:
   VsyncBridgeChild(RefPtr<VsyncIOThreadHolder>, const uint64_t& aProcessToken);
@@ -41,7 +41,7 @@ private:
 
   void Open(Endpoint<PVsyncBridgeChild>&& aEndpoint);
 
-  void NotifyVsyncImpl(TimeStamp aTimeStamp, const uint64_t& aLayersId);
+  void NotifyVsyncImpl(TimeStamp aTimeStamp, const layers::LayersId& aLayersId);
 
   bool IsOnVsyncIOThread() const;
 

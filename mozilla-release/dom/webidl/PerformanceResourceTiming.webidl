@@ -17,21 +17,42 @@ interface PerformanceResourceTiming : PerformanceEntry
   readonly attribute DOMString nextHopProtocol;
 
   readonly attribute DOMHighResTimeStamp workerStart;
+
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp redirectStart;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp redirectEnd;
+
   readonly attribute DOMHighResTimeStamp fetchStart;
+
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp domainLookupStart;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp domainLookupEnd;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp connectStart;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp connectEnd;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp secureConnectionStart;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp requestStart;
+  [NeedsSubjectPrincipal]
   readonly attribute DOMHighResTimeStamp responseStart;
+
   readonly attribute DOMHighResTimeStamp responseEnd;
 
+  [NeedsSubjectPrincipal]
   readonly attribute unsigned long long transferSize;
+  [NeedsSubjectPrincipal]
   readonly attribute unsigned long long encodedBodySize;
+  [NeedsSubjectPrincipal]
   readonly attribute unsigned long long decodedBodySize;
+
+  // TODO: Use FrozenArray once available. (Bug 1236777)
+  // readonly attribute FrozenArray<PerformanceServerTiming> serverTiming;
+  [SecureContext, Frozen, Cached, Pure, NeedsSubjectPrincipal]
+  readonly attribute sequence<PerformanceServerTiming> serverTiming;
 
   jsonifier;
 };

@@ -32,8 +32,6 @@ ChromeUtils.defineModuleGetter(this, "FileUtils",
                                "resource://gre/modules/FileUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "NetUtil",
                                "resource://gre/modules/NetUtil.jsm");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-                               "resource://gre/modules/AppConstants.jsm");
 
 function _TabRemovalObserver(resolver, tabParentIds) {
   this._resolver = resolver;
@@ -45,7 +43,7 @@ _TabRemovalObserver.prototype = {
   _resolver: null,
   _tabParentIds: null,
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   observe(subject, topic, data) {
     let tabParent = subject.QueryInterface(Ci.nsITabParent);

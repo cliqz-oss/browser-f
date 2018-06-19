@@ -81,7 +81,7 @@ AutofillProfileAutoCompleteSearch.prototype = {
   classID: Components.ID("4f9f1e4c-7f2c-439e-9c9e-566b68bc187d"),
   contractID: "@mozilla.org/autocomplete/search;1?name=autofill-profiles",
   classDescription: "AutofillProfileAutoCompleteSearch",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteSearch]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteSearch]),
 
   // Begin nsIAutoCompleteSearch implementation
 
@@ -209,7 +209,7 @@ AutofillProfileAutoCompleteSearch.prototype = {
 };
 
 let ProfileAutocomplete = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   lastProfileAutoCompleteResult: null,
   lastProfileAutoCompleteFocusedInput: null,
@@ -324,7 +324,7 @@ let ProfileAutocomplete = {
  * NOTE: Declares it by "var" to make it accessible in unit tests.
  */
 var FormAutofillContent = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFormSubmitObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFormSubmitObserver]),
   /**
    * @type {WeakMap} mapping FormLike root HTML elements to FormAutofillHandler objects.
    */
@@ -387,30 +387,34 @@ var FormAutofillContent = {
    * @returns {boolean} Should always return true so form submission isn't canceled.
    */
   notify(formElement, domWin) {
-    this.log.debug("Notifying form early submission");
+    try {
+      this.log.debug("Notifying form early submission");
 
-    if (!FormAutofillUtils.isAutofillEnabled) {
-      this.log.debug("Form Autofill is disabled");
-      return true;
+      if (!FormAutofillUtils.isAutofillEnabled) {
+        this.log.debug("Form Autofill is disabled");
+        return true;
+      }
+
+      if (domWin && PrivateBrowsingUtils.isContentWindowPrivate(domWin)) {
+        this.log.debug("Ignoring submission in a private window");
+        return true;
+      }
+
+      let handler = this._formsDetails.get(formElement);
+      if (!handler) {
+        this.log.debug("Form element could not map to an existing handler");
+        return true;
+      }
+
+      let records = handler.createRecords();
+      if (!Object.values(records).some(typeRecords => typeRecords.length)) {
+        return true;
+      }
+
+      this._onFormSubmit(records, domWin, handler.timeStartedFillingMS);
+    } catch (ex) {
+      Cu.reportError(ex);
     }
-
-    if (domWin && PrivateBrowsingUtils.isContentWindowPrivate(domWin)) {
-      this.log.debug("Ignoring submission in a private window");
-      return true;
-    }
-
-    let handler = this._formsDetails.get(formElement);
-    if (!handler) {
-      this.log.debug("Form element could not map to an existing handler");
-      return true;
-    }
-
-    let records = handler.createRecords();
-    if (!Object.values(records).some(typeRecords => typeRecords.length)) {
-      return true;
-    }
-
-    this._onFormSubmit(records, domWin, handler.timeStartedFillingMS);
     return true;
   },
 
@@ -599,7 +603,7 @@ var FormAutofillContent = {
   _markAsAutofillField(field) {
     // Since Form Autofill popup is only for input element, any non-Input
     // element should be excluded here.
-    if (!field || !(field instanceof Ci.nsIDOMHTMLInputElement)) {
+    if (!field || ChromeUtils.getClassName(field) !== "HTMLInputElement") {
       return;
     }
 

@@ -13,6 +13,7 @@
 #include "ClientState.h"
 #include "ClientValidation.h"
 #include "mozilla/dom/ClientIPCTypes.h"
+#include "mozilla/dom/DOMMozPromiseRequestHolder.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "mozilla/dom/MessageEvent.h"
 #include "mozilla/dom/MessageEventBinding.h"
@@ -598,10 +599,9 @@ ClientSource::PostMessage(const ClientPostMessageArgs& aArgs)
     MessageEvent::Constructor(target, NS_LITERAL_STRING("message"), init);
   event->SetTrusted(true);
 
-  bool preventDefaultCalled = false;
-  rv = target->DispatchEvent(static_cast<dom::Event*>(event.get()),
-                             &preventDefaultCalled);
-  if (NS_FAILED(rv)) {
+  target->DispatchEvent(*event, result);
+  if (result.Failed()) {
+    result.SuppressException();
     ref = ClientOpPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
     return ref.forget();
   }
@@ -637,13 +637,18 @@ ClientSource::Claim(const ClientClaimArgs& aArgs)
   RefPtr<ClientOpPromise::Private> outerPromise =
     new ClientOpPromise::Private(__func__);
 
+  auto holder =
+    MakeRefPtr<DOMMozPromiseRequestHolder<GenericPromise>>(innerWindow->AsGlobal());
+
   RefPtr<GenericPromise> p = swm->MaybeClaimClient(doc, swd);
   p->Then(mEventTarget, __func__,
-    [outerPromise] (bool aResult) {
+    [outerPromise, holder] (bool aResult) {
+      holder->Complete();
       outerPromise->Resolve(NS_OK, __func__);
-    }, [outerPromise] (nsresult aResult) {
+    }, [outerPromise, holder] (nsresult aResult) {
+      holder->Complete();
       outerPromise->Reject(aResult, __func__);
-    });
+    })->Track(*holder);
 
   ref = outerPromise;
   return ref.forget();

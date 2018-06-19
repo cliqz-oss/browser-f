@@ -45,7 +45,7 @@ class nsBulletFrame;
 namespace mozilla {
 class BlockReflowInput;
 class ServoRestyleState;
-class StyleSetHandle;
+class ServoStyleSet;
 } // namespace mozilla
 
 /**
@@ -101,7 +101,7 @@ public:
   ReverseLineIterator LinesRBeginFrom(nsLineBox* aList) { return mLines.rbegin(aList); }
 
   friend nsBlockFrame* NS_NewBlockFrame(nsIPresShell* aPresShell,
-                                        nsStyleContext* aContext);
+                                        ComputedStyle* aStyle);
 
   // nsQueryFrame
   NS_DECL_QUERYFRAME
@@ -148,8 +148,8 @@ public:
                nsIFrame::eBlockFrame));
   }
 
-  void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
 
 #ifdef DEBUG_FRAME_DUMP
   void List(FILE* out = stderr, const char* aPrefix = "", uint32_t aFlags = 0) const override;
@@ -416,8 +416,8 @@ public:
   void UpdateFirstLetterStyle(mozilla::ServoRestyleState& aRestyleState);
 
 protected:
-  explicit nsBlockFrame(nsStyleContext* aContext, ClassID aID = kClassID)
-    : nsContainerFrame(aContext, aID)
+  explicit nsBlockFrame(ComputedStyle* aStyle, ClassID aID = kClassID)
+    : nsContainerFrame(aStyle, aID)
     , mMinWidth(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mPrefWidth(NS_INTRINSIC_WIDTH_UNKNOWN)
   {
@@ -429,7 +429,7 @@ protected:
   virtual ~nsBlockFrame();
 
 #ifdef DEBUG
-  already_AddRefed<nsStyleContext> GetFirstLetterStyle(nsPresContext* aPresContext);
+  already_AddRefed<ComputedStyle> GetFirstLetterStyle(nsPresContext* aPresContext);
 #endif
 
   NS_DECLARE_FRAME_PROPERTY_WITHOUT_DTOR(LineCursorProperty, nsLineBox)
@@ -938,12 +938,12 @@ protected:
   // Remove and return the pushed floats list.
   nsFrameList* RemovePushedFloats();
 
-  // Resolve a style context for our bullet frame.  aType should be
+  // Resolve a ComputedStyle for our bullet frame.  aType should be
   // mozListBullet or mozListNumber.  Passing in the style set is an
   // optimization, because all callsites have it.
-  already_AddRefed<nsStyleContext> ResolveBulletStyle(
+  already_AddRefed<ComputedStyle> ResolveBulletStyle(
     mozilla::CSSPseudoElementType aType,
-    mozilla::StyleSetHandle aStyleSet);
+    mozilla::ServoStyleSet* aStyleSet);
 
 #ifdef DEBUG
   void VerifyLines(bool aFinalCheckOK);

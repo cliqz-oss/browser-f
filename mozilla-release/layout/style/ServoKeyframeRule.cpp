@@ -57,13 +57,6 @@ public:
     });
     return NS_OK;
   }
-  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
-                                nsIPrincipal* aSubjectPrincipal) final
-  {
-    MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
-                           "shouldn't be calling for a Servo rule");
-    GetCSSParsingEnvironmentForRule(mRule, aCSSParseEnv);
-  }
   ServoCSSParsingEnvironment GetServoCSSParsingEnvironment(
       nsIPrincipal* aSubjectPrincipal) const final
   {
@@ -137,16 +130,6 @@ bool
 ServoKeyframeRule::IsCCLeaf() const
 {
   return Rule::IsCCLeaf() && !mDeclaration;
-}
-
-/* virtual */ already_AddRefed<css::Rule>
-ServoKeyframeRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoKeyframeRule");
-  return nullptr;
 }
 
 #ifdef DEBUG

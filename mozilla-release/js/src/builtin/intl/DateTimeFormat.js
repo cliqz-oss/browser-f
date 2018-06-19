@@ -169,7 +169,7 @@ function replaceHourRepresentation(pattern, hourCycle) {
  */
 function getDateTimeFormatInternals(obj) {
     assert(IsObject(obj), "getDateTimeFormatInternals called with non-object");
-    assert(IsDateTimeFormat(obj), "getDateTimeFormatInternals called with non-DateTimeFormat");
+    assert(GuardToDateTimeFormat(obj) !== null, "getDateTimeFormatInternals called with non-DateTimeFormat");
 
     var internals = getIntlObjectInternals(obj);
     assert(internals.type === "DateTimeFormat", "bad type escaped getIntlObjectInternals");
@@ -192,11 +192,11 @@ function UnwrapDateTimeFormat(dtf, methodName) {
     // Step 1 (not applicable in our implementation).
 
     // Step 2.
-    if (IsObject(dtf) && !IsDateTimeFormat(dtf) && dtf instanceof GetDateTimeFormatConstructor())
+    if (IsObject(dtf) && (GuardToDateTimeFormat(dtf)) === null && dtf instanceof GetDateTimeFormatConstructor())
         dtf = dtf[intlFallbackSymbol()];
 
     // Step 3.
-    if (!IsObject(dtf) || !IsDateTimeFormat(dtf)) {
+    if (!IsObject(dtf) || (dtf = GuardToDateTimeFormat(dtf)) === null) {
         ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "DateTimeFormat", methodName,
                        "DateTimeFormat");
     }
@@ -302,7 +302,7 @@ function DefaultTimeZone() {
  */
 function InitializeDateTimeFormat(dateTimeFormat, thisValue, locales, options, mozExtensions) {
     assert(IsObject(dateTimeFormat), "InitializeDateTimeFormat called with non-Object");
-    assert(IsDateTimeFormat(dateTimeFormat),
+    assert(GuardToDateTimeFormat(dateTimeFormat) !== null,
            "InitializeDateTimeFormat called with non-DateTimeFormat");
 
     // Lazy DateTimeFormat data has the following structure:
@@ -671,23 +671,25 @@ function ToDateTimeOptions(options, required, defaults) {
     var needDefaults = true;
 
     // Step 4.
-    // TODO: spec issue - The spec requires to retrieve all options, so using
-    // the ||-operator with its lazy evaluation semantics is incorrect.
-    if ((required === "date" || required === "any") &&
-        (options.weekday !== undefined || options.year !== undefined ||
-         options.month !== undefined || options.day !== undefined))
-    {
-        needDefaults = false;
+    if (required === "date" || required === "any") {
+        if (options.weekday !== undefined)
+            needDefaults = false;
+        if (options.year !== undefined)
+            needDefaults = false;
+        if (options.month !== undefined)
+            needDefaults = false;
+        if (options.day !== undefined)
+            needDefaults = false;
     }
 
     // Step 5.
-    // TODO: spec issue - The spec requires to retrieve all options, so using
-    // the ||-operator with its lazy evaluation semantics is incorrect.
-    if ((required === "time" || required === "any") &&
-        (options.hour !== undefined || options.minute !== undefined ||
-         options.second !== undefined))
-    {
-        needDefaults = false;
+    if (required === "time" || required === "any") {
+        if (options.hour !== undefined)
+            needDefaults = false;
+        if (options.minute !== undefined)
+            needDefaults = false;
+        if (options.second !== undefined)
+            needDefaults = false;
     }
 
     // Step 6.
@@ -783,7 +785,7 @@ function dateTimeFormatFormatToBind(date) {
 
     // Step 2.
     assert(IsObject(dtf), "dateTimeFormatFormatToBind called with non-Object");
-    assert(IsDateTimeFormat(dtf), "dateTimeFormatFormatToBind called with non-DateTimeFormat");
+    assert(GuardToDateTimeFormat(dtf) !== null, "dateTimeFormatFormatToBind called with non-DateTimeFormat");
 
     // Steps 3-4.
     var x = (date === undefined) ? std_Date_now() : ToNumber(date);
@@ -829,7 +831,7 @@ function Intl_DateTimeFormat_formatToParts(date) {
     var dtf = this;
 
     // Steps 2-3.
-    if (!IsObject(dtf) || !IsDateTimeFormat(dtf)) {
+    if (!IsObject(dtf) || (dtf = GuardToDateTimeFormat(dtf)) == null) {
         ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, "DateTimeFormat", "formatToParts",
                        "DateTimeFormat");
     }

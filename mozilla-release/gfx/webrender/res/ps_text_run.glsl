@@ -15,17 +15,6 @@ varying vec4 vUvClip;
 
 #ifdef WR_VERTEX_SHADER
 
-#define MODE_ALPHA              0
-#define MODE_SUBPX_CONST_COLOR  1
-#define MODE_SUBPX_PASS0        2
-#define MODE_SUBPX_PASS1        3
-#define MODE_SUBPX_BG_PASS0     4
-#define MODE_SUBPX_BG_PASS1     5
-#define MODE_SUBPX_BG_PASS2     6
-#define MODE_SUBPX_DUAL_SOURCE  7
-#define MODE_BITMAP             8
-#define MODE_COLOR_BITMAP       9
-
 VertexInfo write_text_vertex(vec2 clamped_local_pos,
                              RectWithSize local_clip_rect,
                              float z,
@@ -50,7 +39,11 @@ VertexInfo write_text_vertex(vec2 clamped_local_pos,
     final_pos += floor(world_snap_p0 + 0.5) - world_snap_p0;
 #elif !defined(WR_FEATURE_TRANSFORM)
     // Compute the snapping offset only if the scroll node transform is axis-aligned.
-    final_pos += compute_snap_offset(clamped_local_pos, scroll_node, snap_rect);
+    final_pos += compute_snap_offset(
+        clamped_local_pos,
+        scroll_node.transform,
+        snap_rect
+    );
 #endif
 
     gl_Position = uTransform * vec4(final_pos, z, 1.0);
@@ -71,7 +64,12 @@ void main(void) {
 
     int glyph_index = prim.user_data0;
     int resource_address = prim.user_data1;
-    int subpx_dir = prim.user_data2;
+    int subpx_dir = prim.user_data2 >> 16;
+    int color_mode = prim.user_data2 & 0xffff;
+
+    if (color_mode == COLOR_MODE_FROM_PASS) {
+        color_mode = uMode;
+    }
 
     Glyph glyph = fetch_glyph(prim.specific_prim_address,
                               glyph_index,
@@ -130,26 +128,24 @@ void main(void) {
 
     write_clip(vi.screen_pos, prim.clip_area);
 
-    switch (uMode) {
-        case MODE_ALPHA:
-        case MODE_BITMAP:
+    switch (color_mode) {
+        case COLOR_MODE_ALPHA:
+        case COLOR_MODE_BITMAP:
             vMaskSwizzle = vec2(0.0, 1.0);
             vColor = text.color;
             break;
-        case MODE_SUBPX_PASS1:
-        case MODE_SUBPX_BG_PASS2:
-        case MODE_SUBPX_DUAL_SOURCE:
+        case COLOR_MODE_SUBPX_BG_PASS2:
+        case COLOR_MODE_SUBPX_DUAL_SOURCE:
             vMaskSwizzle = vec2(1.0, 0.0);
             vColor = text.color;
             break;
-        case MODE_SUBPX_CONST_COLOR:
-        case MODE_SUBPX_PASS0:
-        case MODE_SUBPX_BG_PASS0:
-        case MODE_COLOR_BITMAP:
+        case COLOR_MODE_SUBPX_CONST_COLOR:
+        case COLOR_MODE_SUBPX_BG_PASS0:
+        case COLOR_MODE_COLOR_BITMAP:
             vMaskSwizzle = vec2(1.0, 0.0);
             vColor = vec4(text.color.a);
             break;
-        case MODE_SUBPX_BG_PASS1:
+        case COLOR_MODE_SUBPX_BG_PASS1:
             vMaskSwizzle = vec2(-1.0, 1.0);
             vColor = vec4(text.color.a) * text.bg_color;
             break;

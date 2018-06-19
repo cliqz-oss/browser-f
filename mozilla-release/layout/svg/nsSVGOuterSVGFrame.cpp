@@ -15,6 +15,7 @@
 #include "nsIObjectLoadingContent.h"
 #include "nsSVGIntegrationUtils.h"
 #include "nsSVGForeignObjectFrame.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/SVGViewElement.h"
 #include "nsSubDocumentFrame.h"
@@ -57,17 +58,17 @@ nsSVGOuterSVGFrame::UnregisterForeignObject(nsSVGForeignObjectFrame* aFrame)
 // Implementation
 
 nsContainerFrame*
-NS_NewSVGOuterSVGFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGOuterSVGFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGOuterSVGFrame(aContext);
+  return new (aPresShell) nsSVGOuterSVGFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGOuterSVGFrame)
 
-nsSVGOuterSVGFrame::nsSVGOuterSVGFrame(nsStyleContext* aContext)
-  : nsSVGDisplayContainerFrame(aContext, kClassID)
+nsSVGOuterSVGFrame::nsSVGOuterSVGFrame(ComputedStyle* aStyle)
+  : nsSVGDisplayContainerFrame(aStyle, kClassID)
   , mCallingReflowSVG(false)
-  , mFullZoom(aContext->PresContext()->GetFullZoom())
+  , mFullZoom(PresContext()->GetFullZoom())
   , mViewportInitialized(false)
   , mIsRootContent(false)
 {
@@ -927,14 +928,14 @@ nsSVGOuterSVGFrame::IsRootOfReplacedElementSubDoc(nsIFrame **aEmbeddingFrame)
     }
 
     if (window) {
-      nsCOMPtr<nsIDOMElement> frameElement = window->GetFrameElement();
-      nsCOMPtr<nsIContent> content = do_QueryInterface(frameElement);
-      if (content && content->IsAnyOfHTMLElements(nsGkAtoms::object,
-                                                  nsGkAtoms::embed,
-                                                  nsGkAtoms::iframe)) {
+      RefPtr<Element> frameElement = window->GetFrameElement();
+      if (frameElement &&
+          frameElement->IsAnyOfHTMLElements(nsGkAtoms::object,
+                                            nsGkAtoms::embed,
+                                            nsGkAtoms::iframe)) {
         // Our document is inside an HTML 'object', 'embed' or 'iframe' element
         if (aEmbeddingFrame) {
-          *aEmbeddingFrame = content->GetPrimaryFrame();
+          *aEmbeddingFrame = frameElement->GetPrimaryFrame();
           NS_ASSERTION(*aEmbeddingFrame, "Yikes, no embedding frame!");
         }
         return true;
@@ -983,9 +984,9 @@ nsSVGOuterSVGFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult
 
 nsContainerFrame*
 NS_NewSVGOuterSVGAnonChildFrame(nsIPresShell* aPresShell,
-                                nsStyleContext* aContext)
+                                ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGOuterSVGAnonChildFrame(aContext);
+  return new (aPresShell) nsSVGOuterSVGAnonChildFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGOuterSVGAnonChildFrame)

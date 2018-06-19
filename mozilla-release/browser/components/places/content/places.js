@@ -3,9 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* import-globals-from editBookmarkOverlay.js */
-// Via downloadsViewOverlay.xul -> allDownloadsViewOverlay.xul
+/* import-globals-from editBookmark.js */
 /* import-globals-from ../../../../toolkit/content/contentAreaUtils.js */
+/* import-globals-from ../PlacesUIUtils.jsm */
+/* import-globals-from ../../../../toolkit/components/places/PlacesUtils.jsm */
+/* import-globals-from ../../downloads/content/allDownloadsView.js */
 
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -26,7 +28,7 @@ const HISTORY_LIBRARY_SEARCH_TELEMETRY = "PLACES_HISTORY_LIBRARY_SEARCH_TIME_MS"
 var PlacesOrganizer = {
   _places: null,
 
-  // IDs of fields from editBookmarkOverlay that should be hidden when infoBox
+  // IDs of fields from editBookmark that should be hidden when infoBox
   // is minimal. IDs should be kept in sync with the IDs of the elements
   // observing additionalInfoBroadcaster.
   _additionalInfoFields: [
@@ -36,8 +38,7 @@ var PlacesOrganizer = {
   ],
 
   _initFolderTree() {
-    var leftPaneRoot = PlacesUIUtils.leftPaneFolderId;
-    this._places.place = "place:excludeItems=1&expandQueries=0&folder=" + leftPaneRoot;
+    this._places.place = `place:type=${Ci.nsINavHistoryQueryOptions.RESULTS_AS_LEFT_PANE_QUERY}&excludeItems=1&expandQueries=0`;
   },
 
   /**
@@ -50,31 +51,34 @@ var PlacesOrganizer = {
   selectLeftPaneBuiltIn(item) {
     switch (item) {
       case "AllBookmarks":
-      case "History":
-      case "Downloads":
-      case "Tags": {
-        var itemId = PlacesUIUtils.leftPaneQueries[item];
-        this._places.selectItems([itemId]);
-        // Forcefully expand all-bookmarks
-        if (item == "AllBookmarks" || item == "History")
-          PlacesUtils.asContainer(this._places.selectedNode).containerOpen = true;
+        this._places.selectItems([PlacesUtils.virtualAllBookmarksGuid]);
+        PlacesUtils.asContainer(this._places.selectedNode).containerOpen = true;
         break;
-      }
+      case "History":
+        this._places.selectItems([PlacesUtils.virtualHistoryGuid]);
+        PlacesUtils.asContainer(this._places.selectedNode).containerOpen = true;
+        break;
+      case "Downloads":
+        this._places.selectItems([PlacesUtils.virtualDownloadsGuid]);
+        break;
+      case "Tags":
+        this._places.selectItems([PlacesUtils.virtualTagsGuid]);
+        break;
       case "BookmarksMenu":
         this.selectLeftPaneContainerByHierarchy([
-          PlacesUIUtils.leftPaneQueries.AllBookmarks,
+          PlacesUtils.virtualAllBookmarksGuid,
           PlacesUtils.bookmarks.virtualMenuGuid
         ]);
         break;
       case "BookmarksToolbar":
         this.selectLeftPaneContainerByHierarchy([
-          PlacesUIUtils.leftPaneQueries.AllBookmarks,
+          PlacesUtils.virtualAllBookmarksGuid,
           PlacesUtils.bookmarks.virtualToolbarGuid
         ]);
         break;
       case "UnfiledBookmarks":
         this.selectLeftPaneContainerByHierarchy([
-          PlacesUIUtils.leftPaneQueries.AllBookmarks,
+          PlacesUtils.virtualAllBookmarksGuid,
           PlacesUtils.bookmarks.virtualUnfiledGuid
         ]);
         break;
@@ -92,7 +96,6 @@ var PlacesOrganizer = {
    *                   container may be either an item id, a Places URI string,
    *                   or a named query, like:
    *                   "BookmarksMenu", "BookmarksToolbar", "UnfiledBookmarks", "AllBookmarks".
-   * @see PlacesUIUtils.leftPaneQueries for supported named queries.
    */
   selectLeftPaneContainerByHierarchy(aHierarchy) {
     if (!aHierarchy)
@@ -131,6 +134,17 @@ var PlacesOrganizer = {
   },
 
   init: function PO_init() {
+    // Register the downloads view.
+    const DOWNLOADS_QUERY = "place:transition=" +
+      Ci.nsINavHistoryService.TRANSITION_DOWNLOAD +
+      "&sort=" +
+      Ci.nsINavHistoryQueryOptions.SORT_BY_DATE_DESCENDING;
+
+    ContentArea.setContentViewForQueryString(DOWNLOADS_QUERY,
+      () => new DownloadsPlacesView(document.getElementById("downloadsRichListBox"), false),
+      { showDetailsPane: false,
+        toolbarSet: "back-button, forward-button, organizeButton, clearDownloadsButton, libraryToolbarSpacer, searchFilter" });
+
     ContentArea.init();
 
     this._places = document.getElementById("placesList");
@@ -182,13 +196,7 @@ var PlacesOrganizer = {
     ContentArea.focus();
   },
 
-  QueryInterface: function PO_QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIDOMEventListener) ||
-        aIID.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_NOINTERFACE;
-  },
+  QueryInterface: ChromeUtils.generateQI([]),
 
   handleEvent: function PO_handleEvent(aEvent) {
     if (aEvent.type != "AppCommand")
@@ -316,12 +324,12 @@ var PlacesOrganizer = {
    *          the node to set up scope from
    */
   _setSearchScopeForNode: function PO__setScopeForNode(aNode) {
-    let itemId = aNode.itemId;
+    let itemGuid = aNode.bookmarkGuid;
 
     if (PlacesUtils.nodeIsHistoryContainer(aNode) ||
-        itemId == PlacesUIUtils.leftPaneQueries.History) {
+        itemGuid == PlacesUtils.virtualHistoryGuid) {
       PlacesQueryBuilder.setScope("history");
-    } else if (itemId == PlacesUIUtils.leftPaneQueries.Downloads) {
+    } else if (itemGuid == PlacesUtils.virtualDownloadsGuid) {
       PlacesQueryBuilder.setScope("downloads");
     } else {
       // Default to All Bookmarks for all other nodes, per bug 469437.
@@ -384,13 +392,6 @@ var PlacesOrganizer = {
     return PlacesUtils.asQuery(ContentArea.currentView.result.root).queryOptions;
   },
 
-  /**
-   * Returns the queries associated with the query currently loaded in the
-   * main places pane.
-   */
-  getCurrentQueries: function PO_getCurrentQueries() {
-    return PlacesUtils.asQuery(ContentArea.currentView.result.root).getQueries();
-  },
 
   /**
    * Show the migration wizard for importing passwords,
@@ -409,7 +410,7 @@ var PlacesOrganizer = {
     let fpCallback = function fpCallback_done(aResult) {
       if (aResult != Ci.nsIFilePicker.returnCancel && fp.fileURL) {
         ChromeUtils.import("resource://gre/modules/BookmarkHTMLUtils.jsm");
-        BookmarkHTMLUtils.importFromURL(fp.fileURL.spec, false)
+        BookmarkHTMLUtils.importFromURL(fp.fileURL.spec)
                          .catch(Cu.reportError);
       }
     };
@@ -548,7 +549,9 @@ var PlacesOrganizer = {
 
     (async function() {
       try {
-        await BookmarkJSONUtils.importFromFile(aFilePath, true);
+        await BookmarkJSONUtils.importFromFile(aFilePath, {
+          replace: true,
+        });
       } catch (ex) {
         PlacesOrganizer._showErrorAlert(PlacesUIUtils.getString("bookmarksRestoreParseError"));
       }
@@ -621,16 +624,6 @@ var PlacesOrganizer = {
           document.getElementById(id).collapsed);
     }
     additionalInfoBroadcaster.hidden = infoBox.getAttribute("minimal") == "true";
-  },
-
-  // NOT YET USED
-  updateThumbnailProportions: function PO_updateThumbnailProportions() {
-    var previewBox = document.getElementById("previewBox");
-    var canvas = document.getElementById("itemThumbnail");
-    var height = previewBox.boxObject.height;
-    var width = height * (screen.width / screen.height);
-    canvas.width = width;
-    canvas.height = height;
   },
 
   _fillDetailsPane: function PO__fillDetailsPane(aNodeList) {
@@ -718,28 +711,6 @@ var PlacesOrganizer = {
                                         itemsCount, [itemsCount]);
       }
     }
-  },
-
-  // NOT YET USED
-  _updateThumbnail: function PO__updateThumbnail() {
-    var bo = document.getElementById("previewBox").boxObject;
-    var width  = bo.width;
-    var height = bo.height;
-
-    var canvas = document.getElementById("itemThumbnail");
-    var ctx = canvas.getContext("2d");
-    var notAvailableText = canvas.getAttribute("notavailabletext");
-    ctx.save();
-    ctx.fillStyle = "-moz-Dialog";
-    ctx.fillRect(0, 0, width, height);
-    ctx.translate(width / 2, height / 2);
-
-    ctx.fillStyle = "GrayText";
-    ctx.mozTextStyle = "12pt sans serif";
-    var len = ctx.mozMeasureText(notAvailableText);
-    ctx.translate(-len / 2, 0);
-    ctx.mozDrawText(notAvailableText);
-    ctx.restore();
   },
 
   toggleAdditionalInfoFields: function PO_toggleAdditionalInfoFields() {
@@ -1006,21 +977,21 @@ var ViewMenu = {
    *          null if the caller should just append to the popup.
    */
   _clean: function VM__clean(popup, startID, endID) {
-    if (endID)
-      NS_ASSERT(startID, "meaningless to have valid endID and null startID");
+    if (endID && !startID)
+      throw new Error("meaningless to have valid endID and null startID");
     if (startID) {
       var startElement = document.getElementById(startID);
-      NS_ASSERT(startElement.parentNode ==
-                popup, "startElement is not in popup");
-      NS_ASSERT(startElement,
-                "startID does not correspond to an existing element");
+      if (startElement.parentNode != popup)
+        throw new Error("startElement is not in popup");
+      if (!startElement)
+        throw new Error("startID does not correspond to an existing element");
       var endElement = null;
       if (endID) {
         endElement = document.getElementById(endID);
-        NS_ASSERT(endElement.parentNode == popup,
-                  "endElement is not in popup");
-        NS_ASSERT(endElement,
-                  "endID does not correspond to an existing element");
+        if (endElement.parentNode != popup)
+          throw new Error("endElement is not in popup");
+        if (!endElement)
+          throw new Error("endID does not correspond to an existing element");
       }
       while (startElement.nextSibling != endElement)
         popup.removeChild(startElement.nextSibling);

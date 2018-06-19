@@ -6,9 +6,8 @@
 
 const { Ci } = require("chrome");
 const defer = require("devtools/shared/defer");
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const Services = require("Services");
-const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
 loader.lazyRequireGetter(this, "DebuggerClient",
@@ -30,7 +29,7 @@ const TargetFactory = exports.TargetFactory = {
    *
    * @return A target object
    */
-  forTab: function (tab) {
+  forTab: function(tab) {
     let target = targets.get(tab);
     if (target == null) {
       target = new TabTarget(tab);
@@ -52,7 +51,7 @@ const TargetFactory = exports.TargetFactory = {
    *
    * @return A promise of a target object
    */
-  forRemoteTab: function (options) {
+  forRemoteTab: function(options) {
     let targetPromise = promiseTargets.get(options);
     if (targetPromise == null) {
       let target = new TabTarget(options);
@@ -62,7 +61,7 @@ const TargetFactory = exports.TargetFactory = {
     return targetPromise;
   },
 
-  forWorker: function (workerClient) {
+  forWorker: function(workerClient) {
     let target = targets.get(workerClient);
     if (target == null) {
       target = new WorkerTarget(workerClient);
@@ -78,7 +77,7 @@ const TargetFactory = exports.TargetFactory = {
    * target for a tab without creating a target
    * @return true/false
    */
-  isKnownTab: function (tab) {
+  isKnownTab: function(tab) {
     return targets.has(tab);
   },
 };
@@ -145,8 +144,6 @@ function TabTarget(tab) {
 exports.TabTarget = TabTarget;
 
 TabTarget.prototype = {
-  _webProgressListener: null,
-
   /**
    * Returns a promise for the protocol description from the root actor. Used
    * internally with `target.actorHasMethod`. Takes advantage of caching if
@@ -185,7 +182,7 @@ TabTarget.prototype = {
    *  "events": {}
    * }
    */
-  getActorDescription: function (actorName) {
+  getActorDescription: function(actorName) {
     if (!this.client) {
       throw new Error("TabTarget#getActorDescription() can only be called on " +
                       "remote tabs.");
@@ -213,7 +210,7 @@ TabTarget.prototype = {
    * @param {String} actorName
    * @return {Boolean}
    */
-  hasActor: function (actorName) {
+  hasActor: function(actorName) {
     if (!this.client) {
       throw new Error("TabTarget#hasActor() can only be called on remote " +
                       "tabs.");
@@ -235,7 +232,7 @@ TabTarget.prototype = {
    * @param {String} methodName
    * @return {Promise}
    */
-  actorHasMethod: function (actorName, methodName) {
+  actorHasMethod: function(actorName, methodName) {
     if (!this.client) {
       throw new Error("TabTarget#actorHasMethod() can only be called on " +
                       "remote tabs.");
@@ -254,7 +251,7 @@ TabTarget.prototype = {
    * @param {String} traitName
    * @return {Mixed}
    */
-  getTrait: function (traitName) {
+  getTrait: function(traitName) {
     if (!this.client) {
       throw new Error("TabTarget#getTrait() can only be called on remote " +
                       "tabs.");
@@ -286,7 +283,7 @@ TabTarget.prototype = {
     return this._root;
   },
 
-  _getRoot: function () {
+  _getRoot: function() {
     return new Promise((resolve, reject) => {
       this.client.mainRoot.getRoot(response => {
         if (response.error) {
@@ -394,7 +391,7 @@ TabTarget.prototype = {
    * for tools that support the Remote Debugging Protocol even for local
    * connections.
    */
-  makeRemote: async function () {
+  makeRemote: async function() {
     if (this._remote) {
       return this._remote.promise;
     }
@@ -407,12 +404,14 @@ TabTarget.prototype = {
       DebuggerServer.init();
 
       // When connecting to a local tab, we only need the root actor.
-      // Then we are going to call DebuggerServer.connectToChild and talk
+      // Then we are going to call DebuggerServer.connectToFrame and talk
       // directly with actors living in the child process.
       // We also need browser actors for actor registry which enabled addons
       // to register custom actors.
       // TODO: the comment and implementation are out of sync here. See Bug 1420134.
       DebuggerServer.registerAllActors();
+      // Enable being able to get child process actors
+      DebuggerServer.allowChromeProcess = true;
 
       this._client = new DebuggerClient(DebuggerServer.connectPipe());
       // A local TabTarget will never perform chrome debugging.
@@ -457,7 +456,7 @@ TabTarget.prototype = {
       }
       this.activeConsole = consoleClient;
 
-      this._onInspectObject = (event, packet) => this.emit("inspect-object", packet);
+      this._onInspectObject = packet => this.emit("inspect-object", packet);
       this.activeConsole.on("inspectObject", this._onInspectObject);
 
       this._remote.resolve(null);
@@ -493,9 +492,7 @@ TabTarget.prototype = {
   /**
    * Listen to the different events.
    */
-  _setupListeners: function () {
-    this._webProgressListener = new TabWebProgressListener(this);
-    this.tab.linkedBrowser.addProgressListener(this._webProgressListener);
+  _setupListeners: function() {
     this.tab.addEventListener("TabClose", this);
     this.tab.parentNode.addEventListener("TabSelect", this);
     this.tab.ownerDocument.defaultView.addEventListener("unload", this);
@@ -505,11 +502,7 @@ TabTarget.prototype = {
   /**
    * Teardown event listeners.
    */
-  _teardownListeners: function () {
-    if (this._webProgressListener) {
-      this._webProgressListener.destroy();
-    }
-
+  _teardownListeners: function() {
     this._tab.ownerDocument.defaultView.removeEventListener("unload", this);
     this._tab.removeEventListener("TabClose", this);
     this._tab.parentNode.removeEventListener("TabSelect", this);
@@ -519,7 +512,7 @@ TabTarget.prototype = {
   /**
    * Setup listeners for remote debugging, updating existing ones as necessary.
    */
-  _setupRemoteListeners: function () {
+  _setupRemoteListeners: function() {
     this.client.addListener("closed", this.destroy);
 
     this._onTabDetached = (type, packet) => {
@@ -573,7 +566,7 @@ TabTarget.prototype = {
   /**
    * Teardown listeners for remote debugging.
    */
-  _teardownRemoteListeners: function () {
+  _teardownRemoteListeners: function() {
     this.client.removeListener("closed", this.destroy);
     this.client.removeListener("tabNavigated", this._onTabNavigated);
     this.client.removeListener("tabDetached", this._onTabDetached);
@@ -588,7 +581,7 @@ TabTarget.prototype = {
   /**
    * Handle tabs events.
    */
-  handleEvent: function (event) {
+  handleEvent: function(event) {
     switch (event.type) {
       case "TabClose":
       case "unload":
@@ -612,7 +605,7 @@ TabTarget.prototype = {
    * loaded within the parent process and loaded from a content process.
    * Process change can go in both ways.
    */
-  onRemotenessChange: function () {
+  onRemotenessChange: function() {
     // Responsive design do a crazy dance around tabs and triggers
     // remotenesschange events. But we should ignore them as at the end
     // the content doesn't change its remoteness.
@@ -622,7 +615,7 @@ TabTarget.prototype = {
 
     // Save a reference to the tab as it will be nullified on destroy
     let tab = this._tab;
-    let onToolboxDestroyed = (event, target) => {
+    let onToolboxDestroyed = target => {
       if (target != this) {
         return;
       }
@@ -638,7 +631,7 @@ TabTarget.prototype = {
   /**
    * Target is not alive anymore.
    */
-  destroy: function () {
+  destroy: function() {
     // If several things call destroy then we give them all the same
     // destruction promise so we're sure to destroy only once
     if (this._destroyer) {
@@ -689,7 +682,7 @@ TabTarget.prototype = {
   /**
    * Clean up references to what this target points to.
    */
-  _cleanup: function () {
+  _cleanup: function() {
     if (this._tab) {
       targets.delete(this._tab);
     } else {
@@ -708,7 +701,7 @@ TabTarget.prototype = {
     this.threadActor = null;
   },
 
-  toString: function () {
+  toString: function() {
     let id = this._tab ? this._tab : (this._form && this._form.actor);
     return `TabTarget:${id}`;
   },
@@ -721,7 +714,7 @@ TabTarget.prototype = {
    * @param {String} category
    *                 The category of the message.  @see nsIScriptError.
    */
-  logErrorInPage: function (text, category) {
+  logErrorInPage: function(text, category) {
     if (this.activeTab && this.activeTab.traits.logInPage) {
       const errorFlag = 0;
       let packet = {
@@ -743,7 +736,7 @@ TabTarget.prototype = {
    * @param {String} category
    *                 The category of the message.  @see nsIScriptError.
    */
-  logWarningInPage: function (text, category) {
+  logWarningInPage: function(text, category) {
     if (this.activeTab && this.activeTab.traits.logInPage) {
       const warningFlag = 1;
       let packet = {
@@ -756,81 +749,6 @@ TabTarget.prototype = {
       this.client.request(packet);
     }
   },
-};
-
-/**
- * WebProgressListener for TabTarget.
- *
- * @param object target
- *        The TabTarget instance to work with.
- */
-function TabWebProgressListener(target) {
-  this.target = target;
-}
-
-TabWebProgressListener.prototype = {
-  target: null,
-
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference]),
-
-  onStateChange: function (progress, request, flag) {
-    let isStart = flag & Ci.nsIWebProgressListener.STATE_START;
-    let isDocument = flag & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT;
-    let isNetwork = flag & Ci.nsIWebProgressListener.STATE_IS_NETWORK;
-    let isRequest = flag & Ci.nsIWebProgressListener.STATE_IS_REQUEST;
-
-    // Skip non-interesting states.
-    if (!isStart || !isDocument || !isRequest || !isNetwork) {
-      return;
-    }
-
-    // emit event if the top frame is navigating
-    if (progress.isTopLevel) {
-      // Emit the event if the target is not remoted or store the payload for
-      // later emission otherwise.
-      if (this.target._client) {
-        this.target._navRequest = request;
-      } else {
-        this.target.emit("will-navigate", request);
-      }
-    }
-  },
-
-  onProgressChange: function () {},
-  onSecurityChange: function () {},
-  onStatusChange: function () {},
-
-  onLocationChange: function (webProgress, request, URI, flags) {
-    if (this.target &&
-        !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
-      let window = webProgress.DOMWindow;
-      // Emit the event if the target is not remoted or store the payload for
-      // later emission otherwise.
-      if (this.target._client) {
-        this.target._navWindow = window;
-      } else {
-        this.target.emit("navigate", window);
-      }
-    }
-  },
-
-  /**
-   * Destroy the progress listener instance.
-   */
-  destroy: function () {
-    if (this.target.tab) {
-      try {
-        this.target.tab.linkedBrowser.removeProgressListener(this);
-      } catch (ex) {
-        // This can throw when a tab crashes in e10s.
-      }
-    }
-    this.target._webProgressListener = null;
-    this.target._navRequest = null;
-    this.target._navWindow = null;
-    this.target = null;
-  }
 };
 
 function WorkerTarget(workerClient) {
@@ -888,11 +806,11 @@ WorkerTarget.prototype = {
     return this._workerClient.client;
   },
 
-  destroy: function () {
+  destroy: function() {
     this._workerClient.detach();
   },
 
-  hasActor: function (name) {
+  hasActor: function(name) {
     // console is the only one actor implemented by WorkerActor
     if (name == "console") {
       return true;
@@ -900,19 +818,19 @@ WorkerTarget.prototype = {
     return false;
   },
 
-  getTrait: function () {
+  getTrait: function() {
     return undefined;
   },
 
-  makeRemote: function () {
+  makeRemote: function() {
     return Promise.resolve();
   },
 
-  logErrorInPage: function () {
+  logErrorInPage: function() {
     // No-op.  See bug 1368680.
   },
 
-  logWarningInPage: function () {
+  logWarningInPage: function() {
     // No-op.  See bug 1368680.
   },
 };

@@ -249,11 +249,8 @@ static nsresult GetSharedScriptableHelperForJSIID(nsIXPCScriptable** helper)
 { 0x00000000, 0x0000, 0x0000,                                                 \
   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } }
 
-// We pass nsIClassInfo::DOM_OBJECT so that nsJSIID instances may be created
-// in unprivileged scopes.
 NS_DECL_CI_INTERFACE_GETTER(nsJSIID)
-NS_IMPL_CLASSINFO(nsJSIID, GetSharedScriptableHelperForJSIID,
-                  nsIClassInfo::DOM_OBJECT, NULL_CID)
+NS_IMPL_CLASSINFO(nsJSIID, GetSharedScriptableHelperForJSIID, 0, NULL_CID)
 
 NS_DECL_CI_INTERFACE_GETTER(nsJSCID)
 NS_IMPL_CLASSINFO(nsJSCID, nullptr, 0, NULL_CID)
@@ -290,7 +287,7 @@ NS_IMPL_CI_INTERFACE_GETTER(nsJSIID, nsIJSID, nsIJSIID)
 #include "xpc_map_end.h" /* This will #undef the above */
 
 
-nsJSIID::nsJSIID(nsIInterfaceInfo* aInfo)
+nsJSIID::nsJSIID(const nsXPTInterfaceInfo* aInfo)
     : mInfo(aInfo)
 {
 }
@@ -353,15 +350,14 @@ NS_IMETHODIMP nsJSIID::ToString(char** _retval)
 
 // static
 already_AddRefed<nsJSIID>
-nsJSIID::NewID(nsIInterfaceInfo* aInfo)
+nsJSIID::NewID(const nsXPTInterfaceInfo* aInfo)
 {
     if (!aInfo) {
         NS_ERROR("no info");
         return nullptr;
     }
 
-    bool canScript;
-    if (NS_FAILED(aInfo->IsScriptable(&canScript)) || !canScript)
+    if (!aInfo->IsScriptable())
         return nullptr;
 
     RefPtr<nsJSIID> idObj = new nsJSIID(aInfo);

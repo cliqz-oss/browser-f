@@ -121,10 +121,6 @@ nsUDPOutputStream::nsUDPOutputStream(nsUDPSocket* aSocket,
 {
 }
 
-nsUDPOutputStream::~nsUDPOutputStream()
-{
-}
-
 NS_IMETHODIMP nsUDPOutputStream::Close()
 {
   if (mIsClosed)
@@ -399,7 +395,7 @@ public:
   NS_DECL_NSIUDPMESSAGE
 
 private:
-  ~UDPMessageProxy() {}
+  ~UDPMessageProxy() = default;
 
   NetAddr mAddr;
   nsCOMPtr<nsIOutputStream> mOutputStream;
@@ -727,6 +723,7 @@ nsUDPSocket::Connect(const NetAddr *aAddr)
     NS_WARNING("Cannot PR_Connect");
     return NS_ERROR_FAILURE;
   }
+  PR_SetFDInheritable(mFD, false);
 
   // get the resulting socket address, which may have been updated.
   PRNetAddr addr;
@@ -844,7 +841,7 @@ namespace {
 //-----------------------------------------------------------------------------
 class SocketListenerProxy final : public nsIUDPSocketListener
 {
-  ~SocketListenerProxy() {}
+  ~SocketListenerProxy() = default;
 
 public:
   explicit SocketListenerProxy(nsIUDPSocketListener* aListener)
@@ -954,7 +951,7 @@ SocketListenerProxy::OnStopListeningRunnable::Run()
 
 class SocketListenerProxyBackground final : public nsIUDPSocketListener
 {
-  ~SocketListenerProxyBackground() {}
+  ~SocketListenerProxyBackground() = default;
 
 public:
   explicit SocketListenerProxyBackground(nsIUDPSocketListener* aListener)
@@ -1075,7 +1072,7 @@ public:
   }
 
 private:
-  virtual ~PendingSend() {}
+  virtual ~PendingSend() = default;
 
   RefPtr<nsUDPSocket> mSocket;
   uint16_t mPort;
@@ -1118,7 +1115,7 @@ public:
       , mStream(aStream) {}
 
 private:
-  virtual ~PendingSendStream() {}
+  virtual ~PendingSendStream() = default;
 
   RefPtr<nsUDPSocket> mSocket;
   uint16_t mPort;

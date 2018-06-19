@@ -35,7 +35,7 @@ function getFragment(aNode) {
 
 // Goodies from head_content.js
 const serializer = new DOMSerializer();
-const parser = new DOMParser();
+const parser = getParser();
 
 /**
  * Dump the contents of a document fragment to the console.
@@ -56,7 +56,7 @@ function dumpFragment(aFragment) {
  * @return nsIDOMNode  The target node retrieved from the XPath.
  */
 function evalXPathInDocumentFragment(aContextNode, aPath) {
-  Assert.ok(aContextNode instanceof Ci.nsIDOMDocumentFragment);
+  Assert.equal(ChromeUtils.getClassName(aContextNode), "DocumentFragment");
   Assert.ok(aContextNode.childNodes.length > 0);
   if (aPath == ".") {
     return aContextNode;
@@ -148,8 +148,8 @@ function evalXPathInDocumentFragment(aContextNode, aPath) {
  * @return Range object.
  */
 function getRange(aSourceNode, aFragment) {
-  Assert.ok(aSourceNode instanceof Ci.nsIDOMElement);
-  Assert.ok(aFragment instanceof Ci.nsIDOMDocumentFragment);
+  Assert.ok(Element.isInstance(aSourceNode));
+  Assert.equal(ChromeUtils.getClassName(aFragment), "DocumentFragment");
   var doc = aSourceNode.ownerDocument;
 
   var containerPath = aSourceNode.getAttribute("startContainer");
@@ -340,6 +340,11 @@ function run_miscellaneous_tests() {
   getParsedDocument(filePath).then(do_miscellaneous_tests);
 }
 
+function isText(node) {
+  return node.nodeType == node.TEXT_NODE ||
+         node.nodeType == node.CDATA_SECTION_NODE;
+}
+
 function do_miscellaneous_tests(doc) {
   var tests = doc.getElementsByTagName("test");
 
@@ -360,7 +365,7 @@ function do_miscellaneous_tests(doc) {
   // Text range manipulation.
   if ((endOffset > startOffset) &&
       (startContainer == endContainer) &&
-      (startContainer instanceof Ci.nsIDOMText)) {
+      isText(startContainer)) {
     // Invalid start node
     try {
       baseRange.setStart(null, 0);
@@ -386,7 +391,7 @@ function do_miscellaneous_tests(doc) {
     }
   
     // Invalid index
-    var newOffset = startContainer instanceof Ci.nsIDOMText ?
+    var newOffset = isText(startContainer) ?
                       startContainer.nodeValue.length + 1 :
                       startContainer.childNodes.length + 1;
     try {
@@ -449,7 +454,8 @@ function do_miscellaneous_tests(doc) {
   baseRange.setEnd(doc.firstChild, 2);
   var frag = baseRange.extractContents();
   Assert.equal(frag.childNodes.length, 1);
-  Assert.ok(frag.firstChild instanceof Ci.nsIDOMComment);
+  Assert.ok(ChromeUtils.getClassName(frag.firstChild) == "Comment");
+  Assert.equal(frag.firstChild.nodeType, frag.COMMENT_NODE);
   Assert.equal(frag.firstChild.nodeValue, "f");
 
   /* smaug also requested attribute tests.  Sadly, those are not yet supported

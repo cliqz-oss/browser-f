@@ -64,15 +64,8 @@ function getId(tab) {
   return getId(tab);
 }
 
-async function historyPushState(tab, url) {
-  let locationChanged = BrowserTestUtils.waitForLocationChange(gBrowser, url);
-  await ContentTask.spawn(tab.linkedBrowser, url, (url) => {
-    content.history.pushState(null, null, url);
-  });
-  await locationChanged;
-}
-
 async function check(extension, tab, expected, msg) {
+  await promiseAnimationFrame();
   let widgetId = makeWidgetId(extension.id);
   let pageActionId = BrowserPageActions.urlbarButtonNodeIDForActionID(widgetId);
   is(gBrowser.selectedTab, tab, `tab ${tab.linkedBrowser.currentURI.spec} is selected`);
@@ -104,11 +97,11 @@ add_task(async function test_pageAction_default_show_tabs() {
       await BrowserTestUtils.switchTab(gBrowser, tab);
       await check(extension, tab, expected, msg + " (switched)");
 
-      await BrowserTestUtils.removeTab(tab);
+      BrowserTestUtils.removeTab(tab);
     }
     await extension.unload();
   }
-  await BrowserTestUtils.removeTab(switchTab);
+  BrowserTestUtils.removeTab(switchTab);
 });
 
 add_task(async function test_pageAction_default_show_install() {
@@ -129,15 +122,15 @@ add_task(async function test_pageAction_default_show_install() {
       // action should be shown in it. Check that pageAction.isShown works anyways.
       await sendMessage(extension, "isShown", {tabId: getId(initialTab)}, expected, msg + " (inactive)");
 
-      await BrowserTestUtils.removeTab(initialTab);
-      await BrowserTestUtils.removeTab(installTab);
+      BrowserTestUtils.removeTab(initialTab);
+      BrowserTestUtils.removeTab(installTab);
       await extension.unload();
     }
   }
 });
 
 add_task(async function test_pageAction_history() {
-  info("Check match patterns are reevaluated when using history.pushState");
+  info("Check match patterns are reevaluated when using history.pushState or navigating");
   let url1 = "http://example.com/";
   let url2 = url1 + "path/";
   let extension = getExtension({
@@ -160,7 +153,16 @@ add_task(async function test_pageAction_history() {
   await historyPushState(tab, url1);
   await check(extension, tab, false, "hide() has more precedence than pattern matching");
 
-  await BrowserTestUtils.removeTab(tab);
+  info("Select another tab");
+  let tab2 = await BrowserTestUtils.openNewForegroundTab(gBrowser, url1, true, true);
+
+  info("Perform navigation in the old tab");
+  await navigateTab(tab, url1);
+  await sendMessage(extension, "isShown", {tabId: getId(tab)}, true,
+                    "Navigating undoes hide(), even when the tab is not selected.");
+
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab2);
   await extension.unload();
 });
 

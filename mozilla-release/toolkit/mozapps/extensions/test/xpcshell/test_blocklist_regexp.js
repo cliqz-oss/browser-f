@@ -8,14 +8,11 @@
 
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-ChromeUtils.import("resource://testing-common/httpd.js");
 ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
-var testserver = new HttpServer();
-testserver.start(-1);
+var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 gPort = testserver.identity.primaryPort;
 
-// register static files with server and interpolate port numbers in them
-mapFile("/data/test_blocklist_regexp_1.xml", testserver);
+testserver.registerDirectory("/data/", do_get_file("data"));
 
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
@@ -69,11 +66,11 @@ function load_blocklist(aFile, aCallback) {
 
 
 function end_test() {
-  testserver.stop(do_test_finished);
+  do_test_finished();
 }
 
 
-function run_test() {
+async function run_test() {
   do_test_pending();
 
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
@@ -82,6 +79,7 @@ function run_test() {
     id: "block1@tests.mozilla.org",
     version: "1.0",
     name: "RegExp blocked add-on",
+    bootstrap: true,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -91,24 +89,20 @@ function run_test() {
 
   startupManager();
 
-  AddonManager.getAddonsByIDs(["block1@tests.mozilla.org"], function([a1]) {
-    Assert.equal(a1.blocklistState, Ci.nsIBlocklistService.STATE_NOT_BLOCKED);
+  let [a1] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org"]);
+  Assert.equal(a1.blocklistState, Ci.nsIBlocklistService.STATE_NOT_BLOCKED);
 
-    run_test_1();
-  });
+  run_test_1();
 }
 
 function run_test_1() {
-  load_blocklist("test_blocklist_regexp_1.xml", function() {
+  load_blocklist("test_blocklist_regexp_1.xml", async function() {
     restartManager();
 
-    AddonManager.getAddonsByIDs(["block1@tests.mozilla.org"], function([a1]) {
-      // Blocklist contains two entries that will match this addon - ensure
-      // that the first one is applied.
-      Assert.notEqual(a1, null);
-      Assert.equal(a1.blocklistState, Ci.nsIBlocklistService.STATE_SOFTBLOCKED);
+    let [a1] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org"]);
+    Assert.notEqual(a1, null);
+    Assert.equal(a1.blocklistState, Ci.nsIBlocklistService.STATE_SOFTBLOCKED);
 
-      end_test();
-    });
+    end_test();
   });
 }

@@ -64,11 +64,7 @@ class SyntaxParseHandler
 
         // A non-arrow function expression with block body, from bog-standard
         // ECMAScript.
-        NodeFunctionExpressionBlockBody,
-
-        // A non-arrow function expression with AssignmentExpression body -- a
-        // proprietary SpiderMonkey extension.
-        NodeFunctionExpressionClosure,
+        NodeFunctionExpression,
 
         NodeFunctionArrow,
         NodeFunctionStatement,
@@ -141,7 +137,7 @@ class SyntaxParseHandler
     };
 
     bool isNonArrowFunctionExpression(Node node) const {
-        return node == NodeFunctionExpressionBlockBody || node == NodeFunctionExpressionClosure;
+        return node == NodeFunctionExpression;
     }
 
     bool isPropertyAccess(Node node) {
@@ -171,9 +167,6 @@ class SyntaxParseHandler
     {}
 
     static Node null() { return NodeFailure; }
-
-    void prepareNodeForMutation(Node node) {}
-    void freeTree(Node node) {}
 
     Node newName(PropertyName* name, const TokenPos& pos, JSContext* cx) {
         lastAtom = name;
@@ -269,6 +262,8 @@ class SyntaxParseHandler
     Node newSuperBase(Node thisName, const TokenPos& pos) { return NodeSuperBase; }
 
     MOZ_MUST_USE bool addPrototypeMutation(Node literal, uint32_t begin, Node expr) { return true; }
+    Node newPropertyDefinition(Node name, Node expr) { return NodeGeneric; }
+    void addPropertyDefinition(Node literal, Node propdef) {}
     MOZ_MUST_USE bool addPropertyDefinition(Node literal, Node name, Node expr) { return true; }
     MOZ_MUST_USE bool addShorthand(Node literal, Node name, Node expr) { return true; }
     MOZ_MUST_USE bool addSpreadProperty(Node literal, uint32_t begin, Node inner) { return true; }
@@ -343,26 +338,16 @@ class SyntaxParseHandler
 
     MOZ_MUST_USE bool setLastFunctionFormalParameterDefault(Node funcpn, Node pn) { return true; }
 
-    void checkAndSetIsDirectRHSAnonFunction(Node pn) {}
-
     Node newFunctionStatement(const TokenPos& pos) { return NodeFunctionStatement; }
 
     Node newFunctionExpression(const TokenPos& pos) {
         // All non-arrow function expressions are initially presumed to have
         // block body.  This will be overridden later *if* the function
         // expression permissibly has an AssignmentExpression body.
-        return NodeFunctionExpressionBlockBody;
+        return NodeFunctionExpression;
     }
 
     Node newArrowFunction(const TokenPos& pos) { return NodeFunctionArrow; }
-
-    bool isExpressionClosure(Node node) const {
-        return node == NodeFunctionExpressionClosure;
-    }
-
-    void noteExpressionClosure(Node* funcNode) const {
-        *funcNode = NodeFunctionExpressionClosure;
-    }
 
     void setFunctionFormalParametersAndBody(Node funcNode, Node kid) {}
     void setFunctionBody(Node pn, Node kid) {}
@@ -500,8 +485,6 @@ class SyntaxParseHandler
         return pn; // Remain in syntax-parse mode.
     }
     void setInDirectivePrologue(Node pn) {}
-
-    bool isConstant(Node pn) { return false; }
 
     bool isName(Node node) {
         return node == NodeName ||

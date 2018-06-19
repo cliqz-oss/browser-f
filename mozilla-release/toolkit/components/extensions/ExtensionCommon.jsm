@@ -21,7 +21,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  ConsoleAPI: "resource://gre/modules/Console.jsm",
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
@@ -31,8 +31,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyServiceGetter(this, "styleSheetService",
                                    "@mozilla.org/content/style-sheet-service;1",
                                    "nsIStyleSheetService");
-
-const global = Cu.getGlobalForObject(this);
 
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
@@ -50,6 +48,9 @@ var {
 } = ExtensionUtils;
 
 XPCOMUtils.defineLazyGetter(this, "console", getConsole);
+
+XPCOMUtils.defineLazyPreferenceGetter(this, "DELAYED_BG_STARTUP",
+                                      "extensions.webextensions.background-delayed-startup");
 
 var ExtensionCommon;
 
@@ -113,77 +114,6 @@ class ExtensionAPI extends ExtensionUtils.EventEmitter {
     throw new Error("Not Implemented");
   }
 }
-
-var ExtensionAPIs = {
-  apis: new Map(),
-
-  load(apiName) {
-    let api = this.apis.get(apiName);
-    if (!api) {
-      return null;
-    }
-
-    if (api.loadPromise) {
-      return api.loadPromise;
-    }
-
-    let {script, schema} = api;
-
-    let addonId = `${apiName}@experiments.addons.mozilla.org`;
-    api.sandbox = Cu.Sandbox(global, {
-      wantXrays: false,
-      sandboxName: script,
-      addonId,
-      wantGlobalProperties: ["ChromeUtils"],
-      metadata: {addonID: addonId},
-    });
-
-    api.sandbox.ExtensionAPI = ExtensionAPI;
-
-    // Create a console getter which lazily provide a ConsoleAPI instance.
-    XPCOMUtils.defineLazyGetter(api.sandbox, "console", () => {
-      return new ConsoleAPI({prefix: addonId});
-    });
-
-    Services.scriptloader.loadSubScript(script, api.sandbox, "UTF-8");
-
-    api.loadPromise = Schemas.load(schema).then(() => {
-      let API = Cu.evalInSandbox("API", api.sandbox);
-      API.prototype.namespace = apiName;
-      return API;
-    });
-
-    return api.loadPromise;
-  },
-
-  unload(apiName) {
-    let api = this.apis.get(apiName);
-
-    let {schema} = api;
-
-    Schemas.unload(schema);
-    Cu.nukeSandbox(api.sandbox);
-
-    api.sandbox = null;
-    api.loadPromise = null;
-  },
-
-  register(namespace, schema, script) {
-    if (this.apis.has(namespace)) {
-      throw new Error(`API namespace already exists: ${namespace}`);
-    }
-
-    this.apis.set(namespace, {schema, script});
-  },
-
-  unregister(namespace) {
-    if (!this.apis.has(namespace)) {
-      throw new Error(`API namespace does not exist: ${namespace}`);
-    }
-
-    this.apis.delete(namespace);
-  },
-};
 
 /**
  * This class contains the information we have about an individual
@@ -1422,26 +1352,6 @@ class SchemaAPIManager extends EventEmitter {
     // Save the scope to avoid it being garbage collected.
     this._scriptScopes.push(scope);
   }
-
-  /**
-   * Mash together all the APIs from `apis` into `obj`.
-   *
-   * @param {BaseContext} context The context for which the API bindings are
-   *     generated.
-   * @param {Array} apis A list of objects, see `registerSchemaAPI`.
-   * @param {object} obj The destination of the API.
-   */
-  static generateAPIs(context, apis, obj) {
-    function hasPermission(perm) {
-      return context.extension.hasPermission(perm, true);
-    }
-    for (let api of apis) {
-      if (Schemas.checkPermissions(api.namespace, {hasPermission})) {
-        api = api.getAPI(context);
-        deepCopy(obj, api);
-      }
-    }
-  }
 }
 
 class LazyAPIManager extends SchemaAPIManager {
@@ -1735,46 +1645,238 @@ defineLazyGetter(LocaleData.prototype, "availableLocales", function() {
 });
 
 /**
-* This is a generic class for managing event listeners.
+ * This is a generic class for managing event listeners.
  *
  * @example
- * new EventManager(context, "api.subAPI", fire => {
- *   let listener = (...) => {
- *     // Fire any listeners registered with addListener.
- *     fire.async(arg1, arg2);
- *   };
- *   // Register the listener.
- *   SomehowRegisterListener(listener);
- *   return () => {
- *     // Return a way to unregister the listener.
- *     SomehowUnregisterListener(listener);
- *   };
+ * new EventManager({
+ *   context,
+ *   name: "api.subAPI",
+ *   register:  fire => {
+ *     let listener = (...) => {
+ *       // Fire any listeners registered with addListener.
+ *       fire.async(arg1, arg2);
+ *     };
+ *     // Register the listener.
+ *     SomehowRegisterListener(listener);
+ *     return () => {
+ *       // Return a way to unregister the listener.
+ *       SomehowUnregisterListener(listener);
+ *     };
+ *   }
  * }).api()
  *
  * The result is an object with addListener, removeListener, and
  * hasListener methods. `context` is an add-on scope (either an
  * ExtensionContext in the chrome process or ExtensionContext in a
- * content process). `name` is for debugging. `register` is a function
- * to register the listener. `register` should return an
- * unregister function that will unregister the listener.
- * @constructor
- *
- * @param {BaseContext} context
- *        An object representing the extension instance using this event.
- * @param {string} name
- *        A name used only for debugging.
- * @param {functon} register
- *        A function called whenever a new listener is added.
+ * content process).
  */
-function EventManager(context, name, register) {
-  this.context = context;
-  this.name = name;
-  this.register = register;
-  this.unregister = new Map();
-  this.inputHandling = false;
-}
+class EventManager {
+  /*
+   * @param {object} params
+   *        Parameters that control this EventManager.
+   * @param {BaseContext} params.context
+   *        An object representing the extension instance using this event.
+   * @param {string} params.name
+   *        A name used only for debugging.
+   * @param {functon} params.register
+   *        A function called whenever a new listener is added.
+   * @param {boolean} [params.inputHandling=false]
+   *        If true, the "handling user input" flag is set while handlers
+   *        for this event are executing.
+   * @param {object} [params.persistent]
+   *        Details for persistent event listeners
+   * @param {string} params.persistent.module
+   *        The name of the module in which this event is defined.
+   * @param {string} params.persistent.event
+   *        The name of this event.
+   */
+  constructor(params) {
+    // Maintain compatibility with the old EventManager API in which
+    // the constructor took parameters (contest, name, register).
+    // Remove this in bug 1451212.
+    if (arguments.length > 1) {
+      [this.context, this.name, this.register] = arguments;
+      this.inputHandling = false;
+      this.persistent = null;
+    } else {
+      let {context, name, register, inputHandling = false, persistent = null} = params;
+      this.context = context;
+      this.name = name;
+      this.register = register;
+      this.inputHandling = inputHandling;
+      this.persistent = persistent;
+    }
 
-EventManager.prototype = {
+    // Don't bother with persistent event handling if delayed background
+    // startup is not enabled.
+    if (!DELAYED_BG_STARTUP) {
+      this.persistent = null;
+    }
+
+    this.unregister = new Map();
+    this.remove = new Map();
+
+    if (this.persistent) {
+      if (this.context.viewType !== "background") {
+        this.persistent = null;
+      }
+      if (AppConstants.DEBUG) {
+        if (this.context.envType !== "addon_parent") {
+          throw new Error("Persistent event managers can only be created for addon_parent");
+        }
+        if (!this.persistent.module || !this.persistent.event) {
+          throw new Error("Persistent event manager must specify module and event");
+        }
+      }
+    }
+  }
+
+  /*
+   * Information about listeners to persistent events is associated with
+   * the extension to which they belong.  Any extension thas has such
+   * listeners has a property called `persistentListeners` that is a
+   * 3-level Map.  The first 2 keys are the module name (e.g., webRequest)
+   * and the name of the event within the module (e.g., onBeforeRequest).
+   * The third level of the map is used to track multiple listeners for
+   * the same event, these listeners are distinguished by the extra arguments
+   * passed to addListener().  For quick lookups, the key to the third Map
+   * is the result of calling uneval() on the array of extra arguments.
+   *
+   * The value stored in the Map is a plain object with a property called
+   * `params` that is the original (ie, not uneval()ed) extra arguments to
+   * addListener().  For a primed listener (i.e., the stub listener created
+   * during browser startup before the extension background page is started,
+   * the object also has a `primed` property that holds the things needed
+   * to handle events during startup and eventually connect the listener
+   * with a callback registered from the extension.
+   */
+  static _initPersistentListeners(extension) {
+    if (extension.persistentListeners) {
+      return;
+    }
+
+    let listeners = new DefaultMap(() => new DefaultMap(() => new Map()));
+    extension.persistentListeners = listeners;
+
+    let {persistentListeners} = extension.startupData;
+    if (!persistentListeners) {
+      return;
+    }
+
+    for (let [module, entry] of Object.entries(persistentListeners)) {
+      for (let [event, paramlists] of Object.entries(entry)) {
+        for (let paramlist of paramlists) {
+          let key = uneval(paramlist);
+          listeners.get(module).get(event).set(key, {params: paramlist});
+        }
+      }
+    }
+  }
+
+  // Extract just the information needed at startup for all persistent
+  // listeners, and arrange for it to be saved.  This should be called
+  // whenever the set of persistent listeners for an extension changes.
+  static _writePersistentListeners(extension) {
+    let startupListeners = {};
+    for (let [module, moduleEntry] of extension.persistentListeners) {
+      startupListeners[module] = {};
+      for (let [event, eventEntry] of moduleEntry) {
+        startupListeners[module][event] = Array.from(eventEntry.values(),
+                                                     listener => listener.params);
+      }
+    }
+
+    extension.startupData.persistentListeners = startupListeners;
+    extension.saveStartupData();
+  }
+
+  // Set up "primed" event listeners for any saved event listeners
+  // in an extension's startup data.
+  // This function is only called during browser startup, it stores details
+  // about all primed listeners in the extension's persistentListeners Map.
+  static primeListeners(extension) {
+    EventManager._initPersistentListeners(extension);
+
+    for (let [module, moduleEntry] of extension.persistentListeners) {
+      let api = extension.apiManager.getAPI(module, extension, "addon_parent");
+      for (let [event, eventEntry] of moduleEntry) {
+        for (let listener of eventEntry.values()) {
+          let primed = {pendingEvents: []};
+          listener.primed = primed;
+
+          let wakeup = () => new Promise(resolve => {
+            extension.once("startup", resolve);
+            extension.emit("background-page-event");
+          });
+
+          let fireEvent = (...args) => new Promise((resolve, reject) => {
+            primed.pendingEvents.push({args, resolve, reject});
+            extension.emit("background-page-event");
+          });
+
+          let fire = {
+            wakeup,
+            sync: fireEvent,
+            async: fireEvent,
+          };
+
+          let {unregister, convert} = api.primeListener(extension, event, fire, listener.params);
+          Object.assign(primed, {unregister, convert});
+        }
+      }
+    }
+  }
+
+  // Remove any primed listeners that were not re-registered.
+  // This function is called after the background page has started.
+  static clearPrimedListeners(extension) {
+    for (let [module, moduleEntry] of extension.persistentListeners) {
+      for (let [event, listeners] of moduleEntry) {
+        for (let [key, listener] of listeners) {
+          let {primed} = listener;
+          if (!primed) {
+            continue;
+          }
+
+          for (let evt of primed.pendingEvents) {
+            evt.reject(new Error("listener not re-registered"));
+          }
+
+          EventManager.clearPersistentListener(extension, module, event, key);
+          primed.unregister();
+        }
+      }
+    }
+  }
+
+  // Record the fact that there is a listener for the given event in
+  // the given extension.  `args` is an Array containing any extra
+  // arguments that were passed to addListener().
+  static savePersistentListener(extension, module, event, args) {
+    EventManager._initPersistentListeners(extension);
+    let key = uneval(args);
+    extension.persistentListeners.get(module).get(event).set(key, {params: args});
+    EventManager._writePersistentListeners(extension);
+  }
+
+  // Remove the record for the given event listener from the extension's
+  // startup data.  `key` must be a string, the result of calling uneval()
+  // on the array of extra arguments originally passed to addListener().
+  static clearPersistentListener(extension, module, event, key) {
+    let listeners = extension.persistentListeners.get(module).get(event);
+    listeners.delete(key);
+
+    if (listeners.size == 0) {
+      let moduleEntry = extension.persistentListeners.get(module);
+      moduleEntry.delete(event);
+      if (moduleEntry.size == 0) {
+        extension.persistentListeners.delete(module);
+      }
+    }
+
+    EventManager._writePersistentListeners(extension);
+  }
+
   addListener(callback, ...args) {
     if (this.unregister.has(callback)) {
       return;
@@ -1819,13 +1921,66 @@ EventManager.prototype = {
       },
     };
 
+    let {extension} = this.context;
 
-    let unregister = this.register(fire, ...args);
+    let unregister = null;
+    let recordStartupData = false;
+
+    // If this is a persistent event, check for a listener that was already
+    // created during startup.  If there is one, use it and don't create a
+    // new one.
+    if (this.persistent) {
+      recordStartupData = true;
+      let {module, event} = this.persistent;
+
+      let key = uneval(args);
+      EventManager._initPersistentListeners(extension);
+      let listener = extension.persistentListeners
+                              .get(module).get(event).get(key);
+
+      if (listener) {
+        // If extensions.webextensions.background-delayed-startup is disabled,
+        // we can have stored info here but no primed listener.  This check
+        // can be removed if/when we make delayed background startup the only
+        // supported setting.
+        let {primed} = listener;
+        if (primed) {
+          listener.primed = null;
+
+          primed.convert(fire, this.context);
+          unregister = primed.unregister;
+
+          for (let evt of primed.pendingEvents) {
+            evt.resolve(fire.async(...evt.args));
+          }
+        }
+
+        recordStartupData = false;
+        this.remove.set(callback, () => {
+          EventManager.clearPersistentListener(extension, module, event, uneval(args));
+        });
+      }
+    }
+
+    if (!unregister) {
+      unregister = this.register(fire, ...args);
+    }
+
     this.unregister.set(callback, unregister);
     this.context.callOnClose(this);
-  },
 
-  removeListener(callback) {
+    // If this is a new listener for a persistent event, record
+    // the details for subsequent startups.
+    if (recordStartupData) {
+      let {module, event} = this.persistent;
+      EventManager.savePersistentListener(extension, module, event, args);
+      this.remove.set(callback, () => {
+        EventManager.clearPersistentListener(extension, module, event, uneval(args));
+      });
+    }
+  }
+
+  removeListener(callback, clearPersistentListener = true) {
     if (!this.unregister.has(callback)) {
       return;
     }
@@ -1837,24 +1992,31 @@ EventManager.prototype = {
     } catch (e) {
       Cu.reportError(e);
     }
+
+    if (clearPersistentListener && this.remove.has(callback)) {
+      let cleanup = this.remove.get(callback);
+      this.remove.delete(callback);
+      cleanup();
+    }
+
     if (this.unregister.size == 0) {
       this.context.forgetOnClose(this);
     }
-  },
+  }
 
   hasListener(callback) {
     return this.unregister.has(callback);
-  },
+  }
 
   revoke() {
     for (let callback of this.unregister.keys()) {
-      this.removeListener(callback);
+      this.removeListener(callback, false);
     }
-  },
+  }
 
   close() {
     this.revoke();
-  },
+  }
 
   api() {
     return {
@@ -1864,8 +2026,8 @@ EventManager.prototype = {
       setUserInput: this.inputHandling,
       [Schemas.REVOKE]: () => this.revoke(),
     };
-  },
-};
+  }
+}
 
 // Simple API for event listeners where events never fire.
 function ignoreEvent(context, name) {
@@ -1898,7 +2060,6 @@ ExtensionCommon = {
   CanOfAPIs,
   EventManager,
   ExtensionAPI,
-  ExtensionAPIs,
   LocalAPIImplementation,
   LocaleData,
   NoCloneSpreadArgs,

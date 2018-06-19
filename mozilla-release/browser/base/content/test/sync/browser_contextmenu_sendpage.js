@@ -9,6 +9,7 @@ add_task(async function setup() {
   await promiseSyncReady();
   // gSync.init() is called in a requestIdleCallback. Force its initialization.
   gSync.init();
+  sinon.stub(Weave.Service.clientsEngine, "getClientType").returns("desktop");
   await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:mozilla");
 });
 
@@ -193,6 +194,7 @@ add_task(async function test_page_contextmenu_fxa_disabled() {
 // However, browser_contextmenu.js contains tests that verify its presence.
 
 add_task(async function teardown() {
+  Weave.Service.clientsEngine.getClientType.restore();
   gBrowser.removeCurrentTab();
 });
 
@@ -235,7 +237,7 @@ async function openContentContextMenu(selector, openSubmenuId = null) {
   if (openSubmenuId) {
     const menuPopup = document.getElementById(openSubmenuId).menupopup;
     const menuPopupPromise = BrowserTestUtils.waitForEvent(menuPopup, "popupshown");
-    menuPopup.showPopup();
+    menuPopup.openPopup();
     await menuPopupPromise;
   }
 }

@@ -98,7 +98,8 @@ AudioData::TransferAndUpdateTimestampAndDuration(AudioData* aOther,
                                       aOther->mFrames,
                                       Move(aOther->mAudioData),
                                       aOther->mChannels,
-                                      aOther->mRate);
+                                      aOther->mRate,
+                                      aOther->mChannelMap);
   return v.forget();
 }
 
@@ -500,10 +501,11 @@ MediaRawData::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
   return size;
 }
 
-MediaRawDataWriter*
+UniquePtr<MediaRawDataWriter>
 MediaRawData::CreateWriter()
 {
-  return new MediaRawDataWriter(this);
+  UniquePtr<MediaRawDataWriter> p(new MediaRawDataWriter(this));
+  return p;
 }
 
 MediaRawDataWriter::MediaRawDataWriter(MediaRawData* aMediaRawData)

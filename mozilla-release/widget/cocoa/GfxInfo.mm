@@ -338,6 +338,10 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
   if (aOS)
     *aOS = os;
 
+  if (mShutdownOccurred) {
+    return NS_OK;
+  }
+
   // Don't evaluate special cases when we're evaluating the downloaded blocklist.
   if (!aDriverInfo.Length()) {
     if (aFeature == nsIGfxInfo::FEATURE_WEBGL_MSAA) {
@@ -362,6 +366,10 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
           *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
           break;
       }
+      return NS_OK;
+    } else if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
+      aFailureId = "FEATURE_UNQUALIFIED_WEBRENDER_MAC";
       return NS_OK;
     }
   }

@@ -376,18 +376,17 @@ class ContextMenu {
 
   // Returns a "url"-type computed style attribute value, with the url() stripped.
   _getComputedURL(aElem, aProp) {
-    let url = aElem.ownerGlobal.getComputedStyle(aElem).getPropertyCSSValue(aProp);
+    let urls = aElem.ownerGlobal.getComputedStyle(aElem).getCSSImageURLs(aProp);
 
-    if (url instanceof this.content.CSSValueList) {
-      if (url.length != 1) {
-        throw "found multiple URLs";
-      }
-
-      url = url[0];
+    if (!urls.length) {
+      return null;
     }
 
-    return url.primitiveType == this.content.CSSPrimitiveValue.CSS_URI ?
-           url.getStringValue() : null;
+    if (urls.length != 1) {
+      throw "found multiple URLs";
+    }
+
+    return urls[0];
   }
 
   _makeURLAbsolute(aBase, aUrl) {
@@ -495,7 +494,7 @@ class ContextMenu {
       let plugin = null;
 
       try {
-        plugin = aEvent.target.QueryInterface(Ci.nsIObjectLoadingContent);
+        plugin = aEvent.composedTarget.QueryInterface(Ci.nsIObjectLoadingContent);
       } catch (e) {}
 
       if (plugin && plugin.displayedType == Ci.nsIObjectLoadingContent.TYPE_PLUGIN) {
@@ -510,7 +509,7 @@ class ContextMenu {
       return;
     }
 
-    let doc = aEvent.target.ownerDocument;
+    let doc = aEvent.composedTarget.ownerDocument;
     let {
       mozDocumentURIIfNotForErrorPages: docLocation,
       characterSet: charSet,
@@ -520,14 +519,15 @@ class ContextMenu {
     } = doc;
     docLocation = docLocation && docLocation.spec;
     let frameOuterWindowID = WebNavigationFrames.getFrameId(doc.defaultView);
-    let loginFillInfo = LoginManagerContent.getFieldContext(aEvent.target);
+    let loginFillInfo = LoginManagerContent.getFieldContext(aEvent.composedTarget);
 
     // The same-origin check will be done in nsContextMenu.openLinkInTab.
     let parentAllowsMixedContent = !!this.global.docShell.mixedContentChannel;
 
     // Get referrer attribute from clicked link and parse it
-    let referrerAttrValue = Services.netUtils.parseAttributePolicyString(aEvent.target.
-                            getAttribute("referrerpolicy"));
+    let referrerAttrValue =
+      Services.netUtils.parseAttributePolicyString(aEvent.composedTarget.
+                                                   getAttribute("referrerpolicy"));
 
     if (referrerAttrValue !== Ci.nsIHttpChannel.REFERRER_POLICY_UNSET) {
       referrerPolicy = referrerAttrValue;
@@ -538,15 +538,17 @@ class ContextMenu {
     // Media related cache info parent needs for saving
     let contentType = null;
     let contentDisposition = null;
-    if (aEvent.target.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
-        aEvent.target instanceof Ci.nsIImageLoadingContent &&
-        aEvent.target.currentRequestFinalURI) {
-      disableSetDesktopBg = this._disableSetDesktopBackground(aEvent.target);
+    if (aEvent.composedTarget.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
+        aEvent.composedTarget instanceof Ci.nsIImageLoadingContent &&
+        aEvent.composedTarget.currentURI) {
+      disableSetDesktopBg = this._disableSetDesktopBackground(aEvent.composedTarget);
 
       try {
         let imageCache = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools)
                                                          .getImgCacheForDocument(doc);
-        let props = imageCache.findEntryProperties(aEvent.target.currentRequestFinalURI, doc);
+        // The image cache's notion of where this image is located is
+        // the currentURI of the image loading content.
+        let props = imageCache.findEntryProperties(aEvent.composedTarget.currentURI, doc);
 
         try {
           contentType = props.get("type", Ci.nsISupportsCString).data;
@@ -561,7 +563,7 @@ class ContextMenu {
     let selectionInfo = BrowserUtils.getSelectionDetails(this.content);
     let loadContext = this.global.docShell.QueryInterface(Ci.nsILoadContext);
     let userContextId = loadContext.originAttributes.userContextId;
-    let popupNodeSelectors = this._getNodeSelectors(aEvent.target);
+    let popupNodeSelectors = this._getNodeSelectors(aEvent.composedTarget);
 
     this._setContext(aEvent);
     let context = this.context;
@@ -580,7 +582,7 @@ class ContextMenu {
     let isRemote = Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
 
     if (isRemote) {
-      editFlags = SpellCheckHelper.isEditable(aEvent.target, this.content);
+      editFlags = SpellCheckHelper.isEditable(aEvent.composedTarget, this.content);
 
       if (editFlags & SpellCheckHelper.SPELLCHECKABLE) {
         spellInfo = InlineSpellCheckerContent.initContextMenu(aEvent, editFlags, this.global);
@@ -590,10 +592,10 @@ class ContextMenu {
       // determine what was context-clicked on. Then, update the state of the
       // commands on the context menu.
       this.global.docShell.contentViewer.QueryInterface(Ci.nsIContentViewerEdit)
-                          .setCommandNode(aEvent.target);
-      aEvent.target.ownerGlobal.updateCommands("contentcontextmenu");
+                          .setCommandNode(aEvent.composedTarget);
+      aEvent.composedTarget.ownerGlobal.updateCommands("contentcontextmenu");
 
-      customMenuItems = PageMenuChild.build(aEvent.target);
+      customMenuItems = PageMenuChild.build(aEvent.composedTarget);
       principal = doc.nodePrincipal;
     }
 
@@ -706,7 +708,7 @@ class ContextMenu {
     context.screenY = aEvent.screenY;
     context.mozInputSource = aEvent.mozInputSource;
 
-    const node = aEvent.target;
+    const node = aEvent.composedTarget;
 
     const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -831,6 +833,9 @@ class ContextMenu {
         context.onCompletedImage = true;
       }
 
+      // The actual URL the image was loaded from (after redirects) is the
+      // currentRequestFinalURI.  We should use that as the URL for purposes of
+      // deciding on the filename.
       context.mediaURL = context.target.currentRequestFinalURI.spec;
 
       const descURL = context.target.getAttribute("longdesc");

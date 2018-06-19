@@ -34,6 +34,7 @@ jobs:
       - deb7-make
       - deb7-mercurial
       - deb7-python
+      - deb7-python3.5
       - deb7-xz-utils
   toolchain-build:
     symbol: I(toolchain)
@@ -90,8 +91,6 @@ jobs:
     symbol: I(gps)
   funsize-balrog-submitter:
     symbol: I(fbs)
-  beet-mover:
-    symbol: I(bm)
   update-verify:
     symbol: I(uv)
   diffoscope:

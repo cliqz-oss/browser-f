@@ -8,6 +8,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsDataHashtable.h"
 #include "nsRefPtrHashtable.h"
@@ -30,13 +31,13 @@ class MacOSFontEntry : public gfxFontEntry
 public:
     friend class gfxMacPlatformFontList;
 
-    MacOSFontEntry(const nsAString& aPostscriptName, int32_t aWeight,
+    MacOSFontEntry(const nsAString& aPostscriptName, WeightRange aWeight,
                    bool aIsStandardFace = false,
                    double aSizeHint = 0.0);
 
     // for use with data fonts
     MacOSFontEntry(const nsAString& aPostscriptName, CGFontRef aFontRef,
-                   uint16_t aWeight, uint16_t aStretch, uint8_t aStyle,
+                   WeightRange aWeight, StretchRange aStretch, SlantStyleRange aStyle,
                    bool aIsDataUserFont, bool aIsLocal);
 
     virtual ~MacOSFontEntry() {
@@ -79,8 +80,7 @@ public:
     float TrackingForCSSPx(float aPointSize) const;
 
 protected:
-    gfxFont* CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                bool aNeedsBold) override;
+    gfxFont* CreateFontInstance(const gfxFontStyle *aFontStyle) override;
 
     bool HasFontTable(uint32_t aTableTag) override;
 
@@ -130,14 +130,14 @@ public:
     bool GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName) override;
 
     gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-                                  uint16_t aWeight,
-                                  int16_t aStretch,
-                                  uint8_t aStyle) override;
+                                  WeightRange aWeightForEntry,
+                                  StretchRange aStretchForEntry,
+                                  SlantStyleRange aStyleForEntry) override;
 
     gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-                                   uint16_t aWeight,
-                                   int16_t aStretch,
-                                   uint8_t aStyle,
+                                   WeightRange aWeightForEntry,
+                                   StretchRange aStretchForEntry,
+                                   SlantStyleRange aStyleForEntry,
                                    const uint8_t* aFontData,
                                    uint32_t aLength) override;
 

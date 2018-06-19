@@ -139,16 +139,6 @@ class CompartmentChecker
             check(i);
     }
 
-    void check(const ValueArray& arr) {
-        for (size_t i = 0; i < arr.length; i++)
-            check(arr.array[i]);
-    }
-
-    void check(const JSValueArray& arr) {
-        for (size_t i = 0; i < arr.length; i++)
-            check(arr.array[i]);
-    }
-
     void check(const JS::HandleValueArray& arr) {
         for (size_t i = 0; i < arr.length(); i++)
             check(arr[i]);
@@ -402,7 +392,7 @@ CheckForInterrupt(JSContext* cx)
     MOZ_ASSERT(!cx->isExceptionPending());
     // Add an inline fast-path since we have to check for interrupts in some hot
     // C++ loops of library builtins.
-    if (MOZ_UNLIKELY(cx->hasPendingInterrupt()))
+    if (MOZ_UNLIKELY(cx->hasAnyPendingInterrupt()))
         return cx->handleInterrupt();
 
     JS_INTERRUPT_POSSIBLY_FAIL();
@@ -479,9 +469,6 @@ JSContext::enterNonAtomsCompartment(JSCompartment* c)
     enterCompartmentDepth_++;
 
     MOZ_ASSERT(!c->zone()->isAtomsZone());
-    c->holdGlobal();
-    enterZoneGroup(c->zone()->group());
-    c->releaseGlobal();
 
     c->enter();
     setCompartment(c, nullptr);
@@ -526,11 +513,8 @@ JSContext::leaveCompartment(
     // compartment.
     JSCompartment* startingCompartment = compartment_;
     setCompartment(oldCompartment, maybeLock);
-    if (startingCompartment) {
+    if (startingCompartment)
         startingCompartment->leave();
-        if (!startingCompartment->zone()->isAtomsZone())
-            leaveZoneGroup(startingCompartment->zone()->group());
-    }
 }
 
 inline void
@@ -551,27 +535,13 @@ JSContext::setCompartment(JSCompartment* comp,
     MOZ_ASSERT_IF(compartment_, compartment_->hasBeenEntered());
     MOZ_ASSERT_IF(comp, comp->hasBeenEntered());
 
-    // This context must have exclusive access to the zone's group.
+    // This thread must have exclusive access to the zone.
     MOZ_ASSERT_IF(comp && !comp->zone()->isAtomsZone(),
-                  comp->zone()->group()->ownedByCurrentThread());
+                  CurrentThreadCanAccessZone(comp->zone()));
 
     compartment_ = comp;
     zone_ = comp ? comp->zone() : nullptr;
     arenas_ = zone_ ? &zone_->arenas : nullptr;
-}
-
-inline void
-JSContext::enterZoneGroup(js::ZoneGroup* group)
-{
-    MOZ_ASSERT(this == js::TlsContext.get());
-    group->enter(this);
-}
-
-inline void
-JSContext::leaveZoneGroup(js::ZoneGroup* group)
-{
-    MOZ_ASSERT(this == js::TlsContext.get());
-    group->leave();
 }
 
 inline JSScript*

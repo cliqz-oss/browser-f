@@ -804,7 +804,7 @@ public:
              uint32_t& aUVSOffset);
 
     static uint32_t
-    MapCharToGlyphFormat4(const uint8_t *aBuf, char16_t aCh);
+    MapCharToGlyphFormat4(const uint8_t *aBuf, uint32_t aLength, char16_t aCh);
 
     static uint32_t
     MapCharToGlyphFormat10(const uint8_t *aBuf, uint32_t aCh);
@@ -1009,22 +1009,6 @@ public:
     static void
     GetVariationInstances(gfxFontEntry* aFontEntry,
                           nsTArray<gfxFontVariationInstance>& aInstances);
-
-    // Merge a list of font-variation-settings from a font entry and a list
-    // from a gfxFontStyle, to get a combined collection of settings that can
-    // be used to instantiate a font.
-    static void
-    MergeVariations(const nsTArray<gfxFontVariation>& aEntrySettings,
-                    const nsTArray<gfxFontVariation>& aStyleSettings,
-                    nsTArray<gfxFontVariation>* aMerged);
-
-    // Helper used by MergeVariations, and other code that wants to check
-    // whether an array of variation settings includes a particular tag.
-    struct VariationTagComparator {
-        bool Equals(const gfxFontVariation& aVariation, uint32_t aTag) const {
-            return aVariation.mTag == aTag;
-        }
-    };
 
 protected:
     friend struct MacCharsetMappingComparator;

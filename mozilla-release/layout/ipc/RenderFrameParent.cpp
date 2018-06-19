@@ -13,6 +13,7 @@
 #include "mozilla/ViewportFrame.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/TabParent.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
@@ -92,7 +93,7 @@ GetLayerManager(nsFrameLoader* aFrameLoader)
 }
 
 RenderFrameParent::RenderFrameParent(nsFrameLoader* aFrameLoader)
-  : mLayersId(0)
+  : mLayersId{0}
   , mLayersConnected(false)
   , mFrameLoader(aFrameLoader)
   , mFrameLoaderDestroyed(false)
@@ -183,7 +184,7 @@ RenderFrameParent::BuildLayer(nsDisplayListBuilder* aBuilder,
     return nullptr;
   }
 
-  if (!mLayersId) {
+  if (!mLayersId.IsValid()) {
     return nullptr;
   }
 
@@ -242,7 +243,7 @@ RenderFrameParent::OwnerContentChanged(nsIContent* aContent)
 void
 RenderFrameParent::ActorDestroy(ActorDestroyReason why)
 {
-  if (mLayersId != 0) {
+  if (mLayersId.IsValid()) {
     if (XRE_IsParentProcess()) {
       GPUProcessManager::Get()->UnmapLayerTreeId(mLayersId, OtherPid());
     } else if (XRE_IsContentProcess()) {
@@ -314,11 +315,7 @@ RenderFrameParent::TakeFocusForClickFromTap()
   if (!fm) {
     return;
   }
-  nsCOMPtr<nsIContent> owner = mFrameLoader->GetOwnerContent();
-  if (!owner) {
-    return;
-  }
-  nsCOMPtr<nsIDOMElement> element = do_QueryInterface(owner);
+  RefPtr<Element> element = mFrameLoader->GetOwnerContent();
   if (!element) {
     return;
   }
@@ -391,7 +388,7 @@ nsDisplayRemote::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuild
     mFrame->GetContentRectRelativeToSelf(), mFrame->PresContext()->AppUnitsPerDevPixel());
   rect += mOffset;
 
-  aBuilder.PushIFrame(aSc.ToRelativeLayoutRect(rect),
+  aBuilder.PushIFrame(mozilla::wr::ToRoundedLayoutRect(rect),
       !BackfaceIsHidden(),
       mozilla::wr::AsPipelineId(GetRemoteLayersId()));
 
@@ -410,7 +407,7 @@ nsDisplayRemote::UpdateScrollData(mozilla::layers::WebRenderScrollData* aData,
   return true;
 }
 
-uint64_t
+LayersId
 nsDisplayRemote::GetRemoteLayersId() const
 {
   return mRemoteFrame->GetLayersId();

@@ -9,7 +9,7 @@
 #include "nsTableRowGroupFrame.h"
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsStyleConsts.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
@@ -129,8 +129,8 @@ NS_QUERYFRAME_HEAD(nsTableRowFrame)
   NS_QUERYFRAME_ENTRY(nsTableRowFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
-nsTableRowFrame::nsTableRowFrame(nsStyleContext* aContext, ClassID aID)
-  : nsContainerFrame(aContext, aID)
+nsTableRowFrame::nsTableRowFrame(ComputedStyle* aStyle, ClassID aID)
+  : nsContainerFrame(aStyle, aID)
   , mContentBSize(0)
   , mStylePctBSize(0)
   , mStyleFixedBSize(0)
@@ -185,16 +185,16 @@ nsTableRowFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDest
 }
 
 /* virtual */ void
-nsTableRowFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsTableRowFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
-  nsContainerFrame::DidSetStyleContext(aOldStyleContext);
+  nsContainerFrame::DidSetComputedStyle(aOldComputedStyle);
 
-  if (!aOldStyleContext) //avoid this on init
+  if (!aOldComputedStyle) //avoid this on init
     return;
 
   nsTableFrame* tableFrame = GetTableFrame();
   if (tableFrame->IsBorderCollapse() &&
-      tableFrame->BCRecalcNeeded(aOldStyleContext, StyleContext())) {
+      tableFrame->BCRecalcNeeded(aOldComputedStyle, Style())) {
     TableArea damageArea(0, GetRowIndex(), tableFrame->GetColCount(), 1);
     tableFrame->AddBCDamageArea(damageArea);
   }
@@ -1441,30 +1441,30 @@ void nsTableRowFrame::InitHasCellWithStyleBSize(nsTableFrame* aTableFrame)
 }
 
 void
-nsTableRowFrame::InvalidateFrame(uint32_t aDisplayItemKey)
+nsTableRowFrame::InvalidateFrame(uint32_t aDisplayItemKey, bool aRebuildDisplayItems)
 {
-  nsIFrame::InvalidateFrame(aDisplayItemKey);
-  if (GetTableFrame()->IsBorderCollapse() && StyleBorder()->HasBorder()) {
-    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  nsIFrame::InvalidateFrame(aDisplayItemKey, aRebuildDisplayItems);
+  if (GetTableFrame()->IsBorderCollapse()) {
+    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey, false);
   }
 }
 
 void
-nsTableRowFrame::InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey)
+nsTableRowFrame::InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey, bool aRebuildDisplayItems)
 {
-  nsIFrame::InvalidateFrameWithRect(aRect, aDisplayItemKey);
+  nsIFrame::InvalidateFrameWithRect(aRect, aDisplayItemKey, aRebuildDisplayItems);
   // If we have filters applied that would affects our bounds, then
   // we get an inactive layer created and this is computed
   // within FrameLayerBuilder
-  GetParent()->InvalidateFrameWithRect(aRect + GetPosition(), aDisplayItemKey);
+  GetParent()->InvalidateFrameWithRect(aRect + GetPosition(), aDisplayItemKey, false);
 }
 
 /* ----- global methods ----- */
 
 nsTableRowFrame*
-NS_NewTableRowFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTableRowFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTableRowFrame(aContext);
+  return new (aPresShell) nsTableRowFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTableRowFrame)

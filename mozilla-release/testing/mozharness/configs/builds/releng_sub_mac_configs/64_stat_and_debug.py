@@ -8,10 +8,8 @@ config = {
     ],
     'debug_build': True,
     'stage_platform': 'macosx64-st-an-debug',
-    'build_type': 'st-an-debug',
     'tooltool_manifest_src': "browser/config/tooltool-manifests/macosx64/\
 clang.manifest",
-    'enable_signing': False,
     'perfherder_extra_options': ['static-analysis'],
     #### 64 bit build specific #####
     'env': {

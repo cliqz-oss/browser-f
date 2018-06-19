@@ -7,8 +7,6 @@
 #include "nsAtom.h"
 #include "nsIAttribute.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMProcessingInstruction.h"
 #include "nsINode.h"
 #include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
@@ -20,6 +18,7 @@
 #include "nsAttrName.h"
 #include "nsTArray.h"
 #include "mozilla/dom/Attr.h"
+#include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/Element.h"
 #include <stdint.h>
 #include <algorithm>
@@ -306,7 +305,7 @@ txXPathNodeUtils::getLocalName(const txXPathNode& aNode)
             return localName.forget();
         }
 
-        if (aNode.mNode->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+        if (aNode.mNode->IsProcessingInstruction()) {
             return NS_Atomize(aNode.mNode->NodeName());
         }
 
@@ -353,7 +352,7 @@ txXPathNodeUtils::getLocalName(const txXPathNode& aNode, nsAString& aLocalName)
             return;
         }
 
-        if (aNode.mNode->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+        if (aNode.mNode->IsProcessingInstruction()) {
             // PIs don't have a nodeinfo but do have a name
             // XXXbz Not actually true, but this function looks like it wants
             // different things from elements and PIs for "local name"...
@@ -463,14 +462,15 @@ txXPathNodeUtils::appendNodeValue(const txXPathNode& aNode, nsAString& aResult)
 
     if (aNode.isDocument() ||
         aNode.mNode->IsElement() ||
-        aNode.mNode->IsNodeOfType(nsINode::eDOCUMENT_FRAGMENT)) {
+        aNode.mNode->IsDocumentFragment()) {
         nsContentUtils::AppendNodeTextContent(aNode.mNode, true, aResult,
                                               mozilla::fallible);
 
         return;
     }
 
-    aNode.Content()->AppendTextTo(aResult);
+    MOZ_ASSERT(aNode.mNode->IsCharacterData());
+    static_cast<CharacterData*>(aNode.Content())->AppendTextTo(aResult);
 }
 
 /* static */

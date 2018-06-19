@@ -10,7 +10,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/Element.h"
 #include "nsMappedAttributeElement.h"
-#include "nsIDOMElement.h"
+#include "nsIDOMNode.h"
 #include "Link.h"
 #include "mozilla/dom/DOMRect.h"
 
@@ -27,7 +27,7 @@ class EventChainPreVisitor;
  * The base class for MathML elements.
  */
 class nsMathMLElement final : public nsMathMLElementBase,
-                              public nsIDOMElement,
+                              public nsIDOMNode,
                               public mozilla::dom::Link
 {
 public:
@@ -70,8 +70,7 @@ public:
   static void MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
                                       mozilla::GenericSpecifiedValues* aGenericData);
 
-  virtual nsresult GetEventTargetParent(
-                     mozilla::EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(mozilla::EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      mozilla::EventChainPostVisitor& aVisitor) override;
   nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,

@@ -50,10 +50,7 @@ CompiledCode::swap(MacroAssembler& masm)
     callSites.swap(masm.callSites());
     callSiteTargets.swap(masm.callSiteTargets());
     trapSites.swap(masm.trapSites());
-    oldTrapSites.swap(masm.oldTrapSites());
     callFarJumps.swap(masm.callFarJumps());
-    oldTrapFarJumps.swap(masm.oldTrapFarJumps());
-    memoryAccesses.swap(masm.memoryAccesses());
     symbolicAccesses.swap(masm.symbolicAccesses());
     codeLabels.swap(masm.codeLabels());
     return true;
@@ -77,8 +74,7 @@ ModuleGenerator::ModuleGenerator(const CompileArgs& args, ModuleEnvironment* env
     taskState_(mutexid::WasmCompileTaskState),
     lifo_(GENERATOR_LIFO_DEFAULT_CHUNK_SIZE),
     masmAlloc_(&lifo_),
-    masm_(MacroAssembler::WasmToken(), masmAlloc_),
-    oldTrapCodeOffsets_(),
+    masm_(masmAlloc_),
     debugTrapCodeOffset_(),
     lastPatchedCallSite_(0),
     startOfUnpatchedCallsites_(0),
@@ -89,7 +85,6 @@ ModuleGenerator::ModuleGenerator(const CompileArgs& args, ModuleEnvironment* env
     finishedFuncDefs_(false)
 {
     MOZ_ASSERT(IsCompilingWasm());
-    std::fill(oldTrapCodeOffsets_.begin(), oldTrapCodeOffsets_.end(), 0);
 }
 
 ModuleGenerator::~ModuleGenerator()
@@ -218,12 +213,12 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
     if (!metadataTier_->codeRanges.reserve(2 * env_->numFuncDefs()))
         return false;
 
-    const size_t ByteCodesPerCallSite = 10;
+    const size_t ByteCodesPerCallSite = 50;
     if (!metadataTier_->callSites.reserve(codeSectionSize / ByteCodesPerCallSite))
         return false;
 
-    const size_t MemoryAccessesPerByteCode = 10;
-    if (!metadataTier_->memoryAccesses.reserve(codeSectionSize / MemoryAccessesPerByteCode))
+    const size_t ByteCodesPerOOBTrap = 10;
+    if (!metadataTier_->trapSites[Trap::OutOfBounds].reserve(codeSectionSize / ByteCodesPerOOBTrap))
         return false;
 
     // Allocate space in TlsData for declarations that need it.
@@ -274,7 +269,7 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
         if (global.isConstant())
             continue;
 
-        uint32_t width = SizeOf(global.type());
+        uint32_t width = global.isIndirect() ? sizeof(void*) : SizeOf(global.type());
 
         uint32_t globalDataOffset;
         if (!allocateGlobalBytes(width, width, &globalDataOffset))
@@ -463,26 +458,6 @@ ModuleGenerator::linkCallSites()
             masm_.patchCall(callerOffset, p->value());
             break;
           }
-          case CallSiteDesc::OldTrapExit: {
-            if (!existingTrapFarJumps[target.trap()]) {
-                // See MacroAssembler::wasmEmitOldTrapOutOfLineCode for why we must
-                // reload the TLS register on this path.
-                Offsets offsets;
-                offsets.begin = masm_.currentOffset();
-                masm_.loadPtr(Address(FramePointer, offsetof(Frame, tls)), WasmTlsReg);
-                if (!oldTrapFarJumps_.emplaceBack(target.trap(), masm_.farJumpWithPatch()))
-                    return false;
-                offsets.end = masm_.currentOffset();
-                if (masm_.oom())
-                    return false;
-                if (!metadataTier_->codeRanges.emplaceBack(CodeRange::FarJumpIsland, offsets))
-                    return false;
-                existingTrapFarJumps[target.trap()] = Some(offsets.begin);
-            }
-
-            masm_.patchCall(callerOffset, *existingTrapFarJumps[target.trap()]);
-            break;
-          }
           case CallSiteDesc::Breakpoint:
           case CallSiteDesc::EnterFrame:
           case CallSiteDesc::LeaveFrame: {
@@ -534,10 +509,6 @@ ModuleGenerator::noteCodeRange(uint32_t codeRangeIndex, const CodeRange& codeRan
       case CodeRange::ImportInterpExit:
         metadataTier_->funcImports[codeRange.funcIndex()].initInterpExitOffset(codeRange.begin());
         break;
-      case CodeRange::OldTrapExit:
-        MOZ_ASSERT(!oldTrapCodeOffsets_[codeRange.trap()]);
-        oldTrapCodeOffsets_[codeRange.trap()] = codeRange.begin();
-        break;
       case CodeRange::DebugTrap:
         MOZ_ASSERT(!debugTrapCodeOffset_);
         debugTrapCodeOffset_ = codeRange.begin();
@@ -549,10 +520,6 @@ ModuleGenerator::noteCodeRange(uint32_t codeRangeIndex, const CodeRange& codeRan
       case CodeRange::UnalignedExit:
         MOZ_ASSERT(!linkDataTier_->unalignedAccessOffset);
         linkDataTier_->unalignedAccessOffset = codeRange.begin();
-        break;
-      case CodeRange::Interrupt:
-        MOZ_ASSERT(!linkDataTier_->interruptOffset);
-        linkDataTier_->interruptOffset = codeRange.begin();
         break;
       case CodeRange::TrapExit:
         MOZ_ASSERT(!linkDataTier_->trapOffset);
@@ -621,18 +588,8 @@ ModuleGenerator::linkCompiledCode(const CompiledCode& code)
             return false;
     }
 
-    MOZ_ASSERT(code.oldTrapSites.empty());
-
-    auto trapFarJumpOp = [=](uint32_t, OldTrapFarJump* tfj) { tfj->offsetBy(offsetInModule); };
-    if (!AppendForEach(&oldTrapFarJumps_, code.oldTrapFarJumps, trapFarJumpOp))
-        return false;
-
     auto callFarJumpOp = [=](uint32_t, CallFarJump* cfj) { cfj->offsetBy(offsetInModule); };
     if (!AppendForEach(&callFarJumps_, code.callFarJumps, callFarJumpOp))
-        return false;
-
-    auto memoryOp = [=](uint32_t, MemoryAccess* ma) { ma->offsetBy(offsetInModule); };
-    if (!AppendForEach(&metadataTier_->memoryAccesses, code.memoryAccesses, memoryOp))
         return false;
 
     for (const SymbolicAccess& access : code.symbolicAccesses) {
@@ -832,9 +789,6 @@ ModuleGenerator::finishCode()
     for (CallFarJump far : callFarJumps_)
         masm_.patchFarJump(far.jump, funcCodeRange(far.funcIndex).funcNormalEntry());
 
-    for (OldTrapFarJump far : oldTrapFarJumps_)
-        masm_.patchFarJump(far.jump, oldTrapCodeOffsets_[far.trap]);
-
     for (CodeOffset farJump : debugTrapFarJumps_)
         masm_.patchFarJump(farJump, debugTrapCodeOffset_);
 
@@ -843,10 +797,7 @@ ModuleGenerator::finishCode()
     MOZ_ASSERT(masm_.callSites().empty());
     MOZ_ASSERT(masm_.callSiteTargets().empty());
     MOZ_ASSERT(masm_.trapSites().empty());
-    MOZ_ASSERT(masm_.oldTrapSites().empty());
-    MOZ_ASSERT(masm_.oldTrapFarJumps().empty());
     MOZ_ASSERT(masm_.callFarJumps().empty());
-    MOZ_ASSERT(masm_.memoryAccesses().empty());
     MOZ_ASSERT(masm_.symbolicAccesses().empty());
     MOZ_ASSERT(masm_.codeLabels().empty());
 
@@ -889,6 +840,7 @@ ModuleGenerator::finishMetadata(const ShareableBytes& bytecode)
     // Copy over data from the ModuleEnvironment.
 
     metadata_->memoryUsage = env_->memoryUsage;
+    metadata_->temporaryHasGcTypes = env_->gcTypesEnabled;
     metadata_->minMemoryLength = env_->minMemoryLength;
     metadata_->maxMemoryLength = env_->maxMemoryLength;
     metadata_->startFuncIndex = env_->startFuncIndex;
@@ -905,11 +857,13 @@ ModuleGenerator::finishMetadata(const ShareableBytes& bytecode)
     // These Vectors can get large and the excess capacity can be significant,
     // so realloc them down to size.
 
-    metadataTier_->memoryAccesses.podResizeToFit();
     metadataTier_->codeRanges.podResizeToFit();
+    metadataTier_->callSites.podResizeToFit();
     metadataTier_->trapSites.podResizeToFit();
     metadataTier_->debugTrapFarJumpOffsets.podResizeToFit();
     metadataTier_->debugFuncToCodeRange.podResizeToFit();
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit))
+        metadataTier_->trapSites[trap].podResizeToFit();
 
     // Complete function exports and element segments with code range indices,
     // now that every function has a code range.
@@ -1070,4 +1024,29 @@ ModuleGenerator::finishTier2(Module& module)
     }
 
     return module.finishTier2(Move(linkDataTier_), Move(tier2), env_);
+}
+
+size_t
+CompiledCode::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const
+{
+    size_t trapSitesSize = 0;
+    for (const TrapSiteVector& vec : trapSites)
+        trapSitesSize += vec.sizeOfExcludingThis(mallocSizeOf);
+
+    return bytes.sizeOfExcludingThis(mallocSizeOf) +
+           codeRanges.sizeOfExcludingThis(mallocSizeOf) +
+           callSites.sizeOfExcludingThis(mallocSizeOf) +
+           callSiteTargets.sizeOfExcludingThis(mallocSizeOf) +
+           trapSitesSize +
+           callFarJumps.sizeOfExcludingThis(mallocSizeOf) +
+           symbolicAccesses.sizeOfExcludingThis(mallocSizeOf) +
+           codeLabels.sizeOfExcludingThis(mallocSizeOf);
+}
+
+size_t
+CompileTask::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const
+{
+    return lifo.sizeOfExcludingThis(mallocSizeOf) +
+           inputs.sizeOfExcludingThis(mallocSizeOf) +
+           output.sizeOfExcludingThis(mallocSizeOf);
 }

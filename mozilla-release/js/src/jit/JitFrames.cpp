@@ -221,6 +221,10 @@ HandleExceptionIon(JSContext* cx, const InlineFrameIterator& frame, ResumeFromEx
         switch (tn->kind) {
           case JSTRY_FOR_IN:
           case JSTRY_DESTRUCTURING_ITERCLOSE:
+            // See corresponding comment in ProcessTryNotes.
+            if (inForOfIterClose)
+                break;
+
             MOZ_ASSERT_IF(tn->kind == JSTRY_FOR_IN,
                           JSOp(*(script->main() + tn->start + tn->length)) == JSOP_ENDITER);
             CloseLiveIteratorIon(cx, frame, tn);
@@ -360,16 +364,34 @@ static void
 CloseLiveIteratorsBaselineForUncatchableException(JSContext* cx, const JSJitFrameIter& frame,
                                                   jsbytecode* pc)
 {
+    bool inForOfIterClose = false;
     for (TryNoteIterBaseline tni(cx, frame.baselineFrame(), pc); !tni.done(); ++tni) {
         JSTryNote* tn = *tni;
+        switch (tn->kind) {
+          case JSTRY_FOR_IN: {
+            // See corresponding comment in ProcessTryNotes.
+            if (inForOfIterClose)
+                break;
 
-        if (tn->kind == JSTRY_FOR_IN) {
             uint8_t* framePointer;
             uint8_t* stackPointer;
             BaselineFrameAndStackPointersFromTryNote(tn, frame, &framePointer, &stackPointer);
             Value iterValue(*(Value*) stackPointer);
             RootedObject iterObject(cx, &iterValue.toObject());
             UnwindIteratorForUncatchableException(iterObject);
+            break;
+          }
+
+          case JSTRY_FOR_OF_ITERCLOSE:
+            inForOfIterClose = true;
+            break;
+
+          case JSTRY_FOR_OF:
+            inForOfIterClose = false;
+            break;
+
+          default:
+            break;
         }
     }
 }
@@ -425,6 +447,10 @@ ProcessTryNotesBaseline(JSContext* cx, const JSJitFrameIter& frame, EnvironmentI
           }
 
           case JSTRY_FOR_IN: {
+            // See corresponding comment in ProcessTryNotes.
+            if (inForOfIterClose)
+                break;
+
             uint8_t* framePointer;
             uint8_t* stackPointer;
             BaselineFrameAndStackPointersFromTryNote(tn, frame, &framePointer, &stackPointer);
@@ -435,6 +461,10 @@ ProcessTryNotesBaseline(JSContext* cx, const JSJitFrameIter& frame, EnvironmentI
           }
 
           case JSTRY_DESTRUCTURING_ITERCLOSE: {
+            // See corresponding comment in ProcessTryNotes.
+            if (inForOfIterClose)
+                break;
+
             uint8_t* framePointer;
             uint8_t* stackPointer;
             BaselineFrameAndStackPointersFromTryNote(tn, frame, &framePointer, &stackPointer);
@@ -498,24 +528,24 @@ HandleExceptionBaseline(JSContext* cx, const JSJitFrameIter& frame, ResumeFromEx
     if (cx->isExceptionPending()) {
         if (!cx->isClosingGenerator()) {
             switch (Debugger::onExceptionUnwind(cx, frame.baselineFrame())) {
-              case JSTRAP_ERROR:
+              case ResumeMode::Terminate:
                 // Uncatchable exception.
                 MOZ_ASSERT(!cx->isExceptionPending());
                 goto again;
 
-              case JSTRAP_CONTINUE:
-              case JSTRAP_THROW:
+              case ResumeMode::Continue:
+              case ResumeMode::Throw:
                 MOZ_ASSERT(cx->isExceptionPending());
                 break;
 
-              case JSTRAP_RETURN:
+              case ResumeMode::Return:
                 if (script->hasTrynotes())
                     CloseLiveIteratorsBaselineForUncatchableException(cx, frame, pc);
                 ForcedReturn(cx, frame, pc, rfe);
                 return;
 
               default:
-                MOZ_CRASH("Invalid trap status");
+                MOZ_CRASH("Invalid onExceptionUnwind resume mode");
             }
         }
 
@@ -931,7 +961,7 @@ TraceIonJSFrame(JSTracer* trc, const JSJitFrameIter& frame)
 
         if (v != Value::fromTagAndPayload(tag, rawPayload)) {
             // GC moved the value, replace the stored payload.
-            rawPayload = *v.payloadUIntPtr();
+            rawPayload = v.toNunboxPayload();
             WriteAllocation(frame, &payload, rawPayload);
         }
     }
@@ -975,7 +1005,7 @@ TraceBailoutFrame(JSTracer* trc, const JSJitFrameIter& frame)
 }
 
 static void
-UpdateIonJSFrameForMinorGC(const JSJitFrameIter& frame)
+UpdateIonJSFrameForMinorGC(JSRuntime* rt, const JSJitFrameIter& frame)
 {
     // Minor GCs may move slots/elements allocated in the nursery. Update
     // any slots/elements pointers stored in this frame.
@@ -991,7 +1021,7 @@ UpdateIonJSFrameForMinorGC(const JSJitFrameIter& frame)
         ionScript = frame.ionScriptFromCalleeToken();
     }
 
-    Nursery& nursery = ionScript->method()->zone()->group()->nursery();
+    Nursery& nursery = rt->gc.nursery();
 
     const SafepointIndex* si = ionScript->getSafepointIndex(frame.returnAddressToFp());
     SafepointReader safepoint(ionScript, si);
@@ -1301,9 +1331,9 @@ TraceJitActivation(JSTracer* trc, JitActivation* activation)
 }
 
 void
-TraceJitActivations(JSContext* cx, const CooperatingContext& target, JSTracer* trc)
+TraceJitActivations(JSContext* cx, JSTracer* trc)
 {
-    for (JitActivationIterator activations(cx, target); !activations.done(); ++activations)
+    for (JitActivationIterator activations(cx); !activations.done(); ++activations)
         TraceJitActivation(trc, activations->asJit());
 }
 
@@ -1311,13 +1341,11 @@ void
 UpdateJitActivationsForMinorGC(JSRuntime* rt)
 {
     MOZ_ASSERT(JS::CurrentThreadIsHeapMinorCollecting());
-    JSContext* cx = TlsContext.get();
-    for (const CooperatingContext& target : rt->cooperatingContexts()) {
-        for (JitActivationIterator activations(cx, target); !activations.done(); ++activations) {
-            for (OnlyJSJitFrameIter iter(activations); !iter.done(); ++iter) {
-                if (iter.frame().type() == JitFrame_IonJS)
-                    UpdateIonJSFrameForMinorGC(iter.frame());
-            }
+    JSContext* cx = rt->mainContextFromOwnThread();
+    for (JitActivationIterator activations(cx); !activations.done(); ++activations) {
+        for (OnlyJSJitFrameIter iter(activations); !iter.done(); ++iter) {
+            if (iter.frame().type() == JitFrame_IonJS)
+                UpdateIonJSFrameForMinorGC(rt, iter.frame());
         }
     }
 }
@@ -1466,13 +1494,11 @@ RInstructionResults::isInitialized() const
     return initialized_;
 }
 
-#ifdef DEBUG
 size_t
 RInstructionResults::length() const
 {
     return results_->length();
 }
-#endif
 
 JitFrameLayout*
 RInstructionResults::frame() const
@@ -1895,8 +1921,10 @@ SnapshotIterator::initInstructionResults(MaybeReadFallback& fallback)
         // same reason, we need to recompile without optimizing away the
         // observable stack slots.  The script would later be recompiled to have
         // support for Argument objects.
-        if (fallback.consequence == MaybeReadFallback::Fallback_Invalidate)
-            ionScript_->invalidate(cx, /* resetUses = */ false, "Observe recovered instruction.");
+        if (fallback.consequence == MaybeReadFallback::Fallback_Invalidate) {
+            ionScript_->invalidate(cx, fallback.frame->script(), /* resetUses = */ false,
+                                   "Observe recovered instruction.");
+        }
 
         // Register the list of result on the activation.  We need to do that
         // before we initialize the list such as if any recover instruction
@@ -1923,7 +1951,7 @@ SnapshotIterator::initInstructionResults(MaybeReadFallback& fallback)
     }
 
     MOZ_ASSERT(results->isInitialized());
-    MOZ_ASSERT(results->length() == recover_.numInstructions() - 1);
+    MOZ_RELEASE_ASSERT(results->length() == recover_.numInstructions() - 1);
     instructionResults_ = results;
     return true;
 }

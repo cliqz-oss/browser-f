@@ -794,18 +794,23 @@ struct ConsoleMsgQueueElem {
 void
 nsCSPContext::flushConsoleMessages()
 {
+  bool privateWindow = false;
+
   // should flush messages even if doc is not available
   nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
   if (doc) {
     mInnerWindowID = doc->InnerWindowID();
+    privateWindow = !!doc->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId;
   }
+
   mQueueUpMessages = false;
 
   for (uint32_t i = 0; i < mConsoleMsgQueue.Length(); i++) {
     ConsoleMsgQueueElem &elem = mConsoleMsgQueue[i];
     CSP_LogMessage(elem.mMsg, elem.mSourceName, elem.mSourceLine,
                    elem.mLineNumber, elem.mColumnNumber,
-                   elem.mSeverityFlag, "CSP", mInnerWindowID);
+                   elem.mSeverityFlag, "CSP", mInnerWindowID,
+                   privateWindow);
   }
   mConsoleMsgQueue.Clear();
 }
@@ -833,9 +838,16 @@ nsCSPContext::logToConsole(const char* aName,
     elem.mSeverityFlag = aSeverityFlag;
     return;
   }
+
+  bool privateWindow = false;
+  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
+  if (doc) {
+    privateWindow = !!doc->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId;
+  }
+
   CSP_LogLocalizedStr(aName, aParams, aParamsLength, aSourceName,
                       aSourceLine, aLineNumber, aColumnNumber,
-                      aSeverityFlag, "CSP", mInnerWindowID);
+                      aSeverityFlag, "CSP", mInnerWindowID, privateWindow);
 }
 
 /**
@@ -885,7 +897,7 @@ StripURIForReporting(nsIURI* aURI,
 
 nsresult
 nsCSPContext::GatherSecurityPolicyViolationEventData(
-  nsISupports* aBlockedContentSource,
+  nsIURI* aBlockedURI,
   nsIURI* aOriginalURI,
   nsAString& aViolatedDirective,
   uint32_t aViolatedPolicyIndex,
@@ -909,23 +921,9 @@ nsCSPContext::GatherSecurityPolicyViolationEventData(
   aViolationEventInit.mReferrer = mReferrer;
 
   // blocked-uri
-  if (aBlockedContentSource) {
+  if (aBlockedURI) {
     nsAutoCString reportBlockedURI;
-    nsCOMPtr<nsIURI> uri = do_QueryInterface(aBlockedContentSource);
-    // could be a string or URI
-    if (uri) {
-      StripURIForReporting(uri, mSelfURI, reportBlockedURI);
-    } else {
-      nsCOMPtr<nsISupportsCString> cstr = do_QueryInterface(aBlockedContentSource);
-      if (cstr) {
-        cstr->GetData(reportBlockedURI);
-      }
-    }
-    if (reportBlockedURI.IsEmpty()) {
-      // this can happen for frame-ancestors violation where the violating
-      // ancestor is cross-origin.
-      NS_WARNING("No blocked URI (null aBlockedContentSource) for CSP violation report.");
-    }
+    StripURIForReporting(aBlockedURI, mSelfURI, reportBlockedURI);
     aViolationEventInit.mBlockedURI = NS_ConvertUTF8toUTF16(reportBlockedURI);
   }
 
@@ -1200,8 +1198,9 @@ nsCSPContext::FireViolationEvent(
       aViolationEventInit);
   event->SetTrusted(true);
 
-  bool rv;
-  return doc->DispatchEvent(event, &rv);
+  ErrorResult rv;
+  doc->DispatchEvent(*event, rv);
+  return rv.StealNSResult();
 }
 
 /**
@@ -1254,8 +1253,10 @@ class CSPReportSenderRunnable final : public Runnable
 
       // 0) prepare violation data
       mozilla::dom::SecurityPolicyViolationEventInit init;
+      // mBlockedContentSource could be a URI or a string.
+      nsCOMPtr<nsIURI> blockedURI = do_QueryInterface(mBlockedContentSource);
       rv = mCSPContext->GatherSecurityPolicyViolationEventData(
-        mBlockedContentSource, mOriginalURI,
+        blockedURI, mOriginalURI,
         mViolatedDirective, mViolatedPolicyIndex,
         mSourceFile, mScriptSample, mLineNum,
         init);
@@ -1273,8 +1274,6 @@ class CSPReportSenderRunnable final : public Runnable
       mCSPContext->SendReports(init, mViolatedPolicyIndex);
 
       // 3) log to console (one per policy violation)
-      // mBlockedContentSource could be a URI or a string.
-      nsCOMPtr<nsIURI> blockedURI = do_QueryInterface(mBlockedContentSource);
       // if mBlockedContentSource is not a URI, it could be a string
       nsCOMPtr<nsISupportsCString> blockedString = do_QueryInterface(mBlockedContentSource);
 
@@ -1371,14 +1370,6 @@ nsCSPContext::AsyncReportViolation(nsISupports* aBlockedContentSource,
                                 aScriptSample,
                                 aLineNum,
                                 this);
-
-  // If the document is currently buffering up CSP violation reports, send the
-  // runnable to it instead of dispatching it immediately.
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(mLoadingContext);
-  if (doc && doc->ShouldBufferCSPViolations()) {
-    doc->BufferCSPViolation(task);
-    return NS_OK;
-  }
 
   if (XRE_IsContentProcess()) {
     if (mEventTarget) {

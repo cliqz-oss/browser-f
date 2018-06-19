@@ -201,9 +201,12 @@ public:
 
   RefPtr<MediaDecoder::DebugInfoPromise> RequestDebugInfo();
 
-  void AddOutputStream(ProcessedMediaStream* aStream, bool aFinishWhenEnded);
+  void AddOutputStream(ProcessedMediaStream* aStream,
+                       TrackID aNextAvailableTrackID,
+                       bool aFinishWhenEnded);
   // Remove an output stream added with AddOutputStream.
   void RemoveOutputStream(MediaStream* aStream);
+  TrackID NextAvailableTrackIDFor(MediaStream* aOutputStream) const;
 
   // Seeks to the decoder to aTarget asynchronously.
   RefPtr<MediaDecoder::SeekPromise> InvokeSeek(const SeekTarget& aTarget);
@@ -751,17 +754,6 @@ public:
   {
     return &mIsAudioDataAudible;
   }
-
-#ifdef XP_WIN
-  // Whether we've called timeBeginPeriod(1) to request high resolution
-  // timers. We request high resolution timers when playback starts, and
-  // turn them off when playback is paused. Enabling high resolution
-  // timers can cause higher CPU usage and battery drain on Windows 7.
-  bool mHiResTimersRequested = false;
-  // Whether we should enable high resolution timers. This is initialized at
-  // MDSM construction, and mirrors the value of media.hi-res-timers.enabled.
-  const bool mShouldUseHiResTimers;
-#endif
 };
 
 } // namespace mozilla

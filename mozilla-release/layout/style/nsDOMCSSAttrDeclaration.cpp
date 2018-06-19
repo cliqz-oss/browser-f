@@ -8,20 +8,18 @@
 
 #include "nsDOMCSSAttrDeclaration.h"
 
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/css/Declaration.h"
-#include "mozilla/css/StyleRule.h"
-#endif
 #include "mozilla/DeclarationBlock.h"
 #include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/ServoDeclarationBlock.h"
+#include "mozAutoDocUpdate.h"
 #include "nsContentUtils.h"
 #include "nsIDocument.h"
 #include "nsIURI.h"
 #include "nsNodeUtils.h"
+#include "nsSMILCSSValueType.h"
 #include "nsWrapperCacheInlines.h"
 #include "nsIFrame.h"
 #include "ActiveLayerTracker.h"
@@ -142,17 +140,7 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
   }
 
   // cannot fail
-  RefPtr<DeclarationBlock> decl;
-  if (mElement->IsStyledByServo()) {
-    decl = new ServoDeclarationBlock();
-  } else {
-#ifdef MOZ_OLD_STYLE
-    decl = new css::Declaration();
-    decl->AsGecko()->InitializeEmpty();
-#else
-    MOZ_CRASH("old style system disabled");
-#endif
-  }
+  RefPtr<DeclarationBlock> decl = new ServoDeclarationBlock();
 
   // this *can* fail (inside SetAttrAndNotify, at least).
   nsresult rv;
@@ -169,20 +157,6 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
   return decl;
 }
 
-void
-nsDOMCSSAttributeDeclaration::GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv,
-                                                       nsIPrincipal* aSubjectPrincipal)
-{
-  NS_ASSERTION(mElement, "Something is severely broken -- there should be an Element here!");
-
-  nsIDocument* doc = mElement->OwnerDoc();
-  aCSSParseEnv.mSheetURI = doc->GetDocumentURI();
-  aCSSParseEnv.mBaseURI = mElement->GetBaseURIForStyleAttr();
-  aCSSParseEnv.mPrincipal = (aSubjectPrincipal ? aSubjectPrincipal
-                                               : mElement->NodePrincipal());
-  aCSSParseEnv.mCSSLoader = doc->CSSLoader();
-}
-
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
 nsDOMCSSAttributeDeclaration::GetServoCSSParsingEnvironment(
     nsIPrincipal* aSubjectPrincipal) const
@@ -194,16 +168,25 @@ nsDOMCSSAttributeDeclaration::GetServoCSSParsingEnvironment(
   };
 }
 
-css::Rule*
-nsDOMCSSAttributeDeclaration::GetParentRule()
+nsresult
+nsDOMCSSAttributeDeclaration::SetSMILValue(const nsCSSPropertyID aPropID,
+                                           const nsSMILValue& aValue)
 {
-  return nullptr;
-}
-
-/* virtual */ nsINode*
-nsDOMCSSAttributeDeclaration::GetParentObject()
-{
-  return mElement;
+  MOZ_ASSERT(mIsSMILOverride);
+  // No need to do the ActiveLayerTracker / ScrollLinkedEffectDetector bits,
+  // since we're in a SMIL animation anyway, no need to try to detect we're a
+  // scripted animation.
+  DeclarationBlock* olddecl = GetCSSDeclaration(eOperation_Modify);
+  if (!olddecl) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
+  bool changed = nsSMILCSSValueType::SetPropertyValues(aValue, *decl);
+  if (changed) {
+    SetCSSDeclaration(decl);
+  }
+  return NS_OK;
 }
 
 nsresult

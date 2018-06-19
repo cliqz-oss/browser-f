@@ -166,11 +166,7 @@ public:
    * Return DOM node associated with the accessible.
    */
   virtual nsINode* GetNode() const;
-  inline already_AddRefed<nsIDOMNode> DOMNode() const
-  {
-    nsCOMPtr<nsIDOMNode> DOMNode = do_QueryInterface(GetNode());
-    return DOMNode.forget();
-  }
+
   nsIContent* GetContent() const { return mContent; }
   mozilla::dom::Element* Elm() const
     { return mContent && mContent->IsElement() ? mContent->AsElement() : nullptr; }
@@ -448,9 +444,9 @@ public:
     {  return GetSiblingAtOffset(1); }
   inline Accessible* PrevSibling() const
     { return GetSiblingAtOffset(-1); }
-  inline Accessible* FirstChild()
+  inline Accessible* FirstChild() const
     { return GetChildAt(0); }
-  inline Accessible* LastChild()
+  inline Accessible* LastChild() const
   {
     uint32_t childCount = ChildCount();
     return childCount != 0 ? GetChildAt(childCount - 1) : nullptr;
@@ -514,9 +510,19 @@ public:
                             uint32_t aLength = UINT32_MAX);
 
   /**
+   * Return boundaries in screen coordinates in app units.
+   */
+  virtual nsRect BoundsInAppUnits() const;
+
+  /**
    * Return boundaries in screen coordinates.
    */
   virtual nsIntRect Bounds() const;
+
+  /**
+   * Return boundaries in screen coordinates in CSS pixels.
+   */
+  virtual nsIntRect BoundsInCSSPixels() const;
 
   /**
    * Return boundaries rect relative the bounding frame.
@@ -649,7 +655,10 @@ public:
 
   bool IsTableRow() const { return HasGenericType(eTableRow); }
 
-  bool IsTextField() const { return mType == eHTMLTextFieldType; }
+  bool IsTextField() const { return mType == eHTMLTextFieldType ||
+                                    mType == eHTMLTextPasswordFieldType; }
+
+  bool IsPassword() const { return mType == eHTMLTextPasswordFieldType; }
 
   bool IsText() const { return mGenericTypes & eText; }
 
@@ -717,7 +726,7 @@ public:
   /**
    * Return true if the accessible is hyper link accessible.
    */
-  virtual bool IsLink();
+  virtual bool IsLink() const;
 
   /**
    * Return the start offset of the link within the parent accessible.

@@ -112,17 +112,6 @@ static constexpr FloatRegister ScratchSimd128Reg = InvalidFloatReg;
 // accessed with a single instruction.
 static const int32_t WasmGlobalRegBias = 32768;
 
-// Registers used in the GenerateFFIIonExit Enable Activation block.
-static constexpr Register WasmIonExitRegCallee = t0;
-static constexpr Register WasmIonExitRegE0 = a0;
-static constexpr Register WasmIonExitRegE1 = a1;
-
-// Registers used in the GenerateFFIIonExit Disable Activation block.
-// None of these may be the second scratch register (t8).
-static constexpr Register WasmIonExitRegD0 = a0;
-static constexpr Register WasmIonExitRegD1 = a1;
-static constexpr Register WasmIonExitRegD2 = t0;
-
 // Registerd used in RegExpMatcher instruction (do not use JSReturnOperand).
 static constexpr Register RegExpMatcherRegExpReg = CallTempReg0;
 static constexpr Register RegExpMatcherStringReg = CallTempReg1;
@@ -730,11 +719,7 @@ Imm64::secondHalf() const
 }
 
 void
-PatchJump(CodeLocationJump& jump_, CodeLocationLabel label,
-          ReprotectCode reprotect = DontReprotect);
-
-void
-PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target);
+PatchJump(CodeLocationJump& jump_, CodeLocationLabel label);
 
 static constexpr int32_t SliceSize = 1024;
 typedef js::jit::AssemblerBuffer<SliceSize, Instruction> MIPSBuffer;
@@ -920,6 +905,14 @@ class AssemblerMIPSShared : public AssemblerShared
                 embedsNurseryPointers_ = true;
             dataRelocations_.writeUnsigned(nextOffset().getOffset());
         }
+    }
+
+    void assertNoGCThings() const {
+#ifdef DEBUG
+        MOZ_ASSERT(dataRelocations_.length() == 0);
+        for (auto& j : jumps_)
+            MOZ_ASSERT(j.kind == Relocation::HARDCODED);
+#endif
     }
 
   public:
@@ -1255,7 +1248,6 @@ class AssemblerMIPSShared : public AssemblerShared
 
     // label operations
     void bind(Label* label, BufferOffset boff = BufferOffset());
-    void bindLater(Label* label, wasm::OldTrapDesc target);
     virtual void bind(InstImm* inst, uintptr_t branch, uintptr_t target) = 0;
     void bind(CodeLabel* label) {
         label->target()->bind(currentOffset());

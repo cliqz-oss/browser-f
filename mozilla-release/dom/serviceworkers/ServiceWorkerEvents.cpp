@@ -33,6 +33,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BodyUtil.h"
 #include "mozilla/dom/Client.h"
+#include "mozilla/dom/EventBinding.h"
 #include "mozilla/dom/FetchEventBinding.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
@@ -397,11 +398,7 @@ public:
     rv = NS_NewURI(getter_AddRefs(uri), url, nullptr, nullptr);
     NS_ENSURE_SUCCESS(rv, false);
     int16_t decision = nsIContentPolicy::ACCEPT;
-    rv = NS_CheckContentLoadPolicy(aLoadInfo->InternalContentPolicyType(), uri,
-                                   aLoadInfo->LoadingPrincipal(),
-                                   aLoadInfo->TriggeringPrincipal(),
-                                   aLoadInfo->LoadingNode(), EmptyCString(),
-                                   nullptr, &decision);
+    rv = NS_CheckContentLoadPolicy(uri, aLoadInfo, EmptyCString(), &decision);
     NS_ENSURE_SUCCESS(rv, false);
     return decision == nsIContentPolicy::ACCEPT;
   }
@@ -806,7 +803,7 @@ RespondWithHandler::CancelRequest(nsresult aStatus)
 void
 FetchEvent::RespondWith(JSContext* aCx, Promise& aArg, ErrorResult& aRv)
 {
-  if (EventPhase() == nsIDOMEvent::NONE || mWaitToRespond) {
+  if (EventPhase() == EventBinding::NONE || mWaitToRespond) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }

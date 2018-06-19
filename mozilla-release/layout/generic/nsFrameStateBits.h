@@ -264,8 +264,8 @@ FRAME_STATE_BIT(Generic, 53, NS_FRAME_IS_NONDISPLAY)
 // Frame has a LayerActivityProperty property
 FRAME_STATE_BIT(Generic, 54, NS_FRAME_HAS_LAYER_ACTIVITY_PROPERTY)
 
-// Frame owns anonymous boxes whose style contexts it will need to update during
-// a stylo tree traversal.
+// Frame owns anonymous boxes whose ComputedStyles it will need to update
+// during a stylo tree traversal.
 FRAME_STATE_BIT(Generic, 55, NS_FRAME_OWNS_ANON_BOXES)
 
 // Frame maybe has a counter-reset/increment style
@@ -299,9 +299,7 @@ FRAME_STATE_BIT(Box, 21, NS_STATE_STACK_NOT_POSITIONED)
 FRAME_STATE_BIT(Box, 22, NS_STATE_IS_HORIZONTAL)
 FRAME_STATE_BIT(Box, 23, NS_STATE_AUTO_STRETCH)
 FRAME_STATE_BIT(Box, 24, NS_STATE_IS_ROOT)
-FRAME_STATE_BIT(Box, 25, NS_STATE_CURRENTLY_IN_DEBUG)
-FRAME_STATE_BIT(Box, 26, NS_STATE_SET_TO_DEBUG)
-FRAME_STATE_BIT(Box, 27, NS_STATE_DEBUG_WAS_SET)
+/* Bits 25, 26, and 27 were used for xul debug flags but are now unused */
 FRAME_STATE_BIT(Box, 28, NS_STATE_MENU_HAS_POPUP_LIST)
 FRAME_STATE_BIT(Box, 29, NS_STATE_BOX_WRAPS_KIDS_IN_BLOCK)
 FRAME_STATE_BIT(Box, 30, NS_STATE_EQUAL_SIZE)

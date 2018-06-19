@@ -7,13 +7,9 @@
 /* a list of all types that can be allocated in an nsPresArena, for
    preprocessing */
 
-#ifdef STYLE_STRUCT
-#error Sorry nsPresArenaObjectList.h needs to use STYLE_STRUCT!
-#endif
-
 // These are objects that can be stored in the pres arena
 
-PRES_ARENA_OBJECT(GeckoStyleContext)
+PRES_ARENA_OBJECT(GeckoComputedStyle)
 
 PRES_ARENA_OBJECT(nsLineBox)
 PRES_ARENA_OBJECT(nsRuleNode)
@@ -29,8 +25,3 @@ PRES_ARENA_OBJECT(nsCallbackEventRequest)
 PRES_ARENA_OBJECT(nsIntervalSet_Interval)
 PRES_ARENA_OBJECT(CellData)
 PRES_ARENA_OBJECT(BCCellData)
-
-#define STYLE_STRUCT(name_, checkdata_cb_) \
-  PRES_ARENA_OBJECT(nsStyle##name_)
-#include "nsStyleStructList.h"
-#undef STYLE_STRUCT

@@ -190,6 +190,9 @@ public:
     nsTArray<uint32_t>&& namespaces) override;
 
   mozilla::ipc::IPCResult
+  RecvRequestPerformanceMetrics() override;
+
+  mozilla::ipc::IPCResult
   RecvReinitRendering(
     Endpoint<PCompositorManagerChild>&& aCompositor,
     Endpoint<PImageBridgeChild>&& aImageBridge,
@@ -389,7 +392,7 @@ public:
                                                    const IPC::Principal& aPrincipal,
                                                    const ClonedMessageData& aData) override;
 
-  virtual mozilla::ipc::IPCResult RecvGeolocationUpdate(const GeoPosition& somewhere) override;
+  virtual mozilla::ipc::IPCResult RecvGeolocationUpdate(nsIDOMGeoPosition* aPosition) override;
 
   virtual mozilla::ipc::IPCResult RecvGeolocationError(const uint16_t& errorCode) override;
 
@@ -680,8 +683,7 @@ public:
    * GPU process since we don't want to crash the content process when the
    * GPU process crashes.
    */
-  static void FatalErrorIfNotUsingGPUProcess(const char* const aProtocolName,
-                                             const char* const aErrorMsg,
+  static void FatalErrorIfNotUsingGPUProcess(const char* const aErrorMsg,
                                              base::ProcessId aOtherPid);
 
   // This method is used by FileCreatorHelper for the creation of a BlobImpl.

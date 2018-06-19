@@ -13,6 +13,7 @@
 #include "nsRFPService.h"
 #include "nsWrapperCache.h"
 #include "Performance.h"
+#include "nsITimedChannel.h"
 
 class nsIHttpChannel;
 class nsITimedChannel;
@@ -54,17 +55,17 @@ public:
 
   uint64_t TransferSize() const
   {
-    return mTimingAllowed ? mTransferSize : 0;
+    return mTransferSize;
   }
 
   uint64_t EncodedBodySize() const
   {
-    return mTimingAllowed ? mEncodedBodySize : 0;
+    return mEncodedBodySize;
   }
 
   uint64_t DecodedBodySize() const
   {
-    return mTimingAllowed ? mDecodedBodySize : 0;
+    return mDecodedBodySize;
   }
 
   /**
@@ -169,6 +170,8 @@ public:
     return mTimingAllowed;
   }
 
+  nsTArray<nsCOMPtr<nsIServerTiming>> GetServerTiming();
+
 private:
   // Checks if the resource is either same origin as the page that started
   // the load, or if the response contains the Timing-Allow-Origin header
@@ -176,6 +179,7 @@ private:
   bool CheckAllowedOrigin(nsIHttpChannel* aResourceChannel,
                           nsITimedChannel* aChannel);
 
+  nsTArray<nsCOMPtr<nsIServerTiming>> mServerTiming;
   nsString mNextHopProtocol;
 
   TimeStamp mAsyncOpen;
@@ -433,6 +437,20 @@ public:
     }
     return nsRFPService::ReduceTimePrecisionAsMSecs(
       GetDOMTiming()->GetTimeToNonBlankPaint(),
+      mPerformance->GetRandomTimelineSeed());
+  }
+
+  DOMTimeMilliSec TimeToDOMContentFlushed() const
+  {
+    if (!nsContentUtils::IsPerformanceTimingEnabled() ||
+        nsContentUtils::ShouldResistFingerprinting()) {
+      return 0;
+    }
+    if (mPerformance->IsSystemPrincipal()) {
+      return GetDOMTiming()->GetTimeToDOMContentFlushed();
+    }
+    return nsRFPService::ReduceTimePrecisionAsMSecs(
+      GetDOMTiming()->GetTimeToDOMContentFlushed(),
       mPerformance->GetRandomTimelineSeed());
   }
 

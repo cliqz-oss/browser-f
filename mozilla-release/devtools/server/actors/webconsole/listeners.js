@@ -10,10 +10,6 @@ const Services = require("Services");
 const {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
 const {CONSOLE_WORKER_IDS, WebConsoleUtils} = require("devtools/server/actors/webconsole/utils");
 
-XPCOMUtils.defineLazyServiceGetter(this,
-                                   "swm",
-                                   "@mozilla.org/serviceworkers/manager;1",
-                                   "nsIServiceWorkerManager");
 loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 // Process script used to forward console calls from content processes to parent process
@@ -59,7 +55,7 @@ ConsoleServiceListener.prototype =
   /**
    * Initialize the nsIConsoleService listener.
    */
-  init: function () {
+  init: function() {
     Services.console.registerListener(this);
   },
 
@@ -71,7 +67,7 @@ ConsoleServiceListener.prototype =
    * @param nsIConsoleMessage message
    *        The message object coming from the nsIConsoleService.
    */
-  observe: function (message) {
+  observe: function(message) {
     if (!this.listener) {
       return;
     }
@@ -101,7 +97,7 @@ ConsoleServiceListener.prototype =
    * @return boolean
    *         True if the category is allowed to be logged, false otherwise.
    */
-  isCategoryAllowed: function (category) {
+  isCategoryAllowed: function(category) {
     if (!category) {
       return false;
     }
@@ -131,7 +127,7 @@ ConsoleServiceListener.prototype =
    *         The array of cached messages. Each element is an nsIScriptError or
    *         an nsIConsoleMessage
    */
-  getCachedMessages: function (includePrivate = false) {
+  getCachedMessages: function(includePrivate = false) {
     let errors = Services.console.getMessageArray() || [];
 
     // if !this.window, we're in a browser console. Still need to filter
@@ -173,7 +169,7 @@ ConsoleServiceListener.prototype =
   /**
    * Remove the nsIConsoleService listener.
    */
-  destroy: function () {
+  destroy: function() {
     Services.console.unregisterListener(this);
     this.listener = this.window = null;
   },
@@ -234,7 +230,7 @@ ConsoleAPIListener.prototype =
   /**
    * Initialize the window.console API observer.
    */
-  init: function () {
+  init: function() {
     // Note that the observer is process-wide. We will filter the messages as
     // needed, see CAL_observe().
     Services.obs.addObserver(this, "console-api-log-event");
@@ -249,7 +245,7 @@ ConsoleAPIListener.prototype =
    * @param string topic
    *        The message topic received from the observer service.
    */
-  observe: function (message, topic) {
+  observe: function(message, topic) {
     if (!this.owner) {
       return;
     }
@@ -275,7 +271,7 @@ ConsoleAPIListener.prototype =
    * @return bool
    *         Do we care about this message?
    */
-  isMessageRelevant: function (message) {
+  isMessageRelevant: function(message) {
     let workerType = WebConsoleUtils.getWorkerType(message);
 
     if (this.window && workerType === "ServiceWorker") {
@@ -330,7 +326,7 @@ ConsoleAPIListener.prototype =
    * @return array
    *         The array of cached messages.
    */
-  getCachedMessages: function (includePrivate = false) {
+  getCachedMessages: function(includePrivate = false) {
     let messages = [];
     let ConsoleAPIStorage = Cc["@mozilla.org/consoleAPI-storage;1"]
                               .getService(Ci.nsIConsoleAPIStorage);
@@ -364,7 +360,7 @@ ConsoleAPIListener.prototype =
   /**
    * Destroy the console API listener.
    */
-  destroy: function () {
+  destroy: function() {
     Services.obs.removeObserver(this, "console-api-log-event");
     this.window = this.owner = null;
   },
@@ -406,7 +402,7 @@ ConsoleReflowListener.prototype =
    * @param DOMHighResTimeStamp end
    * @param boolean interruptible
    */
-  sendReflow: function (start, end, interruptible) {
+  sendReflow: function(start, end, interruptible) {
     let frame = components.stack.caller.caller;
 
     let filename = frame ? frame.filename : null;
@@ -433,7 +429,7 @@ ConsoleReflowListener.prototype =
    * @param DOMHighResTimeStamp start
    * @param DOMHighResTimeStamp end
    */
-  reflow: function (start, end) {
+  reflow: function(start, end) {
     this.sendReflow(start, end, false);
   },
 
@@ -443,14 +439,14 @@ ConsoleReflowListener.prototype =
    * @param DOMHighResTimeStamp start
    * @param DOMHighResTimeStamp end
    */
-  reflowInterruptible: function (start, end) {
+  reflowInterruptible: function(start, end) {
     this.sendReflow(start, end, true);
   },
 
   /**
    * Unregister listener.
    */
-  destroy: function () {
+  destroy: function() {
     this.docshell.removeWeakReflowObserver(this);
     this.listener = this.docshell = null;
   },

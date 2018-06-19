@@ -11,8 +11,8 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "BrowserUtils",
                                "resource://gre/modules/BrowserUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "RecentWindow",
-                               "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserWindowTracker",
+                               "resource:///modules/BrowserWindowTracker.jsm");
 
 var Feeds = {
   // Listeners are added in nsBrowserGlue.js
@@ -43,7 +43,7 @@ var Feeds = {
       }
 
       case "FeedConverter:addLiveBookmark": {
-        let topWindow = RecentWindow.getMostRecentBrowserWindow();
+        let topWindow = BrowserWindowTracker.getTopWindow();
         topWindow.PlacesCommandHook.addLiveBookmark(data.spec, data.title, data.subtitle)
                                    .catch(Cu.reportError);
         break;
@@ -74,7 +74,7 @@ var Feeds = {
 
     if (aIsFeed) {
       try {
-        let href = BrowserUtils.makeURI(aLink.href, aLink.ownerDocument.characterSet);
+        let href = Services.io.newURI(aLink.href, aLink.ownerDocument.characterSet);
         BrowserUtils.urlSecurityCheck(href, aPrincipal,
                                       Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
         return type || "application/rss+xml";

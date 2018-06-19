@@ -4,7 +4,7 @@
 
 /* eslint-env browser */
 "use strict";
-(function () {
+(function() {
   const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const Services = require("Services");
   const { gDevTools } = require("devtools/client/framework/devtools");
@@ -135,7 +135,7 @@
       // Final notification for further theme-switching related logic.
       gDevTools.emit("theme-switched", window, newTheme, oldTheme);
       notifyWindow();
-    }, console.error.bind(console));
+    }, console.error);
   }
 
   function handlePrefChange() {
@@ -148,7 +148,7 @@
     switchTheme(Services.prefs.getCharPref("devtools.theme"));
 
     Services.prefs.addObserver("devtools.theme", handlePrefChange);
-    window.addEventListener("unload", function () {
+    window.addEventListener("unload", function() {
       Services.prefs.removeObserver("devtools.theme", handlePrefChange);
     }, { once: true });
   }

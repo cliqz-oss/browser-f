@@ -18,11 +18,7 @@ class nsIFrame;
 class nsILayoutHistoryState;
 class nsIPresShell;
 class nsPlaceholderFrame;
-class nsStyleContext;
 class nsWindowSizes;
-namespace mozilla {
-struct UndisplayedNode;
-}
 
 /**
  * Frame manager interface. The frame manager serves one purpose:
@@ -36,21 +32,15 @@ struct UndisplayedNode;
 class nsFrameManager
 {
   typedef mozilla::layout::FrameChildListID ChildListID;
-  typedef mozilla::UndisplayedNode UndisplayedNode;
 
 public:
   explicit nsFrameManager(nsIPresShell* aPresShell)
     : mPresShell(aPresShell)
     , mRootFrame(nullptr)
-    , mDisplayNoneMap(nullptr)
-    , mDisplayContentsMap(nullptr)
-    , mIsDestroyingFrames(false)
   {
     MOZ_ASSERT(mPresShell, "need a pres shell");
   }
   ~nsFrameManager();
-
-  bool IsDestroyingFrames() const { return mIsDestroyingFrames; }
 
   /*
    * Gets and sets the root frame (typically the viewport). The lifetime of the
@@ -71,97 +61,6 @@ public:
    */
   void Destroy();
 
-
-  // display:none and display:contents content does not get an nsIFrame.  To
-  // enable the style context for such content to be obtained we store the
-  // contexts in a couple of hash tables.  The following methods provide the
-  // API that's used to set, reset, obtain and clear these style contexts.
-
-  /**
-   * Register the style context for the display:none content, aContent.
-   */
-  void RegisterDisplayNoneStyleFor(nsIContent* aContent,
-                                   nsStyleContext* aStyleContext);
-
-  /**
-   * Register the style context for the display:contents content, aContent.
-   */
-  void RegisterDisplayContentsStyleFor(nsIContent* aContent,
-                                       nsStyleContext* aStyleContext);
-
-  /**
-   * Change the style context for the display:none content, aContent.
-   */
-  void ChangeRegisteredDisplayNoneStyleFor(nsIContent* aContent,
-                                           nsStyleContext* aStyleContext)
-  {
-    ChangeStyleContextInMap(mDisplayNoneMap, aContent, aStyleContext);
-  }
-
-  /**
-   * Change the style context for the display:contents content, aContent.
-   */
-  void ChangeRegisteredDisplayContentsStyleFor(nsIContent* aContent,
-                                               nsStyleContext* aStyleContext)
-  {
-    ChangeStyleContextInMap(mDisplayContentsMap, aContent, aStyleContext);
-  }
-
-  /**
-   * Get the style context for the display:none content, aContent, if any.
-   */
-  nsStyleContext* GetDisplayNoneStyleFor(const nsIContent* aContent)
-  {
-    if (!mDisplayNoneMap) {
-      return nullptr;
-    }
-    return GetStyleContextInMap(mDisplayNoneMap, aContent);
-  }
-
-  /**
-   * Get the style context for the display:contents content, aContent, if any.
-   */
-  nsStyleContext* GetDisplayContentsStyleFor(const nsIContent* aContent)
-  {
-    if (!mDisplayContentsMap) {
-      return nullptr;
-    }
-    return GetStyleContextInMap(mDisplayContentsMap, aContent);
-  }
-
-  /**
-   * Return the linked list of UndisplayedNodes that contain the style contexts
-   * that have been registered for the display:none children of
-   * aParentContent.
-   */
-  UndisplayedNode*
-  GetAllRegisteredDisplayNoneStylesIn(nsIContent* aParentContent);
-
-  /**
-   * Return the linked list of UndisplayedNodes that contain the style contexts
-   * that have been registered for the display:contents children of
-   * aParentContent.
-   */
-  UndisplayedNode*
-  GetAllRegisteredDisplayContentsStylesIn(nsIContent* aParentContent);
-
-  /**
-   * Unregister the style context for the display:none content, aContent,
-   * if any.  If found, then this method also unregisters the style contexts
-   * for any display:contents and display:none descendants of aContent.
-   */
-  void UnregisterDisplayNoneStyleFor(nsIContent* aContent,
-                                     nsIContent* aParentContent);
-
-  /**
-   * Unregister the style context for the display:contents content, aContent,
-   * if any.  If found, then this method also unregisters the style contexts
-   * for any display:contents and display:none descendants of aContent.
-   */
-  void UnregisterDisplayContentsStyleFor(nsIContent* aContent,
-                                         nsIContent* aParentContent);
-
-
   // Functions for manipulating the frame model
   void AppendFrames(nsContainerFrame* aParentFrame,
                     ChildListID aListID,
@@ -173,12 +72,6 @@ public:
                     nsFrameList& aFrameList);
 
   void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame);
-
-  /*
-   * Notification that a frame is about to be destroyed. This allows any
-   * outstanding references to the frame to be cleaned up.
-   */
-  void NotifyDestroyingFrame(nsIFrame* aFrame);
 
   /*
    * Capture/restore frame state for the frame subtree rooted at aFrame.
@@ -205,31 +98,9 @@ public:
   void AddSizeOfIncludingThis(nsWindowSizes& aSizes) const;
 
 protected:
-  class UndisplayedMap;
-
-  static nsIContent* ParentForUndisplayedMap(const nsIContent* aContent);
-
-  void ClearAllMapsFor(nsIContent* aParentContent);
-
-  static nsStyleContext* GetStyleContextInMap(UndisplayedMap* aMap,
-                                              const nsIContent* aContent);
-  static UndisplayedNode* GetUndisplayedNodeInMapFor(UndisplayedMap* aMap,
-                                                     const nsIContent* aContent);
-  static UndisplayedNode* GetAllUndisplayedNodesInMapFor(UndisplayedMap* aMap,
-                                                         nsIContent* aParentContent);
-  static void SetStyleContextInMap(UndisplayedMap* aMap,
-                                   nsIContent* aContent,
-                                   nsStyleContext* aStyleContext);
-  static void ChangeStyleContextInMap(UndisplayedMap* aMap,
-                                      nsIContent* aContent,
-                                      nsStyleContext* aStyleContext);
-
   // weak link, because the pres shell owns us
   nsIPresShell* MOZ_NON_OWNING_REF mPresShell;
   nsIFrame* mRootFrame;
-  UndisplayedMap* mDisplayNoneMap;
-  UndisplayedMap* mDisplayContentsMap;
-  bool mIsDestroyingFrames;  // The frame manager is destroying some frame(s).
 };
 
 #endif

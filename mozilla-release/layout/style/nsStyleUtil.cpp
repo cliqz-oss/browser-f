@@ -7,6 +7,7 @@
 #include "nsStyleUtil.h"
 #include "nsStyleConsts.h"
 
+#include "mozilla/FontPropertyTypes.h"
 #include "nsIContent.h"
 #include "nsCSSProps.h"
 #include "nsContentUtils.h"
@@ -251,7 +252,7 @@ nsStyleUtil::AppendEscapedCSSFontFamilyList(
 
 
 /* static */ void
-nsStyleUtil::AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
+nsStyleUtil::AppendBitmaskCSSValue(const nsCSSKTableEntry aTable[],
                                    int32_t aMaskedValue,
                                    int32_t aFirstMask,
                                    int32_t aLastMask,
@@ -259,8 +260,7 @@ nsStyleUtil::AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
 {
   for (int32_t mask = aFirstMask; mask <= aLastMask; mask <<= 1) {
     if (mask & aMaskedValue) {
-      AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, mask),
-                         aResult);
+      AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(mask, aTable), aResult);
       aMaskedValue &= ~mask;
       if (aMaskedValue) { // more left
         aResult.Append(char16_t(' '));
@@ -623,8 +623,8 @@ nsStyleUtil::AppendSerializedFontSrc(const nsCSSValue& aValue,
 
     if (sources[i].GetUnit() == eCSSUnit_URL) {
       aResult.AppendLiteral("url(");
-      nsDependentString url(sources[i].GetOriginalURLValue());
-      nsStyleUtil::AppendEscapedCSSString(url, aResult);
+      nsDependentCSubstring url(sources[i].GetURLStructValue()->GetString());
+      nsStyleUtil::AppendEscapedCSSString(NS_ConvertUTF8toUTF16(url), aResult);
       aResult.Append(')');
     } else if (sources[i].GetUnit() == eCSSUnit_Local_Font) {
       aResult.AppendLiteral("local(");
@@ -744,10 +744,9 @@ nsStyleUtil::ColorComponentToFloat(uint8_t aAlpha)
 nsStyleUtil::IsSignificantChild(nsIContent* aChild,
                                 bool aWhitespaceIsSignificant)
 {
-  bool isText = aChild->IsNodeOfType(nsINode::eTEXT);
+  bool isText = aChild->IsText();
 
-  if (!isText && !aChild->IsNodeOfType(nsINode::eCOMMENT) &&
-      !aChild->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+  if (!isText && !aChild->IsComment() && !aChild->IsProcessingInstruction()) {
     return true;
   }
 
@@ -760,10 +759,9 @@ nsStyleUtil::IsSignificantChild(nsIContent* aChild,
 nsStyleUtil::ThreadSafeIsSignificantChild(const nsIContent* aChild,
                                           bool aWhitespaceIsSignificant)
 {
-  bool isText = aChild->IsNodeOfType(nsINode::eTEXT);
+  bool isText = aChild->IsText();
 
-  if (!isText && !aChild->IsNodeOfType(nsINode::eCOMMENT) &&
-      !aChild->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+  if (!isText && !aChild->IsComment() && !aChild->IsProcessingInstruction()) {
     return true;
   }
 
@@ -881,4 +879,21 @@ nsStyleUtil::CSPAllowsInlineStyle(Element* aElement,
   NS_ENSURE_SUCCESS(rv, false);
 
   return allowInlineStyle;
+}
+
+void
+nsStyleUtil::AppendFontSlantStyle(const FontSlantStyle& aStyle, nsAString& aOut)
+{
+  if (aStyle.IsNormal()) {
+    aOut.AppendLiteral("normal");
+  } else if (aStyle.IsItalic()) {
+    aOut.AppendLiteral("italic");
+  } else {
+    aOut.AppendLiteral("oblique");
+    auto angle = aStyle.ObliqueAngle();
+    if (angle != FontSlantStyle::kDefaultAngle) {
+      aOut.AppendLiteral(" ");
+      AppendAngleValue(nsStyleCoord(angle, eStyleUnit_Degree), aOut);
+    }
+  }
 }

@@ -3,6 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from ../PlacesUIUtils.jsm */
+/* import-globals-from ../../../../toolkit/content/globalOverlay.js */
+/* import-globals-from ../../../../toolkit/components/places/PlacesUtils.jsm */
+/* import-globals-from ../../../../toolkit/components/places/PlacesTransactions.jsm */
+
 /**
  * Represents an insertion point within a container where we can insert
  * items.
@@ -83,7 +88,7 @@ PlacesController.prototype = {
   // actually organising the trees.
   disableUserActions: false,
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIClipboardOwner
   ]),
 
@@ -170,7 +175,10 @@ PlacesController.prototype = {
                  Ci.nsINavHistoryQueryOptions.SORT_BY_NONE;
     case "placesCmd_show:info": {
       let selectedNode = this._view.selectedNode;
-      return selectedNode && PlacesUtils.getConcreteItemId(selectedNode) != -1;
+      return selectedNode && (PlacesUtils.nodeIsTagQuery(selectedNode) ||
+                              PlacesUtils.nodeIsBookmark(selectedNode) ||
+                              (PlacesUtils.nodeIsFolder(selectedNode) &&
+                               !PlacesUtils.isQueryGeneratedFolder(selectedNode)));
     }
     case "placesCmd_reload": {
       // Livemark containers
@@ -218,12 +226,13 @@ PlacesController.prototype = {
       this.remove("Remove Selection").catch(Cu.reportError);
       break;
     case "placesCmd_deleteDataHost":
-      var host;
+      let host;
       if (PlacesUtils.nodeIsHost(this._view.selectedNode)) {
-        var queries = this._view.selectedNode.getQueries();
-        host = queries[0].domain;
-      } else
+        host = this._view.selectedNode.query.domain;
+      } else {
         host = Services.io.newURI(this._view.selectedNode.uri).host;
+      }
+      let {ForgetAboutSite} = ChromeUtils.import("resource://gre/modules/ForgetAboutSite.jsm", {});
       ForgetAboutSite.removeDataFromDomain(host)
                      .catch(Cu.reportError);
       break;
@@ -393,7 +402,6 @@ PlacesController.prototype = {
       var nodeData = {};
       var node = nodes[i];
       var nodeType = node.type;
-      var uri = null;
 
       // We don't use the nodeIs* methods here to avoid going through the type
       // property way too often
@@ -415,13 +423,15 @@ PlacesController.prototype = {
         case Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER:
         case Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER_SHORTCUT:
           nodeData.folder = true;
+          if (this.hasCachedLivemarkInfo(node)) {
+            nodeData.livemark = true;
+          }
           break;
         case Ci.nsINavHistoryResultNode.RESULT_TYPE_SEPARATOR:
           nodeData.separator = true;
           break;
         case Ci.nsINavHistoryResultNode.RESULT_TYPE_URI:
           nodeData.link = true;
-          uri = Services.io.newURI(node.uri);
           if (PlacesUtils.nodeIsBookmark(node)) {
             nodeData.bookmark = true;
             var parentNode = node.parent;
@@ -435,20 +445,6 @@ PlacesController.prototype = {
           break;
       }
 
-      // annotations
-      if (uri) {
-        let names = PlacesUtils.annotations.getPageAnnotationNames(uri);
-        for (let j = 0; j < names.length; ++j)
-          nodeData[names[j]] = true;
-      }
-
-      // For items also include the item-specific annotations
-      if (node.itemId != -1) {
-        let names = PlacesUtils.annotations
-                               .getItemAnnotationNames(node.itemId);
-        for (let j = 0; j < names.length; ++j)
-          nodeData[names[j]] = true;
-      }
       metadata.push(nodeData);
     }
 
@@ -661,15 +657,6 @@ PlacesController.prototype = {
   },
 
   /**
-   * This method can be run on a URI parameter to ensure that it didn't
-   * receive a string instead of an nsIURI object.
-   */
-  _assertURINotString: function PC__assertURINotString(value) {
-    NS_ASSERT((typeof(value) == "object") && !(value instanceof String),
-           "This method should be passed a URI as a nsIURI object, not as a string.");
-  },
-
-  /**
    * Reloads the selected livemark if any.
    */
   reloadSelectedLivemark: function PC_reloadSelectedLivemark() {
@@ -710,23 +697,14 @@ PlacesController.prototype = {
     if (!ip)
       throw Cr.NS_ERROR_NOT_AVAILABLE;
 
-    let performed =
+    let bookmarkGuid =
       PlacesUIUtils.showBookmarkDialog({ action: "add",
                                          type: aType,
                                          defaultInsertionPoint: ip,
                                          hiddenRows: [ "folderPicker" ]
                                        }, window.top);
-    if (performed) {
-      // Select the new item.
-      // TODO (Bug 1425555): When we remove places transactions, we might be
-      // able to improve showBookmarkDialog to return the guid direct, and
-      // avoid the fetch.
-      let insertedNode = await PlacesUtils.bookmarks.fetch({
-        parentGuid: ip.guid,
-        index: await ip.getIndex()
-      });
-
-      this._view.selectItems([insertedNode.guid], false);
+    if (bookmarkGuid) {
+      this._view.selectItems([bookmarkGuid], false);
     }
   },
 
@@ -801,7 +779,8 @@ PlacesController.prototype = {
    * @return {Integer} The total number of items affected.
    */
   async _removeRange(range, transactions, removedFolders) {
-    NS_ASSERT(transactions instanceof Array, "Must pass a transactions array");
+    if (!(transactions instanceof Array))
+      throw new Error("Must pass a transactions array");
     if (!removedFolders)
       removedFolders = [];
 
@@ -818,18 +797,17 @@ PlacesController.prototype = {
       if (PlacesUtils.nodeIsTagQuery(node.parent)) {
         // This is a uri node inside a tag container.  It needs a special
         // untag transaction.
-        let tag = node.parent.title;
+        let tag = node.parent.title || "";
         if (!tag) {
-          // TODO: Bug 1432405 Try using getConcreteItemGuid.
-          let tagItemId = PlacesUtils.getConcreteItemId(node.parent);
-          let tagGuid = await PlacesUtils.promiseItemGuid(tagItemId);
-          tag = (await PlacesUtils.bookmarks.fetch(tagGuid)).title;
+          // The parent may be the root node, that doesn't have a title.
+          tag = node.parent.query.tags[0];
         }
         transactions.push(PlacesTransactions.Untag({ urls: [node.uri], tag }));
-      } else if (PlacesUtils.nodeIsTagQuery(node) && node.parent &&
-               PlacesUtils.nodeIsQuery(node.parent) &&
-               PlacesUtils.asQuery(node.parent).queryOptions.resultType ==
-                 Ci.nsINavHistoryQueryOptions.RESULTS_AS_TAG_QUERY) {
+      } else if (PlacesUtils.nodeIsTagQuery(node) &&
+                 node.parent &&
+                 PlacesUtils.nodeIsQuery(node.parent) &&
+                 PlacesUtils.asQuery(node.parent).queryOptions.resultType ==
+                   Ci.nsINavHistoryQueryOptions.RESULTS_AS_TAGS_ROOT) {
         // This is a tag container.
         // Untag all URIs tagged with this tag only if the tag container is
         // child of the "Tags" query in the library, in all other places we
@@ -838,16 +816,16 @@ PlacesController.prototype = {
         let URIs = PlacesUtils.tagging.getURIsForTag(tag);
         transactions.push(PlacesTransactions.Untag({ tag, urls: URIs }));
       } else if (PlacesUtils.nodeIsURI(node) &&
-               PlacesUtils.nodeIsQuery(node.parent) &&
-               PlacesUtils.asQuery(node.parent).queryOptions.queryType ==
-                 Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
+                 PlacesUtils.nodeIsQuery(node.parent) &&
+                 PlacesUtils.asQuery(node.parent).queryOptions.queryType ==
+                   Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         // This is a uri node inside an history query.
         PlacesUtils.history.remove(node.uri).catch(Cu.reportError);
         // History deletes are not undoable, so we don't have a transaction.
       } else if (node.itemId == -1 &&
-               PlacesUtils.nodeIsQuery(node) &&
-               PlacesUtils.asQuery(node).queryOptions.queryType ==
-                 Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
+                 PlacesUtils.nodeIsQuery(node) &&
+                 PlacesUtils.asQuery(node).queryOptions.queryType ==
+                   Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         // This is a dynamically generated history query, like queries
         // grouped by site, time or both.  Dynamically generated queries don't
         // have an itemId even if they are descendants of a bookmark.
@@ -869,12 +847,7 @@ PlacesController.prototype = {
     return totalItems;
   },
 
-  /**
-   * Removes the set of selected ranges from bookmarks.
-   * @param   txnName
-   *          See |remove|.
-   */
-  async _removeRowsFromBookmarks(txnName) {
+  async _removeRowsFromBookmarks() {
     let ranges = this._view.removableSelectionRanges;
     let transactions = [];
     let removedFolders = [];
@@ -926,11 +899,11 @@ PlacesController.prototype = {
       PlacesUtils.history.removePagesFromHost(aContainerNode.title, true);
     } else if (PlacesUtils.nodeIsDay(aContainerNode)) {
       // Day container.
-      let query = aContainerNode.getQueries()[0];
+      let query = aContainerNode.query;
       let beginTime = query.beginTime;
       let endTime = query.endTime;
-      NS_ASSERT(query && beginTime && endTime,
-                "A valid date container query should exist!");
+      if (!query || !beginTime || !endTime)
+        throw new Error("A valid date container query should exist!");
       // We want to exclude beginTime from the removal because
       // removePagesByTimeframe includes both extremes, while date containers
       // exclude the lower extreme.  So, if we would not exclude it, we would
@@ -941,31 +914,26 @@ PlacesController.prototype = {
 
   /**
    * Removes the selection
-   * @param   aTxnName
-   *          A name for the transaction if this is being performed
-   *          as part of another operation.
    */
-  async remove(aTxnName) {
+  async remove() {
     if (!this._hasRemovableSelection())
       return;
-
-    NS_ASSERT(aTxnName !== undefined, "Must supply Transaction Name");
 
     var root = this._view.result.root;
 
     if (PlacesUtils.nodeIsFolder(root)) {
-      await this._removeRowsFromBookmarks(aTxnName);
+      await this._removeRowsFromBookmarks();
     } else if (PlacesUtils.nodeIsQuery(root)) {
       var queryType = PlacesUtils.asQuery(root).queryOptions.queryType;
       if (queryType == Ci.nsINavHistoryQueryOptions.QUERY_TYPE_BOOKMARKS) {
-        await this._removeRowsFromBookmarks(aTxnName);
+        await this._removeRowsFromBookmarks();
       } else if (queryType == Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY) {
         this._removeRowsFromHistory();
       } else {
-        NS_ASSERT(false, "implement support for QUERY_TYPE_UNIFIED");
+        throw new Error("implement support for QUERY_TYPE_UNIFIED");
       }
     } else
-      NS_ASSERT(false, "unexpected root");
+      throw new Error("unexpected root");
   },
 
   /**
@@ -1261,7 +1229,8 @@ PlacesController.prototype = {
    *          The container were we are want to drop
    */
   disallowInsertion(container) {
-    NS_ASSERT(container, "empty container");
+    if (!container)
+      throw new Error("empty container");
     // Allow dropping into Tag containers and editable folders.
     return !PlacesUtils.nodeIsTagQuery(container) &&
            (!PlacesUtils.nodeIsFolder(container) ||

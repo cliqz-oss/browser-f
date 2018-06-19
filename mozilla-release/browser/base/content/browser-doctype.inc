@@ -1,4 +1,3 @@
-<!DOCTYPE window [
 <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd" >
 %brandDTD;
 <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd" >
@@ -23,5 +22,5 @@
 #endif
 <!ENTITY % reportphishDTD SYSTEM "chrome://browser/locale/safebrowsing/report-phishing.dtd">
 %reportphishDTD;
-]>
-
+<!ENTITY % editBookmarkOverlayDTD SYSTEM "chrome://browser/locale/places/editBookmarkOverlay.dtd">
+%editBookmarkOverlayDTD;

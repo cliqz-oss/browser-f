@@ -48,6 +48,7 @@ public:
   void RemovePipeline(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
 
   void HoldExternalImage(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch, WebRenderTextureHost* aTexture);
+  void HoldExternalImage(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch, const wr::ExternalImageId& aImageId);
   void PipelineRendered(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
   void PipelineRemoved(const wr::PipelineId& aPipelineId);
 
@@ -97,6 +98,7 @@ public:
 
 private:
 
+  wr::Epoch GetNextImageEpoch();
   uint32_t GetNextResourceId() { return ++mResourceId; }
   wr::IdNamespace GetNamespace() { return mIdNamespace; }
   wr::ImageKey GenerateImageKey()
@@ -116,9 +118,19 @@ private:
     CompositableTextureHostRef mTexture;
   };
 
+  struct ForwardingExternalImage {
+    ForwardingExternalImage(const wr::Epoch& aEpoch, const wr::ExternalImageId& aImageId)
+      : mEpoch(aEpoch)
+      , mImageId(aImageId)
+    {}
+    wr::Epoch mEpoch;
+    wr::ExternalImageId mImageId;
+  };
+
   struct PipelineTexturesHolder {
     // Holds forwarding WebRenderTextureHosts.
     std::queue<ForwardingTextureHost> mTextureHosts;
+    std::queue<ForwardingExternalImage> mExternalImages;
     Maybe<wr::Epoch> mDestroyedEpoch;
   };
 
@@ -171,7 +183,7 @@ private:
 
   nsClassHashtable<nsUint64HashKey, PipelineTexturesHolder> mPipelineTexturesHolders;
   nsClassHashtable<nsUint64HashKey, AsyncImagePipeline> mAsyncImagePipelines;
-  uint32_t mAsyncImageEpoch;
+  wr::Epoch mAsyncImageEpoch;
   bool mWillGenerateFrame;
   bool mDestroyed;
 

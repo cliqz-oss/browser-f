@@ -8,6 +8,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/PaymentRequest.h"
 #include "mozilla/dom/PaymentResponse.h"
+#include "mozilla/EventStateManager.h"
 #include "nsContentUtils.h"
 #include "nsIURLParser.h"
 #include "nsNetCID.h"
@@ -390,17 +391,6 @@ PaymentRequest::IsValidCurrencyAmount(const nsAString& aItem,
                                       nsAString& aErrorMsg)
 {
   nsresult rv;
-  if (aIsTotalItem) {
-    rv = IsNonNegativeNumber(aItem, aAmount.mValue, aErrorMsg);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-  } else {
-    rv = IsValidNumber(aItem, aAmount.mValue, aErrorMsg);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-  }
   // currencySystem must equal urn:iso:std:iso:4217
   if (!aAmount.mCurrencySystem.EqualsASCII("urn:iso:std:iso:4217")) {
     aErrorMsg.AssignLiteral("The amount.currencySystem of \"");
@@ -413,6 +403,17 @@ PaymentRequest::IsValidCurrencyAmount(const nsAString& aItem,
   rv = IsValidCurrency(aItem, aAmount.mCurrency, aErrorMsg);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+  if (aIsTotalItem) {
+    rv = IsNonNegativeNumber(aItem, aAmount.mValue, aErrorMsg);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  } else {
+    rv = IsValidNumber(aItem, aAmount.mValue, aErrorMsg);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
   }
   return NS_OK;
 }
@@ -629,6 +630,7 @@ PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow, const nsAString& aIn
   , mInternalId(aInternalId)
   , mShippingAddress(nullptr)
   , mUpdating(false)
+  , mRequestShipping(false)
   , mUpdateError(NS_OK)
   , mState(eCreated)
 {
@@ -679,10 +681,16 @@ PaymentRequest::RespondCanMakePayment(bool aResult)
 }
 
 already_AddRefed<Promise>
-PaymentRequest::Show(ErrorResult& aRv)
+PaymentRequest::Show(const Optional<OwningNonNull<Promise>>& aDetailsPromise,
+                     ErrorResult& aRv)
 {
   if (mState != eCreated) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  if (!EventStateManager::IsHandlingUserInput()) {
+    aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return nullptr;
   }
 
@@ -701,6 +709,12 @@ PaymentRequest::Show(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
+
+  if (aDetailsPromise.WasPassed()) {
+    aDetailsPromise.Value().AppendNativeHandler(this);
+    mUpdating = true;
+  }
+
   nsresult rv = manager->ShowPayment(mInternalId);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     if (rv == NS_ERROR_ABORT) {
@@ -845,7 +859,7 @@ PaymentRequest::UpdatePayment(JSContext* aCx, const PaymentDetailsUpdate& aDetai
   if (NS_WARN_IF(!manager)) {
     return NS_ERROR_FAILURE;
   }
-  nsresult rv = manager->UpdatePayment(aCx, mInternalId, aDetails);
+  nsresult rv = manager->UpdatePayment(aCx, mInternalId, aDetails, mRequestShipping);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -922,8 +936,9 @@ PaymentRequest::DispatchUpdateEvent(const nsAString& aType)
   event->SetTrusted(true);
   event->SetRequest(this);
 
-  bool dummy;
-  return DispatchEvent(event, &dummy);
+  ErrorResult rv;
+  DispatchEvent(*event, rv);
+  return rv.StealNSResult();
 }
 
 already_AddRefed<PaymentAddress>
@@ -990,6 +1005,43 @@ Nullable<PaymentShippingType>
 PaymentRequest::GetShippingType() const
 {
   return mShippingType;
+}
+
+void
+PaymentRequest::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+{
+  MOZ_ASSERT(aCx);
+  mUpdating = false;
+  if (NS_WARN_IF(!aValue.isObject())) {
+    return;
+  }
+
+  // Converting value to a PaymentDetailsUpdate dictionary
+  PaymentDetailsUpdate details;
+  if (!details.Init(aCx, aValue)) {
+    AbortUpdate(NS_ERROR_DOM_TYPE_ERR);
+    JS_ClearPendingException(aCx);
+    return;
+  }
+
+  nsresult rv = IsValidDetailsUpdate(details, mRequestShipping);
+  if (NS_FAILED(rv)) {
+    AbortUpdate(rv);
+    return;
+  }
+
+  // Update the PaymentRequest with the new details
+  if (NS_FAILED(UpdatePayment(aCx, details))) {
+    AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
+    return;
+  }
+}
+
+void
+PaymentRequest::RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+{
+  mUpdating = false;
+  AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
 }
 
 PaymentRequest::~PaymentRequest()

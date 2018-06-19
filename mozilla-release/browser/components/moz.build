@@ -41,6 +41,7 @@ DIRS += [
     'enterprisepolicies',
     'extensions',
     'feeds',
+    'library',
     'migration',
     'newtab',
     'originattributes',
@@ -57,6 +58,9 @@ DIRS += [
 ]
 
 DIRS += ['build']
+
+if CONFIG['NIGHTLY_BUILD']:
+    DIRS += ['payments']
 
 XPIDL_SOURCES += [
     'nsIBrowserHandler.idl',

@@ -11,6 +11,7 @@
 // JSScript.
 
 #include "mozilla/LinkedList.h"
+#include "mozilla/Maybe.h"
 
 #include "jit/BaselineInspector.h"
 #include "jit/BytecodeAnalysis.h"
@@ -419,6 +420,7 @@ class IonBuilder
     AbortReasonOr<Ok> getElemTryDense(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryGetProp(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryTypedArray(bool* emitted, MDefinition* obj, MDefinition* index);
+    AbortReasonOr<Ok> getElemTryCallSiteObject(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryTypedObject(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryString(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryArguments(bool* emitted, MDefinition* obj, MDefinition* index);
@@ -783,6 +785,7 @@ class IonBuilder
                                   const Class* clasp2 = nullptr,
                                   const Class* clasp3 = nullptr,
                                   const Class* clasp4 = nullptr);
+    InliningResult inlineGuardToClass(CallInfo& callInfo, const Class* clasp);
     InliningResult inlineIsConstructing(CallInfo& callInfo);
     InliningResult inlineSubstringKernel(CallInfo& callInfo);
     InliningResult inlineObjectHasPrototype(CallInfo& callInfo);
@@ -810,10 +813,10 @@ class IonBuilder
                                   BoolVector& choiceSet, MGetPropertyCache* maybeCache);
 
     // Inlining helpers.
-    AbortReasonOr<Ok> inlineGenericFallback(const Maybe<CallTargets>& targets,
+    AbortReasonOr<Ok> inlineGenericFallback(const mozilla::Maybe<CallTargets>& targets,
                                             CallInfo& callInfo,
                                             MBasicBlock* dispatchBlock);
-    AbortReasonOr<Ok> inlineObjectGroupFallback(const Maybe<CallTargets>& targets,
+    AbortReasonOr<Ok> inlineObjectGroupFallback(const mozilla::Maybe<CallTargets>& targets,
                                                 CallInfo& callInfo, MBasicBlock* dispatchBlock,
                                                 MObjectGroupDispatch* dispatch,
                                                 MGetPropertyCache* cache,
@@ -831,8 +834,9 @@ class IonBuilder
 
     bool testNeedsArgumentCheck(JSFunction* target, CallInfo& callInfo);
 
-    AbortReasonOr<MCall*> makeCallHelper(const Maybe<CallTargets>& targets, CallInfo& callInfo);
-    AbortReasonOr<Ok> makeCall(const Maybe<CallTargets>& targets, CallInfo& callInfo);
+    AbortReasonOr<MCall*> makeCallHelper(const mozilla::Maybe<CallTargets>& targets,
+                                         CallInfo& callInfo);
+    AbortReasonOr<Ok> makeCall(const mozilla::Maybe<CallTargets>& targets, CallInfo& callInfo);
     AbortReasonOr<Ok> makeCall(JSFunction* target, CallInfo& callInfo);
 
     MDefinition* patchInlinedReturn(CallInfo& callInfo, MBasicBlock* exit, MBasicBlock* bottom);
@@ -1183,6 +1187,11 @@ class IonBuilder
     void trackOptimizationOutcomeUnchecked(JS::TrackedOutcome outcome);
     void trackOptimizationSuccessUnchecked();
     void trackInlineSuccessUnchecked(InliningStatus status);
+
+  public:
+
+    // This is only valid for IonBuilders that have moved to background
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 };
 
 class CallInfo

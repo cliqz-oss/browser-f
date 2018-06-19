@@ -8,12 +8,8 @@
 #include "nsError.h"
 #include "nsIChannel.h"
 #include "mozilla/dom/Element.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMText.h"
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentFragment.h"
-#include "nsIDOMNodeList.h"
 #include "nsIIOService.h"
 #include "nsILoadGroup.h"
 #include "nsIStringBundle.h"
@@ -72,7 +68,7 @@ private:
 class txToFragmentHandlerFactory : public txAOutputHandlerFactory
 {
 public:
-    explicit txToFragmentHandlerFactory(nsIDOMDocumentFragment* aFragment)
+    explicit txToFragmentHandlerFactory(DocumentFragment* aFragment)
         : mFragment(aFragment)
     {
     }
@@ -80,7 +76,7 @@ public:
     TX_DECL_TXAOUTPUTHANDLERFACTORY
 
 private:
-    nsCOMPtr<nsIDOMDocumentFragment> mFragment;
+    RefPtr<DocumentFragment> mFragment;
 };
 
 nsresult
@@ -192,8 +188,7 @@ txToFragmentHandlerFactory::createHandlerWith(txOutputFormat* aFormat,
         {
             txOutputFormat format;
             format.merge(*aFormat);
-            nsCOMPtr<nsINode> node = do_QueryInterface(mFragment);
-            nsCOMPtr<nsIDocument> doc = node->OwnerDoc();
+            nsCOMPtr<nsIDocument> doc = mFragment->OwnerDoc();
 
             if (doc->IsHTMLDocument()) {
                 format.mMethod = eHTMLOutput;
@@ -596,8 +591,7 @@ txMozillaXSLTProcessor::ImportStylesheet(nsINode& aStyle,
         return;
     }
 
-    if (NS_WARN_IF(!aStyle.IsElement() &&
-                   !aStyle.IsNodeOfType(nsINode::eDOCUMENT))) {
+    if (NS_WARN_IF(!aStyle.IsElement() && !aStyle.IsDocument())) {
         aRv.Throw(NS_ERROR_INVALID_ARG);
         return;
     }
@@ -808,7 +802,7 @@ txMozillaXSLTProcessor::SetParameter(const nsAString& aNamespaceURI,
             nsresult rv = value->GetAsISupports(getter_AddRefs(supports));
             NS_ENSURE_SUCCESS(rv, rv);
 
-            nsCOMPtr<nsIDOMNode> node = do_QueryInterface(supports);
+            nsCOMPtr<nsINode> node = do_QueryInterface(supports);
             if (node) {
                 if (!nsContentUtils::CanCallerAccess(node)) {
                     return NS_ERROR_DOM_SECURITY_ERR;
@@ -857,17 +851,13 @@ txMozillaXSLTProcessor::SetParameter(const nsAString& aNamespaceURI,
                 break;
             }
 
-            nsCOMPtr<nsIDOMNodeList> nodeList = do_QueryInterface(supports);
+            nsCOMPtr<nsINodeList> nodeList = do_QueryInterface(supports);
             if (nodeList) {
-                uint32_t length;
-                nodeList->GetLength(&length);
+                uint32_t length = nodeList->Length();
 
-                nsCOMPtr<nsIDOMNode> node;
                 uint32_t i;
                 for (i = 0; i < length; ++i) {
-                    nodeList->Item(i, getter_AddRefs(node));
-
-                    if (!nsContentUtils::CanCallerAccess(node)) {
+                    if (!nsContentUtils::CanCallerAccess(nodeList->Item(i))) {
                         return NS_ERROR_DOM_SECURITY_ERR;
                     }
                 }
@@ -1400,7 +1390,7 @@ txVariable::Convert(nsIVariant *aValue, txAExprResult** aResult)
             nsresult rv = aValue->GetAsISupports(getter_AddRefs(supports));
             NS_ENSURE_SUCCESS(rv, rv);
 
-            nsCOMPtr<nsIDOMNode> node = do_QueryInterface(supports);
+            nsCOMPtr<nsINode> node = do_QueryInterface(supports);
             if (node) {
                 nsAutoPtr<txXPathNode> xpathNode(txXPathNativeNode::createXPathNode(node));
                 if (!xpathNode) {
@@ -1422,23 +1412,19 @@ txVariable::Convert(nsIVariant *aValue, txAExprResult** aResult)
                 return xpathResult->GetExprResult(aResult);
             }
 
-            nsCOMPtr<nsIDOMNodeList> nodeList = do_QueryInterface(supports);
+            nsCOMPtr<nsINodeList> nodeList = do_QueryInterface(supports);
             if (nodeList) {
                 RefPtr<txNodeSet> nodeSet = new txNodeSet(nullptr);
                 if (!nodeSet) {
                     return NS_ERROR_OUT_OF_MEMORY;
                 }
 
-                uint32_t length;
-                nodeList->GetLength(&length);
+                uint32_t length = nodeList->Length();
 
-                nsCOMPtr<nsIDOMNode> node;
                 uint32_t i;
                 for (i = 0; i < length; ++i) {
-                    nodeList->Item(i, getter_AddRefs(node));
-
                     nsAutoPtr<txXPathNode> xpathNode(
-                        txXPathNativeNode::createXPathNode(node));
+                        txXPathNativeNode::createXPathNode(nodeList->Item(i)));
                     if (!xpathNode) {
                         return NS_ERROR_FAILURE;
                     }
@@ -1502,7 +1488,7 @@ txVariable::Convert(nsIVariant *aValue, txAExprResult** aResult)
             uint32_t i;
             for (i = 0; i < count; ++i) {
                 nsISupports *supports = values[i];
-                nsCOMPtr<nsIDOMNode> node = do_QueryInterface(supports);
+                nsCOMPtr<nsINode> node = do_QueryInterface(supports);
                 NS_ASSERTION(node, "Huh, we checked this in SetParameter?");
 
                 nsAutoPtr<txXPathNode> xpathNode(

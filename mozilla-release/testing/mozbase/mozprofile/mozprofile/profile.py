@@ -4,24 +4,153 @@
 
 from __future__ import absolute_import
 
+import json
 import os
 import platform
-import time
 import tempfile
+import time
 import uuid
-
-from .addons import AddonManager
-import mozfile
-from .permissions import Permissions
-from .prefs import Preferences
+from abc import ABCMeta, abstractmethod, abstractproperty
 from shutil import copytree
 
-__all__ = ['Profile',
+import mozfile
+from six import string_types
+
+from .addons import AddonManager
+from .permissions import Permissions
+from .prefs import Preferences
+
+__all__ = ['BaseProfile',
+           'ChromeProfile',
+           'Profile',
            'FirefoxProfile',
-           'ThunderbirdProfile']
+           'ThunderbirdProfile',
+           'create_profile']
 
 
-class Profile(object):
+class BaseProfile(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, profile=None, addons=None, preferences=None, restore=True):
+        """Create a new Profile.
+
+        All arguments are optional.
+
+        :param profile: Path to a profile. If not specified, a new profile
+                        directory will be created.
+        :param addons: List of paths to addons which should be installed in the profile.
+        :param preferences: Dict of preferences to set in the profile.
+        :param restore: Whether or not to clean up any modifications made to this profile
+                        (default True).
+        """
+        self._addons = addons or []
+
+        # Prepare additional preferences
+        if preferences:
+            if isinstance(preferences, dict):
+                # unordered
+                preferences = preferences.items()
+
+            # sanity check
+            assert not [i for i in preferences if len(i) != 2]
+        else:
+            preferences = []
+        self._preferences = preferences
+
+        # Handle profile creation
+        self.restore = restore
+        self.create_new = not profile
+        if profile:
+            # Ensure we have a full path to the profile
+            self.profile = os.path.abspath(os.path.expanduser(profile))
+        else:
+            self.profile = tempfile.mkdtemp(suffix='.mozrunner')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.cleanup()
+
+    def __del__(self):
+        self.cleanup()
+
+    def cleanup(self):
+        """Cleanup operations for the profile."""
+
+        if self.restore:
+            # If it's a temporary profile we have to remove it
+            if self.create_new:
+                mozfile.remove(self.profile)
+
+    @abstractmethod
+    def _reset(self):
+        pass
+
+    def reset(self):
+        """
+        reset the profile to the beginning state
+        """
+        self.cleanup()
+        self._reset()
+
+    @abstractmethod
+    def set_preferences(self, preferences, filename='user.js'):
+        pass
+
+    @abstractproperty
+    def preference_file_names(self):
+        """A tuple of file basenames expected to contain preferences."""
+
+    def merge(self, other, interpolation=None):
+        """Merges another profile into this one.
+
+        This will handle pref files matching the profile's
+        `preference_file_names` property, and any addons in the
+        other/extensions directory.
+        """
+        for basename in os.listdir(other):
+            if basename not in self.preference_file_names:
+                continue
+
+            path = os.path.join(other, basename)
+            try:
+                prefs = Preferences.read_json(path)
+            except ValueError:
+                prefs = Preferences.read_prefs(path, interpolation=interpolation)
+            self.set_preferences(prefs, filename=basename)
+
+        extension_dir = os.path.join(other, 'extensions')
+        for basename in os.listdir(extension_dir):
+            path = os.path.join(extension_dir, basename)
+
+            if self.addons.is_addon(path):
+                self._addons.append(path)
+                self.addons.install(path)
+
+    @classmethod
+    def clone(cls, path_from, path_to=None, ignore=None, **kwargs):
+        """Instantiate a temporary profile via cloning
+        - path: path of the basis to clone
+        - ignore: callable passed to shutil.copytree
+        - kwargs: arguments to the profile constructor
+        """
+        if not path_to:
+            tempdir = tempfile.mkdtemp()  # need an unused temp dir name
+            mozfile.remove(tempdir)  # copytree requires that dest does not exist
+            path_to = tempdir
+        copytree(path_from, path_to, ignore=ignore)
+
+        c = cls(path_to, **kwargs)
+        c.create_new = True  # deletes a cloned profile when restore is True
+        return c
+
+    def exists(self):
+        """returns whether the profile exists or not"""
+        return os.path.exists(self.profile)
+
+
+class Profile(BaseProfile):
     """Handles all operations regarding profile.
 
     Creating new profiles, installing add-ons, setting preferences and
@@ -44,14 +173,13 @@ class Profile(object):
           pass
       # profile.cleanup() has been called here
     """
+    preference_file_names = ('user.js', 'prefs.js')
 
-    def __init__(self, profile=None, addons=None, addon_manifests=None,
-                 preferences=None, locations=None, proxy=None, restore=True,
-                 whitelistpaths=None):
+    def __init__(self, profile=None, addons=None, preferences=None, locations=None,
+                 proxy=None, restore=True, whitelistpaths=None, **kwargs):
         """
         :param profile: Path to the profile
         :param addons: String of one or list of addons to install
-        :param addon_manifests: Manifest for addons (see http://bit.ly/17jQ7i6)
         :param preferences: Dictionary or class of preferences
         :param locations: ServerLocations object
         :param proxy: Setup a proxy
@@ -59,38 +187,17 @@ class Profile(object):
         :param whitelistpaths: List of paths to pass to Firefox to allow read
             access to from the content process sandbox.
         """
-        self._addons = addons
-        self._addon_manifests = addon_manifests
+        super(Profile, self).__init__(
+            profile=profile, addons=addons, preferences=preferences, restore=restore, **kwargs)
+
         self._locations = locations
         self._proxy = proxy
-
-        # Prepare additional preferences
-        if preferences:
-            if isinstance(preferences, dict):
-                # unordered
-                preferences = preferences.items()
-
-            # sanity check
-            assert not [i for i in preferences if len(i) != 2]
-        else:
-            preferences = []
-        self._preferences = preferences
         self._whitelistpaths = whitelistpaths
 
-        # Handle profile creation
-        self.create_new = not profile
-        if profile:
-            # Ensure we have a full path to the profile
-            self.profile = os.path.abspath(os.path.expanduser(profile))
-        else:
-            self.profile = tempfile.mkdtemp(suffix='.mozrunner')
-
-        self.restore = restore
-
         # Initialize all class members
-        self._internal_init()
+        self._reset()
 
-    def _internal_init(self):
+    def _reset(self):
         """Internal: Initialize all class members to their default value"""
 
         if not os.path.exists(self.profile):
@@ -135,19 +242,8 @@ class Profile(object):
         self.set_preferences(user_js)
 
         # handle add-on installation
-        self.addon_manager = AddonManager(self.profile, restore=self.restore)
-        self.addon_manager.install_addons(self._addons, self._addon_manifests)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.cleanup()
-
-    def __del__(self):
-        self.cleanup()
-
-    # cleanup
+        self.addons = AddonManager(self.profile, restore=self.restore)
+        self.addons.install(self._addons)
 
     def cleanup(self):
         """Cleanup operations for the profile."""
@@ -156,22 +252,11 @@ class Profile(object):
             # If copies of those class instances exist ensure we correctly
             # reset them all (see bug 934484)
             self.clean_preferences()
-            if getattr(self, 'addon_manager', None) is not None:
-                self.addon_manager.clean()
+            if getattr(self, 'addons', None) is not None:
+                self.addons.clean()
             if getattr(self, 'permissions', None) is not None:
                 self.permissions.clean_db()
-
-            # If it's a temporary profile we have to remove it
-            if self.create_new:
-                mozfile.remove(self.profile)
-
-    def reset(self):
-        """
-        reset the profile to the beginning state
-        """
-        self.cleanup()
-
-        self._internal_init()
+        super(Profile, self).cleanup()
 
     def clean_preferences(self):
         """Removed preferences added by mozrunner."""
@@ -183,37 +268,14 @@ class Profile(object):
                 if not self.pop_preferences(filename):
                     break
 
-    @classmethod
-    def clone(cls, path_from, path_to=None, ignore=None, **kwargs):
-        """Instantiate a temporary profile via cloning
-        - path: path of the basis to clone
-        - ignore: callable passed to shutil.copytree
-        - kwargs: arguments to the profile constructor
-        """
-        if not path_to:
-            tempdir = tempfile.mkdtemp()  # need an unused temp dir name
-            mozfile.remove(tempdir)  # copytree requires that dest does not exist
-            path_to = tempdir
-        copytree(path_from, path_to, ignore=ignore)
-
-        c = cls(path_to, **kwargs)
-        c.create_new = True  # deletes a cloned profile when restore is True
-        return c
-
-    def exists(self):
-        """returns whether the profile exists or not"""
-        return os.path.exists(self.profile)
-
     # methods for preferences
 
     def set_preferences(self, preferences, filename='user.js'):
         """Adds preferences dict to profile preferences"""
-
-        # append to the file
         prefs_file = os.path.join(self.profile, filename)
-        f = open(prefs_file, 'a')
-
-        if preferences:
+        with open(prefs_file, 'a') as f:
+            if not preferences:
+                return
 
             # note what files we've touched
             self.written_prefs.add(filename)
@@ -221,13 +283,10 @@ class Profile(object):
             # opening delimeter
             f.write('\n%s\n' % self.delimeters[0])
 
-            # write the preferences
             Preferences.write(f, preferences)
 
             # closing delimeter
             f.write('%s\n' % self.delimeters[1])
-
-        f.close()
 
     def set_persistent_preferences(self, preferences):
         """
@@ -361,7 +420,11 @@ class Profile(object):
                                         for key, value in parts]))
         return retval
 
-    __str__ = summary
+    def __str__(self):
+        return unicode(self).encode('utf-8')
+
+    def __unicode__(self):
+        return self.summary()
 
 
 class FirefoxProfile(Profile):
@@ -390,8 +453,6 @@ class FirefoxProfile(Profile):
         'extensions.getAddons.cache.enabled': False,
         # Don't install distribution add-ons from the app folder
         'extensions.installDistroAddons': False,
-        # Dont' run the add-on compatibility check during start-up
-        'extensions.showMismatchUI': False,
         # Don't automatically update add-ons
         'extensions.update.enabled': False,
         # Don't open a dialog to show available add-on updates
@@ -422,3 +483,73 @@ class ThunderbirdProfile(Profile):
                    # prevents the 'new e-mail address' wizard on new profile
                    'mail.provider.enabled': False,
                    }
+
+
+class ChromeProfile(BaseProfile):
+    preference_file_names = ('Preferences',)
+
+    class AddonManager(list):
+        def install(self, addons):
+            if isinstance(addons, string_types):
+                addons = [addons]
+            self.extend(addons)
+
+        @classmethod
+        def is_addon(self, addon):
+            # TODO Implement this properly
+            return os.path.exists(addon)
+
+    def __init__(self, **kwargs):
+        super(ChromeProfile, self).__init__(**kwargs)
+
+        if self.create_new:
+            self.profile = os.path.join(self.profile, 'Default')
+        self._reset()
+
+    def _reset(self):
+        if not os.path.isdir(self.profile):
+            os.makedirs(self.profile)
+
+        if self._preferences:
+            self.set_preferences(self._preferences)
+
+        self.addons = self.AddonManager()
+        if self._addons:
+            self.addons.install(self._addons)
+
+    def set_preferences(self, preferences, filename='Preferences', **values):
+        pref_file = os.path.join(self.profile, filename)
+
+        prefs = {}
+        if os.path.isfile(pref_file):
+            with open(pref_file, 'r') as fh:
+                prefs.update(json.load(fh))
+
+        prefs.update(preferences)
+        with open(pref_file, 'w') as fh:
+            prefstr = json.dumps(prefs)
+            prefstr % values  # interpolate prefs with values
+            fh.write(prefstr)
+
+
+profile_class = {
+    'chrome': ChromeProfile,
+    'firefox': FirefoxProfile,
+    'thunderbird': ThunderbirdProfile,
+}
+
+
+def create_profile(app, **kwargs):
+    """Create a profile given an application name.
+
+    :param app: String name of the application to create a profile for, e.g 'firefox'.
+    :param kwargs: Same as the arguments for the Profile class (optional).
+    :returns: An application specific Profile instance
+    :raises: NotImplementedError
+    """
+    cls = profile_class.get(app)
+
+    if not cls:
+        raise NotImplementedError("Profiles not supported for application '{}'".format(app))
+
+    return cls(**kwargs)

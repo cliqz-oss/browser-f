@@ -34,6 +34,7 @@
 #include "jit/IonInstrumentation.h"
 #include "jit/IonTypes.h"
 #include "jit/JitCompartment.h"
+#include "jit/TemplateObject.h"
 #include "jit/VMFunctions.h"
 #include "vm/ProxyObject.h"
 #include "vm/Shape.h"
@@ -241,21 +242,6 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
   public:
-    class AutoRooter : public JS::AutoGCRooter
-    {
-        MacroAssembler* masm_;
-
-      public:
-        AutoRooter(JSContext* cx, MacroAssembler* masm)
-          : JS::AutoGCRooter(cx, IONMASM),
-            masm_(masm)
-        { }
-
-        MacroAssembler* masm() const {
-            return masm_;
-        }
-    };
-
     /*
      * Base class for creating a branch.
      */
@@ -327,7 +313,6 @@ class MacroAssembler : public MacroAssemblerSpecific
         void emit(MacroAssembler& masm);
     };
 
-    mozilla::Maybe<AutoRooter> autoRooter_;
     mozilla::Maybe<JitContext> jitContext_;
     mozilla::Maybe<AutoJitContextAlloc> alloc_;
 
@@ -335,71 +320,25 @@ class MacroAssembler : public MacroAssemblerSpecific
     // Labels for handling exceptions and failures.
     NonAssertingLabel failureLabel_;
 
-  public:
-    MacroAssembler()
-      : framePushed_(0),
-#ifdef DEBUG
-        inCall_(false),
-#endif
-        emitProfilingInstrumentation_(false)
-    {
-        JitContext* jcx = GetJitContext();
-        JSContext* cx = jcx->cx;
-        if (cx)
-            constructRoot(cx);
-
-        if (!jcx->temp) {
-            MOZ_ASSERT(cx);
-            alloc_.emplace(cx);
-        }
-
-        moveResolver_.setAllocator(*jcx->temp);
-
-#if defined(JS_CODEGEN_ARM)
-        initWithAllocator();
-        m_buffer.id = jcx->getNextAssemblerId();
-#elif defined(JS_CODEGEN_ARM64)
-        initWithAllocator();
-        armbuffer_.id = jcx->getNextAssemblerId();
-#endif
-    }
+  protected:
+    // Constructors are protected. Use one of the derived classes!
+    MacroAssembler();
 
     // This constructor should only be used when there is no JitContext active
     // (for example, Trampoline-$(ARCH).cpp and IonCaches.cpp).
-    explicit MacroAssembler(JSContext* cx, IonScript* ion = nullptr,
-                            JSScript* script = nullptr, jsbytecode* pc = nullptr);
+    explicit MacroAssembler(JSContext* cx);
 
     // wasm compilation handles its own JitContext-pushing
     struct WasmToken {};
-    explicit MacroAssembler(WasmToken, TempAllocator& alloc)
-      : framePushed_(0),
-#ifdef DEBUG
-        inCall_(false),
-#endif
-        emitProfilingInstrumentation_(false)
-    {
-        moveResolver_.setAllocator(alloc);
+    explicit MacroAssembler(WasmToken, TempAllocator& alloc);
 
-#if defined(JS_CODEGEN_ARM)
-        initWithAllocator();
-        m_buffer.id = 0;
-#elif defined(JS_CODEGEN_ARM64)
-        initWithAllocator();
-        armbuffer_.id = 0;
-#endif
-    }
-
-#ifdef DEBUG
-    bool isRooted() const {
-        return autoRooter_.isSome();
-    }
-#endif
-
-    void constructRoot(JSContext* cx) {
-        autoRooter_.emplace(cx, this);
-    }
-
+  public:
     MoveResolver& moveResolver() {
+        // As an optimization, the MoveResolver is a persistent data structure
+        // shared between visitors in the CodeGenerator. This assertion
+        // checks that state is not leaking from visitor to visitor
+        // via an unresolved addMove().
+        MOZ_ASSERT(moveResolver_.hasNoPendingMoves());
         return moveResolver_;
     }
 
@@ -485,7 +424,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void Pop(FloatRegister t) PER_SHARED_ARCH;
     void Pop(const ValueOperand& val) PER_SHARED_ARCH;
     void PopFlags() DEFINED_ON(x86_shared);
-    void PopStackPtr() PER_SHARED_ARCH;
+    void PopStackPtr() DEFINED_ON(arm, mips_shared, x86_shared);
     void popRooted(VMFunction::RootType rootType, Register cellReg, const ValueOperand& valueReg);
 
     // Move the stack pointer based on the requested amount.
@@ -537,6 +476,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void callAndPushReturnAddress(Register reg) DEFINED_ON(x86_shared);
     void callAndPushReturnAddress(Label* label) DEFINED_ON(x86_shared);
 
+    // These do not adjust framePushed().
     void pushReturnAddress() DEFINED_ON(mips_shared, arm, arm64);
     void popReturnAddress() DEFINED_ON(mips_shared, arm, arm64);
 
@@ -549,13 +489,6 @@ class MacroAssembler : public MacroAssemblerSpecific
     // simple CodeOffset instead of a CodeOffsetJump).
     CodeOffset farJumpWithPatch() PER_SHARED_ARCH;
     void patchFarJump(CodeOffset farJump, uint32_t targetOffset) PER_SHARED_ARCH;
-    static void repatchFarJump(uint8_t* code, uint32_t farJumpOffset, uint32_t targetOffset) PER_SHARED_ARCH;
-
-    // Emit a nop that can be patched to and from a nop and a jump with an int8
-    // relative displacement.
-    CodeOffset nopPatchableToNearJump() PER_SHARED_ARCH;
-    static void patchNopToNearJump(uint8_t* jump, uint8_t* target) PER_SHARED_ARCH;
-    static void patchNearJumpToNop(uint8_t* jump) PER_SHARED_ARCH;
 
     // Emit a nop that can be patched to and from a nop and a call with int32
     // relative displacement.
@@ -1071,11 +1004,6 @@ class MacroAssembler : public MacroAssemblerSpecific
     // chunk trailer, or nullptr if it is in the tenured heap.
     void loadStoreBuffer(Register ptr, Register buffer) PER_ARCH;
 
-    template <typename T>
-    inline CodeOffsetJump branchPtrWithPatch(Condition cond, Register lhs, T rhs, RepatchLabel* label) PER_SHARED_ARCH;
-    template <typename T>
-    inline CodeOffsetJump branchPtrWithPatch(Condition cond, Address lhs, T rhs, RepatchLabel* label) PER_SHARED_ARCH;
-
     void branchPtrInNurseryChunk(Condition cond, Register ptr, Register temp, Label* label)
         DEFINED_ON(arm, arm64, mips_shared, x86, x64);
     void branchPtrInNurseryChunk(Condition cond, const Address& address, Register temp, Label* label)
@@ -1120,8 +1048,8 @@ class MacroAssembler : public MacroAssemblerSpecific
     inline void branchFloat32NotInInt64Range(Address src, Register temp, Label* fail);
     inline void branchFloat32NotInUInt64Range(Address src, Register temp, Label* fail);
 
-    template <typename T, typename L>
-    inline void branchAdd32(Condition cond, T src, Register dest, L label) PER_SHARED_ARCH;
+    template <typename T>
+    inline void branchAdd32(Condition cond, T src, Register dest, Label* label) PER_SHARED_ARCH;
     template <typename T>
     inline void branchSub32(Condition cond, T src, Register dest, Label* label) PER_SHARED_ARCH;
 
@@ -1527,23 +1455,20 @@ class MacroAssembler : public MacroAssemblerSpecific
     CodeOffset wasmTrapInstruction() PER_SHARED_ARCH;
 
     void wasmTrap(wasm::Trap trap, wasm::BytecodeOffset bytecodeOffset);
+    void wasmInterruptCheck(Register tls, wasm::BytecodeOffset bytecodeOffset);
+    void wasmReserveStackChecked(uint32_t amount, wasm::BytecodeOffset trapOffset);
 
     // Emit a bounds check against the wasm heap limit, jumping to 'label' if
     // 'cond' holds. Required when WASM_HUGE_MEMORY is not defined. If
     // JitOptions.spectreMaskIndex is true, in speculative executions 'index' is
     // saturated in-place to 'boundsCheckLimit'.
-    template <class L>
-    inline void wasmBoundsCheck(Condition cond, Register index, Register boundsCheckLimit, L label)
+    void wasmBoundsCheck(Condition cond, Register index, Register boundsCheckLimit, Label* label)
         DEFINED_ON(arm, arm64, mips32, mips64, x86);
 
-    template <class L>
-    inline void wasmBoundsCheck(Condition cond, Register index, Address boundsCheckLimit, L label)
+    void wasmBoundsCheck(Condition cond, Register index, Address boundsCheckLimit, Label* label)
         DEFINED_ON(arm, arm64, mips32, mips64, x86);
 
-    // On x86, each instruction adds its own wasm::MemoryAccess's to the
-    // wasm::MemoryAccessVector (there can be multiple when i64 is involved).
-    // On x64, only some asm.js accesses need a wasm::MemoryAccess so the caller
-    // is responsible for doing this instead.
+    // Each wasm load/store instruction appends its own wasm::Trap::OutOfBounds.
     void wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, AnyRegister out) DEFINED_ON(x86, x64);
     void wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAddr, Register64 out) DEFINED_ON(x86, x64);
     void wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister value, Operand dstAddr) DEFINED_ON(x86, x64);
@@ -1658,10 +1583,10 @@ class MacroAssembler : public MacroAssemblerSpecific
     void wasmCallBuiltinInstanceMethod(const wasm::CallSiteDesc& desc, const ABIArg& instanceArg,
                                        wasm::SymbolicAddress builtin);
 
-    // Emit the out-of-line trap code to which trapping jumps/branches are
-    // bound. This should be called once per function after all other codegen,
-    // including "normal" OutOfLineCode.
-    void wasmEmitOldTrapOutOfLineCode();
+    // As enterFakeExitFrame(), but using register conventions appropriate for
+    // wasm stubs.
+    void enterFakeExitFrameForWasm(Register cxreg, Register scratch, ExitFrameType type)
+        PER_SHARED_ARCH;
 
   public:
     // ========================================================================
@@ -2318,29 +2243,32 @@ class MacroAssembler : public MacroAssemblerSpecific
     void allocateString(Register result, Register temp, gc::AllocKind allocKind,
                         gc::InitialHeap initialHeap, Label* fail);
     void allocateNonObject(Register result, Register temp, gc::AllocKind allocKind, Label* fail);
-    void copySlotsFromTemplate(Register obj, const NativeObject* templateObj,
+    void copySlotsFromTemplate(Register obj, const NativeTemplateObject& templateObj,
                                uint32_t start, uint32_t end);
     void fillSlotsWithConstantValue(Address addr, Register temp, uint32_t start, uint32_t end,
                                     const Value& v);
     void fillSlotsWithUndefined(Address addr, Register temp, uint32_t start, uint32_t end);
     void fillSlotsWithUninitialized(Address addr, Register temp, uint32_t start, uint32_t end);
 
-    void initGCSlots(Register obj, Register temp, NativeObject* templateObj, bool initContents);
+    void initGCSlots(Register obj, Register temp, const NativeTemplateObject& templateObj,
+                     bool initContents);
 
   public:
     void callMallocStub(size_t nbytes, Register result, Label* fail);
     void callFreeStub(Register slots);
-    void createGCObject(Register result, Register temp, JSObject* templateObj,
-                        gc::InitialHeap initialHeap, Label* fail, bool initContents = true,
-                        bool convertDoubleElements = false);
+    void createGCObject(Register result, Register temp, const TemplateObject& templateObj,
+                        gc::InitialHeap initialHeap, Label* fail, bool initContents = true);
 
-    void initGCThing(Register obj, Register temp, JSObject* templateObj,
-                     bool initContents = true, bool convertDoubleElements = false);
+    void initGCThing(Register obj, Register temp, const TemplateObject& templateObj,
+                     bool initContents = true);
+
+    enum class TypedArrayLength { Fixed, Dynamic };
+
     void initTypedArraySlots(Register obj, Register temp, Register lengthReg,
                              LiveRegisterSet liveRegs, Label* fail,
                              TypedArrayObject* templateObj, TypedArrayLength lengthKind);
 
-    void initUnboxedObjectContents(Register object, UnboxedPlainObject* templateObject);
+    void initUnboxedObjectContents(Register object, const UnboxedLayout& layout);
 
     void newGCString(Register result, Register temp, Label* fail, bool attemptNursery);
     void newGCFatInlineString(Register result, Register temp, Label* fail, bool attemptNursery);
@@ -2680,6 +2608,45 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     Vector<JSObject*, 0, SystemAllocPolicy> pendingObjectReadBarriers_;
     Vector<ObjectGroup*, 0, SystemAllocPolicy> pendingObjectGroupReadBarriers_;
+};
+
+// StackMacroAssembler checks no GC will happen while it's on the stack.
+class MOZ_RAII StackMacroAssembler : public MacroAssembler
+{
+    JS::AutoCheckCannotGC nogc;
+
+  public:
+    StackMacroAssembler()
+      : MacroAssembler()
+    {}
+    explicit StackMacroAssembler(JSContext* cx)
+      : MacroAssembler(cx)
+    {}
+};
+
+// WasmMacroAssembler does not contain GC pointers, so it doesn't need the no-GC
+// checking StackMacroAssembler has.
+class MOZ_RAII WasmMacroAssembler : public MacroAssembler
+{
+  public:
+    explicit WasmMacroAssembler(TempAllocator& alloc)
+      : MacroAssembler(WasmToken(), alloc)
+    {}
+    ~WasmMacroAssembler() {
+        assertNoGCThings();
+    }
+};
+
+// Heap-allocated MacroAssembler used for Ion off-thread code generation.
+// GC cancels off-thread compilations.
+class IonHeapMacroAssembler : public MacroAssembler
+{
+  public:
+    IonHeapMacroAssembler()
+      : MacroAssembler()
+    {
+        MOZ_ASSERT(CurrentThreadIsIonCompiling());
+    }
 };
 
 //{{{ check_macroassembler_style

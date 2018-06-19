@@ -13,6 +13,7 @@ const SHEET_TYPE = {
   "author": "AUTHOR_SHEET"
 };
 
+// eslint-disable-next-line no-unused-vars
 loader.lazyRequireGetter(this, "setIgnoreLayoutChanges", "devtools/server/actors/reflow", true);
 exports.setIgnoreLayoutChanges = (...args) =>
   this.setIgnoreLayoutChanges(...args);
@@ -200,19 +201,19 @@ function getAdjustedQuads(boundaryWindow, node, region) {
   }
 
   let quads = node.getBoxQuads({
-    box: region
+    box: region,
+    relativeTo: boundaryWindow.document
   });
 
   if (!quads.length) {
     return [];
   }
 
-  let [xOffset, yOffset] = getFrameOffsets(boundaryWindow, node);
   let scale = getCurrentZoom(node);
   let { scrollX, scrollY } = boundaryWindow;
 
-  xOffset += scrollX * scale;
-  yOffset += scrollY * scale;
+  let xOffset = scrollX * scale;
+  let yOffset = scrollY * scale;
 
   let adjustedQuads = [];
   for (let quad of quads) {

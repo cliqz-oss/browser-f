@@ -47,7 +47,7 @@ FxAccountsPushService.prototype = {
   /**
    * Register used interfaces in this service
    */
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
   /**
    * Initialize the service and register all the required observers.
    *
@@ -158,6 +158,11 @@ FxAccountsPushService.prototype = {
       return;
     }
     let payload = message.data.json();
+    if (payload.topic) {
+      this.log.debug(`received messages tickle with topic ${payload.topic}`);
+      this.fxAccounts.messages.consumeRemoteMessages();
+      return;
+    }
     this.log.debug(`push command: ${payload.command}`);
     switch (payload.command) {
       case ON_DEVICE_CONNECTED_NOTIFICATION:
@@ -238,6 +243,27 @@ FxAccountsPushService.prototype = {
             this.log.warn("FxAccountsPushService failed to unsubscribe", result);
           }
           return resolve(ok);
+        });
+    });
+  },
+
+  /**
+   * Get our Push server subscription.
+   *
+   * Ref: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushService#getSubscription()
+   *
+   * @returns {Promise}
+   */
+  getSubscription() {
+    return new Promise((resolve) => {
+      this.pushService.getSubscription(FXA_PUSH_SCOPE_ACCOUNT_UPDATE,
+        Services.scriptSecurityManager.getSystemPrincipal(),
+        (result, subscription) => {
+          if (!subscription) {
+            this.log.info("FxAccountsPushService no subscription found");
+            return resolve(null);
+          }
+          return resolve(subscription);
         });
     });
   },

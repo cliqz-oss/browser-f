@@ -16,13 +16,6 @@ config = {
         "--certutil-binary=%(test_install_path)s/bin/certutil",
     ],
 
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-
-    "pip_index": False,
-
     "buildbot_json_path": "buildprops.json",
 
     "default_blob_upload_servers": [
@@ -36,6 +29,6 @@ config = {
     # this would normally be in "exes", but "exes" is clobbered by remove_executables
     "geckodriver": "%(abs_test_bin_dir)s/geckodriver",
 
-    "verify_category": "web-platform",
+    "per_test_category": "web-platform",
 }
 

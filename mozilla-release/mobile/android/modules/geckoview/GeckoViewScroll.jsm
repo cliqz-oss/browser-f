@@ -9,28 +9,9 @@ var EXPORTED_SYMBOLS = ["GeckoViewScroll"];
 ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyGetter(this, "dump", () =>
-    ChromeUtils.import("resource://gre/modules/AndroidLog.jsm",
-                       {}).AndroidLog.d.bind(null, "ViewScroll"));
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
-
 class GeckoViewScroll extends GeckoViewModule {
-  init() {
-    debug("init");
-
-    this.frameScriptLoaded = false;
-  }
-
-  register() {
-    debug("register");
-
-    if (!this.frameScriptLoaded) {
-      this.messageManager.loadFrameScript(
-        "chrome://geckoview/content/GeckoViewScrollContent.js", true);
-      this.frameScriptLoaded = true;
-    }
+  onEnable() {
+    debug `onEnable`;
+    this.registerContent("chrome://geckoview/content/GeckoViewScrollContent.js");
   }
 }
