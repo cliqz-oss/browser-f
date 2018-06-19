@@ -118,43 +118,14 @@ js::jit::SA(FloatRegister r)
 
 // Used to patch jumps created by MacroAssemblerMIPSCompat::jumpWithPatch.
 void
-jit::PatchJump(CodeLocationJump& jump_, CodeLocationLabel label, ReprotectCode reprotect)
+jit::PatchJump(CodeLocationJump& jump_, CodeLocationLabel label)
 {
     Instruction* inst1 = (Instruction*)jump_.raw();
     Instruction* inst2 = inst1->next();
 
-    MaybeAutoWritableJitCode awjc(inst1, 8, reprotect);
     AssemblerMIPSShared::UpdateLuiOriValue(inst1, inst2, (uint32_t)label.raw());
 
     AutoFlushICache::flush(uintptr_t(inst1), 8);
-}
-
-// For more infromation about backedges look at comment in
-// MacroAssemblerMIPSCompat::backedgeJump()
-void
-jit::PatchBackedge(CodeLocationJump& jump, CodeLocationLabel label,
-                   JitZoneGroup::BackedgeTarget target)
-{
-    uint32_t sourceAddr = (uint32_t)jump.raw();
-    uint32_t targetAddr = (uint32_t)label.raw();
-    InstImm* branch = (InstImm*)jump.raw();
-
-    MOZ_ASSERT(branch->extractOpcode() == (uint32_t(op_beq) >> OpcodeShift));
-
-    if (BOffImm16::IsInRange(targetAddr - sourceAddr)) {
-        branch->setBOffImm16(BOffImm16(targetAddr - sourceAddr));
-    } else {
-        if (target == JitZoneGroup::BackedgeLoopHeader) {
-            Instruction* lui = &branch[1];
-            AssemblerMIPSShared::UpdateLuiOriValue(lui, lui->next(), targetAddr);
-            // Jump to ori. The lui will be executed in delay slot.
-            branch->setBOffImm16(BOffImm16(2 * sizeof(uint32_t)));
-        } else {
-            Instruction* lui = &branch[4];
-            AssemblerMIPSShared::UpdateLuiOriValue(lui, lui->next(), targetAddr);
-            branch->setBOffImm16(BOffImm16(4 * sizeof(uint32_t)));
-        }
-    }
 }
 
 void
@@ -205,30 +176,14 @@ TraceOneDataRelocation(JSTracer* trc, Instruction* inst)
     }
 }
 
-static void
-TraceDataRelocations(JSTracer* trc, uint8_t* buffer, CompactBufferReader& reader)
+/* static */ void
+Assembler::TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader)
 {
     while (reader.more()) {
         size_t offset = reader.readUnsigned();
-        Instruction* inst = (Instruction*)(buffer + offset);
+        Instruction* inst = (Instruction*)(code->raw() + offset);
         TraceOneDataRelocation(trc, inst);
     }
-}
-
-static void
-TraceDataRelocations(JSTracer* trc, MIPSBuffer* buffer, CompactBufferReader& reader)
-{
-    while (reader.more()) {
-        BufferOffset bo (reader.readUnsigned());
-        MIPSBuffer::AssemblerBufferInstIterator iter(bo, buffer);
-        TraceOneDataRelocation(trc, iter.cur());
-    }
-}
-
-void
-Assembler::TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader)
-{
-    ::TraceDataRelocations(trc, code->raw(), reader);
 }
 
 Assembler::Condition
@@ -273,23 +228,6 @@ Assembler::ConditionWithoutEqual(Condition cond)
         return Above;
       default:
         MOZ_CRASH("unexpected condition");
-    }
-}
-
-void
-Assembler::trace(JSTracer* trc)
-{
-    for (size_t i = 0; i < jumps_.length(); i++) {
-        RelativePatch& rp = jumps_[i];
-        if (rp.kind == Relocation::JITCODE) {
-            JitCode* code = JitCode::FromExecutable((uint8_t*)rp.target);
-            TraceManuallyBarrieredEdge(trc, &code, "masmrel32");
-            MOZ_ASSERT(code == JitCode::FromExecutable((uint8_t*)rp.target));
-        }
-    }
-    if (dataRelocations_.length()) {
-        CompactBufferReader reader(dataRelocations_);
-        ::TraceDataRelocations(trc, &m_buffer, reader);
     }
 }
 

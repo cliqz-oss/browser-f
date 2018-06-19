@@ -9,10 +9,12 @@ package org.mozilla.geckoview;
 import org.mozilla.gecko.AndroidGamepadManager;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.gfx.DynamicToolbarAnimator;
-import org.mozilla.gecko.gfx.NativePanZoomController;
+import org.mozilla.gecko.gfx.PanZoomController;
 import org.mozilla.gecko.gfx.GeckoDisplay;
 import org.mozilla.gecko.InputMethods;
+import org.mozilla.gecko.util.ActivityUtils;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -22,6 +24,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.support.annotation.Nullable;
+import android.support.annotation.NonNull;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
@@ -30,8 +34,8 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.ViewGroup;
-import android.view.accessibility.AccessibilityManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -41,15 +45,16 @@ public class GeckoView extends FrameLayout {
     private static final String LOGTAG = "GeckoView";
     private static final boolean DEBUG = false;
 
-    private static AccessibilityManager sAccessibilityManager;
-
     protected final Display mDisplay = new Display();
     protected GeckoSession mSession;
+    protected GeckoRuntime mRuntime;
     private boolean mStateSaved;
 
     protected SurfaceView mSurfaceView;
 
     private boolean mIsResettingFocus;
+
+    private GeckoSession.SelectionActionDelegate mSelectionActionDelegate;
 
     private static class SavedState extends BaseSavedState {
         public final GeckoSession session;
@@ -160,6 +165,7 @@ public class GeckoView extends FrameLayout {
     private void init() {
         setFocusable(true);
         setFocusableInTouchMode(true);
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         // We are adding descendants to this LayerView, but we don't want the
         // descendants to affect the way LayerView retains its focus.
@@ -177,6 +183,11 @@ public class GeckoView extends FrameLayout {
                                            ViewGroup.LayoutParams.MATCH_PARENT));
 
         mSurfaceView.getHolder().addCallback(mDisplay);
+
+        final Activity activity = ActivityUtils.getActivityFromContext(getContext());
+        if (activity != null) {
+            mSelectionActionDelegate = new BasicSelectionActionDelegate(activity);
+        }
     }
 
     /**
@@ -201,22 +212,56 @@ public class GeckoView extends FrameLayout {
         mSession.releaseDisplay(mDisplay.release());
         mSession.getOverscrollEdgeEffect().setInvalidationCallback(null);
         mSession.getCompositorController().setFirstPaintCallback(null);
+        if (session.getSelectionActionDelegate() == mSelectionActionDelegate) {
+            mSession.setSelectionActionDelegate(null);
+        }
         mSession = null;
         return session;
     }
 
-    public void setSession(final GeckoSession session) {
+    /**
+     * Attach a session to this view. The session should be opened before
+     * attaching.
+     *
+     * @param session The session to be attached.
+     */
+    public void setSession(@NonNull final GeckoSession session) {
+        if (!session.isOpen()) {
+            throw new IllegalArgumentException("Session must be open before attaching");
+        }
+
+        setSession(session, session.getRuntime());
+    }
+
+    /**
+     * Attach a session to this view. The session should be opened before
+     * attaching or a runtime needs to be provided for automatic opening.
+     *
+     * @param session The session to be attached.
+     * @param runtime The runtime to be used for opening the session.
+     */
+    public void setSession(@NonNull final GeckoSession session,
+                           @Nullable final GeckoRuntime runtime) {
         if (mSession != null && mSession.isOpen()) {
             throw new IllegalStateException("Current session is open");
         }
 
         releaseSession();
+
         mSession = session;
-        if (mSession == null) {
-          return;
+        mRuntime = runtime;
+
+        if (session.isOpen()) {
+            if (runtime != null && runtime != session.getRuntime()) {
+                throw new IllegalArgumentException("Session was opened with non-matching runtime");
+            }
+            mRuntime = session.getRuntime();
+        } else if (runtime == null) {
+            throw new IllegalArgumentException("Session must be open before attaching");
         }
 
         mDisplay.acquire(session.acquireDisplay());
+
         final Context context = getContext();
         session.getOverscrollEdgeEffect().setTheme(context);
         session.getOverscrollEdgeEffect().setInvalidationCallback(new Runnable() {
@@ -245,6 +290,10 @@ public class GeckoView extends FrameLayout {
                 coverUntilFirstPaint(Color.TRANSPARENT);
             }
         });
+
+        if (session.getSelectionActionDelegate() == null && mSelectionActionDelegate != null) {
+            session.setSelectionActionDelegate(mSelectionActionDelegate);
+        }
     }
 
     public GeckoSession getSession() {
@@ -255,11 +304,7 @@ public class GeckoView extends FrameLayout {
         return mSession.getEventDispatcher();
     }
 
-    public GeckoSessionSettings getSettings() {
-        return mSession.getSettings();
-    }
-
-    public NativePanZoomController getPanZoomController() {
+    public PanZoomController getPanZoomController() {
         return mSession.getPanZoomController();
     }
 
@@ -270,14 +315,18 @@ public class GeckoView extends FrameLayout {
     @Override
     public void onAttachedToWindow() {
         if (mSession == null) {
-            setSession(new GeckoSession());
+            setSession(new GeckoSession(), GeckoRuntime.getDefault(getContext()));
         }
 
         if (!mSession.isOpen()) {
-            mSession.open(getContext().getApplicationContext());
+            mSession.open(mRuntime);
         }
 
-        mSession.getTextInputController().setView(this);
+        if (mSession.getTextInput().getView() == null) {
+            mSession.getTextInput().setView(this);
+        }
+
+        mSession.getAccessibility().setView(this);
 
         super.onAttachedToWindow();
     }
@@ -286,16 +335,20 @@ public class GeckoView extends FrameLayout {
     public void onDetachedFromWindow() {
         super.onDetachedFromWindow();
 
-        if (mSession != null) {
-          mSession.getTextInputController().setView(null);
-        }
-
-        if (mStateSaved) {
-            // If we saved state earlier, we don't want to close the window.
+        if (mSession == null) {
             return;
         }
 
-        if (mSession != null && mSession.isOpen()) {
+        if (mSession.getAccessibility().getView() == this) {
+            mSession.getAccessibility().setView(null);
+        }
+
+        if (mSession.getTextInput().getView() == this) {
+            mSession.getTextInput().setView(null);
+        }
+
+        // If we saved state earlier, we don't want to close the window.
+        if (!mStateSaved && mSession.isOpen()) {
             mSession.close();
         }
     }
@@ -329,10 +382,11 @@ public class GeckoView extends FrameLayout {
         final SavedState ss = (SavedState) state;
         super.onRestoreInstanceState(ss.getSuperState());
 
-        if (mSession == null) {
-            setSession(ss.session);
+        if (mSession == null && ss.session != null) {
+            setSession(ss.session, ss.session.getRuntime());
         } else if (ss.session != null) {
             mSession.transferFrom(ss.session);
+            mRuntime = ss.session.getRuntime();
         }
     }
 
@@ -383,7 +437,7 @@ public class GeckoView extends FrameLayout {
         if (Build.VERSION.SDK_INT >= 24 || mSession == null) {
             return super.getHandler();
         }
-        return mSession.getTextInputController().getHandler(super.getHandler());
+        return mSession.getTextInput().getHandler(super.getHandler());
     }
 
     @Override
@@ -391,7 +445,7 @@ public class GeckoView extends FrameLayout {
         if (mSession == null) {
             return null;
         }
-        return mSession.getTextInputController().onCreateInputConnection(outAttrs);
+        return mSession.getTextInput().onCreateInputConnection(outAttrs);
     }
 
     @Override
@@ -400,7 +454,7 @@ public class GeckoView extends FrameLayout {
             return true;
         }
         return mSession != null &&
-               mSession.getTextInputController().onKeyPreIme(keyCode, event);
+               mSession.getTextInput().onKeyPreIme(keyCode, event);
     }
 
     @Override
@@ -409,7 +463,7 @@ public class GeckoView extends FrameLayout {
             return true;
         }
         return mSession != null &&
-               mSession.getTextInputController().onKeyUp(keyCode, event);
+               mSession.getTextInput().onKeyUp(keyCode, event);
     }
 
     @Override
@@ -418,7 +472,7 @@ public class GeckoView extends FrameLayout {
             return true;
         }
         return mSession != null &&
-               mSession.getTextInputController().onKeyDown(keyCode, event);
+               mSession.getTextInput().onKeyDown(keyCode, event);
     }
 
     @Override
@@ -427,7 +481,7 @@ public class GeckoView extends FrameLayout {
             return true;
         }
         return mSession != null &&
-               mSession.getTextInputController().onKeyLongPress(keyCode, event);
+               mSession.getTextInput().onKeyLongPress(keyCode, event);
     }
 
     @Override
@@ -436,7 +490,7 @@ public class GeckoView extends FrameLayout {
             return true;
         }
         return mSession != null &&
-               mSession.getTextInputController().onKeyMultiple(keyCode, repeatCount, event);
+               mSession.getTextInput().onKeyMultiple(keyCode, repeatCount, event);
     }
 
     @Override
@@ -460,26 +514,17 @@ public class GeckoView extends FrameLayout {
                mSession.getPanZoomController().onTouchEvent(event);
     }
 
-    protected static boolean isAccessibilityEnabled(final Context context) {
-        if (sAccessibilityManager == null) {
-            sAccessibilityManager = (AccessibilityManager)
-                    context.getSystemService(Context.ACCESSIBILITY_SERVICE);
-        }
-        return sAccessibilityManager.isEnabled() &&
-               sAccessibilityManager.isTouchExplorationEnabled();
-    }
-
     @Override
     public boolean onHoverEvent(final MotionEvent event) {
-        // If we get a touchscreen hover event, and accessibility is not enabled, don't
-        // send it to Gecko.
-        if (event.getSource() == InputDevice.SOURCE_TOUCHSCREEN &&
-            !isAccessibilityEnabled(getContext())) {
-            return false;
+        // A touchscreen hover event is a screen reader doing explore-by-touch
+        if (SessionAccessibility.Settings.isEnabled() &&
+            event.getSource() == InputDevice.SOURCE_TOUCHSCREEN &&
+            mSession != null) {
+            mSession.getAccessibility().onExploreByTouch(event);
+            return true;
         }
 
-        return mSession != null &&
-               mSession.getPanZoomController().onMotionEvent(event);
+        return false;
     }
 
     @Override

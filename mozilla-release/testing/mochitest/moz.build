@@ -19,21 +19,14 @@ USE_EXTENSION_MANIFEST = True
 
 FINAL_TARGET_PP_FILES += ['install.rdf']
 
-if CONFIG['OS_TARGET'] != 'Android':
-    DEFINES['MOCHITEST_BOOTSTRAP'] = True
-    FINAL_TARGET_FILES += ['bootstrap.js']
+FINAL_TARGET_FILES += ['bootstrap.js']
 
 MOCHITEST_MANIFESTS += [
     'tests/MochiKit-1.4.2/tests/mochitest.ini',
 ]
 MOCHITEST_CHROME_MANIFESTS += ['chrome/chrome.ini']
 
-GENERATED_FILES += [
-    'automation.py',
-]
-
 TEST_HARNESS_FILES.testing.mochitest += [
-    '!automation.py',
     '/build/mobile/remoteautomation.py',
     '/build/pgo/server-locations.txt',
     '/build/sanitizers/lsan_suppressions.txt',
@@ -44,7 +37,6 @@ TEST_HARNESS_FILES.testing.mochitest += [
     '/netwerk/test/httpserver/httpd.js',
     'bisection.py',
     'browser-harness.xul',
-    'browser-test-overlay.xul',
     'browser-test.js',
     'chrome-harness.js',
     'chunkifyTests.js',
@@ -59,6 +51,7 @@ TEST_HARNESS_FILES.testing.mochitest += [
     'pywebsocket_wrapper.py',
     'redirect.html',
     'rungeckoview.py',
+    'runjunit.py',
     'runrobocop.py',
     'runtests.py',
     'runtestsremote.py',

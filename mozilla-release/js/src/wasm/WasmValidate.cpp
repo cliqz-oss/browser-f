@@ -19,18 +19,20 @@
 #include "wasm/WasmValidate.h"
 
 #include "mozilla/CheckedInt.h"
+#include "mozilla/Unused.h"
 
 #include "jit/JitOptions.h"
 #include "js/Printf.h"
 #include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
-#include "wasm/WasmBinaryIterator.h"
+#include "wasm/WasmOpIter.h"
 
 using namespace js;
 using namespace js::jit;
 using namespace js::wasm;
 
 using mozilla::CheckedInt;
+using mozilla::Unused;
 
 // Decoder implementation.
 
@@ -45,6 +47,22 @@ Decoder::failf(const char* msg, ...)
         return false;
 
     return fail(str.get());
+}
+
+void
+Decoder::warnf(const char* msg, ...)
+{
+    if (!warnings_)
+        return;
+
+    va_list ap;
+    va_start(ap, msg);
+    UniqueChars str(JS_vsmprintf(msg, ap));
+    va_end(ap);
+    if (!str)
+        return;
+
+    Unused << warnings_->append(Move(str));
 }
 
 bool
@@ -192,7 +210,7 @@ Decoder::startCustomSection(const char* expected, size_t expectedLength, ModuleE
         }
 
         // Otherwise, blindly skip the custom section and keep looking.
-        finishCustomSection(**range);
+        skipAndFinishCustomSection(**range);
         range->reset();
     }
     MOZ_CRASH("unreachable");
@@ -207,7 +225,35 @@ Decoder::startCustomSection(const char* expected, size_t expectedLength, ModuleE
 }
 
 void
-Decoder::finishCustomSection(const SectionRange& range)
+Decoder::finishCustomSection(const char* name, const SectionRange& range)
+{
+    MOZ_ASSERT(cur_ >= beg_);
+    MOZ_ASSERT(cur_ <= end_);
+
+    if (error_ && *error_) {
+        warnf("in the '%s' custom section: %s", name, error_->get());
+        skipAndFinishCustomSection(range);
+        return;
+    }
+
+    uint32_t actualSize = currentOffset() - range.start;
+    if (range.size != actualSize) {
+        if (actualSize < range.size) {
+            warnf("in the '%s' custom section: %" PRIu32 " unconsumed bytes",
+                  name, uint32_t(range.size - actualSize));
+        } else {
+            warnf("in the '%s' custom section: %" PRIu32 " bytes consumed past the end",
+                  name, uint32_t(actualSize - range.size));
+        }
+        skipAndFinishCustomSection(range);
+        return;
+    }
+
+    // Nothing to do! (c.f. skipAndFinishCustomSection())
+}
+
+void
+Decoder::skipAndFinishCustomSection(const SectionRange& range)
 {
     MOZ_ASSERT(cur_ >= beg_);
     MOZ_ASSERT(cur_ <= end_);
@@ -225,7 +271,7 @@ Decoder::skipCustomSection(ModuleEnvironment* env)
     if (!range)
         return fail("expected custom section");
 
-    finishCustomSection(*range);
+    skipAndFinishCustomSection(*range);
     return true;
 }
 
@@ -234,29 +280,59 @@ Decoder::startNameSubsection(NameType nameType, Maybe<uint32_t>* endOffset)
 {
     MOZ_ASSERT(!*endOffset);
 
-    const uint8_t* initialPosition = cur_;
+    const uint8_t* const initialPosition = cur_;
 
     uint8_t nameTypeValue;
     if (!readFixedU8(&nameTypeValue))
-        return false;
+        goto rewind;
 
-    if (nameTypeValue != uint8_t(nameType)) {
-        cur_ = initialPosition;
-        return true;
-    }
+    if (nameTypeValue != uint8_t(nameType))
+        goto rewind;
 
     uint32_t payloadLength;
     if (!readVarU32(&payloadLength) || payloadLength > bytesRemain())
-        return false;
+        return fail("bad name subsection payload length");
 
     *endOffset = Some(currentOffset() + payloadLength);
+    return true;
+
+  rewind:
+    cur_ = initialPosition;
     return true;
 }
 
 bool
-Decoder::finishNameSubsection(uint32_t endOffset)
+Decoder::finishNameSubsection(uint32_t expected)
 {
-    return endOffset == uint32_t(currentOffset());
+    uint32_t actual = currentOffset();
+    if (expected != actual) {
+        return failf("bad name subsection length (expected: %" PRIu32 ", actual: %" PRIu32 ")",
+                     expected, actual);
+    }
+
+    return true;
+}
+
+bool
+Decoder::skipNameSubsection()
+{
+    uint8_t nameTypeValue;
+    if (!readFixedU8(&nameTypeValue))
+        return fail("unable to read name subsection id");
+
+    switch (nameTypeValue) {
+      case uint8_t(NameType::Module):
+      case uint8_t(NameType::Function):
+        return fail("out of order name subsections");
+      default:
+        break;
+    }
+
+    uint32_t payloadLength;
+    if (!readVarU32(&payloadLength) || !readBytes(payloadLength))
+        return fail("bad name subsection payload length");
+
+    return true;
 }
 
 // Misc helpers.
@@ -302,7 +378,7 @@ wasm::EncodeLocalEntries(Encoder& e, const ValTypeVector& locals)
 }
 
 static bool
-DecodeValType(Decoder& d, ModuleKind kind, ValType* type)
+DecodeValType(Decoder& d, ModuleKind kind, HasGcTypes gcTypesEnabled, ValType* type)
 {
     uint8_t unchecked;
     if (!d.readValType(&unchecked))
@@ -313,6 +389,11 @@ DecodeValType(Decoder& d, ModuleKind kind, ValType* type)
       case uint8_t(ValType::F32):
       case uint8_t(ValType::F64):
       case uint8_t(ValType::I64):
+        *type = ValType(unchecked);
+        return true;
+      case uint8_t(ValType::AnyRef):
+        if (gcTypesEnabled == HasGcTypes::False)
+            break;
         *type = ValType(unchecked);
         return true;
       case uint8_t(ValType::I8x16):
@@ -333,7 +414,8 @@ DecodeValType(Decoder& d, ModuleKind kind, ValType* type)
 }
 
 bool
-wasm::DecodeLocalEntries(Decoder& d, ModuleKind kind, ValTypeVector* locals)
+wasm::DecodeLocalEntries(Decoder& d, ModuleKind kind, HasGcTypes gcTypesEnabled,
+                         ValTypeVector* locals)
 {
     uint32_t numLocalEntries;
     if (!d.readVarU32(&numLocalEntries))
@@ -348,7 +430,7 @@ wasm::DecodeLocalEntries(Decoder& d, ModuleKind kind, ValTypeVector* locals)
             return d.fail("too many locals");
 
         ValType type;
-        if (!DecodeValType(d, kind, &type))
+        if (!DecodeValType(d, kind, gcTypesEnabled, &type))
             return false;
 
         if (!locals->appendN(type, count))
@@ -742,6 +824,20 @@ DecodeFunctionBodyExprs(const ModuleEnvironment& env, const Sig& sig, const ValT
             return iter.unrecognizedOpcode(&op);
 #endif
           }
+#ifdef ENABLE_WASM_GC
+          case uint16_t(Op::RefNull): {
+            if (env.gcTypesEnabled == HasGcTypes::False)
+                return iter.unrecognizedOpcode(&op);
+            CHECK(iter.readRefNull());
+            break;
+          }
+          case uint16_t(Op::RefIsNull): {
+            if (env.gcTypesEnabled == HasGcTypes::False)
+                return iter.unrecognizedOpcode(&op);
+            CHECK(iter.readConversion(ValType::AnyRef, ValType::I32, &nothing));
+            break;
+          }
+#endif
           case uint16_t(Op::ThreadPrefix): {
 #ifdef ENABLE_WASM_THREAD_OPS
             switch (op.b1) {
@@ -936,7 +1032,7 @@ wasm::ValidateFunctionBody(const ModuleEnvironment& env, uint32_t funcIndex, uin
 
     const uint8_t* bodyBegin = d.currentPosition();
 
-    if (!DecodeLocalEntries(d, ModuleKind::Wasm, &locals))
+    if (!DecodeLocalEntries(d, ModuleKind::Wasm, env.gcTypesEnabled, &locals))
         return false;
 
     if (!DecodeFunctionBodyExprs(env, sig, locals, bodyBegin + bodySize, &d))
@@ -1001,7 +1097,7 @@ DecodeTypeSection(Decoder& d, ModuleEnvironment* env)
             return false;
 
         for (uint32_t i = 0; i < numArgs; i++) {
-            if (!DecodeValType(d, ModuleKind::Wasm, &args[i]))
+            if (!DecodeValType(d, ModuleKind::Wasm, env->gcTypesEnabled, &args[i]))
                 return false;
         }
 
@@ -1016,7 +1112,7 @@ DecodeTypeSection(Decoder& d, ModuleEnvironment* env)
 
         if (numRets == 1) {
             ValType type;
-            if (!DecodeValType(d, ModuleKind::Wasm, &type))
+            if (!DecodeValType(d, ModuleKind::Wasm, env->gcTypesEnabled, &type))
                 return false;
 
             result = ToExprType(type);
@@ -1150,8 +1246,10 @@ GlobalIsJSCompatible(Decoder& d, ValType type, bool isMutable)
         return d.fail("unexpected variable type in global import/export");
     }
 
+#if !(defined(ENABLE_WASM_GLOBAL) && defined(EARLY_BETA_OR_EARLIER))
     if (isMutable)
         return d.fail("can't import/export mutable globals in the MVP");
+#endif
 
     return true;
 }
@@ -1159,7 +1257,8 @@ GlobalIsJSCompatible(Decoder& d, ValType type, bool isMutable)
 static bool
 DecodeGlobalType(Decoder& d, ValType* type, bool* isMutable)
 {
-    if (!DecodeValType(d, ModuleKind::Wasm, type))
+    // No gc types in globals at the moment.
+    if (!DecodeValType(d, ModuleKind::Wasm, HasGcTypes::False, type))
         return false;
 
     uint8_t flags;
@@ -1559,8 +1658,9 @@ DecodeExport(Decoder& d, ModuleEnvironment* env, CStringSet* dupSet)
         if (globalIndex >= env->globals.length())
             return d.fail("exported global index out of bounds");
 
-        const GlobalDesc& global = env->globals[globalIndex];
-        if (!GlobalIsJSCompatible(d, global.type(), global.isMutable()))
+        GlobalDesc* global = &env->globals[globalIndex];
+        global->setIsExport();
+        if (!GlobalIsJSCompatible(d, global->type(), global->isMutable()))
             return false;
 
         return env->exports.emplaceBack(Move(fieldName), globalIndex, DefinitionKind::Global);
@@ -1861,11 +1961,11 @@ DecodeModuleNameSubsection(Decoder& d)
 
     uint32_t nameLength;
     if (!d.readVarU32(&nameLength))
-        return false;
+        return d.fail("failed to read module name length");
 
     const uint8_t* bytes;
     if (!d.readBytes(nameLength, &bytes))
-        return false;
+        return d.fail("failed to read module name bytes");
 
     // Do nothing with module name for now; a future patch will incorporate the
     // module name into the callstack format.
@@ -1884,22 +1984,22 @@ DecodeFunctionNameSubsection(Decoder& d, ModuleEnvironment* env)
 
     uint32_t nameCount = 0;
     if (!d.readVarU32(&nameCount) || nameCount > MaxFuncs)
-        return false;
+        return d.fail("bad function name count");
 
     NameInBytecodeVector funcNames;
 
     for (uint32_t i = 0; i < nameCount; ++i) {
         uint32_t funcIndex = 0;
         if (!d.readVarU32(&funcIndex))
-            return false;
+            return d.fail("unable to read function index");
 
         // Names must refer to real functions and be given in ascending order.
         if (funcIndex >= env->numFuncs() || funcIndex < funcNames.length())
-            return false;
+            return d.fail("invalid function index");
 
         uint32_t nameLength = 0;
         if (!d.readVarU32(&nameLength) || nameLength > MaxStringLength)
-            return false;
+            return d.fail("unable to read function name length");
 
         if (!nameLength)
             continue;
@@ -1910,7 +2010,7 @@ DecodeFunctionNameSubsection(Decoder& d, ModuleEnvironment* env)
         funcNames[funcIndex] = NameInBytecode(d.currentOffset(), nameLength);
 
         if (!d.readBytes(nameLength))
-            return false;
+            return d.fail("unable to read function name bytes");
     }
 
     if (!d.finishNameSubsection(*endOffset))
@@ -1939,12 +2039,13 @@ DecodeNameSection(Decoder& d, ModuleEnvironment* env)
     if (!DecodeFunctionNameSubsection(d, env))
         goto finish;
 
-    // The names we care about have already been extracted into 'env' so don't
-    // bother decoding the rest of the name section. finishCustomSection() will
-    // skip to the end of the name section (as it would for any other error).
+    while (d.currentOffset() < range->end()) {
+        if (!d.skipNameSubsection())
+            goto finish;
+    }
 
   finish:
-    d.finishCustomSection(*range);
+    d.finishCustomSection(NameSectionName, *range);
     return true;
 }
 
@@ -1977,7 +2078,13 @@ wasm::Validate(JSContext* cx, const ShareableBytes& bytecode, UniqueChars* error
 {
     Decoder d(bytecode.bytes, 0, error);
 
-    ModuleEnvironment env(CompileMode::Once, Tier::Ion, DebugEnabled::False,
+#ifdef ENABLE_WASM_GC
+    HasGcTypes gcSupport = cx->options().wasmGc() ? HasGcTypes::True : HasGcTypes::False;
+#else
+    HasGcTypes gcSupport = HasGcTypes::False;
+#endif
+
+    ModuleEnvironment env(CompileMode::Once, Tier::Ion, DebugEnabled::False, gcSupport,
                           cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()
                           ? Shareable::True
                           : Shareable::False);

@@ -5,7 +5,7 @@ flake8:
         - build/*.py
         - build/moz.configure/*.configure
         - config/check_macroassembler_style.py
-        - config/mozunit.py
+        - config/mozunit
         - configure.py
         - layout/tools/reftest
         - python/mach
@@ -29,20 +29,22 @@ flake8:
         - testing/mozharness/mozharness/mozilla/mar.py
         - testing/mozharness/mozinfo
         - testing/mozharness/scripts
+        - testing/raptor
         - testing/remotecppunittests.py
         - testing/runcppunittests.py
         - testing/talos/
         - testing/xpcshell
         - toolkit/components/telemetry
         - toolkit/crashreporter/tools/upload_symbols.py
-        - tools/lint
-        - tools/mach_commands.py
-        - tools/tryselect
+        - tools/
     # Excludes should be added to topsrcdir/.flake8 due to a bug in flake8 where
     # specifying --exclude causes custom configuration files to be ignored.
     exclude: []
     # The configure option is used by the build system
     extensions: ['configure', 'py']
+    support-files:
+        - '**/.flake8'
+        - 'tools/lint/python/flake8*'
     type: external
     payload: python.flake8:lint
     setup: python.flake8:setup

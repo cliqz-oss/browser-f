@@ -41,7 +41,6 @@ using mozilla::DefaultXDisplay;
 #include "nsAttrName.h"
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
-#include "nsIDOMDragEvent.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIScrollableFrame.h"
 #include "nsIDocShell.h"
@@ -52,9 +51,12 @@ using mozilla::DefaultXDisplay;
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TextEvents.h"
+#include "mozilla/dom/DragEvent.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/HTMLObjectElementBinding.h"
 #include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/WheelEventBinding.h"
 #include "nsFrameSelection.h"
 #include "PuppetWidget.h"
 #include "nsPIWindowRoot.h"
@@ -386,7 +388,7 @@ void nsPluginInstanceOwner::GetAttributes(nsTArray<MozPluginParameter>& attribut
   loadingContent->GetPluginAttributes(attributes);
 }
 
-NS_IMETHODIMP nsPluginInstanceOwner::GetDOMElement(nsIDOMElement* *result)
+NS_IMETHODIMP nsPluginInstanceOwner::GetDOMElement(Element** result)
 {
   return CallQueryReferent(mContent.get(), result);
 }
@@ -483,7 +485,9 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
   }
 
   rv = lh->OnLinkClick(content, uri, unitarget.get(), VoidString(),
-                       aPostStream, -1, headersDataStream, true, triggeringPrincipal);
+                       aPostStream, -1, headersDataStream,
+                       /* isUserTriggered */ false,
+                       /* isTrusted */ true, triggeringPrincipal);
 
   return rv;
 }
@@ -1395,12 +1399,13 @@ nsPluginInstanceOwner::GetEventloopNestingLevel()
   return currentLevel;
 }
 
-nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(nsIDOMEvent* aFocusEvent)
+nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(Event* aFocusEvent)
 {
 #ifndef XP_MACOSX
   if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow)) {
     // continue only for cases without child window
-    return aFocusEvent->PreventDefault(); // consume event
+    aFocusEvent->PreventDefault(); // consume event
+    return NS_OK;
   }
 #endif
 
@@ -1418,7 +1423,7 @@ nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(nsIDOMEvent* aFocusEvent)
   return NS_OK;
 }
 
-nsresult nsPluginInstanceOwner::ProcessKeyPress(nsIDOMEvent* aKeyEvent)
+nsresult nsPluginInstanceOwner::ProcessKeyPress(Event* aKeyEvent)
 {
 #ifdef XP_MACOSX
   return DispatchKeyToPlugin(aKeyEvent);
@@ -1436,11 +1441,13 @@ nsresult nsPluginInstanceOwner::ProcessKeyPress(nsIDOMEvent* aKeyEvent)
 #endif
 }
 
-nsresult nsPluginInstanceOwner::DispatchKeyToPlugin(nsIDOMEvent* aKeyEvent)
+nsresult nsPluginInstanceOwner::DispatchKeyToPlugin(Event* aKeyEvent)
 {
 #if !defined(XP_MACOSX)
-  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow))
-    return aKeyEvent->PreventDefault(); // consume event
+  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow)) {
+    aKeyEvent->PreventDefault(); // consume event
+    return NS_OK;
+  }
   // continue only for cases without child window
 #endif
 
@@ -1460,11 +1467,13 @@ nsresult nsPluginInstanceOwner::DispatchKeyToPlugin(nsIDOMEvent* aKeyEvent)
 }
 
 nsresult
-nsPluginInstanceOwner::ProcessMouseDown(nsIDOMEvent* aMouseEvent)
+nsPluginInstanceOwner::ProcessMouseDown(Event* aMouseEvent)
 {
 #if !defined(XP_MACOSX)
-  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow))
-    return aMouseEvent->PreventDefault(); // consume event
+  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow)) {
+    aMouseEvent->PreventDefault(); // consume event
+    return NS_OK;
+  }
   // continue only for cases without child window
 #endif
 
@@ -1475,7 +1484,7 @@ nsPluginInstanceOwner::ProcessMouseDown(nsIDOMEvent* aMouseEvent)
 
     nsIFocusManager* fm = nsFocusManager::GetFocusManager();
     if (fm) {
-      nsCOMPtr<nsIDOMElement> elem = do_QueryReferent(mContent);
+      nsCOMPtr<Element> elem = do_QueryReferent(mContent);
       fm->SetFocus(elem, 0);
     }
   }
@@ -1486,19 +1495,22 @@ nsPluginInstanceOwner::ProcessMouseDown(nsIDOMEvent* aMouseEvent)
     mLastMouseDownButtonType = mouseEvent->button;
     nsEventStatus rv = ProcessEvent(*mouseEvent);
     if (nsEventStatus_eConsumeNoDefault == rv) {
-      return aMouseEvent->PreventDefault(); // consume event
+      aMouseEvent->PreventDefault(); // consume event
+      return NS_OK;
     }
   }
 
   return NS_OK;
 }
 
-nsresult nsPluginInstanceOwner::DispatchMouseToPlugin(nsIDOMEvent* aMouseEvent,
+nsresult nsPluginInstanceOwner::DispatchMouseToPlugin(Event* aMouseEvent,
                                                       bool aAllowPropagate)
 {
 #if !defined(XP_MACOSX)
-  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow))
-    return aMouseEvent->PreventDefault(); // consume event
+  if (!mPluginWindow || (mPluginWindow->type == NPWindowTypeWindow)) {
+    aMouseEvent->PreventDefault(); // consume event
+    return NS_OK;
+  }
   // continue only for cases without child window
 #endif
   // don't send mouse events if we are hidden
@@ -1612,7 +1624,7 @@ nsPluginInstanceOwner::HandleNoConsumedCompositionMessage(
 #endif
 
 nsresult
-nsPluginInstanceOwner::DispatchCompositionToPlugin(nsIDOMEvent* aEvent)
+nsPluginInstanceOwner::DispatchCompositionToPlugin(Event* aEvent)
 {
 #ifdef XP_WIN
   if (!mPluginWindow) {
@@ -1703,7 +1715,7 @@ nsPluginInstanceOwner::DispatchCompositionToPlugin(nsIDOMEvent* aEvent)
 }
 
 nsresult
-nsPluginInstanceOwner::HandleEvent(nsIDOMEvent* aEvent)
+nsPluginInstanceOwner::HandleEvent(Event* aEvent)
 {
   NS_ASSERTION(mInstance, "Should have a valid plugin instance or not receive events.");
 
@@ -1762,7 +1774,7 @@ nsPluginInstanceOwner::HandleEvent(nsIDOMEvent* aEvent)
     return DispatchCompositionToPlugin(aEvent);
   }
 
-  nsCOMPtr<nsIDOMDragEvent> dragEvent(do_QueryInterface(aEvent));
+  DragEvent* dragEvent = aEvent->AsDragEvent();
   if (dragEvent && mInstance) {
     WidgetEvent* ievent = aEvent->WidgetEventPtr();
     if (ievent && ievent->IsTrusted() &&
@@ -2109,11 +2121,11 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
         int32_t delta = 0;
         if (wheelEvent->mLineOrPageDeltaY) {
           switch (wheelEvent->mDeltaMode) {
-            case nsIDOMWheelEvent::DOM_DELTA_PAGE:
+            case WheelEventBinding::DOM_DELTA_PAGE:
               pluginEvent.event = WM_MOUSEWHEEL;
               delta = -WHEEL_DELTA * wheelEvent->mLineOrPageDeltaY;
               break;
-            case nsIDOMWheelEvent::DOM_DELTA_LINE: {
+            case WheelEventBinding::DOM_DELTA_LINE: {
               UINT linesPerWheelDelta = 0;
               if (NS_WARN_IF(!::SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0,
                                                      &linesPerWheelDelta, 0))) {
@@ -2129,7 +2141,7 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
               delta *= wheelEvent->mLineOrPageDeltaY;
               break;
             }
-            case nsIDOMWheelEvent::DOM_DELTA_PIXEL:
+            case WheelEventBinding::DOM_DELTA_PIXEL:
             default:
               // We don't support WM_GESTURE with this path.
               MOZ_ASSERT(!pluginEvent.event);
@@ -2137,11 +2149,11 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
           }
         } else if (wheelEvent->mLineOrPageDeltaX) {
           switch (wheelEvent->mDeltaMode) {
-            case nsIDOMWheelEvent::DOM_DELTA_PAGE:
+            case WheelEventBinding::DOM_DELTA_PAGE:
               pluginEvent.event = WM_MOUSEHWHEEL;
               delta = -WHEEL_DELTA * wheelEvent->mLineOrPageDeltaX;
               break;
-            case nsIDOMWheelEvent::DOM_DELTA_LINE: {
+            case WheelEventBinding::DOM_DELTA_LINE: {
               pluginEvent.event = WM_MOUSEHWHEEL;
               UINT charsPerWheelDelta = 0;
               // FYI: SPI_GETWHEELSCROLLCHARS is available on Vista or later.
@@ -2158,7 +2170,7 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
               delta *= wheelEvent->mLineOrPageDeltaX;
               break;
             }
-            case nsIDOMWheelEvent::DOM_DELTA_PIXEL:
+            case WheelEventBinding::DOM_DELTA_PIXEL:
             default:
               // We don't support WM_GESTURE with this path.
               MOZ_ASSERT(!pluginEvent.event);
@@ -3288,7 +3300,7 @@ void nsPluginInstanceOwner::SetFrame(nsPluginFrame *aFrame)
     nsFocusManager* fm = nsFocusManager::GetFocusManager();
     const nsIContent* content = aFrame->GetContent();
     if (fm && content) {
-      mContentFocused = (content == fm->GetFocusedContent());
+      mContentFocused = (content == fm->GetFocusedElement());
     }
 
     // Register for widget-focus events on the window root.
@@ -3385,7 +3397,7 @@ NS_IMPL_ISUPPORTS(nsPluginDOMContextMenuListener,
                   nsIDOMEventListener)
 
 NS_IMETHODIMP
-nsPluginDOMContextMenuListener::HandleEvent(nsIDOMEvent* aEvent)
+nsPluginDOMContextMenuListener::HandleEvent(Event* aEvent)
 {
   aEvent->PreventDefault(); // consume event
 

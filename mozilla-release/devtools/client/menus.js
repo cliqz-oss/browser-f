@@ -28,6 +28,8 @@
  *   toggle it.
  */
 
+const { Cu } = require("chrome");
+
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
@@ -41,7 +43,7 @@ exports.menuitems = [
     l10nKey: "devToolboxMenuItem",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, window.performance.now());
+      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, Cu.now());
     },
     keyId: "toggleToolbox",
     checkbox: true
@@ -101,7 +103,9 @@ exports.menuitems = [
     l10nKey: "responsiveDesignMode",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab);
+      ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab, {
+        trigger: "menu"
+      });
     },
     keyId: "responsiveDesignMode",
     checkbox: true
@@ -146,7 +150,7 @@ exports.menuitems = [
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      window.openUILinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
+      window.openTrustedLinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
     }
   },
 ];

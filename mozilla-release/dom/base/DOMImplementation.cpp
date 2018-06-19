@@ -10,9 +10,8 @@
 #include "mozilla/dom/DOMImplementationBinding.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsContentUtils.h"
-#include "nsDOMClassInfoID.h"
 #include "nsIDOMDocument.h"
-#include "DocumentType.h"
+#include "mozilla/dom/DocumentType.h"
 #include "nsTextNode.h"
 
 namespace mozilla {
@@ -60,14 +59,14 @@ DOMImplementation::CreateDocumentType(const nsAString& aQualifiedName,
   // Indicate that there is no internal subset (not just an empty one)
   RefPtr<DocumentType> docType =
     NS_NewDOMDocumentType(mOwner->NodeInfoManager(), name, aPublicId,
-                          aSystemId, VoidString(), aRv);
+                          aSystemId, VoidString());
   return docType.forget();
 }
 
 nsresult
 DOMImplementation::CreateDocument(const nsAString& aNamespaceURI,
                                   const nsAString& aQualifiedName,
-                                  nsIDOMDocumentType* aDoctype,
+                                  DocumentType* aDoctype,
                                   nsIDocument** aDocument)
 {
   *aDocument = nullptr;
@@ -124,7 +123,7 @@ DOMImplementation::CreateDocument(const nsAString& aNamespaceURI,
 already_AddRefed<nsIDocument>
 DOMImplementation::CreateDocument(const nsAString& aNamespaceURI,
                                   const nsAString& aQualifiedName,
-                                  nsIDOMDocumentType* aDoctype,
+                                  DocumentType* aDoctype,
                                   ErrorResult& aRv)
 {
   nsCOMPtr<nsIDocument> document;
@@ -141,16 +140,13 @@ DOMImplementation::CreateHTMLDocument(const nsAString& aTitle,
 
   NS_ENSURE_STATE(mOwner);
 
-  nsCOMPtr<nsIDOMDocumentType> doctype;
   // Indicate that there is no internal subset (not just an empty one)
-  nsresult rv = NS_NewDOMDocumentType(getter_AddRefs(doctype),
-                                      mOwner->NodeInfoManager(),
-                                      nsGkAtoms::html, // aName
-                                      EmptyString(), // aPublicId
-                                      EmptyString(), // aSystemId
-                                      VoidString()); // aInternalSubset
-  NS_ENSURE_SUCCESS(rv, rv);
-
+  RefPtr<DocumentType> doctype =
+    NS_NewDOMDocumentType(mOwner->NodeInfoManager(),
+                          nsGkAtoms::html, // aName
+                          EmptyString(), // aPublicId
+                          EmptyString(), // aSystemId
+                          VoidString()); // aInternalSubset
 
   nsCOMPtr<nsIGlobalObject> scriptHandlingObject =
     do_QueryReferent(mScriptObject);
@@ -158,12 +154,12 @@ DOMImplementation::CreateHTMLDocument(const nsAString& aTitle,
   NS_ENSURE_STATE(!mScriptObject || scriptHandlingObject);
 
   nsCOMPtr<nsIDOMDocument> document;
-  rv = NS_NewDOMDocument(getter_AddRefs(document),
-                         EmptyString(), EmptyString(),
-                         doctype, mDocumentURI, mBaseURI,
-                         mOwner->NodePrincipal(),
-                         true, scriptHandlingObject,
-                         DocumentFlavorLegacyGuess);
+  nsresult rv = NS_NewDOMDocument(getter_AddRefs(document),
+                                  EmptyString(), EmptyString(),
+                                  doctype, mDocumentURI, mBaseURI,
+                                  mOwner->NodePrincipal(),
+                                  true, scriptHandlingObject,
+                                  DocumentFlavorLegacyGuess);
   NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(document);
 

@@ -52,16 +52,18 @@
 #include "mozilla/dom/HTMLSlotElement.h"
 #include "mozilla/dom/HTMLTemplateElement.h"
 #include "mozilla/dom/IDTracker.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/KeyboardEventBinding.h"
 #include "mozilla/dom/IPCBlobUtils.h"
 #include "mozilla/dom/NodeBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/Text.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/XULCommandEvent.h"
-#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStateManager.h"
@@ -132,10 +134,7 @@
 #include "nsIDocumentEncoder.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDocumentType.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMNodeList.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsIDragService.h"
 #include "nsIFormControl.h"
@@ -275,6 +274,7 @@ nsIInterfaceRequestor* nsContentUtils::sSameOriginChecker = nullptr;
 
 bool nsContentUtils::sIsHandlingKeyBoardEvent = false;
 bool nsContentUtils::sAllowXULXBL_for_file = false;
+bool nsContentUtils::sDisablePopups = false;
 
 nsString* nsContentUtils::sShiftText = nullptr;
 nsString* nsContentUtils::sControlText = nullptr;
@@ -300,7 +300,6 @@ bool nsContentUtils::sSendPerformanceTimingNotifications = false;
 bool nsContentUtils::sUseActivityCursor = false;
 bool nsContentUtils::sAnimationsAPICoreEnabled = false;
 bool nsContentUtils::sAnimationsAPIElementAnimateEnabled = false;
-bool nsContentUtils::sAnimationsAPIPendingMemberEnabled = false;
 bool nsContentUtils::sGetBoxQuadsEnabled = false;
 bool nsContentUtils::sSkipCursorMoveForSameValueSet = false;
 bool nsContentUtils::sRequestIdleCallbackEnabled = false;
@@ -311,7 +310,6 @@ bool nsContentUtils::sAutoFocusEnabled = true;
 #ifndef RELEASE_OR_BETA
 bool nsContentUtils::sBypassCSSOMOriginCheck = false;
 #endif
-bool nsContentUtils::sIsScopedStyleEnabled = false;
 
 bool nsContentUtils::sIsBytecodeCacheEnabled = false;
 int32_t nsContentUtils::sBytecodeCacheStrategy = 0;
@@ -576,6 +574,13 @@ nsContentUtils::Init()
   NS_ENSURE_TRUE(sNameSpaceManager, NS_ERROR_OUT_OF_MEMORY);
 
   sXPConnect = nsXPConnect::XPConnect();
+  // We hold a strong ref to sXPConnect to ensure that it does not go away until
+  // nsLayoutStatics::Shutdown is happening.  Otherwise ~nsXPConnect can be
+  // triggered by xpcModuleDtor late in shutdown and cause crashes due to
+  // various stuff already being torn down by then.  Note that this means that
+  // we are effectively making sure that if we leak nsLayoutStatics then we also
+  // leak nsXPConnect.
+  NS_ADDREF(sXPConnect);
 
   sSecurityManager = nsScriptSecurityManager::GetScriptSecurityManager();
   if(!sSecurityManager)
@@ -585,7 +590,7 @@ nsContentUtils::Init()
   sSecurityManager->GetSystemPrincipal(&sSystemPrincipal);
   MOZ_ASSERT(sSystemPrincipal);
 
-  RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::Create();
+  RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
   if (!nullPrincipal) {
     return NS_ERROR_FAILURE;
   }
@@ -698,10 +703,6 @@ nsContentUtils::Init()
   Preferences::AddBoolVarCache(&sAnimationsAPIElementAnimateEnabled,
                                "dom.animations-api.element-animate.enabled", false);
 
-  Preferences::AddBoolVarCache(&sAnimationsAPIPendingMemberEnabled,
-                               "dom.animations-api.pending-member.enabled",
-                               false);
-
   Preferences::AddBoolVarCache(&sGetBoxQuadsEnabled,
                                "layout.css.getBoxQuads.enabled", false);
 
@@ -715,9 +716,6 @@ nsContentUtils::Init()
 #ifndef RELEASE_OR_BETA
   sBypassCSSOMOriginCheck = getenv("MOZ_BYPASS_CSSOM_ORIGIN_CHECK");
 #endif
-
-  Preferences::AddBoolVarCache(&sIsScopedStyleEnabled,
-                               "layout.css.scoped-style.enabled", false);
 
   Preferences::AddBoolVarCache(&sLowerNetworkPriority,
                                "privacy.trackingprotection.lower_network_priority", false);
@@ -733,6 +731,9 @@ nsContentUtils::Init()
 
   Preferences::AddBoolVarCache(&sIsBytecodeCacheEnabled,
                                "dom.script_loader.bytecode_cache.enabled", false);
+
+  Preferences::AddBoolVarCache(&sDisablePopups,
+                               "dom.disable_open_during_load", false);
 
   Preferences::AddIntVarCache(&sBytecodeCacheStrategy,
                               "dom.script_loader.bytecode_cache.strategy", 0);
@@ -1633,137 +1634,6 @@ nsContentUtils::GetBidiKeyboard()
   return sBidiKeyboard;
 }
 
-template <class OutputIterator>
-struct NormalizeNewlinesCharTraits {
-  public:
-    typedef typename OutputIterator::value_type value_type;
-
-  public:
-    explicit NormalizeNewlinesCharTraits(OutputIterator& aIterator) : mIterator(aIterator) { }
-    void writechar(typename OutputIterator::value_type aChar) {
-      *mIterator++ = aChar;
-    }
-
-  private:
-    OutputIterator mIterator;
-};
-
-template <class CharT>
-struct NormalizeNewlinesCharTraits<CharT*> {
-  public:
-    typedef CharT value_type;
-
-  public:
-    explicit NormalizeNewlinesCharTraits(CharT* aCharPtr) : mCharPtr(aCharPtr) { }
-    void writechar(CharT aChar) {
-      *mCharPtr++ = aChar;
-    }
-
-  private:
-    CharT* mCharPtr;
-};
-
-template <class OutputIterator>
-class CopyNormalizeNewlines
-{
-  public:
-    typedef typename OutputIterator::value_type value_type;
-
-  public:
-    explicit CopyNormalizeNewlines(OutputIterator* aDestination,
-                                   bool aLastCharCR = false) :
-      mLastCharCR(aLastCharCR),
-      mDestination(aDestination),
-      mWritten(0)
-    { }
-
-    uint32_t GetCharsWritten() {
-      return mWritten;
-    }
-
-    bool IsLastCharCR() {
-      return mLastCharCR;
-    }
-
-    void write(const typename OutputIterator::value_type* aSource, uint32_t aSourceLength) {
-
-      const typename OutputIterator::value_type* done_writing = aSource + aSourceLength;
-
-      // If the last source buffer ended with a CR...
-      if (mLastCharCR) {
-        // ..and if the next one is a LF, then skip it since
-        // we've already written out a newline
-        if (aSourceLength && (*aSource == value_type('\n'))) {
-          ++aSource;
-        }
-        mLastCharCR = false;
-      }
-
-      uint32_t num_written = 0;
-      while ( aSource < done_writing ) {
-        if (*aSource == value_type('\r')) {
-          mDestination->writechar('\n');
-          ++aSource;
-          // If we've reached the end of the buffer, record
-          // that we wrote out a CR
-          if (aSource == done_writing) {
-            mLastCharCR = true;
-          }
-          // If the next character is a LF, skip it
-          else if (*aSource == value_type('\n')) {
-            ++aSource;
-          }
-        }
-        else {
-          mDestination->writechar(*aSource++);
-        }
-        ++num_written;
-      }
-
-      mWritten += num_written;
-    }
-
-  private:
-    bool mLastCharCR;
-    OutputIterator* mDestination;
-    uint32_t mWritten;
-};
-
-// static
-uint32_t
-nsContentUtils::CopyNewlineNormalizedUnicodeTo(const nsAString& aSource,
-                                               uint32_t aSrcOffset,
-                                               char16_t* aDest,
-                                               uint32_t aLength,
-                                               bool& aLastCharCR)
-{
-  typedef NormalizeNewlinesCharTraits<char16_t*> sink_traits;
-
-  sink_traits dest_traits(aDest);
-  CopyNormalizeNewlines<sink_traits> normalizer(&dest_traits,aLastCharCR);
-  nsReadingIterator<char16_t> fromBegin, fromEnd;
-  copy_string(aSource.BeginReading(fromBegin).advance( int32_t(aSrcOffset) ),
-              aSource.BeginReading(fromEnd).advance( int32_t(aSrcOffset+aLength) ),
-              normalizer);
-  aLastCharCR = normalizer.IsLastCharCR();
-  return normalizer.GetCharsWritten();
-}
-
-// static
-uint32_t
-nsContentUtils::CopyNewlineNormalizedUnicodeTo(nsReadingIterator<char16_t>& aSrcStart, const nsReadingIterator<char16_t>& aSrcEnd, nsAString& aDest)
-{
-  typedef nsWritingIterator<char16_t> WritingIterator;
-  typedef NormalizeNewlinesCharTraits<WritingIterator> sink_traits;
-
-  WritingIterator iter;
-  aDest.BeginWriting(iter);
-  sink_traits dest_traits(iter);
-  CopyNormalizeNewlines<sink_traits> normalizer(&dest_traits);
-  copy_string(aSrcStart, aSrcEnd, normalizer);
-  return normalizer.GetCharsWritten();
-}
-
 /**
  * This is used to determine whether a character is in one of the classes
  * which CSS says should be part of the first-letter.  Currently, that is
@@ -2101,7 +1971,7 @@ nsContentUtils::Shutdown()
 
   NS_IF_RELEASE(sStringBundleService);
   NS_IF_RELEASE(sConsoleService);
-  sXPConnect = nullptr;
+  NS_IF_RELEASE(sXPConnect);
   NS_IF_RELEASE(sSecurityManager);
   NS_IF_RELEASE(sSystemPrincipal);
   NS_IF_RELEASE(sNullSubjectPrincipal);
@@ -2178,18 +2048,6 @@ nsContentUtils::Shutdown()
  * must always be known to be a 'real' node!
  */
 // static
-nsresult
-nsContentUtils::CheckSameOrigin(const nsINode *aTrustedNode,
-                                nsIDOMNode *aUnTrustedNode)
-{
-  MOZ_ASSERT(aTrustedNode);
-
-  // Make sure it's a real node.
-  nsCOMPtr<nsINode> unTrustedNode = do_QueryInterface(aUnTrustedNode);
-  NS_ENSURE_TRUE(unTrustedNode, NS_ERROR_UNEXPECTED);
-  return CheckSameOrigin(aTrustedNode, unTrustedNode);
-}
-
 nsresult
 nsContentUtils::CheckSameOrigin(const nsINode* aTrustedNode,
                                 const nsINode* unTrustedNode)
@@ -2338,11 +2196,11 @@ nsContentUtils::InProlog(nsINode *aNode)
   NS_PRECONDITION(aNode, "missing node to nsContentUtils::InProlog");
 
   nsINode* parent = aNode->GetParentNode();
-  if (!parent || !parent->IsNodeOfType(nsINode::eDOCUMENT)) {
+  if (!parent || !parent->IsDocument()) {
     return false;
   }
 
-  nsIDocument* doc = static_cast<nsIDocument*>(parent);
+  nsIDocument* doc = parent->AsDocument();
   nsIContent* root = doc->GetRootElement();
 
   return !root || doc->ComputeIndexOf(aNode) < doc->ComputeIndexOf(root);
@@ -2511,11 +2369,10 @@ nsContentUtils::IsSystemCaller(JSContext* aCx)
 bool
 nsContentUtils::ThreadsafeIsSystemCaller(JSContext* aCx)
 {
-  if (NS_IsMainThread()) {
-    return IsSystemCaller(aCx);
-  }
+  CycleCollectedJSContext* ccjscx = CycleCollectedJSContext::Get();
+  MOZ_ASSERT(ccjscx->Context() == aCx);
 
-  return GetWorkerPrivateFromContext(aCx)->UsesSystemPrincipal();
+  return ccjscx->IsSystemCaller();
 }
 
 // static
@@ -2541,10 +2398,11 @@ nsContentUtils::GetCrossDocParentNode(nsINode* aChild)
     parent = aChild->AsContent()->GetFlattenedTreeParent();
   }
 
-  if (parent || !aChild->IsNodeOfType(nsINode::eDOCUMENT))
+  if (parent || !aChild->IsDocument()) {
     return parent;
+  }
 
-  nsIDocument* doc = static_cast<nsIDocument*>(aChild);
+  nsIDocument* doc = aChild->AsDocument();
   nsIDocument* parentDoc = doc->GetParentDocument();
   return parentDoc ? parentDoc->FindContentForSubDocument(doc) : nullptr;
 }
@@ -2576,9 +2434,9 @@ nsContentUtils::ContentIsHostIncludingDescendantOf(
   do {
     if (aPossibleDescendant == aPossibleAncestor)
       return true;
-    if (aPossibleDescendant->NodeType() == nsINode::DOCUMENT_FRAGMENT_NODE) {
+    if (aPossibleDescendant->IsDocumentFragment()) {
       aPossibleDescendant =
-        static_cast<const DocumentFragment*>(aPossibleDescendant)->GetHost();
+        aPossibleDescendant->AsDocumentFragment()->GetHost();
     } else {
       aPossibleDescendant = aPossibleDescendant->GetParentNode();
     }
@@ -3326,8 +3184,13 @@ nsContentUtils::NewURIWithDocumentCharset(nsIURI** aResult,
 
 // static
 bool
-nsContentUtils::IsCustomElementName(nsAtom* aName)
+nsContentUtils::IsCustomElementName(nsAtom* aName, uint32_t aNameSpaceID)
 {
+  // Allow non-dashed names in XUL for XBL to Custom Element migrations.
+  if (aNameSpaceID == kNameSpaceID_XUL) {
+    return true;
+  }
+
   // A valid custom element name is a sequence of characters name which
   // must match the PotentialCustomElementName production:
   // PotentialCustomElementName ::= [a-z] (PCENChar)* '-' (PCENChar)*
@@ -3582,7 +3445,7 @@ nsContentUtils::GetContextForContent(const nsIContent* aContent)
 
 // static
 bool
-nsContentUtils::CanLoadImage(nsIURI* aURI, nsISupports* aContext,
+nsContentUtils::CanLoadImage(nsIURI* aURI, nsINode* aNode,
                              nsIDocument* aLoadingDocument,
                              nsIPrincipal* aLoadingPrincipal,
                              int16_t* aImageBlockingStatus,
@@ -3627,15 +3490,17 @@ nsContentUtils::CanLoadImage(nsIURI* aURI, nsISupports* aContext,
     }
   }
 
+  nsCOMPtr<nsILoadInfo> secCheckLoadInfo =
+    new LoadInfo(aLoadingPrincipal,
+                 aLoadingPrincipal, // triggering principal
+                 aNode,
+                 nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
+                 aContentType);
+
   int16_t decision = nsIContentPolicy::ACCEPT;
 
-  rv = NS_CheckContentLoadPolicy(aContentType,
-                                 aURI,
-                                 aLoadingPrincipal,
-                                 aLoadingPrincipal, // triggering principal
-                                 aContext,
+  rv = NS_CheckContentLoadPolicy(aURI, secCheckLoadInfo,
                                  EmptyCString(), //mime guess
-                                 nullptr,         //extra
                                  &decision,
                                  GetContentPolicy());
 
@@ -3902,7 +3767,7 @@ nsContentUtils::ContentIsDraggable(nsIContent* aContent)
 {
   MOZ_ASSERT(aContent);
 
-  if (auto htmlElement = nsGenericHTMLElement::FromContent(aContent)) {
+  if (auto htmlElement = nsGenericHTMLElement::FromNode(aContent)) {
     if (htmlElement->Draggable()) {
       return true;
     }
@@ -4146,7 +4011,8 @@ nsresult nsContentUtils::FormatLocalizedString(
 
 /* static */ void
 nsContentUtils::LogSimpleConsoleError(const nsAString& aErrorText,
-                                      const char * classification)
+                                      const char * classification,
+                                      bool aFromPrivateWindow)
 {
   nsCOMPtr<nsIScriptError> scriptError =
     do_CreateInstance(NS_SCRIPTERROR_CONTRACTID);
@@ -4156,7 +4022,8 @@ nsContentUtils::LogSimpleConsoleError(const nsAString& aErrorText,
     if (console && NS_SUCCEEDED(scriptError->Init(aErrorText, EmptyString(),
                                                   EmptyString(), 0, 0,
                                                   nsIScriptError::errorFlag,
-                                                  classification))) {
+                                                  classification,
+                                                  aFromPrivateWindow))) {
       console->LogMessage(scriptError);
     }
   }
@@ -4542,7 +4409,7 @@ static
 nsresult GetEventAndTarget(nsIDocument* aDoc, nsISupports* aTarget,
                            const nsAString& aEventName,
                            bool aCanBubble, bool aCancelable,
-                           bool aTrusted, nsIDOMEvent** aEvent,
+                           bool aTrusted, Event** aEvent,
                            EventTarget** aTargetOut)
 {
   nsCOMPtr<EventTarget> target(do_QueryInterface(aTarget));
@@ -4558,8 +4425,7 @@ nsresult GetEventAndTarget(nsIDocument* aDoc, nsISupports* aTarget,
   event->InitEvent(aEventName, aCanBubble, aCancelable);
   event->SetTrusted(aTrusted);
 
-  nsresult rv = event->SetTarget(target);
-  NS_ENSURE_SUCCESS(rv, rv);
+  event->SetTarget(target);
 
   event.forget(aEvent);
   target.forget(aTargetOut);
@@ -4596,7 +4462,7 @@ nsContentUtils::DispatchEvent(nsIDocument* aDoc, nsISupports* aTarget,
                               bool aTrusted, bool* aDefaultAction,
                               bool aOnlyChromeDispatch)
 {
-  nsCOMPtr<nsIDOMEvent> event;
+  RefPtr<Event> event;
   nsCOMPtr<EventTarget> target;
   nsresult rv = GetEventAndTarget(aDoc, aTarget, aEventName, aCanBubble,
                                   aCancelable, aTrusted, getter_AddRefs(event),
@@ -4604,8 +4470,12 @@ nsContentUtils::DispatchEvent(nsIDocument* aDoc, nsISupports* aTarget,
   NS_ENSURE_SUCCESS(rv, rv);
   event->WidgetEventPtr()->mFlags.mOnlyChromeDispatch = aOnlyChromeDispatch;
 
-  bool dummy;
-  return target->DispatchEvent(event, aDefaultAction ? aDefaultAction : &dummy);
+  ErrorResult err;
+  bool doDefault = target->DispatchEvent(*event, CallerType::System, err);
+  if (aDefaultAction) {
+    *aDefaultAction = doDefault;
+  }
+  return err.StealNSResult();
 }
 
 // static
@@ -4650,7 +4520,7 @@ nsContentUtils::DispatchChromeEvent(nsIDocument *aDoc,
                                     bool* aDefaultAction)
 {
 
-  nsCOMPtr<nsIDOMEvent> event;
+  RefPtr<Event> event;
   nsCOMPtr<EventTarget> target;
   nsresult rv = GetEventAndTarget(aDoc, aTarget, aEventName, aCanBubble,
                                   aCancelable, true, getter_AddRefs(event),
@@ -4665,12 +4535,13 @@ nsContentUtils::DispatchChromeEvent(nsIDocument *aDoc,
   if (!piTarget)
     return NS_ERROR_INVALID_ARG;
 
-  bool defaultActionEnabled;
-  rv = piTarget->DispatchEvent(event, &defaultActionEnabled);
+  ErrorResult err;
+  bool defaultActionEnabled =
+    piTarget->DispatchEvent(*event, CallerType::System, err);
   if (aDefaultAction) {
     *aDefaultAction = defaultActionEnabled;
   }
-  return rv;
+  return err.StealNSResult();
 }
 
 /* static */
@@ -5044,19 +4915,6 @@ nsContentUtils::IsValidNodeName(nsAtom *aLocalName, nsAtom *aPrefix,
          (aNamespaceID == kNameSpaceID_XML || aPrefix != nsGkAtoms::xml);
 }
 
-/* static */
-nsresult
-nsContentUtils::CreateContextualFragment(nsINode* aContextNode,
-                                         const nsAString& aFragment,
-                                         bool aPreventScriptExecution,
-                                         nsIDOMDocumentFragment** aReturn)
-{
-  ErrorResult rv;
-  *aReturn = CreateContextualFragment(aContextNode, aFragment,
-                                      aPreventScriptExecution, rv).take();
-  return rv.StealNSResult();
-}
-
 already_AddRefed<DocumentFragment>
 nsContentUtils::CreateContextualFragment(nsINode* aContextNode,
                                          const nsAString& aFragment,
@@ -5168,11 +5026,11 @@ nsContentUtils::CreateContextualFragment(nsINode* aContextNode,
     content = content->GetParent();
   }
 
-  nsCOMPtr<nsIDOMDocumentFragment> frag;
+  RefPtr<DocumentFragment> frag;
   aRv = ParseFragmentXML(aFragment, document, tagStack,
                          aPreventScriptExecution, getter_AddRefs(frag),
                          aSanitize);
-  return frag.forget().downcast<DocumentFragment>();
+  return frag.forget();
 }
 
 /* static */
@@ -5219,7 +5077,8 @@ nsContentUtils::ParseFragmentHTML(const nsAString& aSourceBuffer,
   // If this is a chrome-privileged document, create a fragment first, and
   // sanitize it before insertion.
   RefPtr<DocumentFragment> fragment;
-  if (aSanitize != NeverSanitize && !aTargetNode->OwnerDoc()->AllowUnsafeHTML()) {
+  if (aSanitize != NeverSanitize &&
+      IsSystemPrincipal(aTargetNode->NodePrincipal())) {
     fragment = new DocumentFragment(aTargetNode->OwnerDoc()->NodeInfoManager());
     target = fragment;
   }
@@ -5282,7 +5141,7 @@ nsContentUtils::ParseFragmentXML(const nsAString& aSourceBuffer,
                                  nsIDocument* aDocument,
                                  nsTArray<nsString>& aTagStack,
                                  bool aPreventScriptExecution,
-                                 nsIDOMDocumentFragment** aReturn,
+                                 DocumentFragment** aReturn,
                                  SanitizeFragments aSanitize)
 {
   AutoTimelineMarker m(aDocument->GetDocShell(), "Parse XML");
@@ -5326,17 +5185,16 @@ nsContentUtils::ParseFragmentXML(const nsAString& aSourceBuffer,
 
   // If this is a chrome-privileged document, sanitize the fragment before
   // returning.
-  if (aSanitize != NeverSanitize && !aDocument->AllowUnsafeHTML()) {
+  if (aSanitize != NeverSanitize &&
+      IsSystemPrincipal(aDocument->NodePrincipal())) {
     // Don't fire mutation events for nodes removed by the sanitizer.
     nsAutoScriptBlockerSuppressNodeRemoved scriptBlocker;
-
-    RefPtr<DocumentFragment> fragment = static_cast<DocumentFragment*>(*aReturn);
 
     nsTreeSanitizer sanitizer(nsIParserUtils::SanitizerAllowStyle |
                               nsIParserUtils::SanitizerAllowComments |
                               nsIParserUtils::SanitizerDropForms |
                               nsIParserUtils::SanitizerLogRemovals);
-    sanitizer.Sanitize(fragment);
+    sanitizer.Sanitize(*aReturn);
   }
 
   return rv;
@@ -5351,7 +5209,7 @@ nsContentUtils::ConvertToPlainText(const nsAString& aSourceBuffer,
 {
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), "about:blank");
-  nsCOMPtr<nsIPrincipal> principal = NullPrincipal::Create();
+  nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
   nsCOMPtr<nsIDOMDocument> domDocument;
   nsresult rv = NS_NewDOMDocument(getter_AddRefs(domDocument),
                                   EmptyString(),
@@ -5409,7 +5267,7 @@ nsContentUtils::SetNodeTextContent(nsIContent* aContent,
       for (child = aContent->GetFirstChild();
            child && child->GetParentNode() == aContent;
            child = child->GetNextSibling()) {
-        if (skipFirst && child->IsNodeOfType(nsINode::eTEXT)) {
+        if (skipFirst && child->IsText()) {
           skipFirst = false;
           continue;
         }
@@ -5428,7 +5286,7 @@ nsContentUtils::SetNodeTextContent(nsIContent* aContent,
     // Let's remove nodes until we find a eTEXT.
     while (aContent->HasChildren()) {
       nsIContent* child = aContent->GetFirstChild();
-      if (child->IsNodeOfType(nsINode::eTEXT)) {
+      if (child->IsText()) {
         break;
       }
       aContent->RemoveChildNode(child, true);
@@ -5437,8 +5295,7 @@ nsContentUtils::SetNodeTextContent(nsIContent* aContent,
     // If we have a node, it must be a eTEXT and we reuse it.
     if (aContent->HasChildren()) {
       nsIContent* child = aContent->GetFirstChild();
-      MOZ_ASSERT(child->IsNodeOfType(nsINode::eTEXT));
-      nsresult rv = child->SetText(aValue, true);
+      nsresult rv = child->AsText()->SetText(aValue, true);
       NS_ENSURE_SUCCESS(rv, rv);
 
       // All the following nodes, if they exist, must be deleted.
@@ -5487,8 +5344,8 @@ AppendNodeTextContentsRecurse(nsINode* aNode, nsAString& aResult,
         return false;
       }
     }
-    else if (child->IsNodeOfType(nsINode::eTEXT)) {
-      bool ok = child->AppendTextTo(aResult, aFallible);
+    else if (Text* text = child->GetAsText()) {
+      bool ok = text->AppendTextTo(aResult, aFallible);
       if (!ok) {
         return false;
       }
@@ -5504,9 +5361,8 @@ nsContentUtils::AppendNodeTextContent(nsINode* aNode, bool aDeep,
                                       nsAString& aResult,
                                       const fallible_t& aFallible)
 {
-  if (aNode->IsNodeOfType(nsINode::eTEXT)) {
-    return static_cast<nsIContent*>(aNode)->AppendTextTo(aResult,
-                                                         aFallible);
+  if (Text* text = aNode->GetAsText()) {
+    return text->AppendTextTo(aResult, aFallible);
   }
   if (aDeep) {
     return AppendNodeTextContentsRecurse(aNode, aResult, aFallible);
@@ -5515,8 +5371,8 @@ nsContentUtils::AppendNodeTextContent(nsINode* aNode, bool aDeep,
   for (nsIContent* child = aNode->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (child->IsNodeOfType(nsINode::eTEXT)) {
-      bool ok = child->AppendTextTo(aResult, fallible);
+    if (Text* text = child->GetAsText()) {
+      bool ok = text->AppendTextTo(aResult, fallible);
       if (!ok) {
         return false;
       }
@@ -5532,7 +5388,7 @@ nsContentUtils::HasNonEmptyTextContent(nsINode* aNode,
   for (nsIContent* child = aNode->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (child->IsNodeOfType(nsINode::eTEXT) &&
+    if (child->IsText() &&
         child->TextLength() > 0) {
         return true;
     }
@@ -5635,8 +5491,7 @@ nsContentUtils::CombineResourcePrincipals(nsCOMPtr<nsIPrincipal>* aResourcePrinc
 void
 nsContentUtils::TriggerLink(nsIContent *aContent, nsPresContext *aPresContext,
                             nsIURI *aLinkURI, const nsString &aTargetSpec,
-                            bool aClick, bool aIsUserTriggered,
-                            bool aIsTrusted)
+                            bool aClick, bool aIsTrusted)
 {
   NS_ASSERTION(aPresContext, "Need a nsPresContext");
   NS_PRECONDITION(aLinkURI, "No link URI");
@@ -5659,10 +5514,7 @@ nsContentUtils::TriggerLink(nsIContent *aContent, nsPresContext *aPresContext,
   nsresult proceed = NS_OK;
 
   if (sSecurityManager) {
-    uint32_t flag =
-      aIsUserTriggered ?
-      (uint32_t)nsIScriptSecurityManager::STANDARD :
-      (uint32_t)nsIScriptSecurityManager::LOAD_IS_AUTOMATIC_DOCUMENT_REPLACEMENT;
+    uint32_t flag = static_cast<uint32_t>(nsIScriptSecurityManager::STANDARD);
     proceed =
       sSecurityManager->CheckLoadURIWithPrincipal(aContent->NodePrincipal(),
                                                   aLinkURI, flag);
@@ -5688,8 +5540,8 @@ nsContentUtils::TriggerLink(nsIContent *aContent, nsPresContext *aPresContext,
 
     handler->OnLinkClick(aContent, aLinkURI,
                          fileName.IsVoid() ? aTargetSpec.get() : EmptyString().get(),
-                         fileName, nullptr, -1, nullptr, aIsTrusted,
-                         aContent->NodePrincipal());
+                         fileName, nullptr, -1, nullptr, EventStateManager::IsHandlingUserInput(),
+                         aIsTrusted, aContent->NodePrincipal());
   }
 }
 
@@ -5807,9 +5659,7 @@ nsContentUtils::GetWindowProviderForContentProcess()
 already_AddRefed<nsPIDOMWindowOuter>
 nsContentUtils::GetMostRecentNonPBWindow()
 {
-  nsCOMPtr<nsIWindowMediator> windowMediator =
-    do_GetService(NS_WINDOWMEDIATOR_CONTRACTID);
-  nsCOMPtr<nsIWindowMediator_44> wm = do_QueryInterface(windowMediator);
+  nsCOMPtr<nsIWindowMediator> wm = do_GetService(NS_WINDOWMEDIATOR_CONTRACTID);
 
   nsCOMPtr<mozIDOMWindowProxy> window;
   wm->GetMostRecentNonPBWindow(u"navigator:browser",
@@ -5825,16 +5675,20 @@ void
 nsContentUtils::WarnScriptWasIgnored(nsIDocument* aDocument)
 {
   nsAutoString msg;
+  bool privateBrowsing = false;
+
   if (aDocument) {
     nsCOMPtr<nsIURI> uri = aDocument->GetDocumentURI();
     if (uri) {
       msg.Append(NS_ConvertUTF8toUTF16(uri->GetSpecOrDefault()));
       msg.AppendLiteral(" : ");
     }
+    privateBrowsing =
+      !!aDocument->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId;
   }
-  msg.AppendLiteral("Unable to run script because scripts are blocked internally.");
 
-  LogSimpleConsoleError(msg, "DOM");
+  msg.AppendLiteral("Unable to run script because scripts are blocked internally.");
+  LogSimpleConsoleError(msg, "DOM", privateBrowsing);
 }
 
 /* static */
@@ -6035,15 +5889,9 @@ nsContentUtils::SetDataTransferInEvent(WidgetDragEvent* aDragEvent)
   nsCOMPtr<nsIDragSession> dragSession = GetDragSession();
   NS_ENSURE_TRUE(dragSession, NS_OK); // no drag in progress
 
-  nsCOMPtr<nsIDOMDataTransfer> dataTransfer;
-  nsCOMPtr<DataTransfer> initialDataTransfer;
-  dragSession->GetDataTransfer(getter_AddRefs(dataTransfer));
-  if (dataTransfer) {
-    initialDataTransfer = do_QueryInterface(dataTransfer);
-    if (!initialDataTransfer) {
-      return NS_ERROR_FAILURE;
-    }
-  } else {
+  RefPtr<DataTransfer> initialDataTransfer =
+    dragSession->GetDataTransfer();
+  if (!initialDataTransfer) {
     // A dataTransfer won't exist when a drag was started by some other
     // means, for instance calling the drag service directly, or a drag
     // from another application. In either case, a new dataTransfer should
@@ -6073,9 +5921,9 @@ nsContentUtils::SetDataTransferInEvent(WidgetDragEvent* aDragEvent)
   // from the drop action, which platform specific widget code sets before
   // the event is fired based on the keyboard state.
   if (aDragEvent->mMessage == eDragEnter || aDragEvent->mMessage == eDragOver) {
-    uint32_t action, effectAllowed;
+    uint32_t action;
     dragSession->GetDragAction(&action);
-    aDragEvent->mDataTransfer->GetEffectAllowedInt(&effectAllowed);
+    uint32_t effectAllowed = aDragEvent->mDataTransfer->EffectAllowedInt();
     aDragEvent->mDataTransfer->SetDropEffectInt(
                                  FilterDropEffect(action, effectAllowed));
   }
@@ -6085,9 +5933,8 @@ nsContentUtils::SetDataTransferInEvent(WidgetDragEvent* aDragEvent)
     // last value that the dropEffect had. This will have been set in
     // EventStateManager::PostHandleEvent for the last dragenter or
     // dragover event.
-    uint32_t dropEffect;
-    initialDataTransfer->GetDropEffectInt(&dropEffect);
-    aDragEvent->mDataTransfer->SetDropEffectInt(dropEffect);
+    aDragEvent->mDataTransfer->SetDropEffectInt(
+      initialDataTransfer->DropEffectInt());
   }
 
   return NS_OK;
@@ -6187,55 +6034,14 @@ nsContentUtils::URIIsLocalFile(nsIURI *aURI)
 }
 
 /* static */
-nsIScriptContext*
-nsContentUtils::GetContextForEventHandlers(nsINode* aNode,
-                                           nsresult* aRv)
-{
-  *aRv = NS_OK;
-  bool hasHadScriptObject = true;
-  nsIScriptGlobalObject* sgo =
-    aNode->OwnerDoc()->GetScriptHandlingObject(hasHadScriptObject);
-  // It is bad if the document doesn't have event handling context,
-  // but it used to have one.
-  if (!sgo && hasHadScriptObject) {
-    *aRv = NS_ERROR_UNEXPECTED;
-    return nullptr;
-  }
-
-  if (sgo) {
-    nsIScriptContext* scx = sgo->GetContext();
-    // Bad, no context from script global object!
-    if (!scx) {
-      *aRv = NS_ERROR_UNEXPECTED;
-      return nullptr;
-    }
-    return scx;
-  }
-
-  return nullptr;
-}
-
-/* static */
 JSContext *
 nsContentUtils::GetCurrentJSContext()
 {
-  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(IsInitialized());
   if (!IsJSAPIActive()) {
     return nullptr;
   }
   return danger::GetJSContext();
-}
-
-/* static */
-JSContext *
-nsContentUtils::GetCurrentJSContextForThread()
-{
-  MOZ_ASSERT(IsInitialized());
-  if (MOZ_LIKELY(NS_IsMainThread())) {
-    return GetCurrentJSContext();
-  }
-  return GetCurrentWorkerThreadJSContext();
 }
 
 template<typename StringType, typename CharType>
@@ -6591,41 +6397,24 @@ nsContentUtils::GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin)
 {
   NS_PRECONDITION(aURI, "missing uri");
 
-  // For Blob URI we have to return the origin of page using its principal.
-  nsCOMPtr<nsIURIWithPrincipal> uriWithPrincipal = do_QueryInterface(aURI);
-  if (uriWithPrincipal) {
-    nsCOMPtr<nsIPrincipal> principal;
-    uriWithPrincipal->GetPrincipal(getter_AddRefs(principal));
+  bool isBlobURL = false;
+  nsresult rv = aURI->SchemeIs(BLOBURI_SCHEME, &isBlobURL);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-    if (principal) {
-      nsCOMPtr<nsIURI> uri;
-      nsresult rv = principal->GetURI(getter_AddRefs(uri));
-      NS_ENSURE_SUCCESS(rv, rv);
+  // For Blob URI, the path is the URL of the owning page.
+  if (isBlobURL) {
+    nsAutoCString path;
+    rv = aURI->GetPathQueryRef(path);
+    NS_ENSURE_SUCCESS(rv, rv);
 
-      if (uri && uri != aURI) {
-        return GetUTFOrigin(uri, aOrigin);
-      }
-    } else {
-      // We are probably dealing with an unknown blob URL.
-      bool isBlobURL = false;
-      nsresult rv = aURI->SchemeIs(BLOBURI_SCHEME, &isBlobURL);
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      if (isBlobURL) {
-        nsAutoCString path;
-        rv = aURI->GetPathQueryRef(path);
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsCOMPtr<nsIURI> uri;
-        nsresult rv = NS_NewURI(getter_AddRefs(uri), path);
-        if (NS_FAILED(rv)) {
-          aOrigin.AssignLiteral("null");
-          return NS_OK;
-        }
-
-        return GetUTFOrigin(uri, aOrigin);
-      }
+    nsCOMPtr<nsIURI> uri;
+    nsresult rv = NS_NewURI(getter_AddRefs(uri), path);
+    if (NS_FAILED(rv)) {
+      aOrigin.AssignLiteral("null");
+      return NS_OK;
     }
+
+    return GetUTFOrigin(uri, aOrigin);
   }
 
   aOrigin.Truncate();
@@ -6634,7 +6423,7 @@ nsContentUtils::GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin)
   NS_ENSURE_TRUE(uri, NS_ERROR_UNEXPECTED);
 
   nsCString host;
-  nsresult rv = uri->GetHost(host);
+  rv = uri->GetHost(host);
 
   if (NS_SUCCEEDED(rv) && !host.IsEmpty()) {
     nsCString scheme;
@@ -6714,7 +6503,7 @@ nsContentUtils::CanAccessNativeAnon()
 /* static */ nsresult
 nsContentUtils::DispatchXULCommand(nsIContent* aTarget,
                                    bool aTrusted,
-                                   nsIDOMEvent* aSourceEvent,
+                                   Event* aSourceEvent,
                                    nsIPresShell* aShell,
                                    bool aCtrl,
                                    bool aAlt,
@@ -6729,8 +6518,11 @@ nsContentUtils::DispatchXULCommand(nsIContent* aTarget,
   RefPtr<XULCommandEvent> xulCommand = new XULCommandEvent(doc, presContext,
                                                            nullptr);
   xulCommand->InitCommandEvent(NS_LITERAL_STRING("command"), true, true,
-                               doc->GetInnerWindow(), 0, aCtrl, aAlt, aShift,
-                               aMeta, aSourceEvent, aInputSource);
+                               nsGlobalWindowInner::Cast(doc->GetInnerWindow()),
+                               0, aCtrl, aAlt, aShift,
+                               aMeta,
+                               aSourceEvent,
+                               aInputSource, IgnoreErrors());
 
   if (aShell) {
     nsEventStatus status = nsEventStatus_eIgnore;
@@ -6738,10 +6530,9 @@ nsContentUtils::DispatchXULCommand(nsIContent* aTarget,
     return aShell->HandleDOMEventWithTarget(aTarget, xulCommand, &status);
   }
 
-  nsCOMPtr<EventTarget> target = do_QueryInterface(aTarget);
-  NS_ENSURE_STATE(target);
-  bool dummy;
-  return target->DispatchEvent(xulCommand, &dummy);
+  ErrorResult rv;
+  aTarget->DispatchEvent(*xulCommand, rv);
+  return rv.StealNSResult();
 }
 
 // static
@@ -6892,15 +6683,13 @@ nsContentUtils::IsFocusedContent(const nsIContent* aContent)
 {
   nsFocusManager* fm = nsFocusManager::GetFocusManager();
 
-  return fm && fm->GetFocusedContent() == aContent;
+  return fm && fm->GetFocusedElement() == aContent;
 }
 
 bool
 nsContentUtils::IsSubDocumentTabbable(nsIContent* aContent)
 {
-  //XXXsmaug Shadow DOM spec issue!
-  //         We may need to change this to GetComposedDoc().
-  nsIDocument* doc = aContent->GetUncomposedDoc();
+  nsIDocument* doc = aContent->GetComposedDoc();
   if (!doc) {
     return false;
   }
@@ -7167,6 +6956,10 @@ nsContentUtils::PersistentLayerManagerForDocument(nsIDocument *aDoc)
 bool
 nsContentUtils::AllowXULXBLForPrincipal(nsIPrincipal* aPrincipal)
 {
+  if (!aPrincipal) {
+    return false;
+  }
+
   if (IsSystemPrincipal(aPrincipal)) {
     return true;
   }
@@ -7598,7 +7391,7 @@ nsContentUtils::GetSelectionInTextControl(Selection* aSelection,
                endContainer == lastChild, "Unexpected endContainer");
   // firstChild is either text or a <br> (hence an element).
   MOZ_ASSERT_IF(firstChild,
-                firstChild->IsNodeOfType(nsINode::eTEXT) || firstChild->IsElement());
+                firstChild->IsText() || firstChild->IsElement());
 #endif
   // Testing IsElement() is faster than testing IsNodeOfType(), since it's
   // non-virtual.
@@ -7898,20 +7691,18 @@ nsContentUtils::GetHostOrIPv6WithBrackets(nsIURI* aURI, nsAString& aHost)
 }
 
 bool
-nsContentUtils::CallOnAllRemoteChildren(nsIMessageBroadcaster* aManager,
+nsContentUtils::CallOnAllRemoteChildren(ChromeMessageBroadcaster* aManager,
                                         CallOnRemoteChildFunction aCallback,
                                         void* aArg)
 {
-  uint32_t tabChildCount = 0;
-  aManager->GetChildCount(&tabChildCount);
+  uint32_t tabChildCount = aManager->ChildCount();
   for (uint32_t j = 0; j < tabChildCount; ++j) {
-    nsCOMPtr<nsIMessageListenerManager> childMM;
-    aManager->GetChildAt(j, getter_AddRefs(childMM));
+    RefPtr<MessageListenerManager> childMM = aManager->GetChildAt(j);
     if (!childMM) {
       continue;
     }
 
-    nsCOMPtr<nsIMessageBroadcaster> nonLeafMM = do_QueryInterface(childMM);
+    RefPtr<ChromeMessageBroadcaster> nonLeafMM = ChromeMessageBroadcaster::From(childMM);
     if (nonLeafMM) {
       if (CallOnAllRemoteChildren(nonLeafMM, aCallback, aArg)) {
         return true;
@@ -7919,10 +7710,7 @@ nsContentUtils::CallOnAllRemoteChildren(nsIMessageBroadcaster* aManager,
       continue;
     }
 
-    nsCOMPtr<nsIMessageSender> tabMM = do_QueryInterface(childMM);
-
-    mozilla::dom::ipc::MessageManagerCallback* cb =
-     static_cast<nsFrameMessageManager*>(tabMM.get())->GetCallback();
+    mozilla::dom::ipc::MessageManagerCallback* cb = childMM->GetCallback();
     if (cb) {
       nsFrameLoader* fl = static_cast<nsFrameLoader*>(cb);
       TabParent* remote = TabParent::GetFrom(fl);
@@ -7942,10 +7730,9 @@ nsContentUtils::CallOnAllRemoteChildren(nsPIDOMWindowOuter* aWindow,
                                         CallOnRemoteChildFunction aCallback,
                                         void* aArg)
 {
-  nsCOMPtr<nsIDOMChromeWindow> chromeWindow(do_QueryInterface(aWindow));
-  if (chromeWindow) {
-    nsCOMPtr<nsIMessageBroadcaster> windowMM;
-    chromeWindow->GetMessageManager(getter_AddRefs(windowMM));
+  nsGlobalWindowOuter* window = nsGlobalWindowOuter::Cast(aWindow);
+  if (window->IsChromeWindow()) {
+    RefPtr<ChromeMessageBroadcaster> windowMM = window->GetMessageManager();
     if (windowMM) {
       CallOnAllRemoteChildren(windowMM, aCallback, aArg);
     }
@@ -8148,7 +7935,7 @@ nsContentUtils::DataTransferItemToImage(const IPCDataTransferItem& aItem,
 
   RefPtr<DataSourceSurface> image =
       CreateDataSourceSurfaceFromData(size,
-                                      static_cast<SurfaceFormat>(imageDetails.format()),
+                                      imageDetails.format(),
                                       data.get<uint8_t>(),
                                       imageDetails.stride());
 
@@ -8306,7 +8093,7 @@ nsContentUtils::TransferableToIPCTransferable(nsITransferable* aTransferable,
             imageDetails.width() = size.width;
             imageDetails.height() = size.height;
             imageDetails.stride() = stride;
-            imageDetails.format() = static_cast<uint8_t>(dataSurface->GetFormat());
+            imageDetails.format() = dataSurface->GetFormat();
 
             continue;
           }
@@ -8704,8 +8491,8 @@ nsContentUtils::SendMouseEvent(const nsCOMPtr<nsIPresShell>& aPresShell,
     return NS_ERROR_FAILURE;
   }
 
-  if (aInputSourceArg == nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN) {
-    aInputSourceArg = nsIDOMMouseEvent::MOZ_SOURCE_MOUSE;
+  if (aInputSourceArg == MouseEventBinding::MOZ_SOURCE_UNKNOWN) {
+    aInputSourceArg = MouseEventBinding::MOZ_SOURCE_MOUSE;
   }
 
   WidgetMouseEvent event(true, msg, widget,
@@ -8837,8 +8624,7 @@ bool
 nsContentUtils::IsUpgradableDisplayType(nsContentPolicyType aType)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  return sIsUpgradableDisplayContentPrefEnabled &&
-         (aType == nsIContentPolicy::TYPE_IMAGE ||
+  return (aType == nsIContentPolicy::TYPE_IMAGE ||
           aType == nsIContentPolicy::TYPE_MEDIA);
 }
 
@@ -9907,13 +9693,12 @@ nsContentUtils::GetPresentationURL(nsIDocShell* aDocShell, nsAString& aPresentat
   }
 
   nsCOMPtr<nsILoadContext> loadContext(do_QueryInterface(aDocShell));
-  nsCOMPtr<nsIDOMElement> topFrameElement;
-  loadContext->GetTopFrameElement(getter_AddRefs(topFrameElement));
-  if (!topFrameElement) {
+  RefPtr<Element> topFrameElt;
+  loadContext->GetTopFrameElement(getter_AddRefs(topFrameElt));
+  if (!topFrameElt) {
     return;
   }
 
-  nsCOMPtr<Element> topFrameElt = do_QueryInterface(topFrameElement);
   topFrameElt->GetAttribute(NS_LITERAL_STRING("mozpresentation"), aPresentationUrl);
 }
 
@@ -10055,9 +9840,8 @@ nsContentUtils::TryToUpgradeElement(Element* aElement)
   if (definition) {
     nsContentUtils::EnqueueUpgradeReaction(aElement, definition);
   } else {
-    // Add an unresolved custom element that is a candidate for
-    // upgrade when a custom element is connected to the document.
-    // We will make sure it's shadow-including tree order in bug 1326028.
+    // Add an unresolved custom element that is a candidate for upgrade when a
+    // custom element is connected to the document.
     nsContentUtils::RegisterUnresolvedElement(aElement, typeAtom);
   }
 }
@@ -10112,9 +9896,9 @@ nsContentUtils::NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* a
   if (nodeInfo->NamespaceEquals(kNameSpaceID_XHTML)) {
     tag = nsHTMLTags::CaseSensitiveAtomTagToId(name);
     isCustomElementName = (tag == eHTMLTag_userdefined &&
-                           nsContentUtils::IsCustomElementName(name));
+                           nsContentUtils::IsCustomElementName(name, kNameSpaceID_XHTML));
   } else {
-    isCustomElementName = nsContentUtils::IsCustomElementName(name);
+    isCustomElementName = nsContentUtils::IsCustomElementName(name, kNameSpaceID_XUL);
   }
 
   RefPtr<nsAtom> tagAtom = nodeInfo->NameAtom();
@@ -10126,13 +9910,14 @@ nsContentUtils::NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* a
 
   MOZ_ASSERT_IF(aDefinition, isCustomElement);
 
+  bool customElementEnabled = CustomElementRegistry::IsCustomElementEnabled(nodeInfo->GetDocument());
+
   // https://dom.spec.whatwg.org/#concept-create-element
   // We only handle the "synchronous custom elements flag is set" now.
   // For the unset case (e.g. cloning a node), see bug 1319342 for that.
   // Step 4.
   CustomElementDefinition* definition = aDefinition;
-  if (CustomElementRegistry::IsCustomElementEnabled() && isCustomElement &&
-      !definition) {
+  if (customElementEnabled && isCustomElement && !definition) {
     MOZ_ASSERT(nodeInfo->NameAtom()->Equals(nodeInfo->LocalName()));
     definition =
       nsContentUtils::LookupCustomElementDefinition(nodeInfo->GetDocument(),
@@ -10206,7 +9991,7 @@ nsContentUtils::NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* a
         if (nodeInfo->NamespaceEquals(kNameSpaceID_XHTML)) {
           NS_IF_ADDREF(*aResult = NS_NewHTMLUnknownElement(nodeInfo.forget(), aFromParser));
         } else {
-          NS_IF_ADDREF(*aResult = new nsXULElement(nodeInfo.forget()));
+          NS_IF_ADDREF(*aResult = nsXULElement::Construct(nodeInfo.forget()));
         }
       }
       return NS_OK;
@@ -10216,7 +10001,7 @@ nsContentUtils::NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* a
     if (nodeInfo->NamespaceEquals(kNameSpaceID_XHTML)) {
       NS_IF_ADDREF(*aResult = NS_NewHTMLElement(nodeInfo.forget(), aFromParser));
     } else {
-      NS_IF_ADDREF(*aResult = new nsXULElement(nodeInfo.forget()));
+      NS_IF_ADDREF(*aResult = nsXULElement::Construct(nodeInfo.forget()));
     }
     (*aResult)->SetCustomElementData(new CustomElementData(definition->mType));
     nsContentUtils::EnqueueUpgradeReaction(*aResult, definition);
@@ -10232,14 +10017,14 @@ nsContentUtils::NewXULOrHTMLElement(Element** aResult, mozilla::dom::NodeInfo* a
       *aResult = CreateHTMLElement(tag, nodeInfo.forget(), aFromParser).take();
     }
   } else {
-    NS_IF_ADDREF(*aResult = new nsXULElement(nodeInfo.forget()));
+    NS_IF_ADDREF(*aResult = nsXULElement::Construct(nodeInfo.forget()));
   }
 
   if (!*aResult) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  if (CustomElementRegistry::IsCustomElementEnabled() && isCustomElement) {
+  if (customElementEnabled && isCustomElement) {
     (*aResult)->SetCustomElementData(new CustomElementData(typeAtom));
   }
 
@@ -10260,12 +10045,12 @@ nsContentUtils::LookupCustomElementDefinition(nsIDocument* aDoc,
     return nullptr;
   }
 
-  nsCOMPtr<nsPIDOMWindowInner> window(aDoc->GetInnerWindow());
+  nsPIDOMWindowInner* window = aDoc->GetInnerWindow();
   if (!window) {
     return nullptr;
   }
 
-  RefPtr<CustomElementRegistry> registry(window->CustomElements());
+  CustomElementRegistry* registry = window->CustomElements();
   if (!registry) {
     return nullptr;
   }
@@ -10297,7 +10082,7 @@ nsContentUtils::UnregisterUnresolvedElement(Element* aElement)
 {
   MOZ_ASSERT(aElement);
 
-  RefPtr<nsAtom> typeAtom =
+  nsAtom* typeAtom =
     aElement->GetCustomElementData()->GetCustomElementType();
   nsIDocument* doc = aElement->OwnerDoc();
   nsPIDOMWindowInner* window(doc->GetInnerWindow());
@@ -10305,7 +10090,7 @@ nsContentUtils::UnregisterUnresolvedElement(Element* aElement)
     return;
   }
 
-  RefPtr<CustomElementRegistry> registry(window->CustomElements());
+  CustomElementRegistry* registry = window->CustomElements();
   if (!registry) {
     return;
   }
@@ -11194,4 +10979,25 @@ nsContentUtils::InnerOrOuterWindowDestroyed()
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(sInnerOrOuterWindowCount > 0);
   --sInnerOrOuterWindowCount;
+}
+
+/* static */ bool
+nsContentUtils::CanShowPopup(nsIPrincipal* aPrincipal)
+{
+  MOZ_ASSERT(aPrincipal);
+  uint32_t permit;
+  nsCOMPtr<nsIPermissionManager> permissionManager =
+    services::GetPermissionManager();
+
+  if (permissionManager &&
+      NS_SUCCEEDED(permissionManager->TestPermissionFromPrincipal(aPrincipal, "popup", &permit))) {
+    if (permit == nsIPermissionManager::ALLOW_ACTION) {
+      return true;
+    }
+    if (permit == nsIPermissionManager::DENY_ACTION) {
+      return false;
+    }
+  }
+
+  return !sDisablePopups;
 }

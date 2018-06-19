@@ -58,18 +58,21 @@ CodeSegment::~CodeSegment()
 static uint32_t
 RoundupCodeLength(uint32_t codeLength)
 {
-    // codeLength is a multiple of the system's page size, but not necessarily
-    // a multiple of ExecutableCodePageSize.
-    MOZ_ASSERT(codeLength % gc::SystemPageSize() == 0);
+    // AllocateExecutableMemory() requires a multiple of ExecutableCodePageSize.
     return JS_ROUNDUP(codeLength, ExecutableCodePageSize);
 }
 
 /* static */ UniqueCodeBytes
 CodeSegment::AllocateCodeBytes(uint32_t codeLength)
 {
-    codeLength = RoundupCodeLength(codeLength);
+    if (codeLength > MaxCodeBytesPerProcess)
+        return nullptr;
 
-    void* p = AllocateExecutableMemory(codeLength, ProtectionSetting::Writable);
+    static_assert(MaxCodeBytesPerProcess <= INT32_MAX, "rounding won't overflow");
+    uint32_t roundedCodeLength = RoundupCodeLength(codeLength);
+
+    void* p = AllocateExecutableMemory(roundedCodeLength, ProtectionSetting::Writable,
+                                       MemCheckKind::MakeUndefined);
 
     // If the allocation failed and the embedding gives us a last-ditch attempt
     // to purge all memory (which, in gecko, does a purging GC/CC/GC), do that
@@ -77,17 +80,21 @@ CodeSegment::AllocateCodeBytes(uint32_t codeLength)
     if (!p) {
         if (OnLargeAllocationFailure) {
             OnLargeAllocationFailure();
-            p = AllocateExecutableMemory(codeLength, ProtectionSetting::Writable);
+            p = AllocateExecutableMemory(roundedCodeLength, ProtectionSetting::Writable,
+                                         MemCheckKind::MakeUndefined);
         }
     }
 
     if (!p)
         return nullptr;
 
+    // Zero the padding.
+    memset(((uint8_t*)p) + codeLength, 0, roundedCodeLength - codeLength);
+
     // We account for the bytes allocated in WasmModuleObject::create, where we
     // have the necessary JSContext.
 
-    return UniqueCodeBytes((uint8_t*)p, FreeCode(codeLength));
+    return UniqueCodeBytes((uint8_t*)p, FreeCode(roundedCodeLength));
 }
 
 const Code&
@@ -262,11 +269,7 @@ ModuleSegment::create(Tier tier,
                       const Metadata& metadata,
                       const CodeRangeVector& codeRanges)
 {
-    // Round up the code size to page size since this is eventually required by
-    // the executable-code allocator and for setting memory protection.
-    uint32_t bytesNeeded = masm.bytesNeeded();
-    uint32_t padding = ComputeByteAlignment(bytesNeeded, gc::SystemPageSize());
-    uint32_t codeLength = bytesNeeded + padding;
+    uint32_t codeLength = masm.bytesNeeded();
 
     UniqueCodeBytes codeBytes = AllocateCodeBytes(codeLength);
     if (!codeBytes)
@@ -274,9 +277,6 @@ ModuleSegment::create(Tier tier,
 
     // We'll flush the icache after static linking, in initialize().
     masm.executableCopy(codeBytes.get(), /* flushICache = */ false);
-
-    // Zero the padding.
-    memset(codeBytes.get() + bytesNeeded, 0, padding);
 
     return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata, codeRanges);
 }
@@ -289,17 +289,13 @@ ModuleSegment::create(Tier tier,
                       const Metadata& metadata,
                       const CodeRangeVector& codeRanges)
 {
-    // The unlinked bytes are a snapshot of the MacroAssembler's contents so
-    // round up just like in the MacroAssembler overload above.
-    uint32_t padding = ComputeByteAlignment(unlinkedBytes.length(), gc::SystemPageSize());
-    uint32_t codeLength = unlinkedBytes.length() + padding;
+    uint32_t codeLength = unlinkedBytes.length();
 
     UniqueCodeBytes codeBytes = AllocateCodeBytes(codeLength);
     if (!codeBytes)
         return nullptr;
 
-    memcpy(codeBytes.get(), unlinkedBytes.begin(), unlinkedBytes.length());
-    memset(codeBytes.get() + unlinkedBytes.length(), 0, padding);
+    memcpy(codeBytes.get(), unlinkedBytes.begin(), codeLength);
 
     return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata, codeRanges);
 }
@@ -334,16 +330,11 @@ ModuleSegment::initialize(Tier tier,
                           const Metadata& metadata,
                           const CodeRangeVector& codeRanges)
 {
-    MOZ_ASSERT(bytes_ == nullptr);
-    MOZ_ASSERT(linkData.interruptOffset);
-    MOZ_ASSERT(linkData.outOfBoundsOffset);
-    MOZ_ASSERT(linkData.unalignedAccessOffset);
-    MOZ_ASSERT(linkData.trapOffset);
+    MOZ_ASSERT(!bytes_);
 
     tier_ = tier;
     bytes_ = Move(codeBytes);
     length_ = codeLength;
-    interruptCode_ = bytes_.get() + linkData.interruptOffset;
     outOfBoundsCode_ = bytes_.get() + linkData.outOfBoundsOffset;
     unalignedAccessCode_ = bytes_.get() + linkData.unalignedAccessOffset;
     trapCode_ = bytes_.get() + linkData.trapOffset;
@@ -400,7 +391,6 @@ ModuleSegment::deserialize(const uint8_t* cursor, const ShareableBytes& bytecode
     if (!cursor)
         return nullptr;
 
-    MOZ_ASSERT(length % gc::SystemPageSize() == 0);
     UniqueCodeBytes bytes = AllocateCodeBytes(length);
     if (!bytes)
         return nullptr;
@@ -528,8 +518,7 @@ CacheableChars::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 size_t
 MetadataTier::serializedSize() const
 {
-    return SerializedPodVectorSize(memoryAccesses) +
-           SerializedPodVectorSize(codeRanges) +
+    return SerializedPodVectorSize(codeRanges) +
            SerializedPodVectorSize(callSites) +
            trapSites.serializedSize() +
            SerializedVectorSize(funcImports) +
@@ -539,8 +528,7 @@ MetadataTier::serializedSize() const
 size_t
 MetadataTier::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    return memoryAccesses.sizeOfExcludingThis(mallocSizeOf) +
-           codeRanges.sizeOfExcludingThis(mallocSizeOf) +
+    return codeRanges.sizeOfExcludingThis(mallocSizeOf) +
            callSites.sizeOfExcludingThis(mallocSizeOf) +
            trapSites.sizeOfExcludingThis(mallocSizeOf) +
            SizeOfVectorExcludingThis(funcImports, mallocSizeOf) +
@@ -551,7 +539,6 @@ uint8_t*
 MetadataTier::serialize(uint8_t* cursor) const
 {
     MOZ_ASSERT(debugTrapFarJumpOffsets.empty() && debugFuncToCodeRange.empty());
-    cursor = SerializePodVector(cursor, memoryAccesses);
     cursor = SerializePodVector(cursor, codeRanges);
     cursor = SerializePodVector(cursor, callSites);
     cursor = trapSites.serialize(cursor);
@@ -563,7 +550,6 @@ MetadataTier::serialize(uint8_t* cursor) const
 /* static */ const uint8_t*
 MetadataTier::deserialize(const uint8_t* cursor)
 {
-    (cursor = DeserializePodVector(cursor, &memoryAccesses)) &&
     (cursor = DeserializePodVector(cursor, &codeRanges)) &&
     (cursor = DeserializePodVector(cursor, &callSites)) &&
     (cursor = trapSites.deserialize(cursor)) &&
@@ -623,22 +609,25 @@ LazyStubSegment::addStubs(size_t codeLength, const Uint32Vector& funcExportIndic
         return false;
 
     size_t i = 0;
-    for (DebugOnly<uint32_t> funcExportIndex : funcExportIndices) {
+    for (uint32_t funcExportIndex : funcExportIndices) {
         const CodeRange& interpRange = codeRanges[i];
         MOZ_ASSERT(interpRange.isInterpEntry());
         MOZ_ASSERT(interpRange.funcIndex() == funcExports[funcExportIndex].funcIndex());
 
         codeRanges_.infallibleAppend(interpRange);
         codeRanges_.back().offsetBy(offsetInSegment);
+        i++;
 
-        const CodeRange& jitRange = codeRanges[i + 1];
+        if (funcExports[funcExportIndex].sig().temporarilyUnsupportedAnyRef())
+            continue;
+
+        const CodeRange& jitRange = codeRanges[i];
         MOZ_ASSERT(jitRange.isJitEntry());
         MOZ_ASSERT(jitRange.funcIndex() == interpRange.funcIndex());
 
         codeRanges_.infallibleAppend(jitRange);
         codeRanges_.back().offsetBy(offsetInSegment);
-
-        i += 2;
+        i++;
     }
 
     return true;
@@ -672,31 +661,36 @@ struct ProjectLazyFuncIndex
 static constexpr unsigned LAZY_STUB_LIFO_DEFAULT_CHUNK_SIZE = 8 * 1024;
 
 bool
-LazyStubTier::createMany(const Uint32Vector& funcExportIndices, const CodeTier& codeTier,
-                         size_t* stubSegmentIndex)
+LazyStubTier::createMany(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                         const CodeTier& codeTier, size_t* stubSegmentIndex)
 {
     MOZ_ASSERT(funcExportIndices.length());
 
     LifoAlloc lifo(LAZY_STUB_LIFO_DEFAULT_CHUNK_SIZE);
     TempAllocator alloc(&lifo);
     JitContext jitContext(&alloc);
-    MacroAssembler masm(MacroAssembler::WasmToken(), alloc);
+    WasmMacroAssembler masm(alloc);
 
     const CodeRangeVector& moduleRanges = codeTier.metadata().codeRanges;
     const FuncExportVector& funcExports = codeTier.metadata().funcExports;
     uint8_t* moduleSegmentBase = codeTier.segment().base();
 
     CodeRangeVector codeRanges;
+    DebugOnly<uint32_t> numExpectedRanges = 0;
     for (uint32_t funcExportIndex : funcExportIndices) {
         const FuncExport& fe = funcExports[funcExportIndex];
+        numExpectedRanges += fe.sig().temporarilyUnsupportedAnyRef() ? 1 : 2;
         void* calleePtr = moduleSegmentBase +
                           moduleRanges[fe.interpCodeRangeIndex()].funcNormalEntry();
         Maybe<ImmPtr> callee;
         callee.emplace(calleePtr, ImmPtr::NoCheckToken());
-        if (!GenerateEntryStubs(masm, funcExportIndex, fe, callee, /* asmjs*/ false, &codeRanges))
+        if (!GenerateEntryStubs(masm, funcExportIndex, fe, callee, /* asmjs */ false,
+                                gcTypesEnabled, &codeRanges))
+        {
             return false;
+        }
     }
-    MOZ_ASSERT(codeRanges.length() == 2 * funcExportIndices.length(), "two entries per function");
+    MOZ_ASSERT(codeRanges.length() == numExpectedRanges, "incorrect number of entries per function");
 
     masm.finish();
 
@@ -705,10 +699,7 @@ LazyStubTier::createMany(const Uint32Vector& funcExportIndices, const CodeTier& 
     MOZ_ASSERT(masm.callSiteTargets().empty());
     MOZ_ASSERT(masm.callFarJumps().empty());
     MOZ_ASSERT(masm.trapSites().empty());
-    MOZ_ASSERT(masm.oldTrapSites().empty());
-    MOZ_ASSERT(masm.oldTrapFarJumps().empty());
     MOZ_ASSERT(masm.callFarJumps().empty());
-    MOZ_ASSERT(masm.memoryAccesses().empty());
     MOZ_ASSERT(masm.symbolicAccesses().empty());
 
     if (masm.oom())
@@ -760,7 +751,9 @@ LazyStubTier::createMany(const Uint32Vector& funcExportIndices, const CodeTier& 
                                       fe.funcIndex(), &exportIndex));
         MOZ_ALWAYS_TRUE(exports_.insert(exports_.begin() + exportIndex, Move(lazyExport)));
 
-        interpRangeIndex += 2;
+        // Functions with anyref in their sig have only one entry (interp).
+        // All other functions get an extra jit entry.
+        interpRangeIndex += fe.sig().temporarilyUnsupportedAnyRef() ? 1 : 2;
     }
 
     return true;
@@ -774,11 +767,21 @@ LazyStubTier::createOne(uint32_t funcExportIndex, const CodeTier& codeTier)
         return false;
 
     size_t stubSegmentIndex;
-    if (!createMany(funcExportIndexes, codeTier, &stubSegmentIndex))
+    if (!createMany(codeTier.code().metadata().temporaryHasGcTypes, funcExportIndexes, codeTier,
+                    &stubSegmentIndex))
+    {
         return false;
+    }
 
     const UniqueLazyStubSegment& segment = stubSegments_[stubSegmentIndex];
     const CodeRangeVector& codeRanges = segment->codeRanges();
+
+    // Functions that have anyref in their sig don't get a jit entry.
+    if (codeTier.metadata().funcExports[funcExportIndex].sig().temporarilyUnsupportedAnyRef()) {
+        MOZ_ASSERT(codeRanges.length() >= 1);
+        MOZ_ASSERT(codeRanges.back().isInterpEntry());
+        return true;
+    }
 
     MOZ_ASSERT(codeRanges.length() >= 2);
     MOZ_ASSERT(codeRanges[codeRanges.length() - 2].isInterpEntry());
@@ -791,14 +794,14 @@ LazyStubTier::createOne(uint32_t funcExportIndex, const CodeTier& codeTier)
 }
 
 bool
-LazyStubTier::createTier2(const Uint32Vector& funcExportIndices, const CodeTier& codeTier,
-                          Maybe<size_t>* outStubSegmentIndex)
+LazyStubTier::createTier2(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                          const CodeTier& codeTier, Maybe<size_t>* outStubSegmentIndex)
 {
     if (!funcExportIndices.length())
         return true;
 
     size_t stubSegmentIndex;
-    if (!createMany(funcExportIndices, codeTier, &stubSegmentIndex))
+    if (!createMany(gcTypesEnabled, funcExportIndices, codeTier, &stubSegmentIndex))
         return false;
 
     outStubSegmentIndex->emplace(stubSegmentIndex);
@@ -848,8 +851,6 @@ LazyStubTier::addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* dat
 bool
 MetadataTier::clone(const MetadataTier& src)
 {
-    if (!memoryAccesses.appendAll(src.memoryAccesses))
-        return false;
     if (!codeRanges.appendAll(src.codeRanges))
         return false;
     if (!callSites.appendAll(src.callSites))
@@ -1225,36 +1226,6 @@ Code::lookupFuncRange(void* pc) const
         const CodeRange* result = codeTier(t).lookupRange(pc);
         if (result && result->isFunction())
             return result;
-    }
-    return nullptr;
-}
-
-struct MemoryAccessOffset
-{
-    const MemoryAccessVector& accesses;
-    explicit MemoryAccessOffset(const MemoryAccessVector& accesses) : accesses(accesses) {}
-    uintptr_t operator[](size_t index) const {
-        return accesses[index].insnOffset();
-    }
-};
-
-const MemoryAccess*
-Code::lookupMemoryAccess(void* pc) const
-{
-    for (Tier t : tiers()) {
-        const MemoryAccessVector& memoryAccesses = metadata(t).memoryAccesses;
-
-        uint32_t target = ((uint8_t*)pc) - segment(t).base();
-        size_t lowerBound = 0;
-        size_t upperBound = memoryAccesses.length();
-
-        size_t match;
-        if (BinarySearch(MemoryAccessOffset(memoryAccesses), lowerBound, upperBound, target,
-                         &match))
-        {
-            MOZ_ASSERT(segment(t).containsCodePC(pc));
-            return &memoryAccesses[match];
-        }
     }
     return nullptr;
 }

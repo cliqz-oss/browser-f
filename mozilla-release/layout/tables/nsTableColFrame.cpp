@@ -6,7 +6,7 @@
 #include "nsTableColFrame.h"
 #include "nsTableFrame.h"
 #include "nsContainerFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsStyleConsts.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
@@ -23,8 +23,8 @@ using namespace mozilla;
 
 using namespace mozilla;
 
-nsTableColFrame::nsTableColFrame(nsStyleContext* aContext)
-  : nsSplittableFrame(aContext, kClassID)
+nsTableColFrame::nsTableColFrame(ComputedStyle* aStyle)
+  : nsSplittableFrame(aStyle, kClassID)
   , mMinCoord(0)
   , mPrefCoord(0)
   , mSpanMinCoord(0)
@@ -70,16 +70,16 @@ nsTableColFrame::SetColType(nsTableColType aType)
 }
 
 /* virtual */ void
-nsTableColFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsTableColFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
-  nsSplittableFrame::DidSetStyleContext(aOldStyleContext);
+  nsSplittableFrame::DidSetComputedStyle(aOldComputedStyle);
 
-  if (!aOldStyleContext) //avoid this on init
+  if (!aOldComputedStyle) //avoid this on init
     return;
 
   nsTableFrame* tableFrame = GetTableFrame();
   if (tableFrame->IsBorderCollapse() &&
-      tableFrame->BCRecalcNeeded(aOldStyleContext, StyleContext())) {
+      tableFrame->BCRecalcNeeded(aOldComputedStyle, Style())) {
     TableArea damageArea(GetColIndex(), 0, 1, tableFrame->GetRowCount());
     tableFrame->AddBCDamageArea(damageArea);
   }
@@ -174,9 +174,9 @@ void nsTableColFrame::Dump(int32_t aIndent)
 /* ----- global methods ----- */
 
 nsTableColFrame*
-NS_NewTableColFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTableColFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTableColFrame(aContext);
+  return new (aPresShell) nsTableColFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTableColFrame)
@@ -209,22 +209,22 @@ nsTableColFrame::GetSplittableType() const
 }
 
 void
-nsTableColFrame::InvalidateFrame(uint32_t aDisplayItemKey)
+nsTableColFrame::InvalidateFrame(uint32_t aDisplayItemKey, bool aRebuildDisplayItems)
 {
-  nsIFrame::InvalidateFrame(aDisplayItemKey);
-  if (GetTableFrame()->IsBorderCollapse() && StyleBorder()->HasBorder()) {
-    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey);
+  nsIFrame::InvalidateFrame(aDisplayItemKey, aRebuildDisplayItems);
+  if (GetTableFrame()->IsBorderCollapse()) {
+    GetParent()->InvalidateFrameWithRect(GetVisualOverflowRect() + GetPosition(), aDisplayItemKey, false);
   }
 }
 
 void
-nsTableColFrame::InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey)
+nsTableColFrame::InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey, bool aRebuildDisplayItems)
 {
-  nsIFrame::InvalidateFrameWithRect(aRect, aDisplayItemKey);
+  nsIFrame::InvalidateFrameWithRect(aRect, aDisplayItemKey, aRebuildDisplayItems);
 
   // If we have filters applied that would affects our bounds, then
   // we get an inactive layer created and this is computed
   // within FrameLayerBuilder
-  GetParent()->InvalidateFrameWithRect(aRect + GetPosition(), aDisplayItemKey);
+  GetParent()->InvalidateFrameWithRect(aRect + GetPosition(), aDisplayItemKey, false);
 }
 

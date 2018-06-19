@@ -6,7 +6,7 @@ from __future__ import absolute_import
 
 import copy
 
-from marionette_harness import MarionetteTestCase
+from marionette_harness import MarionetteTestCase, skip
 
 
 class TestCommandLineArguments(MarionetteTestCase):
@@ -34,9 +34,9 @@ class TestCommandLineArguments(MarionetteTestCase):
 
               return Services.appinfo.inSafeMode;
             """)
-
             self.assertTrue(safe_mode, "Safe Mode has not been enabled")
 
+    @skip("Bug 1430717 - Causes '1000s of no output' failures")
     def test_startup_timeout(self):
         startup_timeout = self.marionette.startup_timeout
 

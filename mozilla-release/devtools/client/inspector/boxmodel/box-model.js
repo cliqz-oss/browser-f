@@ -4,18 +4,15 @@
 
 "use strict";
 
-const { Task } = require("devtools/shared/task");
-const { getCssProperties } = require("devtools/shared/fronts/css-properties");
-
-const { InplaceEditor } = require("devtools/client/shared/inplace-editor");
-
 const {
   updateGeometryEditorEnabled,
   updateLayout,
   updateOffsetParent,
 } = require("./actions/box-model");
 
-const EditingSession = require("./utils/editing-session");
+loader.lazyRequireGetter(this, "EditingSession", "devtools/client/inspector/boxmodel/utils/editing-session");
+loader.lazyRequireGetter(this, "InplaceEditor", "devtools/client/shared/inplace-editor", true);
+loader.lazyRequireGetter(this, "getCssProperties", "devtools/shared/fronts/css-properties", true);
 
 const NUMERIC = /^-?[\d\.]+$/;
 
@@ -81,13 +78,12 @@ BoxModel.prototype = {
   },
 
   /**
-   * Returns true if the computed or layout panel is visible, and false otherwise.
+   * Returns true if the layout panel is visible, and false otherwise.
    */
   isPanelVisible() {
     return this.inspector.toolbox && this.inspector.sidebar &&
            this.inspector.toolbox.currentToolId === "inspector" &&
-           (this.inspector.sidebar.getCurrentTabID() === "layoutview" ||
-            this.inspector.sidebar.getCurrentTabID() === "computedview");
+           (this.inspector.sidebar.getCurrentTabID() === "layoutview");
   },
 
   /**
@@ -126,7 +122,7 @@ BoxModel.prototype = {
       this._updateReasons.push(reason);
     }
 
-    let lastRequest = Task.spawn((function* () {
+    let lastRequest = ((async function() {
       if (!this.inspector ||
           !this.isPanelVisible() ||
           !this.inspector.selection.isConnected() ||
@@ -136,11 +132,11 @@ BoxModel.prototype = {
 
       let node = this.inspector.selection.nodeFront;
 
-      let layout = yield this.inspector.pageStyle.getLayout(node, {
+      let layout = await this.inspector.pageStyle.getLayout(node, {
         autoMargins: true,
       });
 
-      let styleEntries = yield this.inspector.pageStyle.getApplied(node, {
+      let styleEntries = await this.inspector.pageStyle.getApplied(node, {
         // We don't need styles applied to pseudo elements of the current node.
         skipPseudo: true
       });
@@ -148,18 +144,18 @@ BoxModel.prototype = {
 
       // Update the layout properties with whether or not the element's position is
       // editable with the geometry editor.
-      let isPositionEditable = yield this.inspector.pageStyle.isPositionEditable(node);
+      let isPositionEditable = await this.inspector.pageStyle.isPositionEditable(node);
 
       layout = Object.assign({}, layout, {
         isPositionEditable,
       });
 
       const actorCanGetOffSetParent =
-        yield this.inspector.target.actorHasMethod("domwalker", "getOffsetParent");
+        await this.inspector.target.actorHasMethod("domwalker", "getOffsetParent");
 
       if (actorCanGetOffSetParent) {
         // Update the redux store with the latest offset parent DOM node
-        let offsetParent = yield this.inspector.walker.getOffsetParent(node);
+        let offsetParent = await this.inspector.walker.getOffsetParent(node);
         this.store.dispatch(updateOffsetParent(offsetParent));
       }
 
@@ -178,7 +174,7 @@ BoxModel.prototype = {
       this._updateReasons = [];
 
       return null;
-    }).bind(this)).catch(console.error);
+    }).bind(this))().catch(console.error);
 
     this._lastRequest = lastRequest;
   },

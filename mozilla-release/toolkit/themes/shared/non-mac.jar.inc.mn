@@ -11,9 +11,7 @@
 #include jar.inc.mn
 
   skin/classic/global/dialog.css                           (../../windows/global/dialog.css)
-  skin/classic/global/filefield.css                        (../../windows/global/filefield.css)
   skin/classic/global/progressmeter.css                    (../../windows/global/progressmeter.css)
-  skin/classic/global/resizer.css                          (../../windows/global/resizer.css)
   skin/classic/global/richlistbox.css                      (../../windows/global/richlistbox.css)
   skin/classic/global/scrollbars.css                       (../../windows/global/xulscrollbars.css)
   skin/classic/global/tabprompts.css                       (../../windows/global/tabprompts.css)
@@ -28,15 +26,9 @@
   skin/classic/global/icons/error-16.png                   (../../windows/global/icons/error-16.png)
   skin/classic/global/icons/question-16.png                (../../windows/global/icons/question-16.png)
   skin/classic/global/icons/question-64.png                (../../windows/global/icons/question-64.png)
-  skin/classic/global/icons/resizer-rtl.png                (../../windows/global/icons/resizer-rtl.png)
   skin/classic/global/icons/search-textbox.svg             (../../windows/global/icons/search-textbox.svg)
-  skin/classic/global/icons/tabprompts-bgtexture.png       (../../windows/global/icons/tabprompts-bgtexture.png)
   skin/classic/global/icons/warning-16.png                 (../../windows/global/icons/warning-16.png)
   skin/classic/global/icons/warning-64.png                 (../../windows/global/icons/warning-64.png)
-  skin/classic/global/splitter/grip-bottom.gif             (../../windows/global/splitter/grip-bottom.gif)
-  skin/classic/global/splitter/grip-top.gif                (../../windows/global/splitter/grip-top.gif)
-  skin/classic/global/splitter/grip-left.gif               (../../windows/global/splitter/grip-left.gif)
-  skin/classic/global/splitter/grip-right.gif              (../../windows/global/splitter/grip-right.gif)
   skin/classic/global/tree/columnpicker.gif                (../../windows/global/tree/columnpicker.gif)
   skin/classic/global/tree/sort-asc.png                    (../../windows/global/tree/sort-asc.png)
   skin/classic/global/tree/sort-dsc.png                    (../../windows/global/tree/sort-dsc.png)
@@ -45,7 +37,6 @@
 
   skin/classic/mozapps/downloads/downloadButtons.png         (../../windows/mozapps/downloads/downloadButtons.png)
   skin/classic/mozapps/downloads/unknownContentType.css      (../../windows/mozapps/downloads/unknownContentType.css)
-  skin/classic/mozapps/extensions/about.css                  (../../windows/mozapps/extensions/about.css)
   skin/classic/mozapps/extensions/blocklist.css              (../../windows/mozapps/extensions/blocklist.css)
   skin/classic/mozapps/extensions/discover-logo.png          (../../windows/mozapps/extensions/discover-logo.png)
   skin/classic/mozapps/extensions/rating-won.png             (../../windows/mozapps/extensions/rating-won.png)
@@ -58,9 +49,4 @@
   skin/classic/mozapps/update/downloadButtons.png            (../../windows/mozapps/update/downloadButtons.png)
 * skin/classic/mozapps/xpinstall/xpinstallConfirm.css        (../../windows/mozapps/extensions/xpinstallConfirm.css)
 
-#if MOZ_BUILD_APP == browser
-[browser/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}] chrome.jar:
-#elif MOZ_SEPARATE_MANIFEST_FOR_THEME_OVERRIDES
-[extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}] chrome.jar:
-#endif
 % override chrome://mozapps/skin/xpinstall/xpinstallItemGeneric.png       chrome://mozapps/skin/extensions/extensionGeneric.svg

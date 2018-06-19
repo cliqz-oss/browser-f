@@ -200,7 +200,7 @@
   == Implemention Notes ==
   When a new node gets bound to the tree, the BindToTree function gets called.
   The reverse case is UnbindFromTree.
-  When the contents of a text node change, nsGenericDOMDataNode::SetTextInternal
+  When the contents of a text node change, CharacterData::SetTextInternal
   gets called.
   */
 
@@ -208,6 +208,7 @@
 
 #include "nsINode.h"
 #include "nsIContent.h"
+#include "nsIContentInlines.h"
 #include "nsIDocument.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/DebugOnly.h"
@@ -240,7 +241,7 @@ DoesNotParticipateInAutoDirection(const Element* aElement)
           nodeInfo->Equals(nsGkAtoms::script) ||
           nodeInfo->Equals(nsGkAtoms::style) ||
           nodeInfo->Equals(nsGkAtoms::textarea) ||
-          aElement->IsInAnonymousSubtree());
+          (aElement->IsInAnonymousSubtree() && !aElement->HasDirAuto()));
 }
 
 /**
@@ -253,7 +254,8 @@ DoesNotAffectDirectionOfAncestors(const Element* aElement)
 {
   return (DoesNotParticipateInAutoDirection(aElement) ||
           aElement->IsHTMLElement(nsGkAtoms::bdi) ||
-          aElement->HasFixedDir());
+          aElement->HasFixedDir() ||
+          aElement->IsInAnonymousSubtree());
 }
 
 /**
@@ -279,10 +281,14 @@ inline static bool
 NodeAffectsDirAutoAncestor(nsINode* aTextNode)
 {
   Element* parent = aTextNode->GetParentElement();
+  // In the anonymous content, we limit our implementation to only
+  // allow the children text node of the direct dir=auto parent in
+  // the same anonymous subtree to affact the direction.
   return (parent &&
           !DoesNotParticipateInAutoDirection(parent) &&
           parent->NodeOrAncestorHasDirAuto() &&
-          !aTextNode->IsInAnonymousSubtree());
+          (!aTextNode->IsInAnonymousSubtree() ||
+            parent->HasDirAuto()));
 }
 
 Directionality
@@ -919,14 +925,19 @@ SetDirectionFromNewTextNode(nsTextNode* aTextNode)
 void
 ResetDirectionSetByTextNode(nsTextNode* aTextNode)
 {
-  if (!NodeAffectsDirAutoAncestor(aTextNode)) {
-    nsTextNodeDirectionalityMap::EnsureMapIsClearFor(aTextNode);
+  // We used to check NodeAffectsDirAutoAncestor() in this function, but
+  // stopped doing that since calling IsInAnonymousSubtree()
+  // too late (during nsTextNode::UnbindFromTree) is impossible and this
+  // function was no-op when there's no directionality map.
+  if (!aTextNode->HasTextNodeDirectionalityMap()) {
     return;
   }
 
   Directionality dir = GetDirectionFromText(aTextNode->GetText());
-  if (dir != eDir_NotSet && aTextNode->HasTextNodeDirectionalityMap()) {
+  if (dir != eDir_NotSet) {
     nsTextNodeDirectionalityMap::ResetTextNodeDirection(aTextNode, aTextNode);
+  } else {
+    nsTextNodeDirectionalityMap::EnsureMapIsClearFor(aTextNode);
   }
 }
 

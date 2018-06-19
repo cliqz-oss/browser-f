@@ -29,12 +29,12 @@ namespace gc {
 // is done by manipulating the mark bitmaps in the chunks used for the atoms.
 // When the atoms zone is being collected, the mark bitmaps for the chunk(s)
 // used by the atoms are updated normally during marking. After marking
-// finishes, the chunk mark bitmaps are translated to a more efficient atom
-// mark bitmap (see below) that is stored on the zones which the GC collected
+// finishes, the chunk mark bitmaps are translated to a more efficient atom mark
+// bitmap (see below) that is stored on the zones which the GC collected
 // (computeBitmapFromChunkMarkBits). Before sweeping begins, the chunk mark
 // bitmaps are updated with any atoms that might be referenced by zones which
-// weren't collected (updateChunkMarkBits). The GC sweeping will then release
-// all atoms which are not marked by any zone.
+// weren't collected (markAtomsUsedByUncollectedZones). The GC sweeping will
+// then release all atoms which are not marked by any zone.
 //
 // The representation of atom mark bitmaps is as follows:
 //
@@ -46,12 +46,11 @@ namespace gc {
 // single Cell.
 
 void
-AtomMarkingRuntime::registerArena(Arena* arena)
+AtomMarkingRuntime::registerArena(Arena* arena, const AutoLockGC& lock)
 {
     MOZ_ASSERT(arena->getThingSize() != 0);
     MOZ_ASSERT(arena->getThingSize() % CellAlignBytes == 0);
     MOZ_ASSERT(arena->zone->isAtomsZone());
-    MOZ_ASSERT(arena->zone->runtimeFromAnyThread()->currentThreadHasExclusiveAccess());
 
     // We need to find a range of bits from the atoms bitmap for this arena.
 
@@ -67,7 +66,7 @@ AtomMarkingRuntime::registerArena(Arena* arena)
 }
 
 void
-AtomMarkingRuntime::unregisterArena(Arena* arena)
+AtomMarkingRuntime::unregisterArena(Arena* arena, const AutoLockGC& lock)
 {
     MOZ_ASSERT(arena->zone->isAtomsZone());
 
@@ -78,7 +77,8 @@ AtomMarkingRuntime::unregisterArena(Arena* arena)
 bool
 AtomMarkingRuntime::computeBitmapFromChunkMarkBits(JSRuntime* runtime, DenseBitmap& bitmap)
 {
-    MOZ_ASSERT(runtime->currentThreadHasExclusiveAccess());
+    MOZ_ASSERT(CurrentThreadIsPerformingGC());
+    MOZ_ASSERT(!runtime->hasHelperThreadZones());
 
     if (!bitmap.ensureSpace(allocatedWords))
         return false;
@@ -96,8 +96,10 @@ AtomMarkingRuntime::computeBitmapFromChunkMarkBits(JSRuntime* runtime, DenseBitm
 }
 
 void
-AtomMarkingRuntime::updateZoneBitmap(Zone* zone, const DenseBitmap& bitmap)
+AtomMarkingRuntime::refineZoneBitmapForCollectedZone(Zone* zone, const DenseBitmap& bitmap)
 {
+    MOZ_ASSERT(zone->isCollectingFromAnyThread());
+
     if (zone->isAtomsZone())
         return;
 
@@ -110,7 +112,7 @@ AtomMarkingRuntime::updateZoneBitmap(Zone* zone, const DenseBitmap& bitmap)
 // Set any bits in the chunk mark bitmaps for atoms which are marked in bitmap.
 template <typename Bitmap>
 static void
-AddBitmapToChunkMarkBits(JSRuntime* runtime, Bitmap& bitmap)
+BitwiseOrIntoChunkMarkBits(JSRuntime* runtime, Bitmap& bitmap)
 {
     // Make sure that by copying the mark bits for one arena in word sizes we
     // do not affect the mark bits for other arenas.
@@ -128,9 +130,10 @@ AddBitmapToChunkMarkBits(JSRuntime* runtime, Bitmap& bitmap)
 }
 
 void
-AtomMarkingRuntime::updateChunkMarkBits(JSRuntime* runtime)
+AtomMarkingRuntime::markAtomsUsedByUncollectedZones(JSRuntime* runtime)
 {
-    MOZ_ASSERT(runtime->currentThreadHasExclusiveAccess());
+    MOZ_ASSERT(CurrentThreadIsPerformingGC());
+    MOZ_ASSERT(!runtime->hasHelperThreadZones());
 
     // Try to compute a simple union of the zone atom bitmaps before updating
     // the chunk mark bitmaps. If this allocation fails then fall back to
@@ -144,11 +147,11 @@ AtomMarkingRuntime::updateChunkMarkBits(JSRuntime* runtime)
             if (!zone->isCollectingFromAnyThread())
                 zone->markedAtoms().bitwiseOrInto(markedUnion);
         }
-        AddBitmapToChunkMarkBits(runtime, markedUnion);
+        BitwiseOrIntoChunkMarkBits(runtime, markedUnion);
     } else {
         for (ZonesIter zone(runtime, SkipAtoms); !zone.done(); zone.next()) {
             if (!zone->isCollectingFromAnyThread())
-                AddBitmapToChunkMarkBits(runtime, zone->markedAtoms());
+                BitwiseOrIntoChunkMarkBits(runtime, zone->markedAtoms());
         }
     }
 }
@@ -195,7 +198,8 @@ AtomMarkingRuntime::markAtomValue(JSContext* cx, const Value& value)
 void
 AtomMarkingRuntime::adoptMarkedAtoms(Zone* target, Zone* source)
 {
-    MOZ_ASSERT(target->runtimeFromAnyThread()->currentThreadHasExclusiveAccess());
+    MOZ_ASSERT(CurrentThreadCanAccessZone(source));
+    MOZ_ASSERT(CurrentThreadCanAccessZone(target));
     target->markedAtoms().bitwiseOrWith(source->markedAtoms());
 }
 
@@ -217,12 +221,6 @@ AtomMarkingRuntime::atomIsMarked(Zone* zone, T* thing)
 
     if (ThingIsPermanent(thing))
         return true;
-
-    if (mozilla::IsSame<T, JSAtom>::value) {
-        JSAtom* atom = reinterpret_cast<JSAtom*>(thing);
-        if (AtomIsPinnedInRuntime(zone->runtimeFromAnyThread(), atom))
-            return true;
-    }
 
     size_t bit = GetAtomBit(&thing->asTenured());
     return zone->markedAtoms().getBit(bit);

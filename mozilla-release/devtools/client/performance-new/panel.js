@@ -4,9 +4,8 @@
 "use strict";
 
 const { PerfFront } = require("devtools/shared/fronts/perf");
-
-loader.lazyRequireGetter(this, "EventEmitter",
-  "devtools/shared/old-event-emitter");
+const { getPreferenceFront } = require("devtools/shared/fronts/preference");
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 class PerformancePanel {
   constructor(iframeWindow, toolbox) {
@@ -33,10 +32,11 @@ class PerformancePanel {
 
     const rootForm = await this.target.root;
     const perfFront = new PerfFront(this.target.client, rootForm);
+    const preferenceFront = getPreferenceFront(this.target.client, rootForm);
 
     this.isReady = true;
     this.emit("ready");
-    this.panelWin.gInit(perfFront);
+    this.panelWin.gInit(this.toolbox, perfFront, preferenceFront);
     return this;
   }
 

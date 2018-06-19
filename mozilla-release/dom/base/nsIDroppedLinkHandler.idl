@@ -5,8 +5,8 @@
 #include "nsISupports.idl"
 #include "nsIPrincipal.idl"
 
-interface nsIDOMDataTransfer;
-interface nsIDOMDragEvent;
+webidl DragEvent;
+webidl DataTransfer;
 
 [scriptable, uuid(69E14F91-2E09-4CA6-A511-A715C99A2804)]
 interface nsIDroppedLinkItem : nsISupports
@@ -39,7 +39,7 @@ interface nsIDroppedLinkHandler : nsISupports
    * includes any parent, sibling and child frames in the same content tree.
    * If true, the source is not checked.
    */
-  boolean canDropLink(in nsIDOMDragEvent aEvent, in boolean aAllowSameDocument);
+  boolean canDropLink(in DragEvent aEvent, in boolean aAllowSameDocument);
 
   /**
    * Given a drop event aEvent, determines the link being dragged and returns
@@ -58,7 +58,7 @@ interface nsIDroppedLinkHandler : nsISupports
    * aName is filled in with the link title if it exists, or an empty string
    * otherwise.
    */
-  AString dropLink(in nsIDOMDragEvent aEvent, out AString aName,
+  AString dropLink(in DragEvent aEvent, out AString aName,
                    [optional] in boolean aDisallowInherit);
 
   /**
@@ -75,7 +75,7 @@ interface nsIDroppedLinkHandler : nsISupports
    *  - aDisallowInherit is true, and the URI being dropped would inherit the
    *    current document's security context (URI_INHERITS_SECURITY_CONTEXT).
    */
-  void dropLinks(in nsIDOMDragEvent aEvent,
+  void dropLinks(in DragEvent aEvent,
                  [optional] in boolean aDisallowInherit,
                  [optional] out unsigned long aCount,
                  [retval, array, size_is(aCount)] out nsIDroppedLinkItem aLinks);
@@ -85,7 +85,7 @@ interface nsIDroppedLinkHandler : nsISupports
    * this is used when the caller extracts yet another URIs from the dropped
    * text, like home button that splits the text with "|".
    */
-  void validateURIsForDrop(in nsIDOMDragEvent aEvent,
+  void validateURIsForDrop(in DragEvent aEvent,
                            in unsigned long aURIsCount,
                            [array, size_is(aURIsCount)] in wstring aURIs,
                            [optional] in boolean aDisallowInherit);
@@ -96,7 +96,7 @@ interface nsIDroppedLinkHandler : nsISupports
    * it allows the parent to verify that the child did not modify links
    * being dropped.
    */
-  void queryLinks(in nsIDOMDataTransfer aDataTransfer,
+  void queryLinks(in DataTransfer aDataTransfer,
                   [optional] out unsigned long aCount,
                   [retval, array, size_is(aCount)] out nsIDroppedLinkItem aLinks);
 
@@ -104,5 +104,5 @@ interface nsIDroppedLinkHandler : nsISupports
    * Given a drop event aEvent, determines the triggering principal for the
    * event and returns it.
    */
-  nsIPrincipal getTriggeringPrincipal(in nsIDOMDragEvent aEvent);
+  nsIPrincipal getTriggeringPrincipal(in DragEvent aEvent);
 };

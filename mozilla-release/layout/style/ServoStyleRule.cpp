@@ -12,7 +12,6 @@
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoDeclarationBlock.h"
 #include "mozilla/dom/CSSStyleRuleBinding.h"
-#include "nsCSSPseudoClasses.h"
 
 #include "mozAutoDocUpdate.h"
 
@@ -73,8 +72,6 @@ ServoStyleRuleDeclaration::SetCSSDeclaration(DeclarationBlock* aDecl)
 {
   ServoStyleRule* rule = Rule();
   if (RefPtr<StyleSheet> sheet = rule->GetStyleSheet()) {
-    MOZ_ASSERT(sheet->IsServo(), "Servo style rules should have "
-                                 "servo stylesheets.");
     nsCOMPtr<nsIDocument> doc = sheet->GetAssociatedDocument();
     mozAutoDocUpdate updateBatch(doc, UPDATE_STYLE, true);
     if (aDecl != mDecls) {
@@ -93,16 +90,6 @@ nsIDocument*
 ServoStyleRuleDeclaration::DocToUpdate()
 {
   return nullptr;
-}
-
-void
-ServoStyleRuleDeclaration::GetCSSParsingEnvironment(
-  CSSParsingEnvironment& aCSSParseEnv,
-  nsIPrincipal* aSubjectPrincipal)
-{
-  MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
-                         "shouldn't be calling for a Servo rule");
-  GetCSSParsingEnvironmentForRule(Rule(), aCSSParseEnv);
 }
 
 nsDOMCSSDeclaration::ServoCSSParsingEnvironment
@@ -158,16 +145,6 @@ ServoStyleRule::IsCCLeaf() const
   return !mDecls.PreservingWrapper();
 }
 
-already_AddRefed<css::Rule>
-ServoStyleRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoStyleRule");
-  return nullptr;
-}
-
 size_t
 ServoStyleRule::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 {
@@ -196,12 +173,6 @@ ServoStyleRule::List(FILE* out, int32_t aIndent) const
 
 /* CSSRule implementation */
 
-uint16_t
-ServoStyleRule::Type() const
-{
-  return CSSRuleBinding::STYLE_RULE;
-}
-
 void
 ServoStyleRule::GetCssText(nsAString& aCssText) const
 {
@@ -225,9 +196,21 @@ ServoStyleRule::GetSelectorText(nsAString& aSelectorText)
 void
 ServoStyleRule::SetSelectorText(const nsAString& aSelectorText)
 {
-  // XXX We need to implement this... But Gecko doesn't have this either
-  //     so it's probably okay to leave it unimplemented currently?
-  //     See bug 37468 and mozilla::css::StyleRule::SetSelectorText.
+  if (RefPtr<StyleSheet> sheet = GetStyleSheet()) {
+    nsIDocument* doc = sheet->GetAssociatedDocument();
+
+    mozAutoDocUpdate updateBatch(doc, UPDATE_STYLE, true);
+
+    // StyleRule lives inside of the Inner, it is unsafe to call WillDirty
+    // if sheet does not already have a unique Inner.
+    sheet->AssertHasUniqueInner();
+    sheet->WillDirty();
+
+    const RawServoStyleSheetContents* contents = sheet->RawContents();
+    if (Servo_StyleRule_SetSelectorText(contents, mRawRule, &aSelectorText)) {
+      sheet->RuleChanged(this);
+    }
+  }
 }
 
 uint32_t

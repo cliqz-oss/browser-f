@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {Cc, Ci, Cu} = require("chrome");
 const Services = require("Services");
 const defer = require("devtools/shared/defer");
 
@@ -28,7 +27,7 @@ function handleThreadState(toolbox, event, packet) {
        packet.why.type === "breakpoint" ||
        packet.why.type === "exception") {
       toolbox.raise();
-      toolbox.selectTool("jsdebugger");
+      toolbox.selectTool("jsdebugger", packet.why.type);
     }
   } else if (event === "resumed") {
     toolbox.unhighlightTool("jsdebugger");
@@ -48,7 +47,7 @@ function attachThread(toolbox) {
   let autoBlackBox = false;
   let ignoreFrameEnvironment = false;
   const newDebuggerEnabled = Services.prefs.getBoolPref("devtools.debugger.new-debugger-frontend");
-  if(!newDebuggerEnabled) {
+  if (!newDebuggerEnabled) {
     useSourceMaps = Services.prefs.getBoolPref("devtools.debugger.source-maps-enabled");
     autoBlackBox = Services.prefs.getBoolPref("devtools.debugger.auto-black-box");
   } else {
@@ -103,7 +102,7 @@ function attachThread(toolbox) {
     target.client.attachAddon(actor, res => {
       target.client.attachThread(res.threadActor, handleResponse);
     });
-  }  else {
+  } else {
     // Attaching an old browser debugger or a content process.
     target.client.attachThread(chromeDebugger, handleResponse);
   }

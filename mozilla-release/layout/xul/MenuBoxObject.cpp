@@ -59,10 +59,9 @@ MenuBoxObject::GetActiveChild()
 {
   nsMenuFrame* menu = do_QueryFrame(GetFrame(false));
   if (menu) {
-    nsCOMPtr<nsIDOMElement> el;
+    RefPtr<Element> el;
     menu->GetActiveChild(getter_AddRefs(el));
-    nsCOMPtr<Element> ret(do_QueryInterface(el));
-    return ret.forget();
+    return el.forget();
   }
   return nullptr;
 }
@@ -71,8 +70,7 @@ void MenuBoxObject::SetActiveChild(Element* arg)
 {
   nsMenuFrame* menu = do_QueryFrame(GetFrame(false));
   if (menu) {
-    nsCOMPtr<nsIDOMElement> el(do_QueryInterface(arg));
-    menu->SetActiveChild(el);
+    menu->SetActiveChild(arg);
   }
 }
 
@@ -84,9 +82,7 @@ bool MenuBoxObject::HandleKeyPress(KeyboardEvent& keyEvent)
   }
 
   // if event has already been handled, bail
-  bool eventHandled = false;
-  keyEvent.GetDefaultPrevented(&eventHandled);
-  if (eventHandled) {
+  if (keyEvent.DefaultPrevented()) {
     return false;
   }
 

@@ -203,11 +203,6 @@ var ignoreFunctions = {
     "void js::AutoCompartment::~AutoCompartment(int32)" : true,
     "void JSAutoCompartment::~JSAutoCompartment(int32)" : true,
 
-    // The nsScriptNameSpaceManager functions can't actually GC.  They
-    // just use a PLDHashTable which has function pointers, which makes the
-    // analysis think maybe they can.
-    "nsGlobalNameStruct* nsScriptNameSpaceManager::LookupName(nsAString*, uint16**)": true,
-
     // Similar to heap snapshot mock classes, and GTests below. This posts a
     // synchronous runnable when a GTest fails, and we are pretty sure that the
     // particular runnable it posts can't even GC, but the analysis isn't
@@ -304,8 +299,10 @@ function ignoreGCFunction(mangled)
     if (fun.includes("js::WeakMap<Key, Value, HashPolicy>::getDelegate("))
         return true;
 
-    // XXX modify refillFreeList<NoGC> to not need data flow analysis to understand it cannot GC.
-    if (/refillFreeList/.test(fun) && /\(js::AllowGC\)0u/.test(fun))
+    // TODO: modify refillFreeList<NoGC> to not need data flow analysis to
+    // understand it cannot GC. As of gcc 6, the same problem occurs with
+    // tryNewTenuredThing, tryNewNurseryObject, and others.
+    if (/refillFreeList|tryNew/.test(fun) && /\(js::AllowGC\)0u/.test(fun))
         return true;
     return false;
 }

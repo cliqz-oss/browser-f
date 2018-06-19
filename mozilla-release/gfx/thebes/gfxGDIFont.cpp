@@ -43,16 +43,16 @@ GetCairoAntialiasOption(gfxFont::AntialiasOption anAntialiasOption)
 
 gfxGDIFont::gfxGDIFont(GDIFontEntry *aFontEntry,
                        const gfxFontStyle *aFontStyle,
-                       bool aNeedsBold,
                        AntialiasOption anAAOption)
     : gfxFont(nullptr, aFontEntry, aFontStyle, anAAOption),
       mFont(nullptr),
       mFontFace(nullptr),
       mMetrics(nullptr),
       mSpaceGlyph(0),
-      mNeedsBold(aNeedsBold),
       mScriptCache(nullptr)
 {
+    mNeedsSyntheticBold = aFontStyle->NeedsSyntheticBold(aFontEntry);
+
     Initialize();
 
     if (mFont) {
@@ -81,7 +81,7 @@ UniquePtr<gfxFont>
 gfxGDIFont::CopyWithAntialiasOption(AntialiasOption anAAOption)
 {
     auto entry = static_cast<GDIFontEntry*>(mFontEntry.get());
-    return MakeUnique<gfxGDIFont>(entry, &mStyle, mNeedsBold, anAAOption);
+    return MakeUnique<gfxGDIFont>(entry, &mStyle, anAAOption);
 }
 
 bool
@@ -222,7 +222,7 @@ gfxGDIFont::Initialize()
     // (bug 724231) for local user fonts, we don't use GDI's synthetic bold,
     // as it could lead to a different, incompatible face being used
     // but instead do our own multi-striking
-    if (mNeedsBold && GetFontEntry()->IsLocalUserFont()) {
+    if (mNeedsSyntheticBold && GetFontEntry()->IsLocalUserFont()) {
         mApplySyntheticBold = true;
     }
 
@@ -445,7 +445,9 @@ gfxGDIFont::FillLogFont(LOGFONTW& aLogFont, gfxFloat aSize)
 {
     GDIFontEntry *fe = static_cast<GDIFontEntry*>(GetFontEntry());
 
-    uint16_t weight;
+    // Figure out the lfWeight value to use for GDI font selection,
+    // or zero to use the entry's current LOGFONT value.
+    LONG weight;
     if (fe->IsUserFont()) {
         if (fe->IsLocalUserFont()) {
             // for local user fonts, don't change the original weight
@@ -455,10 +457,13 @@ gfxGDIFont::FillLogFont(LOGFONTW& aLogFont, gfxFloat aSize)
         } else {
             // avoid GDI synthetic bold which occurs when weight
             // specified is >= font data weight + 200
-            weight = mNeedsBold ? 700 : 200;
+            weight = mNeedsSyntheticBold ? 700 : 200;
         }
     } else {
-        weight = mNeedsBold ? 700 : fe->Weight();
+        // GDI doesn't support variation fonts, so for system fonts we know
+        // that the entry has only a single weight, not a range.
+        MOZ_ASSERT(fe->Weight().IsSingle());
+        weight = mNeedsSyntheticBold ? 700 : fe->Weight().Min().ToIntRounded();
     }
 
     fe->FillLogFont(&aLogFont, weight, aSize);

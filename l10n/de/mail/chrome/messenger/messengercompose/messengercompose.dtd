@@ -88,6 +88,17 @@
 <!ENTITY reorderAttachmentsCmd.label "Anhänge neu ordnen…">
 <!ENTITY reorderAttachmentsCmd.accesskey "d">
 <!ENTITY reorderAttachmentsCmd.key "x">
+<!ENTITY toggleAttachmentPaneCmd.label "Anhangbereich">
+<!-- LOCALIZATION NOTE (toggleAttachmentPaneCmd.accesskey):
+     For better mnemonics, toggleAttachmentPaneCmd.accesskey should be the same
+     as attachments.accesskey. -->
+<!ENTITY toggleAttachmentPaneCmd.accesskey "n">
+<!-- LOCALIZATION NOTE (toggleAttachmentPaneCmd.key):
+     With OS-specific access modifier, this defines the shortcut key for showing/
+     hiding/minimizing the attachment pane, e.g. Alt+M on Windows.
+     toggleAttachmentPaneCmd.key and attachments.accesskey must be the same
+     for the bucket view state machinery to work. -->
+<!ENTITY toggleAttachmentPaneCmd.key "m">
 <!ENTITY selectAllCmd.label "Alles auswählen">
 <!ENTITY selectAllCmd.key "A">
 <!ENTITY selectAllCmd.accesskey "u">
@@ -253,6 +264,7 @@
 <!ENTITY quoteButton.tooltip "Die ursprüngliche Nachricht zitieren">
 <!ENTITY addressButton.tooltip "Kontakte-Sidebar ein-/ausblenden">
 <!ENTITY attachButton.tooltip "Datei-Anhang zu dieser Nachricht anfügen">
+<!ENTITY attachButton.tooltip2 "Anhang hinzufügen">
 <!ENTITY spellingButton.tooltip "Rechtschreibung der Auswahl oder der gesamten Nachricht prüfen">
 <!ENTITY statusLanguageText.tooltip "Sprache für Rechtschreibprüfung">
 <!ENTITY saveButton.tooltip "Diese Nachricht speichern">
@@ -275,9 +287,14 @@
 <!ENTITY followupAddr.label "Followup an:">
 <!ENTITY subject.label "Betreff:">
 <!ENTITY subject.accesskey "r">
-<!-- LOCALIZATION NOTE attachments.accesskey This access key should correspond
-     to the strings in attachmentCount in composeMsgs.properties -->
+<!-- LOCALIZATION NOTE (attachments.accesskey) This access key character should
+     be taken from the strings in attachmentCount in composeMsgs.properties,
+     and it must be the same as toggleAttachmentPaneCmd.key, otherwise it won't
+     work, as the shortcut key functionality supersedes the access key. -->
 <!ENTITY attachments.accesskey "n">
+
+<!ENTITY attachmentBucketHeader.tooltip "Anhangbereich">
+<!ENTITY attachmentBucketCloseButton.tooltip "Anhangbereich ausblenden">
 
 <!-- Format Toolbar, imported from editorAppShell.xul -->
 <!ENTITY SmileButton.tooltip "Einen Smiley einfügen">
@@ -315,6 +332,7 @@
 <!ENTITY pasteQuote.label "Als Zitat einfügen">
 <!ENTITY pasteQuote.accesskey "Z">
 
+<!-- Attachment Item and List Context Menus -->
 <!ENTITY openAttachment.label "Öffnen">
 <!ENTITY openAttachment.accesskey "f">
 <!ENTITY delete.label "Löschen">
@@ -325,6 +343,8 @@
 <!ENTITY renameAttachment.accesskey "U">
 <!ENTITY reorderAttachments.label "Anhänge neu ordnen…">
 <!ENTITY reorderAttachments.accesskey "o">
+<!ENTITY removeAllAttachments.label "Alle Anhänge entfernen">
+<!ENTITY removeAllAttachments.accesskey "e">
 <!ENTITY selectAll.label "Alles auswählen">
 <!ENTITY selectAll.accesskey "u">
 <!ENTITY attachFile.label "Datei(en) als Anhang anfügen">
@@ -339,6 +359,13 @@
 <!ENTITY convertRegularAttachment.accesskey "A">
 <!ENTITY attachPage.label "Webseite anhängen…">
 <!ENTITY attachPage.accesskey "W">
+
+<!-- Attachment Pane Header Bar Context Menu -->
+<!-- LOCALIZATION NOTE (initiallyShowAttachmentPane.label):
+     Should use the same wording as startExpandedCmd.label
+     in msgHdrViewOverlay.dtd. -->
+<!ENTITY initiallyShowAttachmentPane.label "Anhangbereich standardmäßig anzeigen">
+<!ENTITY initiallyShowAttachmentPane.accesskey "s">
 
 <!-- Spell checker context menu items -->
 <!ENTITY spellAddDictionaries.label "Wörterbücher hinzufügen…">

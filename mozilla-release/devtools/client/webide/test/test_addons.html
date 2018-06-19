@@ -15,12 +15,13 @@
   <body>
 
     <script type="application/javascript">
+      // XXX Bug 1072167 - When updating after migration, fix the no-undef issues.
+      /* eslint-disable no-undef */
+
       window.onload = function() {
         SimpleTest.waitForExplicitFinish();
 
-        const {Devices} = ChromeUtils.import("resource://devtools/shared/apps/Devices.jsm");
-
-        let adbAddonsInstalled;
+        const {Devices} = ChromeUtils.import("resource://devtools/shared/apps/Devices.jsm", {});
 
         function uninstallADBFromUI(doc) {
           return new Promise((resolve, reject) => {
@@ -33,42 +34,39 @@
                 } else {
                   reject("Can't find item");
                 }
-              })
+              });
             });
             let li = doc.querySelector('[status="installed"][addon="adb"]');
             li.querySelector(".uninstall-button").click();
           });
         }
 
-        Task.spawn(function*() {
-
+        (async function() {
           ok(!Devices.helperAddonInstalled, "Helper not installed");
 
-          let win = yield openWebIDE(true);
-          let docRuntime = getRuntimeDocument(win);
+          let win = await openWebIDE(true);
 
           ok(Devices.helperAddonInstalled, "Helper has been auto-installed");
 
-          yield nextTick();
+          await nextTick();
 
           let w = addonDoc.querySelector(".warning");
-          let display = addonDoc.defaultView.getComputedStyle(w).display
+          let display = addonDoc.defaultView.getComputedStyle(w).display;
           is(display, "none", "Warning about missing ADB hidden");
 
-          yield uninstallADBFromUI(addonDoc, "adb");
+          await uninstallADBFromUI(addonDoc, "adb");
 
           items = panelNode.querySelectorAll(".runtime-panel-item-usb");
           is(items.length, 0, "No usb runtime listed");
 
-          display = addonDoc.defaultView.getComputedStyle(w).display
+          display = addonDoc.defaultView.getComputedStyle(w).display;
           is(display, "block", "Warning about missing ADB present");
 
-          yield closeWebIDE(win);
+          await closeWebIDE(win);
 
           SimpleTest.finish();
-
-        });
-      }
+        })();
+      };
     </script>
   </body>
 </html>

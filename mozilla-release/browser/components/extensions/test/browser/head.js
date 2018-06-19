@@ -21,6 +21,7 @@
  *          promisePrefChangeObserved openContextMenuInFrame
  *          promiseAnimationFrame getCustomizableUIPanelID
  *          awaitEvent BrowserWindowIterator
+ *          navigateTab historyPushState promiseWindowRestored
  */
 
 // There are shutdown issues for which multiple rejections are left uncaught.
@@ -54,6 +55,17 @@ if (remote) {
   // We don't want to reset this at the end of the test, so that we don't have
   // to spawn a new extension child process for each test unit.
   SpecialPowers.setIntPref("dom.ipc.keepProcessesAlive.extension", 1);
+}
+
+// Don't try to create screenshots of sites we load during tests.
+Services.prefs.getDefaultBranch("browser.newtabpage.activity-stream.")
+        .setBoolPref("feeds.topsites", false);
+
+{
+  // Touch the recipeParentPromise lazy getter so we don't get
+  // `this._recipeManager is undefined` errors during tests.
+  const {LoginManagerParent} = ChromeUtils.import("resource://gre/modules/LoginManagerParent.jsm", null);
+  void LoginManagerParent.recipeParentPromise;
 }
 
 // Bug 1239884: Our tests occasionally hit a long GC pause at unpredictable
@@ -289,12 +301,10 @@ async function openContextMenuInSidebar(selector = "body") {
   return contentAreaContextMenu;
 }
 
-async function openContextMenuInFrame(frameId) {
+async function openContextMenuInFrame(frameSelector) {
   let contentAreaContextMenu = document.getElementById("contentAreaContextMenu");
   let popupShownPromise = BrowserTestUtils.waitForEvent(contentAreaContextMenu, "popupshown");
-  let doc = gBrowser.selectedBrowser.contentDocumentAsCPOW;
-  let frame = doc.getElementById(frameId);
-  EventUtils.synthesizeMouseAtCenter(frame.contentDocument.body, {type: "contextmenu"}, frame.contentWindow);
+  await BrowserTestUtils.synthesizeMouseAtCenter([frameSelector, "body"], {type: "contextmenu"}, gBrowser.selectedBrowser);
   await popupShownPromise;
   return contentAreaContextMenu;
 }
@@ -478,6 +488,10 @@ function promisePrefChangeObserved(pref) {
     }));
 }
 
+function promiseWindowRestored(window) {
+  return new Promise(resolve => window.addEventListener("SSWindowRestored", resolve, {once: true}));
+}
+
 function awaitEvent(eventName, id) {
   return new Promise(resolve => {
     let listener = (_eventName, ...args) => {
@@ -501,4 +515,18 @@ function* BrowserWindowIterator() {
       yield currentWindow;
     }
   }
+}
+
+async function locationChange(tab, url, task) {
+  let locationChanged = BrowserTestUtils.waitForLocationChange(gBrowser, url);
+  await ContentTask.spawn(tab.linkedBrowser, url, task);
+  return locationChanged;
+}
+
+function navigateTab(tab, url) {
+  return locationChange(tab, url, (url) => { content.location.href = url; });
+}
+
+function historyPushState(tab, url) {
+  return locationChange(tab, url, (url) => { content.history.pushState(null, null, url); });
 }

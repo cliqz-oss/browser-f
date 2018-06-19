@@ -35,11 +35,6 @@ else:
 #####
 config = {
     "buildbot_json_path": "buildprops.json",
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
     ###
     "installer_path": INSTALLER_PATH,
     "binary_path": BINARY_PATH,
@@ -214,11 +209,6 @@ config = {
             "options": ["--suite=reftest",
                         "--setpref=layers.acceleration.disabled=true"],
             "tests": ["tests/reftest/tests/layout/reftests/reftest.list"]
-        },
-        "reftest-stylo": {
-            "options": ["--suite=reftest",
-                        "--setpref=reftest.compareStyloToGecko=true"],
-            "tests": ["tests/reftest/tests/layout/reftests/reftest.list"],
         },
     },
     "all_xpcshell_suites": {

@@ -55,8 +55,11 @@ bool nsMixedContentBlocker::sBlockMixedScript = false;
 
 bool nsMixedContentBlocker::sBlockMixedObjectSubrequest = false;
 
-// Is mixed display content blocking (images, audio, video, <a ping>) enabled?
+// Is mixed display content blocking (images, audio, video) enabled?
 bool nsMixedContentBlocker::sBlockMixedDisplay = false;
+
+// Is mixed display content upgrading (images, audio, video) enabled?
+bool nsMixedContentBlocker::sUpgradeMixedDisplay = false;
 
 enum MixedContentHSTSState {
   MCB_HSTS_PASSIVE_NO_HSTS   = 0,
@@ -214,6 +217,10 @@ nsMixedContentBlocker::nsMixedContentBlocker()
   // Cache the pref for mixed display blocking
   Preferences::AddBoolVarCache(&sBlockMixedDisplay,
                                "security.mixed_content.block_display_content");
+
+  // Cache the pref for mixed display upgrading
+  Preferences::AddBoolVarCache(&sUpgradeMixedDisplay,
+                               "security.mixed_content.upgrade_display_content");
 }
 
 nsMixedContentBlocker::~nsMixedContentBlocker()
@@ -308,34 +315,23 @@ nsMixedContentBlocker::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
     return NS_OK;
   }
 
-  nsContentPolicyType contentPolicyType = loadInfo->InternalContentPolicyType();
   nsCOMPtr<nsIPrincipal> requestingPrincipal = loadInfo->LoadingPrincipal();
 
   // Since we are calling shouldLoad() directly on redirects, we don't go through the code
   // in nsContentPolicyUtils::NS_CheckContentLoadPolicy(). Hence, we have to
   // duplicate parts of it here.
-  nsCOMPtr<nsIURI> requestingLocation;
   if (requestingPrincipal) {
     // We check to see if the loadingPrincipal is systemPrincipal and return
     // early if it is
     if (nsContentUtils::IsSystemPrincipal(requestingPrincipal)) {
       return NS_OK;
     }
-    // We set the requestingLocation from the RequestingPrincipal.
-    rv = requestingPrincipal->GetURI(getter_AddRefs(requestingLocation));
-    NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  nsCOMPtr<nsISupports> requestingContext = loadInfo->LoadingNode();
-
   int16_t decision = REJECT_REQUEST;
-  rv = ShouldLoad(contentPolicyType,
-                  newUri,
-                  requestingLocation,
-                  requestingContext,
-                  EmptyCString(),       // aMimeGuess
-                  nullptr,              // aExtra
-                  requestingPrincipal,
+  rv = ShouldLoad(newUri,
+                  loadInfo,
+                  EmptyCString(), // aMimeGuess
                   &decision);
   if (NS_FAILED(rv)) {
     autoCallback.DontCallback();
@@ -358,15 +354,20 @@ nsMixedContentBlocker::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
  * for detailed description of the parameters.
  */
 NS_IMETHODIMP
-nsMixedContentBlocker::ShouldLoad(uint32_t aContentType,
-                                  nsIURI* aContentLocation,
-                                  nsIURI* aRequestingLocation,
-                                  nsISupports* aRequestingContext,
+nsMixedContentBlocker::ShouldLoad(nsIURI* aContentLocation,
+                                  nsILoadInfo* aLoadInfo,
                                   const nsACString& aMimeGuess,
-                                  nsISupports* aExtra,
-                                  nsIPrincipal* aRequestPrincipal,
                                   int16_t* aDecision)
 {
+  uint32_t aContentType = aLoadInfo->InternalContentPolicyType();
+  nsCOMPtr<nsISupports> aRequestingContext = aLoadInfo->GetLoadingContext();
+  nsCOMPtr<nsIPrincipal> aRequestPrincipal = aLoadInfo->TriggeringPrincipal();
+  nsCOMPtr<nsIURI> aRequestingLocation;
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
+  if (loadingPrincipal) {
+    loadingPrincipal->GetURI(getter_AddRefs(aRequestingLocation));
+  }
+
   // We pass in false as the first parameter to ShouldLoad(), because the
   // callers of this method don't know whether the load went through cached
   // image redirects.  This is handled by direct callers of the static
@@ -377,7 +378,7 @@ nsMixedContentBlocker::ShouldLoad(uint32_t aContentType,
                            aRequestingLocation,
                            aRequestingContext,
                            aMimeGuess,
-                           aExtra,
+                           nullptr, // aExtra,
                            aRequestPrincipal,
                            aDecision);
   return rv;
@@ -564,6 +565,7 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     case TYPE_XMLHTTPREQUEST:
     case TYPE_XSLT:
     case TYPE_OTHER:
+    case TYPE_SPECULATIVE:
       break;
 
 
@@ -777,7 +779,7 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   // pref "security.mixed_content.upgrade_display_content" is true.
   // This behaves like GetUpgradeInsecureRequests above in that the channel will
   // be upgraded to https before fetching any data from the netwerk.
-  bool isUpgradableDisplayType = nsContentUtils::IsUpgradableDisplayType(aContentType);
+  bool isUpgradableDisplayType = nsContentUtils::IsUpgradableDisplayType(aContentType) && ShouldUpgradeMixedDisplayContent();
   if (isHttpScheme && isUpgradableDisplayType) {
     *aDecision = ACCEPT;
     return NS_OK;
@@ -804,7 +806,8 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
                         0, // aLineNumber
                         0, // aColumnNumber
                         nsIScriptError::errorFlag, "CSP",
-                        document->InnerWindowID());
+                        document->InnerWindowID(),
+                        !!document->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId);
     *aDecision = REJECT_REQUEST;
     return NS_OK;
   }
@@ -1052,16 +1055,12 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
 }
 
 NS_IMETHODIMP
-nsMixedContentBlocker::ShouldProcess(uint32_t aContentType,
-                                     nsIURI* aContentLocation,
-                                     nsIURI* aRequestingLocation,
-                                     nsISupports* aRequestingContext,
+nsMixedContentBlocker::ShouldProcess(nsIURI* aContentLocation,
+                                     nsILoadInfo* aLoadInfo,
                                      const nsACString& aMimeGuess,
-                                     nsISupports* aExtra,
-                                     nsIPrincipal* aRequestPrincipal,
                                      int16_t* aDecision)
 {
-  aContentType = nsContentUtils::InternalContentPolicyTypeToExternal(aContentType);
+  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
 
   if (!aContentLocation) {
     // aContentLocation may be null when a plugin is loading without an associated URI resource
@@ -1074,9 +1073,7 @@ nsMixedContentBlocker::ShouldProcess(uint32_t aContentType,
     }
   }
 
-  return ShouldLoad(aContentType, aContentLocation, aRequestingLocation,
-                    aRequestingContext, aMimeGuess, aExtra, aRequestPrincipal,
-                    aDecision);
+  return ShouldLoad(aContentLocation, aLoadInfo, aMimeGuess, aDecision);
 }
 
 // Record information on when HSTS would have made mixed content not mixed
@@ -1126,4 +1123,10 @@ nsMixedContentBlocker::AccumulateMixedContentHSTS(
                             MCB_HSTS_ACTIVE_WITH_HSTS);
     }
   }
+}
+
+bool
+nsMixedContentBlocker::ShouldUpgradeMixedDisplayContent()
+{
+  return sUpgradeMixedDisplay;
 }

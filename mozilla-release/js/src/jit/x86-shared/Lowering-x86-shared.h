@@ -23,7 +23,6 @@ class LIRGeneratorX86Shared : public LIRGeneratorShared
                                   MTableSwitch* ins);
     LTableSwitchV* newLTableSwitchV(MTableSwitch* ins);
 
-    void visitPowHalf(MPowHalf* ins) override;
     void lowerForShift(LInstructionHelper<1, 2, 0>* ins, MDefinition* mir, MDefinition* lhs,
                        MDefinition* rhs);
     void lowerForALU(LInstructionHelper<1, 1, 0>* ins, MDefinition* mir, MDefinition* input);
@@ -43,8 +42,6 @@ class LIRGeneratorX86Shared : public LIRGeneratorShared
                          MDefinition* lhs, MDefinition* rhs);
     void lowerForBitAndAndBranch(LBitAndAndBranch* baab, MInstruction* mir,
                                  MDefinition* lhs, MDefinition* rhs);
-    void visitWasmNeg(MWasmNeg* ins) override;
-    void visitWasmSelect(MWasmSelect* ins) override;
     void lowerMulI(MMul* mul, MDefinition* lhs, MDefinition* rhs);
     void lowerDivI(MDiv* div);
     void lowerModI(MMod* mod);
@@ -53,23 +50,12 @@ class LIRGeneratorX86Shared : public LIRGeneratorShared
     void lowerUrshD(MUrsh* mir);
     void lowerTruncateDToInt32(MTruncateToInt32* ins);
     void lowerTruncateFToInt32(MTruncateToInt32* ins);
-    void visitSimdInsertElement(MSimdInsertElement* ins) override;
-    void visitSimdExtractElement(MSimdExtractElement* ins) override;
-    void visitSimdBinaryArith(MSimdBinaryArith* ins) override;
-    void visitSimdBinarySaturating(MSimdBinarySaturating* ins) override;
-    void visitSimdSelect(MSimdSelect* ins) override;
-    void visitSimdSplat(MSimdSplat* ins) override;
-    void visitSimdSwizzle(MSimdSwizzle* ins) override;
-    void visitSimdShuffle(MSimdShuffle* ins) override;
-    void visitSimdGeneralShuffle(MSimdGeneralShuffle* ins) override;
-    void visitSimdValueX4(MSimdValueX4* ins) override;
     void lowerCompareExchangeTypedArrayElement(MCompareExchangeTypedArrayElement* ins,
                                                bool useI386ByteRegisters);
     void lowerAtomicExchangeTypedArrayElement(MAtomicExchangeTypedArrayElement* ins,
                                               bool useI386ByteRegisters);
     void lowerAtomicTypedArrayElementBinop(MAtomicTypedArrayElementBinop* ins,
                                            bool useI386ByteRegisters);
-    void visitCopySign(MCopySign* ins) override;
 };
 
 } // namespace jit

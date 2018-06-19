@@ -328,7 +328,7 @@ public:
         nsContentEncodings(nsIHttpChannel* aChannel, const char* aEncodingHeader);
 
     private:
-        virtual ~nsContentEncodings();
+        virtual ~nsContentEncodings() = default;
 
         MOZ_MUST_USE nsresult PrepareForNext(void);
 
@@ -429,6 +429,7 @@ protected:
   void NotifySetCookie(char const *aCookie);
 
   mozilla::dom::PerformanceStorage* GetPerformanceStorage();
+  void MaybeReportTimingData();
   nsIURI* GetReferringPage();
   nsPIDOMWindowInner* GetInnerDOMWindow();
 
@@ -831,7 +832,7 @@ public:
   }
 
 private:
-  virtual ~ProxyReleaseRunnable() {}
+  virtual ~ProxyReleaseRunnable() = default;
 
   nsTArray<nsCOMPtr<nsISupports>> mDoomed;
 };

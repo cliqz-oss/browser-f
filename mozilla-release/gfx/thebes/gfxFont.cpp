@@ -7,6 +7,7 @@
 
 #include "mozilla/BinarySearch.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/SVGContextPaint.h"
@@ -769,14 +770,15 @@ gfxFont::gfxFont(const RefPtr<UnscaledFont>& aUnscaledFont,
                  gfxFontEntry *aFontEntry, const gfxFontStyle *aFontStyle,
                  AntialiasOption anAAOption, cairo_scaled_font_t *aScaledFont) :
     mScaledFont(aScaledFont),
-    mFontEntry(aFontEntry), mIsValid(true),
-    mApplySyntheticBold(false),
-    mMathInitialized(false),
+    mFontEntry(aFontEntry),
+    mUnscaledFont(aUnscaledFont),
     mStyle(*aFontStyle),
     mAdjustedSize(0.0),
     mFUnitsConvFactor(-1.0f), // negative to indicate "not yet initialized"
     mAntialiasOption(anAAOption),
-    mUnscaledFont(aUnscaledFont)
+    mIsValid(true),
+    mApplySyntheticBold(false),
+    mMathInitialized(false)
 {
 #ifdef DEBUG_TEXT_RUN_STORAGE_METRICS
     ++gFontCount;
@@ -2166,16 +2168,18 @@ gfxFont::Draw(const gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
 
     fontParams.needsOblique = IsSyntheticOblique();
     fontParams.haveSVGGlyphs = GetFontEntry()->TryGetSVGData(this);
-
-    if (fontParams.haveSVGGlyphs && textDrawer) {
-        textDrawer->FoundUnsupportedFeature();
-        return;
-    }
-
     fontParams.haveColorGlyphs = GetFontEntry()->TryGetColorGlyphs();
     fontParams.contextPaint = aRunParams.runContextPaint;
 
     if (textDrawer) {
+        Color color;
+        if (fontParams.haveSVGGlyphs ||
+            (fontParams.haveColorGlyphs &&
+             aRunParams.context->HasNonOpaqueNonTransparentColor(color))) {
+            textDrawer->FoundUnsupportedFeature();
+            return;
+        }
+
         fontParams.isVerticalFont = aRunParams.isVerticalRun;
     } else {
         fontParams.isVerticalFont =
@@ -2674,7 +2678,7 @@ gfxFont::Measure(const gfxTextRun *aTextRun,
     // If the font may be rendered with a fake-italic effect, we need to allow
     // for the top-right of the glyphs being skewed to the right, and the
     // bottom-left being skewed further left.
-    if (mStyle.style != NS_FONT_STYLE_NORMAL &&
+    if (mStyle.style != FontSlantStyle::Normal() &&
         mFontEntry->IsUpright() &&
         mStyle.allowSyntheticStyle) {
         gfxFloat extendLeftEdge =
@@ -3521,8 +3525,7 @@ gfxFont::GetSmallCapsFont()
     style.size *= SMALL_CAPS_SCALE_FACTOR;
     style.variantCaps = NS_FONT_VARIANT_CAPS_NORMAL;
     gfxFontEntry* fe = GetFontEntry();
-    bool needsBold = style.weight >= 600 && !fe->IsBold();
-    return fe->FindOrMakeFont(&style, needsBold, mUnicodeRangeMap);
+    return fe->FindOrMakeFont(&style, mUnicodeRangeMap);
 }
 
 gfxFont*
@@ -3531,8 +3534,7 @@ gfxFont::GetSubSuperscriptFont(int32_t aAppUnitsPerDevPixel)
     gfxFontStyle style(*GetStyle());
     style.AdjustForSubSuperscript(aAppUnitsPerDevPixel);
     gfxFontEntry* fe = GetFontEntry();
-    bool needsBold = style.weight >= 600 && !fe->IsBold();
-    return fe->FindOrMakeFont(&style, needsBold, mUnicodeRangeMap);
+    return fe->FindOrMakeFont(&style, mUnicodeRangeMap);
 }
 
 static void
@@ -4110,8 +4112,9 @@ gfxFontStyle::gfxFontStyle() :
     size(DEFAULT_PIXEL_FONT_SIZE), sizeAdjust(-1.0f), baselineOffset(0.0f),
     languageOverride(NO_FONT_LANGUAGE_OVERRIDE),
     fontSmoothingBackgroundColor(NS_RGBA(0, 0, 0, 0)),
-    weight(NS_FONT_WEIGHT_NORMAL), stretch(NS_FONT_STRETCH_NORMAL),
-    style(NS_FONT_STYLE_NORMAL),
+    weight(FontWeight::Normal()),
+    stretch(FontStretch::Normal()),
+    style(FontSlantStyle::Normal()),
     variantCaps(NS_FONT_VARIANT_CAPS_NORMAL),
     variantSubSuper(NS_FONT_VARIANT_POSITION_NORMAL),
     systemFont(true), printerFont(false), useGrayscaleAntialiasing(false),
@@ -4121,7 +4124,9 @@ gfxFontStyle::gfxFontStyle() :
 {
 }
 
-gfxFontStyle::gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
+gfxFontStyle::gfxFontStyle(FontSlantStyle aStyle,
+                           FontWeight aWeight,
+                           FontStretch aStretch,
                            gfxFloat aSize,
                            nsAtom *aLanguage, bool aExplicitLanguage,
                            float aSizeAdjust, bool aSystemFont,
@@ -4133,7 +4138,8 @@ gfxFontStyle::gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
     size(aSize), sizeAdjust(aSizeAdjust), baselineOffset(0.0f),
     languageOverride(aLanguageOverride),
     fontSmoothingBackgroundColor(NS_RGBA(0, 0, 0, 0)),
-    weight(aWeight), stretch(aStretch),
+    weight(aWeight),
+    stretch(aStretch),
     style(aStyle),
     variantCaps(NS_FONT_VARIANT_CAPS_NORMAL),
     variantSubSuper(NS_FONT_VARIANT_POSITION_NORMAL),
@@ -4147,10 +4153,12 @@ gfxFontStyle::gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
     MOZ_ASSERT(!mozilla::IsNaN(size));
     MOZ_ASSERT(!mozilla::IsNaN(sizeAdjust));
 
-    if (weight > 900)
-        weight = 900;
-    if (weight < 100)
-        weight = 100;
+    if (weight > FontWeight(900)) {
+        weight = FontWeight(900);
+    }
+    if (weight < FontWeight(100)) {
+        weight = FontWeight(100);
+    }
 
     if (size >= FONT_MAX_SIZE) {
         size = FONT_MAX_SIZE;
@@ -4166,17 +4174,18 @@ gfxFontStyle::gfxFontStyle(uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
     }
 }
 
-int8_t
-gfxFontStyle::ComputeWeight() const
+PLDHashNumber
+gfxFontStyle::Hash() const
 {
-    int8_t baseWeight = (weight + 50) / 100;
-
-    if (baseWeight < 0)
-        baseWeight = 0;
-    if (baseWeight > 9)
-        baseWeight = 9;
-
-    return baseWeight;
+    return mozilla::HashGeneric(systemFont, style.ForHash(),
+                                stretch.ForHash(), weight.ForHash(),
+                                size, sizeAdjust,
+                                nsRefPtrHashKey<nsAtom>::HashKey(language));
+    /* XXX
+    return (style + (systemFont << 7) + (weight.ForHash() << 8) +
+            uint32_t(size*1000) + int32_t(sizeAdjust*1000)) ^
+            nsRefPtrHashKey<nsAtom>::HashKey(language);
+    */
 }
 
 void

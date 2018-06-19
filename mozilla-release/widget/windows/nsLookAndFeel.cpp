@@ -10,6 +10,7 @@
 #include "nsUXThemeData.h"
 #include "nsUXThemeConstants.h"
 #include "WinUtils.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/WindowsVersion.h"
 #include "gfxFontConstants.h"
@@ -702,15 +703,15 @@ GetSysFontInfo(HDC aHDC, LookAndFeel::FontID anID,
 
   // FIXME: What about oblique?
   aFontStyle.style =
-    (ptrLogFont->lfItalic) ? NS_FONT_STYLE_ITALIC : NS_FONT_STYLE_NORMAL;
+    (ptrLogFont->lfItalic) ? FontSlantStyle::Italic() : FontSlantStyle::Normal();
 
   // FIXME: Other weights?
   aFontStyle.weight =
     (ptrLogFont->lfWeight == FW_BOLD ?
-        NS_FONT_WEIGHT_BOLD : NS_FONT_WEIGHT_NORMAL);
+        FontWeight::Bold() : FontWeight::Normal());
 
   // FIXME: Set aFontStyle->stretch correctly!
-  aFontStyle.stretch = NS_FONT_STRETCH_NORMAL;
+  aFontStyle.stretch = FontStretch::Normal();
 
   aFontStyle.systemFont = true;
 

@@ -11,7 +11,6 @@
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="549192:  History view not updated after deleting entry"
@@ -91,7 +90,7 @@
         let query = PlacesUtils.history.getNewQuery();
         let opts = PlacesUtils.history.getNewQueryOptions();
         opts.sortingMode = opts.SORT_BY_DATE_DESCENDING;
-        let queryURI = PlacesUtils.history.queriesToQueryString([query], 1, opts);
+        let queryURI = PlacesUtils.history.queryToQueryString(query, opts);
 
         // Setup the places tree contents.
         var tree = document.getElementById("tree");

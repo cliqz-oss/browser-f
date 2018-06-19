@@ -82,6 +82,7 @@ def _defines():
                 'MOZ_APP_UA_NAME',
                 'MOZ_APP_VENDOR',
                 'MOZ_APP_VERSION',
+                'MOZ_APP_VERSION_DISPLAY',
                 'MOZ_CHILD_PROCESS_NAME',
                 'MOZ_MOZILLA_API_KEY',
                 'MOZ_UPDATE_CHANNEL',
@@ -97,11 +98,6 @@ def _defines():
         # These should really come from the included binaries, but that's not easy.
         DEFINES['MOZ_APP_ABI'] = 'arm-eabi-gcc3'
         DEFINES['TARGET_XPCOM_ABI'] = 'arm-eabi-gcc3'
-
-    if '-march=armv7' in CONFIG['OS_CFLAGS']:
-        DEFINES['MOZ_MIN_CPU_VERSION'] = 7
-    else:
-        DEFINES['MOZ_MIN_CPU_VERSION'] = 5
 
     # It's okay to use MOZ_ADJUST_SDK_KEY here because this doesn't
     # leak the value to build logs.

@@ -141,6 +141,35 @@ win64/debug:
         - win64-rust
         - win64-sccache
 
+win64-plain/debug:
+    description: "Win64 Debug Plain"
+    index:
+        product: firefox
+        job-name: win64-plain-debug
+    treeherder:
+        platform: windows2012-64/debug
+        symbol: Bp
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            PERFHERDER_EXTRA_OPTIONS: plain
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/plain_debug.py
+    run-on-projects: [trunk]
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+
 win64/opt:
     description: "Win64 Opt"
     index:
@@ -168,6 +197,35 @@ win64/opt:
         - win64-clang-cl
         - win64-rust
         - win64-sccache
+
+win64-plain/opt:
+    description: "Win64 Opt Plain"
+    index:
+        product: firefox
+        job-name: win64-plain-opt
+    treeherder:
+        platform: windows2012-64/opt
+        symbol: Bp
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            PERFHERDER_EXTRA_OPTIONS: plain
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/plain_opt.py
+    run-on-projects: [trunk]
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
 
 win64-dmd/opt:
     description: "Win64 DMD Opt"
@@ -229,7 +287,6 @@ win32-nightly/opt:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win32.py
             - builds/taskcluster_sub_win32/opt.py
-            - disable_signing.py
             - taskcluster_nightly.py
     toolchains:
         - win64-clang-cl
@@ -265,7 +322,6 @@ win64-nightly/opt:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/opt.py
-            - disable_signing.py
             - taskcluster_nightly.py
     toolchains:
         - win64-clang-cl
@@ -593,7 +649,6 @@ win32-devedition-nightly/opt:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win32.py
             - builds/taskcluster_sub_win32/opt.py
-            - disable_signing.py
             - taskcluster_nightly.py
         custom-build-variant-cfg: devedition
     run-on-projects: ['mozilla-beta']
@@ -630,7 +685,6 @@ win64-devedition-nightly/opt:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/opt.py
-            - disable_signing.py
             - taskcluster_nightly.py
         custom-build-variant-cfg: devedition
     run-on-projects: ['mozilla-beta']
@@ -662,6 +716,7 @@ win32-mingw32/opt:
             - builds/releng_base_firefox.py
             - builds/releng_base_windows_32_mingw_builds.py
         need-xvfb: false
+    run-on-projects: []
     toolchains:
         - mingw32-rust
         - linux64-upx
@@ -695,6 +750,7 @@ win32-mingw32/debug:
             - builds/releng_base_windows_32_mingw_builds.py
             - builds/releng_sub_windows_configs/32_mingw_debug.py
         need-xvfb: false
+    run-on-projects: []
     toolchains:
         - mingw32-rust
         - linux64-upx

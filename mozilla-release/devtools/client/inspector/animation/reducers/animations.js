@@ -8,25 +8,42 @@ const {
   UPDATE_ANIMATIONS,
   UPDATE_DETAIL_VISIBILITY,
   UPDATE_ELEMENT_PICKER_ENABLED,
+  UPDATE_HIGHLIGHTED_NODE,
   UPDATE_SELECTED_ANIMATION,
   UPDATE_SIDEBAR_SIZE,
 } = require("../actions/index");
+
+const TimeScale = require("../utils/timescale");
 
 const INITIAL_STATE = {
   animations: [],
   detailVisibility: false,
   elementPickerEnabled: false,
+  highlightedNode: null,
   selectedAnimation: null,
   sidebarSize: {
     height: 0,
     width: 0,
   },
+  timeScale: null,
 };
 
 const reducers = {
   [UPDATE_ANIMATIONS](state, { animations }) {
+    let detailVisibility = state.detailVisibility;
+    let selectedAnimation = state.selectedAnimation;
+
+    if (!state.selectedAnimation ||
+        !animations.find(animation => animation.actorID === selectedAnimation.actorID)) {
+      selectedAnimation = animations.length === 1 ? animations[0] : null;
+      detailVisibility = !!selectedAnimation;
+    }
+
     return Object.assign({}, state, {
       animations,
+      detailVisibility,
+      selectedAnimation,
+      timeScale: new TimeScale(animations),
     });
   },
 
@@ -39,6 +56,12 @@ const reducers = {
   [UPDATE_ELEMENT_PICKER_ENABLED](state, { elementPickerEnabled }) {
     return Object.assign({}, state, {
       elementPickerEnabled
+    });
+  },
+
+  [UPDATE_HIGHLIGHTED_NODE](state, { highlightedNode }) {
+    return Object.assign({}, state, {
+      highlightedNode
     });
   },
 
@@ -58,7 +81,7 @@ const reducers = {
   },
 };
 
-module.exports = function (state = INITIAL_STATE, action) {
+module.exports = function(state = INITIAL_STATE, action) {
   const reducer = reducers[action.type];
   return reducer ? reducer(state, action) : state;
 };

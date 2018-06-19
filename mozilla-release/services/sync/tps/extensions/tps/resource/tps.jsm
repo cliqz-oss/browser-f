@@ -71,7 +71,6 @@ const SYNC_WIPE_REMOTE  = "wipeRemote";
 const ACTION_ADD                = "add";
 const ACTION_DELETE             = "delete";
 const ACTION_MODIFY             = "modify";
-const ACTION_PRIVATE_BROWSING   = "private-browsing";
 const ACTION_SET_ENABLED        = "set-enabled";
 const ACTION_SYNC               = "sync";
 const ACTION_SYNC_RESET_CLIENT  = SYNC_RESET_CLIENT;
@@ -84,7 +83,6 @@ const ACTIONS = [
   ACTION_ADD,
   ACTION_DELETE,
   ACTION_MODIFY,
-  ACTION_PRIVATE_BROWSING,
   ACTION_SET_ENABLED,
   ACTION_SYNC,
   ACTION_SYNC_RESET_CLIENT,
@@ -96,7 +94,6 @@ const ACTIONS = [
 
 const OBSERVER_TOPICS = ["fxaccounts:onlogin",
                          "fxaccounts:onlogout",
-                         "private-browsing",
                          "profile-before-change",
                          "sessionstore-windows-restored",
                          "weave:service:tracking-started",
@@ -130,7 +127,7 @@ var TPS = {
   _tabsFinished: 0,
   _test: null,
   _triggeredSync: false,
-  _usSinceEpoch: 0,
+  _msSinceEpoch: 0,
   _requestedQuit: false,
   shouldValidateAddons: false,
   shouldValidateBookmarks: false,
@@ -163,18 +160,14 @@ var TPS = {
     this.quit();
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   observe: function TPS__observe(subject, topic, data) {
     try {
       Logger.logInfo("----------event observed: " + topic);
 
       switch (topic) {
-        case "private-browsing":
-          Logger.logInfo("private browsing " + data);
-          break;
-
         case "profile-before-change":
           OBSERVER_TOPICS.forEach(function(topic) {
             Services.obs.removeObserver(this, topic);
@@ -323,9 +316,7 @@ var TPS = {
                      " on tab " + JSON.stringify(tab));
       switch (action) {
         case ACTION_ADD:
-          await new Promise(resolve => {
-            BrowserTabs.Add(tab.uri, resolve);
-          });
+          await BrowserTabs.Add(tab.uri);
           break;
         case ACTION_VERIFY:
           Logger.AssertTrue(typeof(tab.profile) != "undefined",
@@ -379,7 +370,7 @@ var TPS = {
     for (let datum of data) {
       Logger.logInfo("executing action " + action.toUpperCase() +
                      " on form entry " + JSON.stringify(datum));
-      let formdata = new FormData(datum, this._usSinceEpoch);
+      let formdata = new FormData(datum, this._msSinceEpoch);
       switch (action) {
         case ACTION_ADD:
           await formdata.Create();
@@ -411,17 +402,17 @@ var TPS = {
                        " on history entry " + entryString);
         switch (action) {
           case ACTION_ADD:
-            await HistoryEntry.Add(entry, this._usSinceEpoch);
+            await HistoryEntry.Add(entry, this._msSinceEpoch);
             break;
           case ACTION_DELETE:
-            await HistoryEntry.Delete(entry, this._usSinceEpoch);
+            await HistoryEntry.Delete(entry, this._msSinceEpoch);
             break;
           case ACTION_VERIFY:
-            Logger.AssertTrue((await HistoryEntry.Find(entry, this._usSinceEpoch)),
+            Logger.AssertTrue((await HistoryEntry.Find(entry, this._msSinceEpoch)),
               "Uri visits not found in history database: " + entryString);
             break;
           case ACTION_VERIFY_NOT:
-            Logger.AssertTrue(!(await HistoryEntry.Find(entry, this._usSinceEpoch)),
+            Logger.AssertTrue(!(await HistoryEntry.Find(entry, this._msSinceEpoch)),
               "Uri visits found in history database, but they shouldn't be: " + entryString);
             break;
           default:
@@ -820,7 +811,7 @@ var TPS = {
         // Places dislikes it if we add visits in the future. We pretend the
         // real time is 1 minute ago to avoid issues caused by places using a
         // different clock than the one that set the seconds_since_epoch pref.
-        this._usSinceEpoch = (this.seconds_since_epoch - 60) * 1000 * 1000;
+        this._msSinceEpoch = (this.seconds_since_epoch - 60) * 1000;
       } else {
         this.DumpError("seconds-since-epoch not set");
         return;
@@ -864,10 +855,20 @@ var TPS = {
     return root;
   },
 
+  // Default ping validator that always says the ping passes. This should be
+  // overridden unless the `testing.tps.skipPingValidation` pref is true.
+  pingValidator(ping) {
+    Logger.logInfo("Not validating ping -- disabled by pref");
+    return true;
+  },
+
   // Attempt to load the sync_ping_schema.json and initialize `this.pingValidator`
   // based on the source of the tps file. Assumes that it's at "../unit/sync_ping_schema.json"
   // relative to the directory the tps test file (testFile) is contained in.
   _tryLoadPingSchema(testFile) {
+    if (Services.prefs.getBoolPref("testing.tps.skipPingValidation", false)) {
+      return;
+    }
     try {
       let schemaFile = this._getFileRelativeToSourceRoot(testFile,
         "services/sync/tests/unit/sync_ping_schema.json");

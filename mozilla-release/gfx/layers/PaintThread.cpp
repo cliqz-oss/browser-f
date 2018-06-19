@@ -122,10 +122,6 @@ PaintThread::AddRef()
 /* static */ int32_t
 PaintThread::CalculatePaintWorkerCount()
 {
-  if (!gfxPlatform::GetPlatform()->UsesTiling()) {
-    return 0;
-  }
-
   int32_t cpuCores = 1;
   nsCOMPtr<nsIPropertyBag2> systemInfo = do_GetService(NS_SYSTEMINFO_CONTRACTID);
   if (systemInfo) {
@@ -169,7 +165,10 @@ PaintThread::Init()
   }
   sThread = thread;
 
-  if (gfxPlatform::GetPlatform()->UsesTiling()) {
+  // Only create paint workers for tiling if we are using tiling or could
+  // expect to dynamically switch to tiling in the future
+  if (gfxPlatform::GetPlatform()->UsesTiling() ||
+      gfxPrefs::LayersTilesEnabledIfSkiaPOMTP()) {
     int32_t paintWorkerCount = PaintThread::CalculatePaintWorkerCount();
     mPaintWorkers = SharedThreadPool::Get(NS_LITERAL_CSTRING("PaintWorker"), paintWorkerCount);
   }

@@ -2,12 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{DevicePoint, LayerToWorldTransform, PremultipliedColorF, WorldToLayerTransform};
+use api::{DevicePoint, LayoutToWorldTransform, WorldToLayoutTransform};
 use gpu_cache::{GpuCacheAddress, GpuDataRequest};
 use prim_store::EdgeAaSegmentMask;
 use render_task::RenderTaskAddress;
 
 // Contains type that must exactly match the same structures declared in GLSL.
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct ZBufferId(i32);
+
+pub struct ZBufferIdGenerator {
+    next: i32,
+}
+
+impl ZBufferIdGenerator {
+    pub fn new() -> ZBufferIdGenerator {
+        ZBufferIdGenerator {
+            next: 0
+        }
+    }
+
+    pub fn next(&mut self) -> ZBufferId {
+        let id = ZBufferId(self.next);
+        self.next += 1;
+        id
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -16,6 +38,15 @@ use render_task::RenderTaskAddress;
 pub enum RasterizationSpace {
     Local = 0,
     Screen = 1,
+}
+
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[repr(C)]
+pub enum BoxShadowStretchMode {
+    Stretch = 0,
+    Simple = 1,
 }
 
 #[repr(i32)]
@@ -52,6 +83,16 @@ pub struct ClipMaskInstance {
     pub resource_address: GpuCacheAddress,
 }
 
+/// A border corner dot or dash drawn into the clipping mask.
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[repr(C)]
+pub struct ClipMaskBorderCornerDotDash {
+    pub clip_mask_instance: ClipMaskInstance,
+    pub dot_dash_data: [f32; 8],
+}
+
 // 32 bytes per instance should be enough for anyone!
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -66,7 +107,7 @@ pub struct SimplePrimitiveInstance {
     pub clip_task_address: RenderTaskAddress,
     pub clip_chain_rect_index: ClipChainRectIndex,
     pub scroll_id: ClipScrollNodeIndex,
-    pub z_sort_index: i32,
+    pub z: ZBufferId,
 }
 
 impl SimplePrimitiveInstance {
@@ -76,7 +117,7 @@ impl SimplePrimitiveInstance {
         clip_task_address: RenderTaskAddress,
         clip_chain_rect_index: ClipChainRectIndex,
         scroll_id: ClipScrollNodeIndex,
-        z_sort_index: i32,
+        z: ZBufferId,
     ) -> Self {
         SimplePrimitiveInstance {
             specific_prim_address,
@@ -84,7 +125,7 @@ impl SimplePrimitiveInstance {
             clip_task_address,
             clip_chain_rect_index,
             scroll_id,
-            z_sort_index,
+            z,
         }
     }
 
@@ -95,7 +136,7 @@ impl SimplePrimitiveInstance {
                 self.task_address.0 as i32,
                 self.clip_task_address.0 as i32,
                 ((self.clip_chain_rect_index.0 as i32) << 16) | self.scroll_id.0 as i32,
-                self.z_sort_index,
+                self.z.0,
                 data0,
                 data1,
                 data2,
@@ -110,7 +151,7 @@ pub struct CompositePrimitiveInstance {
     pub backdrop_task_address: RenderTaskAddress,
     pub data0: i32,
     pub data1: i32,
-    pub z: i32,
+    pub z: ZBufferId,
     pub data2: i32,
     pub data3: i32,
 }
@@ -122,7 +163,7 @@ impl CompositePrimitiveInstance {
         backdrop_task_address: RenderTaskAddress,
         data0: i32,
         data1: i32,
-        z: i32,
+        z: ZBufferId,
         data2: i32,
         data3: i32,
     ) -> Self {
@@ -146,7 +187,7 @@ impl From<CompositePrimitiveInstance> for PrimitiveInstance {
                 instance.task_address.0 as i32,
                 instance.src_task_address.0 as i32,
                 instance.backdrop_task_address.0 as i32,
-                instance.z,
+                instance.z.0,
                 instance.data0,
                 instance.data1,
                 instance.data2,
@@ -160,11 +201,19 @@ bitflags! {
     /// Flags that define how the common brush shader
     /// code should process this instance.
     pub struct BrushFlags: u8 {
+        /// Apply perspective interpolation to UVs
         const PERSPECTIVE_INTERPOLATION = 0x1;
+        /// Do interpolation relative to segment rect,
+        /// rather than primitive rect.
+        const SEGMENT_RELATIVE = 0x2;
+        /// Repeat UVs horizontally.
+        const SEGMENT_REPEAT_X = 0x4;
+        /// Repeat UVs vertically.
+        const SEGMENT_REPEAT_Y = 0x8;
     }
 }
 
-// TODO(gw): While we are comverting things over, we
+// TODO(gw): While we are converting things over, we
 //           need to have the instance be the same
 //           size as an old PrimitiveInstance. In the
 //           future, we can compress this vertex
@@ -178,7 +227,7 @@ pub struct BrushInstance {
     pub clip_chain_rect_index: ClipChainRectIndex,
     pub scroll_id: ClipScrollNodeIndex,
     pub clip_task_address: RenderTaskAddress,
-    pub z: i32,
+    pub z: ZBufferId,
     pub segment_index: i32,
     pub edge_flags: EdgeAaSegmentMask,
     pub brush_flags: BrushFlags,
@@ -192,7 +241,7 @@ impl From<BrushInstance> for PrimitiveInstance {
                 instance.picture_address.0 as i32 | (instance.clip_task_address.0 as i32) << 16,
                 instance.prim_address.as_int(),
                 ((instance.clip_chain_rect_index.0 as i32) << 16) | instance.scroll_id.0 as i32,
-                instance.z,
+                instance.z.0,
                 instance.segment_index |
                     ((instance.edge_flags.bits() as i32) << 16) |
                     ((instance.brush_flags.bits() as i32) << 24),
@@ -215,8 +264,8 @@ pub struct ClipScrollNodeIndex(pub u32);
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 #[repr(C)]
 pub struct ClipScrollNodeData {
-    pub transform: LayerToWorldTransform,
-    pub inv_transform: WorldToLayerTransform,
+    pub transform: LayoutToWorldTransform,
+    pub inv_transform: WorldToLayoutTransform,
     pub transform_kind: f32,
     pub padding: [f32; 3],
 }
@@ -224,8 +273,8 @@ pub struct ClipScrollNodeData {
 impl ClipScrollNodeData {
     pub fn invalid() -> Self {
         ClipScrollNodeData {
-            transform: LayerToWorldTransform::identity(),
-            inv_transform: WorldToLayerTransform::identity(),
+            transform: LayoutToWorldTransform::identity(),
+            inv_transform: WorldToLayoutTransform::identity(),
             transform_kind: 0.0,
             padding: [0.0; 3],
         }
@@ -236,25 +285,38 @@ impl ClipScrollNodeData {
 #[repr(C)]
 pub struct ClipChainRectIndex(pub usize);
 
-#[derive(Copy, Debug, Clone, PartialEq)]
+// Texture cache resources can be either a simple rect, or define
+// a polygon within a rect by specifying a UV coordinate for each
+// corner. This is useful for rendering screen-space rasterized
+// off-screen surfaces.
+#[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-#[repr(C)]
-pub enum PictureType {
-    Image = 1,
-    TextShadow = 2,
+pub enum UvRectKind {
+    // The 2d bounds of the texture cache entry define the
+    // valid UV space for this texture cache entry.
+    Rect,
+    // The four vertices below define a quad within
+    // the texture cache entry rect. The shader can
+    // use a bilerp() to correctly interpolate a
+    // UV coord in the vertex shader.
+    Quad {
+        top_left: DevicePoint,
+        top_right: DevicePoint,
+        bottom_left: DevicePoint,
+        bottom_right: DevicePoint,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-#[repr(C)]
 pub struct ImageSource {
     pub p0: DevicePoint,
     pub p1: DevicePoint,
     pub texture_layer: f32,
     pub user_data: [f32; 3],
-    pub color: PremultipliedColorF,
+    pub uv_rect_kind: UvRectKind,
 }
 
 impl ImageSource {
@@ -271,6 +333,22 @@ impl ImageSource {
             self.user_data[1],
             self.user_data[2],
         ]);
-        request.push(self.color);
+
+        // If this is a polygon uv kind, then upload the four vertices.
+        if let UvRectKind::Quad { top_left, top_right, bottom_left, bottom_right } = self.uv_rect_kind {
+            request.push([
+                top_left.x,
+                top_left.y,
+                top_right.x,
+                top_right.y,
+            ]);
+
+            request.push([
+                bottom_left.x,
+                bottom_left.y,
+                bottom_right.x,
+                bottom_right.y,
+            ]);
+        }
     }
 }

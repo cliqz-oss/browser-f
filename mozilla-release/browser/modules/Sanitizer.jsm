@@ -13,14 +13,16 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   FormHistory: "resource://gre/modules/FormHistory.jsm",
   Downloads: "resource://gre/modules/Downloads.jsm",
-  DownloadsCommon: "resource:///modules/DownloadsCommon.jsm",
   TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
   setTimeout: "resource://gre/modules/Timer.jsm",
+  ServiceWorkerCleanUp: "resource://gre/modules/ServiceWorkerCleanUp.jsm",
+  OfflineAppCacheHelper: "resource://gre/modules/offlineAppCache.jsm",
+  ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
 });
 
-XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager",
-                                   "@mozilla.org/serviceworkers/manager;1",
-                                   "nsIServiceWorkerManager");
+XPCOMUtils.defineLazyServiceGetter(this, "sas",
+                                   "@mozilla.org/storage/activity-service;1",
+                                   "nsIStorageActivityService");
 XPCOMUtils.defineLazyServiceGetter(this, "quotaManagerService",
                                    "@mozilla.org/dom/quota-manager-service;1",
                                    "nsIQuotaManagerService");
@@ -61,6 +63,12 @@ var Sanitizer = {
   PREF_TIMESPAN: "privacy.sanitize.timeSpan",
 
   /**
+   * Pref to newTab segregation. If true, on shutdown, the private container
+   * used in about:newtab is cleaned up.  Exposed because used in tests.
+   */
+  PREF_NEWTAB_SEGREGATION: "privacy.usercontext.about_newtab_segregation.enabled",
+
+  /**
    * Time span constants corresponding to values of the privacy.sanitize.timeSpan
    * pref.  Used to determine how much history to clear, for various items
    */
@@ -79,6 +87,11 @@ var Sanitizer = {
    * sanitizations on startup.
    */
   shouldSanitizeOnShutdown: false,
+
+  /**
+   * Whether we should sanitize the private container for about:newtab.
+   */
+  shouldSanitizeNewTabContainer: false,
 
   /**
    * Shows a sanitization dialog to the user.
@@ -133,6 +146,17 @@ var Sanitizer = {
       () => sanitizeOnShutdown(progress),
       {fetchState: () => ({ progress })}
     );
+
+    this.shouldSanitizeNewTabContainer = Services.prefs.getBoolPref(this.PREF_NEWTAB_SEGREGATION, false);
+    if (this.shouldSanitizeNewTabContainer) {
+      addPendingSanitization("newtab-container", [], {});
+    }
+
+    let i = pendingSanitizations.findIndex(s => s.id == "newtab-container");
+    if (i != -1) {
+      pendingSanitizations.splice(i, 1);
+      sanitizeNewTabSegregation();
+    }
 
     // Finally, run the sanitizations that were left pending, because we crashed
     // before completing them.
@@ -264,14 +288,24 @@ var Sanitizer = {
           let itemsToClear = getItemsToClearFromPrefBranch(Sanitizer.PREF_SHUTDOWN_BRANCH);
           addPendingSanitization("shutdown", itemsToClear, {});
         }
+      } else if (data == this.PREF_NEWTAB_SEGREGATION) {
+        this.shouldSanitizeNewTabContainer = Services.prefs.getBoolPref(this.PREF_NEWTAB_SEGREGATION, false);
+        removePendingSanitization("newtab-container");
+        if (this.shouldSanitizeNewTabContainer) {
+          addPendingSanitization("newtab-container", [], {});
+        }
       }
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsiObserver,
     Ci.nsISupportsWeakReference
   ]),
+
+  // When making any changes to the sanitize implementations here,
+  // please check whether the changes are applicable to Android
+  // (mobile/android/modules/Sanitizer.jsm) as well.
 
   items: {
     cache: {
@@ -364,37 +398,48 @@ var Sanitizer = {
 
     offlineApps: {
       async clear(range) {
-        // AppCache
-        ChromeUtils.import("resource:///modules/offlineAppCache.jsm");
-        // This doesn't wait for the cleanup to be complete.
+        // AppCache: this doesn't wait for the cleanup to be complete.
         OfflineAppCacheHelper.clear();
+
+        if (range) {
+          let principals = sas.getActiveOrigins(range[0], range[1])
+                              .QueryInterface(Ci.nsIArray);
+
+          let promises = [];
+
+          for (let i = 0; i < principals.length; ++i) {
+            let principal = principals.queryElementAt(i, Ci.nsIPrincipal);
+
+            if (principal.URI.scheme != "http" &&
+                principal.URI.scheme != "https" &&
+                principal.URI.scheme != "file") {
+              continue;
+            }
+
+            // LocalStorage
+            Services.obs.notifyObservers(null, "browser:purge-domain-data", principal.URI.host);
+
+            // ServiceWorkers
+            await ServiceWorkerCleanUp.removeFromPrincipal(principal);
+
+            // QuotaManager
+            promises.push(new Promise(r => {
+              let req = quotaManagerService.clearStoragesForPrincipal(principal, null, false);
+              req.callback = () => { r(); };
+            }));
+          }
+
+          return Promise.all(promises);
+        }
 
         // LocalStorage
         Services.obs.notifyObservers(null, "extension:purge-localStorage");
 
         // ServiceWorkers
-        let promises = [];
-        let serviceWorkers = serviceWorkerManager.getAllRegistrations();
-        for (let i = 0; i < serviceWorkers.length; i++) {
-          let sw = serviceWorkers.queryElementAt(i, Ci.nsIServiceWorkerRegistrationInfo);
-
-          promises.push(new Promise(resolve => {
-            let unregisterCallback = {
-              unregisterSucceeded: () => { resolve(true); },
-              // We don't care about failures.
-              unregisterFailed: () => { resolve(true); },
-              QueryInterface: XPCOMUtils.generateQI(
-                [Ci.nsIServiceWorkerUnregisterCallback])
-            };
-
-            serviceWorkerManager.propagateUnregister(sw.principal, unregisterCallback, sw.scope);
-          }));
-        }
-
-        await Promise.all(promises);
+        await ServiceWorkerCleanUp.removeAll();
 
         // QuotaManager
-        promises = [];
+        let promises = [];
         await new Promise(resolve => {
           quotaManagerService.getUsage(request => {
             if (request.resultCode != Cr.NS_OK) {
@@ -494,7 +539,7 @@ var Sanitizer = {
             }
             for (let tab of tabBrowser.tabs) {
               if (tabBrowser.isFindBarInitialized(tab))
-                tabBrowser.getFindBar(tab).clear();
+                tabBrowser.getCachedFindBar(tab).clear();
             }
             // Clear any saved find value
             tabBrowser._lastFindValue = "";
@@ -923,6 +968,11 @@ async function clearPluginData(range) {
 }
 
 async function sanitizeOnShutdown(progress) {
+  if (Sanitizer.shouldSanitizeNewTabContainer) {
+    sanitizeNewTabSegregation();
+    removePendingSanitization("newtab-container");
+  }
+
   if (!Sanitizer.shouldSanitizeOnShutdown) {
     return;
   }
@@ -933,6 +983,14 @@ async function sanitizeOnShutdown(progress) {
   // sanitizing again on startup.
   removePendingSanitization("shutdown");
   Services.prefs.savePrefFile(null);
+}
+
+function sanitizeNewTabSegregation() {
+  let identity = ContextualIdentityService.getPrivateIdentity("userContextIdInternal.thumbnail");
+  if (identity) {
+    Services.obs.notifyObservers(null, "clear-origin-attributes-data",
+                                 JSON.stringify({ userContextId: identity.userContextId }));
+  }
 }
 
 /**

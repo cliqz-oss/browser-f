@@ -39,9 +39,7 @@
 
       <property name="checked" onget="return this.hasAttribute('checked');">
         <setter><![CDATA[
-          if (this.type == "checkbox") {
-            this.checkState = val ? 1 : 0;
-          } else if (this.type == "radio" && val) {
+          if (this.type == "radio" && val) {
             var sibs = this.parentNode.getElementsByAttribute("group", this.group);
             for (var i = 0; i < sibs.length; ++i)
               sibs[i].removeAttribute("checked");
@@ -55,27 +53,6 @@
           return val;
         ]]></setter>
       </property>
-
-      <property name="checkState">
-        <getter><![CDATA[
-          var state = this.getAttribute("checkState");
-          if (state == "")
-            return this.checked ? 1 : 0;
-          if (state == "0")
-            return 0;
-          if (state == "2")
-            return 2;
-          return 1;
-        ]]></getter>
-        <setter><![CDATA[
-          this.setAttribute("checkState", val);
-          return val;
-        ]]></setter>
-      </property>
-
-      <property name="autoCheck"
-                onget="return this.getAttribute('autoCheck') == 'true';"
-                onset="this.setAttribute('autoCheck', val); return val;"/>
 
       <method name ="filterButtons">
         <parameter name="node"/>
@@ -123,9 +100,7 @@
       <method name="_handleClick">
         <body>
         <![CDATA[
-          if (!this.disabled &&
-              (this.autoCheck || !this.hasAttribute("autoCheck"))) {
-
+          if (!this.disabled) {
             if (this.type == "checkbox") {
               this.checked = !this.checked;
             } else if (this.type == "radio") {
@@ -261,7 +236,7 @@
 
   <binding id="menu-button-base"
            extends="chrome://global/content/bindings/button.xml#button-base">
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
       <constructor>
         this.init();
       </constructor>
@@ -371,8 +346,5 @@
       <xul:dropmarker class="button-menubutton-dropmarker" xbl:inherits="open,disabled,label"/>
     </content>
   </binding>
-
-  <binding id="button-repeat" display="xul:autorepeatbutton"
-           extends="chrome://global/content/bindings/button.xml#button"/>
 
 </bindings>

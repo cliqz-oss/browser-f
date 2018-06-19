@@ -27,13 +27,13 @@ registerCleanupFunction(() => {
  * @return {Promise} a promise that resolves when the inspector is updated with the new
  *         node.
  */
-function* selectAndHighlightNode(selectorOrNodeFront, inspector) {
+async function selectAndHighlightNode(selectorOrNodeFront, inspector) {
   info("Highlighting and selecting the node " + selectorOrNodeFront);
 
-  let nodeFront = yield getNodeFront(selectorOrNodeFront, inspector);
+  let nodeFront = await getNodeFront(selectorOrNodeFront, inspector);
   let updated = inspector.toolbox.once("highlighter-ready");
-  inspector.selection.setNodeFront(nodeFront, "test-highlight");
-  yield updated;
+  inspector.selection.setNodeFront(nodeFront, { reason: "test-highlight" });
+  await updated;
 }
 
 /**
@@ -43,36 +43,6 @@ function* selectAndHighlightNode(selectorOrNodeFront, inspector) {
  */
 function isNodeVisible(node) {
   return !!node.getClientRects().length;
-}
-
-/**
- * Open the toolbox, with the inspector tool visible, and the computed view
- * sidebar tab selected to display the box model view.
- *
- * @return {Promise} a promise that resolves when the inspector is ready and the box model
- *         view is visible and ready.
- */
-function openBoxModelView() {
-  return openInspectorSidebarTab("computedview").then(data => {
-    // The actual highligher show/hide methods are mocked in box model tests.
-    // The highlighter is tested in devtools/inspector/test.
-    function mockHighlighter({highlighter}) {
-      highlighter.showBoxModel = function () {
-        return promise.resolve();
-      };
-      highlighter.hideBoxModel = function () {
-        return promise.resolve();
-      };
-    }
-    mockHighlighter(data.toolbox);
-
-    return {
-      toolbox: data.toolbox,
-      inspector: data.inspector,
-      view: data.inspector.getPanel("computedview"),
-      testActor: data.testActor
-    };
-  });
 }
 
 /**
@@ -86,7 +56,7 @@ function openBoxModelView() {
  */
 function waitForUpdate(inspector, waitForSelectionUpdate) {
   return new Promise(resolve => {
-    inspector.on("boxmodel-view-updated", function onUpdate(e, reasons) {
+    inspector.on("boxmodel-view-updated", function onUpdate(reasons) {
       // Wait for another update event if we are waiting for a selection related event.
       if (waitForSelectionUpdate && !reasons.includes("new-selection")) {
         return;
@@ -130,8 +100,8 @@ function setStyle(testActor, selector, propertyName, value) {
  * finished updating. We also need to wait for the "boxmodel-view-updated" event.
  */
 var _selectNode = selectNode;
-selectNode = function* (node, inspector, reason) {
+selectNode = async function(node, inspector, reason) {
   let onUpdate = waitForUpdate(inspector, true);
-  yield _selectNode(node, inspector, reason);
-  yield onUpdate;
+  await _selectNode(node, inspector, reason);
+  await onUpdate;
 };

@@ -40,12 +40,12 @@ TextEventDispatcher::TextEventDispatcher(nsIWidget* aWidget)
     Preferences::AddBoolVarCache(
       &sDispatchKeyEventsDuringComposition,
       "dom.keyboardevent.dispatch_during_composition",
-      false);
+      true);
     Preferences::AddBoolVarCache(
       &sDispatchKeyPressEventsOnlySystemGroupInContent,
       "dom.keyboardevent.keypress."
         "dispatch_non_printable_keys_only_system_group_in_content",
-      false);
+      true);
     sInitialized = true;
   }
 
@@ -697,6 +697,8 @@ TextEventDispatcher::DispatchKeyboardEventInternal(
   if (sDispatchKeyPressEventsOnlySystemGroupInContent &&
       keyEvent.mMessage == eKeyPress &&
       !keyEvent.ShouldKeyPressEventBeFiredOnContent()) {
+    // Note that even if we set it to true, this may be overwritten by
+    // PresShell::DispatchEventToDOM().
     keyEvent.mFlags.mOnlySystemGroupDispatchInContent = true;
   }
 

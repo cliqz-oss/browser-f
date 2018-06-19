@@ -45,26 +45,23 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(PreloadedStyleSheet)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(PreloadedStyleSheet)
 
-NS_IMPL_CYCLE_COLLECTION(PreloadedStyleSheet, mGecko, mServo)
+NS_IMPL_CYCLE_COLLECTION(PreloadedStyleSheet, mSheet)
 
 nsresult
-PreloadedStyleSheet::GetSheet(StyleBackendType aType, StyleSheet** aResult)
+PreloadedStyleSheet::GetSheet(StyleSheet** aResult)
 {
   *aResult = nullptr;
 
   MOZ_DIAGNOSTIC_ASSERT(mLoaded);
 
-  RefPtr<StyleSheet>& sheet =
-    aType == StyleBackendType::Gecko ? mGecko : mServo;
-
-  if (!sheet) {
-    RefPtr<css::Loader> loader = new css::Loader(aType, nullptr);
-    nsresult rv = loader->LoadSheetSync(mURI, mParsingMode, true, &sheet);
+  if (!mSheet) {
+    RefPtr<css::Loader> loader = new css::Loader;
+    nsresult rv = loader->LoadSheetSync(mURI, mParsingMode, true, &mSheet);
     NS_ENSURE_SUCCESS(rv, rv);
-    MOZ_ASSERT(sheet);
+    MOZ_ASSERT(mSheet);
   }
 
-  *aResult = sheet;
+  *aResult = mSheet;
   return NS_OK;
 }
 
@@ -85,13 +82,10 @@ PreloadedStyleSheet::Preload()
   // fetching the URL again, but for the usage patterns of this API this is
   // unlikely, and it doesn't seem worth trying to store the contents of the URL
   // and duplicating a bunch of css::Loader's logic.
-  auto type = nsLayoutUtils::StyloEnabled() ? StyleBackendType::Servo
-                                            : StyleBackendType::Gecko;
-
   mLoaded = true;
 
   StyleSheet* sheet;
-  return GetSheet(type, &sheet);
+  return GetSheet(&sheet);
 }
 
 NS_IMPL_ISUPPORTS(PreloadedStyleSheet::StylesheetPreloadObserver,
@@ -99,7 +93,7 @@ NS_IMPL_ISUPPORTS(PreloadedStyleSheet::StylesheetPreloadObserver,
 
 NS_IMETHODIMP
 PreloadedStyleSheet::StylesheetPreloadObserver::StyleSheetLoaded(
-  StyleSheet* aSheet, bool aWasAlternate, nsresult aStatus)
+  StyleSheet* aSheet, bool aWasDeferred, nsresult aStatus)
 {
   MOZ_DIAGNOSTIC_ASSERT(!mPreloadedSheet->mLoaded);
   mPreloadedSheet->mLoaded = true;
@@ -120,22 +114,12 @@ PreloadedStyleSheet::PreloadAsync(NotNull<dom::Promise*> aPromise)
 {
   MOZ_DIAGNOSTIC_ASSERT(!mLoaded);
 
-  // As with the Preload() method, we can't be sure that the sheet will only be
-  // used with the backend that we're preloading it for now. If it's used with
-  // a different backend later, it will be synchronously loaded for that
-  // backend the first time it's used.
-  auto type = nsLayoutUtils::StyloEnabled() ? StyleBackendType::Servo
-                                            : StyleBackendType::Gecko;
-
-  RefPtr<StyleSheet>& sheet =
-    type == StyleBackendType::Gecko ? mGecko : mServo;
-
-  RefPtr<css::Loader> loader = new css::Loader(type, nullptr);
+  RefPtr<css::Loader> loader = new css::Loader;
 
   RefPtr<StylesheetPreloadObserver> obs =
     new StylesheetPreloadObserver(aPromise, this);
 
-  return loader->LoadSheet(mURI, mParsingMode, false, obs, &sheet);
+  return loader->LoadSheet(mURI, mParsingMode, false, obs, &mSheet);
 }
 
 } // namespace mozilla

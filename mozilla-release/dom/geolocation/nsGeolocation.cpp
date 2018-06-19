@@ -19,7 +19,6 @@
 #include "nsComponentManagerUtils.h"
 #include "nsContentPermissionHelper.h"
 #include "nsContentUtils.h"
-#include "nsDOMClassInfoID.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "nsINamed.h"
@@ -397,7 +396,7 @@ nsGeolocationRequest::GetWindow(mozIDOMWindow** aRequestingWindow)
 }
 
 NS_IMETHODIMP
-nsGeolocationRequest::GetElement(nsIDOMElement * *aRequestingElement)
+nsGeolocationRequest::GetElement(Element** aRequestingElement)
 {
   NS_ENSURE_ARG_POINTER(aRequestingElement);
   *aRequestingElement = nullptr;

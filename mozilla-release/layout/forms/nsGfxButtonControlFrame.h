@@ -12,6 +12,8 @@
 #include "nsCOMPtr.h"
 #include "nsIAnonymousContentCreator.h"
 
+class nsTextNode;
+
 // Class which implements the input[type=button, reset, submit] and
 // browse button for input[type=file].
 // The label for button is specified through generated content
@@ -24,7 +26,7 @@ class nsGfxButtonControlFrame final
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsGfxButtonControlFrame)
 
-  explicit nsGfxButtonControlFrame(nsStyleContext* aContext);
+  explicit nsGfxButtonControlFrame(ComputedStyle* aStyle);
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
@@ -56,7 +58,7 @@ protected:
 
   virtual bool IsInput() override { return true; }
 private:
-  nsCOMPtr<nsIContent> mTextContent;
+  RefPtr<nsTextNode> mTextContent;
 };
 
 

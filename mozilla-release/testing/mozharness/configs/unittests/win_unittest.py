@@ -15,8 +15,6 @@ config = {
     "exes": {
         'python': sys.executable,
         'hg': 'c:/mozilla-build/hg/hg',
-        'mozinstall': ['%s/build/venv/scripts/python' % os.getcwd(),
-                       '%s/build/venv/scripts/mozinstall-script.py' % os.getcwd()],
     },
     ###
     "installer_path": INSTALLER_PATH,
@@ -25,11 +23,6 @@ config = {
     "virtualenv_path": 'venv',
     "virtualenv_modules": ['pywin32'],
 
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
     "exe_suffix": EXE_SUFFIX,
     "run_file_names": {
         "mochitest": "runtests.py",

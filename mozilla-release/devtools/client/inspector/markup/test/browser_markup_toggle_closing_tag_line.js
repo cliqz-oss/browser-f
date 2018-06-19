@@ -12,12 +12,12 @@ const TEST_URL = `data:text/html;charset=utf8,
 <div class="outer-div"><span>test</span></div>
 <iframe src="data:text/html;charset=utf8,<div>test</div>"></iframe>`;
 
-add_task(async function () {
+add_task(async function() {
   let {inspector} = await openInspectorForURL(TEST_URL);
 
   info("Getting the container for .outer-div parent element");
   let container = await getContainerForSelector(".outer-div", inspector);
-  await expandContainer(inspector, container);
+  await expandContainerByClick(inspector, container);
 
   let closeTagLine = container.closeTagLine;
   ok(closeTagLine && closeTagLine.textContent.includes("div"),
@@ -25,7 +25,7 @@ add_task(async function () {
 
   info("Expand the iframe element");
   container = await getContainerForSelector("iframe", inspector);
-  await expandContainer(inspector, container);
+  await expandContainerByClick(inspector, container);
   ok(container.expanded, "iframe is expanded");
   closeTagLine = container.closeTagLine;
   ok(closeTagLine && closeTagLine.textContent.includes("iframe"),
@@ -39,7 +39,7 @@ add_task(async function () {
 
   info("Expand the iframe's #document node element");
   container = getContainerForNodeFront(documentFront, inspector);
-  await expandContainer(inspector, container);
+  await expandContainerByClick(inspector, container);
   ok(container.expanded, "#document is expanded");
   ok(!container.closeTagLine, "readonly (#document) node has no close tag-line");
 });

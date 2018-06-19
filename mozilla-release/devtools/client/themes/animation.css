@@ -7,12 +7,18 @@
 :root {
   --animation-even-background-color: rgba(0, 0, 0, 0.05);
   --command-pick-image: url(chrome://devtools/skin/images/command-pick.svg);
+  --devtools-toolbar-height: 24px;
   --fast-track-image: url("images/animation-fast-track.svg");
   --fill-color-cssanimation: var(--theme-contrast-background);
   --fill-color-csstransition: var(--theme-highlight-blue);
   --fill-color-scriptanimation: var(--theme-graphs-green);
   --graph-right-offset: 10px;
   --keyframe-marker-shadow-color: #c4c4c4;
+  --pause-image: url(chrome://devtools/skin/images/pause.svg);
+  --progress-bar-color: #909090;
+  --resume-image: url(chrome://devtools/skin/images/play.svg);
+  --rewind-image: url(chrome://devtools/skin/images/rewind.svg);
+  --scrubber-color: #dd00a9;
   --sidebar-width: 200px;
   --stroke-color-cssanimation: var(--theme-highlight-lightorange);
   --stroke-color-csstransition: var(--theme-highlight-bluegrey);
@@ -25,12 +31,11 @@
   --keyframe-marker-shadow-color: #818181;
 }
 
-:root.theme-firebug {
-  --command-pick-image: url(chrome://devtools/skin/images/firebug/command-pick.svg);
-}
-
 /* Root element of animation inspector */
 #animation-container {
+  cursor: default;
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 
@@ -42,42 +47,152 @@
   display: none;
 }
 
+#animation-container .animation-container-splitter {
+  overflow: hidden;
+}
+
+/* Animation Toolbar */
+.animation-toolbar {
+  display: flex;
+}
+
+.pause-resume-button::before {
+  background-image: var(--pause-image);
+}
+
+.pause-resume-button.paused::before {
+  background-image: var(--resume-image);
+}
+
+select.playback-rate-selector.devtools-button {
+  background-image: url("chrome://devtools/skin/images/dropmarker.svg");
+  background-position: calc(100% - 4px) center;
+  background-repeat: no-repeat;
+  padding-right: 1em;
+  text-align: center;
+}
+
+select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.checked):hover {
+  background: none;
+  background-color: var(--toolbarbutton-background);
+  background-image: url("chrome://devtools/skin/images/dropmarker.svg");
+  background-position: calc(100% - 4px) center;
+  background-repeat: no-repeat;
+  border-color: var(--toolbarbutton-hover-border-color);
+}
+
+.rewind-button::before {
+  background-image: var(--rewind-image);
+}
+
 /* Animation List Container */
 .animation-list-container {
-  display: flex;
-  flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
   width: 100%;
+  -moz-user-select: none;
+}
+
+.animation-list-container.active-scrubber {
+  cursor: col-resize;
 }
 
 /* Animation List Header */
 .animation-list-header {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) calc(100% - var(--sidebar-width) - var(--graph-right-offset)) var(--graph-right-offset);
+  line-height: var(--devtools-toolbar-height);
+  min-height: 100%;
   padding: 0;
+  pointer-events: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.animation-list-header .devtools-toolbar {
+  position: absolute;
+  width: 100%;
 }
 
 /* Animation Timeline Tick List */
 .animation-timeline-tick-list {
-  margin-right: var(--graph-right-offset);
+  grid-column: 2/3;
+  height: 100%;
   position: relative;
-  width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
 }
 
 .animation-timeline-tick-item {
-  border-left: var(--tick-line-style);
-  height: 100vh;
+  height: 100%;
   position: absolute;
+}
+
+.animation-timeline-tick-item::before {
+  border-left: var(--tick-line-style);
+  content: "";
+  height: 100%;
+  position: absolute;
+}
+
+/* Current Time Scrubber */
+.current-time-scrubber-controller {
+  grid-column: 2 / 3;
+  height: 100%;
+  padding: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.current-time-scrubber-controller::before {
+  content: "";
+  cursor: col-resize;
+  height: var(--devtools-toolbar-height);
+  pointer-events: auto;
+  position: absolute;
+  /* In order to click on edge of current-time-scrubber-controller element */
+  width: calc(100% + 1px);
+}
+
+.current-time-scrubber {
+  cursor: col-resize;
+  height: 100%;
+  margin-left: -6px;
+  pointer-events: auto;
+  position: absolute;
+  width: 12px;
+  z-index: 1;
+}
+
+.current-time-scrubber::before {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--scrubber-color);
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 0;
+}
+
+.current-time-scrubber::after {
+  border-left: 1px solid var(--scrubber-color);
+  content: "";
+  height: 100%;
+  left: 5px;
+  position: absolute;
+  top: 0;
+  width: 0;
 }
 
 /* Animation List */
 .animation-list {
-  flex: 1;
   list-style-type: none;
   margin: 0;
-  overflow: auto;
   padding: 0;
+  position: absolute;
+  top: var(--devtools-toolbar-height);
+  width: 100%;
 }
 
 /* Animation Item */
@@ -118,12 +233,30 @@
   width: var(--sidebar-width);
 }
 
-.animation-target .tag-name {
-  cursor: default;
+/* Reps component */
+.animation-target .objectBox {
+  display: flex;
+  max-width: 100%;
+}
+
+.animation-target .objectBox .attrName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animation-target .objectBox:hover .open-inspector {
+  background-color: var(--comment-node-color);
+}
+
+.animation-target.highlighting .objectBox .open-inspector {
+  background-color: var(--theme-highlight-blue);
 }
 
 /* Summary Graph */
 .animation-summary-graph {
+  cursor: pointer;
   height: 100%;
   padding-top: 5px;
   position: relative;
@@ -141,8 +274,8 @@
   right: 0;
   top: 5px;
   width: 15px;
-  z-index: 1;
   -moz-context-properties: fill;
+  z-index: 1;
 }
 
 .animation-summary-graph-path {
@@ -241,11 +374,13 @@
 
 /* Animation Detail */
 .animation-detail-container {
+  background-color: var(--theme-body-background);
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   width: 100%;
+  z-index: 1;
 }
 
 .animation-detail-header {
@@ -254,6 +389,8 @@
 
 .animation-detail-title {
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -267,24 +404,36 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
+  position: relative;
 }
 
 /* Animated Property List Header */
 .animated-property-list-header {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) calc(100% - var(--sidebar-width) - var(--graph-right-offset)) var(--graph-right-offset);
+  line-height: var(--devtools-toolbar-height);
+  min-height: 100%;
   padding: 0;
+  pointer-events: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.animated-property-list-header .devtools-toolbar {
+  position: absolute;
+  width: 100%;
 }
 
 /* Keyframes Progress Tick List */
 .keyframes-progress-tick-list {
-  margin-right: var(--graph-right-offset);
+  grid-column: 2 / 3;
+  height: 100%;
   position: absolute;
-  width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
+  width: 100%;
 }
 
 .keyframes-progress-tick-item {
-  height: 100vh;
   position: absolute;
 }
 
@@ -296,13 +445,69 @@
   border-right: var(--tick-line-style);
 }
 
+/* Keyframes Progress Bar */
+.keyframes-progress-bar-area {
+  background: none;
+  grid-column: 2 / 3;
+  padding: 0;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
+.keyframes-progress-bar {
+  height: 100%;
+  position: absolute;
+  z-index: 1;
+}
+
+.keyframes-progress-bar::before {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--progress-bar-color);
+  content: "";
+  left: -5px;
+  position: absolute;
+  top: 0;
+  width: 0;
+}
+
+.keyframes-progress-bar::after {
+  border-left: 1px solid var(--progress-bar-color);
+  content: "";
+  height: 100%;
+  position: absolute;
+  top: 0;
+  width: 0;
+}
+
 /* Animated Property List */
+.animated-property-list-background {
+  border-left: var(--tick-line-style);
+  border-right: var(--tick-line-style);
+  bottom: 0;
+	left: var(--sidebar-width);
+  min-height: 100%;
+	position: sticky;
+  top: 0;
+	width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
+}
+
+.animated-property-list-background span {
+  border-left: var(--tick-line-style);
+	height: 100%;
+	left: 50%;
+	position: absolute;
+}
+
 .animated-property-list {
   flex: 1;
   list-style-type: none;
   margin: 0;
-  overflow-y: auto;
   padding: 0;
+  position: absolute;
+  top: var(--devtools-toolbar-height);
+  width: 100%;
 }
 
 /* Animated Property Item */
@@ -313,6 +518,10 @@
 
 .animated-property-item:nth-child(2n+1) {
   background-color: var(--animation-even-background-color);
+}
+
+.animated-property-item.unchanged {
+  opacity: 0.6;
 }
 
 /* Animated Property Name */
@@ -361,8 +570,8 @@
 
 /* Keyframes Graph */
 .keyframes-graph {
-  height: 100%;
   padding-top: 3px;
+  height: 100%;
   position: relative;
   width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
 }
@@ -405,12 +614,15 @@
 
 .keyframes-graph-path .hint rect {
   fill-opacity: 0.1;
+}
+
+.keyframes-graph-path .hint line {
   stroke: #00b0bd;
   stroke-opacity: 0;
   vector-effect: non-scaling-stroke;
 }
 
-.keyframes-graph-path .hint rect:hover {
+.keyframes-graph-path .hint:hover line {
   stroke-opacity: 1;
 }
 

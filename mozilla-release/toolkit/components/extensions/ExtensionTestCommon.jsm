@@ -106,19 +106,18 @@ class MockExtension {
         return this._readyPromise;
       });
     } else if (this.installType == "permanent") {
-      return new Promise((resolve, reject) => {
-        AddonManager.getInstallForFile(this.file, install => {
-          let listener = {
-            onInstallFailed: reject,
-            onInstallEnded: (install, newAddon) => {
-              this.addon = newAddon;
-              resolve(this._readyPromise);
-            },
-          };
+      return new Promise(async (resolve, reject) => {
+        let install = await AddonManager.getInstallForFile(this.file);
+        let listener = {
+          onInstallFailed: reject,
+          onInstallEnded: (install, newAddon) => {
+            this.addon = newAddon;
+            resolve(this._readyPromise);
+          },
+        };
 
-          install.addListener(listener);
-          install.install();
-        });
+        install.addListener(listener);
+        install.install();
       });
     }
     throw new Error("installType must be one of: temporary, permanent");
@@ -315,12 +314,12 @@ var ExtensionTestCommon = class ExtensionTestCommon {
    */
   static serializeFunction(script) {
     // Serialization of object methods doesn't include `function` anymore.
-    const method = /^(async )?(\w+)\(/;
+    const method = /^(async )?(?:(\w+)|"(\w+)\.js")\(/;
 
     let code = script.toString();
     let match = code.match(method);
     if (match && match[2] !== "function") {
-      code = code.replace(method, "$1function $2(");
+      code = code.replace(method, "$1function $2$3(");
     }
     return code;
   }
@@ -374,12 +373,19 @@ var ExtensionTestCommon = class ExtensionTestCommon {
       id = uuidGen.generateUUID().number;
     }
 
+    let signedState = AddonManager.SIGNEDSTATE_SIGNED;
+    if (data.isPrivileged) {
+      signedState = AddonManager.SIGNEDSTATE_PRIVILEGED;
+    }
+    if (data.isSystem) {
+      signedState = AddonManager.SIGNEDSTATE_SYSTEM;
+    }
+
     return new Extension({
       id,
       resourceURI: jarURI,
       cleanupFile: file,
-      signedState: data.isPrivileged ? AddonManager.SIGNEDSTATE_PRIVILEGED
-                                     : AddonManager.SIGNEDSTATE_SIGNED,
+      signedState,
       temporarilyInstalled: !!data.temporarilyInstalled,
     });
   }

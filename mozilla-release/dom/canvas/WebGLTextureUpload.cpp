@@ -224,10 +224,14 @@ FromPboOffset(WebGLContext* webgl, const char* funcName, TexImageTarget target,
 
 static UniquePtr<webgl::TexUnpackBlob>
 FromImageBitmap(WebGLContext* webgl, const char* funcName, TexImageTarget target,
-              uint32_t width, uint32_t height, uint32_t depth,
-              const dom::ImageBitmap& imageBitmap)
+                uint32_t width, uint32_t height, uint32_t depth,
+                const dom::ImageBitmap& imageBitmap)
 {
     UniquePtr<dom::ImageBitmapCloneData> cloneData = Move(imageBitmap.ToCloneData());
+    if (!cloneData) {
+      return nullptr;
+    }
+
     const RefPtr<gfx::DataSourceSurface> surf = cloneData->mSurface;
 
     if (!width) {
@@ -1103,16 +1107,13 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
 
     const TexImageTarget testTarget = IsCubeMap() ? LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X
                                                   : target.get();
-    const GLint testLevel = 0;
-
-    WebGLTexture::ImageInfo* testImageInfo;
-    if (!ValidateTexImageSpecification(funcName, testTarget, testLevel, width, height,
-                                       depth, &testImageInfo))
+    WebGLTexture::ImageInfo* baseImageInfo;
+    if (!ValidateTexImageSpecification(funcName, testTarget, 0, width, height, depth,
+                                       &baseImageInfo))
     {
         return;
     }
-    MOZ_ASSERT(testImageInfo);
-    mozilla::Unused << testImageInfo;
+    MOZ_ALWAYS_TRUE(baseImageInfo);
 
     auto dstUsage = mContext->mFormatUsage->GetSizedTexUsage(sizedFormat);
     if (!dstUsage) {
@@ -1126,9 +1127,8 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
         return;
 
     if (dstFormat->compression) {
-        if (!ValidateCompressedTexImageRestrictions(funcName, mContext, testTarget,
-                                                    testLevel, dstFormat, width, height,
-                                                    depth))
+        if (!ValidateCompressedTexImageRestrictions(funcName, mContext, testTarget, 0,
+                                                    dstFormat, width, height, depth))
         {
             return;
         }
@@ -1136,15 +1136,24 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
 
     ////////////////////////////////////
 
-    const auto lastLevel = levels - 1;
-    MOZ_ASSERT(lastLevel <= 31, "Right-shift is only defined for bits-1.");
+    const bool levelsOk = [&]() {
+        // Right-shift is only defined for bits-1, which is too large anyways.
+        const auto lastLevel = uint32_t(levels - 1);
+        if (lastLevel > 31)
+            return false;
 
-    const uint32_t lastLevelWidth = uint32_t(width) >> lastLevel;
-    const uint32_t lastLevelHeight = uint32_t(height) >> lastLevel;
-    const uint32_t lastLevelDepth = uint32_t(depth) >> lastLevel;
+        const auto lastLevelWidth = uint32_t(width) >> lastLevel;
+        const auto lastLevelHeight = uint32_t(height) >> lastLevel;
 
-    // If these are all zero, then some earlier level was the final 1x1x1 level.
-    if (!lastLevelWidth && !lastLevelHeight && !lastLevelDepth) {
+        // If these are all zero, then some earlier level was the final 1x1(x1) level.
+        bool ok = lastLevelWidth || lastLevelHeight;
+        if (target == LOCAL_GL_TEXTURE_3D) {
+            const auto lastLevelDepth = uint32_t(depth) >> lastLevel;
+            ok |= bool(lastLevelDepth);
+        }
+        return ok;
+    }();
+    if (!levelsOk) {
         mContext->ErrorInvalidOperation("%s: Too many levels requested for the given"
                                         " dimensions. (levels: %u, width: %u, height: %u,"
                                         " depth: %u)",

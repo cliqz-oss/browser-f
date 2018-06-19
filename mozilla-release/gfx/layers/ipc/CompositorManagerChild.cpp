@@ -244,9 +244,9 @@ CompositorManagerChild::DeallocPCompositorBridgeChild(PCompositorBridgeChild* aA
 }
 
 void
-CompositorManagerChild::HandleFatalError(const char* aName, const char* aMsg) const
+CompositorManagerChild::HandleFatalError(const char* aMsg) const
 {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aName, aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
 }
 
 void
@@ -261,7 +261,7 @@ already_AddRefed<nsIEventTarget>
 CompositorManagerChild::GetSpecificMessageEventTarget(const Message& aMsg)
 {
   if (aMsg.type() == PCompositorBridge::Msg_DidComposite__ID) {
-    uint64_t layersId;
+    LayersId layersId;
     PickleIterator iter(aMsg);
     if (!IPC::ReadParam(&aMsg, &iter, &layersId)) {
       return nullptr;

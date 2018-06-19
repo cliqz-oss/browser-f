@@ -328,11 +328,10 @@ interface nsINavHistoryContainerResultNode : nsINavHistoryResultNode
 interface nsINavHistoryQueryResultNode : nsINavHistoryContainerResultNode
 {
   /**
-   * Get the queries which build this node's children.
+   * Get the query which builds this node's children.
    * Only valid for RESULT_TYPE_QUERY nodes.
    */
-  void getQueries([optional] out unsigned long queryCount,
-                  [retval,array,size_is(queryCount)] out nsINavHistoryQuery queries);
+  readonly attribute nsINavHistoryQuery query;
 
   /**
    * Get the options which group this node's children.
@@ -941,9 +940,6 @@ interface nsINavHistoryQuery : nsISupports
    * will return an array of strings sorted ascending in lexicographical order.
    * The array may be empty in either case.  Duplicate tags may be specified
    * when setting the attribute, but the getter returns only unique tags.
-   *
-   * To search for items that are tagged with any given tags rather than all,
-   * multiple queries may be passed to nsINavHistoryService.executeQueries().
    */
   attribute nsIVariant tags;
 
@@ -962,9 +958,8 @@ interface nsINavHistoryQuery : nsISupports
   readonly attribute unsigned long folderCount;
 
   /**
-   * For the special result type RESULTS_AS_TAG_CONTENTS we can define only
-   * one folder that must be a tag folder. This is not recursive so results
-   * will be returned from the first level of that folder.
+   * This is not recursive so results will be returned from the first level of
+   * that folder.
    */
   void setFolders([const,array, size_is(folderCount)] in long long folders,
                   in unsigned long folderCount);
@@ -1060,14 +1055,10 @@ interface nsINavHistoryQueryOptions : nsISupports
    *
    * @note Setting this resultType will force queryType to QUERY_TYPE_BOOKMARKS.
    */
-  const unsigned short RESULTS_AS_TAG_QUERY = 6;
+  const unsigned short RESULTS_AS_TAGS_ROOT = 6;
 
   /**
-   * This is a container with an URI result type that contains the last
-   * modified bookmarks for the given tag.
-   * Tag folder id must be defined in the query.
-   *
-   * @note Setting this resultType will force queryType to QUERY_TYPE_BOOKMARKS.
+   * DEPRECATED: This exists for Sync and also to avoid reusing this number.
    */
   const unsigned short RESULTS_AS_TAG_CONTENTS = 7;
 
@@ -1078,6 +1069,11 @@ interface nsINavHistoryQueryOptions : nsISupports
    * @note Setting this resultType will force queryType to QUERY_TYPE_BOOKMARKS.
    */
   const unsigned short RESULTS_AS_ROOTS_QUERY = 8;
+
+  /**
+   * This returns nsINavHistoryQueryResultNode for each left-pane root.
+   */
+  const unsigned short RESULTS_AS_LEFT_PANE_QUERY = 9;
 
   /**
    * The sorting mode to be used for this query.
@@ -1139,7 +1135,7 @@ interface nsINavHistoryQueryOptions : nsISupports
   attribute boolean includeHidden;
 
   /**
-   * This is the maximum number of results that you want. The query is exeucted,
+   * This is the maximum number of results that you want. The query is executed,
    * the results are sorted, and then the top 'maxResults' results are taken
    * and returned. Set to 0 (the default) to get all results.
    *
@@ -1338,34 +1334,18 @@ interface nsINavHistoryService : nsISupports
                                    in nsINavHistoryQueryOptions options);
 
   /**
-   * Executes an array of queries. All of the query objects are ORed
-   * together. Within a query, all the terms are ANDed together as in
-   * executeQuery. See executeQuery()
+   * Converts a query URI-like string to a query object.
    */
-  nsINavHistoryResult executeQueries(
-    [array,size_is(aQueryCount)] in nsINavHistoryQuery aQueries,
-    in unsigned long aQueryCount,
-    in nsINavHistoryQueryOptions options);
-
-  /**
-   * Converts a query URI-like string to an array of actual query objects for
-   * use to executeQueries(). The output query array may be empty if there is
-   * no information. However, there will always be an options structure returned
-   * (if nothing is defined, it will just have the default values).
-   */
-  void queryStringToQueries(in AUTF8String aQueryString,
-    [array, size_is(aResultCount)] out nsINavHistoryQuery aQueries,
-    out unsigned long aResultCount,
-    out nsINavHistoryQueryOptions options);
+  void queryStringToQuery(in AUTF8String aQueryString,
+                          out nsINavHistoryQuery aQuery,
+                          out nsINavHistoryQueryOptions options);
 
   /**
    * Converts a query into an equivalent string that can be persisted. Inverse
-   * of queryStringToQueries()
+   * of queryStringToQuery()
    */
-  AUTF8String queriesToQueryString(
-    [array, size_is(aQueryCount)] in nsINavHistoryQuery aQueries,
-    in unsigned long aQueryCount,
-    in nsINavHistoryQueryOptions options);
+  AUTF8String queryToQueryString(in nsINavHistoryQuery aQuery,
+                                 in nsINavHistoryQueryOptions options);
 
   /**
    * Adds a history observer. If ownsWeak is false, the history service will
@@ -1386,19 +1366,6 @@ interface nsINavHistoryService : nsISupports
    */
   void getObservers([optional] out unsigned long count,
                     [retval, array, size_is(count)] out nsINavHistoryObserver observers);
-
-  /**
-   * Runs the passed callback in batch mode. Use this when a lot of things
-   * are about to change. Calls can be nested, observers will only be
-   * notified when all batches begin/end.
-   *
-   * @param aCallback
-   *        nsINavHistoryBatchCallback interface to call.
-   * @param aUserData
-   *        Opaque parameter passed to nsINavBookmarksBatchCallback
-   */
-  void runInBatchMode(in nsINavHistoryBatchCallback aCallback,
-                      in nsISupports aClosure);
 
   /**
    * True if history is disabled. currently,
@@ -1427,12 +1394,4 @@ interface nsINavHistoryService : nsISupports
    *        The hash mode: `""` (default), `"prefix_lo"`, or `"prefix_hi"`.
    */
   unsigned long long hashURL(in ACString aSpec, [optional] in ACString aMode);
-};
-
-/**
- * @see runInBatchMode of nsINavHistoryService/nsINavBookmarksService
- */
-[scriptable, function, uuid(5a5a9154-95ac-4e3d-90df-558816297407)]
-interface nsINavHistoryBatchCallback : nsISupports {
-  void runBatched(in nsISupports aUserData);
 };

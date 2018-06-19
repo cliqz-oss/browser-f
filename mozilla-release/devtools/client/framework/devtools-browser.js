@@ -30,8 +30,6 @@ loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/f
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
 
 loader.lazyImporter(this, "CustomizableUI", "resource:///modules/CustomizableUI.jsm");
-loader.lazyImporter(this, "CustomizableWidgets", "resource:///modules/CustomizableWidgets.jsm");
-loader.lazyImporter(this, "AppConstants", "resource://gre/modules/AppConstants.jsm");
 
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties");
@@ -178,7 +176,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
       case "quit-application":
         gDevToolsBrowser.destroy({ shuttingDown: true });
         break;
-      case "sdk:loader:destroy":
+      case "devtools:loader:destroy":
         // This event is fired when the devtools loader unloads, which happens
         // only when the add-on workflow ask devtools to be reloaded.
         if (subject.wrappedJSObject == require("@loader/unload")) {
@@ -252,7 +250,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    *         about:debugging
    * @param {Number} startTime
    *        Optional, indicates the time at which the key event fired. This is a
-   *        `performance.now()` timing.
+   *        `Cu.now()` timing.
    */
   onKeyShortcut(window, key, startTime) {
     // If this is a toolbox's panel key shortcut, delegate to selectToolCommand
@@ -280,7 +278,9 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
         HUDService.openBrowserConsoleOrFocus();
         break;
       case "responsiveDesignMode":
-        ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab);
+        ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab, {
+          trigger: "shortcut"
+        });
         break;
       case "scratchpad":
         ScratchpadManager.openScratchpad();
@@ -387,6 +387,24 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
   },
 
   /**
+   * Open a window-hosted toolbox to debug the worker associated to the provided
+   * worker actor.
+   *
+   * @param  {DebuggerClient} client
+   * @param  {Object} workerActor
+   *         worker actor form to debug
+   */
+  openWorkerToolbox(client, workerActor) {
+    client.attachWorker(workerActor, (response, workerClient) => {
+      let workerTarget = TargetFactory.forWorker(workerClient);
+      gDevTools.showToolbox(workerTarget, null, Toolbox.HostType.WINDOW)
+        .then(toolbox => {
+          toolbox.once("destroy", () => workerClient.detach());
+        });
+    });
+  },
+
+  /**
    * Install WebIDE widget
    */
   // Used by itself
@@ -419,7 +437,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
    * @return {Promise} promise that resolves when the stylesheet is loaded (or rejects
    *         if it fails to load).
    */
-  loadBrowserStyleSheet: function (win) {
+  loadBrowserStyleSheet: function(win) {
     if (this._browserStyleSheets.has(win)) {
       return Promise.resolve();
     }
@@ -529,7 +547,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
       });
     }
 
-    debugService.activationHandler = function (window) {
+    debugService.activationHandler = function(window) {
       let chromeWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
                                 .getInterface(Ci.nsIWebNavigation)
                                 .QueryInterface(Ci.nsIDocShellTreeItem)
@@ -555,12 +573,12 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
       utils.leaveModalState();
     };
 
-    debugService.remoteActivationHandler = function (browser, callback) {
+    debugService.remoteActivationHandler = function(browser, callback) {
       let chromeWindow = browser.ownerDocument.defaultView;
       let tab = chromeWindow.gBrowser.getTabForBrowser(browser);
       chromeWindow.gBrowser.selected = tab;
 
-      slowScriptDebugHandler(tab, function () {
+      slowScriptDebugHandler(tab, function() {
         callback.finishDebuggerStartup();
       });
     };
@@ -711,7 +729,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
   },
 
   /**
-   * Either the SDK Loader has been destroyed by the add-on contribution
+   * Either the DevTools Loader has been destroyed by the add-on contribution
    * workflow, or firefox is shutting down.
 
    * @param {boolean} shuttingDown
@@ -723,7 +741,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
     Services.prefs.removeObserver("devtools.", gDevToolsBrowser);
     Services.obs.removeObserver(gDevToolsBrowser, "browser-delayed-startup-finished");
     Services.obs.removeObserver(gDevToolsBrowser, "quit-application");
-    Services.obs.removeObserver(gDevToolsBrowser, "sdk:loader:destroy");
+    Services.obs.removeObserver(gDevToolsBrowser, "devtools:loader:destroy");
 
     for (let win of gDevToolsBrowser._trackedBrowserWindows) {
       gDevToolsBrowser._forgetBrowserWindow(win);
@@ -740,7 +758,7 @@ var gDevToolsBrowser = exports.gDevToolsBrowser = {
 gDevTools.getToolDefinitionArray()
          .forEach(def => gDevToolsBrowser._addToolToWindows(def));
 // and the new ones.
-gDevTools.on("tool-registered", function (ev, toolId) {
+gDevTools.on("tool-registered", function(toolId) {
   let toolDefinition = gDevTools._tools.get(toolId);
   // If the tool has been registered globally, add to all the
   // available windows.
@@ -749,7 +767,7 @@ gDevTools.on("tool-registered", function (ev, toolId) {
   }
 });
 
-gDevTools.on("tool-unregistered", function (ev, toolId) {
+gDevTools.on("tool-unregistered", function(toolId) {
   gDevToolsBrowser._removeToolFromWindows(toolId);
 });
 
@@ -759,7 +777,7 @@ gDevTools.on("toolbox-destroyed", gDevToolsBrowser._updateMenuCheckbox);
 Services.obs.addObserver(gDevToolsBrowser, "quit-application");
 Services.obs.addObserver(gDevToolsBrowser, "browser-delayed-startup-finished");
 // Watch for module loader unload. Fires when the tools are reloaded.
-Services.obs.addObserver(gDevToolsBrowser, "sdk:loader:destroy");
+Services.obs.addObserver(gDevToolsBrowser, "devtools:loader:destroy");
 
 // Fake end of browser window load event for all already opened windows
 // that is already fully loaded.

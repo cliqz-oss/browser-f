@@ -8,6 +8,7 @@
 
 #include "mozilla/DebugOnly.h"
 
+#include "jit/CodeGenerator.h"
 #include "jit/CompactBuffer.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitSpewer.h"
@@ -605,7 +606,7 @@ CodeGeneratorShared::encode(LSnapshot* snapshot)
     uint32_t mirId = 0;
 
     if (LNode* ins = instruction()) {
-        lirOpcode = ins->op();
+        lirOpcode = uint32_t(ins->op());
         lirId = ins->id();
         if (ins->mirRaw()) {
             mirOpcode = uint32_t(ins->mirRaw()->op());
@@ -1061,7 +1062,8 @@ CodeGeneratorShared::verifyCompactTrackedOptimizationsMap(JitCode* code, uint32_
             // decoded. This is disabled for now if the types table might
             // contain nursery pointers, in which case the types might not
             // match, see bug 1175761.
-            if (!code->zone()->group()->storeBuffer().cancelIonCompilations()) {
+            JSRuntime* rt = code->runtimeFromMainThread();
+            if (!rt->gc.storeBuffer().cancelIonCompilations()) {
                 IonTrackedOptimizationsTypeInfo typeInfo = typesTable->entry(index);
                 TempOptimizationTypeInfoVector tvec(alloc());
                 ReadTempTypeInfoVectorOp top(alloc(), &tvec);
@@ -1495,164 +1497,6 @@ CodeGeneratorShared::omitOverRecursedCheck() const
 }
 
 void
-CodeGeneratorShared::emitWasmCallBase(MWasmCall* mir, bool needsBoundsCheck)
-{
-    if (mir->spIncrement())
-        masm.freeStack(mir->spIncrement());
-
-    MOZ_ASSERT((sizeof(wasm::Frame) + masm.framePushed()) % WasmStackAlignment == 0);
-    static_assert(WasmStackAlignment >= ABIStackAlignment &&
-                  WasmStackAlignment % ABIStackAlignment == 0,
-                  "The wasm stack alignment should subsume the ABI-required alignment");
-
-#ifdef DEBUG
-    Label ok;
-    masm.branchTestStackPtr(Assembler::Zero, Imm32(WasmStackAlignment - 1), &ok);
-    masm.breakpoint();
-    masm.bind(&ok);
-#endif
-
-    // LWasmCallBase::isCallPreserved() assumes that all MWasmCalls preserve the
-    // TLS and pinned regs. The only case where where we don't have to reload
-    // the TLS and pinned regs is when the callee preserves them.
-    bool reloadRegs = true;
-
-    const wasm::CallSiteDesc& desc = mir->desc();
-    const wasm::CalleeDesc& callee = mir->callee();
-    switch (callee.which()) {
-      case wasm::CalleeDesc::Func:
-        masm.call(desc, callee.funcIndex());
-        reloadRegs = false;
-        break;
-      case wasm::CalleeDesc::Import:
-        masm.wasmCallImport(desc, callee);
-        break;
-      case wasm::CalleeDesc::AsmJSTable:
-      case wasm::CalleeDesc::WasmTable:
-        masm.wasmCallIndirect(desc, callee, needsBoundsCheck);
-        reloadRegs = callee.which() == wasm::CalleeDesc::WasmTable && callee.wasmTableIsExternal();
-        break;
-      case wasm::CalleeDesc::Builtin:
-        masm.call(desc, callee.builtin());
-        reloadRegs = false;
-        break;
-      case wasm::CalleeDesc::BuiltinInstanceMethod:
-        masm.wasmCallBuiltinInstanceMethod(desc, mir->instanceArg(), callee.builtin());
-        break;
-    }
-
-    if (reloadRegs) {
-        masm.loadWasmTlsRegFromFrame();
-        masm.loadWasmPinnedRegsFromTls();
-    }
-
-    if (mir->spIncrement())
-        masm.reserveStack(mir->spIncrement());
-}
-
-void
-CodeGeneratorShared::visitWasmLoadGlobalVar(LWasmLoadGlobalVar* ins)
-{
-    MWasmLoadGlobalVar* mir = ins->mir();
-
-    MIRType type = mir->type();
-    MOZ_ASSERT(IsNumberType(type) || IsSimdType(type));
-
-    Register tls = ToRegister(ins->tlsPtr());
-    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
-    switch (type) {
-      case MIRType::Int32:
-        masm.load32(addr, ToRegister(ins->output()));
-        break;
-      case MIRType::Float32:
-        masm.loadFloat32(addr, ToFloatRegister(ins->output()));
-        break;
-      case MIRType::Double:
-        masm.loadDouble(addr, ToFloatRegister(ins->output()));
-        break;
-      // Aligned access: code is aligned on PageSize + there is padding
-      // before the global data section.
-      case MIRType::Int8x16:
-      case MIRType::Int16x8:
-      case MIRType::Int32x4:
-      case MIRType::Bool8x16:
-      case MIRType::Bool16x8:
-      case MIRType::Bool32x4:
-        masm.loadInt32x4(addr, ToFloatRegister(ins->output()));
-        break;
-      case MIRType::Float32x4:
-        masm.loadFloat32x4(addr, ToFloatRegister(ins->output()));
-        break;
-      default:
-        MOZ_CRASH("unexpected type in visitWasmLoadGlobalVar");
-    }
-}
-
-void
-CodeGeneratorShared::visitWasmStoreGlobalVar(LWasmStoreGlobalVar* ins)
-{
-    MWasmStoreGlobalVar* mir = ins->mir();
-
-    MIRType type = mir->value()->type();
-    MOZ_ASSERT(IsNumberType(type) || IsSimdType(type));
-
-    Register tls = ToRegister(ins->tlsPtr());
-    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
-    switch (type) {
-      case MIRType::Int32:
-        masm.store32(ToRegister(ins->value()), addr);
-        break;
-      case MIRType::Float32:
-        masm.storeFloat32(ToFloatRegister(ins->value()), addr);
-        break;
-      case MIRType::Double:
-        masm.storeDouble(ToFloatRegister(ins->value()), addr);
-        break;
-      // Aligned access: code is aligned on PageSize + there is padding
-      // before the global data section.
-      case MIRType::Int8x16:
-      case MIRType::Int16x8:
-      case MIRType::Int32x4:
-      case MIRType::Bool8x16:
-      case MIRType::Bool16x8:
-      case MIRType::Bool32x4:
-        masm.storeInt32x4(ToFloatRegister(ins->value()), addr);
-        break;
-      case MIRType::Float32x4:
-        masm.storeFloat32x4(ToFloatRegister(ins->value()), addr);
-        break;
-      default:
-        MOZ_CRASH("unexpected type in visitWasmStoreGlobalVar");
-    }
-}
-
-void
-CodeGeneratorShared::visitWasmLoadGlobalVarI64(LWasmLoadGlobalVarI64* ins)
-{
-    MWasmLoadGlobalVar* mir = ins->mir();
-    MOZ_ASSERT(mir->type() == MIRType::Int64);
-
-    Register tls = ToRegister(ins->tlsPtr());
-    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
-
-    Register64 output = ToOutRegister64(ins);
-    masm.load64(addr, output);
-}
-
-void
-CodeGeneratorShared::visitWasmStoreGlobalVarI64(LWasmStoreGlobalVarI64* ins)
-{
-    MWasmStoreGlobalVar* mir = ins->mir();
-    MOZ_ASSERT(mir->value()->type() == MIRType::Int64);
-
-    Register tls = ToRegister(ins->tlsPtr());
-    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
-
-    Register64 value = ToRegister64(ins->value());
-    masm.store64(value, addr);
-}
-
-void
 CodeGeneratorShared::emitPreBarrier(Register base, const LAllocation* index, int32_t offsetAdjustment)
 {
     if (index->isConstant()) {
@@ -1670,32 +1514,6 @@ CodeGeneratorShared::emitPreBarrier(Address address)
     masm.guardedCallPreBarrier(address, MIRType::Value);
 }
 
-Label*
-CodeGeneratorShared::labelForBackedgeWithImplicitCheck(MBasicBlock* mir)
-{
-    // If this is a loop backedge to a loop header with an implicit interrupt
-    // check, use a patchable jump. Skip this search if compiling without a
-    // script for wasm, as there will be no interrupt check instruction.
-    // Due to critical edge unsplitting there may no longer be unique loop
-    // backedges, so just look for any edge going to an earlier block in RPO.
-    if (!gen->compilingWasm() && mir->isLoopHeader() && mir->id() <= current->mir()->id()) {
-        for (LInstructionIterator iter = mir->lir()->begin(); iter != mir->lir()->end(); iter++) {
-            if (iter->isMoveGroup()) {
-                // Continue searching for an interrupt check.
-            } else {
-                // The interrupt check should be the first instruction in the
-                // loop header other than move groups.
-                MOZ_ASSERT(iter->isInterruptCheck());
-                if (iter->toInterruptCheck()->implicit())
-                    return iter->toInterruptCheck()->oolEntry();
-                return nullptr;
-            }
-        }
-    }
-
-    return nullptr;
-}
-
 void
 CodeGeneratorShared::jumpToBlock(MBasicBlock* mir)
 {
@@ -1706,40 +1524,14 @@ CodeGeneratorShared::jumpToBlock(MBasicBlock* mir)
     if (isNextBlock(mir->lir()))
         return;
 
-    if (Label* oolEntry = labelForBackedgeWithImplicitCheck(mir)) {
-        // Note: the backedge is initially a jump to the next instruction.
-        // It will be patched to the target block's label during link().
-        RepatchLabel rejoin;
-        CodeOffsetJump backedge = masm.backedgeJump(&rejoin, mir->lir()->label());
-        masm.bind(&rejoin);
-
-        masm.propagateOOM(patchableBackedges_.append(PatchableBackedgeInfo(backedge, mir->lir()->label(), oolEntry)));
-    } else {
-        masm.jump(mir->lir()->label());
-    }
+    masm.jump(mir->lir()->label());
 }
 
 Label*
 CodeGeneratorShared::getJumpLabelForBranch(MBasicBlock* block)
 {
     // Skip past trivial blocks.
-    block = skipTrivialBlocks(block);
-
-    if (!labelForBackedgeWithImplicitCheck(block))
-        return block->lir()->label();
-
-    // We need to use a patchable jump for this backedge, but want to treat
-    // this as a normal label target to simplify codegen. Efficiency isn't so
-    // important here as these tests are extremely unlikely to be used in loop
-    // backedges, so emit inline code for the patchable jump. Heap allocating
-    // the label allows it to be used by out of line blocks.
-    Label* res = alloc().lifoAlloc()->newInfallible<Label>();
-    Label after;
-    masm.jump(&after);
-    masm.bind(res);
-    jumpToBlock(block);
-    masm.bind(&after);
-    return res;
+    return skipTrivialBlocks(block)->lir()->label();
 }
 
 // This function is not used for MIPS/MIPS64. MIPS has branchToBlock.
@@ -1748,19 +1540,7 @@ void
 CodeGeneratorShared::jumpToBlock(MBasicBlock* mir, Assembler::Condition cond)
 {
     // Skip past trivial blocks.
-    mir = skipTrivialBlocks(mir);
-
-    if (Label* oolEntry = labelForBackedgeWithImplicitCheck(mir)) {
-        // Note: the backedge is initially a jump to the next instruction.
-        // It will be patched to the target block's label during link().
-        RepatchLabel rejoin;
-        CodeOffsetJump backedge = masm.jumpWithPatch(&rejoin, cond, mir->lir()->label());
-        masm.bind(&rejoin);
-
-        masm.propagateOOM(patchableBackedges_.append(PatchableBackedgeInfo(backedge, mir->lir()->label(), oolEntry)));
-    } else {
-        masm.j(cond, mir->lir()->label());
-    }
+    masm.j(cond, skipTrivialBlocks(mir)->lir()->label());
 }
 #endif
 

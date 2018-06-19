@@ -16,28 +16,27 @@
  */
 
 
-/* fluent@0.6.3 */
+/* fluent-dom@0.2.0 */
 
 /* eslint no-console: ["error", { allow: ["warn", "error"] }] */
 /* global console */
 
-const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 const { L10nRegistry } = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm", {});
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 const { AppConstants } = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
 
 /*
- * CachedIterable caches the elements yielded by an iterable.
+ * CachedAsyncIterable caches the elements yielded by an iterable.
  *
  * It can be used to iterate over an iterable many times without depleting the
  * iterable.
  */
-class CachedIterable {
+class CachedAsyncIterable {
   /**
-   * Create an `CachedIterable` instance.
+   * Create an `CachedAsyncIterable` instance.
    *
    * @param {Iterable} iterable
-   * @returns {CachedIterable}
+   * @returns {CachedAsyncIterable}
    */
   constructor(iterable) {
     if (Symbol.asyncIterator in Object(iterable)) {
@@ -82,11 +81,16 @@ class CachedIterable {
   /**
    * This method allows user to consume the next element from the iterator
    * into the cache.
+   *
+   * @param {number} count - number of elements to consume
    */
-  touchNext() {
+  async touchNext(count = 1) {
     const { seen, iterator } = this;
-    if (seen.length === 0 || seen[seen.length - 1].done === false) {
-      seen.push(iterator.next());
+    let idx = 0;
+    while (idx++ < count) {
+      if (seen.length === 0 || seen[seen.length - 1].done === false) {
+        seen.push(await iterator.next());
+      }
     }
   }
 }
@@ -101,7 +105,7 @@ class CachedIterable {
  * be localized into a different language - for example DevTools.
  */
 function defaultGenerateMessages(resourceIds) {
-  const appLocales = Services.locale.getAppLocalesAsLangTags();
+  const appLocales = Services.locale.getAppLocalesAsBCP47();
   return L10nRegistry.generateContexts(appLocales, resourceIds);
 }
 
@@ -122,7 +126,7 @@ class Localization {
   constructor(resourceIds, generateMessages = defaultGenerateMessages) {
     this.resourceIds = resourceIds;
     this.generateMessages = generateMessages;
-    this.ctxs = new CachedIterable(this.generateMessages(this.resourceIds));
+    this.ctxs = new CachedAsyncIterable(this.generateMessages(this.resourceIds));
   }
 
   /**
@@ -247,13 +251,6 @@ class Localization {
   }
 
   /**
-   * Unregister observers on events that will trigger cache invalidation
-   */
-  unregisterObservers() {
-    Services.obs.removeObserver(this, "intl:app-locales-changed");
-  }
-
-  /**
    * Default observer handler method.
    *
    * @param {String} subject
@@ -275,11 +272,11 @@ class Localization {
    * that language negotiation or available resources changed.
    */
   onLanguageChange() {
-    this.ctxs = new CachedIterable(this.generateMessages(this.resourceIds));
+    this.ctxs = new CachedAsyncIterable(this.generateMessages(this.resourceIds));
   }
 }
 
-Localization.prototype.QueryInterface = XPCOMUtils.generateQI([
+Localization.prototype.QueryInterface = ChromeUtils.generateQI([
   Ci.nsISupportsWeakReference
 ]);
 
@@ -334,15 +331,15 @@ function messageFromContext(ctx, errors, id, args) {
 
   const formatted = {
     value: ctx.format(msg, args, errors),
-    attrs: null,
+    attributes: null,
   };
 
   if (msg.attrs) {
-    formatted.attrs = [];
-    for (const name in msg.attrs) {
-      const value = ctx.format(msg.attrs[name], args, errors);
+    formatted.attributes = [];
+    for (const [name, attr] of Object.entries(msg.attrs)) {
+      const value = ctx.format(attr, args, errors);
       if (value !== null) {
-        formatted.attrs.push({ name, value });
+        formatted.attributes.push({name, value});
       }
     }
   }

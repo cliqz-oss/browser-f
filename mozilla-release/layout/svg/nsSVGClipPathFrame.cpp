@@ -27,9 +27,9 @@ using namespace mozilla::image;
 // Implementation
 
 nsIFrame*
-NS_NewSVGClipPathFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGClipPathFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGClipPathFrame(aContext);
+  return new (aPresShell) nsSVGClipPathFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGClipPathFrame)
@@ -305,7 +305,7 @@ nsSVGClipPathFrame::PointIsInsideClipPath(nsIFrame* aClippedFrame,
   // that case the other clip path further clips away the element that is being
   // clipped by the original clipPath. If this clipPath is being clipped by a
   // different clip path we need to check if it prevents the original element
-  // from recieving events at aPoint:
+  // from receiving events at aPoint:
   nsSVGClipPathFrame *clipPathFrame =
     SVGObserverUtils::GetEffectProperties(this).GetClipPathFrame();
   if (clipPathFrame &&
@@ -475,7 +475,8 @@ nsSVGClipPathFrame::GetClipPathTransform(nsIFrame* aClippedFrame)
 
 SVGBBox
 nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox &aBBox,
-                                            const gfxMatrix &aMatrix)
+                                            const gfxMatrix &aMatrix,
+                                            uint32_t aFlags)
 {
   nsIContent* node = GetContent()->GetFirstChild();
   SVGBBox unionBBox, tmpBBox;
@@ -494,10 +495,12 @@ nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox &aBBox,
           nsSVGClipPathFrame *clipPathFrame =
             effectProperties.GetClipPathFrame();
           if (clipPathFrame) {
-            tmpBBox = clipPathFrame->GetBBoxForClipPathFrame(tmpBBox, aMatrix);
+            tmpBBox = clipPathFrame->GetBBoxForClipPathFrame(tmpBBox, aMatrix, aFlags);
           }
         }
-        tmpBBox.Intersect(aBBox);
+        if (!(aFlags & nsSVGUtils::eDoNotClipToBBoxOfContentInsideClipPath)) {
+          tmpBBox.Intersect(aBBox);
+        }
         unionBBox.UnionEdges(tmpBBox);
       }
     }
@@ -511,7 +514,7 @@ nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox &aBBox,
     } else  {
       nsSVGClipPathFrame *clipPathFrame = props.GetClipPathFrame();
       if (clipPathFrame) {
-        tmpBBox = clipPathFrame->GetBBoxForClipPathFrame(aBBox, aMatrix);
+        tmpBBox = clipPathFrame->GetBBoxForClipPathFrame(aBBox, aMatrix, aFlags);
         unionBBox.Intersect(tmpBBox);
       }
     }

@@ -154,7 +154,8 @@ static const CK_ATTRIBUTE_TYPE known_attributes[] = {
     CKA_TRUST_EMAIL_PROTECTION, CKA_TRUST_IPSEC_END_SYSTEM,
     CKA_TRUST_IPSEC_TUNNEL, CKA_TRUST_IPSEC_USER, CKA_TRUST_TIME_STAMPING,
     CKA_TRUST_STEP_UP_APPROVED, CKA_CERT_SHA1_HASH, CKA_CERT_MD5_HASH,
-    CKA_NETSCAPE_DB, CKA_NETSCAPE_TRUST, CKA_NSS_OVERRIDE_EXTENSIONS
+    CKA_NETSCAPE_DB, CKA_NETSCAPE_TRUST, CKA_NSS_OVERRIDE_EXTENSIONS,
+    CKA_PUBLIC_KEY_INFO
 };
 
 static int known_attributes_size = sizeof(known_attributes) /
@@ -643,13 +644,18 @@ static int
 sdb_openDB(const char *name, sqlite3 **sqlDB, int flags)
 {
     int sqlerr;
-    /*
-     * in sqlite3 3.5.0, there is a new open call that allows us
-     * to specify read only. Most new OS's are still on 3.3.x (including
-     * NSS's internal version and the version shipped with Firefox).
-     */
+    int openFlags;
+
     *sqlDB = NULL;
-    sqlerr = sqlite3_open(name, sqlDB);
+
+    if (flags & SDB_RDONLY) {
+        openFlags = SQLITE_OPEN_READONLY;
+    } else {
+        openFlags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+    }
+
+    /* Requires SQLite 3.5.0 or newer. */
+    sqlerr = sqlite3_open_v2(name, sqlDB, openFlags, NULL);
     if (sqlerr != SQLITE_OK) {
         return sqlerr;
     }

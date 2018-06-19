@@ -24,8 +24,7 @@
 #include "nsPresContext.h"
 #include "nsNodeInfoManager.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
+#include "mozilla/ServoStyleSet.h"
 #include "nsThemeConstants.h"
 
 #ifdef ACCESSIBILITY
@@ -41,23 +40,18 @@ using namespace mozilla::image;
 NS_IMPL_ISUPPORTS(nsRangeFrame::DummyTouchListener, nsIDOMEventListener)
 
 nsIFrame*
-NS_NewRangeFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewRangeFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsRangeFrame(aContext);
+  return new (aPresShell) nsRangeFrame(aStyle);
 }
 
-nsRangeFrame::nsRangeFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsRangeFrame::nsRangeFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
 {
 }
 
 nsRangeFrame::~nsRangeFrame()
 {
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameRelease();
-  }
-#endif
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsRangeFrame)
@@ -84,12 +78,12 @@ nsRangeFrame::Init(nsIContent*       aContent,
   }
   aContent->AddEventListener(NS_LITERAL_STRING("touchstart"), mDummyTouchListener, false);
 
-  StyleSetHandle styleSet = PresContext()->StyleSet();
+  ServoStyleSet* styleSet = PresContext()->StyleSet();
 
   mOuterFocusStyle =
     styleSet->ProbePseudoElementStyle(aContent->AsElement(),
                                       CSSPseudoElementType::mozFocusOuter,
-                                      StyleContext());
+                                      Style());
 
   return nsContainerFrame::Init(aContent, aParent, aPrevInFlow);
 }
@@ -225,10 +219,10 @@ nsDisplayRangeFocusRing::GetBounds(nsDisplayListBuilder* aBuilder,
 
   // We want to paint as if specifying a border for ::-moz-focus-outer
   // specifies an outline for our frame, so inflate by the border widths:
-  nsStyleContext* styleContext =
+  ComputedStyle* computedStyle =
     static_cast<nsRangeFrame*>(mFrame)->mOuterFocusStyle;
-  MOZ_ASSERT(styleContext, "We only exist if mOuterFocusStyle is non-null");
-  rect.Inflate(styleContext->StyleBorder()->GetComputedBorder());
+  MOZ_ASSERT(computedStyle, "We only exist if mOuterFocusStyle is non-null");
+  rect.Inflate(computedStyle->StyleBorder()->GetComputedBorder());
 
   return rect;
 }
@@ -238,9 +232,9 @@ nsDisplayRangeFocusRing::Paint(nsDisplayListBuilder* aBuilder,
                                gfxContext* aCtx)
 {
   bool unused;
-  nsStyleContext* styleContext =
+  ComputedStyle* computedStyle =
     static_cast<nsRangeFrame*>(mFrame)->mOuterFocusStyle;
-  MOZ_ASSERT(styleContext, "We only exist if mOuterFocusStyle is non-null");
+  MOZ_ASSERT(computedStyle, "We only exist if mOuterFocusStyle is non-null");
 
   PaintBorderFlags flags = aBuilder->ShouldSyncDecodeImages()
                          ? PaintBorderFlags::SYNC_DECODE_IMAGES
@@ -249,7 +243,7 @@ nsDisplayRangeFocusRing::Paint(nsDisplayListBuilder* aBuilder,
   ImgDrawResult result =
     nsCSSRendering::PaintBorder(mFrame->PresContext(), *aCtx, mFrame,
                                 mVisibleRect, GetBounds(aBuilder, &unused),
-                                styleContext, flags);
+                                computedStyle, flags);
 
   nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
 }
@@ -912,10 +906,10 @@ nsRangeFrame::GetPseudoElement(CSSPseudoElementType aType)
   return nsContainerFrame::GetPseudoElement(aType);
 }
 
-nsStyleContext*
-nsRangeFrame::GetAdditionalStyleContext(int32_t aIndex) const
+ComputedStyle*
+nsRangeFrame::GetAdditionalComputedStyle(int32_t aIndex) const
 {
-  // We only implement this so that SetAdditionalStyleContext will be
+  // We only implement this so that SetAdditionalComputedStyle will be
   // called if style changes that would change the -moz-focus-outer
   // pseudo-element have occurred.
   if (aIndex != 0) {
@@ -925,24 +919,12 @@ nsRangeFrame::GetAdditionalStyleContext(int32_t aIndex) const
 }
 
 void
-nsRangeFrame::SetAdditionalStyleContext(int32_t aIndex,
-                                        nsStyleContext* aStyleContext)
+nsRangeFrame::SetAdditionalComputedStyle(int32_t aIndex,
+                                        ComputedStyle* aComputedStyle)
 {
   MOZ_ASSERT(aIndex == 0,
-             "GetAdditionalStyleContext is handling other indexes?");
-
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameRelease();
-  }
-#endif
+             "GetAdditionalComputedStyle is handling other indexes?");
 
   // The -moz-focus-outer pseudo-element's style has changed.
-  mOuterFocusStyle = aStyleContext;
-
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameAddRef();
-  }
-#endif
+  mOuterFocusStyle = aComputedStyle;
 }

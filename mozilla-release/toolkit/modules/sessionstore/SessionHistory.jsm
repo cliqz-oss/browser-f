@@ -72,7 +72,7 @@ var SessionHistoryInternal = {
   collect(docShell, aFromIdx = -1) {
     let loadContext = docShell.QueryInterface(Ci.nsILoadContext);
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
-    let history = webNavigation.sessionHistory.QueryInterface(Ci.nsISHistoryInternal);
+    let history = webNavigation.sessionHistory;
 
     let data = {entries: [], userContextId: loadContext.originAttributes.userContextId };
     // We want to keep track how many entries we *could* have collected and
@@ -83,7 +83,8 @@ var SessionHistoryInternal = {
     if (history && history.count > 0) {
       // Loop over the transaction linked list directly so we can get the
       // persist property for each transaction.
-      for (let txn = history.rootTransaction; txn; entryCount++, txn = txn.next) {
+      for (let txn = history.legacySHistory.QueryInterface(Ci.nsISHistoryInternal).rootTransaction;
+           txn; entryCount++, txn = txn.next) {
         if (entryCount <= aFromIdx) {
           skippedCount++;
           continue;
@@ -137,13 +138,7 @@ var SessionHistoryInternal = {
       entry.subframe = true;
     }
 
-    let cacheKey = shEntry.cacheKey;
-    if (cacheKey && cacheKey instanceof Ci.nsISupportsPRUint32 &&
-        cacheKey.data != 0) {
-      // XXXbz would be better to have cache keys implement
-      // nsISerializable or something.
-      entry.cacheKey = cacheKey.data;
-    }
+    entry.cacheKey = shEntry.cacheKey;
     entry.ID = shEntry.ID;
     entry.docshellUUID = shEntry.docshellID.toString();
 
@@ -219,25 +214,11 @@ var SessionHistoryInternal = {
 
     // Collect triggeringPrincipal data for the current history entry.
     if (shEntry.principalToInherit) {
-      try {
-        let principalToInherit = Utils.serializePrincipal(shEntry.principalToInherit);
-        if (principalToInherit) {
-          entry.principalToInherit_base64 = principalToInherit;
-        }
-      } catch (e) {
-        debug(e);
-      }
+      entry.principalToInherit_base64 = Utils.serializePrincipal(shEntry.principalToInherit);
     }
 
     if (shEntry.triggeringPrincipal) {
-      try {
-        let triggeringPrincipal = Utils.serializePrincipal(shEntry.triggeringPrincipal);
-        if (triggeringPrincipal) {
-          entry.triggeringPrincipal_base64 = triggeringPrincipal;
-        }
-      } catch (e) {
-        debug(e);
-      }
+      entry.triggeringPrincipal_base64 = Utils.serializePrincipal(shEntry.triggeringPrincipal);
     }
 
     entry.docIdentifier = shEntry.BFCacheEntry.ID;
@@ -317,7 +298,7 @@ var SessionHistoryInternal = {
    */
   restore(docShell, tabData) {
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
-    let history = webNavigation.sessionHistory;
+    let history = webNavigation.sessionHistory.legacySHistory;
     if (history.count > 0) {
       history.PurgeHistory(history.count);
     }
@@ -390,10 +371,7 @@ var SessionHistoryInternal = {
       shEntry.baseURI = Utils.makeURI(entry.baseURI);
 
     if (entry.cacheKey) {
-      var cacheKey = Cc["@mozilla.org/supports-PRUint32;1"].
-                     createInstance(Ci.nsISupportsPRUint32);
-      cacheKey.data = entry.cacheKey;
-      shEntry.cacheKey = cacheKey;
+      shEntry.cacheKey = entry.cacheKey;
     }
 
     if (entry.ID) {
@@ -468,6 +446,12 @@ var SessionHistoryInternal = {
 
     if (entry.triggeringPrincipal_base64) {
       shEntry.triggeringPrincipal = Utils.deserializePrincipal(entry.triggeringPrincipal_base64);
+    }
+    // Ensure that we have a null principal if we couldn't deserialize it.
+    // This won't always work however is safe to use.
+    if (!shEntry.triggeringPrincipal) {
+      debug("Couldn't deserialize the triggeringPrincipal, falling back to NullPrincipal");
+      shEntry.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
     }
     if (entry.principalToInherit_base64) {
       shEntry.principalToInherit = Utils.deserializePrincipal(entry.principalToInherit_base64);

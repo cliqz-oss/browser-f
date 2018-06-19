@@ -50,9 +50,15 @@ if test "$MOZ_UPDATE_CHANNEL" = "aurora"; then
   ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-aurora
   MAR_CHANNEL_ID=firefox-mozilla-aurora
 else
-  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-release
-  MAR_CHANNEL_ID=firefox-mozilla-release
+  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-beta,firefox-mozilla-release
+  MAR_CHANNEL_ID=firefox-mozilla-beta
 fi
+# ASan reporter builds should have different channel ids
+if [ "${MOZ_ASAN_REPORTER}" = "1" ]; then
+    ACCEPTED_MAR_CHANNEL_IDS="${ACCEPTED_MAR_CHANNEL_IDS}-asan"
+    MAR_CHANNEL_ID="${MAR_CHANNEL_ID}-asan"
+fi
+
 MOZ_PROFILE_MIGRATOR=1
 
 # Enable checking that add-ons are signed by the trusted root

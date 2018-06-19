@@ -3,6 +3,7 @@
 == table-repaint-border-collapse.html table-repaint-border-collapse-ref.html
 == table-repaint-c.html table-repaint-c-ref.html
 == table-repaint-d.html table-repaint-d-ref.html
+== table-repaint-e.html table-repaint-e-ref.html
 == table-repaint-non-border-collapse.html table-repaint-non-border-collapse-ref.html
 == 540247-1.xul 540247-1-ref.xul
 == 543681-1.html 543681-1-ref.html
@@ -47,10 +48,10 @@ fails-if(webrender) != scroll-inactive-layers.html about:blank
 fails-if(webrender) != scroll-inactive-layers-2.html about:blank
 != inactive-layertree-visible-region-1.html about:blank
 != inactive-layertree-visible-region-2.html about:blank
-fails-if(webrender) != transform-floating-point-invalidation.html about:blank
-fails-if(webrender) != transform-floating-point-invalidation.html?reverse about:blank
-fails-if(webrender) != nudge-to-integer-invalidation.html about:blank
-fails-if(webrender) != nudge-to-integer-invalidation.html?reverse about:blank
+!= transform-floating-point-invalidation.html about:blank
+!= transform-floating-point-invalidation.html?reverse about:blank
+!= nudge-to-integer-invalidation.html about:blank
+!= nudge-to-integer-invalidation.html?reverse about:blank
 != clipped-animated-transform-1.html about:blank
 != paintedlayer-recycling-1.html about:blank
 != paintedlayer-recycling-2.html about:blank

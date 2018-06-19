@@ -1,0 +1,108 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+html {
+  background: -moz-dialog;
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+#debugging-console {
+  float: right;
+  /* Float above the other overlays */
+  position: relative;
+  z-index: 99;
+}
+
+payment-dialog {
+  display: grid;
+  grid-template-rows: fit-content(10%) auto;
+  height: 100%;
+  margin: 0 10%;
+}
+
+payment-dialog > header {
+  display: flex;
+}
+
+#main-container {
+  display: flex;
+  position: relative;
+}
+
+#payment-summary {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: fit-content(10%) auto fit-content(10%);
+  position: relative;
+}
+
+#error-text {
+  text-align: center;
+}
+
+#order-details-overlay {
+  background-color: -moz-dialog;
+  overflow: auto;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+}
+
+payment-dialog > footer {
+  align-items: baseline;
+  display: flex;
+}
+
+#total {
+  flex: 1 1 auto;
+  margin: 5px;
+}
+#view-all {
+  flex: 0 1 auto;
+}
+
+#total .label {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+#pay {
+  background-color: #0060df;
+  color: white;
+  border: none;
+}
+
+payment-dialog[changes-prevented][completion-state="fail"] #pay,
+payment-dialog[changes-prevented][completion-state="unknown"] #pay,
+payment-dialog[changes-prevented][completion-state="processing"] #pay,
+payment-dialog[changes-prevented][completion-state="success"] #pay {
+  /* Show the pay button above #disabled-overlay */
+  position: relative;
+  z-index: 1;
+}
+
+#disabled-overlay {
+  background: white;
+  opacity: 0.6;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}

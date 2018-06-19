@@ -6,7 +6,7 @@
 /**
  * Tests if the pause/resume button works.
  */
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(PAUSE_URL);
   info("Starting test... ");
 
@@ -24,11 +24,11 @@ add_task(async function () {
   assertRequestCount(store, 1);
 
   let noRequest = true;
-  monitor.panelWin.once(EVENTS.NETWORK_EVENT, () => {
+  monitor.panelWin.api.once(EVENTS.NETWORK_EVENT, () => {
     noRequest = false;
   });
 
-  monitor.panelWin.once(EVENTS.NETWORK_EVENT_UPDATED, () => {
+  monitor.panelWin.api.once(EVENTS.NETWORK_EVENT_UPDATED, () => {
     noRequest = false;
   });
 
@@ -67,7 +67,7 @@ function assertRequestCount(store, count) {
  */
 async function performRequestAndWait(tab, monitor) {
   let wait = waitForNetworkEvents(monitor, 1);
-  await ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, async function (url) {
+  await ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, async function(url) {
     await content.wrappedJSObject.performRequests(url);
   });
   await wait;
@@ -77,21 +77,9 @@ async function performRequestAndWait(tab, monitor) {
  * Execute simple GET request
  */
 async function performPausedRequest(connector, tab, monitor) {
-  let wait = waitForWebConsoleNetworkEvent(connector);
-  await ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, async function (url) {
+  let wait = connector.connector.webConsoleClient.once("networkEvent");
+  await ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, async function(url) {
     await content.wrappedJSObject.performRequests(url);
   });
   await wait;
-}
-
-/**
- * Listen for events fired by the console client since the Firefox
- * connector (data provider) is paused.
- */
-function waitForWebConsoleNetworkEvent(connector) {
-  return new Promise(resolve => {
-    connector.connector.webConsoleClient.once("networkEvent", (type, networkInfo) => {
-      resolve();
-    });
-  });
 }

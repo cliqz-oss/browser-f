@@ -90,7 +90,7 @@ var Prompt = Authenticators.Prompt = {};
 
 Prompt.mode = "PROMPT";
 
-Prompt.Client = function () {};
+Prompt.Client = function() {};
 Prompt.Client.prototype = {
 
   mode: Prompt.mode,
@@ -143,7 +143,7 @@ Prompt.Client.prototype = {
 
 };
 
-Prompt.Server = function () {};
+Prompt.Server = function() {};
 Prompt.Server.prototype = {
 
   mode: Prompt.mode,
@@ -261,7 +261,7 @@ var OOBCert = Authenticators.OOBCert = {};
 
 OOBCert.mode = "OOB_CERT";
 
-OOBCert.Client = function () {};
+OOBCert.Client = function() {};
 OOBCert.Client.prototype = {
 
   mode: OOBCert.mode,
@@ -294,6 +294,7 @@ OOBCert.Client.prototype = {
    * @return boolean
    *         Whether the connection is valid.
    */
+  // eslint-disable-next-line no-shadow
   validateConnection({ cert, socket }) {
     // Step B.7
     // Client verifies that Server's cert matches hash(ServerCert) from the
@@ -327,6 +328,7 @@ OOBCert.Client.prototype = {
    *        A transport that can be used to communicate with the server.
    * @return A promise can be used if there is async behavior.
    */
+  // eslint-disable-next-line no-shadow
   authenticate({ host, port, cert, transport }) {
     let deferred = defer();
     let oobData;
@@ -436,7 +438,7 @@ OOBCert.Client.prototype = {
 
 };
 
-OOBCert.Server = function () {};
+OOBCert.Server = function() {};
 OOBCert.Server.prototype = {
 
   mode: OOBCert.mode,

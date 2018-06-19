@@ -11,7 +11,6 @@
 #include "Role.h"
 
 #include "nsIServiceManager.h"
-#include "nsIDOMElement.h"
 #include "nsIFrame.h"
 #include "nsImageFrame.h"
 #include "nsImageMap.h"
@@ -163,7 +162,7 @@ HTMLAreaAccessible::Description(nsString& aDescription)
 
   // Still to do - follow IE's standard here
   RefPtr<dom::HTMLAreaElement> area =
-    dom::HTMLAreaElement::FromContentOrNull(mContent);
+    dom::HTMLAreaElement::FromNodeOrNull(mContent);
   if (area)
     area->GetShape(aDescription);
 }

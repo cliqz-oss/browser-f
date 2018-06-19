@@ -12,13 +12,15 @@ const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm",
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 // Load devtools module lazily.
-XPCOMUtils.defineLazyGetter(this, "devtools", function () {
+XPCOMUtils.defineLazyGetter(this, "devtools", function() {
+  // eslint-disable-next-line no-shadow
   const {devtools} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   return devtools;
 });
 
 // Load JsonView services lazily.
-XPCOMUtils.defineLazyGetter(this, "JsonViewService", function () {
+XPCOMUtils.defineLazyGetter(this, "JsonViewService", function() {
+  // eslint-disable-next-line no-shadow
   const {JsonViewService} = devtools.require("devtools/client/jsonview/converter-child");
   return JsonViewService;
 });
@@ -57,7 +59,7 @@ JsonViewSniffer.prototype = {
     return this;
   },
 
-  isTopLevelLoad: function (request) {
+  isTopLevelLoad: function(request) {
     let loadInfo = request.loadInfo;
     if (loadInfo && loadInfo.isTopLevelLoad) {
       return (request.loadFlags & Ci.nsIChannel.LOAD_DOCUMENT_URI);
@@ -65,7 +67,7 @@ JsonViewSniffer.prototype = {
     return false;
   },
 
-  getMIMETypeFromContent: function (request, data, length) {
+  getMIMETypeFromContent: function(request, data, length) {
     if (request instanceof Ci.nsIChannel) {
       // JSON View is enabled only for top level loads only.
       if (!this.isTopLevelLoad(request)) {
@@ -99,7 +101,7 @@ JsonViewSniffer.prototype = {
  * Create instances of the JSON view sniffer.
  */
 const JsonSnifferFactory = {
-  createInstance: function (outer, iid) {
+  createInstance: function(outer, iid) {
     if (outer) {
       throw Cr.NS_ERROR_NO_AGGREGATION;
     }
@@ -113,7 +115,7 @@ const JsonSnifferFactory = {
  * a compartment at startup when no JSON is being viewed.
  */
 const JsonViewFactory = {
-  createInstance: function (outer, iid) {
+  createInstance: function(outer, iid) {
     if (outer) {
       throw Cr.NS_ERROR_NO_AGGREGATION;
     }
@@ -129,7 +131,7 @@ function ConverterObserver() {
 }
 
 ConverterObserver.prototype = {
-  initialize: function () {
+  initialize: function() {
     // Only the DevEdition has this feature available by default.
     // Users need to manually flip 'devtools.jsonview.enabled' preference
     // to have it available in other distributions.
@@ -141,7 +143,7 @@ ConverterObserver.prototype = {
     Services.obs.addObserver(this, "xpcom-shutdown");
   },
 
-  observe: function (subject, topic, data) {
+  observe: function(subject, topic, data) {
     switch (topic) {
       case "xpcom-shutdown":
         this.onShutdown();
@@ -152,12 +154,12 @@ ConverterObserver.prototype = {
     }
   },
 
-  onShutdown: function () {
+  onShutdown: function() {
     Services.prefs.removeObserver(JSON_VIEW_PREF, observer);
     Services.obs.removeObserver(observer, "xpcom-shutdown");
   },
 
-  onPrefChanged: function () {
+  onPrefChanged: function() {
     if (this.isEnabled()) {
       this.register();
     } else {
@@ -165,7 +167,7 @@ ConverterObserver.prototype = {
     }
   },
 
-  register: function () {
+  register: function() {
     const registrar = Cm.QueryInterface(Ci.nsIComponentRegistrar);
 
     if (!registrar.isCIDRegistered(JSON_SNIFFER_CLASS_ID)) {
@@ -187,7 +189,7 @@ ConverterObserver.prototype = {
     }
   },
 
-  unregister: function () {
+  unregister: function() {
     const registrar = Cm.QueryInterface(Ci.nsIComponentRegistrar);
 
     if (registrar.isCIDRegistered(JSON_SNIFFER_CLASS_ID)) {
@@ -203,7 +205,7 @@ ConverterObserver.prototype = {
     }
   },
 
-  isEnabled: function () {
+  isEnabled: function() {
     return Services.prefs.getBoolPref(JSON_VIEW_PREF);
   },
 };

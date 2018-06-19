@@ -127,7 +127,6 @@ public:
   bool UseCooperativeScheduling() const { return mQueue->UseCooperativeScheduling(); }
 
   // Preferences.
-  static bool sPrefScheduler;
   static bool sPrefChaoticScheduling;
   static bool sPrefPreemption;
   static size_t sPrefThreadCount;
@@ -218,7 +217,6 @@ private:
   JSContext* mContexts[CooperativeThreadPool::kMaxThreads];
 };
 
-bool SchedulerImpl::sPrefScheduler = false;
 bool SchedulerImpl::sPrefChaoticScheduling = false;
 bool SchedulerImpl::sPrefPreemption = false;
 bool SchedulerImpl::sPrefUseMultipleQueues = false;
@@ -443,7 +441,7 @@ SchedulerImpl::Switcher()
       }
     }
 
-    mShutdownCondVar.Wait(PR_MicrosecondsToInterval(50));
+    mShutdownCondVar.Wait(TimeDuration::FromMicroseconds(50));
   }
 }
 
@@ -685,7 +683,6 @@ SchedulerImpl::ThreadController::OnStartThread(size_t aIndex, const nsACString& 
   if (sPrefPreemption) {
     JS_AddInterruptCallback(cx, SchedulerImpl::InterruptCallback);
   }
-  js::SetCooperativeYieldCallback(cx, SchedulerImpl::YieldCallback);
   Servo_InitializeCooperativeThread();
 }
 
@@ -779,8 +776,7 @@ Scheduler::GetPrefs()
 {
   MOZ_ASSERT(XRE_IsParentProcess());
   nsPrintfCString result("%d%d%d%d,%d",
-                         Preferences::GetBool("dom.ipc.scheduler",
-                                              SchedulerImpl::sPrefScheduler),
+                         false, // XXX The scheduler is always disabled.
                          Preferences::GetBool("dom.ipc.scheduler.chaoticScheduling",
                                               SchedulerImpl::sPrefChaoticScheduling),
                          Preferences::GetBool("dom.ipc.scheduler.preemption",
@@ -808,7 +804,6 @@ Scheduler::SetPrefs(const char* aPrefs)
     return;
   }
 
-  SchedulerImpl::sPrefScheduler = aPrefs[0] == '1';
   SchedulerImpl::sPrefChaoticScheduling = aPrefs[1] == '1';
   SchedulerImpl::sPrefPreemption = aPrefs[2] == '1';
   SchedulerImpl::sPrefUseMultipleQueues = aPrefs[3] == '1';
@@ -819,7 +814,8 @@ Scheduler::SetPrefs(const char* aPrefs)
 /* static */ bool
 Scheduler::IsSchedulerEnabled()
 {
-  return SchedulerImpl::sPrefScheduler;
+  // XXX We never enable the scheduler because it will crash immediately.
+  return false;
 }
 
 /* static */ bool

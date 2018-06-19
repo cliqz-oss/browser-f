@@ -6,7 +6,8 @@ add_task(async function init() {
     set: [["browser.urlbar.oneOffSearches", true],
           ["browser.urlbar.suggest.searches", true]],
   });
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.moveEngine(engine, 0);
   Services.search.currentEngine = engine;
@@ -49,7 +50,7 @@ add_task(async function oneOffReturnAfterSuggestion() {
   await resultsPromise;
 
   await PlacesUtils.history.clear();
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // Clicks a one-off engine after selecting a search suggestion.
@@ -77,7 +78,7 @@ add_task(async function oneOffClickAfterSuggestion() {
   await resultsPromise;
 
   await PlacesUtils.history.clear();
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function overridden_engine_not_reused() {
@@ -102,7 +103,7 @@ add_task(async function overridden_engine_not_reused() {
     let newLabel = gURLBar.popup.richlistbox.children[1].label;
     Assert.notEqual(newLabel, label, "The label should have been updated");
 
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
 });
 
 function assertState(result, oneOff, textValue = undefined) {

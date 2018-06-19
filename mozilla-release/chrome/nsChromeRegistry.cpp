@@ -91,7 +91,8 @@ nsChromeRegistry::LogMessageWithContext(nsIURI* aURL, uint32_t aLineNumber, uint
   rv = error->Init(NS_ConvertUTF8toUTF16(formatted.get()),
                    NS_ConvertUTF8toUTF16(spec),
                    EmptyString(),
-                   aLineNumber, 0, flags, "chrome registration");
+                   aLineNumber, 0, flags, "chrome registration",
+                   false /* from private window */);
 
   if (NS_FAILED(rv))
     return;
@@ -416,8 +417,8 @@ nsresult nsChromeRegistry::RefreshWindow(nsPIDOMWindowOuter* aWindow)
         rv = document->LoadChromeSheetSync(uri, true, &newSheet);
         if (NS_FAILED(rv)) return rv;
         if (newSheet) {
-          rv = newAgentSheets.AppendElement(newSheet) ? NS_OK : NS_ERROR_FAILURE;
-          if (NS_FAILED(rv)) return rv;
+          newAgentSheets.AppendElement(newSheet);
+          return NS_OK;
         }
       }
       else {  // Just use the same sheet.

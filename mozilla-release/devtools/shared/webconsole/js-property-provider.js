@@ -393,6 +393,9 @@ function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
   let iter = chainIterator(obj);
   for (obj of iter) {
     let props = getProperties(obj);
+    if (!props) {
+      continue;
+    }
     numProps += props.length;
 
     // If there are too many properties to event attempt autocompletion,
@@ -459,15 +462,25 @@ var JSObjectSupport = {
   chainIterator: function* (obj) {
     while (obj) {
       yield obj;
-      obj = Object.getPrototypeOf(obj);
+      try {
+        obj = Object.getPrototypeOf(obj);
+      } catch (error) {
+        // The above can throw e.g. for some proxy objects.
+        return;
+      }
     }
   },
 
-  getProperties: function (obj) {
-    return Object.getOwnPropertyNames(obj);
+  getProperties: function(obj) {
+    try {
+      return Object.getOwnPropertyNames(obj);
+    } catch (error) {
+      // The above can throw e.g. for some proxy objects.
+      return null;
+    }
   },
 
-  getProperty: function () {
+  getProperty: function() {
     // getProperty is unsafe with raw JS objects.
     throw new Error("Unimplemented!");
   },
@@ -477,15 +490,25 @@ var DebuggerObjectSupport = {
   chainIterator: function* (obj) {
     while (obj) {
       yield obj;
-      obj = obj.proto;
+      try {
+        obj = obj.proto;
+      } catch (error) {
+        // The above can throw e.g. for some proxy objects.
+        return;
+      }
     }
   },
 
-  getProperties: function (obj) {
-    return obj.getOwnPropertyNames();
+  getProperties: function(obj) {
+    try {
+      return obj.getOwnPropertyNames();
+    } catch (error) {
+      // The above can throw e.g. for some proxy objects.
+      return null;
+    }
   },
 
-  getProperty: function (obj, name, rootObj) {
+  getProperty: function(obj, name, rootObj) {
     // This is left unimplemented in favor to DevToolsUtils.getProperty().
     throw new Error("Unimplemented!");
   },
@@ -499,7 +522,7 @@ var DebuggerEnvironmentSupport = {
     }
   },
 
-  getProperties: function (obj) {
+  getProperties: function(obj) {
     let names = obj.names();
 
     // Include 'this' in results (in sorted order)
@@ -513,7 +536,7 @@ var DebuggerEnvironmentSupport = {
     return names;
   },
 
-  getProperty: function (obj, name) {
+  getProperty: function(obj, name) {
     let result;
     // Try/catch since name can be anything, and getVariable throws if
     // it's not a valid ECMAScript identifier name

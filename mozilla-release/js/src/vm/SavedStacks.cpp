@@ -149,6 +149,11 @@ LiveSavedFrameCache::find(JSContext* cx, FramePtr& framePtr, const jsbytecode* p
     // this frame for that to happen, but this frame's bit is set.
     if (pc != frames->back().pc) {
         frames->popBack();
+
+        // Since we've removed this entry from the cache, clear the bit on its
+        // frame. Usually we'll repopulate the cache anyway, but if there's an
+        // OOM that might not happen.
+        framePtr.clearHasCachedSavedFrame();
         frame.set(nullptr);
         return;
     }
@@ -400,11 +405,11 @@ SavedFrame::protoAccessors[] = {
 /* static */ void
 SavedFrame::finalize(FreeOp* fop, JSObject* obj)
 {
-    MOZ_ASSERT(fop->onActiveCooperatingThread());
+    MOZ_ASSERT(fop->onMainThread());
     JSPrincipals* p = obj->as<SavedFrame>().getPrincipals();
     if (p) {
-        JSRuntime* rt = obj->runtimeFromActiveCooperatingThread();
-        JS_DropPrincipals(rt->activeContextFromOwnThread(), p);
+        JSRuntime* rt = obj->runtimeFromMainThread();
+        JS_DropPrincipals(rt->mainContextFromOwnThread(), p);
     }
 }
 
@@ -561,12 +566,7 @@ SavedFrame::create(JSContext* cx)
         return nullptr;
     assertSameCompartment(cx, proto);
 
-    RootedObject frameObj(cx, NewObjectWithGivenProto(cx, &SavedFrame::class_, proto,
-                                                      TenuredObject));
-    if (!frameObj)
-        return nullptr;
-
-    return &frameObj->as<SavedFrame>();
+    return NewObjectWithGivenProto<SavedFrame>(cx, proto, TenuredObject);
 }
 
 bool

@@ -186,7 +186,7 @@ const PROBE_TESTS = [
     prepare(browser) {},
 
     async doAction(browser) {
-      openUILinkIn(PAGE_2, "current");
+      openTrustedLinkIn(PAGE_2, "current");
       await BrowserTestUtils.browserLoaded(browser);
     },
   },
@@ -299,7 +299,7 @@ add_task(async function test_probes() {
   // middle of loading some resources.
   newTab.setAttribute("busy", true);
 
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   let snapshot = histogram.snapshot();
   assertOnlyOneTypeSet(snapshot, "tabClosed");
 });

@@ -85,12 +85,6 @@ public:
   /// Like strcmp except for ucs2 strings
   static int32_t strcmp(const char16_t* aStr1, const char16_t* aStr2);
 
-  // The GNU libc has memmem, which is strstr except for binary data
-  // This is our own implementation that uses memmem on platforms
-  // where it's available.
-  static const char* memmem(const char* aHaystack, uint32_t aHaystackLen,
-                            const char* aNeedle, uint32_t aNeedleLen);
-
   // String to longlong
   static int64_t atoll(const char* aStr);
 
@@ -102,8 +96,6 @@ public:
 
   static bool IsAscii(char16_t aChar) { return NS_IsAscii(aChar); }
   static bool IsAscii(const char16_t* aString) { return NS_IsAscii(aString); }
-  static bool IsAsciiAlpha(char16_t aChar) { return NS_IsAsciiAlpha(aChar); }
-  static bool IsAsciiDigit(char16_t aChar) { return NS_IsAsciiDigit(aChar); }
   static bool IsAsciiSpace(char16_t aChar) { return NS_IsAsciiWhitespace(aChar); }
   static bool IsAscii(const char* aString) { return NS_IsAscii(aString); }
   static bool IsAscii(const char* aString, uint32_t aLength)

@@ -12,13 +12,12 @@
 #include "nsAtom.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsCSSRendering.h"
 #include "nsNameSpaceManager.h"
 #include "nsMenuPopupFrame.h"
 #include "nsMenuBarFrame.h"
 #include "nsIDocument.h"
-#include "nsIDOMElement.h"
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableFrame.h"
@@ -96,7 +95,7 @@ public:
       domEventToFire.AssignLiteral("DOMMenuItemInactive");
     }
 
-    RefPtr<Event> event = NS_NewDOMEvent(mMenu, mPresContext, nullptr);
+    RefPtr<dom::Event> event = NS_NewDOMEvent(mMenu, mPresContext, nullptr);
     event->InitEvent(domEventToFire, true, true);
 
     event->SetTrusted(true);
@@ -153,17 +152,17 @@ protected:
 // Wrappers for creating a new menu popup container
 //
 nsIFrame*
-NS_NewMenuFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMenuFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  nsMenuFrame* it = new (aPresShell) nsMenuFrame(aContext);
+  nsMenuFrame* it = new (aPresShell) nsMenuFrame(aStyle);
   it->SetIsMenu(true);
   return it;
 }
 
 nsIFrame*
-NS_NewMenuItemFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMenuItemFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  nsMenuFrame* it = new (aPresShell) nsMenuFrame(aContext);
+  nsMenuFrame* it = new (aPresShell) nsMenuFrame(aStyle);
   it->SetIsMenu(false);
   return it;
 }
@@ -174,8 +173,8 @@ NS_QUERYFRAME_HEAD(nsMenuFrame)
   NS_QUERYFRAME_ENTRY(nsMenuFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
-nsMenuFrame::nsMenuFrame(nsStyleContext* aContext)
-  : nsBoxFrame(aContext, kClassID)
+nsMenuFrame::nsMenuFrame(ComputedStyle* aStyle)
+  : nsBoxFrame(aStyle, kClassID)
   , mIsMenu(false)
   , mChecked(false)
   , mIgnoreAccelTextChange(false)
@@ -770,43 +769,6 @@ nsMenuFrame::DoXULLayout(nsBoxLayoutState& aState)
   return rv;
 }
 
-#ifdef DEBUG_LAYOUT
-nsresult
-nsMenuFrame::SetXULDebug(nsBoxLayoutState& aState, bool aDebug)
-{
-  // see if our state matches the given debug state
-  bool debugSet = mState & NS_STATE_CURRENTLY_IN_DEBUG;
-  bool debugChanged = (!aDebug && debugSet) || (aDebug && !debugSet);
-
-  // if it doesn't then tell each child below us the new debug state
-  if (debugChanged)
-  {
-      nsBoxFrame::SetXULDebug(aState, aDebug);
-      nsMenuPopupFrame* popupFrame = GetPopup();
-      if (popupFrame)
-        SetXULDebug(aState, popupFrame, aDebug);
-  }
-
-  return NS_OK;
-}
-
-nsresult
-nsMenuFrame::SetXULDebug(nsBoxLayoutState& aState, nsIFrame* aList, bool aDebug)
-{
-      if (!aList)
-          return NS_OK;
-
-      while (aList) {
-        if (aList->IsXULBoxFrame())
-          aList->SetXULDebug(aState, aDebug);
-
-        aList = aList->GetNextSibling();
-      }
-
-      return NS_OK;
-}
-#endif
-
 //
 // Enter
 //
@@ -1335,11 +1297,6 @@ nsMenuFrame::InsertFrames(ChildListID     aListID,
   if (!HasPopup() && (aListID == kPrincipalList || aListID == kPopupList)) {
     SetPopupFrame(aFrameList);
     if (HasPopup()) {
-#ifdef DEBUG_LAYOUT
-      nsBoxLayoutState state(PresContext());
-      SetXULDebug(state, aFrameList, mState & NS_STATE_CURRENTLY_IN_DEBUG);
-#endif
-
       PresShell()->
         FrameNeedsReflow(this, nsIPresShell::eTreeChange,
                          NS_FRAME_HAS_DIRTY_CHILDREN);
@@ -1363,11 +1320,6 @@ nsMenuFrame::AppendFrames(ChildListID     aListID,
   if (!HasPopup() && (aListID == kPrincipalList || aListID == kPopupList)) {
     SetPopupFrame(aFrameList);
     if (HasPopup()) {
-
-#ifdef DEBUG_LAYOUT
-      nsBoxLayoutState state(PresContext());
-      SetXULDebug(state, aFrameList, mState & NS_STATE_CURRENTLY_IN_DEBUG);
-#endif
       PresShell()->
         FrameNeedsReflow(this, nsIPresShell::eTreeChange,
                          NS_FRAME_HAS_DIRTY_CHILDREN);
@@ -1441,7 +1393,7 @@ nsMenuFrame::GetXULPrefSize(nsBoxLayoutState& aState)
 }
 
 NS_IMETHODIMP
-nsMenuFrame::GetActiveChild(nsIDOMElement** aResult)
+nsMenuFrame::GetActiveChild(dom::Element** aResult)
 {
   nsMenuPopupFrame* popupFrame = GetPopup();
   if (!popupFrame)
@@ -1452,16 +1404,15 @@ nsMenuFrame::GetActiveChild(nsIDOMElement** aResult)
     *aResult = nullptr;
   }
   else {
-    nsCOMPtr<nsIDOMElement> elt(do_QueryInterface(menuFrame->GetContent()));
-    *aResult = elt;
-    NS_IF_ADDREF(*aResult);
+    RefPtr<dom::Element> elt = menuFrame->GetContent()->AsElement();
+    elt.forget(aResult);
   }
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsMenuFrame::SetActiveChild(nsIDOMElement* aChild)
+nsMenuFrame::SetActiveChild(dom::Element* aChild)
 {
   nsMenuPopupFrame* popupFrame = GetPopup();
   if (!popupFrame)
@@ -1473,9 +1424,7 @@ nsMenuFrame::SetActiveChild(nsIDOMElement* aChild)
     return NS_OK;
   }
 
-  nsCOMPtr<nsIContent> child(do_QueryInterface(aChild));
-
-  nsMenuFrame* menu = do_QueryFrame(child->GetPrimaryFrame());
+  nsMenuFrame* menu = do_QueryFrame(aChild->GetPrimaryFrame());
   if (menu)
     popupFrame->ChangeMenuItem(menu, false, false);
   return NS_OK;

@@ -24,9 +24,9 @@
 #include "jit/ProcessExecutableMemory.h"
 #include "util/Text.h"
 #include "wasm/WasmBaselineCompile.h"
-#include "wasm/WasmBinaryIterator.h"
 #include "wasm/WasmGenerator.h"
 #include "wasm/WasmIonCompile.h"
+#include "wasm/WasmOpIter.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmValidate.h"
 
@@ -87,10 +87,17 @@ DecodeCodeSection(const ModuleEnvironment& env, DecoderT& d, ModuleGenerator& mg
 bool
 CompileArgs::initFromContext(JSContext* cx, ScriptedCaller&& scriptedCaller)
 {
-    baselineEnabled = cx->options().wasmBaseline();
-    ionEnabled = cx->options().wasmIon();
+#ifdef ENABLE_WASM_GC
+    bool gcEnabled = cx->options().wasmGc();
+#else
+    bool gcEnabled = false;
+#endif
+
+    baselineEnabled = cx->options().wasmBaseline() || gcEnabled;
+    ionEnabled = cx->options().wasmIon() && !gcEnabled;
     sharedMemoryEnabled = cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled();
-    testTiering = cx->options().testWasmAwaitTier2() || JitOptions.wasmDelayTier2;
+    gcTypesEnabled = gcEnabled ? HasGcTypes::True : HasGcTypes::False;
+    testTiering = (cx->options().testWasmAwaitTier2() || JitOptions.wasmDelayTier2) && !gcEnabled;
 
     // Debug information such as source view or debug traps will require
     // additional memory and permanently stay in baseline code, so we try to
@@ -413,18 +420,19 @@ InitialCompileFlags(const CompileArgs& args, Decoder& d, CompileMode* mode, Tier
 }
 
 SharedModule
-wasm::CompileBuffer(const CompileArgs& args, const ShareableBytes& bytecode, UniqueChars* error)
+wasm::CompileBuffer(const CompileArgs& args, const ShareableBytes& bytecode, UniqueChars* error,
+                    UniqueCharsVector* warnings)
 {
     MOZ_RELEASE_ASSERT(wasm::HaveSignalHandlers());
 
-    Decoder d(bytecode.bytes, 0, error);
+    Decoder d(bytecode.bytes, 0, error, warnings);
 
     CompileMode mode;
     Tier tier;
     DebugEnabled debug;
     InitialCompileFlags(args, d, &mode, &tier, &debug);
 
-    ModuleEnvironment env(mode, tier, debug,
+    ModuleEnvironment env(mode, tier, debug, args.gcTypesEnabled,
                           args.sharedMemoryEnabled ? Shareable::True : Shareable::False);
     if (!DecodeModuleEnvironment(d, &env))
         return nullptr;
@@ -450,7 +458,9 @@ wasm::CompileTier2(const CompileArgs& args, Module& module, Atomic<bool>* cancel
     UniqueChars error;
     Decoder d(module.bytecode().bytes, 0, &error);
 
-    ModuleEnvironment env(CompileMode::Tier2, Tier::Ion, DebugEnabled::False,
+    MOZ_ASSERT(args.gcTypesEnabled == HasGcTypes::False, "can't ion-compile with gc types yet");
+
+    ModuleEnvironment env(CompileMode::Tier2, Tier::Ion, DebugEnabled::False, HasGcTypes::False,
                           args.sharedMemoryEnabled ? Shareable::True : Shareable::False);
     if (!DecodeModuleEnvironment(d, &env))
         return false;
@@ -477,8 +487,8 @@ class StreamingDecoder
   public:
     StreamingDecoder(const ModuleEnvironment& env, const Bytes& begin,
                      const ExclusiveStreamEnd& streamEnd, const Atomic<bool>& cancelled,
-                     UniqueChars* error)
-      : d_(begin, env.codeSection->start, error),
+                     UniqueChars* error, UniqueCharsVector* warnings)
+      : d_(begin, env.codeSection->start, error, warnings),
         streamEnd_(streamEnd),
         cancelled_(cancelled)
     {}
@@ -558,21 +568,22 @@ wasm::CompileStreaming(const CompileArgs& args,
                        const ExclusiveStreamEnd& codeStreamEnd,
                        const ExclusiveTailBytesPtr& tailBytesPtr,
                        const Atomic<bool>& cancelled,
-                       UniqueChars* error)
+                       UniqueChars* error,
+                       UniqueCharsVector* warnings)
 {
     MOZ_ASSERT(wasm::HaveSignalHandlers());
 
     Maybe<ModuleEnvironment> env;
 
     {
-        Decoder d(envBytes, 0, error);
+        Decoder d(envBytes, 0, error, warnings);
 
         CompileMode mode;
         Tier tier;
         DebugEnabled debug;
         InitialCompileFlags(args, d, &mode, &tier, &debug);
 
-        env.emplace(mode, tier, debug,
+        env.emplace(mode, tier, debug, args.gcTypesEnabled,
                     args.sharedMemoryEnabled ? Shareable::True : Shareable::False);
         if (!DecodeModuleEnvironment(d, env.ptr()))
             return nullptr;
@@ -586,7 +597,7 @@ wasm::CompileStreaming(const CompileArgs& args,
 
     {
         MOZ_ASSERT(env->codeSection->size == codeBytes.length());
-        StreamingDecoder d(*env, codeBytes, codeStreamEnd, cancelled, error);
+        StreamingDecoder d(*env, codeBytes, codeStreamEnd, cancelled, error, warnings);
 
         if (!DecodeCodeSection(*env, d, mg))
             return nullptr;
@@ -606,7 +617,7 @@ wasm::CompileStreaming(const CompileArgs& args,
     const Bytes& tailBytes = *tailBytesPtr.lock();
 
     {
-        Decoder d(tailBytes, env->codeSection->end(), error);
+        Decoder d(tailBytes, env->codeSection->end(), error, warnings);
 
         if (!DecodeModuleTail(d, env.ptr()))
             return nullptr;

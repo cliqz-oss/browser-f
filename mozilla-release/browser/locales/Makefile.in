@@ -20,7 +20,11 @@ PWD := $(CURDIR)
 # pulls. You may override them if you provide your own files.
 ZIP_IN ?= $(ABS_DIST)/$(PACKAGE)
 
+ifdef MOZ_DEV_EDITION
+MOZ_LANGPACK_EID=langpack-$(AB_CD)@devedition.mozilla.org
+else
 MOZ_LANGPACK_EID=langpack-$(AB_CD)@firefox.mozilla.org
+endif
 # For Nightly, we know where to get the builds from to do local repacks
 ifdef NIGHTLY_BUILD
 export EN_US_BINARY_URL ?= https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central
@@ -75,14 +79,9 @@ ifneq (,$(wildcard ../extensions/formautofill/locales))
 endif
 	@$(MAKE) -C ../extensions/onboarding/locales AB_CD=$* XPI_NAME=locale-$*
 	@$(MAKE) -C ../extensions/pocket/locale AB_CD=$* XPI_NAME=locale-$*
-ifndef RELEASE_OR_BETA
-	@$(MAKE) -C ../extensions/presentation/locale AB_CD=$* XPI_NAME=locale-$*
-endif
-ifneq '$(or $(MOZ_DEV_EDITION),$(NIGHTLY_BUILD))' ''
 	@$(MAKE) -C ../extensions/webcompat-reporter/locales AB_CD=$* XPI_NAME=locale-$*
-endif
 	@$(MAKE) -C ../../devtools/client/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
-	@$(MAKE) -C ../../devtools/shim/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
+	@$(MAKE) -C ../../devtools/startup/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
 	@$(MAKE) -B searchplugins AB_CD=$* XPI_NAME=locale-$*
 	@$(MAKE) libs AB_CD=$* XPI_NAME=locale-$* PREF_DIR=$(PREF_DIR)
 	@$(MAKE) multilocale.txt-$* AB_CD=$* XPI_NAME=locale-$*
@@ -99,16 +98,11 @@ ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales chrome AB_CD=$*
 endif
 	@$(MAKE) -C ../extensions/pocket/locale chrome AB_CD=$*
-ifndef RELEASE_OR_BETA
-	@$(MAKE) -C ../extensions/presentation/locale chrome AB_CD=$*
-endif
 	@$(MAKE) -C ../../devtools/client/locales chrome AB_CD=$*
-	@$(MAKE) -C ../../devtools/shim/locales chrome AB_CD=$*
+	@$(MAKE) -C ../../devtools/startup/locales chrome AB_CD=$*
 	@$(MAKE) chrome AB_CD=$*
 	@$(MAKE) -C $(DEPTH)/$(MOZ_BRANDING_DIRECTORY)/locales chrome AB_CD=$*
-ifdef NIGHTLY_BUILD
 	@$(MAKE) -C ../extensions/webcompat-reporter/locales chrome AB_CD=$*
-endif
 
 package-win32-installer: $(SUBMAKEFILES)
 	$(MAKE) -C ../installer/windows CONFIG_DIR=l10ngen ZIP_IN='$(ZIP_OUT)' installer

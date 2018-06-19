@@ -207,124 +207,6 @@
     </implementation>
   </binding>
 
-
-  <!-- Sorters - displays and controls the sort state of a list. -->
-  <binding id="sorters">
-    <content orient="horizontal">
-      <xul:button anonid="name-btn" class="sorter"
-                  label="&sort.name.label;" tooltiptext="&sort.name.tooltip;"
-                  oncommand="this.parentNode._handleChange('name');"/>
-      <xul:button anonid="date-btn" class="sorter"
-                  label="&sort.dateUpdated.label;"
-                  tooltiptext="&sort.dateUpdated.tooltip;"
-                  oncommand="this.parentNode._handleChange('updateDate');"/>
-    </content>
-
-    <implementation>
-      <constructor><![CDATA[
-        if (!this.hasAttribute("sortby"))
-          this.setAttribute("sortby", "name");
-
-        this._refreshState();
-      ]]></constructor>
-
-      <field name="handler">null</field>
-      <field name="_btnName">
-        document.getAnonymousElementByAttribute(this, "anonid", "name-btn");
-      </field>
-      <field name="_btnDate">
-        document.getAnonymousElementByAttribute(this, "anonid", "date-btn");
-      </field>
-
-      <property name="sortBy">
-        <getter><![CDATA[
-          return this.getAttribute("sortby");
-        ]]></getter>
-        <setter><![CDATA[
-          if (val != this.sortBy) {
-            this.setAttribute("sortBy", val);
-            this._refreshState();
-          }
-        ]]></setter>
-      </property>
-
-      <property name="ascending">
-        <getter><![CDATA[
-          return (this.getAttribute("ascending") == "true");
-        ]]></getter>
-        <setter><![CDATA[
-          val = !!val;
-          if (val != this.ascending) {
-            this.setAttribute("ascending", val);
-            this._refreshState();
-          }
-        ]]></setter>
-      </property>
-
-      <method name="setSort">
-        <parameter name="aSort"/>
-        <parameter name="aAscending"/>
-        <body><![CDATA[
-          var sortChanged = false;
-          if (aSort != this.sortBy) {
-            this.setAttribute("sortby", aSort);
-            sortChanged = true;
-          }
-
-          aAscending = !!aAscending;
-          if (this.ascending != aAscending) {
-            this.setAttribute("ascending", aAscending);
-            sortChanged = true;
-          }
-
-          if (sortChanged)
-            this._refreshState();
-        ]]></body>
-      </method>
-
-      <method name="_handleChange">
-        <parameter name="aSort"/>
-        <body><![CDATA[
-          const ASCENDING_SORT_FIELDS = ["name"];
-
-          // Toggle ascending if sort by is not changing, otherwise
-          // name sorting defaults to ascending, others to descending
-          if (aSort == this.sortBy)
-            this.ascending = !this.ascending;
-          else
-            this.setSort(aSort, ASCENDING_SORT_FIELDS.includes(aSort));
-        ]]></body>
-      </method>
-
-      <method name="_refreshState">
-        <body><![CDATA[
-          var sortBy = this.sortBy;
-          var checkState = this.ascending ? 2 : 1;
-
-          if (sortBy == "name") {
-            this._btnName.checkState = checkState;
-            this._btnName.checked = true;
-          } else {
-            this._btnName.checkState = 0;
-            this._btnName.checked = false;
-          }
-
-          if (sortBy == "updateDate") {
-            this._btnDate.checkState = checkState;
-            this._btnDate.checked = true;
-          } else {
-            this._btnDate.checkState = 0;
-            this._btnDate.checked = false;
-          }
-
-          if (this.handler && "onSortChanged" in this.handler)
-            this.handler.onSortChanged(sortBy, this.ascending);
-        ]]></body>
-      </method>
-    </implementation>
-  </binding>
-
-
   <!-- Categories list - displays the list of categories on the left pane. -->
   <binding id="categories-list"
            extends="chrome://global/content/bindings/richlistbox.xml#richlistbox">
@@ -467,10 +349,6 @@
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "install-remote-btn");
       </field>
-      <field name="_restartNeeded">
-        document.getAnonymousElementByAttribute(this, "anonid",
-                                                "restart-needed");
-      </field>
       <field name="_undo">
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "undo-btn");
@@ -601,19 +479,6 @@
         ]]></body>
       </method>
 
-      <method name="undoAction">
-        <body><![CDATA[
-          if (!this.mAddon)
-            return;
-          var pending = this.mAddon.pendingOperations;
-          if (pending & AddonManager.PENDING_ENABLE)
-            this.mAddon.userDisabled = true;
-          else if (pending & AddonManager.PENDING_DISABLE)
-            this.mAddon.userDisabled = false;
-          this.refreshState();
-        ]]></body>
-      </method>
-
       <method name="onDownloadStarted">
         <body><![CDATA[
           this.refreshState();
@@ -684,14 +549,6 @@
         ]]></body>
       </method>
 
-      <method name="opRequiresRestart">
-        <parameter name="aOperation"/>
-        <body><![CDATA[
-          var operation = AddonManager["OP_NEEDS_RESTART_" + aOperation.toUpperCase()];
-          return !!(this.mAddon.operationsRequiringRestart & operation);
-        ]]></body>
-      </method>
-
       <method name="isPending">
         <parameter name="aAction"/>
         <body><![CDATA[
@@ -742,9 +599,6 @@
                 class="pending">
         <xul:image class="pending-icon"/>
         <xul:label anonid="pending" flex="1"/>
-        <xul:button anonid="restart-btn" class="button-link"
-                    label="&addon.restartNow.label;"
-                    oncommand="document.getBindingParent(this).restart();"/>
         <xul:button anonid="undo-btn" class="button-link"
                     label="&addon.undoAction.label;"
                     tooltipText="&addon.undoAction.tooltip;"
@@ -768,15 +622,6 @@
               </xul:hbox>
             <xul:label anonid="date-updated" class="date-updated"
                        unknown="&addon.unknownDate;"/>
-          </xul:hbox>
-          <xul:hbox class="experiment-container">
-            <svg width="6" height="6" viewBox="0 0 6 6" version="1.1"
-                 xmlns="http://www.w3.org/2000/svg"
-                 class="experiment-bullet-container">
-              <circle cx="3" cy="3" r="3" class="experiment-bullet"/>
-            </svg>
-            <xul:label anonid="experiment-state" class="experiment-state"/>
-            <xul:label anonid="experiment-time" class="experiment-time"/>
           </xul:hbox>
 
           <xul:hbox class="advancedinfo-container" flex="1">
@@ -943,12 +788,6 @@
         document.getAnonymousElementByAttribute(this, "anonid",
                                                 "info");
       </field>
-      <field name="_experimentState">
-        document.getAnonymousElementByAttribute(this, "anonid", "experiment-state");
-      </field>
-      <field name="_experimentTime">
-        document.getAnonymousElementByAttribute(this, "anonid", "experiment-time");
-      </field>
       <field name="_icon">
         document.getAnonymousElementByAttribute(this, "anonid", "icon");
       </field>
@@ -1095,7 +934,7 @@
               (this.mAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_DISABLE ||
                (this.mAddon.applyBackgroundUpdates == AddonManager.AUTOUPDATE_DEFAULT &&
                 !AddonManager.autoUpdateDefault))) {
-            AddonManager.getAllInstalls(aInstallsList => {
+            AddonManager.getAllInstalls().then(aInstallsList => {
               // This can return after the binding has been destroyed,
               // so try to detect that and return early
               if (!("onNewInstall" in this))
@@ -1150,22 +989,15 @@
             gViewController.updateCommands();
 
           var pending = this.mAddon.pendingOperations;
-          if (pending != AddonManager.PENDING_NONE) {
+          if (pending & AddonManager.PENDING_UNINSTALL) {
             this.removeAttribute("notification");
 
-            pending = null;
-            const PENDING_OPERATIONS = ["enable", "disable", "install",
-                                        "uninstall", "upgrade"];
-            for (let op of PENDING_OPERATIONS) {
-              if (this.isPending(op))
-                pending = op;
-            }
-
-            this.setAttribute("pending", pending);
+            // We don't care about pending operations other than uninstall.
+            // They're transient, and cannot be undone.
+            this.setAttribute("pending", "uninstall");
             this._pending.textContent = gStrings.ext.formatStringFromName(
-              "notification." + pending,
-              [this.mAddon.name, gStrings.brandShortName], 2
-            );
+              "notification.restartless-uninstall",
+              [this.mAddon.name], 1);
           } else {
             this.removeAttribute("pending");
 
@@ -1201,8 +1033,10 @@
                 [this.mAddon.name], 1
               );
               this._errorLink.value = gStrings.ext.GetStringFromName("notification.blocked.link");
-              this._errorLink.href = this.mAddon.blocklistURL;
-              this._errorLink.hidden = false;
+              this.mAddon.getBlocklistURL().then(url => {
+                this._errorLink.href = url;
+                this._errorLink.hidden = false;
+              });
             } else if (!isUpgrade && isDisabledUnsigned(this.mAddon)) {
               this.setAttribute("notification", "error");
               this._error.textContent = gStrings.ext.formatStringFromName(
@@ -1220,17 +1054,6 @@
               );
               this._warningLink.hidden = true;
               this._warningBtn.hidden = true;
-            } else if (!isUpgrade && this.mAddon.appDisabled &&
-                       this.mAddon.type == "extension" &&
-                       !this.mAddon.multiprocessCompatible &&
-                       !Services.prefs.getBoolPref("extensions.allow-non-mpc-extensions", true)) {
-              this.setAttribute("notification", "error");
-              this._error.textContent = gStrings.ext.formatStringFromName(
-                "notification.nonMpcDisabled", [this.mAddon.name], 1
-              );
-              this._errorLink.value = gStrings.ext.GetStringFromName("notification.nonMpcDisabled.link");
-              this._errorLink.href = "https://wiki.mozilla.org/Add-ons/ShimsNightly";
-              this._errorLink.hidden = false;
             } else if (!isUpgrade && !isCorrectlySigned(this.mAddon)) {
               this.setAttribute("notification", "warning");
               this._warning.textContent = gStrings.ext.formatStringFromName(
@@ -1246,8 +1069,10 @@
                 [this.mAddon.name], 1
               );
               this._warningLink.value = gStrings.ext.GetStringFromName("notification.softblocked.link");
-              this._warningLink.href = this.mAddon.blocklistURL;
-              this._warningLink.hidden = false;
+              this.mAddon.getBlocklistURL().then(url => {
+                this._warningLink.href = url;
+                this._warningLink.hidden = false;
+              });
               this._warningBtn.hidden = true;
             } else if (!isUpgrade && this.mAddon.blocklistState == Ci.nsIBlocklistService.STATE_OUTDATED) {
               this.setAttribute("notification", "warning");
@@ -1256,8 +1081,10 @@
                 [this.mAddon.name], 1
               );
               this._warningLink.value = gStrings.ext.GetStringFromName("notification.outdated.link");
-              this._warningLink.href = this.mAddon.blocklistURL;
-              this._warningLink.hidden = false;
+              this.mAddon.getBlocklistURL().then(url => {
+                this._warningLink.href = url;
+                this._warningLink.hidden = false;
+              });
               this._warningBtn.hidden = true;
             } else if (!isUpgrade && this.mAddon.blocklistState == Ci.nsIBlocklistService.STATE_VULNERABLE_UPDATE_AVAILABLE) {
               this.setAttribute("notification", "error");
@@ -1266,8 +1093,10 @@
                 [this.mAddon.name], 1
               );
               this._errorLink.value = gStrings.ext.GetStringFromName("notification.vulnerableUpdatable.link");
-              this._errorLink.href = this.mAddon.blocklistURL;
-              this._errorLink.hidden = false;
+              this.mAddon.getBlocklistURL().then(url => {
+                this._errorLink.href = url;
+                this._errorLink.hidden = false;
+              });
             } else if (!isUpgrade && this.mAddon.blocklistState == Ci.nsIBlocklistService.STATE_VULNERABLE_NO_UPDATE) {
               this.setAttribute("notification", "error");
               this._error.textContent = gStrings.ext.formatStringFromName(
@@ -1275,8 +1104,10 @@
                 [this.mAddon.name], 1
               );
               this._errorLink.value = gStrings.ext.GetStringFromName("notification.vulnerableNoUpdate.link");
-              this._errorLink.href = this.mAddon.blocklistURL;
-              this._errorLink.hidden = false;
+              this.mAddon.getBlocklistURL().then(url => {
+                this._errorLink.href = url;
+                this._errorLink.hidden = false;
+              });
             } else if (this.mAddon.isGMPlugin && !this.mAddon.isInstalled &&
                        this.mAddon.isActive) {
               this.setAttribute("notification", "warning");
@@ -1344,37 +1175,6 @@
           var showProgress = (this.mAddon.install &&
                               this.mAddon.install.state != AddonManager.STATE_INSTALLED);
           this._showStatus(showProgress ? "progress" : "none");
-
-          if (this.mAddon.type == "experiment") {
-            this.removeAttribute("notification");
-            let prefix = "experiment.";
-            let active = this.mAddon.isActive;
-
-            if (!showProgress) {
-              let stateKey = prefix + "state." + (active ? "active" : "complete");
-              this._experimentState.value = gStrings.ext.GetStringFromName(stateKey);
-
-              let now = Date.now();
-              let end = this.endDate;
-              let days = Math.abs(end - now) / (24 * 60 * 60 * 1000);
-
-              let timeKey = prefix + "time.";
-              let timeMessage;
-
-              if (days < 1) {
-                timeKey += (active ? "endsToday" : "endedToday");
-                timeMessage = gStrings.ext.GetStringFromName(timeKey);
-              } else {
-                timeKey += (active ? "daysRemaining" : "daysPassed");
-                days = Math.round(days);
-                let timeString = gStrings.ext.GetStringFromName(timeKey);
-                timeMessage = PluralForm.get(days, timeString)
-                                        .replace("#1", days);
-              }
-
-              this._experimentTime.value = timeMessage;
-            }
-          }
         ]]></body>
       </method>
 
@@ -1494,12 +1294,6 @@
         ]]></body>
       </method>
 
-      <method name="restart">
-        <body><![CDATA[
-          gViewController.commands.cmd_restartApp.doCommand();
-        ]]></body>
-      </method>
-
       <method name="undo">
         <body><![CDATA[
           gViewController.commands.cmd_cancelOperation.doCommand(this.mAddon);
@@ -1508,11 +1302,12 @@
 
       <method name="uninstall">
         <body><![CDATA[
-          // If uninstalling does not require a restart and the type doesn't
-          // support undoing of restartless uninstalls, then we fake it by
-          // just disabling it it, and doing the real uninstall later.
-          if (!this.opRequiresRestart("uninstall") &&
-              !this.typeHasFlag("SUPPORTS_UNDO_RESTARTLESS_UNINSTALL")) {
+          // If the type doesn't support undoing of restartless uninstalls,
+          // then we fake it by just disabling it it, and doing the real
+          // uninstall later.
+          if (this.typeHasFlag("SUPPORTS_UNDO_RESTARTLESS_UNINSTALL")) {
+            this.mAddon.uninstall(true);
+          } else {
             this.setAttribute("wasDisabled", this.mAddon.userDisabled);
 
             // We must set userDisabled to true first, this will call
@@ -1521,8 +1316,6 @@
 
             // This won't update any other add-on manager views (bug 582002)
             this.setAttribute("pending", "uninstall");
-          } else {
-            this.mAddon.uninstall(true);
           }
         ]]></body>
       </method>
@@ -1602,7 +1395,6 @@
       </method>
 
       <method name="onUninstalling">
-        <parameter name="aRestartRequired"/>
         <body><![CDATA[
           this._updateState();
         ]]></body>
@@ -1645,17 +1437,11 @@
       <method name="onExternalInstall">
         <parameter name="aAddon"/>
         <parameter name="aExistingAddon"/>
-        <parameter name="aNeedsRestart"/>
         <body><![CDATA[
           if (aExistingAddon.id != this.mAddon.id)
             return;
 
-          // If the install completed without needing a restart then switch to
-          // using the new Addon
-          if (!aNeedsRestart)
-            this._initWithAddon(aAddon);
-          else
-            this._updateState();
+          this._initWithAddon(aAddon);
         ]]></body>
       </method>
 
@@ -1695,12 +1481,7 @@
         <parameter name="aInstall"/>
         <parameter name="aAddon"/>
         <body><![CDATA[
-          // If the install completed without needing a restart then switch to
-          // using the new Addon
-          if (!(aAddon.pendingOperations & AddonManager.PENDING_INSTALL))
-            this._initWithAddon(aAddon);
-          else
-            this._updateState();
+          this._initWithAddon(aAddon);
         ]]></body>
       </method>
 
@@ -1750,9 +1531,6 @@
       <xul:hbox class="pending">
         <xul:image class="pending-icon"/>
         <xul:label anonid="notice" flex="1"/>
-        <xul:button anonid="restart-btn" class="button-link"
-                    label="&addon.restartNow.label;"
-                    command="cmd_restartApp"/>
         <xul:button anonid="undo-btn" class="button-link"
                     label="&addon.undoRemove.label;"
                     tooltiptext="&addon.undoRemove.tooltip;"
@@ -1767,9 +1545,6 @@
                                                                      [this.mAddon.name],
                                                                      1);
 
-        if (!this.opRequiresRestart("uninstall"))
-          this._restartBtn.setAttribute("hidden", true);
-
         gEventManager.registerAddonListener(this, this.mAddon.id);
       ]]></constructor>
 
@@ -1779,9 +1554,6 @@
 
       <field name="_notice" readonly="true">
         document.getAnonymousElementByAttribute(this, "anonid", "notice");
-      </field>
-      <field name="_restartBtn" readonly="true">
-        document.getAnonymousElementByAttribute(this, "anonid", "restart-btn");
       </field>
 
       <method name="cancelUninstall">
@@ -1799,17 +1571,9 @@
         ]]></body>
       </method>
 
-      <method name="onOperationCancelled">
-        <body><![CDATA[
-          if (!this.isPending("uninstall"))
-            this.removeAttribute("pending");
-        ]]></body>
-      </method>
-
       <method name="onExternalInstall">
         <parameter name="aAddon"/>
         <parameter name="aExistingAddon"/>
-        <parameter name="aNeedsRestart"/>
         <body><![CDATA[
           if (aExistingAddon.id != this.mAddon.id)
             return;
@@ -1818,10 +1582,7 @@
           if (this.hasAttribute("wasDisabled"))
             aAddon.userDisabled = this.getAttribute("wasDisabled") == "true";
 
-          // If the install completed without needing a restart then switch to
-          // using the new Addon
-          if (!aNeedsRestart)
-            this.mAddon = aAddon;
+          this.mAddon = aAddon;
 
           this.removeAttribute("pending");
         ]]></body>
@@ -1840,10 +1601,7 @@
         <parameter name="aInstall"/>
         <parameter name="aAddon"/>
         <body><![CDATA[
-          // If the install completed without needing a restart then switch to
-          // using the new Addon
-          if (!(aAddon.pendingOperations & AddonManager.PENDING_INSTALL))
-            this.mAddon = aAddon;
+          this.mAddon = aAddon;
 
           this.removeAttribute("pending");
         ]]></body>

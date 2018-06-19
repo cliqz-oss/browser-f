@@ -9,7 +9,7 @@ const TEST_JSON_URL = URL_ROOT + "valid_json.json";
 const EMPTY_PAGE = URL_ROOT + "empty.html";
 const SW = URL_ROOT + "passthrough-sw.js";
 
-add_task(async function () {
+add_task(async function() {
   info("Test valid JSON with service worker started");
 
   await SpecialPowers.pushPrefEnv({"set": [
@@ -65,7 +65,7 @@ add_task(async function () {
     await reg.unregister();
   });
 
-  await BrowserTestUtils.removeTab(swTab);
+  BrowserTestUtils.removeTab(swTab);
 });
 
 function countRows() {

@@ -2260,6 +2260,23 @@ public:
 
     static auto CheckAndSetState(mozilla::jni::Object::Param, mozilla::jni::Object::Param) -> bool;
 
+    struct Crash_t {
+        typedef GeckoThread Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "crash";
+        static constexpr char signature[] =
+                "()V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
     struct ForceQuit_t {
         typedef GeckoThread Owner;
         typedef void ReturnType;
@@ -3095,6 +3112,194 @@ public:
     template<class Impl> class Natives;
 };
 
+class SpeechSynthesisService : public mozilla::jni::ObjectBase<SpeechSynthesisService>
+{
+public:
+    static const char name[];
+
+    explicit SpeechSynthesisService(const Context& ctx) : ObjectBase<SpeechSynthesisService>(ctx) {}
+
+    struct DispatchBoundary_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param,
+                int32_t,
+                int32_t> Args;
+        static constexpr char name[] = "dispatchBoundary";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;II)V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct DispatchEnd_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param> Args;
+        static constexpr char name[] = "dispatchEnd";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;)V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct DispatchError_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param> Args;
+        static constexpr char name[] = "dispatchError";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;)V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct DispatchStart_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param> Args;
+        static constexpr char name[] = "dispatchStart";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;)V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct DoneRegisteringVoices_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "doneRegisteringVoices";
+        static constexpr char signature[] =
+                "()V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct InitSynth_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "initSynth";
+        static constexpr char signature[] =
+                "()V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::GECKO;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::CURRENT;
+    };
+
+    static auto InitSynth() -> void;
+
+    struct RegisterVoice_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param,
+                mozilla::jni::String::Param,
+                mozilla::jni::String::Param,
+                bool,
+                bool> Args;
+        static constexpr char name[] = "registerVoice";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
+    };
+
+    struct Speak_t {
+        typedef SpeechSynthesisService Owner;
+        typedef mozilla::jni::String::LocalRef ReturnType;
+        typedef mozilla::jni::String::Param SetterType;
+        typedef mozilla::jni::Args<
+                mozilla::jni::String::Param,
+                mozilla::jni::String::Param,
+                float,
+                float,
+                float> Args;
+        static constexpr char name[] = "speak";
+        static constexpr char signature[] =
+                "(Ljava/lang/String;Ljava/lang/String;FFF)Ljava/lang/String;";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::GECKO;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::CURRENT;
+    };
+
+    static auto Speak(mozilla::jni::String::Param, mozilla::jni::String::Param, float, float, float) -> mozilla::jni::String::LocalRef;
+
+    struct Stop_t {
+        typedef SpeechSynthesisService Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "stop";
+        static constexpr char signature[] =
+                "()V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::GECKO;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::CURRENT;
+    };
+
+    static auto Stop() -> void;
+
+    static const mozilla::jni::CallingThread callingThread =
+            mozilla::jni::CallingThread::ANY;
+
+    template<class Impl> class Natives;
+};
+
 class SurfaceTextureListener : public mozilla::jni::ObjectBase<SurfaceTextureListener>
 {
 public:
@@ -3563,7 +3768,7 @@ public:
                 mozilla::jni::Object::Param> Args;
         static constexpr char name[] = "attachNPZC";
         static constexpr char signature[] =
-                "(Lorg/mozilla/gecko/gfx/NativePanZoomController;)V";
+                "(Lorg/mozilla/gecko/gfx/PanZoomController;)V";
         static const bool isStatic = false;
         static const mozilla::jni::ExceptionMode exceptionMode =
                 mozilla::jni::ExceptionMode::ABORT;
@@ -3966,15 +4171,15 @@ public:
     template<class Impl> class Natives;
 };
 
-class NativePanZoomController : public mozilla::jni::ObjectBase<NativePanZoomController>
+class PanZoomController : public mozilla::jni::ObjectBase<PanZoomController>
 {
 public:
     static const char name[];
 
-    explicit NativePanZoomController(const Context& ctx) : ObjectBase<NativePanZoomController>(ctx) {}
+    explicit PanZoomController(const Context& ctx) : ObjectBase<PanZoomController>(ctx) {}
 
     struct DisposeNative_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef void ReturnType;
         typedef void SetterType;
         typedef mozilla::jni::Args<> Args;
@@ -3991,7 +4196,7 @@ public:
     };
 
     struct HandleMotionEvent_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef bool ReturnType;
         typedef bool SetterType;
         typedef mozilla::jni::Args<
@@ -4019,7 +4224,7 @@ public:
     };
 
     struct HandleMouseEvent_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef bool ReturnType;
         typedef bool SetterType;
         typedef mozilla::jni::Args<
@@ -4042,7 +4247,7 @@ public:
     };
 
     struct HandleScrollEvent_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef bool ReturnType;
         typedef bool SetterType;
         typedef mozilla::jni::Args<
@@ -4065,7 +4270,7 @@ public:
     };
 
     struct SetIsLongpressEnabled_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef void ReturnType;
         typedef void SetterType;
         typedef mozilla::jni::Args<
@@ -4083,7 +4288,7 @@ public:
     };
 
     struct SetAttached_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef void ReturnType;
         typedef void SetterType;
         typedef mozilla::jni::Args<
@@ -4103,7 +4308,7 @@ public:
     auto SetAttached(bool) const -> void;
 
     struct SynthesizeNativeMouseEvent_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef void ReturnType;
         typedef void SetterType;
         typedef mozilla::jni::Args<
@@ -4125,7 +4330,7 @@ public:
     auto SynthesizeNativeMouseEvent(int32_t, int32_t, int32_t) const -> void;
 
     struct SynthesizeNativeTouchPoint_t {
-        typedef NativePanZoomController Owner;
+        typedef PanZoomController Owner;
         typedef void ReturnType;
         typedef void SetterType;
         typedef mozilla::jni::Args<
@@ -6696,10 +6901,11 @@ public:
                 mozilla::jni::ObjectArray::Param,
                 int32_t,
                 int32_t,
+                int32_t,
                 int32_t> Args;
         static constexpr char name[] = "start";
         static constexpr char signature[] =
-                "(Ljava/lang/String;[Ljava/lang/String;III)I";
+                "(Ljava/lang/String;[Ljava/lang/String;IIII)I";
         static const bool isStatic = true;
         static const mozilla::jni::ExceptionMode exceptionMode =
                 mozilla::jni::ExceptionMode::ABORT;
@@ -6709,7 +6915,7 @@ public:
                 mozilla::jni::DispatchTarget::CURRENT;
     };
 
-    static auto Start(mozilla::jni::String::Param, mozilla::jni::ObjectArray::Param, int32_t, int32_t, int32_t) -> int32_t;
+    static auto Start(mozilla::jni::String::Param, mozilla::jni::ObjectArray::Param, int32_t, int32_t, int32_t, int32_t) -> int32_t;
 
     static const mozilla::jni::CallingThread callingThread =
             mozilla::jni::CallingThread::ANY;
@@ -7251,12 +7457,12 @@ public:
     template<class Impl> class Natives;
 };
 
-class TextInputController : public mozilla::jni::ObjectBase<TextInputController>
+class SessionTextInput : public mozilla::jni::ObjectBase<SessionTextInput>
 {
 public:
     static const char name[];
 
-    explicit TextInputController(const Context& ctx) : ObjectBase<TextInputController>(ctx) {}
+    explicit SessionTextInput(const Context& ctx) : ObjectBase<SessionTextInput>(ctx) {}
 
     class EditableClient;
     class EditableListener;
@@ -7266,7 +7472,7 @@ public:
 
 };
 
-class TextInputController::EditableClient : public mozilla::jni::ObjectBase<EditableClient>
+class SessionTextInput::EditableClient : public mozilla::jni::ObjectBase<EditableClient>
 {
 public:
     static const char name[];
@@ -7284,7 +7490,7 @@ public:
 
 };
 
-class TextInputController::EditableListener : public mozilla::jni::ObjectBase<EditableListener>
+class SessionTextInput::EditableListener : public mozilla::jni::ObjectBase<EditableListener>
 {
 public:
     static const char name[];

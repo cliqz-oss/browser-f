@@ -55,18 +55,18 @@ nsSMILCompositor::ComposeAttribute(bool& aMightHavePendingStyleUpdates)
   if (!mKey.mElement)
     return;
 
-  // If we might need to resolve base styles, grab a suitable style context
+  // If we might need to resolve base styles, grab a suitable ComputedStyle
   // for initializing our nsISMILAttr with.
-  RefPtr<nsStyleContext> baseStyleContext;
+  RefPtr<ComputedStyle> baseComputedStyle;
   if (MightNeedBaseStyle()) {
-    baseStyleContext =
-      nsComputedDOMStyle::GetUnanimatedStyleContextNoFlush(mKey.mElement,
-                                                           nullptr);
+    baseComputedStyle =
+      nsComputedDOMStyle::GetUnanimatedComputedStyleNoFlush(mKey.mElement,
+                                                            nullptr);
   }
 
   // FIRST: Get the nsISMILAttr (to grab base value from, and to eventually
   // give animated value to)
-  UniquePtr<nsISMILAttr> smilAttr = CreateSMILAttr(baseStyleContext);
+  UniquePtr<nsISMILAttr> smilAttr = CreateSMILAttr(baseComputedStyle);
   if (!smilAttr) {
     // Target attribute not found (or, out of memory)
     return;
@@ -134,13 +134,13 @@ nsSMILCompositor::ClearAnimationEffects()
 // Protected Helper Functions
 // --------------------------
 UniquePtr<nsISMILAttr>
-nsSMILCompositor::CreateSMILAttr(nsStyleContext* aBaseStyleContext)
+nsSMILCompositor::CreateSMILAttr(ComputedStyle* aBaseComputedStyle)
 {
   nsCSSPropertyID propID = GetCSSPropertyToAnimate();
 
   if (propID != eCSSProperty_UNKNOWN) {
     return MakeUnique<nsSMILCSSProperty>(propID, mKey.mElement.get(),
-                                         aBaseStyleContext);
+                                         aBaseComputedStyle);
   }
 
   return mKey.mElement->GetAnimatedAttr(mKey.mAttributeNamespaceID,
@@ -158,8 +158,7 @@ nsSMILCompositor::GetCSSPropertyToAnimate() const
     nsCSSProps::LookupProperty(nsDependentAtomString(mKey.mAttributeName),
                                CSSEnabledState::eForAllContent);
 
-  if (!nsSMILCSSProperty::IsPropertyAnimatable(propID,
-        mKey.mElement->OwnerDoc()->GetStyleBackendType())) {
+  if (!nsSMILCSSProperty::IsPropertyAnimatable(propID)) {
     return eCSSProperty_UNKNOWN;
   }
 

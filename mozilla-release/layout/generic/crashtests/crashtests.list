@@ -586,7 +586,7 @@ load 1039454-1.html
 load 1042489.html
 load 1054010-1.html
 load 1058954-1.html
-asserts-if(!stylo,0-2) pref(dom.webcomponents.shadowdom.enabled,true) pref(dom.webcomponents.customelements.enabled,true) load 1059138-1.html # bug 1389936
+pref(dom.webcomponents.shadowdom.enabled,true) pref(dom.webcomponents.customelements.enabled,true) load 1059138-1.html
 load 1134531.html
 load 1134667.html
 load 1137723-1.html
@@ -674,9 +674,12 @@ load 1381134-2.html
 load 1401420-1.html
 load 1401709.html
 load 1401807.html
+load 1404222-empty-shape.html
 load 1405443.html
 load 1415185.html
 load 1416544.html
 load 1427824.html
 load 1431781.html
 load 1431781-2.html
+asserts(6) load 1458028.html # bug 847368
+load 1459697.html

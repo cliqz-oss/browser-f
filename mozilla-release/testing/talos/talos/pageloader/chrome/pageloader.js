@@ -209,10 +209,11 @@ function plInit() {
         // pages should be able to load in the same mode as the initial page - due
         // to this reinitialization on the switch.
         let remoteType = E10SUtils.getRemoteTypeForURI(pageUrls[0], true);
+        let tabbrowser = browserWindow.gBrowser;
         if (remoteType) {
-          browserWindow.XULBrowserWindow.forceInitialBrowserRemote(remoteType);
+          tabbrowser.updateBrowserRemoteness(tabbrowser.initialBrowser, true, { remoteType });
         } else {
-          browserWindow.XULBrowserWindow.forceInitialBrowserNonRemote(null);
+          tabbrowser.updateBrowserRemoteness(tabbrowser.initialBrowser, false);
         }
 
         browserWindow.resizeTo(winWidth, winHeight);
@@ -321,7 +322,9 @@ function startAndLoadURI(pageName) {
 
   start_time = Date.now();
   if (loadNoCache) {
-    content.loadURIWithFlags(pageName, Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
+    content.loadURI(pageName, {
+      flags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE
+    });
   } else {
     content.loadURI(pageName);
   }

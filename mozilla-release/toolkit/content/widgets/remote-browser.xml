@@ -11,7 +11,7 @@
   <binding id="remote-browser" extends="chrome://global/content/bindings/browser.xml#browser">
 
     <implementation type="application/javascript"
-                    implements="nsIObserver, nsIDOMEventListener, nsIMessageListener, nsIRemoteBrowser">
+                    implements="nsIObserver, nsIRemoteBrowser">
 
       <field name="_securityUI">null</field>
 
@@ -275,11 +275,6 @@
           return false;
         ]]></getter>
       </property>
-
-      <field name="_manifestURI"/>
-      <property name="manifestURI"
-                onget="return this._manifestURI"
-                readonly="true"/>
 
       <field name="mDestroyed">false</field>
 

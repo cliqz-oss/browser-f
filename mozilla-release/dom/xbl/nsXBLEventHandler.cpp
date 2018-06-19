@@ -7,10 +7,10 @@
 #include "nsCOMPtr.h"
 #include "nsAtom.h"
 #include "nsIDOMEventListener.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsXBLPrototypeHandler.h"
 #include "nsContentUtils.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/Event.h" // for Event
+#include "mozilla/dom/EventBinding.h" // for Event
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/KeyboardEvent.h"
 #include "mozilla/TextEvents.h"
@@ -30,24 +30,22 @@ nsXBLEventHandler::~nsXBLEventHandler()
 NS_IMPL_ISUPPORTS(nsXBLEventHandler, nsIDOMEventListener)
 
 NS_IMETHODIMP
-nsXBLEventHandler::HandleEvent(nsIDOMEvent* aEvent)
+nsXBLEventHandler::HandleEvent(Event* aEvent)
 {
   if (!mProtoHandler)
     return NS_ERROR_FAILURE;
 
   uint8_t phase = mProtoHandler->GetPhase();
   if (phase == NS_PHASE_TARGET) {
-    uint16_t eventPhase;
-    aEvent->GetEventPhase(&eventPhase);
-    if (eventPhase != nsIDOMEvent::AT_TARGET)
+    if (aEvent->EventPhase() != EventBinding::AT_TARGET) {
       return NS_OK;
+    }
   }
 
   if (!EventMatched(aEvent))
     return NS_OK;
 
-  mProtoHandler->ExecuteHandler(aEvent->InternalDOMEvent()->GetCurrentTarget(),
-                                aEvent);
+  mProtoHandler->ExecuteHandler(aEvent->GetCurrentTarget(), aEvent);
 
   return NS_OK;
 }
@@ -62,9 +60,9 @@ nsXBLMouseEventHandler::~nsXBLMouseEventHandler()
 }
 
 bool
-nsXBLMouseEventHandler::EventMatched(nsIDOMEvent* aEvent)
+nsXBLMouseEventHandler::EventMatched(Event* aEvent)
 {
-  nsCOMPtr<nsIDOMMouseEvent> mouse(do_QueryInterface(aEvent));
+  MouseEvent* mouse = aEvent->AsMouseEvent();
   return mouse && mProtoHandler->MouseEventMatched(mouse);
 }
 
@@ -123,20 +121,19 @@ nsXBLKeyEventHandler::ExecuteMatchedHandlers(
 }
 
 NS_IMETHODIMP
-nsXBLKeyEventHandler::HandleEvent(nsIDOMEvent* aEvent)
+nsXBLKeyEventHandler::HandleEvent(Event* aEvent)
 {
   uint32_t count = mProtoHandlers.Length();
   if (count == 0)
     return NS_ERROR_FAILURE;
 
   if (mPhase == NS_PHASE_TARGET) {
-    uint16_t eventPhase;
-    aEvent->GetEventPhase(&eventPhase);
-    if (eventPhase != nsIDOMEvent::AT_TARGET)
+    if (aEvent->EventPhase() != EventBinding::AT_TARGET) {
       return NS_OK;
+    }
   }
 
-  RefPtr<KeyboardEvent> key = aEvent->InternalDOMEvent()->AsKeyboardEvent();
+  RefPtr<KeyboardEvent> key = aEvent->AsKeyboardEvent();
   if (!key) {
     return NS_OK;
   }

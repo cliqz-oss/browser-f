@@ -106,7 +106,7 @@ add_task(async function test_untrusted_http_origin() {
   ok(true, "The untrusted HTTP page was not able to use the API.");
 
   // Finally clean up the listener.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.perms.remove(testHttpUri, HC_PERMISSION);
   Services.mm.removeMessageListener(messageName, makeTestFail);
   Services.telemetry.setEventRecordingEnabled("telemetry.test", false);
@@ -148,7 +148,7 @@ add_task(async function test_secure_non_whitelisted_origin() {
   ok(true, "The HTTPS page without permission was not able to use the API.");
 
   // Finally clean up the listener.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.mm.removeMessageListener(messageName, makeTestFail);
   Services.telemetry.setEventRecordingEnabled("telemetry.test", false);
 });
@@ -197,7 +197,7 @@ add_task(async function test_trusted_disabled_hybrid_telemetry() {
 
   // Finally clean up the listener.
   await SpecialPowers.popPrefEnv();
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.perms.remove(testHttpsUri, HC_PERMISSION);
   Services.mm.removeMessageListener(messageName, makeTestFail);
   Services.telemetry.setEventRecordingEnabled("telemetry.test", false);
@@ -254,7 +254,7 @@ add_task(async function test_hybrid_content_with_iframe() {
   ok(true, "There were no unintended hybrid content API usages from the iframe.");
 
   // Cleanup permissions and remove the tab.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.mm.removeMessageListener(messageName, makeTestFail);
   Services.perms.remove(testHttpsUri, HC_PERMISSION);
   Services.telemetry.setEventRecordingEnabled("telemetry.test", false);
@@ -332,7 +332,7 @@ add_task(async function test_hybrid_content_recording() {
   }
 
   // Cleanup permissions and remove the tab.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.perms.remove(testHttpsUri, HC_PERMISSION);
 });
 
@@ -365,6 +365,15 @@ add_task(async function test_can_upload() {
   });
 
   // Cleanup permissions and remove the tab.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   Services.perms.remove(testHttpsUri, HC_PERMISSION);
+});
+
+add_task(async function test_hct_for_discopane() {
+  const discoHost = "https://discovery.addons.mozilla.org";
+
+  let discoHttpsUri = Services.io.newURI(discoHost);
+  let permission = Services.perms.testPermission(discoHttpsUri, HC_PERMISSION);
+
+  ok(permission == Services.perms.ALLOW_ACTION, "Disco Pane needs Hybrid Content Permission for Telemetry data upload");
 });

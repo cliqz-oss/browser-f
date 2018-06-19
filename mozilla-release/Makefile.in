@@ -31,7 +31,12 @@ DIST_GARBAGE = config.cache config.log config.status* config-defs.h \
    .mozconfig.mk
 
 ifndef MOZ_PROFILE_USE
+# Automation builds should always have a new buildid, but for the sake of not
+# re-linking libxul on every incremental build we do not enforce this for
+# developer builds.
+ifneq (,$(MOZ_AUTOMATION)$(MOZ_BUILD_DATE))
 buildid.h source-repo.h: FORCE
+endif
 endif
 
 ifdef JS_STANDALONE
@@ -143,21 +148,6 @@ install-manifests: faster
 faster: install-dist/idl
 	$(MAKE) -C faster FASTER_RECURSIVE_MAKE=1
 endif
-
-.PHONY: tup
-tup:
-	$(call BUILDSTATUS,TIERS $(if $(MOZ_ARTIFACT_BUILDS),artifact )make tup)
-ifdef MOZ_ARTIFACT_BUILDS
-	$(call BUILDSTATUS,TIER_START artifact)
-	$(MAKE) recurse_artifact
-	$(call BUILDSTATUS,TIER_FINISH artifact)
-endif
-	$(call BUILDSTATUS,TIER_START make)
-	$(MAKE) buildid.h source-repo.h
-	$(call BUILDSTATUS,TIER_FINISH make)
-	$(call BUILDSTATUS,TIER_START tup)
-	@$(TUP) $(if $(findstring s,$(filter-out --%,$(MAKEFLAGS))),,--verbose)
-	$(call BUILDSTATUS,TIER_FINISH tup)
 
 .PHONY: $(addprefix install-,$(install_manifests))
 $(addprefix install-,$(install_manifests)): install-%: $(install_manifest_depends)

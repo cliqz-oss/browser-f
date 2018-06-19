@@ -80,10 +80,6 @@ static const ManifestDirective kParsingTable[] = {
     &nsComponentManagerImpl::ManifestBinaryComponent, nullptr,
   },
   {
-    "interfaces",       1, false, true, false, false, false,
-    &nsComponentManagerImpl::ManifestXPT, nullptr,
-  },
-  {
     "component",        2, false, true, false, false, false,
     &nsComponentManagerImpl::ManifestComponent, nullptr,
   },
@@ -122,7 +118,7 @@ static const ManifestDirective kParsingTable[] = {
     nullptr, &nsChromeRegistry::ManifestOverride,
   },
   {
-    "resource",         2, false, true, true, true, true,
+    "resource",         2, false, true, true, false, true,
     nullptr, &nsChromeRegistry::ManifestResource,
   }
 };
@@ -192,7 +188,8 @@ LogMessageWithContext(FileLocation& aFile,
   nsresult rv = error->Init(NS_ConvertUTF8toUTF16(formatted.get()),
                             NS_ConvertUTF8toUTF16(file), EmptyString(),
                             aLineNumber, 0, nsIScriptError::warningFlag,
-                            "chrome registration");
+                            "chrome registration",
+                            false /* from private window */);
   if (NS_FAILED(rv)) {
     return;
   }

@@ -8,19 +8,31 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   Services: "resource://gre/modules/Services.jsm",
+  SessionHistory: "resource://gre/modules/sessionstore/SessionHistory.jsm",
+  FormData: "resource://gre/modules/FormData.jsm",
+  PrivacyFilter: "resource://gre/modules/sessionstore/PrivacyFilter.jsm",
+  ScrollPosition: "resource://gre/modules/ScrollPosition.jsm",
+  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
 });
 
-XPCOMUtils.defineLazyGetter(this, "dump", () =>
-    ChromeUtils.import("resource://gre/modules/AndroidLog.jsm",
-                       {}).AndroidLog.d.bind(null, "ViewContent"));
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
-
 class GeckoViewContent extends GeckoViewContentModule {
-  register() {
-    debug("register");
+  onInit() {
+    debug `onInit`;
+
+    this.messageManager.addMessageListener("GeckoView:SaveState",
+                                           this);
+    this.messageManager.addMessageListener("GeckoView:RestoreState",
+                                           this);
+    this.messageManager.addMessageListener("GeckoView:DOMFullscreenEntered",
+                                           this);
+    this.messageManager.addMessageListener("GeckoView:DOMFullscreenExited",
+                                           this);
+    this.messageManager.addMessageListener("GeckoView:ZoomToInput",
+                                           this);
+  }
+
+  onEnable() {
+    debug `onEnable`;
 
     addEventListener("DOMTitleChanged", this, false);
     addEventListener("DOMWindowFocus", this, false);
@@ -30,17 +42,10 @@ class GeckoViewContent extends GeckoViewContentModule {
     addEventListener("MozDOMFullscreen:Exited", this, false);
     addEventListener("MozDOMFullscreen:Request", this, false);
     addEventListener("contextmenu", this, { capture: true });
-
-    this.messageManager.addMessageListener("GeckoView:DOMFullscreenEntered",
-                                           this);
-    this.messageManager.addMessageListener("GeckoView:DOMFullscreenExited",
-                                           this);
-    this.messageManager.addMessageListener("GeckoView:ZoomToInput",
-                                           this);
   }
 
-  unregister() {
-    debug("unregister");
+  onDisable() {
+    debug `onDisable`;
 
     removeEventListener("DOMTitleChanged", this);
     removeEventListener("DOMWindowFocus", this);
@@ -50,17 +55,38 @@ class GeckoViewContent extends GeckoViewContentModule {
     removeEventListener("MozDOMFullscreen:Exited", this);
     removeEventListener("MozDOMFullscreen:Request", this);
     removeEventListener("contextmenu", this, { capture: true });
+  }
 
-    this.messageManager.removeMessageListener("GeckoView:DOMFullscreenEntered",
-                                              this);
-    this.messageManager.removeMessageListener("GeckoView:DOMFullscreenExited",
-                                              this);
-    this.messageManager.removeMessageListener("GeckoView:ZoomToInput",
-                                              this);
+  collectSessionState() {
+    let history = SessionHistory.collect(docShell);
+    let [formdata, scrolldata] = Utils.mapFrameTree(content, FormData.collect, ScrollPosition.collect);
+
+    // Save the current document resolution.
+    let zoom = { value: 1 };
+    let domWindowUtils = content.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    domWindowUtils.getResolution(zoom);
+    scrolldata = scrolldata || {};
+    scrolldata.zoom = {};
+    scrolldata.zoom.resolution = zoom.value;
+
+    // Save some data that'll help in adjusting the zoom level
+    // when restoring in a different screen orientation.
+    let displaySize = {};
+    let width = {}, height = {};
+    domWindowUtils.getContentViewerSize(width, height);
+
+    displaySize.width = width.value;
+    displaySize.height = height.value;
+
+    scrolldata.zoom.displaySize = displaySize;
+
+    formdata = PrivacyFilter.filterFormData(formdata || {});
+
+    return {history, formdata, scrolldata};
   }
 
   receiveMessage(aMsg) {
-    debug("receiveMessage " + aMsg.name);
+    debug `receiveMessage: ${aMsg.name}`;
 
     switch (aMsg.name) {
       case "GeckoView:DOMFullscreenEntered":
@@ -119,13 +145,48 @@ class GeckoViewContent extends GeckoViewContentModule {
             onResize();
           }
         }, 500);
+        break;
       }
-      break;
+
+      case "GeckoView:SaveState":
+        if (this._savedState) {
+          // Short circuit and return the pending state if we're in the process of restoring
+          sendAsyncMessage("GeckoView:SaveStateFinish", {state: JSON.stringify(this._savedState), id: aMsg.data.id});
+        } else {
+          let state = this.collectSessionState();
+          sendAsyncMessage("GeckoView:SaveStateFinish", {state: JSON.stringify(state), id: aMsg.data.id});
+        }
+        break;
+
+      case "GeckoView:RestoreState":
+        this._savedState = JSON.parse(aMsg.data.state);
+
+        if (this._savedState.history) {
+          let restoredHistory = SessionHistory.restore(docShell, this._savedState.history);
+
+          addEventListener("load", this, {capture: true, mozSystemGroup: true, once: true});
+          addEventListener("pageshow", this, {capture: true, mozSystemGroup: true, once: true});
+
+          if (!this.progressFilter) {
+            this.progressFilter =
+              Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
+              .createInstance(Ci.nsIWebProgress);
+            this.flags = Ci.nsIWebProgress.NOTIFY_LOCATION;
+          }
+
+          this.progressFilter.addProgressListener(this, this.flags);
+          let webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                                    .getInterface(Ci.nsIWebProgress);
+          webProgress.addProgressListener(this.progressFilter, this.flags);
+
+          restoredHistory.QueryInterface(Ci.nsISHistory).reloadCurrentEntry();
+        }
+        break;
     }
   }
 
   handleEvent(aEvent) {
-    debug("handleEvent " + aEvent.type);
+    debug `handleEvent: ${aEvent.type}`;
 
     switch (aEvent.type) {
       case "contextmenu":
@@ -136,19 +197,21 @@ class GeckoViewContent extends GeckoViewContentModule {
           return node && node.href;
         }
 
-        let node = aEvent.target;
-        let hrefNode = nearestParentHref(node);
-        let isImageNode = (ChromeUtils.getClassName(node) === "HTMLImageElement");
-        let isMediaNode = (ChromeUtils.getClassName(node) === "HTMLVideoElement" ||
-                           ChromeUtils.getClassName(node) === "HTMLAudioElement");
+        const node = aEvent.composedTarget;
+        const hrefNode = nearestParentHref(node);
+        const elementType = ChromeUtils.getClassName(node);
+        const isImage = elementType === "HTMLImageElement";
+        const isMedia = elementType === "HTMLVideoElement" ||
+                        elementType === "HTMLAudioElement";
 
-        if (hrefNode || isImageNode || isMediaNode) {
+        if (hrefNode || isImage || isMedia) {
           this.eventDispatcher.sendRequest({
             type: "GeckoView:ContextMenu",
             screenX: aEvent.screenX,
             screenY: aEvent.screenY,
             uri: hrefNode,
-            elementSrc: isImageNode || isMediaNode
+            elementType,
+            elementSrc: (isImage || isMedia)
                         ? node.currentSrc || node.src
                         : null
           });
@@ -191,8 +254,45 @@ class GeckoViewContent extends GeckoViewContentModule {
           type: "GeckoView:DOMWindowClose"
         });
         break;
+      case "load": {
+        const formdata = this._savedState.formdata;
+        if (formdata) {
+          FormData.restoreTree(content, formdata);
+        }
+        break;
+      }
+      case "pageshow": {
+        const scrolldata = this._savedState.scrolldata;
+        if (scrolldata) {
+          ScrollPosition.restoreTree(content, scrolldata);
+        }
+        delete this._savedState;
+        break;
+      }
     }
+  }
+
+  // WebProgress event handler.
+  onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags) {
+    debug `onLocationChange`;
+
+    if (this._savedState) {
+      const scrolldata = this._savedState.scrolldata;
+      if (scrolldata && scrolldata.zoom && scrolldata.zoom.displaySize) {
+        let utils = content.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+        // Restore zoom level.
+        utils.setRestoreResolution(scrolldata.zoom.resolution,
+                                   scrolldata.zoom.displaySize.width,
+                                   scrolldata.zoom.displaySize.height);
+      }
+    }
+
+    this.progressFilter.removeProgressListener(this);
+    let webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebProgress);
+    webProgress.removeProgressListener(this.progressFilter);
   }
 }
 
-var contentListener = new GeckoViewContent("GeckoViewContent", this);
+let {debug, warn} = GeckoViewContent.initLogging("GeckoViewContent");
+let module = GeckoViewContent.create(this);

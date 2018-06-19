@@ -471,10 +471,6 @@ Animation::UpdatePlaybackRate(double aPlaybackRate)
 AnimationPlayState
 Animation::PlayState() const
 {
-  if (!nsContentUtils::AnimationsAPIPendingMemberEnabled() && Pending()) {
-    return AnimationPlayState::Pending;
-  }
-
   Nullable<TimeDuration> currentTime = GetCurrentTime();
   if (currentTime.IsNull() && !Pending()) {
     return AnimationPlayState::Idle;
@@ -1030,9 +1026,8 @@ Animation::WillComposeStyle()
   }
 }
 
-template<typename ComposeAnimationResult>
 void
-Animation::ComposeStyle(ComposeAnimationResult&& aComposeResult,
+Animation::ComposeStyle(RawServoAnimationValueMap& aComposeResult,
                         const nsCSSPropertyIDSet& aPropertiesToSkip)
 {
   if (!mEffect) {
@@ -1092,8 +1087,7 @@ Animation::ComposeStyle(ComposeAnimationResult&& aComposeResult,
 
     KeyframeEffectReadOnly* keyframeEffect = mEffect->AsKeyframeEffect();
     if (keyframeEffect) {
-      keyframeEffect->ComposeStyle(Forward<ComposeAnimationResult>(aComposeResult),
-                                   aPropertiesToSkip);
+      keyframeEffect->ComposeStyle(aComposeResult, aPropertiesToSkip);
     }
   }
 
@@ -1424,11 +1418,12 @@ Animation::UpdateEffect()
 }
 
 void
-Animation::FlushStyle() const
+Animation::FlushUnanimatedStyle() const
 {
   nsIDocument* doc = GetRenderedDocument();
   if (doc) {
-    doc->FlushPendingNotifications(FlushType::Style);
+    doc->FlushPendingNotifications(
+      ChangesToFlush(FlushType::Style, false /* flush animations */));
   }
 }
 
@@ -1661,19 +1656,6 @@ Animation::IsRunningOnCompositor() const
          mEffect->AsKeyframeEffect()->IsRunningOnCompositor();
 }
 
-#ifdef MOZ_OLD_STYLE
-template
-void
-Animation::ComposeStyle<RefPtr<AnimValuesStyleRule>&>(
-  RefPtr<AnimValuesStyleRule>& aAnimationRule,
-  const nsCSSPropertyIDSet& aPropertiesToSkip);
-#endif
-
-template
-void
-Animation::ComposeStyle<RawServoAnimationValueMap&>(
-  RawServoAnimationValueMap& aAnimationValues,
-  const nsCSSPropertyIDSet& aPropertiesToSkip);
 
 } // namespace dom
 } // namespace mozilla

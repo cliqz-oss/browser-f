@@ -22,8 +22,8 @@ add_task(async function() {
         args.expectedId, "The docShell has the correct userContextId");
     });
 
-    await promiseRemoveTab(tab);
-    await promiseRemoveTab(tab2);
+    BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab2);
   }
 });
 
@@ -45,8 +45,8 @@ add_task(async function() {
                  "The docShell has the correct userContextId");
   });
 
-  await promiseRemoveTab(tab);
-  await promiseRemoveTab(tab2);
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab2);
 });
 
 add_task(async function() {
@@ -66,7 +66,7 @@ add_task(async function() {
                  "The docShell has the correct userContextId");
   });
 
-  await promiseRemoveTab(tab2);
+  BrowserTestUtils.removeTab(tab2);
 });
 
 // Opens "uri" in a new tab with the provided userContextId and focuses it.
@@ -102,7 +102,6 @@ add_task(async function test() {
     "work",
   ];
 
-  const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
   const { TabStateFlusher } = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
 
   // Make sure userContext is enabled.
@@ -133,7 +132,7 @@ add_task(async function test() {
     gBrowser.removeTab(tab);
   }
 
-  let state = JSON.parse(ss.getBrowserState());
+  let state = JSON.parse(SessionStore.getBrowserState());
   is(state.cookies.length, USER_CONTEXTS.length,
     "session restore should have each container's cookie");
 });

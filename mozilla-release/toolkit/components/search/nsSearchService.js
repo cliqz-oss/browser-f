@@ -5,7 +5,6 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
-ChromeUtils.import("resource://gre/modules/debug.js");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
@@ -30,7 +29,7 @@ const BinaryInputStream = Components.Constructor(
   "@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream", "setInputStream");
 
-Cu.importGlobalProperties(["XMLHttpRequest"]);
+Cu.importGlobalProperties(["DOMParser", "XMLHttpRequest"]);
 
 // A text encoder to UTF8, used whenever we commit the cache to disk.
 XPCOMUtils.defineLazyGetter(this, "gEncoder",
@@ -216,7 +215,6 @@ if (AppConstants.DEBUG) {
  * @throws resultCode
  */
 function ERROR(message, resultCode) {
-  NS_ASSERT(false, SEARCH_LOG_PREFIX + message);
   throw Components.Exception(message, resultCode);
 }
 
@@ -259,7 +257,6 @@ function limitURILength(str, len) {
  * @throws resultCode
  */
 function ENSURE_WARN(assertion, message, resultCode) {
-  NS_ASSERT(assertion, SEARCH_LOG_PREFIX + message);
   if (!assertion)
     throw Components.Exception(message, resultCode);
 }
@@ -277,7 +274,7 @@ loadListener.prototype = {
   _engine: null,
   _stream: null,
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIRequestObserver,
     Ci.nsIStreamListener,
     Ci.nsIChannelEventSink,
@@ -1342,8 +1339,7 @@ Engine.prototype = {
 
     fileInStream.init(file, MODE_RDONLY, PERMS_FILE, false);
 
-    var domParser = Cc["@mozilla.org/xmlextras/domparser;1"].
-                    createInstance(Ci.nsIDOMParser);
+    var domParser = new DOMParser();
     var doc = domParser.parseFromStream(fileInStream, "UTF-8",
                                         file.fileSize,
                                         "text/xml");
@@ -1453,8 +1449,7 @@ Engine.prototype = {
     var chan = makeChannel(uri);
 
     var stream = chan.open2();
-    var parser = Cc["@mozilla.org/xmlextras/domparser;1"].
-                 createInstance(Ci.nsIDOMParser);
+    var parser = new DOMParser();
     var doc = parser.parseFromStream(stream, "UTF-8", stream.available(), "text/xml");
 
     this._data = doc.documentElement;
@@ -1561,9 +1556,8 @@ Engine.prototype = {
       return;
     }
 
-    var parser = Cc["@mozilla.org/xmlextras/domparser;1"].
-                 createInstance(Ci.nsIDOMParser);
-    var doc = parser.parseFromBuffer(aBytes, aBytes.length, "text/xml");
+    var parser = new DOMParser();
+    var doc = parser.parseFromBuffer(aBytes, "text/xml");
     aEngine._data = doc.documentElement;
 
     try {
@@ -2460,7 +2454,7 @@ Engine.prototype = {
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISearchEngine]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISearchEngine]),
 
   get wrappedJSObject() {
     return this;
@@ -2577,7 +2571,7 @@ Submission.prototype = {
   get postData() {
     return this._postData;
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISearchSubmission])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISearchSubmission])
 };
 
 // nsISearchParseSubmissionResult
@@ -2600,7 +2594,7 @@ ParseSubmissionResult.prototype = {
   get termsLength() {
     return this._termsLength;
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISearchParseSubmissionResult]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISearchParseSubmissionResult]),
 };
 
 const gEmptyParseSubmissionResult =
@@ -3197,7 +3191,7 @@ SearchService.prototype = {
       let name = engine._name;
       if (name in this._engines) {
         LOG("_loadEnginesMetadataFromCache, transfering metadata for " + name);
-        this._engines[name]._metaData = engine._metaData;
+        this._engines[name]._metaData = engine._metaData || {};
       }
     }
   },
@@ -4579,7 +4573,7 @@ SearchService.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIBrowserSearchService,
     Ci.nsIObserver,
     Ci.nsITimerCallback

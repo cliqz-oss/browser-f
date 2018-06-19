@@ -34,7 +34,7 @@ function test() {
 
     function expectEvent(evt, cb) {
       promiseList.push(new Promise((resolve, reject) => {
-        monitor.panelWin.once(evt, _ => {
+        monitor.panelWin.api.once(evt, _ => {
           cb().then(resolve, reject);
         });
       }));
@@ -104,10 +104,7 @@ function test() {
     });
 
     expectEvent(EVENTS.RECEIVED_REQUEST_HEADERS, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.requestHeaders;
-      });
+      await waitForRequestData(store, ["requestHeaders"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -130,10 +127,7 @@ function test() {
     });
 
     expectEvent(EVENTS.RECEIVED_REQUEST_COOKIES, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.requestCookies;
-      });
+      await waitForRequestData(store, ["requestCookies"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -151,15 +145,12 @@ function test() {
       );
     });
 
-    monitor.panelWin.once(EVENTS.RECEIVED_REQUEST_POST_DATA, () => {
+    monitor.panelWin.api.once(EVENTS.RECEIVED_REQUEST_POST_DATA, () => {
       ok(false, "Trap listener: this request doesn't have any post data.");
     });
 
     expectEvent(EVENTS.RECEIVED_RESPONSE_HEADERS, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.responseHeaders;
-      });
+      await waitForRequestData(store, ["responseHeaders"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -180,10 +171,7 @@ function test() {
     });
 
     expectEvent(EVENTS.RECEIVED_RESPONSE_COOKIES, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.responseCookies;
-      });
+      await waitForRequestData(store, ["responseCookies"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -202,14 +190,12 @@ function test() {
     });
 
     expectEvent(EVENTS.STARTED_RECEIVING_RESPONSE, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem &&
-               requestItem.httpVersion &&
-               requestItem.status &&
-               requestItem.statusText &&
-               requestItem.headersSize;
-      });
+      await waitForRequestData(store, [
+        "httpVersion",
+        "status",
+        "statusText",
+        "headersSize"
+      ]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -224,7 +210,7 @@ function test() {
 
       let requestListItem = document.querySelector(".request-list-item");
       requestListItem.scrollIntoView();
-      let requestsListStatus = requestListItem.querySelector(".requests-list-status");
+      let requestsListStatus = requestListItem.querySelector(".status-code");
       EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
       await waitUntil(() => requestsListStatus.title);
 
@@ -242,13 +228,11 @@ function test() {
     });
 
     expectEvent(EVENTS.PAYLOAD_READY, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem &&
-               requestItem.transferredSize &&
-               requestItem.contentSize &&
-               requestItem.mimeType;
-      });
+      await waitForRequestData(store, [
+        "transferredSize",
+        "contentSize",
+        "mimeType"
+      ]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -275,10 +259,7 @@ function test() {
     });
 
     expectEvent(EVENTS.UPDATING_EVENT_TIMINGS, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.eventTimings;
-      });
+      await waitForRequestData(store, ["eventTimings"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 
@@ -300,10 +281,7 @@ function test() {
     });
 
     expectEvent(EVENTS.RECEIVED_EVENT_TIMINGS, async () => {
-      await waitUntil(() => {
-        let requestItem = getSortedRequests(store.getState()).get(0);
-        return requestItem && requestItem.eventTimings;
-      });
+      await waitForRequestData(store, ["eventTimings"]);
 
       let requestItem = getSortedRequests(store.getState()).get(0);
 

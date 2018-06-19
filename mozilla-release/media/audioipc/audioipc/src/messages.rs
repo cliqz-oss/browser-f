@@ -118,6 +118,7 @@ impl From<DeviceInfo> for ffi::cubeb_device_info {
     }
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct StreamParams {
     pub format: ffi::cubeb_sample_format,
@@ -183,7 +184,6 @@ pub enum ServerMessage {
     ContextGetMaxChannelCount,
     ContextGetMinLatency(StreamParams),
     ContextGetPreferredSampleRate,
-    ContextGetPreferredChannelLayout,
     ContextGetDeviceEnumeration(ffi::cubeb_device_type),
 
     StreamInit(StreamInitParams),
@@ -210,7 +210,6 @@ pub enum ClientMessage {
     ContextMaxChannelCount(u32),
     ContextMinLatency(u32),
     ContextPreferredSampleRate(u32),
-    ContextPreferredChannelLayout(ffi::cubeb_channel_layout),
     ContextEnumeratedDevices(Vec<DeviceInfo>),
 
     StreamCreated(StreamCreate),

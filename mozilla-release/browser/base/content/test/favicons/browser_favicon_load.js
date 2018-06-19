@@ -27,7 +27,7 @@ let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
 
 function clearAllImageCaches() {
   var tools = Cc["@mozilla.org/image/tools;1"]
-                .getService(SpecialPowers.Ci.imgITools);
+                .getService(Ci.imgITools);
   var imageCache = tools.getImgCacheForDocument(window.document);
   imageCache.clearCache(true); // true=chrome
   imageCache.clearCache(false); // false=content
@@ -129,8 +129,10 @@ async function doTest(aTestPage, aFaviconURL, aTailingEnabled) {
   // Waiting for favicon loaded.
   await promiseWaitOnFaviconLoaded;
 
+  Services.obs.removeObserver(observer, "http-on-modify-request");
+
   // Close the tab.
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 async function setupTailingPreference(aTailingEnabled) {

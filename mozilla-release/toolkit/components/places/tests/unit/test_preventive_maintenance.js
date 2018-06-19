@@ -26,7 +26,10 @@ var mDBConn = hs.QueryInterface(Ci.nsPIPlacesDatabase).DBConnection;
 // Helpers
 
 var defaultBookmarksMaxId = 0;
-function cleanDatabase() {
+async function cleanDatabase() {
+  // First clear any bookmarks the "proper way" to ensure caches like GuidHelper
+  // are properly cleared.
+  await PlacesUtils.bookmarks.eraseEverything();
   mDBConn.executeSimpleSQL("DELETE FROM moz_places");
   mDBConn.executeSimpleSQL("DELETE FROM moz_historyvisits");
   mDBConn.executeSimpleSQL("DELETE FROM moz_anno_attributes");
@@ -343,32 +346,35 @@ tests.push({
 });
 
 // ------------------------------------------------------------------------------
+
 tests.push({
   name: "C.1",
-  desc: "fix missing Places root",
+  desc: "fix invalid parents for Places folders",
 
   setup() {
-    // Sanity check: ensure that roots are intact.
-    Assert.equal(bs.getFolderIdForItem(bs.placesRoot), 0);
-    Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
-
-    // Remove the root.
-    mDBConn.executeSimpleSQL("DELETE FROM moz_bookmarks WHERE parent = 0");
-    let stmt = mDBConn.createStatement("SELECT id FROM moz_bookmarks WHERE parent = 0");
-    Assert.ok(!stmt.executeStep());
-    stmt.finalize();
+    // Reparent the roots to something invalid.
+    mDBConn.executeSimpleSQL(`
+      UPDATE moz_bookmarks SET parent = 2
+      WHERE parent = (SELECT id from moz_bookmarks WHERE guid = "${PlacesUtils.bookmarks.rootGuid}")
+    `);
   },
 
-  check() {
-    // Ensure the roots have been correctly restored.
-    Assert.equal(bs.getFolderIdForItem(bs.placesRoot), 0);
-    Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
-    Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
+  async check() {
+    let db = await PlacesUtils.promiseDBConnection();
+
+    let rows = await db.executeCached(`
+      SELECT guid FROM moz_bookmarks
+      WHERE parent = (SELECT id from moz_bookmarks WHERE guid = "${PlacesUtils.bookmarks.rootGuid}")
+    `);
+
+    let guids = rows.map(row => row.getResultByName("guid"));
+    Assert.deepEqual(guids, [
+      PlacesUtils.bookmarks.menuGuid,
+      PlacesUtils.bookmarks.toolbarGuid,
+      PlacesUtils.bookmarks.tagsGuid,
+      PlacesUtils.bookmarks.unfiledGuid,
+      PlacesUtils.bookmarks.mobileGuid,
+    ]);
   }
 });
 
@@ -383,6 +389,9 @@ tests.push({
   _invalidSyncedItemId: null,
   placeId: null,
 
+  _changeCounterStmt: null,
+  _menuChangeCounter: -1,
+
   setup() {
     // Add a place to ensure place_id = 1 is valid
     this.placeId = addPlace();
@@ -392,8 +401,16 @@ tests.push({
     this._invalidItemId = addBookmark(1337);
     // Insert a synced bookmark with an invalid place. We should write a
     // tombstone when we remove it.
-    this._invalidSyncedItemId = addBookmark(1337, null, null, null, null, null,
-      "bookmarkAAAA", PlacesUtils.bookmarks.SYNC_STATUS.NORMAL);
+    this._invalidSyncedItemId = addBookmark(1337, null, bs.bookmarksMenuFolder,
+      null, null, null, "bookmarkAAAA",
+      PlacesUtils.bookmarks.SYNC_STATUS.NORMAL);
+
+    this._changeCounterStmt = mDBConn.createStatement(`
+      SELECT syncChangeCounter FROM moz_bookmarks WHERE id = :id`);
+    this._changeCounterStmt.params.id = bs.bookmarksMenuFolder;
+    Assert.ok(this._changeCounterStmt.executeStep());
+    this._menuChangeCounter = this._changeCounterStmt.row.syncChangeCounter;
+    this._changeCounterStmt.reset();
   },
 
   async check() {
@@ -409,6 +426,12 @@ tests.push({
     stmt.params.item_id = this._invalidSyncedItemId;
     Assert.ok(!stmt.executeStep());
     stmt.finalize();
+
+    this._changeCounterStmt.params.id = bs.bookmarksMenuFolder;
+    Assert.ok(this._changeCounterStmt.executeStep());
+    Assert.equal(this._changeCounterStmt.row.syncChangeCounter,
+                 this._menuChangeCounter + 1);
+    this._changeCounterStmt.finalize();
 
     let tombstones = await PlacesTestUtils.fetchSyncTombstones();
     Assert.deepEqual(tombstones.map(info => info.guid), ["bookmarkAAAA"]);
@@ -703,23 +726,25 @@ tests.push({
 
   async setup() {
     const NUM_BOOKMARKS = 20;
-    bs.runInBatchMode({
-      runBatched(aUserData) {
-        // Add bookmarks to two folders to better perturbate the table.
-        for (let i = 0; i < NUM_BOOKMARKS; i++) {
-          bs.insertBookmark(PlacesUtils.unfiledBookmarksFolderId,
-                            NetUtil.newURI("http://example.com/"),
-                            bs.DEFAULT_INDEX, "testbookmark", null,
-                            PlacesUtils.bookmarks.SOURCES.SYNC);
-        }
-        for (let i = 0; i < NUM_BOOKMARKS; i++) {
-          bs.insertBookmark(PlacesUtils.toolbarFolderId,
-                            NetUtil.newURI("http://example.com/"),
-                            bs.DEFAULT_INDEX, "testbookmark", null,
-                            PlacesUtils.bookmarks.SOURCES.SYNC);
-        }
-      }
-    }, null);
+    let children = [];
+    for (let i = 0; i < NUM_BOOKMARKS; i++) {
+      children.push({
+        title: "testbookmark",
+        url: "http://example.com",
+      });
+    }
+
+    // Add bookmarks to two folders to better perturbate the table.
+    await PlacesUtils.bookmarks.insertTree({
+      guid: PlacesUtils.bookmarks.unfiledGuid,
+      children,
+      source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    });
+    await PlacesUtils.bookmarks.insertTree({
+      guid: PlacesUtils.bookmarks.toolbarGuid,
+      children,
+      source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    });
 
     function randomize_positions(aParent, aResultArray) {
       let stmt = mDBConn.createStatement(
@@ -1460,12 +1485,16 @@ tests.push({
 
   async setup() {
     let placeIdWithVisits = addPlace();
+    let placeIdWithZeroVisit = addPlace();
     this._placeVisits.push({
       placeId: placeIdWithVisits,
       visitDate: PlacesUtils.toPRTime(new Date(2017, 9, 4)),
     }, {
       placeId: placeIdWithVisits,
       visitDate: PlacesUtils.toPRTime(new Date(2017, 9, 8)),
+    }, {
+      placeId: placeIdWithZeroVisit,
+      visitDate: 0,
     });
 
     this._bookmarksWithDates.push({
@@ -1498,33 +1527,47 @@ tests.push({
       parentId: bs.unfiledBookmarksFolder,
       dateAdded: PlacesUtils.toPRTime(new Date(2017, 9, 3)),
       lastModified: PlacesUtils.toPRTime(new Date(2017, 9, 6)),
+    }, {
+      guid: "bookmarkFFFF",
+      placeId: placeIdWithZeroVisit,
+      parentId: bs.unfiledBookmarksFolder,
+      dateAdded: 0,
+      lastModified: 0,
     });
 
     await PlacesUtils.withConnectionWrapper(
-      "Insert bookmarks and visits with dates",
+      "S.3: Insert bookmarks and visits",
       db => db.executeTransaction(async () => {
-        await db.executeCached(`
+        await db.execute(`
           INSERT INTO moz_historyvisits(place_id, visit_date)
           VALUES(:placeId, :visitDate)`,
           this._placeVisits);
 
-        await db.executeCached(`
+        await db.execute(`
           INSERT INTO moz_bookmarks(fk, type, parent, guid, dateAdded,
                                     lastModified)
           VALUES(:placeId, 1, :parentId, :guid, :dateAdded,
                  :lastModified)`,
           this._bookmarksWithDates);
+
+        await db.execute(`
+          UPDATE moz_bookmarks SET
+            dateAdded = 0,
+            lastModified = NULL
+          WHERE id = :toolbarFolderId`,
+          { toolbarFolderId: bs.toolbarFolder });
       })
     );
   },
 
   async check() {
     let db = await PlacesUtils.promiseDBConnection();
-    let updatedRows = await db.executeCached(`
+    let updatedRows = await db.execute(`
       SELECT guid, dateAdded, lastModified
       FROM moz_bookmarks
-      WHERE guid IN (?, ?, ?, ?, ?)`,
-      this._bookmarksWithDates.map(info => info.guid));
+      WHERE guid = :guid`,
+      [{ guid: bs.toolbarGuid },
+       ...this._bookmarksWithDates.map(({ guid }) => ({ guid }))]);
 
     for (let row of updatedRows) {
       let guid = row.getResultByName("guid");
@@ -1552,10 +1595,14 @@ tests.push({
           break;
         }
 
-        // Neither date added nor last modified exists, and no visits, so we
-        // should fall back to the current time for both.
-        case "bookmarkCCCC": {
+        // C has no visits, date added, or last modified time, F has zeros for
+        // all, and the toolbar has a zero date added and no last modified time.
+        // In all cases, we should fall back to the current time.
+        case "bookmarkCCCC":
+        case "bookmarkFFFF":
+        case bs.toolbarGuid: {
           let nowAsPRTime = PlacesUtils.toPRTime(new Date());
+          Assert.greater(dateAdded, 0);
           Assert.equal(dateAdded, lastModified);
           Assert.ok(dateAdded <= nowAsPRTime);
           break;
@@ -1580,6 +1627,63 @@ tests.push({
           Assert.equal(lastModified, expectedInfo.lastModified);
           break;
         }
+
+        default:
+          throw new Error(`Unexpected row for bookmark ${guid}`);
+      }
+    }
+  },
+});
+
+// ------------------------------------------------------------------------------
+
+tests.push({
+  name: "S.4",
+  desc: "reset added dates that are ahead of last modified dates",
+  _bookmarksWithDates: [],
+
+  async setup() {
+    this._bookmarksWithDates.push({
+      guid: "bookmarkGGGG",
+      parentId: bs.unfiledBookmarksFolder,
+      dateAdded: PlacesUtils.toPRTime(new Date(2017, 9, 6)),
+      lastModified: PlacesUtils.toPRTime(new Date(2017, 9, 3)),
+    });
+
+    await PlacesUtils.withConnectionWrapper(
+      "S.4: Insert bookmarks and visits",
+      db => db.executeTransaction(async () => {
+        await db.execute(`
+          INSERT INTO moz_bookmarks(type, parent, guid, dateAdded,
+                                    lastModified)
+          VALUES(1, :parentId, :guid, :dateAdded, :lastModified)`,
+          this._bookmarksWithDates);
+      })
+    );
+  },
+
+  async check() {
+    let db = await PlacesUtils.promiseDBConnection();
+    let updatedRows = await db.execute(`
+      SELECT guid, dateAdded, lastModified
+      FROM moz_bookmarks
+      WHERE guid = :guid`,
+      this._bookmarksWithDates.map(({ guid }) => ({ guid })));
+
+    for (let row of updatedRows) {
+      let guid = row.getResultByName("guid");
+      let dateAdded = row.getResultByName("dateAdded");
+      let lastModified = row.getResultByName("lastModified");
+      switch (guid) {
+        case "bookmarkGGGG": {
+          let expectedInfo = this._bookmarksWithDates[0];
+          Assert.equal(dateAdded, expectedInfo.lastModified);
+          Assert.equal(lastModified, expectedInfo.lastModified);
+          break;
+        }
+
+        default:
+          throw new Error(`Unexpected row for bookmark ${guid}`);
       }
     }
   },
@@ -1687,7 +1791,7 @@ add_task(async function test_preventive_maintenance() {
 
     await test.check();
 
-    cleanDatabase();
+    await cleanDatabase();
   }
 
   // Sanity check: all roots should be intact

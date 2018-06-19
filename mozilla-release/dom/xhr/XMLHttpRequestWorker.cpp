@@ -6,7 +6,6 @@
 
 #include "XMLHttpRequestWorker.h"
 
-#include "nsIDOMEvent.h"
 #include "nsIDOMEventListener.h"
 #include "nsIRunnable.h"
 #include "nsIXPConnect.h"
@@ -16,6 +15,7 @@
 #include "js/GCPolicyAPI.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/dom/Exceptions.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FormData.h"
 #include "mozilla/dom/ProgressEvent.h"
@@ -449,7 +449,7 @@ public:
     , mReceivedLoadStart(false)
   {
     AssertIsOnMainThread();
-    CopyASCIItoUTF16(sEventStrings[STRING_loadstart], mEventType);
+    mEventType.AssignASCII(sEventStrings[STRING_loadstart]);
   }
 
   NS_DECL_ISUPPORTS_INHERITED
@@ -461,7 +461,7 @@ public:
   {
     AssertIsOnMainThread();
 
-    if (NS_FAILED(mXHR->AddEventListener(mEventType, this, false, false, 2))) {
+    if (NS_FAILED(mXHR->AddEventListener(mEventType, this, false, false))) {
       NS_WARNING("Failed to add event listener!");
       return false;
     }
@@ -947,12 +947,11 @@ Proxy::AddRemoveEventListeners(bool aUpload, bool aAdd)
                (!mUploadEventListenersAttached && aAdd),
                "Messed up logic for upload listeners!");
 
-  DOMEventTargetHelper* targetHelper =
+  RefPtr<DOMEventTargetHelper> targetHelper =
     aUpload ?
     static_cast<XMLHttpRequestUpload*>(mXHRUpload.get()) :
     static_cast<XMLHttpRequestEventTarget*>(mXHR.get());
   MOZ_ASSERT(targetHelper, "This should never fail!");
-  nsCOMPtr<nsIDOMEventTarget> target = targetHelper;
 
   uint32_t lastEventType = aUpload ? STRING_LAST_EVENTTARGET : STRING_LAST_XHR;
 
@@ -960,12 +959,12 @@ Proxy::AddRemoveEventListeners(bool aUpload, bool aAdd)
   for (uint32_t index = 0; index <= lastEventType; index++) {
     eventType = NS_ConvertASCIItoUTF16(sEventStrings[index]);
     if (aAdd) {
-      if (NS_FAILED(target->AddEventListener(eventType, this, false))) {
+      if (NS_FAILED(targetHelper->AddEventListener(eventType, this, false))) {
         return false;
       }
     }
-    else if (NS_FAILED(target->RemoveEventListener(eventType, this, false))) {
-      return false;
+    else {
+      targetHelper->RemoveEventListener(eventType, this, false);
     }
   }
 
@@ -979,7 +978,7 @@ Proxy::AddRemoveEventListeners(bool aUpload, bool aAdd)
 NS_IMPL_ISUPPORTS(Proxy, nsIDOMEventListener)
 
 NS_IMETHODIMP
-Proxy::HandleEvent(nsIDOMEvent* aEvent)
+Proxy::HandleEvent(Event* aEvent)
 {
   AssertIsOnMainThread();
 
@@ -988,20 +987,11 @@ Proxy::HandleEvent(nsIDOMEvent* aEvent)
     return NS_OK;
   }
 
-  nsString type;
-  if (NS_FAILED(aEvent->GetType(type))) {
-    NS_WARNING("Failed to get event type!");
-    return NS_ERROR_FAILURE;
-  }
+  nsAutoString type;
+  aEvent->GetType(type);
 
-  nsCOMPtr<nsIDOMEventTarget> target;
-  if (NS_FAILED(aEvent->GetTarget(getter_AddRefs(target)))) {
-    NS_WARNING("Failed to get target!");
-    return NS_ERROR_FAILURE;
-  }
-
-  bool isUploadTarget = mXHR != target;
-  ProgressEvent* progressEvent = aEvent->InternalDOMEvent()->AsProgressEvent();
+  bool isUploadTarget = mXHR != aEvent->GetTarget();
+  ProgressEvent* progressEvent = aEvent->AsProgressEvent();
 
   if (mInOpen && type.EqualsASCII(sEventStrings[STRING_readystatechange])) {
     if (mXHR->ReadyState() == 1) {
@@ -1062,9 +1052,7 @@ LoadStartDetectionRunnable::Run()
 {
   AssertIsOnMainThread();
 
-  if (NS_FAILED(mXHR->RemoveEventListener(mEventType, this, false))) {
-    NS_WARNING("Failed to remove event listener!");
-  }
+  mXHR->RemoveEventListener(mEventType, this, false);
 
   if (!mReceivedLoadStart) {
     if (mProxy->mOutstandingSendCount > 1) {
@@ -1090,19 +1078,15 @@ LoadStartDetectionRunnable::Run()
 }
 
 NS_IMETHODIMP
-LoadStartDetectionRunnable::HandleEvent(nsIDOMEvent* aEvent)
+LoadStartDetectionRunnable::HandleEvent(Event* aEvent)
 {
   AssertIsOnMainThread();
 
 #ifdef DEBUG
   {
-    nsString type;
-    if (NS_SUCCEEDED(aEvent->GetType(type))) {
-      MOZ_ASSERT(type == mEventType);
-    }
-    else {
-      NS_WARNING("Failed to get event type!");
-    }
+    nsAutoString type;
+    aEvent->GetType(type);
+    MOZ_ASSERT(type == mEventType);
   }
 #endif
 
@@ -1355,8 +1339,7 @@ EventRunnable::WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
 
   event->SetTrusted(true);
 
-  bool dummy;
-  target->DispatchEvent(event, &dummy);
+  target->DispatchEvent(*event);
 
   // After firing the event set mResponse to JSVAL_NULL for chunked response
   // types.
@@ -1769,8 +1752,7 @@ XMLHttpRequestWorker::DispatchPrematureAbortEvent(EventTarget* aTarget,
 
   event->SetTrusted(true);
 
-  bool dummy;
-  aTarget->DispatchEvent(event, &dummy);
+  aTarget->DispatchEvent(*event);
 }
 
 void
@@ -1893,7 +1875,12 @@ XMLHttpRequestWorker::Open(const nsACString& aMethod,
     }
   }
   else {
-    mProxy = new Proxy(this, mWorkerPrivate->GetClientInfo(),
+    Maybe<ClientInfo> clientInfo(mWorkerPrivate->GetClientInfo());
+    if (clientInfo.isNothing()) {
+      aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+      return;
+    }
+    mProxy = new Proxy(this, clientInfo.ref(),
                        mWorkerPrivate->GetController(), mMozAnon, mMozSystem);
   }
 

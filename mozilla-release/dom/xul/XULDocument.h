@@ -83,10 +83,6 @@ public:
 
     virtual void EndLoad() override;
 
-    virtual XULDocument* AsXULDocument() override {
-        return this;
-    }
-
     // nsIMutationObserver interface
     NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
     NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
@@ -198,6 +194,10 @@ public:
 
 protected:
     virtual ~XULDocument();
+
+    // Returns the associated XUL window if this is a top-level chrome document,
+    // null otherwise.
+    already_AddRefed<nsIXULWindow> GetXULWindowIfToplevelChrome() const;
 
     // Implementation methods
     friend nsresult
@@ -717,5 +717,12 @@ private:
 
 } // namespace dom
 } // namespace mozilla
+
+inline mozilla::dom::XULDocument*
+nsIDocument::AsXULDocument()
+{
+  MOZ_ASSERT(IsXULDocument());
+  return static_cast<mozilla::dom::XULDocument*>(this);
+}
 
 #endif // mozilla_dom_XULDocument_h

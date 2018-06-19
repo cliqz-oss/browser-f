@@ -40,6 +40,14 @@
   --toolbox-border-bottom-color: rgba(0,0,0,.3);
 }
 
+:root[lwt-popup-brighttext] {
+  --panel-separator-color: rgba(249,249,250,.1);
+
+  --arrowpanel-dimmed: rgba(249,249,250,.1);
+  --arrowpanel-dimmed-further: rgba(249,249,250,.15);
+  --arrowpanel-dimmed-even-further: rgba(249,249,250,.2);
+}
+
 #navigator-toolbox {
   --tabs-border-color: rgba(0,0,0,.3);
 }
@@ -214,8 +222,6 @@
   }
 }
 
-%include ../shared/bookmarked-notification.inc.css
-
 %include ../shared/toolbarbuttons.inc.css
 %include ../shared/toolbarbutton-icons.inc.css
 %include ../shared/menupanel.inc.css
@@ -225,6 +231,7 @@
   background: none;
   box-shadow: none;
   border: none;
+  color: inherit;
 }
 
 /* On Mac, native buttons keep their full opacity when they become disabled
@@ -256,6 +263,10 @@
 
 %include ../shared/urlbar-searchbar.inc.css
 
+:root {
+  --toolbar-field-focus-border-color: -moz-mac-focusring;
+}
+
 #urlbar,
 .searchbar-textbox {
   font-size: 1.25em;
@@ -269,8 +280,8 @@ html|input.urlbar-input {
 
 #urlbar[focused="true"],
 .searchbar-textbox[focused="true"] {
-  border-color: -moz-mac-focusring;
-  box-shadow: var(--focus-ring-box-shadow);
+  box-shadow: 0 0 0 1px var(--toolbar-field-focus-border-color) inset,
+              0 0 0 1px var(--toolbar-field-focus-border-color);
 }
 
 %include ../shared/identity-block/identity-block.inc.css
@@ -327,6 +338,11 @@ html|input.urlbar-input {
   margin-top: 0;
   margin-bottom: 0;
   color: GrayText;
+}
+
+#pageAction-urlbar-shareURL,
+#pageAction-panel-shareURL {
+  list-style-image: url("chrome://browser/skin/share.svg");
 }
 
 %include ../shared/urlbarSearchSuggestionsNotification.inc.css
@@ -452,10 +468,10 @@ html|input.urlbar-input {
   margin-inline-start: 8px;
 }
 
-/* The following elements come from editBookmarkOverlay.xul. Styling that's
+/* The following elements come from editBookmarkPanel.inc.xul. Styling that's
    specific to the editBookmarkPanel should be in browser.css. Styling that
-   should be shared by all editBookmarkOverlay.xul consumers should be in
-   editBookmarkOverlay.css. */
+   should be shared by all editBookmarkPanel.inc.xul consumers should be in
+   editBookmark.css. */
 
 #editBMPanel_newFolderBox {
   background: linear-gradient(#fff, #f2f2f2);
@@ -667,6 +683,12 @@ html|input.urlbar-input {
   text-shadow: none;
 }
 
+.browserContainer > findbar:-moz-lwtheme {
+  background-color: var(--toolbar-bgcolor);
+  background-image: none;
+  color: var(--toolbar-color, -moz-DialogText);
+}
+
 .openintabs-menuitem {
   list-style-image: none;
 }
@@ -743,7 +765,7 @@ html|input.urlbar-input {
   text-shadow: none;
 }
 
-.tabbrowser-tab[visuallyselected=true] {
+.tabbrowser-tab[visuallyselected=true]:not(:-moz-lwtheme) {
   -moz-font-smoothing-background-color: var(--toolbar-bgcolor);
 }
 
@@ -993,7 +1015,7 @@ html|*.addon-webext-perm-list {
 
 /* Status panel */
 
-.statuspanel-label {
+#statuspanel-label {
   margin: 0;
   padding: 2px 4px;
   background-color: #f9f9fa;
@@ -1003,15 +1025,15 @@ html|*.addon-webext-perm-list {
   text-shadow: none;
 }
 
-.statuspanel-label:-moz-locale-dir(ltr):not([mirror]),
-.statuspanel-label:-moz-locale-dir(rtl)[mirror] {
+#statuspanel:not([mirror]) > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(ltr),
+#statuspanel[mirror] > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(rtl) {
   border-right-style: solid;
   border-top-right-radius: .3em;
   margin-right: 1em;
 }
 
-.statuspanel-label:-moz-locale-dir(rtl):not([mirror]),
-.statuspanel-label:-moz-locale-dir(ltr)[mirror] {
+#statuspanel:not([mirror]) > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(rtl),
+#statuspanel[mirror] > #statuspanel-inner > #statuspanel-label:-moz-locale-dir(ltr) {
   border-left-style: solid;
   border-top-left-radius: .3em;
   margin-left: 1em;

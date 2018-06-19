@@ -99,7 +99,7 @@ UNIFIED_SOURCES += [
     'testThreadingExclusiveData.cpp',
     'testThreadingMutex.cpp',
     'testThreadingThread.cpp',
-    'testToIntWidth.cpp',
+    'testToSignedOrUnsignedInteger.cpp',
     'testTypedArrays.cpp',
     'testUbiNode.cpp',
     'testUncaughtSymbol.cpp',
@@ -156,16 +156,12 @@ if CONFIG['JS_BUILD_BINAST'] and CONFIG['JS_STANDALONE']:
 
 
 DEFINES['EXPORT_JS_API'] = True
+DEFINES['ENABLE_WASM_GLOBAL'] = True
 
 LOCAL_INCLUDES += [
     '!..',
     '..',
 ]
-
-if CONFIG['ENABLE_INTL_API'] and CONFIG['MOZ_ICU_DATA_ARCHIVE']:
-    # The ICU libraries linked into libmozjs will not include the ICU data,
-    # so link it directly.
-    USE_LIBS += ['icudata']
 
 USE_LIBS += [
     'static:js',

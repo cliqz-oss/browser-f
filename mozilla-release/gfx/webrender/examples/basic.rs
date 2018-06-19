@@ -191,18 +191,20 @@ impl Example for App {
         let info = LayoutPrimitiveInfo::new(bounds);
         builder.push_stacking_context(
             &info,
+            None,
             ScrollPolicy::Scrollable,
             None,
             TransformStyle::Flat,
             None,
             MixBlendMode::Normal,
             Vec::new(),
+            GlyphRasterSpace::Screen,
         );
 
         let image_mask_key = api.generate_image_key();
         resources.add_image(
             image_mask_key,
-            ImageDescriptor::new(2, 2, ImageFormat::R8, true),
+            ImageDescriptor::new(2, 2, ImageFormat::R8, true, false),
             ImageData::new(vec![0, 80, 180, 255]),
             None,
         );

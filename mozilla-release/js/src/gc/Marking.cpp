@@ -131,7 +131,10 @@ IsThingPoisoned(T* thing)
         JS_MOVED_TENURED_PATTERN,
         JS_SWEPT_TENURED_PATTERN,
         JS_ALLOCATED_TENURED_PATTERN,
-        JS_SWEPT_CODE_PATTERN
+        JS_FREED_HEAP_PTR_PATTERN,
+        JS_SWEPT_TI_PATTERN,
+        JS_SWEPT_CODE_PATTERN,
+        JS_FREED_CHUNK_PATTERN
     };
     const int numPoisonBytes = sizeof(poisonBytes) / sizeof(poisonBytes[0]);
     uint32_t* p = reinterpret_cast<uint32_t*>(reinterpret_cast<FreeSpan*>(thing) + 1);
@@ -992,13 +995,27 @@ js::GCMarker::traverseEdge(S source, const T& thing)
 
 namespace {
 
-template <typename T> struct ParticipatesInCC {};
+template <typename T> struct TypeParticipatesInCC {};
 #define EXPAND_PARTICIPATES_IN_CC(_, type, addToCCKind) \
-    template <> struct ParticipatesInCC<type> { static const bool value = addToCCKind; };
+    template <> struct TypeParticipatesInCC<type> { static const bool value = addToCCKind; };
 JS_FOR_EACH_TRACEKIND(EXPAND_PARTICIPATES_IN_CC)
 #undef EXPAND_PARTICIPATES_IN_CC
 
+struct ParticipatesInCCFunctor
+{
+    template <typename T>
+    bool operator()() {
+        return TypeParticipatesInCC<T>::value;
+    }
+};
+
 } // namespace
+
+static bool
+TraceKindParticipatesInCC(JS::TraceKind kind)
+{
+    return DispatchTraceKindTyped(ParticipatesInCCFunctor(), kind);
+}
 
 template <typename T>
 bool
@@ -1008,7 +1025,7 @@ js::GCMarker::mark(T* thing)
     TenuredCell* cell = TenuredCell::fromPointer(thing);
     MOZ_ASSERT(!IsInsideNursery(cell));
 
-    if (!ParticipatesInCC<T>::value)
+    if (!TypeParticipatesInCC<T>::value)
         return cell->markIfUnmarked(MarkColor::Black);
 
     return cell->markIfUnmarked(markColor());
@@ -1452,10 +1469,14 @@ js::GCMarker::eagerlyMarkChildren(Scope* scope)
 void
 js::ObjectGroup::traceChildren(JSTracer* trc)
 {
-    unsigned count = getPropertyCount();
-    for (unsigned i = 0; i < count; i++) {
-        if (ObjectGroup::Property* prop = getProperty(i))
-            TraceEdge(trc, &prop->id, "group_property");
+    AutoSweepObjectGroup sweep(this);
+
+    if (!trc->canSkipJsids()) {
+        unsigned count = getPropertyCount(sweep);
+        for (unsigned i = 0; i < count; i++) {
+            if (ObjectGroup::Property* prop = getProperty(sweep, i))
+                TraceEdge(trc, &prop->id, "group_property");
+        }
     }
 
     if (proto().isObject())
@@ -1468,14 +1489,14 @@ js::ObjectGroup::traceChildren(JSTracer* trc)
         TraceManuallyBarrieredEdge(trc, &global, "group_global");
 
 
-    if (newScript())
-        newScript()->trace(trc);
+    if (newScript(sweep))
+        newScript(sweep)->trace(trc);
 
-    if (maybePreliminaryObjects())
-        maybePreliminaryObjects()->trace(trc);
+    if (maybePreliminaryObjects(sweep))
+        maybePreliminaryObjects(sweep)->trace(trc);
 
-    if (maybeUnboxedLayout())
-        unboxedLayout().trace(trc);
+    if (maybeUnboxedLayout(sweep))
+        unboxedLayout(sweep).trace(trc);
 
     if (ObjectGroup* unboxedGroup = maybeOriginalUnboxedGroup()) {
         TraceManuallyBarrieredEdge(trc, &unboxedGroup, "group_original_unboxed_group");
@@ -1495,9 +1516,10 @@ js::ObjectGroup::traceChildren(JSTracer* trc)
 void
 js::GCMarker::lazilyMarkChildren(ObjectGroup* group)
 {
-    unsigned count = group->getPropertyCount();
+    AutoSweepObjectGroup sweep(group);
+    unsigned count = group->getPropertyCount(sweep);
     for (unsigned i = 0; i < count; i++) {
-        if (ObjectGroup::Property* prop = group->getProperty(i))
+        if (ObjectGroup::Property* prop = group->getProperty(sweep, i))
             traverseEdge(group, prop->id.get());
     }
 
@@ -1509,14 +1531,14 @@ js::GCMarker::lazilyMarkChildren(ObjectGroup* group)
     if (GlobalObject* global = group->compartment()->unsafeUnbarrieredMaybeGlobal())
         traverseEdge(group, static_cast<JSObject*>(global));
 
-    if (group->newScript())
-        group->newScript()->trace(this);
+    if (group->newScript(sweep))
+        group->newScript(sweep)->trace(this);
 
-    if (group->maybePreliminaryObjects())
-        group->maybePreliminaryObjects()->trace(this);
+    if (group->maybePreliminaryObjects(sweep))
+        group->maybePreliminaryObjects(sweep)->trace(this);
 
-    if (group->maybeUnboxedLayout())
-        group->unboxedLayout().trace(this);
+    if (group->maybeUnboxedLayout(sweep))
+        group->unboxedLayout(sweep).trace(this);
 
     if (ObjectGroup* unboxedGroup = group->maybeOriginalUnboxedGroup())
         traverseEdge(group, unboxedGroup);
@@ -1663,10 +1685,11 @@ ObjectDenseElementsMayBeMarkable(NativeObject* nobj)
         return true;
 
     ObjectGroup* group = nobj->group();
-    if (group->needsSweep() || group->unknownProperties())
+    if (group->needsSweep() || group->unknownPropertiesDontCheckGeneration())
         return true;
 
-    HeapTypeSet* typeSet = group->maybeGetProperty(JSID_VOID);
+    // This typeset doesn't escape this function so avoid sweeping here.
+    HeapTypeSet* typeSet = group->maybeGetPropertyDontCheckGeneration(JSID_VOID);
     if (!typeSet)
         return true;
 
@@ -2562,12 +2585,18 @@ GCMarker::markDelayedChildren(Arena* arena)
     MOZ_ASSERT(arena->markOverflow);
     arena->markOverflow = 0;
 
+    JS::TraceKind kind = MapAllocToTraceKind(arena->getAllocKind());
+
+    // Whether we need to mark children of gray or black cells in the arena
+    // depends on which kind of marking we were doing when the arena as pushed
+    // onto the list.  We never change mark color without draining the mark
+    // stack though so this is the same as the current color.
+    bool markGrayCells = markColor() == MarkColor::Gray && TraceKindParticipatesInCC(kind);
+
     for (ArenaCellIterUnderGC i(arena); !i.done(); i.next()) {
         TenuredCell* t = i.getCell();
-        if (t->isMarkedAny()) {
-            t->markIfUnmarked();
-            js::TraceChildren(this, t, MapAllocToTraceKind(arena->getAllocKind()));
-        }
+        if ((markGrayCells && t->isMarkedGray()) || (!markGrayCells && t->isMarkedBlack()))
+            js::TraceChildren(this, t, kind);
     }
 }
 
@@ -2845,13 +2874,14 @@ TraceBufferedCells(TenuringTracer& mover, Arena* arena, ArenaCellSet* cells)
 }
 
 void
-js::gc::StoreBuffer::traceWholeCells(TenuringTracer& mover)
+js::gc::StoreBuffer::WholeCellBuffer::trace(StoreBuffer* owner, TenuringTracer& mover)
 {
-    for (ArenaCellSet* cells = bufferWholeCell; cells; cells = cells->next) {
-        Arena* arena = cells->arena;
-        MOZ_ASSERT(IsCellPointerValid(arena));
+    MOZ_ASSERT(owner->isEnabled());
 
-        MOZ_ASSERT(arena->bufferedCells() == cells);
+    for (ArenaCellSet* cells = head_; cells; cells = cells->next) {
+        cells->check();
+
+        Arena* arena = cells->arena;
         arena->bufferedCells() = &ArenaCellSet::Empty;
 
         JS::TraceKind kind = MapAllocToTraceKind(arena->getAllocKind());
@@ -2873,7 +2903,7 @@ js::gc::StoreBuffer::traceWholeCells(TenuringTracer& mover)
         }
     }
 
-    bufferWholeCell = nullptr;
+    head_ = nullptr;
 }
 
 void
@@ -3621,7 +3651,7 @@ JS::UnmarkGrayGCThingRecursively(JS::GCCellPtr thing)
     MOZ_ASSERT(!JS::CurrentThreadIsHeapCollecting());
     MOZ_ASSERT(!JS::CurrentThreadIsHeapCycleCollecting());
 
-    JSRuntime* rt = thing.asCell()->runtimeFromActiveCooperatingThread();
+    JSRuntime* rt = thing.asCell()->runtimeFromMainThread();
     gcstats::AutoPhase outerPhase(rt->gc.stats(), gcstats::PhaseKind::BARRIER);
     return UnmarkGrayGCThing(rt, thing);
 }

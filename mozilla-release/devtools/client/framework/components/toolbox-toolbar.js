@@ -7,8 +7,10 @@ const { Component, createFactory } = require("devtools/client/shared/vendor/reac
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const {div, button} = dom;
+const {openWebLink} = require("devtools/client/shared/link");
 
-const ToolboxTab = createFactory(require("devtools/client/framework/components/toolbox-tab"));
+const Menu = require("devtools/client/framework/menu");
+const MenuItem = require("devtools/client/framework/menu-item");
 const ToolboxTabs = createFactory(require("devtools/client/framework/components/toolbox-tabs"));
 
 /**
@@ -27,17 +29,43 @@ class ToolboxToolbar extends Component {
       toolboxButtons: PropTypes.array,
       // The id of the currently selected tool, e.g. "inspector"
       currentToolId: PropTypes.string,
-      // An optionally highlighted tools, e.g. "inspector".
-      // Note: highlightedTools must be an instance of Set.
-      highlightedTools: PropTypes.object,
-      // List of tool panel definitions.
+      // An optionally highlighted tools, e.g. "inspector" (used by ToolboxTabs
+      // component).
+      highlightedTools: PropTypes.instanceOf(Set),
+      // List of tool panel definitions (used by ToolboxTabs component).
       panelDefinitions: PropTypes.array,
+      // List of possible docking options.
+      hostTypes: PropTypes.arrayOf(PropTypes.shape({
+        position: PropTypes.string.isRequired,
+        switchHost: PropTypes.func.isRequired,
+      })),
+      // Current docking type. Typically one of the position values in
+      // |hostTypes| but this is not always the case (e.g. when it is "custom").
+      currentHostType: PropTypes.string,
+      // Do we need to add UI for closing the toolbox? We don't when the
+      // toolbox is undocked, for example.
+      canCloseToolbox: PropTypes.bool,
+      // Is the split console currently visible?
+      isSplitConsoleActive: PropTypes.bool,
+      // Are we disabling the behavior where pop-ups are automatically closed
+      // when clicking outside them?
+      //
+      // This is a tri-state value that may be true/false or undefined where
+      // undefined means that the option is not relevant in this context
+      // (i.e. we're not in a browser toolbox).
+      disableAutohide: PropTypes.bool,
       // Function to select a tool based on its id.
       selectTool: PropTypes.func,
+      // Function to turn the options panel on / off.
+      toggleOptions: PropTypes.func.isRequired,
+      // Function to turn the split console on / off.
+      toggleSplitConsole: PropTypes.func,
+      // Function to turn the disable pop-up autohide behavior on / off.
+      toggleNoAutohide: PropTypes.func,
+      // Function to completely close the toolbox.
+      closeToolbox: PropTypes.func,
       // Keep a record of what button is focused.
       focusButton: PropTypes.func,
-      // The options button definition.
-      optionsPanel: PropTypes.object,
       // Hold off displaying the toolbar until enough information is ready for
       // it to render nicely.
       canRender: PropTypes.bool,
@@ -45,6 +73,13 @@ class ToolboxToolbar extends Component {
       L10N: PropTypes.object,
       // The devtools toolbox
       toolbox: PropTypes.object,
+      // Call back function to detect tabs order updated.
+      onTabsOrderUpdated: PropTypes.func.isRequired,
+      // Count of visible toolbox buttons which is used by ToolboxTabs component to
+      // recognize that the visibility of toolbox buttons were changed. Because in the
+      // component we cannot compare the visibility since the button definition instance
+      // in toolboxButtons will be unchanged.
+      visibleToolboxButtonCount: PropTypes.number,
     };
   }
 
@@ -61,9 +96,7 @@ class ToolboxToolbar extends Component {
           renderToolboxButtonsStart(this.props),
           ToolboxTabs(this.props),
           renderToolboxButtonsEnd(this.props),
-          renderOptions(this.props),
-          renderSeparator(),
-          renderDockButtons(this.props)
+          renderToolboxControls(this.props)
         )
       )
       : div(containerProps);
@@ -94,12 +127,12 @@ function renderToolboxButtonsEnd(props) {
  * See Toolbox.prototype._createButtonState in devtools/client/framework/toolbox.js for
  * documentation on this object.
  *
- * @param {Array} toolboxButtons - Array of objects that define the command buttons.
  * @param {String} focusedButton - The id of the focused button.
+ * @param {Array} toolboxButtons - Array of objects that define the command buttons.
  * @param {Function} focusButton - Keep a record of the currently focused button.
  * @param {boolean} isStart - Render either the starting buttons, or ending buttons.
  */
-function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isStart) {
+function renderToolboxButtons({focusedButton, toolboxButtons, focusButton}, isStart) {
   const visibleButtons = toolboxButtons.filter(command => {
     const {isVisible, isInStartContainer} = command;
     return isVisible && (isStart ? isInStartContainer : !isInStartContainer);
@@ -109,8 +142,17 @@ function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isSt
     return null;
   }
 
-  return div({id: `toolbox-buttons-${isStart ? "start" : "end"}`},
-    ...visibleButtons.map(command => {
+  // The RDM button, if present, should always go last
+  const rdmIndex = visibleButtons.findIndex(
+    button => button.id === "command-button-responsive"
+  );
+  if (rdmIndex !== -1 && rdmIndex !== visibleButtons.length - 1) {
+    const rdm = visibleButtons.splice(rdmIndex, 1)[0];
+    visibleButtons.push(rdm);
+  }
+
+  const renderedButtons =
+    visibleButtons.map(command => {
       const {
         id,
         description,
@@ -138,32 +180,25 @@ function renderToolboxButtons({toolboxButtons, focusedButton, focusButton}, isSt
           onKeyDown(event);
         }
       });
-    }),
-    isStart ? div({className: "devtools-separator"}) : null
-  );
-}
+    });
 
-/**
- * The options button is a ToolboxTab just like in the ToolboxTabs component. However
- * it is separate from the normal tabs, so deal with it separately here.
- *
- * @param {Object}   optionsPanel - A single panel definition for the options panel.
- * @param {String}   currentToolId - The currently selected tool's id; e.g. "inspector".
- * @param {Function} selectTool - Function to select a tool in the toolbox.
- * @param {String}   focusedButton - The id of the focused button.
- * @param {Function} focusButton - Keep a record of the currently focused button.
- * @param {Object}   highlightedTools - Optionally highlighted tools, e.g. "inspector".
- */
-function renderOptions({optionsPanel, currentToolId, selectTool, focusedButton,
-                        focusButton, highlightedTools}) {
-  return div({id: "toolbox-option-container"}, ToolboxTab({
-    panelDefinition: optionsPanel,
-    currentToolId,
-    selectTool,
-    highlightedTools,
-    focusedButton,
-    focusButton,
-  }));
+  // Add the appropriate separator, if needed.
+  let children = renderedButtons;
+  if (renderedButtons.length) {
+    if (isStart) {
+      children.push(renderSeparator());
+    // For the end group we add a separator *before* the RDM button if it
+    // exists, but only if it is not the only button.
+    } else if (rdmIndex !== -1 && visibleButtons.length > 1) {
+      children.splice(
+        children.length - 1,
+        0,
+        renderSeparator()
+      );
+    }
+  }
+
+  return div({id: `toolbox-buttons-${isStart ? "start" : "end"}`}, ...children);
 }
 
 /**
@@ -174,51 +209,72 @@ function renderSeparator() {
 }
 
 /**
- * Render the dock buttons, and handle all the cases for what type of host the toolbox
- * is attached to. The following props are expected.
+ * Render the toolbox control buttons. The following props are expected:
  *
- * @property {String} focusedButton - The id of the focused button.
- * @property {Function} closeToolbox - Completely close the toolbox.
- * @property {Array} hostTypes - Array of host type objects, containing:
- *                   @property {String} position - Position name
- *                   @property {Function} switchHost - Function to switch the host.
- * @property {Function} focusButton - Keep a record of the currently focused button.
- * @property {Object} L10N - Localization interface.
- * @property {Boolean} areDockButtonsEnabled - They are not enabled in certain situations
- *                                             like when they are in the WebIDE.
- * @property {Boolean} canCloseToolbox - Are the tools in a context where they can be
- *                                       closed? This is not always the case, e.g. in the
- *                                       WebIDE.
+ * @param {string} focusedButton
+ *        The id of the focused button.
+ * @param {Object[]} hostTypes
+ *        Array of host type objects.
+ * @param {string} hostTypes[].position
+ *        Position name.
+ * @param {Function} hostTypes[].switchHost
+ *        Function to switch the host.
+ * @param {string} currentHostType
+ *        The current docking configuration.
+ * @param {boolean} areDockOptionsEnabled
+ *        They are not enabled in certain situations like when they are in the
+ *        WebIDE.
+ * @param {boolean} canCloseToolbox
+ *        Do we need to add UI for closing the toolbox? We don't when the
+ *        toolbox is undocked, for example.
+ * @param {boolean} isSplitConsoleActive
+ *         Is the split console currently visible?
+ *        toolbox is undocked, for example.
+ * @param {boolean|undefined} disableAutohide
+ *        Are we disabling the behavior where pop-ups are automatically
+ *        closed when clicking outside them?
+ *        (Only defined for the browser toolbox.)
+ * @param {Function} selectTool
+ *        Function to select a tool based on its id.
+ * @param {Function} toggleOptions
+ *        Function to turn the options panel on / off.
+ * @param {Function} toggleSplitConsole
+ *        Function to turn the split console on / off.
+ * @param {Function} toggleNoAutohide
+ *        Function to turn the disable pop-up autohide behavior on / off.
+ * @param {Function} closeToolbox
+ *        Completely close the toolbox.
+ * @param {Function} focusButton
+ *        Keep a record of the currently focused button.
+ * @param {Object} L10N
+ *        Localization interface.
  */
-function renderDockButtons(props) {
+function renderToolboxControls(props) {
   const {
     focusedButton,
     closeToolbox,
     hostTypes,
     focusButton,
     L10N,
-    areDockButtonsEnabled,
+    areDockOptionsEnabled,
     canCloseToolbox,
   } = props;
 
-  let buttons = [];
+  const meatballMenuButtonId = "toolbox-meatball-menu-button";
 
-  if (areDockButtonsEnabled) {
-    hostTypes.forEach(hostType => {
-      const id = "toolbox-dock-" + hostType.position;
-      buttons.push(button({
-        id,
-        onFocus: () => focusButton(id),
-        className: "toolbox-dock-button devtools-button",
-        title: L10N.getStr(`toolboxDockButtons.${hostType.position}.tooltip`),
-        onClick: e => {
-          hostType.switchHost();
-          focusButton(id);
-        },
-        tabIndex: focusedButton === id ? "0" : "-1",
-      }));
-    });
-  }
+  const meatballMenuButton = button({
+    id: meatballMenuButtonId,
+    onFocus: () => focusButton(meatballMenuButtonId),
+    className: "devtools-button",
+    title: L10N.getStr("toolbox.meatballMenu.button.tooltip"),
+    onClick: evt => {
+      showMeatballMenu(evt.target, {
+        ...props,
+        hostTypes: areDockOptionsEnabled ? hostTypes : [],
+      });
+    },
+    tabIndex: focusedButton === meatballMenuButtonId ? "0" : "-1",
+  });
 
   const closeButtonId = "toolbox-close";
 
@@ -236,7 +292,153 @@ function renderDockButtons(props) {
     : null;
 
   return div({id: "toolbox-controls"},
-    div({id: "toolbox-dock-buttons"}, ...buttons),
+    meatballMenuButton,
     closeButton
   );
+}
+
+/**
+ * Display the "..." menu (affectionately known as the meatball menu).
+ *
+ * @param {Object} menuButton
+ *        The <button> element from which the menu should pop out. The geometry
+ *        of this element is used to position the menu.
+ * @param {Object} props
+ *        Properties as described below.
+ * @param {string} props.currentToolId
+ *        The id of the currently selected tool.
+ * @param {Object[]} props.hostTypes
+ *        Array of host type objects.
+ *        This array will be empty if we shouldn't shouldn't show any dock
+ *        options.
+ * @param {string} props.hostTypes[].position
+ *        Position name.
+ * @param {Function} props.hostTypes[].switchHost
+ *        Function to switch the host.
+ * @param {string} props.currentHostType
+ *        The current docking configuration.
+ * @param {boolean} isSplitConsoleActive
+ *        Is the split console currently visible?
+ * @param {boolean|undefined} disableAutohide
+ *        Are we disabling the behavior where pop-ups are automatically
+ *        closed when clicking outside them.
+ *        (Only defined for the browser toolbox.)
+ * @param {Function} selectTool
+ *        Function to select a tool based on its id.
+ * @param {Function} toggleOptions
+ *        Function to turn the options panel on / off.
+ * @param {Function} toggleSplitConsole
+ *        Function to turn the split console on / off.
+ * @param {Function} toggleNoAutohide
+ *        Function to turn the disable pop-up autohide behavior on / off.
+ * @param {Object} props.L10N
+ *        Localization interface.
+ * @param {Object} props.toolbox
+ *        The devtools toolbox. Used by the Menu component to determine which
+ *        document to use.
+ */
+function showMeatballMenu(
+  menuButton,
+  {
+    currentToolId,
+    hostTypes,
+    currentHostType,
+    isSplitConsoleActive,
+    disableAutohide,
+    toggleOptions,
+    toggleSplitConsole,
+    toggleNoAutohide,
+    L10N,
+    toolbox,
+  }
+) {
+  const menu = new Menu({ id: "toolbox-meatball-menu" });
+
+  // Dock options
+  for (const hostType of hostTypes) {
+    const l10nkey =
+      hostType.position === "window"
+        ? "separateWindow"
+        : hostType.position;
+    menu.append(
+      new MenuItem({
+        id: `toolbox-meatball-menu-dock-${hostType.position}`,
+        label: L10N.getStr(`toolbox.meatballMenu.dock.${l10nkey}.label`),
+        click: () => hostType.switchHost(),
+        type: "checkbox",
+        checked: hostType.position === currentHostType,
+      })
+    );
+  }
+
+  if (menu.items.length) {
+    menu.append(new MenuItem({ type: "separator" }));
+  }
+
+  // Split console
+  if (currentToolId !== "webconsole") {
+    menu.append(new MenuItem({
+      id: "toolbox-meatball-menu-splitconsole",
+      label: L10N.getStr(
+        `toolbox.meatballMenu.${
+          isSplitConsoleActive ? "hideconsole" : "splitconsole"
+        }.label`
+      ),
+      accelerator: "Esc",
+      click: toggleSplitConsole,
+    }));
+  }
+
+  // Disable pop-up autohide
+  //
+  // If |disableAutohide| is undefined, it means this feature is not available
+  // in this context.
+  if (typeof disableAutohide !== "undefined") {
+    menu.append(new MenuItem({
+      id: "toolbox-meatball-menu-noautohide",
+      label: L10N.getStr("toolbox.meatballMenu.noautohide.label"),
+      type: "checkbox",
+      checked: disableAutohide,
+      click: toggleNoAutohide,
+    }));
+  }
+
+  // Settings
+  menu.append(new MenuItem({
+    id: "toolbox-meatball-menu-settings",
+    label: L10N.getStr("toolbox.meatballMenu.settings.label"),
+    accelerator: L10N.getStr("toolbox.help.key"),
+    click: () => toggleOptions(),
+  }));
+
+  if (menu.items.length) {
+    menu.append(new MenuItem({ type: "separator" }));
+  }
+
+  // Getting started
+  menu.append(new MenuItem({
+    id: "toolbox-meatball-menu-documentation",
+    label: L10N.getStr("toolbox.meatballMenu.documentation.label"),
+    click: () => {
+      openWebLink(
+        "https://developer.mozilla.org/docs/Tools?utm_source=devtools&utm_medium=tabbar-menu");
+    },
+  }));
+
+  // Give feedback
+  menu.append(new MenuItem({
+    id: "toolbox-meatball-menu-community",
+    label: L10N.getStr("toolbox.meatballMenu.community.label"),
+    click: () => {
+      openWebLink(
+        "https://discourse.mozilla.org/c/devtools?utm_source=devtools&utm_medium=tabbar-menu");
+    },
+  }));
+
+  const rect = menuButton.getBoundingClientRect();
+  const screenX = menuButton.ownerDocument.defaultView.mozInnerScreenX;
+  const screenY = menuButton.ownerDocument.defaultView.mozInnerScreenY;
+
+  // Display the popup below the button.
+  menu.popupWithZoom(rect.left + screenX, rect.bottom + screenY, toolbox);
 }

@@ -179,6 +179,15 @@ class MochitestRunner(MozbuildObject):
 
         return runtestsremote.run_test_harness(parser, options)
 
+    def run_geckoview_junit_test(self, context, **kwargs):
+        host_ret = verify_host_bin()
+        if host_ret != 0:
+            return host_ret
+
+        import runjunit
+        options = Namespace(**kwargs)
+        return runjunit.run_test_harness(parser, options)
+
     def run_robocop_test(self, context, tests, suite=None, **kwargs):
         host_ret = verify_host_bin()
         if host_ret != 0:
@@ -241,6 +250,38 @@ def setup_argument_parser():
     return parser
 
 
+def setup_junit_argument_parser():
+    build_obj = MozbuildObject.from_environment(cwd=here)
+
+    build_path = os.path.join(build_obj.topobjdir, 'build')
+    if build_path not in sys.path:
+        sys.path.append(build_path)
+
+    mochitest_dir = os.path.join(build_obj.topobjdir, '_tests', 'testing', 'mochitest')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+
+        # runtests.py contains MochitestDesktop, required by runjunit
+        import imp
+        path = os.path.join(build_obj.topobjdir, mochitest_dir, 'runtests.py')
+        if not os.path.exists(path):
+            path = os.path.join(here, "runtests.py")
+
+        with open(path, 'r') as fh:
+            imp.load_module('mochitest', fh, path,
+                            ('.py', 'r', imp.PY_SOURCE))
+
+        import runjunit
+
+        from mozrunner.devices.android_device import verify_android_device
+        verify_android_device(build_obj, install=False, xre=True)
+
+    global parser
+    parser = runjunit.JunitArgumentParser()
+    return parser
+
+
 # condition filters
 
 def is_buildapp_in(*apps):
@@ -300,16 +341,6 @@ class MachCommands(MachCommandBase):
         else:
             flavors = [f for f, v in ALL_FLAVORS.iteritems() if buildapp in v['enabled_apps']]
 
-        if not kwargs.get('log'):
-            # Create shared logger
-            default_format = self._mach_context.settings['test']['format']
-            default_level = self._mach_context.settings['test']['level']
-            kwargs['log'] = setup_logging('mach-mochitest', kwargs, {default_format: sys.stdout},
-                                          {'level': default_level})
-            for handler in kwargs['log'].handlers:
-                if isinstance(handler, StreamHandler):
-                    handler.formatter.inner.summary_on_shutdown = True
-
         from mozbuild.controller.building import BuildDriver
         self._ensure_state_subdir_exists('.')
 
@@ -320,6 +351,20 @@ class MachCommands(MachCommandBase):
         tests = []
         if resolve_tests:
             tests = mochitest.resolve_tests(test_paths, test_objects, cwd=self._mach_context.cwd)
+
+        if not kwargs.get('log'):
+            # Create shared logger
+            format_args = {'level': self._mach_context.settings['test']['level']}
+            if len(tests) == 1:
+                format_args['verbose'] = True
+                format_args['compact'] = False
+
+            default_format = self._mach_context.settings['test']['format']
+            kwargs['log'] = setup_logging('mach-mochitest', kwargs, {default_format: sys.stdout},
+                                          format_args)
+            for handler in kwargs['log'].handlers:
+                if isinstance(handler, StreamHandler):
+                    handler.formatter.inner.summary_on_shutdown = True
 
         driver = self._spawn(BuildDriver)
         driver.install_tests(tests)
@@ -399,10 +444,12 @@ class MachCommands(MachCommandBase):
             app = kwargs.get('app')
             if not app:
                 app = self.substs["ANDROID_PACKAGE_NAME"]
+            device_serial = kwargs.get('deviceSerial')
 
             # verify installation
-            verify_android_device(self, install=True, xre=False, app=app)
-            grant_runtime_permissions(self, app)
+            verify_android_device(self, install=True, xre=False, app=app,
+                                  device_serial=device_serial)
+            grant_runtime_permissions(self, app, device_serial=device_serial)
             run_mochitest = mochitest.run_android_test
         else:
             run_mochitest = mochitest.run_desktop_test
@@ -433,6 +480,40 @@ class MachCommands(MachCommandBase):
             kwargs['log'].shutdown()
 
         return overall
+
+
+@CommandProvider
+class GeckoviewJunitCommands(MachCommandBase):
+
+    @Command('geckoview-junit', category='testing',
+             conditions=[conditions.is_android],
+             description='Run remote geckoview junit tests.',
+             parser=setup_junit_argument_parser)
+    def run_junit(self, **kwargs):
+        self._ensure_state_subdir_exists('.')
+
+        from mozrunner.devices.android_device import (grant_runtime_permissions,
+                                                      get_adb_path,
+                                                      verify_android_device)
+        # verify installation
+        app = kwargs.get('app')
+        device_serial = kwargs.get('deviceSerial')
+        verify_android_device(self, install=True, xre=False, app=app,
+                              device_serial=device_serial)
+        grant_runtime_permissions(self, app, device_serial=device_serial)
+
+        if not kwargs.get('adbPath'):
+            kwargs['adbPath'] = get_adb_path(self)
+
+        if not kwargs.get('log'):
+            from mozlog.commandline import setup_logging
+            format_args = {'level': self._mach_context.settings['test']['level']}
+            default_format = self._mach_context.settings['test']['format']
+            kwargs['log'] = setup_logging('mach-mochitest', kwargs,
+                                          {default_format: sys.stdout}, format_args)
+
+        mochitest = self._spawn(MochitestRunner)
+        return mochitest.run_geckoview_junit_test(self._mach_context, **kwargs)
 
 
 @CommandProvider
@@ -477,8 +558,10 @@ class RobocopCommands(MachCommandBase):
         app = kwargs.get('app')
         if not app:
             app = self.substs["ANDROID_PACKAGE_NAME"]
-        verify_android_device(self, install=True, xre=False, app=app)
-        grant_runtime_permissions(self, app)
+        device_serial = kwargs.get('deviceSerial')
+        verify_android_device(self, install=True, xre=False, app=app,
+                              device_serial=device_serial)
+        grant_runtime_permissions(self, app, device_serial=device_serial)
 
         if not kwargs['adbPath']:
             kwargs['adbPath'] = get_adb_path(self)

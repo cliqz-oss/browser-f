@@ -487,6 +487,17 @@ public:
     mScrollableRect = aScrollableRect;
   }
 
+  // If the frame is in vertical-RTL writing mode(E.g. "writing-mode:
+  // vertical-rl" in CSS), or if it's in horizontal-RTL writing-mode(E.g.
+  // "writing-mode: horizontal-tb; direction: rtl;" in CSS), then this function
+  // returns true. From the representation perspective, frames whose horizontal
+  // contents start at rightside also cause their horizontal scrollbars, if any,
+  // initially start at rightside. So we can also learn about the initial side
+  // of the horizontal scrollbar for the frame by calling this function.
+  bool IsHorizontalContentRightToLeft() {
+    return mScrollableRect.x < 0;
+  }
+
   void SetPaintRequestTime(const TimeStamp& aTime) {
     mPaintRequestTime = aTime;
   }
@@ -822,6 +833,7 @@ public:
     , mScrollClip()
     , mHasScrollgrab(false)
     , mIsLayersIdRoot(false)
+    , mIsAutoDirRootContentRTL(false)
     , mUsesContainerScrolling(false)
     , mForceDisableApz(false)
     , mOverscrollBehavior()
@@ -839,6 +851,7 @@ public:
            mScrollClip == aOther.mScrollClip &&
            mHasScrollgrab == aOther.mHasScrollgrab &&
            mIsLayersIdRoot == aOther.mIsLayersIdRoot &&
+           mIsAutoDirRootContentRTL == aOther.mIsAutoDirRootContentRTL &&
            mUsesContainerScrolling == aOther.mUsesContainerScrolling &&
            mForceDisableApz == aOther.mForceDisableApz &&
            mDisregardedDirection == aOther.mDisregardedDirection &&
@@ -933,6 +946,12 @@ public:
   bool IsLayersIdRoot() const {
     return mIsLayersIdRoot;
   }
+  void SetIsAutoDirRootContentRTL(bool aValue) {
+    mIsAutoDirRootContentRTL = aValue;
+  }
+  bool IsAutoDirRootContentRTL() const {
+    return mIsAutoDirRootContentRTL;
+  }
   // Implemented out of line because the implementation needs gfxPrefs.h
   // and we don't want to include that from FrameMetrics.h.
   void SetUsesContainerScrolling(bool aValue);
@@ -1001,6 +1020,17 @@ private:
   // we don't have a root scroll frame) for its layers id.
   bool mIsLayersIdRoot:1;
 
+  // The AutoDirRootContent is the <body> element in an HTML document, or the
+  // root scrollframe if there is no body. This member variable indicates
+  // whether this element's content in the horizontal direction starts from
+  // right to left (e.g. it's true either if "writing-mode: vertical-rl", or
+  // "writing-mode: horizontal-tb; direction: rtl" in CSS).
+  // When we do auto-dir scrolling (@see mozilla::WheelDeltaAdjustmentStrategy
+  // or refer to bug 1358017 for details), setting a pref can make the code use
+  // the writing mode of this root element instead of the target scrollframe,
+  // and so we need to know if the writing mode is RTL or not.
+  bool mIsAutoDirRootContentRTL:1;
+
   // True if scrolling using containers, false otherwise. This can be removed
   // when containerful scrolling is eliminated.
   bool mUsesContainerScrolling:1;
@@ -1040,18 +1070,18 @@ private:
  * mScrollId corresponds to the actual frame that is scrollable.
  */
 struct ScrollableLayerGuid {
-  uint64_t mLayersId;
+  LayersId mLayersId;
   uint32_t mPresShellId;
   FrameMetrics::ViewID mScrollId;
 
   ScrollableLayerGuid()
-    : mLayersId(0)
+    : mLayersId{0}
     , mPresShellId(0)
     , mScrollId(0)
   {
   }
 
-  ScrollableLayerGuid(uint64_t aLayersId, uint32_t aPresShellId,
+  ScrollableLayerGuid(LayersId aLayersId, uint32_t aPresShellId,
                       FrameMetrics::ViewID aScrollId)
     : mLayersId(aLayersId)
     , mPresShellId(aPresShellId)
@@ -1059,7 +1089,7 @@ struct ScrollableLayerGuid {
   {
   }
 
-  ScrollableLayerGuid(uint64_t aLayersId, const FrameMetrics& aMetrics)
+  ScrollableLayerGuid(LayersId aLayersId, const FrameMetrics& aMetrics)
     : mLayersId(aLayersId)
     , mPresShellId(aMetrics.GetPresShellId())
     , mScrollId(aMetrics.GetScrollId())
@@ -1105,15 +1135,47 @@ struct ScrollableLayerGuid {
     return false;
   }
 
-  PLDHashNumber Hash() const
+  // Helper structs to use as hash/equality functions in std::unordered_map. e.g.
+  // std::unordered_map<ScrollableLayerGuid,
+  //                    ValueType,
+  //                    ScrollableLayerGuid::HashFn> myMap;
+  // std::unordered_map<ScrollableLayerGuid,
+  //                    ValueType,
+  //                    ScrollableLayerGuid::HashIgnoringPresShellFn,
+  //                    ScrollableLayerGuid::EqualIgnoringPresShellFn> myMap;
+
+  struct HashFn
   {
-    return HashGeneric(mLayersId, mPresShellId, mScrollId);
-  }
+    std::size_t operator()(const ScrollableLayerGuid& aGuid) const
+    {
+      return HashGeneric(uint64_t(aGuid.mLayersId),
+                         aGuid.mPresShellId,
+                         aGuid.mScrollId);
+    }
+  };
+
+  struct HashIgnoringPresShellFn
+  {
+    std::size_t operator()(const ScrollableLayerGuid& aGuid) const
+    {
+      return HashGeneric(uint64_t(aGuid.mLayersId),
+                         aGuid.mScrollId);
+    }
+  };
+
+  struct EqualIgnoringPresShellFn
+  {
+    bool operator()(const ScrollableLayerGuid& lhs, const ScrollableLayerGuid& rhs) const
+    {
+      return lhs.mLayersId == rhs.mLayersId
+          && lhs.mScrollId == rhs.mScrollId;
+    }
+  };
 };
 
 template <int LogLevel>
 gfx::Log<LogLevel>& operator<<(gfx::Log<LogLevel>& log, const ScrollableLayerGuid& aGuid) {
-  return log << '(' << aGuid.mLayersId << ',' << aGuid.mPresShellId << ',' << aGuid.mScrollId << ')';
+  return log << '(' << uint64_t(aGuid.mLayersId) << ',' << aGuid.mPresShellId << ',' << aGuid.mScrollId << ')';
 }
 
 struct ZoomConstraints {
@@ -1166,14 +1228,6 @@ struct ZoomConstraints {
   bool operator!=(const ZoomConstraints& other) const
   {
     return !(*this == other);
-  }
-};
-
-struct ScrollableLayerGuidHash
-{
-  std::size_t operator()(const ScrollableLayerGuid& Guid) const
-  {
-    return Guid.Hash();
   }
 };
 

@@ -4,14 +4,18 @@
 
 #include "VideoUtils.h"
 
+#include <functional>
+#include <stdint.h>
+
+#include "CubebUtils.h"
 #include "ImageContainer.h"
 #include "MediaContainerType.h"
-#include "MediaPrefs.h"
 #include "MediaResource.h"
 #include "TimeUnits.h"
 #include "VorbisUtils.h"
 #include "mozilla/Base64.h"
 #include "mozilla/SharedThreadPool.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/SystemGroup.h"
 #include "mozilla/TaskCategory.h"
 #include "mozilla/TaskQueue.h"
@@ -25,9 +29,6 @@
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 
-#include <functional>
-#include <stdint.h>
-
 namespace mozilla {
 
 NS_NAMED_LITERAL_CSTRING(kEMEKeySystemClearkey, "org.w3.clearkey");
@@ -36,10 +37,15 @@ NS_NAMED_LITERAL_CSTRING(kEMEKeySystemWidevine, "com.widevine.alpha");
 using layers::PlanarYCbCrImage;
 using media::TimeUnit;
 
-CheckedInt64 SaferMultDiv(int64_t aValue, uint32_t aMul, uint32_t aDiv) {
-  int64_t major = aValue / aDiv;
-  int64_t remainder = aValue % aDiv;
-  return CheckedInt64(remainder) * aMul / aDiv + CheckedInt64(major) * aMul;
+CheckedInt64 SaferMultDiv(int64_t aValue, uint64_t aMul, uint64_t aDiv) {
+  if (aMul > INT64_MAX || aDiv > INT64_MAX) {
+    return CheckedInt64(INT64_MAX) + 1; // Return an invalid checked int.
+  }
+  int64_t mul = aMul;
+  int64_t div = aDiv;
+  int64_t major = aValue / div;
+  int64_t remainder = aValue % div;
+  return CheckedInt64(remainder) * mul / div + CheckedInt64(major) * mul;
 }
 
 // Converts from number of audio frames to microseconds, given the specified
@@ -160,6 +166,26 @@ void DownmixStereoToMono(mozilla::AudioDataValue* aBuffer,
     sample = (aBuffer[fIdx*channels] + aBuffer[fIdx*channels + 1]) * 0.5;
     aBuffer[fIdx*channels] = aBuffer[fIdx*channels + 1] = sample;
   }
+}
+
+uint32_t
+DecideAudioPlaybackChannels(const AudioInfo& info)
+{
+  if (StaticPrefs::accessibility_monoaudio_enable()) {
+    return 1;
+  }
+
+  if (StaticPrefs::MediaForcestereoEnabled()) {
+    return 2;
+  }
+
+  return info.mChannels;
+}
+
+bool
+IsDefaultPlaybackDeviceMono()
+{
+  return CubebUtils::MaxNumberOfChannels() == 1;
 }
 
 bool

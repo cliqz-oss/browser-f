@@ -7,7 +7,7 @@
  * Test if custom request headers are not ignored (bug 1270096 and friends)
  */
 
-add_task(async function () {
+add_task(async function() {
   let { monitor } = await initNetMonitor(SIMPLE_SJS);
   info("Starting test... ");
 
@@ -48,11 +48,9 @@ add_task(async function () {
   }
 
   // Wait until requestHeaders packet gets updated.
-  await waitUntil(() => {
-    item = getSortedRequests(store.getState()).get(0);
-    return item.requestHeaders;
-  });
+  await waitForRequestData(store, ["requestHeaders"]);
 
+  item = getSortedRequests(store.getState()).get(0);
   is(item.method, "POST", "The request has the right method");
   is(item.url, requestUrl, "The request has the right URL");
 

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+extern crate serde_bytes;
+
 use font::{FontInstanceKey, FontKey, FontTemplate};
 use std::sync::Arc;
 use {DevicePoint, DeviceUintRect, IdNamespace, TileOffset, TileSize};
@@ -76,10 +78,17 @@ pub struct ImageDescriptor {
     pub stride: Option<u32>,
     pub offset: u32,
     pub is_opaque: bool,
+    pub allow_mipmaps: bool,
 }
 
 impl ImageDescriptor {
-    pub fn new(width: u32, height: u32, format: ImageFormat, is_opaque: bool) -> Self {
+    pub fn new(
+        width: u32,
+        height: u32,
+        format: ImageFormat,
+        is_opaque: bool,
+        allow_mipmaps: bool,
+    ) -> Self {
         ImageDescriptor {
             width,
             height,
@@ -87,6 +96,7 @@ impl ImageDescriptor {
             stride: None,
             offset: 0,
             is_opaque,
+            allow_mipmaps,
         }
     }
 
@@ -102,9 +112,24 @@ impl ImageDescriptor {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ImageData {
-    Raw(Arc<Vec<u8>>),
-    Blob(BlobImageData),
+    Raw(#[serde(with = "serde_image_data_raw")] Arc<Vec<u8>>),
+    Blob(#[serde(with = "serde_bytes")] BlobImageData),
     External(ExternalImageData),
+}
+
+mod serde_image_data_raw {
+    extern crate serde_bytes;
+
+    use std::sync::Arc;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &Arc<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error> {
+        serde_bytes::serialize(bytes.as_slice(), serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Arc<Vec<u8>>, D::Error> {
+        serde_bytes::deserialize(deserializer).map(Arc::new)
+    }
 }
 
 impl ImageData {
@@ -122,8 +147,8 @@ impl ImageData {
 
     #[inline]
     pub fn is_blob(&self) -> bool {
-        match self {
-            &ImageData::Blob(_) => true,
+        match *self {
+            ImageData::Blob(_) => true,
             _ => false,
         }
     }
@@ -166,6 +191,8 @@ pub trait BlobImageRenderer: Send {
     fn delete_font(&mut self, key: FontKey);
 
     fn delete_font_instance(&mut self, key: FontInstanceKey);
+
+    fn clear_namespace(&mut self, namespace: IdNamespace);
 }
 
 pub type BlobImageData = Vec<u8>;

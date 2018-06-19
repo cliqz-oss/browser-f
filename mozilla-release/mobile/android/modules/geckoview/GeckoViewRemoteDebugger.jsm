@@ -6,13 +6,12 @@
 
 var EXPORTED_SYMBOLS = ["GeckoViewRemoteDebugger"];
 
-ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/GeckoViewUtils.jsm");
 
-XPCOMUtils.defineLazyGetter(this, "dump", () =>
-  ChromeUtils.import("resource://gre/modules/AndroidLog.jsm", {})
-    .AndroidLog.d.bind(null, "ViewRemoteDebugger"));
+XPCOMUtils.defineLazyModuleGetters(this, {
+  Services: "resource://gre/modules/Services.jsm",
+});
 
 XPCOMUtils.defineLazyGetter(this, "DebuggerServer", () => {
   const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
@@ -20,57 +19,65 @@ XPCOMUtils.defineLazyGetter(this, "DebuggerServer", () => {
   return DebuggerServer;
 });
 
-function debug(aMsg) {
-  // dump(aMsg);
-}
+GeckoViewUtils.initLogging("GeckoView.RemoteDebugger", this);
 
-class GeckoViewRemoteDebugger extends GeckoViewModule {
-  init() {
+var GeckoViewRemoteDebugger = {
+  observe(aSubject, aTopic, aData) {
+    if (aTopic !== "nsPref:changed") {
+      return;
+    }
+
+    if (Services.prefs.getBoolPref(aData, false)) {
+      this.onEnable();
+    } else {
+      this.onDisable();
+    }
+  },
+
+  onInit() {
+    debug `onInit`;
     this._isEnabled = false;
     this._usbDebugger = new USBRemoteDebugger();
-  }
+  },
 
-  onSettingsUpdate() {
-    let enabled = this.settings.useRemoteDebugger;
-
-    if (enabled && !this._isEnabled) {
-      this.register();
-    } else if (!enabled) {
-      this.unregister();
+  onEnable() {
+    if (this._isEnabled) {
+      return;
     }
-  }
 
-  register() {
+    debug `onEnable`;
     DebuggerServer.init();
     DebuggerServer.registerAllActors();
     DebuggerServer.registerModule("resource://gre/modules/dbg-browser-actors.js");
     DebuggerServer.allowChromeProcess = true;
     DebuggerServer.chromeWindowType = "navigator:geckoview";
 
-    let windowId = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIDOMWindowUtils)
-                              .outerWindowID;
-    let env = Cc["@mozilla.org/process/environment;1"]
+    const env = Cc["@mozilla.org/process/environment;1"]
               .getService(Ci.nsIEnvironment);
-    let dataDir = env.get("MOZ_ANDROID_DATA_DIR");
+    const dataDir = env.get("MOZ_ANDROID_DATA_DIR");
 
     if (!dataDir) {
-      debug("Missing env MOZ_ANDROID_DATA_DIR - aborting debugger server start");
+      warn `Missing env MOZ_ANDROID_DATA_DIR - aborting debugger server start`;
       return;
     }
 
     this._isEnabled = true;
     this._usbDebugger.stop();
 
-    let portOrPath = dataDir + "/firefox-debugger-socket-" + windowId;
+    const portOrPath = dataDir + "/firefox-debugger-socket";
     this._usbDebugger.start(portOrPath);
-  }
+  },
 
-  unregister() {
+  onDisable() {
+    if (!this._isEnabled) {
+      return;
+    }
+
+    debug `onDisable`;
     this._isEnabled = false;
     this._usbDebugger.stop();
-  }
-}
+  },
+};
 
 class USBRemoteDebugger {
   start(aPortOrPath) {
@@ -82,9 +89,9 @@ class USBRemoteDebugger {
       this._listener.portOrPath = aPortOrPath;
       this._listener.authenticator = authenticator;
       this._listener.open();
-      debug(`USB remote debugger - listening on ${aPortOrPath}`);
+      debug `USB remote debugger - listening on ${aPortOrPath}`;
     } catch (e) {
-      debug("Unable to start USB debugger server: " + e);
+      warn `Unable to start USB debugger server: ${e}`;
     }
   }
 
@@ -97,7 +104,7 @@ class USBRemoteDebugger {
       this._listener.close();
       this._listener = null;
     } catch (e) {
-      debug("Unable to stop USB debugger server: " + e);
+      warn `Unable to stop USB debugger server: ${e}`;
     }
   }
 

@@ -22,10 +22,6 @@ config = {
     "hostutils_manifest_path": "testing/config/tooltool-manifests/linux64/hostutils.manifest",
     "avds_dir": "/builds/worker/workspace/build/.android",
     "minidump_stackwalk_path": "/usr/local/bin/linux64-minidump_stackwalk",
-    "find_links": [
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
 
     "suite_definitions": {
         "mochitest": {
@@ -148,7 +144,6 @@ config = {
                 "--log-raw=%(raw_log_file)s",
                 "--log-errorsummary=%(error_summary_file)s",
                 "--robocop-apk=../../robocop.apk",
-                "--robocop-ini=robocop.ini",
             ],
         },
         "reftest": {
@@ -185,6 +180,21 @@ config = {
                 "--suite=crashtest",
             ],
             "tests": ["tests/testing/crashtest/crashtests.list",],
+        },
+        "jittest": {
+            "run_filename": "jit_test.py",
+            "testsdir": "jit-test/jit-test",
+            "options": [
+                "../../bin/js",
+                "--remote",
+                "-j",
+                "1",
+                "--localLib=../../bin",
+                "--no-slow",
+                "--no-progress",
+                "--format=automation",
+                "--jitflags=all",
+            ],
         },
         "jsreftest": {
             "run_filename": "remotereftest.py",
@@ -253,6 +263,16 @@ config = {
             "options": [
                 "--utility-path=%(utility_path)s",
                 "--symbols-path=%(symbols_path)s",
+            ],
+        },
+        "geckoview-junit": {
+            "run_filename": "runjunit.py",
+            "testsdir": "mochitest",
+            "options": [
+                "--certificate-path=%(certs_path)s",
+                "--remote-webserver=%(remote_webserver)s",
+                "--symbols-path=%(symbols_path)s",
+                "--utility-path=%(utility_path)s",
             ],
         },
 

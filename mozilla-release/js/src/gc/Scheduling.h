@@ -340,9 +340,9 @@ class GCSchedulingTunables
     /*
      * JSGC_MAX_NURSERY_BYTES
      *
-     * Maximum nursery size for each zone group.
+     * Maximum nursery size for each runtime.
      */
-    ActiveThreadData<size_t> gcMaxNurseryBytes_;
+    MainThreadData<size_t> gcMaxNurseryBytes_;
 
     /*
      * JSGC_ALLOCATION_THRESHOLD
@@ -351,7 +351,7 @@ class GCSchedulingTunables
      * usage.gcBytes() surpasses threshold.gcTriggerBytes() for a zone, the
      * zone may be scheduled for a GC, depending on the exact circumstances.
      */
-    ActiveThreadOrGCTaskData<size_t> gcZoneAllocThresholdBase_;
+    MainThreadOrGCTaskData<size_t> gcZoneAllocThresholdBase_;
 
     /*
      * JSGC_ALLOCATION_THRESHOLD_FACTOR
@@ -381,7 +381,7 @@ class GCSchedulingTunables
      * Totally disables |highFrequencyGC|, the HeapGrowthFactor, and other
      * tunables that make GC non-deterministic.
      */
-    ActiveThreadData<bool> dynamicHeapGrowthEnabled_;
+    MainThreadData<bool> dynamicHeapGrowthEnabled_;
 
     /*
      * JSGC_HIGH_FREQUENCY_TIME_LIMIT
@@ -389,7 +389,7 @@ class GCSchedulingTunables
      * We enter high-frequency mode if we GC a twice within this many
      * microseconds. This value is stored directly in microseconds.
      */
-    ActiveThreadData<uint64_t> highFrequencyThresholdUsec_;
+    MainThreadData<uint64_t> highFrequencyThresholdUsec_;
 
     /*
      * JSGC_HIGH_FREQUENCY_LOW_LIMIT
@@ -400,10 +400,10 @@ class GCSchedulingTunables
      * When in the |highFrequencyGC| mode, these parameterize the per-zone
      * "HeapGrowthFactor" computation.
      */
-    ActiveThreadData<uint64_t> highFrequencyLowLimitBytes_;
-    ActiveThreadData<uint64_t> highFrequencyHighLimitBytes_;
-    ActiveThreadData<double> highFrequencyHeapGrowthMax_;
-    ActiveThreadData<double> highFrequencyHeapGrowthMin_;
+    MainThreadData<uint64_t> highFrequencyLowLimitBytes_;
+    MainThreadData<uint64_t> highFrequencyHighLimitBytes_;
+    MainThreadData<double> highFrequencyHeapGrowthMax_;
+    MainThreadData<double> highFrequencyHeapGrowthMin_;
 
     /*
      * JSGC_LOW_FREQUENCY_HEAP_GROWTH
@@ -411,14 +411,14 @@ class GCSchedulingTunables
      * When not in |highFrequencyGC| mode, this is the global (stored per-zone)
      * "HeapGrowthFactor".
      */
-    ActiveThreadData<double> lowFrequencyHeapGrowth_;
+    MainThreadData<double> lowFrequencyHeapGrowth_;
 
     /*
      * JSGC_DYNAMIC_MARK_SLICE
      *
      * Doubles the length of IGC slices when in the |highFrequencyGC| mode.
      */
-    ActiveThreadData<bool> dynamicMarkSliceEnabled_;
+    MainThreadData<bool> dynamicMarkSliceEnabled_;
 
     /*
      * JSGC_MIN_EMPTY_CHUNK_COUNT
@@ -428,6 +428,14 @@ class GCSchedulingTunables
      */
     UnprotectedData<uint32_t> minEmptyChunkCount_;
     UnprotectedData<uint32_t> maxEmptyChunkCount_;
+
+    /*
+     * JSGC_NURSERY_FREE_THRESHOLD_FOR_IDLE_COLLECTION
+     *
+     * Attempt to run a minor GC in the idle time if the free space falls
+     * below this threshold.
+     */
+    UnprotectedData<uint32_t> nurseryFreeThresholdForIdleCollection_;
 
   public:
     GCSchedulingTunables();
@@ -449,6 +457,9 @@ class GCSchedulingTunables
     bool isDynamicMarkSliceEnabled() const { return dynamicMarkSliceEnabled_; }
     unsigned minEmptyChunkCount(const AutoLockGC&) const { return minEmptyChunkCount_; }
     unsigned maxEmptyChunkCount() const { return maxEmptyChunkCount_; }
+    uint32_t nurseryFreeThresholdForIdleCollection() const {
+        return nurseryFreeThresholdForIdleCollection_;
+    }
 
     MOZ_MUST_USE bool setParameter(JSGCParamKey key, uint32_t value, const AutoLockGC& lock);
     void resetParameter(JSGCParamKey key, const AutoLockGC& lock);
@@ -473,7 +484,7 @@ class GCSchedulingState
      * growth factor is a measure of how large (as a percentage of the last GC)
      * the heap is allowed to grow before we try to schedule another GC.
      */
-    ActiveThreadData<bool> inHighFrequencyGCMode_;
+    MainThreadData<bool> inHighFrequencyGCMode_;
 
   public:
     GCSchedulingState()
@@ -500,7 +511,7 @@ class MemoryCounter
     size_t maxBytes_;
 
     // The counter value at the start of a GC.
-    ActiveThreadData<size_t> bytesAtStartOfGC_;
+    MainThreadData<size_t> bytesAtStartOfGC_;
 
     // Which kind of GC has been triggered if any.
     mozilla::Atomic<TriggerKind, mozilla::ReleaseAcquire> triggered_;
@@ -538,9 +549,6 @@ class MemoryCounter
 
     void updateOnGCStart();
     void updateOnGCEnd(const GCSchedulingTunables& tunables, const AutoLockGC& lock);
-
-  private:
-    void reset();
 };
 
 // This class encapsulates the data that determines when we need to do a zone GC.

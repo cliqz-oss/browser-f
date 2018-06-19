@@ -9,6 +9,7 @@
 
 #include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Headers.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "nsWeakReference.h"
@@ -91,6 +92,9 @@ public:
     return this;
   }
 
+  void
+  NoteTerminating();
+
   already_AddRefed<Console>
   GetConsole(ErrorResult& aRv);
 
@@ -130,11 +134,11 @@ public:
   ClearTimeout(int32_t aHandle);
   int32_t
   SetInterval(JSContext* aCx, Function& aHandler,
-              const Optional<int32_t>& aTimeout,
+              const int32_t aTimeout,
               const Sequence<JS::Value>& aArguments, ErrorResult& aRv);
   int32_t
   SetInterval(JSContext* aCx, const nsAString& aHandler,
-              const Optional<int32_t>& aTimeout,
+              const int32_t aTimeout,
               const Sequence<JS::Value>& /* unused */, ErrorResult& aRv);
   void
   ClearInterval(int32_t aHandle);
@@ -264,7 +268,7 @@ public:
               ErrorResult& aRv);
 
   void
-  Close(JSContext* aCx);
+  Close();
 
   IMPL_EVENT_HANDLER(message)
   IMPL_EVENT_HANDLER(messageerror)
@@ -290,7 +294,7 @@ public:
   }
 
   void
-  Close(JSContext* aCx);
+  Close();
 
   IMPL_EVENT_HANDLER(connect)
 };
@@ -345,13 +349,11 @@ public:
   void
   SetOnfetch(mozilla::dom::EventHandlerNonNull* aCallback);
 
-  using DOMEventTargetHelper::AddEventListener;
-  virtual void
-  AddEventListener(const nsAString& aType,
-                   dom::EventListener* aListener,
-                   const dom::AddEventListenerOptionsOrBoolean& aOptions,
-                   const dom::Nullable<bool>& aWantsUntrusted,
-                   ErrorResult& aRv) override;
+  // We only need to override the string version of EventListenerAdded, because
+  // the atom version should never be called on workers.  Until bug 1450167 is
+  // fixed, at least.
+  using DOMEventTargetHelper::EventListenerAdded;
+  void EventListenerAdded(const nsAString& aType) override;
 };
 
 class WorkerDebuggerGlobalScope final : public DOMEventTargetHelper,
@@ -459,7 +461,7 @@ private:
 inline nsISupports*
 ToSupports(mozilla::dom::WorkerGlobalScope* aScope)
 {
-  return static_cast<nsIDOMEventTarget*>(aScope);
+  return static_cast<mozilla::dom::EventTarget*>(aScope);
 }
 
 #endif /* mozilla_dom_workerscope_h__ */

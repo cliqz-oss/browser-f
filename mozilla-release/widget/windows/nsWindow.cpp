@@ -58,6 +58,7 @@
 #include "gfxEnv.h"
 #include "gfxPlatform.h"
 #include "gfxPrefs.h"
+#include "mozilla/AutoRestore.h"
 #include "mozilla/Logging.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MiscEvents.h"
@@ -85,7 +86,6 @@
 #include "mozilla/WidgetTraceEvent.h"
 #include "nsIAppShell.h"
 #include "nsISupportsPrimitives.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIKeyEventInPluginCallback.h"
 #include "nsITheme.h"
 #include "nsIObserverService.h"
@@ -126,6 +126,7 @@
 #include "WinTaskbar.h"
 #include "WidgetUtils.h"
 #include "nsIWidgetListener.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/Touch.h"
 #include "mozilla/gfx/2D.h"
 #include "nsToolkitCompsCID.h"
@@ -610,6 +611,7 @@ nsWindow::nsWindow(bool aIsChildWindow)
   mFullscreenMode       = false;
   mMousePresent         = false;
   mDestroyCalled        = false;
+  mIsEarlyBlankWindow   = false;
   mHasTaskbarIconBeenCreated = false;
   mMouseTransparent     = false;
   mPickerDisplayCount   = 0;
@@ -1574,6 +1576,11 @@ nsWindow::Show(bool bState)
         // speed up the initial paint after show for
         // top level windows:
         syncInvalidate = true;
+
+        // Set the cursor before showing the window to avoid the default wait
+        // cursor.
+        SetCursor(eCursor_standard);
+
         switch (mSizeMode) {
           case nsSizeMode_Fullscreen:
             ::ShowWindow(mWnd, SW_SHOW);
@@ -4096,6 +4103,12 @@ nsWindow::GetMaxTouchPoints() const
   return WinUtils::GetMaxTouchPoints();
 }
 
+void
+nsWindow::SetWindowClass(const nsAString& xulWinType)
+{
+  mIsEarlyBlankWindow = xulWinType.EqualsLiteral("navigator:blank");
+}
+
 /**************************************************************
  **************************************************************
  **
@@ -4312,7 +4325,7 @@ bool nsWindow::TouchEventShouldStartDrag(EventMessage aEventMessage,
                              WidgetMouseEvent::eReal);
     hittest.mRefPoint = aEventPoint;
     hittest.mIgnoreRootScrollFrame = true;
-    hittest.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+    hittest.inputSource = MouseEventBinding::MOZ_SOURCE_TOUCH;
     DispatchInputEvent(&hittest);
 
     EventTarget* target = hittest.GetDOMEventTarget();
@@ -4416,7 +4429,7 @@ nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
 
   // Since it is unclear whether a user will use the digitizer,
   // Postpone initialization until first PEN message will be found.
-  if (nsIDOMMouseEvent::MOZ_SOURCE_PEN == aInputSource
+  if (MouseEventBinding::MOZ_SOURCE_PEN == aInputSource
       // Messages should be only at topLevel window.
       && nsWindowType::eWindowType_toplevel == mWindowType
       // Currently this scheme is used only when pointer events is enabled.
@@ -5670,7 +5683,7 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
         pointerInfo.pointerId = pointerId;
         DispatchMouseEvent(eMouseExitFromWidget, wParam, pos, false,
                            WidgetMouseEvent::eLeftButton,
-                           nsIDOMMouseEvent::MOZ_SOURCE_PEN, &pointerInfo);
+                           MouseEventBinding::MOZ_SOURCE_PEN, &pointerInfo);
         InkCollector::sInkCollector->ClearTarget();
         InkCollector::sInkCollector->ClearPointerId();
       }
@@ -5682,7 +5695,7 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       // If the context menu is brought up by a touch long-press, then
       // the APZ code is responsible for dealing with this, so we don't
       // need to do anything.
-      if (mTouchWindow && MOUSE_INPUT_SOURCE() == nsIDOMMouseEvent::MOZ_SOURCE_TOUCH) {
+      if (mTouchWindow && MOUSE_INPUT_SOURCE() == MouseEventBinding::MOZ_SOURCE_TOUCH) {
         MOZ_ASSERT(mAPZC); // since mTouchWindow is true, APZ must be enabled
         result = true;
         break;
@@ -5906,6 +5919,9 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
     case WM_DISPLAYCHANGE:
     {
       ScreenHelperWin::RefreshScreens();
+      if (mWidgetListener) {
+        mWidgetListener->UIResolutionChanged();
+      }
       break;
     }
 
@@ -6795,11 +6811,24 @@ void nsWindow::OnWindowPosChanged(WINDOWPOS* wp)
         return;
       }
     }
+  }
 
-    // Recalculate the width and height based on the client area for gecko events.
-    LayoutDeviceIntSize clientSize(newWidth, newHeight);
+  // Notify the widget listener for size change of client area for gecko
+  // events. This needs to be done when either window size is changed,
+  // or window frame is changed. They may not happen together.
+  // However, we don't invoke that for popup when window frame changes,
+  // because popups may trigger frame change before size change via
+  // {Set,Clear}ThemeRegion they invoke in Resize. That would make the
+  // code below call OnResize with a wrong client size first, which can
+  // lead to flickerling for some popups.
+  if (!(wp->flags & SWP_NOSIZE) ||
+      ((wp->flags & SWP_FRAMECHANGED) && !IsPopup())) {
+    RECT r;
+    LayoutDeviceIntSize clientSize;
     if (::GetClientRect(mWnd, &r)) {
       clientSize = WinUtils::ToIntRect(r).Size();
+    } else {
+      clientSize = mBounds.Size();
     }
     // Send a gecko resize event
     OnResize(clientSize);
@@ -7013,7 +7042,7 @@ bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
     wheelEvent.button      = 0;
     wheelEvent.mTime       = ::GetMessageTime();
     wheelEvent.mTimeStamp  = GetMessageTimeStamp(wheelEvent.mTime);
-    wheelEvent.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+    wheelEvent.inputSource = MouseEventBinding::MOZ_SOURCE_TOUCH;
 
     bool endFeedback = true;
 
@@ -7050,7 +7079,7 @@ bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
   event.button    = 0;
   event.mTime     = ::GetMessageTime();
   event.mTimeStamp = GetMessageTimeStamp(event.mTime);
-  event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+  event.inputSource = MouseEventBinding::MOZ_SOURCE_TOUCH;
 
   nsEventStatus status;
   DispatchEvent(&event, status);
@@ -7536,18 +7565,20 @@ void nsWindow::SetWindowTranslucencyInner(nsTransparencyMode aMode)
 
   LONG_PTR style = ::GetWindowLongPtrW(hWnd, GWL_STYLE),
     exStyle = ::GetWindowLongPtr(hWnd, GWL_EXSTYLE);
- 
-   if (parent->mIsVisible)
-     style |= WS_VISIBLE;
-   if (parent->mSizeMode == nsSizeMode_Maximized)
-     style |= WS_MAXIMIZE;
-   else if (parent->mSizeMode == nsSizeMode_Minimized)
-     style |= WS_MINIMIZE;
 
-   if (aMode == eTransparencyTransparent)
-     exStyle |= WS_EX_LAYERED;
-   else
-     exStyle &= ~WS_EX_LAYERED;
+  if (parent->mIsVisible) {
+    style |= WS_VISIBLE;
+    if (parent->mSizeMode == nsSizeMode_Maximized) {
+      style |= WS_MAXIMIZE;
+    } else if (parent->mSizeMode == nsSizeMode_Minimized) {
+      style |= WS_MINIMIZE;
+    }
+  }
+
+  if (aMode == eTransparencyTransparent)
+    exStyle |= WS_EX_LAYERED;
+  else
+    exStyle &= ~WS_EX_LAYERED;
 
   VERIFY_WINDOW_STYLE(style);
   ::SetWindowLongPtrW(hWnd, GWL_STYLE, style);
@@ -7932,7 +7963,7 @@ nsWindow::DealWithPopups(HWND aWnd, UINT aMessage,
     case WM_NCMBUTTONDOWN:
       if (nativeMessage != WM_TOUCH &&
           IsTouchSupportEnabled(aWnd) &&
-          MOUSE_INPUT_SOURCE() == nsIDOMMouseEvent::MOZ_SOURCE_TOUCH) {
+          MOUSE_INPUT_SOURCE() == MouseEventBinding::MOZ_SOURCE_TOUCH) {
         // If any of these mouse events are really compatibility events that
         // Windows is sending for touch inputs, then don't allow them to dismiss
         // popups when APZ is enabled (instead we do the dismissing as part of
@@ -8464,7 +8495,7 @@ bool nsWindow::OnPointerEvents(UINT msg, WPARAM aWParam, LPARAM aLParam)
   // location
   LPARAM newLParam = lParamToClient(aLParam);
   DispatchMouseEvent(message, aWParam, newLParam, false, button,
-                     nsIDOMMouseEvent::MOZ_SOURCE_PEN, &pointerInfo);
+                     MouseEventBinding::MOZ_SOURCE_PEN, &pointerInfo);
   // Consume WM_POINTER* to stop Windows fires WM_*BUTTONDOWN / WM_*BUTTONUP
   // WM_MOUSEMOVE.
   return true;

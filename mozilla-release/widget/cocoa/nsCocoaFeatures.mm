@@ -174,11 +174,24 @@ nsCocoaFeatures::OnHighSierraOrLater()
     return (OSXVersion() >= MAC_OS_X_VERSION_10_13_HEX);
 }
 
-/* Version of OnSierraOrLater as a global function callable from C (cairo) */
-bool
-Gecko_OnSierraOrLater()
+/* static */ bool
+nsCocoaFeatures::OnSierraExactly()
 {
-    return nsCocoaFeatures::OnSierraOrLater();
+    return (OSXVersion() >= MAC_OS_X_VERSION_10_12_HEX) &&
+           (OSXVersion() < MAC_OS_X_VERSION_10_13_HEX);
+}
+
+/* Version of OnSierraExactly as global function callable from cairo & skia */
+bool
+Gecko_OnSierraExactly()
+{
+    return nsCocoaFeatures::OnSierraExactly();
+}
+
+bool
+Gecko_OnHighSierraOrLater()
+{
+    return nsCocoaFeatures::OnHighSierraOrLater();
 }
 
 /* static */ bool

@@ -107,6 +107,7 @@ The following is a sample histogram declaration from ``Histograms.json`` for a h
 
 .. code-block:: json
 
+  {
     "MEMORY_RESIDENT": {
       "record_in_processes": ["main", "content"],
       "alert_emails": ["team@mozilla.xyz"],
@@ -117,7 +118,8 @@ The following is a sample histogram declaration from ``Histograms.json`` for a h
       "n_buckets": 50,
       "bug_numbers": [12345],
       "description": "Resident memory size (KB)"
-    },
+    }
+  }
 
 Histograms which track timings in milliseconds or microseconds should suffix their names with ``"_MS"`` and ``"_US"`` respectively. Flag-type histograms should have the suffix ``"_FLAG"`` in their name.
 
@@ -330,3 +332,27 @@ The ``Telemetry.h`` header also declares the helper classes ``AutoTimer`` and ``
     ...
     return NS_OK;
   }
+
+If the HistogramID is not known at compile time, one can use the ``RuntimeAutoTimer`` and ``RuntimeAutoCounter`` classes, which behave like the template parameterized ``AutoTimer`` and ``AutoCounter`` ones.
+
+.. code-block:: cpp
+
+  void
+  FunctionWithTiming(Telemetry::HistogramID aTelemetryID)
+  {
+    ...
+    Telemetry::RuntimeAutoTimer timer(aTelemetryID);
+    ...
+  }
+
+  int32_t
+  FunctionWithCounter(Telemetry::HistogramID aTelemetryID)
+  {
+    ...
+    Telemetry::RuntimeAutoCounter myCounter(aTelemetryID);
+    ++myCounter;
+    myCounter += 42;
+    ...
+  }
+
+Prefer using the template parameterized ``AutoTimer`` and ``AutoCounter`` on hot paths, if possible.

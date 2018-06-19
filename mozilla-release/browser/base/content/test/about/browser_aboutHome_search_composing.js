@@ -23,7 +23,7 @@ add_task(async function() {
 
     info("Setting up the mutation observer before synthesizing composition");
     let mutationPromise = ContentTask.spawn(browser, null, async function() {
-              let searchController = content.wrappedJSObject.gContentSearchController;
+      let searchController = content.wrappedJSObject.gContentSearchController;
 
       // Wait for the search suggestions to become visible.
       let table = searchController._suggestionsList;
@@ -53,10 +53,7 @@ add_task(async function() {
       searchController.selectedIndex = 1;
     });
 
-    await BrowserTestUtils.synthesizeComposition({
-      type: "compositionstart",
-      data: ""
-    }, browser);
+    // FYI: "compositionstart" will be dispatched automatically.
     await BrowserTestUtils.synthesizeCompositionChange({
       composition: {
         string: "x",

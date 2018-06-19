@@ -18,8 +18,6 @@ using mozilla::layers::TextureFlags from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::wr::MaybeExternalImageId from "mozilla/webrender/WebRenderTypes.h";
 
-using PlatformThreadId from "base/platform_thread.h";
-
 namespace mozilla {
 namespace layers {
 
@@ -39,13 +37,6 @@ child:
   async DidComposite(ImageCompositeNotification[] aNotifications);
 
 parent:
-  async ImageBridgeThreadId(PlatformThreadId aTreahdId);
-
-  // Creates a set of mappings between TextureReadLocks and an associated
-  // ReadLockHandle that can be used in Update, and persist until the
-  // next Update call.
-  async InitReadLocks(ReadLockInit[] locks);
-
   async Update(CompositableOperation[] ops, OpDestroy[] toDestroy, uint64_t fwdTransactionId);
 
   // First step of the destruction sequence. This puts ImageBridge

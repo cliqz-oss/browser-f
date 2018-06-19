@@ -187,11 +187,11 @@ class WindowTracker extends WindowTrackerBase {
 }
 
 /**
- * An event manager API provider which listens for an event in the Android
- * global EventDispatcher, and calls the given listener function whenever an event
- * is received. That listener function receives a `fire` object, which it can
- * use to dispatch events to the extension, and an object detailing the
- * EventDispatcher event that was received.
+ * Helper to create an event manager which listens for an event in the Android
+ * global EventDispatcher, and calls the given listener function whenever the
+ * event is received. That listener function receives a `fire` object,
+ * which it can use to dispatch events to the extension, and an object
+ * detailing the EventDispatcher event that was received.
  *
  * @param {BaseContext} context
  *        The extension context which the event manager belongs to.
@@ -202,10 +202,14 @@ class WindowTracker extends WindowTrackerBase {
  * @param {function} listener
  *        The listener function to call when an EventDispatcher event is
  *        recieved.
+ *
+ * @returns {object} An injectable api for the new event.
  */
-global.GlobalEventManager = class extends EventManager {
-  constructor(context, name, event, listener) {
-    super(context, name, fire => {
+global.makeGlobalEvent = function makeGlobalEvent(context, name, event, listener) {
+  return new EventManager({
+    context,
+    name,
+    register: fire => {
       let listener2 = {
         onEvent(event, data, callback) {
           listener(fire, data);
@@ -216,36 +220,8 @@ global.GlobalEventManager = class extends EventManager {
       return () => {
         GlobalEventDispatcher.unregisterListener(listener2, [event]);
       };
-    });
-  }
-};
-
-/**
- * An event manager API provider which listens for a DOM event in any browser
- * window, and calls the given listener function whenever an event is received.
- * That listener function receives a `fire` object, which it can use to dispatch
- * events to the extension, and a DOM event object.
- *
- * @param {BaseContext} context
- *        The extension context which the event manager belongs to.
- * @param {string} name
- *        The API name of the event manager, e.g.,"runtime.onMessage".
- * @param {string} event
- *        The name of the DOM event to listen for.
- * @param {function} listener
- *        The listener function to call when a DOM event is received.
- */
-global.WindowEventManager = class extends EventManager {
-  constructor(context, name, event, listener) {
-    super(context, name, fire => {
-      let listener2 = listener.bind(null, fire);
-
-      windowTracker.addListener(event, listener2);
-      return () => {
-        windowTracker.removeListener(event, listener2);
-      };
-    });
-  }
+    },
+  }).api();
 };
 
 class TabTracker extends TabTrackerBase {
@@ -544,10 +520,6 @@ class Tab extends TabBase {
     return this.nativeTab.getActive();
   }
 
-  get highlighted() {
-    return this.nativeTab.getActive();
-  }
-
   get selected() {
     return this.nativeTab.getActive();
   }
@@ -692,9 +664,24 @@ class Window extends WindowBase {
   }
 
   get activeTab() {
-    let {tabManager} = this.extension;
+    let {BrowserApp} = this.window;
+    let {selectedTab} = BrowserApp;
 
-    return tabManager.getWrapper(this.window.BrowserApp.selectedTab);
+    // If the current tab is an extension popup tab, we use the parentId to retrieve
+    // and return the tab that was selected when the popup tab has been opened.
+    if (selectedTab === tabTracker.extensionPopupTab) {
+      selectedTab = BrowserApp.getTabForId(selectedTab.parentId);
+    }
+
+    let {tabManager} = this.extension;
+    return tabManager.getWrapper(selectedTab);
+  }
+
+  getTabAtIndex(index) {
+    let nativeTab = this.window.BrowserApp.tabs[index];
+    if (nativeTab) {
+      return this.extension.tabManager.getWrapper(nativeTab);
+    }
   }
 }
 

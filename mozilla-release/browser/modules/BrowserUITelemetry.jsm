@@ -9,16 +9,10 @@ var EXPORTED_SYMBOLS = ["BrowserUITelemetry"];
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
-ChromeUtils.defineModuleGetter(this, "UITelemetry",
-  "resource://gre/modules/UITelemetry.jsm");
-ChromeUtils.defineModuleGetter(this, "RecentWindow",
-  "resource:///modules/RecentWindow.jsm");
-ChromeUtils.defineModuleGetter(this, "CustomizableUI",
-  "resource:///modules/CustomizableUI.jsm");
-ChromeUtils.defineModuleGetter(this, "UITour",
-  "resource:///modules/UITour.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+  CustomizableUI: "resource:///modules/CustomizableUI.jsm",
+});
 XPCOMUtils.defineLazyGetter(this, "Timer", function() {
   let timer = {};
   ChromeUtils.import("resource://gre/modules/Timer.jsm", timer);
@@ -130,7 +124,6 @@ XPCOMUtils.defineLazyGetter(this, "ALL_BUILTIN_ITEMS", function() {
     "BMB_bookmarksToolbarPopup",
     "search-go-button",
     "soundplaying-icon",
-    "restore-tabs-button",
   ];
   return DEFAULT_ITEMS.concat(PALETTE_ITEMS)
                       .concat(SPECIAL_CASES);
@@ -166,18 +159,6 @@ const BUCKET_SEPARATOR = "|";
 
 var BrowserUITelemetry = {
   init() {
-    UITelemetry.addSimpleMeasureFunction("toolbars",
-                                         this.getToolbarMeasures.bind(this));
-    UITelemetry.addSimpleMeasureFunction("contextmenu",
-                                         this.getContextMenuInfo.bind(this));
-    // Ensure that UITour.jsm remains lazy-loaded, yet always registers its
-    // simple measure function with UITelemetry.
-    UITelemetry.addSimpleMeasureFunction("UITour",
-                                         () => UITour.getTelemetry());
-
-    UITelemetry.addSimpleMeasureFunction("syncstate",
-                                         this.getSyncState.bind(this));
-
     Services.obs.addObserver(this, "autocomplete-did-enter-text");
     CustomizableUI.addListener(this);
 
@@ -281,7 +262,7 @@ var BrowserUITelemetry = {
     // probably been closed, since the vast majority of saved-session
     // pings are gathered during shutdown.
     Services.search.init(rv => {
-      let win = RecentWindow.getMostRecentBrowserWindow({
+      let win = BrowserWindowTracker.getTopWindow({
         private: false,
         allowPopups: false,
       });
@@ -708,7 +689,7 @@ var BrowserUITelemetry = {
     "spell-add-dictionaries-main", "spell-dictionaries",
     "spell-dictionaries-menu", "spell-add-dictionaries",
     "bidi-text-direction-toggle", "bidi-page-direction-toggle", "inspect",
-    "media-eme-learn-more"
+    "inspect-a11y", "media-eme-learn-more"
   ]),
 
   _contextMenuInteractions: {},

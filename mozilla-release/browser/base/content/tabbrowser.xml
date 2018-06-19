@@ -95,32 +95,26 @@
                            command="cmd_newNavigatorTab"
                            onclick="checkForMiddleClick(this, event);"
                            tooltip="dynamic-shortcut-tooltip"/>
-        <xul:hbox class="restore-tabs-button-wrapper"
-                  anonid="restore-tabs-button-wrapper">
-          <xul:toolbarbutton anonid="restore-tabs-button"
-                             class="restore-tabs-button"
-                             onclick="SessionStore.restoreLastSession();"/>
-        </xul:hbox>
-
         <xul:spacer class="closing-tabs-spacer" anonid="closing-tabs-spacer"
                     style="width: 0;"/>
       </xul:arrowscrollbox>
     </content>
 
-    <implementation implements="nsIDOMEventListener, nsIObserver">
+    <implementation implements="nsIObserver">
       <constructor>
         <![CDATA[
           this._tabClipWidth = Services.prefs.getIntPref("browser.tabs.tabClipWidth");
+          this._hiddenSoundPlayingTabs = new Set();
 
-          let { restoreTabsButton } = this;
-          restoreTabsButton.setAttribute("label", gTabBrowserBundle.GetStringFromName("tabs.restoreLastTabs"));
+          let strId = PrivateBrowsingUtils.isWindowPrivate(window) ?
+              "emptyPrivateTabTitle" : "emptyTabTitle";
+          this.emptyTabTitle = gTabBrowserBundle.GetStringFromName("tabs." + strId);
 
           var tab = this.firstChild;
-          tab.label = gTabBrowserBundle.GetStringFromName("tabs.emptyTabTitle");
+          tab.label = this.emptyTabTitle;
           tab.setAttribute("onerror", "this.removeAttribute('image');");
 
           window.addEventListener("resize", this);
-          window.addEventListener("DOMContentLoaded", this);
 
           Services.prefs.addObserver("privacy.userContext", this);
           this.observe(null, "nsPref:changed", "privacy.userContext.enabled");
@@ -140,6 +134,9 @@
 
           CustomizableUI.addListener(this);
           this._updateNewTabVisibility();
+
+          XPCOMUtils.defineLazyPreferenceGetter(this, "_closeTabByDblclick",
+            "browser.tabs.closeTabByDblclick", false);
         ]]>
       </constructor>
 
@@ -169,13 +166,6 @@
       <field name="_beforeHoveredTab">null</field>
       <field name="_afterHoveredTab">null</field>
       <field name="_hoveredTab">null</field>
-      <field name="restoreTabsButton">
-        document.getAnonymousElementByAttribute(this, "anonid", "restore-tabs-button");
-      </field>
-      <field name="_restoreTabsButtonWrapperWidth">0</field>
-      <field name="windowUtils">
-        window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
-      </field>
 
       <property name="_tabMinWidth">
         <setter>
@@ -183,51 +173,6 @@
           return val;
         </setter>
       </property>
-
-      <property name="restoreTabsButtonWrapperWidth" readonly="true">
-        <getter>
-          if (!this._restoreTabsButtonWrapperWidth) {
-            this._restoreTabsButtonWrapperWidth = this.windowUtils
-              .getBoundsWithoutFlushing(this.restoreTabsButton.parentNode)
-              .width;
-          }
-          return this._restoreTabsButtonWrapperWidth;
-        </getter>
-      </property>
-
-      <method name="updateSessionRestoreVisibility">
-        <body><![CDATA[
-          let {restoreTabsButton, restoreTabsButtonWrapperWidth, windowUtils} = this;
-          let restoreTabsButtonWrapper = restoreTabsButton.parentNode;
-
-          if (!restoreTabsButtonWrapper.getAttribute("session-exists")) {
-            restoreTabsButtonWrapper.removeAttribute("shown");
-            return;
-          }
-
-          let arrowScrollboxWidth = this.arrowScrollbox.clientWidth;
-
-          let newTabButton = document.getAnonymousElementByAttribute(
-            this, "anonid", "tabs-newtab-button");
-
-          // If there are no pinned tabs it will multiply by 0 and result in 0
-          let pinnedTabsWidth = windowUtils.getBoundsWithoutFlushing(this.firstChild).width * this._lastNumPinned;
-
-          let numUnpinnedTabs = this.childNodes.length - this._lastNumPinned;
-          let unpinnedTabsWidth = windowUtils.getBoundsWithoutFlushing(this.lastChild).width * numUnpinnedTabs;
-
-          let tabbarUsedSpace = pinnedTabsWidth + unpinnedTabsWidth
-            + windowUtils.getBoundsWithoutFlushing(newTabButton).width;
-
-          // Subtract the elements' widths from the available space to ensure
-          // that showing the restoreTabsButton won't cause any overflow.
-          if (arrowScrollboxWidth - tabbarUsedSpace > restoreTabsButtonWrapperWidth) {
-            restoreTabsButtonWrapper.setAttribute("shown", "true");
-          } else {
-            restoreTabsButtonWrapper.removeAttribute("shown");
-          }
-        ]]></body>
-      </method>
 
       <method name="observe">
         <parameter name="aSubject"/>
@@ -321,7 +266,7 @@
             this._beforeSelectedTab.removeAttribute("beforeselected-visible");
           }
 
-          if (this.selectedItem.closing || selectedIndex == 0) {
+          if (this.selectedItem.closing || selectedIndex <= 0) {
             this._beforeSelectedTab = null;
           } else {
             let beforeSelectedTab = visibleTabs[selectedIndex - 1];
@@ -362,50 +307,6 @@
 
       <field name="_dragOverDelay">350</field>
       <field name="_dragTime">0</field>
-
-      <field name="_container" readonly="true"><![CDATA[
-        this.parentNode && this.parentNode.localName == "toolbar" ? this.parentNode : this;
-      ]]></field>
-
-      <field name="_propagatedVisibilityOnce">false</field>
-
-      <property name="visible"
-                onget="return !this._container.collapsed;">
-        <setter><![CDATA[
-          if (val == this.visible &&
-              this._propagatedVisibilityOnce)
-            return val;
-
-          this._container.collapsed = !val;
-
-          this._propagateVisibility();
-          this._propagatedVisibilityOnce = true;
-
-          return val;
-        ]]></setter>
-      </property>
-
-      <method name="_propagateVisibility">
-        <body><![CDATA[
-          let visible = this.visible;
-
-          document.getElementById("menu_closeWindow").hidden = !visible;
-          document.getElementById("menu_close").setAttribute("label",
-            gTabBrowserBundle.GetStringFromName(visible ? "tabs.closeTab" : "tabs.close"));
-
-          TabsInTitlebar.allowedBy("tabs-visible", visible);
-        ]]></body>
-      </method>
-
-      <method name="updateVisibility">
-        <body><![CDATA[
-          if (this.childNodes.length - gBrowser._removingTabs.length == 1) {
-            this.visible = window.toolbar.visible;
-          } else {
-            this.visible = true;
-          }
-        ]]></body>
-      </method>
 
       <field name="_closeButtonsUpdatePending">false</field>
       <method name="_updateCloseButtons">
@@ -450,6 +351,16 @@
               }
             });
           });
+        ]]></body>
+      </method>
+
+      <method name="_updateHiddenTabsStatus">
+        <body><![CDATA[
+          if (gBrowser.visibleTabs.length < gBrowser.tabs.length) {
+            this.setAttribute("hashiddentabs", "true");
+          } else {
+            this.removeAttribute("hashiddentabs");
+          }
         ]]></body>
       </method>
 
@@ -750,18 +661,12 @@
         <parameter name="aEvent"/>
         <body><![CDATA[
           switch (aEvent.type) {
-            case "DOMContentLoaded":
-              this.updateVisibility();
-              TabsInTitlebar.init();
-              break;
             case "resize":
               if (aEvent.target != window)
                 break;
 
-              TabsInTitlebar.updateAppearance();
               this._updateCloseButtons();
               this._handleTabSelect(true);
-              this.updateSessionRestoreVisibility();
               break;
             case "mouseout":
               // If the "related target" (the node to which the pointer went) is not
@@ -959,10 +864,21 @@
           let wrap = n => n.parentNode.localName == "toolbarpaletteitem" ? n.parentNode : n;
           let unwrap = n => n && n.localName == "toolbarpaletteitem" ? n.firstElementChild : n;
 
+          // Starting from the tabs element, find the next sibling that:
+          // - isn't hidden; and
+          // - isn't one of the titlebar placeholder elements; and
+          // - isn't the all-tabs button.
+          // If it's the new tab button, consider the new tab button adjacent to the tabs.
+          // If the new tab button is marked as adjacent and the tabstrip doesn't
+          // overflow, we'll display the 'new tab' button inline in the tabstrip.
+          // In all other cases, the separate new tab button is displayed in its
+          // customized location.
           let sib = this;
           do {
             sib = unwrap(wrap(sib).nextElementSibling);
-          } while (sib && sib.hidden);
+          } while (sib && (sib.hidden ||
+                           sib.getAttribute("skipintoolbarset") == "true" ||
+                           sib.id == "alltabs-button"));
 
           const kAttr = "hasadjacentnewtabbutton";
           if (sib && sib.id == "new-tab-button") {
@@ -1003,10 +919,49 @@
           this.onAreaNodeRegistered(aArea, aContainer);
         ]]></body>
       </method>
+
+      <method name="_hiddenSoundPlayingStatusChanged">
+        <parameter name="tab"/>
+        <parameter name="opts"/>
+        <body><![CDATA[
+          let closed = opts && opts.closed;
+          if (!closed && tab.soundPlaying && tab.hidden) {
+            this._hiddenSoundPlayingTabs.add(tab);
+            this.setAttribute("hiddensoundplaying", "true");
+          } else {
+            this._hiddenSoundPlayingTabs.delete(tab);
+            if (this._hiddenSoundPlayingTabs.size == 0) {
+              this.removeAttribute("hiddensoundplaying");
+            }
+          }
+        ]]></body>
+      </method>
     </implementation>
 
     <handlers>
       <handler event="TabSelect" action="this._handleTabSelect();"/>
+
+      <handler event="TabClose"><![CDATA[
+        this._hiddenSoundPlayingStatusChanged(event.target, {closed: true});
+      ]]></handler>
+
+      <handler event="TabAttrModified"><![CDATA[
+        if (event.detail.changed.includes("soundplaying") && event.target.hidden) {
+          this._hiddenSoundPlayingStatusChanged(event.target);
+        }
+      ]]></handler>
+
+      <handler event="TabHide"><![CDATA[
+        if (event.target.soundPlaying) {
+          this._hiddenSoundPlayingStatusChanged(event.target);
+        }
+      ]]></handler>
+
+      <handler event="TabShow"><![CDATA[
+        if (event.target.soundPlaying) {
+          this._hiddenSoundPlayingStatusChanged(event.target);
+        }
+      ]]></handler>
 
       <handler event="transitionend"><![CDATA[
         if (event.propertyName != "max-width") {
@@ -1690,6 +1645,7 @@
         ]]>
         </setter>
       </property>
+      <field name="_selectedOnFirstMouseDown">false</field>
 
       <property name="pinned" readonly="true">
         <getter>
@@ -1906,11 +1862,6 @@
         <parameter name="aMuteReason"/>
         <body>
         <![CDATA[
-          // Do not attempt to toggle mute state if browser is lazy.
-          if (!this.linkedPanel) {
-            return;
-          }
-
           let browser = this.linkedBrowser;
           let modifiedAttrs = [];
           let hist = Services.telemetry.getHistogramById("TAB_AUDIO_INDICATOR_USED");
@@ -1924,12 +1875,18 @@
             this.finishMediaBlockTimer();
           } else {
             if (browser.audioMuted) {
-              browser.unmute();
+              if (this.linkedPanel) {
+                // "Lazy Browser" should not invoke its unmute method
+                browser.unmute();
+              }
               this.removeAttribute("muted");
               BrowserUITelemetry.countTabMutingEvent("unmute", aMuteReason);
               hist.add(1 /* unmute */);
             } else {
-              browser.mute();
+              if (this.linkedPanel) {
+                // "Lazy Browser" should not invoke its mute method
+                browser.mute();
+              }
               this.setAttribute("muted", "true");
               BrowserUITelemetry.countTabMutingEvent("mute", aMuteReason);
               hist.add(0 /* mute */);
@@ -1992,6 +1949,13 @@
 
       <handler event="mousedown" phase="capturing">
       <![CDATA[
+        let tabContainer = this.parentNode;
+        if (tabContainer._closeTabByDblclick &&
+            event.button == 0 &&
+            event.detail == 1) {
+          this._selectedOnFirstMouseDown = this.selected;
+        }
+
         if (this.selected) {
           this.style.MozUserFocus = "ignore";
         } else if (this.mOverCloseButton ||
@@ -2027,6 +1991,17 @@
         if (event.originalTarget.getAttribute("anonid") == "close-button") {
           event.stopPropagation();
         }
+
+        let tabContainer = this.parentNode;
+        if (tabContainer._closeTabByDblclick &&
+            this._selectedOnFirstMouseDown &&
+            this.selected &&
+            !this._overPlayingIcon) {
+          gBrowser.removeTab(this, {
+            animate: true,
+            byMouse: event.mozInputSource == MouseEvent.MOZ_SOURCE_MOUSE,
+          });
+        }
       ]]></handler>
 
       <handler event="animationend">
@@ -2041,7 +2016,7 @@
 
   <binding id="tabbrowser-alltabs-popup"
            extends="chrome://global/content/bindings/popup.xml#popup">
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
       <method name="_tabOnAttrModified">
         <parameter name="aEvent"/>
         <body><![CDATA[
@@ -2116,7 +2091,7 @@
           aTab.mCorrespondingMenuitem = menuItem;
           menuItem.tab = aTab;
 
-          this.appendChild(menuItem);
+          return menuItem;
         ]]></body>
       </method>
 
@@ -2174,6 +2149,19 @@
         if (event.target.getAttribute("id") == "alltabs_containersMenuTab") {
           createUserContextMenu(event, {useAccessKeys: false});
           return;
+        } else if (event.target.getAttribute("id") == "alltabs_hiddenTabsMenu") {
+          let fragment = document.createDocumentFragment();
+
+          for (let tab of gBrowser.tabs) {
+            if (tab.hidden) {
+              fragment.appendChild(this._createTabMenuItem(tab));
+            }
+          }
+
+          event.target.textContent = "";
+          event.target.appendChild(fragment);
+
+          return;
         }
 
         let containersEnabled = Services.prefs.getBoolPref("privacy.userContext.enabled");
@@ -2196,17 +2184,33 @@
           document.getElementById("alltabs_undoCloseTab").disabled =
             SessionStore.getClosedTabCount(window) == 0;
 
+          let showHiddenTabs = gBrowser.visibleTabs.length < gBrowser.tabs.length;
+          document.getElementById("alltabs_hiddenTabs").hidden = !showHiddenTabs;
+          let hiddenSeparator = document.getElementById("alltabs-popup-separator-3");
+          hiddenSeparator.hidden = !showHiddenTabs;
+
           var tabcontainer = gBrowser.tabContainer;
 
           // Listen for changes in the tab bar.
           tabcontainer.addEventListener("TabAttrModified", this);
           tabcontainer.addEventListener("TabClose", this);
 
-          let tabs = gBrowser.visibleTabs;
+          let tabs = gBrowser.tabs;
+          let fragment = document.createDocumentFragment();
+          let hiddenFragment = document.createDocumentFragment();
           for (var i = 0; i < tabs.length; i++) {
-            if (!tabs[i].pinned)
-              this._createTabMenuItem(tabs[i]);
+            if (!tabs[i].pinned) {
+              if (!tabs[i].hidden) {
+                let li = this._createTabMenuItem(tabs[i]);
+                fragment.appendChild(li);
+              } else if (tabs[i].soundPlaying) {
+                let li = this._createTabMenuItem(tabs[i]);
+                hiddenFragment.appendChild(li);
+              }
+            }
           }
+          this.appendChild(fragment);
+          this.insertBefore(hiddenFragment, hiddenSeparator);
           this._updateTabsVisibilityStatus();
         }
       ]]></handler>
@@ -2217,20 +2221,25 @@
           return;
         }
 
+        // This could be the visible or hidden tabs menu container.
+        let container = event.target;
+
         // clear out the menu popup and remove the listeners
-        for (let i = this.childNodes.length - 1; i > 0; i--) {
-          let menuItem = this.childNodes[i];
+        for (let i = container.childNodes.length - 1; i > 0; i--) {
+          let menuItem = container.childNodes[i];
           if (menuItem.tab) {
             menuItem.tab.mCorrespondingMenuitem = null;
-            this.removeChild(menuItem);
+            menuItem.remove();
           }
           if (menuItem.hasAttribute("usercontextid")) {
-            this.removeChild(menuItem);
+            menuItem.remove();
           }
         }
-        var tabcontainer = gBrowser.tabContainer;
-        tabcontainer.removeEventListener("TabAttrModified", this);
-        tabcontainer.removeEventListener("TabClose", this);
+
+        if (container == this) {
+          gBrowser.tabContainer.removeEventListener("TabAttrModified", this);
+          gBrowser.tabContainer.removeEventListener("TabClose", this);
+        }
       ]]></handler>
 
       <handler event="DOMMenuItemActive">
@@ -2260,134 +2269,6 @@
       ]]></handler>
 
     </handlers>
-  </binding>
-
-  <binding id="statuspanel" display="xul:hbox">
-    <content>
-      <xul:hbox class="statuspanel-inner">
-        <xul:label class="statuspanel-label"
-                   role="status"
-                   aria-live="off"
-                   xbl:inherits="value=label,crop,mirror"
-                   flex="1"
-                   crop="end"/>
-      </xul:hbox>
-    </content>
-
-    <implementation implements="nsIDOMEventListener">
-      <constructor><![CDATA[
-        window.addEventListener("resize", this);
-      ]]></constructor>
-
-      <destructor><![CDATA[
-        window.removeEventListener("resize", this);
-        MousePosTracker.removeListener(this);
-      ]]></destructor>
-
-      <property name="label">
-        <setter><![CDATA[
-          if (!this.label) {
-            this.removeAttribute("mirror");
-            this.removeAttribute("sizelimit");
-          }
-
-          if (this.getAttribute("type") == "status" &&
-              this.getAttribute("previoustype") == "status") {
-            // Before updating the label, set the panel's current width as its
-            // min-width to let the panel grow but not shrink and prevent
-            // unnecessary flicker while loading pages. We only care about the
-            // panel's width once it has been painted, so we can do this
-            // without flushing layout.
-            this.style.minWidth =
-              window.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowUtils)
-                    .getBoundsWithoutFlushing(this).width + "px";
-          } else {
-            this.style.minWidth = "";
-          }
-
-          if (val) {
-            this.setAttribute("label", val);
-            this.removeAttribute("inactive");
-            this._mouseTargetRect = null;
-            MousePosTracker.addListener(this);
-          } else {
-            this.setAttribute("inactive", "true");
-            MousePosTracker.removeListener(this);
-          }
-
-          return val;
-        ]]></setter>
-        <getter>
-          return this.hasAttribute("inactive") ? "" : this.getAttribute("label");
-        </getter>
-      </property>
-
-      <method name="getMouseTargetRect">
-        <body><![CDATA[
-          if (!this._mouseTargetRect) {
-            this._calcMouseTargetRect();
-          }
-          return this._mouseTargetRect;
-        ]]></body>
-      </method>
-
-      <method name="onMouseEnter">
-        <body>
-          this._mirror();
-        </body>
-      </method>
-
-      <method name="onMouseLeave">
-        <body>
-          this._mirror();
-        </body>
-      </method>
-
-      <method name="handleEvent">
-        <parameter name="event"/>
-        <body><![CDATA[
-          if (!this.label)
-            return;
-
-          switch (event.type) {
-            case "resize":
-              this._mouseTargetRect = null;
-              break;
-          }
-        ]]></body>
-      </method>
-
-      <method name="_calcMouseTargetRect">
-        <body><![CDATA[
-          let container = this.parentNode;
-          let alignRight = (getComputedStyle(container).direction == "rtl");
-          let panelRect = this.getBoundingClientRect();
-          let containerRect = container.getBoundingClientRect();
-
-          this._mouseTargetRect = {
-            top:    panelRect.top,
-            bottom: panelRect.bottom,
-            left:   alignRight ? containerRect.right - panelRect.width : containerRect.left,
-            right:  alignRight ? containerRect.right : containerRect.left + panelRect.width
-          };
-        ]]></body>
-      </method>
-
-      <method name="_mirror">
-        <body>
-          if (this.hasAttribute("mirror"))
-            this.removeAttribute("mirror");
-          else
-            this.setAttribute("mirror", "true");
-
-          if (!this.hasAttribute("sizelimit")) {
-            this.setAttribute("sizelimit", "true");
-            this._mouseTargetRect = null;
-          }
-        </body>
-      </method>
-    </implementation>
   </binding>
 
   <binding id="tabbrowser-tabpanels"
@@ -2435,24 +2316,12 @@
       <field name="tabModalPromptBox">null</field>
 
       <!-- throws exception for unknown schemes -->
-      <method name="loadURIWithFlags">
+      <method name="loadURI">
         <parameter name="aURI"/>
-        <parameter name="aFlags"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
-        <parameter name="aPostData"/>
+        <parameter name="aParams"/>
         <body>
           <![CDATA[
-            var params = arguments[1];
-            if (typeof(params) == "number") {
-              params = {
-                flags: aFlags,
-                referrerURI: aReferrerURI,
-                charset: aCharset,
-                postData: aPostData,
-              };
-            }
-            _loadURIWithFlags(this, aURI, params);
+            _loadURI(this, aURI, aParams);
           ]]>
         </body>
       </method>
@@ -2465,24 +2334,12 @@
       <field name="tabModalPromptBox">null</field>
 
       <!-- throws exception for unknown schemes -->
-      <method name="loadURIWithFlags">
+      <method name="loadURI">
         <parameter name="aURI"/>
-        <parameter name="aFlags"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
-        <parameter name="aPostData"/>
+        <parameter name="aParams"/>
         <body>
           <![CDATA[
-            var params = arguments[1];
-            if (typeof(params) == "number") {
-              params = {
-                flags: aFlags,
-                referrerURI: aReferrerURI,
-                charset: aCharset,
-                postData: aPostData,
-              };
-            }
-            _loadURIWithFlags(this, aURI, params);
+            _loadURI(this, aURI, aParams);
           ]]>
         </body>
       </method>

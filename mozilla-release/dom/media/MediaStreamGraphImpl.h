@@ -23,6 +23,7 @@
 #include "nsIRunnable.h"
 #include "nsIThread.h"
 #include "nsITimer.h"
+#include "AsyncLogger.h"
 
 namespace mozilla {
 
@@ -322,9 +323,8 @@ public:
 
   /**
    * Determine if we have any audio tracks, or are about to add any audiotracks.
-   * Also checks if we'll need the AEC running (i.e. microphone input tracks)
    */
-  bool AudioTrackPresent(bool& aNeedsAEC);
+  bool AudioTrackPresent();
 
   /**
    * Sort mStreams so that every stream not in a cycle is after any streams
@@ -819,7 +819,6 @@ public:
   RefPtr<AsyncLatencyLogger> mLatencyLog;
   AudioMixer mMixer;
   const RefPtr<AbstractThread> mAbstractMainThread;
-  RefPtr<SharedThreadPool> mThreadPool;
 
   // used to limit graph shutdown time
   // Only accessed on the main thread.

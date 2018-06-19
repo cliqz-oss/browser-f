@@ -16,18 +16,8 @@ typedef double DOMHighResTimeStamp;
 typedef unsigned long long nsViewID;
 
 // Core
-interface nsIDOMCharacterData;
-interface nsIDOMComment;
 interface nsIDOMDocument;
-interface nsIDOMDocumentFragment;
-interface nsIDOMDocumentType;
-interface nsIDOMElement;
 interface nsIDOMNode;
-interface nsIDOMNodeList;
-interface nsIDOMProcessingInstruction;
-interface nsIDOMText;
-interface nsIDOMClientRect;
-interface nsIDOMClientRectList;
 
 // Needed for raises() in our IDL
 %{C++
@@ -41,15 +31,11 @@ class DOMException;
 // Base
 interface nsIDOMWindow;
 interface nsIDOMWindowCollection;
-interface nsIDOMScreen;
 
 // Events
-interface nsIDOMEvent;
-interface nsIDOMEventTarget;
 interface nsIDOMEventListener;
 
 // HTML
-interface nsIDOMHTMLFormElement;
 interface nsIDOMHTMLHeadElement;
 
 // Range

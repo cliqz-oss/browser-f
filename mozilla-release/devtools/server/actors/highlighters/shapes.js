@@ -81,6 +81,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     this.fillRule = "";
     this.numInsetPoints = 0;
     this.transformMode = false;
+    this.viewport = {};
 
     this.markup = new CanvasFrameAnonymousContentHelper(this.highlighterEnv,
       this._buildMarkup.bind(this));
@@ -433,6 +434,42 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       `${style}pointer-events:${pointerEvents};cursor:${cursorType};`);
   }
 
+  /**
+   * Set the absolute pixel offsets which define the current viewport in relation to
+   * the full page size.
+   *
+   * If a padding value is given, inset the viewport by this value. This is used to define
+   * a virtual viewport which ensures some element remains visible even when at the edges
+   * of the actual viewport.
+   *
+   * @param {Number} padding
+   *        Optional. Amount by which to inset the viewport in all directions.
+   */
+  setViewport(padding = 0) {
+    let xOffset = 0;
+    let yOffset = 0;
+
+    // If the node exists within an iframe, get offsets for the virtual viewport so that
+    // points can be dragged to the extent of the global window, outside of the iframe
+    // window.
+    if (this.currentNode.ownerGlobal !== this.win) {
+      const win =  this.win;
+      const nodeWin = this.currentNode.ownerGlobal;
+      // Get bounding box of iframe document relative to global document.
+      const { bounds } = nodeWin.document.getBoxQuads({ relativeTo: win.document })[0];
+      xOffset = bounds.left - nodeWin.scrollX + win.scrollX;
+      yOffset = bounds.top - nodeWin.scrollY + win.scrollY;
+    }
+
+    const { pageXOffset, pageYOffset } = this.win;
+    const { clientHeight, clientWidth } = this.win.document.documentElement;
+    const left = pageXOffset + padding - xOffset;
+    const right = clientWidth + pageXOffset - padding - xOffset;
+    const top = pageYOffset + padding - yOffset;
+    const bottom = clientHeight + pageYOffset - padding - yOffset;
+    this.viewport = { left, right, top, bottom, padding };
+  }
+
   handleEvent(event, id) {
     // No event handling if the highlighter is hidden
     if (this.areShapesHidden()) {
@@ -481,11 +518,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
         }
         event.stopPropagation();
         event.preventDefault();
+
+        // Calculate constraints for a virtual viewport which ensures that a dragged
+        // marker remains visible even at the edges of the actual viewport.
+        this.setViewport(BASE_MARKER_SIZE);
         break;
       case "mouseup":
         if (this[_dragging]) {
           this[_dragging] = null;
-          this._handleMarkerHover(this.hoveredPoint);
+          this._handleMarkerHover(null);
         }
         break;
       case "mousemove":
@@ -495,6 +536,11 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
         }
         event.stopPropagation();
         event.preventDefault();
+
+        // Set constraints for mouse position to ensure dragged marker stays in viewport.
+        const { left, right, top, bottom } = this.viewport;
+        pageX = Math.min(Math.max(left, pageX), right);
+        pageY = Math.min(Math.max(top, pageY), bottom);
 
         let { point } = this[_dragging];
         if (this.transformMode) {
@@ -563,13 +609,14 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let valueX = (isUnitless(x)) ? xComputed : parseFloat(x);
       let valueY = (isUnitless(y)) ? yComputed : parseFloat(y);
 
-      let ratioX = (valueX / xComputed) || 1;
-      let ratioY = (valueY / yComputed) || 1;
+      let ratioX = this.getUnitToPixelRatio(unitX, width);
+      let ratioY = this.getUnitToPixelRatio(unitY, height);
       return { unitX, unitY, valueX, valueY, ratioX, ratioY };
     });
     this[_dragging] = { type, pointsInfo, x: pageX, y: pageY, bb: this.boundingBox,
                         matrix: this.transformMatrix,
                         transformedBB: this.transformedBoundingBox };
+    this._handleMarkerHover(this.hoveredPoint);
   }
 
   /**
@@ -588,8 +635,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let valueX = (isUnitless(cx)) ? cxComputed : parseFloat(cx);
     let valueY = (isUnitless(cy)) ? cyComputed : parseFloat(cy);
 
-    let ratioX = (valueX / cxComputed) || 1;
-    let ratioY = (valueY / cyComputed) || 1;
+    let ratioX = this.getUnitToPixelRatio(unitX, width);
+    let ratioY = this.getUnitToPixelRatio(unitY, height);
 
     let { radius } = this.origCoordinates;
     let computedSize = Math.sqrt((width ** 2) + (height ** 2)) / Math.sqrt(2);
@@ -597,7 +644,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let valueRad = this.origCoordUnits.radius;
     let unitRad = getUnit(valueRad);
     valueRad = (isUnitless(valueRad)) ? radius : parseFloat(valueRad);
-    let ratioRad = (valueRad / radius) || 1;
+    let ratioRad = this.getUnitToPixelRatio(unitRad, computedSize);
 
     this[_dragging] = { type, unitX, unitY, unitRad, valueX, valueY,
                         ratioX, ratioY, ratioRad, x: pageX, y: pageY,
@@ -621,8 +668,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let valueX = (isUnitless(cx)) ? cxComputed : parseFloat(cx);
     let valueY = (isUnitless(cy)) ? cyComputed : parseFloat(cy);
 
-    let ratioX = (valueX / cxComputed) || 1;
-    let ratioY = (valueY / cyComputed) || 1;
+    let ratioX = this.getUnitToPixelRatio(unitX, width);
+    let ratioY = this.getUnitToPixelRatio(unitY, height);
 
     let { rx, ry } = this.origCoordinates;
     rx = rx / 100 * width;
@@ -658,7 +705,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let computedValue = this.origCoordinates[point] / 100 * size;
       let unit = getUnit(value);
       value = (isUnitless(value)) ? computedValue : parseFloat(value);
-      let ratio = (value / computedValue) || 1;
+      let ratio = this.getUnitToPixelRatio(unit, size);
 
       pointsInfo[point] = { value, unit, ratio };
     });
@@ -834,17 +881,14 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let { unitX, unitY, valueX, valueY, ratioX, ratioY } = point;
       let vector = [valueX / ratioX, valueY / ratioY];
       let [newX, newY] = apply(this.transformMatrix, vector);
-      let precisionX = getDecimalPrecision(unitX);
-      let precisionY = getDecimalPrecision(unitY);
-      newX = (newX * ratioX).toFixed(precisionX);
-      newY = (newY * ratioY).toFixed(precisionY);
+      newX = round(newX * ratioX, unitX);
+      newY = round(newY * ratioY, unitY);
 
       return `${newX}${unitX} ${newY}${unitY}`;
     }).join(", ");
-    polygonDef = (this.geometryBox) ? `polygon(${polygonDef}) ${this.geometryBox}` :
-                                      `polygon(${polygonDef})`;
+    polygonDef = `polygon(${polygonDef}) ${this.geometryBox}`.trim();
 
-    this.currentNode.style.setProperty(this.property, polygonDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: polygonDef });
   }
 
   /**
@@ -862,14 +906,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       // As part of scaling, the shape is translated to be tangent to the line y=0.
       // To get the new radius, we translate the new cx back to that point and get
       // the distance to the line y=0.
-      radius = `${Math.abs((newCx - transX) * ratioRad)}${unitRad}`;
+      radius = round(Math.abs((newCx - transX) * ratioRad), unitRad);
+      radius = `${radius}${unitRad}`;
     }
 
-    let circleDef = (this.geometryBox) ?
-      `circle(${radius} at ${newCx * ratioX}${unitX} ` +
-        `${newCy * ratioY}${unitY} ${this.geometryBox}` :
-      `circle(${radius} at ${newCx * ratioX}${unitX} ${newCy * ratioY}${unitY}`;
-    this.currentNode.style.setProperty(this.property, circleDef, "important");
+    newCx = round(newCx * ratioX, unitX);
+    newCy = round(newCy * ratioY, unitY);
+    let circleDef = `circle(${radius} at ${newCx}${unitX} ${newCy}${unitY})` +
+        ` ${this.geometryBox}`.trim();
+    this.emit("highlighter-event", { type: "shape-change", value: circleDef });
   }
 
   /**
@@ -889,16 +934,18 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       // As part of scaling, the shape is translated to be tangent to the lines y=0 & x=0.
       // To get the new radii, we translate the new center back to that point and get the
       // distances to the line x=0 and y=0.
-      rx = `${Math.abs((newCx - transX) * ratioRX)}${unitRX}`;
-      ry = `${Math.abs((newCy - transY) * ratioRY)}${unitRY}`;
+      rx = round(Math.abs((newCx - transX) * ratioRX), unitRX);
+      rx = `${rx}${unitRX}`;
+      ry = round(Math.abs((newCy - transY) * ratioRY), unitRY);
+      ry = `${ry}${unitRY}`;
     }
 
-    let ellipseDef = (this.geometryBox) ?
-        `ellipse(${rx} ${ry} at ${newCx * ratioX}${unitX} ` +
-          `${newCy * ratioY}${unitY}) ${this.geometryBox}` :
-        `ellipse(${rx} ${ry} at ${newCx * ratioX}${unitX} ` +
-          `${newCy * ratioY}${unitY})`;
-    this.currentNode.style.setProperty(this.property, ellipseDef, "important");
+    newCx = round(newCx * ratioX, unitX);
+    newCy = round(newCy * ratioY, unitY);
+
+    let centerStr = `${newCx}${unitX} ${newCy}${unitY}`;
+    let ellipseDef = `ellipse(${rx} ${ry} at ${centerStr}) ${this.geometryBox}`.trim();
+    this.emit("highlighter-event", { type: "shape-change", value: ellipseDef });
   }
 
   /**
@@ -910,8 +957,10 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
 
     let topLeft = [ left.value / left.ratio, top.value / top.ratio ];
     let [newLeft, newTop] = apply(this.transformMatrix, topLeft);
-    newLeft = `${newLeft * left.ratio}${left.unit}`;
-    newTop = `${newTop * top.ratio}${top.unit}`;
+    newLeft = round(newLeft * left.ratio, left.unit);
+    newLeft = `${newLeft}${left.unit}`;
+    newTop = round(newTop * top.ratio, top.unit);
+    newTop = `${newTop}${top.unit}`;
 
     // Right and bottom values are relative to the right and bottom edges of the
     // element, so convert to the value relative to the left/top edges before scaling
@@ -919,16 +968,18 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let bottomRight = [ width - right.value / right.ratio,
                         height - bottom.value / bottom.ratio ];
     let [newRight, newBottom] = apply(this.transformMatrix, bottomRight);
-    newRight = `${(width - newRight) * right.ratio}${right.unit}`;
-    newBottom = `${(height - newBottom) * bottom.ratio}${bottom.unit}`;
+    newRight = round((width - newRight) * right.ratio, right.unit);
+    newRight = `${newRight}${right.unit}`;
+    newBottom = round((height - newBottom) * bottom.ratio, bottom.unit);
+    newBottom = `${newBottom}${bottom.unit}`;
 
-    let round = this.insetRound;
-    let insetDef = (round) ?
-          `inset(${newTop} ${newRight} ${newBottom} ${newLeft} round ${round})` :
+    let insetDef = (this.insetRound) ?
+          `inset(${newTop} ${newRight} ${newBottom} ${newLeft} round ${this.insetRound})`
+          :
           `inset(${newTop} ${newRight} ${newBottom} ${newLeft})`;
     insetDef += (this.geometryBox) ? this.geometryBox : "";
 
-    this.currentNode.style.setProperty(this.property, insetDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: insetDef });
   }
 
   /**
@@ -952,8 +1003,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let valueX = (isUnitless(x)) ? xComputed : parseFloat(x);
     let valueY = (isUnitless(y)) ? yComputed : parseFloat(y);
 
-    let ratioX = (valueX / xComputed) || 1;
-    let ratioY = (valueY / yComputed) || 1;
+    let ratioX = this.getUnitToPixelRatio(unitX, width);
+    let ratioY = this.getUnitToPixelRatio(unitY, height);
 
     this.setCursor("grabbing");
     this[_dragging] = { point, unitX, unitY, valueX, valueY,
@@ -961,8 +1012,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
   }
 
   /**
-   * Set the inline style of the polygon, replacing the given point with the given x/y
-   * coords.
+   * Update the dragged polygon point with the given x/y coords and update
+   * the element style.
    * @param {Number} pageX the new x coordinate of the point
    * @param {Number} pageY the new y coordinate of the point
    */
@@ -970,24 +1021,21 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let { point, unitX, unitY, valueX, valueY, ratioX, ratioY, x, y } = this[_dragging];
     let deltaX = (pageX - x) * ratioX;
     let deltaY = (pageY - y) * ratioY;
-    let precisionX = getDecimalPrecision(unitX);
-    let precisionY = getDecimalPrecision(unitY);
-    let newX = (valueX + deltaX).toFixed(precisionX);
-    let newY = (valueY + deltaY).toFixed(precisionY);
+    let newX = round(valueX + deltaX, unitX);
+    let newY = round(valueY + deltaY, unitY);
 
     let polygonDef = (this.fillRule) ? `${this.fillRule}, ` : "";
     polygonDef += this.coordUnits.map((coords, i) => {
       return (i === point) ?
         `${newX}${unitX} ${newY}${unitY}` : `${coords[0]} ${coords[1]}`;
     }).join(", ");
-    polygonDef = (this.geometryBox) ? `polygon(${polygonDef}) ${this.geometryBox}` :
-                                      `polygon(${polygonDef})`;
+    polygonDef = `polygon(${polygonDef}) ${this.geometryBox}`.trim();
 
-    this.currentNode.style.setProperty(this.property, polygonDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: polygonDef });
   }
 
   /**
-   * Set the inline style of the polygon, adding a new point.
+   * Add new point to the polygon defintion and update element style.
    * TODO: Bug 1436054 - Do not default to percentage unit when inserting new point.
    * https://bugzilla.mozilla.org/show_bug.cgi?id=1436054
    *
@@ -1001,16 +1049,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       return (i === after) ? `${coords[0]} ${coords[1]}, ${x}% ${y}%` :
                              `${coords[0]} ${coords[1]}`;
     }).join(", ");
-    polygonDef = (this.geometryBox) ? `polygon(${polygonDef}) ${this.geometryBox}` :
-                                      `polygon(${polygonDef})`;
+    polygonDef = `polygon(${polygonDef}) ${this.geometryBox}`.trim();
 
     this.hoveredPoint = after + 1;
     this._emitHoverEvent(this.hoveredPoint);
-    this.currentNode.style.setProperty(this.property, polygonDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: polygonDef });
   }
 
   /**
-   * Set the inline style of the polygon, deleting the given point.
+   * Remove point from polygon defintion and update the element style.
    * @param {Number} point the index of the point to delete
    */
   _deletePolygonPoint(point) {
@@ -1020,12 +1067,11 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     polygonDef += coordinates.map((coords, i) => {
       return `${coords[0]} ${coords[1]}`;
     }).join(", ");
-    polygonDef = (this.geometryBox) ? `polygon(${polygonDef}) ${this.geometryBox}` :
-                                      `polygon(${polygonDef})`;
+    polygonDef = `polygon(${polygonDef}) ${this.geometryBox}`.trim();
 
     this.hoveredPoint = null;
     this._emitHoverEvent(this.hoveredPoint);
-    this.currentNode.style.setProperty(this.property, polygonDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: polygonDef });
   }
   /**
    * Handle a click when highlighting a circle.
@@ -1050,8 +1096,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let valueX = (isUnitless(cx)) ? cxComputed : parseFloat(cx);
       let valueY = (isUnitless(cy)) ? cyComputed : parseFloat(cy);
 
-      let ratioX = (valueX / cxComputed) || 1;
-      let ratioY = (valueY / cyComputed) || 1;
+      let ratioX = this.getUnitToPixelRatio(unitX, width);
+      let ratioY = this.getUnitToPixelRatio(unitY, height);
 
       this[_dragging] = { point, unitX, unitY, valueX, valueY,
                           ratioX, ratioY, x: pageX, y: pageY };
@@ -1062,15 +1108,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let value = this.coordUnits.radius;
       let unit = getUnit(value);
       value = (isUnitless(value)) ? radius : parseFloat(value);
-      let ratio = (value / radius) || 1;
+      let ratio = this.getUnitToPixelRatio(unit, computedSize);
 
       this[_dragging] = { point, value, origRadius: radius, unit, ratio };
     }
   }
 
   /**
-   * Set the inline style of the circle, setting the center/radius according to the
-   * mouse position.
+   * Set the center/radius of the circle according to the mouse position and
+   * update the element style.
    * @param {String} point either "center" or "radius"
    * @param {Number} pageX the x coordinate of the mouse position, in terms of %
    *        relative to the element
@@ -1084,13 +1130,12 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let { unitX, unitY, valueX, valueY, ratioX, ratioY, x, y} = this[_dragging];
       let deltaX = (pageX - x) * ratioX;
       let deltaY = (pageY - y) * ratioY;
-      let newCx = `${valueX + deltaX}${unitX}`;
-      let newCy = `${valueY + deltaY}${unitY}`;
-      let circleDef = (this.geometryBox) ?
-            `circle(${radius} at ${newCx} ${newCy}) ${this.geometryBox}` :
-            `circle(${radius} at ${newCx} ${newCy})`;
+      let newCx = `${round(valueX + deltaX, unitX)}${unitX}`;
+      let newCy = `${round(valueY + deltaY, unitY)}${unitY}`;
+      // if not defined by the user, geometryBox will be an empty string; trim() cleans up
+      let circleDef = `circle(${radius} at ${newCx} ${newCy}) ${this.geometryBox}`.trim();
 
-      this.currentNode.style.setProperty(this.property, circleDef, "important");
+      this.emit("highlighter-event", { type: "shape-change", value: circleDef });
     } else if (point === "radius") {
       let { value, unit, origRadius, ratio } = this[_dragging];
       // convert center point to px, then get distance between center and mouse.
@@ -1099,13 +1144,11 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let newRadiusPx = getDistance(pageCx, pageCy, pageX, pageY);
 
       let delta = (newRadiusPx - origRadius) * ratio;
-      let newRadius = `${value + delta}${unit}`;
+      let newRadius = `${round(value + delta, unit)}${unit}`;
 
-      let circleDef = (this.geometryBox) ?
-                      `circle(${newRadius} at ${cx} ${cy} ${this.geometryBox}` :
-                      `circle(${newRadius} at ${cx} ${cy}`;
+      let circleDef = `circle(${newRadius} at ${cx} ${cy}) ${this.geometryBox}`.trim();
 
-      this.currentNode.style.setProperty(this.property, circleDef, "important");
+      this.emit("highlighter-event", { type: "shape-change", value: circleDef });
     }
   }
 
@@ -1132,8 +1175,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let valueX = (isUnitless(cx)) ? cxComputed : parseFloat(cx);
       let valueY = (isUnitless(cy)) ? cyComputed : parseFloat(cy);
 
-      let ratioX = (valueX / cxComputed) || 1;
-      let ratioY = (valueY / cyComputed) || 1;
+      let ratioX = this.getUnitToPixelRatio(unitX, width);
+      let ratioY = this.getUnitToPixelRatio(unitY, height);
 
       this[_dragging] = { point, unitX, unitY, valueX, valueY,
                           ratioX, ratioY, x: pageX, y: pageY };
@@ -1143,7 +1186,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let value = this.coordUnits.rx;
       let unit = getUnit(value);
       value = (isUnitless(value)) ? rx : parseFloat(value);
-      let ratio = (value / rx) || 1;
+      let ratio = this.getUnitToPixelRatio(unit, width);
 
       this[_dragging] = { point, value, origRadius: rx, unit, ratio };
     } else if (point === "ry") {
@@ -1152,15 +1195,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let value = this.coordUnits.ry;
       let unit = getUnit(value);
       value = (isUnitless(value)) ? ry : parseFloat(value);
-      let ratio = (value / ry) || 1;
+      let ratio = this.getUnitToPixelRatio(unit, height);
 
       this[_dragging] = { point, value, origRadius: ry, unit, ratio };
     }
   }
 
   /**
-   * Set the inline style of the ellipse, setting the center/rx/ry according to the
-   * mouse position.
+   * Set center/rx/ry of the ellispe according to the mouse position and update the
+   * element style.
    * @param {String} point "center", "rx", or "ry"
    * @param {Number} pageX the x coordinate of the mouse position, in terms of %
    *        relative to the element
@@ -1175,37 +1218,34 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       let { unitX, unitY, valueX, valueY, ratioX, ratioY, x, y} = this[_dragging];
       let deltaX = (pageX - x) * ratioX;
       let deltaY = (pageY - y) * ratioY;
-      let newCx = `${valueX + deltaX}${unitX}`;
-      let newCy = `${valueY + deltaY}${unitY}`;
-      let ellipseDef = (this.geometryBox) ?
-        `ellipse(${rx} ${ry} at ${newCx} ${newCy}) ${this.geometryBox}` :
-        `ellipse(${rx} ${ry} at ${newCx} ${newCy})`;
+      let newCx = `${round(valueX + deltaX, unitX)}${unitX}`;
+      let newCy = `${round(valueY + deltaY, unitY)}${unitY}`;
+      let ellipseDef =
+        `ellipse(${rx} ${ry} at ${newCx} ${newCy}) ${this.geometryBox}`.trim();
 
-      this.currentNode.style.setProperty(this.property, ellipseDef, "important");
+      this.emit("highlighter-event", { type: "shape-change", value: ellipseDef });
     } else if (point === "rx") {
       let { value, unit, origRadius, ratio } = this[_dragging];
       let newRadiusPercent = Math.abs(percentX - this.coordinates.cx);
       let { width } = this.currentDimensions;
       let delta = ((newRadiusPercent / 100 * width) - origRadius) * ratio;
-      let newRadius = `${value + delta}${unit}`;
+      let newRadius = `${round(value + delta, unit)}${unit}`;
 
-      let ellipseDef = (this.geometryBox) ?
-        `ellipse(${newRadius} ${ry} at ${cx} ${cy}) ${this.geometryBox}` :
-        `ellipse(${newRadius} ${ry} at ${cx} ${cy})`;
+      let ellipseDef =
+        `ellipse(${newRadius} ${ry} at ${cx} ${cy}) ${this.geometryBox}`.trim();
 
-      this.currentNode.style.setProperty(this.property, ellipseDef, "important");
+      this.emit("highlighter-event", { type: "shape-change", value: ellipseDef });
     } else if (point === "ry") {
       let { value, unit, origRadius, ratio } = this[_dragging];
       let newRadiusPercent = Math.abs(percentY - this.coordinates.cy);
       let { height } = this.currentDimensions;
       let delta = ((newRadiusPercent / 100 * height) - origRadius) * ratio;
-      let newRadius = `${value + delta}${unit}`;
+      let newRadius = `${round(value + delta, unit)}${unit}`;
 
-      let ellipseDef = (this.geometryBox) ?
-        `ellipse(${rx} ${newRadius} at ${cx} ${cy}) ${this.geometryBox}` :
-        `ellipse(${rx} ${newRadius} at ${cx} ${cy})`;
+      let ellipseDef =
+        `ellipse(${rx} ${newRadius} at ${cx} ${cy}) ${this.geometryBox}`.trim();
 
-      this.currentNode.style.setProperty(this.property, ellipseDef, "important");
+      this.emit("highlighter-event", { type: "shape-change", value: ellipseDef });
     }
   }
 
@@ -1228,15 +1268,15 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let computedValue = this.coordinates[point] / 100 * size;
     let unit = getUnit(value);
     value = (isUnitless(value)) ? computedValue : parseFloat(value);
-    let ratio = (value / computedValue) || 1;
+    let ratio = this.getUnitToPixelRatio(unit, size);
     let origValue = (point === "left" || point === "right") ? pageX : pageY;
 
     this[_dragging] = { point, value, origValue, unit, ratio };
   }
 
   /**
-   * Set the inline style of the inset, setting top/left/right/bottom according to the
-   * mouse position.
+   * Set the top/left/right/bottom of the inset shape according to the mouse position
+   * and update the element style.
    * @param {String} point "top", "left", "right", or "bottom"
    * @param {Number} pageX the x coordinate of the mouse position, in terms of %
    *        relative to the element
@@ -1246,29 +1286,29 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
    */
   _handleInsetMove(point, pageX, pageY) {
     let { top, left, right, bottom } = this.coordUnits;
-    let round = this.insetRound;
     let { value, origValue, unit, ratio } = this[_dragging];
 
     if (point === "left") {
       let delta = (pageX - origValue) * ratio;
-      left = `${value + delta}${unit}`;
+      left = `${round(value + delta, unit)}${unit}`;
     } else if (point === "right") {
       let delta = (pageX - origValue) * ratio;
-      right = `${value - delta}${unit}`;
+      right = `${round(value - delta, unit)}${unit}`;
     } else if (point === "top") {
       let delta = (pageY - origValue) * ratio;
-      top = `${value + delta}${unit}`;
+      top = `${round(value + delta, unit)}${unit}`;
     } else if (point === "bottom") {
       let delta = (pageY - origValue) * ratio;
-      bottom = `${value - delta}${unit}`;
+      bottom = `${round(value - delta, unit)}${unit}`;
     }
-    let insetDef = (round) ?
-      `inset(${top} ${right} ${bottom} ${left} round ${round})` :
+
+    let insetDef = (this.insetRound) ?
+      `inset(${top} ${right} ${bottom} ${left} round ${this.insetRound})` :
       `inset(${top} ${right} ${bottom} ${left})`;
 
     insetDef += (this.geometryBox) ? this.geometryBox : "";
 
-    this.currentNode.style.setProperty(this.property, insetDef, "important");
+    this.emit("highlighter-event", { type: "shape-change", value: insetDef });
   }
 
   _handleMouseMoveNotDragging(pageX, pageY) {
@@ -1346,7 +1386,9 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
         { pointName: "scale-s", x: s[0], y: s[1], anchor: "n" },
         { pointName: "scale-e", x: e[0], y: e[1], anchor: "w" },
         { pointName: "scale-w", x: w[0], y: w[1], anchor: "e" },
-        { pointName: "rotate", x: rotatePoint[0], y: rotatePoint[1], cursor: "grab" },
+        { pointName: "rotate", x: rotatePoint[0], y: rotatePoint[1],
+          cursor: hoverCursor
+        },
       ];
 
       for (let { pointName, x, y, cursor, anchor } of points) {
@@ -1579,8 +1621,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
         // Get the point on the line closest to the clicked point.
         let [newX, newY] = projection(x1, y1, x2, y2, pageX, pageY);
         // Default unit for new points is percentages
-        let precision = getDecimalPrecision("%");
-        this._addPolygonPoint(i, newX.toFixed(precision), newY.toFixed(precision));
+        this._addPolygonPoint(i, round(newX, "%"), round(newY, "%"));
         return;
       }
     }
@@ -2182,34 +2223,17 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       `top:${top}px;left:${left}px;width:${width}px;height:${height}px;`);
 
     this._hideShapes();
+    this._updateShapes(width, height, zoom);
 
-    if (this.transformMode && this.shapeType !== "none") {
-      this._updateTransformMode(width, height, zoom);
-    } else if (this.shapeType === "polygon") {
-      this._updatePolygonShape(width, height, zoom);
-    } else if (this.shapeType === "circle") {
-      this._updateCircleShape(width, height, zoom);
-    } else if (this.shapeType === "ellipse") {
-      this._updateEllipseShape(width, height, zoom);
-    } else if (this.shapeType === "inset") {
-      this._updateInsetShape(width, height, zoom);
-    }
+    // For both shape-outside and clip-path the element's quads are displayed for the
+    // parts that overlap with the shape. The parts of the shape that extend past the
+    // element's quads are shown with a dashed line.
+    let quadRect = this.getElement("quad");
+    quadRect.removeAttribute("hidden");
 
-    if (this.property === "shape-outside") {
-      // For shape-outside, the element's quads are displayed for the parts that overlap
-      // with the shape, and the parts of the shape that extend past the element's quads
-      // are shown with a dashed line.
-      let quadRect = this.getElement("quad");
-      quadRect.removeAttribute("hidden");
-
-      this.getElement("polygon").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
-      this.getElement("ellipse").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
-      this.getElement("rect").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
-    } else {
-      this.getElement("polygon").removeAttribute("clip-path");
-      this.getElement("ellipse").removeAttribute("clip-path");
-      this.getElement("rect").removeAttribute("clip-path");
-    }
+    this.getElement("polygon").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
+    this.getElement("ellipse").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
+    this.getElement("rect").setAttribute("clip-path", "url(#shapes-quad-clip-path)");
 
     let { width: winWidth, height: winHeight } = this._winDimensions;
     root.removeAttribute("hidden");
@@ -2221,6 +2245,43 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     setIgnoreLayoutChanges(false, this.highlighterEnv.window.document.documentElement);
 
     return true;
+  }
+
+  /**
+   * Update the SVGs to render the current CSS shape and add markers depending on shape
+   * type and transform mode.
+   * @param {Number} width the width of the element quads
+   * @param {Number} height the height of the element quads
+   * @param {Number} zoom the zoom level of the window
+   */
+  _updateShapes(width, height, zoom) {
+    if (this.transformMode && this.shapeType !== "none") {
+      this._updateTransformMode(width, height, zoom);
+    } else if (this.shapeType === "polygon") {
+      this._updatePolygonShape(width, height, zoom);
+      // Draw markers for each of the polygon's points.
+      this._drawMarkers(this.coordinates, width, height, zoom);
+    } else if (this.shapeType === "circle") {
+      let { rx, cx, cy } = this.coordinates;
+      // Shape renders for "circle()" and "ellipse()" use the same SVG nodes.
+      this._updateEllipseShape(width, height, zoom);
+      // Draw markers for center and radius points.
+      this._drawMarkers([ [cx, cy], [cx + rx, cy] ], width, height, zoom);
+    } else if (this.shapeType === "ellipse") {
+      let { rx, ry, cx, cy } = this.coordinates;
+      this._updateEllipseShape(width, height, zoom);
+      // Draw markers for center, horizontal radius and vertical radius points.
+      this._drawMarkers([ [cx, cy], [cx + rx, cy], [cx, cy + ry] ], width, height, zoom);
+    } else if (this.shapeType === "inset") {
+      let { top, left, right, bottom } = this.coordinates;
+      let centerX = (left + (100 - right)) / 2;
+      let centerY = (top + (100 - bottom)) / 2;
+      let markerCoords = [[centerX, top], [100 - right, centerY],
+                          [centerX, 100 - bottom], [left, centerY]];
+      this._updateInsetShape(width, height, zoom);
+      // Draw markers for each of the inset's sides.
+      this._drawMarkers(markerCoords, width, height, zoom);
+    }
   }
 
   /**
@@ -2240,49 +2301,19 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     if (this.shapeType === "polygon" || this.shapeType === "ellipse") {
       markerPoints.push(n, s, w, e);
     }
-    this._drawMarkers(markerPoints, width, height, zoom);
 
     if (this.shapeType === "polygon") {
-      let points = this.coordinates.map(point => point.join(",")).join(" ");
-
-      let polygonEl = this.getElement("polygon");
-      polygonEl.setAttribute("points", points);
-      polygonEl.removeAttribute("hidden");
-
-      let clipPolygon = this.getElement("clip-polygon");
-      clipPolygon.setAttribute("points", points);
-      clipPolygon.removeAttribute("hidden");
-
-      let dashedPolygon = this.getElement("dashed-polygon");
-      dashedPolygon.setAttribute("points", points);
-      dashedPolygon.removeAttribute("hidden");
-
+      this._updatePolygonShape(width, height, zoom);
       markerPoints.push(rotatePoint);
       let rotateLine = `M ${center.join(" ")} L ${rotatePoint.join(" ")}`;
       this.getElement("rotate-line").setAttribute("d", rotateLine);
     } else if (this.shapeType === "circle" || this.shapeType === "ellipse") {
-      let { rx, ry, cx, cy } = this.coordinates;
-      let ellipseEl = this.getElement("ellipse");
-      ellipseEl.setAttribute("rx", rx);
-      ellipseEl.setAttribute("ry", ry);
-      ellipseEl.setAttribute("cx", cx);
-      ellipseEl.setAttribute("cy", cy);
-      ellipseEl.removeAttribute("hidden");
-
-      let clipEllipse = this.getElement("clip-ellipse");
-      clipEllipse.setAttribute("rx", rx);
-      clipEllipse.setAttribute("ry", ry);
-      clipEllipse.setAttribute("cx", cx);
-      clipEllipse.setAttribute("cy", cy);
-      clipEllipse.removeAttribute("hidden");
-
-      let dashedEllipse = this.getElement("dashed-ellipse");
-      dashedEllipse.setAttribute("rx", rx);
-      dashedEllipse.setAttribute("ry", ry);
-      dashedEllipse.setAttribute("cx", cx);
-      dashedEllipse.setAttribute("cy", cy);
-      dashedEllipse.removeAttribute("hidden");
+      // Shape renders for "circle()" and "ellipse()" use the same SVG nodes.
+      this._updateEllipseShape(width, height, zoom);
+    } else if (this.shapeType === "inset") {
+      this._updateInsetShape(width, height, zoom);
     }
+
     this._drawMarkers(markerPoints, width, height, zoom);
   }
 
@@ -2307,43 +2338,10 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     let dashedPolygon = this.getElement("dashed-polygon");
     dashedPolygon.setAttribute("points", points);
     dashedPolygon.removeAttribute("hidden");
-    this._drawMarkers(this.coordinates, width, height, zoom);
   }
 
   /**
-   * Update the SVG ellipse to fit the CSS circle.
-   * @param {Number} width the width of the element quads
-   * @param {Number} height the height of the element quads
-   * @param {Number} zoom the zoom level of the window
-   */
-  _updateCircleShape(width, height, zoom) {
-    let { rx, ry, cx, cy } = this.coordinates;
-    let ellipseEl = this.getElement("ellipse");
-    ellipseEl.setAttribute("rx", rx);
-    ellipseEl.setAttribute("ry", ry);
-    ellipseEl.setAttribute("cx", cx);
-    ellipseEl.setAttribute("cy", cy);
-    ellipseEl.removeAttribute("hidden");
-
-    let clipEllipse = this.getElement("clip-ellipse");
-    clipEllipse.setAttribute("rx", rx);
-    clipEllipse.setAttribute("ry", ry);
-    clipEllipse.setAttribute("cx", cx);
-    clipEllipse.setAttribute("cy", cy);
-    clipEllipse.removeAttribute("hidden");
-
-    let dashedEllipse = this.getElement("dashed-ellipse");
-    dashedEllipse.setAttribute("rx", rx);
-    dashedEllipse.setAttribute("ry", ry);
-    dashedEllipse.setAttribute("cx", cx);
-    dashedEllipse.setAttribute("cy", cy);
-    dashedEllipse.removeAttribute("hidden");
-
-    this._drawMarkers([[cx, cy], [cx + rx, cy]], width, height, zoom);
-  }
-
-  /**
-   * Update the SVG ellipse to fit the CSS ellipse.
+   * Update the SVG ellipse to fit the CSS circle or ellipse.
    * @param {Number} width the width of the element quads
    * @param {Number} height the height of the element quads
    * @param {Number} zoom the zoom level of the window
@@ -2370,8 +2368,6 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     dashedEllipse.setAttribute("cx", cx);
     dashedEllipse.setAttribute("cy", cy);
     dashedEllipse.removeAttribute("hidden");
-    let markerCoords = [ [cx, cy], [cx + rx, cy], [cx, cy + ry] ];
-    this._drawMarkers(markerCoords, width, height, zoom);
   }
 
   /**
@@ -2402,12 +2398,6 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     dashedRect.setAttribute("width", 100 - left - right);
     dashedRect.setAttribute("height", 100 - top - bottom);
     dashedRect.removeAttribute("hidden");
-
-    let centerX = (left + (100 - right)) / 2;
-    let centerY = (top + (100 - bottom)) / 2;
-    let markerCoords = [[centerX, top], [100 - right, centerY],
-                        [centerX, 100 - bottom], [left, centerY]];
-    this._drawMarkers(markerCoords, width, height, zoom);
   }
 
   /**
@@ -2514,6 +2504,54 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
       return "nesw";
     }
     return "nwse";
+  }
+
+  /**
+   * Given a unit type, get the ratio by which to multiply a pixel value in order to
+   * convert pixels to that unit.
+   *
+   * Percentage units (%) are relative to a size. This must be provided when requesting
+   * a ratio for converting from pixels to percentages.
+   *
+   * @param {String} unit
+   *        One of: %, em, rem, vw, vh
+   * @param {Number} size
+   *        Size to which percentage values are relative to.
+   * @return {Number}
+   */
+  getUnitToPixelRatio(unit, size) {
+    let ratio;
+    const windowHeight = this.currentNode.ownerGlobal.innerHeight;
+    const windowWidth = this.currentNode.ownerGlobal.innerWidth;
+    switch (unit) {
+      case "%":
+        ratio = 100 / size;
+        break;
+      case "em":
+        ratio = 1 / parseFloat(getComputedStyle(this.currentNode).fontSize);
+        break;
+      case "rem":
+        const root = this.currentNode.ownerDocument.documentElement;
+        ratio = 1 / parseFloat(getComputedStyle(root).fontSize);
+        break;
+      case "vw":
+        ratio = 100 / windowWidth;
+        break;
+      case "vh":
+        ratio = 100 / windowHeight;
+        break;
+      case "vmin":
+        ratio = 100 / Math.min(windowHeight, windowWidth);
+        break;
+      case "vmax":
+        ratio = 100 / Math.max(windowHeight, windowWidth);
+        break;
+      default:
+        // If unit is not recognized, peg ratio 1:1 to pixels.
+        ratio = 1;
+    }
+
+    return ratio;
   }
 }
 
@@ -2704,11 +2742,10 @@ exports.getUnit = getUnit;
  * @returns {Boolean} whether the given value has a unit.
  */
 const isUnitless = (point) => {
-  // We treat all values that evaluate to 0 as unitless, regardless of whether
-  // they originally had a unit.
   return !point ||
          !point.match(/[^\d]+$/) ||
-         parseFloat(point) === 0 ||
+         // If zero doesn't have a unit, its numeric and string forms should be equal.
+         (parseFloat(point) === 0 && (parseFloat(point).toString() === point)) ||
          point.includes("(") ||
          point === "closest-side" ||
          point === "farthest-side";
@@ -2743,9 +2780,6 @@ const getAnchorPoint = (type) => {
 
 /**
 * Get the decimal point precision for values depending on unit type.
-* Used as argument for `toFixed()` on coordinate values when:
-* - transforming shapes
-* - inserting new points on a polygon.
 * Only handle pixels and falsy values for now. Round them to the nearest integer value.
 * All other unit types round to two decimal points.
 *
@@ -2763,5 +2797,22 @@ function getDecimalPrecision(unitType) {
   }
 }
 exports.getDecimalPrecision = getDecimalPrecision;
+
+/**
+ * Round up a numeric value to a fixed number of decimals depending on CSS unit type.
+ * Used when generating output shape values when:
+ * - transforming shapes
+ * - inserting new points on a polygon.
+ *
+ * @param {Number} number
+ *        Value to round up.
+ * @param {String} unitType
+ *        CSS unit type, like "px", "%", "em", "vh", etc.
+ * @return {Number}
+ *         Rounded value
+ */
+function round(number, unitType) {
+  return number.toFixed(getDecimalPrecision(unitType));
+}
 
 exports.ShapesHighlighter = ShapesHighlighter;

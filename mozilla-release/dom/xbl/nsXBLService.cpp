@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/ComputedStyle.h"
 
 #include "nsCOMPtr.h"
 #include "nsNetUtil.h"
@@ -13,7 +14,6 @@
 #include "nsIInputStream.h"
 #include "nsNameSpaceManager.h"
 #include "nsIURI.h"
-#include "nsIDOMElement.h"
 #include "nsIURL.h"
 #include "nsIChannel.h"
 #include "nsString.h"
@@ -26,7 +26,6 @@
 #include "nsGkAtoms.h"
 #include "nsIMemory.h"
 #include "nsIObserverService.h"
-#include "nsIDOMNodeList.h"
 #include "nsXBLContentSink.h"
 #include "nsXBLBinding.h"
 #include "nsXBLPrototypeBinding.h"
@@ -41,7 +40,6 @@
 #include "nsIPresShell.h"
 #include "nsIDocumentObserver.h"
 #include "nsFrameManager.h"
-#include "nsStyleContext.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIScriptError.h"
 #include "nsXBLSerialize.h"
@@ -54,7 +52,7 @@
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoStyleSet.h"
-#include "mozilla/ServoRestyleManager.h"
+#include "mozilla/RestyleManager.h"
 #include "mozilla/dom/ChildIterator.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/Element.h"
@@ -266,7 +264,7 @@ nsXBLStreamListener::HasRequest(nsIURI* aURI, nsIContent* aElt)
 }
 
 nsresult
-nsXBLStreamListener::HandleEvent(nsIDOMEvent* aEvent)
+nsXBLStreamListener::HandleEvent(Event* aEvent)
 {
   nsresult rv = NS_OK;
   uint32_t i;
@@ -274,8 +272,7 @@ nsXBLStreamListener::HandleEvent(nsIDOMEvent* aEvent)
 
   // Get the binding document; note that we don't hold onto it in this object
   // to avoid creating a cycle
-  Event* event = aEvent->InternalDOMEvent();
-  EventTarget* target = event->GetCurrentTarget();
+  EventTarget* target = aEvent->GetCurrentTarget();
   nsCOMPtr<nsIDocument> bindingDocument = do_QueryInterface(target);
   NS_ASSERTION(bindingDocument, "Event not targeted at document?!");
 
@@ -389,7 +386,7 @@ nsXBLService::IsChromeOrResourceURI(nsIURI* aURI)
 static void
 EnsureSubtreeStyled(Element* aElement)
 {
-  if (!aElement->IsStyledByServo() || !aElement->HasServoData()) {
+  if (!aElement->HasServoData()) {
     return;
   }
 
@@ -402,7 +399,7 @@ EnsureSubtreeStyled(Element* aElement)
     return;
   }
 
-  ServoStyleSet* servoSet = presShell->StyleSet()->AsServo();
+  ServoStyleSet* servoSet = presShell->StyleSet();
   StyleChildrenIterator iter(aElement);
   for (nsIContent* child = iter.GetNextChild();
        child;
@@ -450,8 +447,8 @@ public:
   {
     MOZ_ASSERT(mResolveStyle);
     if (mHadData) {
-      ServoRestyleManager::ClearServoDataFromSubtree(
-        mElement, ServoRestyleManager::IncludeRoot::No);
+      RestyleManager::ClearServoDataFromSubtree(
+        mElement, RestyleManager::IncludeRoot::No);
     }
   }
 
@@ -465,7 +462,7 @@ public:
     if (*mResolveStyle) {
       mElement->ClearServoData();
 
-      ServoStyleSet* servoSet = presShell->StyleSet()->AsServo();
+      ServoStyleSet* servoSet = presShell->StyleSet();
       servoSet->StyleNewSubtree(mElement);
     }
   }
@@ -618,7 +615,8 @@ nsXBLService::AttachGlobalKeyHandler(EventTarget* aTarget)
   if (contentNode && contentNode->GetProperty(nsGkAtoms::listener))
     return NS_OK;
 
-  nsCOMPtr<nsIDOMElement> elt(do_QueryInterface(contentNode));
+  Element* elt =
+   contentNode && contentNode->IsElement() ? contentNode->AsElement() : nullptr;
 
   // Create the key handler
   RefPtr<nsXBLWindowKeyHandler> handler =
@@ -969,16 +967,9 @@ nsXBLService::LoadBindingDocumentInfo(nsIContent* aBoundElement,
   bool useXULCache = cache && cache->IsEnabled();
 
   if (!info && useXULCache) {
-    // Assume Gecko style backend for the XBL document without a bound
-    // document. The only case is loading platformHTMLBindings.xml which
-    // doesn't have any style sheets or style attributes.
-    StyleBackendType styleBackend
-      = aBoundDocument ? aBoundDocument->GetStyleBackendType()
-                       : StyleBackendType::Gecko;
-
     // This cache crosses the entire product, so that any XBL bindings that are
     // part of chrome will be reused across all XUL documents.
-    info = cache->GetXBLDocumentInfo(documentURI, styleBackend);
+    info = cache->GetXBLDocumentInfo(documentURI);
   }
 
   bool useStartupCache = useXULCache && IsChromeOrResourceURI(documentURI);
@@ -1041,12 +1032,6 @@ nsXBLService::LoadBindingDocumentInfo(nsIContent* aBoundElement,
     // document that has loaded some bindings.
     bindingManager->PutXBLDocumentInfo(info);
   }
-
-  MOZ_ASSERT(!aBoundDocument || !info ||
-             aBoundDocument->GetStyleBackendType() ==
-               info->GetDocument()->GetStyleBackendType(),
-             "Style backend type mismatched between the bound document and "
-             "the XBL document loaded.");
 
   info.forget(aResult);
 

@@ -8,7 +8,6 @@
 /* THIS IS A PUBLIC INTERFACE */
 
 interface nsIDOMNode;
-interface nsIDOMRange;
 interface nsINode;
 
 %{C++
@@ -26,7 +25,7 @@ class Selection;
  * @version 1.0
  */
 
-[builtinclass, uuid(e0a4d4b3-f34e-44bd-b1f2-4e3bde9b6915)]
+[shim(Selection), uuid(e0a4d4b3-f34e-44bd-b1f2-4e3bde9b6915)]
 interface nsISelection : nsISupports
 {
     /**
@@ -54,16 +53,6 @@ interface nsISelection : nsISupports
      */
     readonly attribute boolean isCollapsed;
     [noscript,notxpcom,nostdcall] boolean collapsed();
-
-    /**
-     * Returns the number of ranges in the selection.
-     */
-    readonly attribute long rangeCount;
-
-    /**
-     * Returns the range at the specified index.
-     */
-    nsIDOMRange getRangeAt(in long index);
 
     /**
      * Collapses the selection to a single point, at the specified offset
@@ -111,22 +100,7 @@ interface nsISelection : nsISupports
      * Adds all children of the specified node to the selection.
      * @param parentNode  the parent of the children to be added to the selection.
      */
-    void selectAllChildren(in nsIDOMNode parentNode); 
-
-    /**
-     * Adds a range to the current selection.
-     */
-    void addRange(in nsIDOMRange range);
- 
-    /**
-     * Removes a range from the current selection.
-     */
-    void removeRange(in nsIDOMRange range);
-
-    /**
-     * Removes all ranges from the current selection.
-     */
-    void removeAllRanges();
+    void selectAllChildren(in nsIDOMNode parentNode);
 
     /**
      * Deletes this selection from document the nodes belong to.

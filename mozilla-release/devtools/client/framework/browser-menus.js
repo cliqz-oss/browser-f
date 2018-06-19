@@ -12,6 +12,7 @@
  * - devtools/client/definitions for tool-specifics entries
  */
 
+const {Cu} = require("chrome");
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const MENUS_L10N = new LocalizationHelper("devtools/client/locales/menus.properties");
 
@@ -74,9 +75,9 @@ function createToolMenuElements(toolDefinition, doc) {
     return;
   }
 
-  let oncommand = function (id, event) {
+  let oncommand = function(id, event) {
     let window = event.target.ownerDocument.defaultView;
-    gDevToolsBrowser.selectToolCommand(window.gBrowser, id, window.performance.now());
+    gDevToolsBrowser.selectToolCommand(window.gBrowser, id, Cu.now());
   }.bind(null, id);
 
   let menuitem = createMenuItem({
@@ -253,7 +254,7 @@ function removeTopLevelItems(doc) {
  * @param {XULDocument} doc
  *        The document to which menus are to be added.
  */
-exports.addMenus = function (doc) {
+exports.addMenus = function(doc) {
   addTopLevelItems(doc);
 
   addAllToolsToMenu(doc);
@@ -265,7 +266,7 @@ exports.addMenus = function (doc) {
  * @param {XULDocument} doc
  *        The document to which menus are to be removed.
  */
-exports.removeMenus = function (doc) {
+exports.removeMenus = function(doc) {
   // We only remove top level entries. Per-tool entries are removed while
   // unregistering each tool.
   removeTopLevelItems(doc);

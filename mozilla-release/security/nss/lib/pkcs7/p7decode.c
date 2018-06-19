@@ -1596,7 +1596,6 @@ sec_pkcs7_verify_signature(SEC_PKCS7ContentInfo *cinfo,
     } else {
         SECItem *sig;
         SECItem holder;
-        SECStatus rv;
 
         /*
          * No authenticated attributes.

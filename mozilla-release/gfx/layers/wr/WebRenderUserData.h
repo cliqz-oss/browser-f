@@ -7,17 +7,22 @@
 #ifndef GFX_WEBRENDERUSERDATA_H
 #define GFX_WEBRENDERUSERDATA_H
 
+#include <vector>
 #include "BasicLayers.h"                // for BasicLayerManager
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/layers/AnimationInfo.h"
+#include "nsIFrame.h"
 
 class nsDisplayItemGeometry;
-class nsIFrame;
 
 namespace mozilla {
 namespace wr {
 class IpcResourceUpdateQueue;
+}
+
+namespace gfx {
+class SourceSurface;
 }
 
 namespace layers {
@@ -30,6 +35,7 @@ class WebRenderCanvasRendererAsync;
 class WebRenderImageData;
 class WebRenderFallbackData;
 class WebRenderLayerManager;
+class WebRenderGroupData;
 
 class WebRenderUserData
 {
@@ -45,22 +51,22 @@ public:
   virtual WebRenderImageData* AsImageData() { return nullptr; }
   virtual WebRenderFallbackData* AsFallbackData() { return nullptr; }
   virtual WebRenderCanvasData* AsCanvasData() { return nullptr; }
+  virtual WebRenderGroupData* AsGroupData() { return nullptr; }
 
   enum class UserDataType {
     eImage,
     eFallback,
     eAnimation,
     eCanvas,
+    eGroup,
   };
 
   virtual UserDataType GetType() = 0;
-  bool IsDataValid(WebRenderLayerManager* aManager);
   bool IsUsed() { return mUsed; }
   void SetUsed(bool aUsed) { mUsed = aUsed; }
   nsIFrame* GetFrame() { return mFrame; }
   uint32_t GetDisplayItemKey() { return mDisplayItemKey; }
   void RemoveFromTable();
-  virtual void ClearCachedResources() {};
   virtual nsDisplayItemGeometry* GetGeometry() { return nullptr; }
 protected:
   virtual ~WebRenderUserData();
@@ -73,6 +79,27 @@ protected:
   WebRenderUserDataRefTable* mTable;
   bool mUsed;
 };
+
+struct WebRenderUserDataKey {
+  WebRenderUserDataKey(uint32_t aFrameKey, WebRenderUserData::UserDataType aType)
+    : mFrameKey(aFrameKey)
+    , mType(aType)
+  { }
+
+  bool operator==(const WebRenderUserDataKey& other) const
+  {
+    return mFrameKey == other.mFrameKey && mType == other.mType;
+  }
+  PLDHashNumber Hash() const
+  {
+    return HashGeneric(mFrameKey, static_cast<std::underlying_type<decltype(mType)>::type>(mType));
+  }
+
+  uint32_t mFrameKey;
+  WebRenderUserData::UserDataType mType;
+};
+
+typedef nsRefPtrHashtable<nsGenericHashKey<mozilla::layers::WebRenderUserDataKey>, WebRenderUserData> WebRenderUserDataTable;
 
 class WebRenderImageData : public WebRenderUserData
 {
@@ -103,7 +130,6 @@ public:
                                          bool aIsBackfaceVisible);
 
   void CreateImageClientIfNeeded();
-  void ClearCachedResources() override;
 
   bool IsAsync()
   {
@@ -113,7 +139,6 @@ public:
 protected:
   void ClearImageKey();
   void CreateExternalImageIfNeeded();
-  void DoClearCachedResources();
 
   wr::MaybeExternalImageId mExternalImageId;
   Maybe<wr::ImageKey> mKey;
@@ -132,7 +157,6 @@ public:
   virtual WebRenderFallbackData* AsFallbackData() override { return this; }
   virtual UserDataType GetType() override { return UserDataType::eFallback; }
   static UserDataType Type() { return UserDataType::eFallback; }
-  void ClearCachedResources() override;
   nsDisplayItemGeometry* GetGeometry() override;
   void SetGeometry(nsAutoPtr<nsDisplayItemGeometry> aGeometry);
   nsRect GetBounds() { return mBounds; }
@@ -143,6 +167,7 @@ public:
   bool IsInvalid() { return mInvalid; }
 
   RefPtr<BasicLayerManager> mBasicLayerManager;
+  std::vector<RefPtr<gfx::SourceSurface>> mExternalSurfaces;
 protected:
   nsAutoPtr<nsDisplayItemGeometry> mGeometry;
   nsRect mBounds;
@@ -177,12 +202,35 @@ public:
   void ClearCanvasRenderer();
   WebRenderCanvasRendererAsync* GetCanvasRenderer();
   WebRenderCanvasRendererAsync* CreateCanvasRenderer();
-  void ClearCachedResources() override;
 protected:
-  void DoClearCachedResources();
 
   UniquePtr<WebRenderCanvasRendererAsync> mCanvasRenderer;
 };
+
+extern void DestroyWebRenderUserDataTable(WebRenderUserDataTable* aTable);
+
+struct WebRenderUserDataProperty {
+  NS_DECLARE_FRAME_PROPERTY_WITH_DTOR(Key, WebRenderUserDataTable, DestroyWebRenderUserDataTable)
+};
+
+template<class T> already_AddRefed<T>
+GetWebRenderUserData(nsIFrame* aFrame, uint32_t aPerFrameKey)
+{
+  MOZ_ASSERT(aFrame);
+  WebRenderUserDataTable* userDataTable =
+    aFrame->GetProperty(WebRenderUserDataProperty::Key());
+  if (!userDataTable) {
+    return nullptr;
+  }
+
+  WebRenderUserData* data = userDataTable->GetWeak(WebRenderUserDataKey(aPerFrameKey, T::Type()));
+  if (data) {
+    RefPtr<T> result = static_cast<T*>(data);
+    return result.forget();
+  }
+
+  return nullptr;
+}
 
 } // namespace layers
 } // namespace mozilla

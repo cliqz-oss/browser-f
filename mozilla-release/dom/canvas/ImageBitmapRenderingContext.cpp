@@ -189,8 +189,9 @@ ImageBitmapRenderingContext::GetSurfaceSnapshot(gfxAlphaType* const aOutAlphaTyp
 }
 
 void
-ImageBitmapRenderingContext::SetIsOpaque(bool aIsOpaque)
+ImageBitmapRenderingContext::SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue)
 {
+  // ignored
 }
 
 bool
@@ -233,7 +234,7 @@ ImageBitmapRenderingContext::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
 
   RefPtr<ImageContainer> imageContainer = imageLayer->GetContainer();
   if (!imageContainer) {
-    imageContainer = aManager->CreateImageContainer();
+    imageContainer = LayerManager::CreateImageContainer();
     imageLayer->SetContainer(imageContainer);
   }
 

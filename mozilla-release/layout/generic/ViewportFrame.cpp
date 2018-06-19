@@ -11,7 +11,8 @@
 
 #include "mozilla/ViewportFrame.h"
 
-#include "mozilla/ServoRestyleManager.h"
+#include "mozilla/ComputedStyleInlines.h"
+#include "mozilla/RestyleManager.h"
 #include "nsGkAtoms.h"
 #include "nsIScrollableFrame.h"
 #include "nsSubDocumentFrame.h"
@@ -20,15 +21,14 @@
 #include "GeckoProfiler.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsPlaceholderFrame.h"
-#include "mozilla/ServoStyleContextInlines.h"
 
 using namespace mozilla;
 typedef nsAbsoluteContainingBlock::AbsPosReflowFlags AbsPosReflowFlags;
 
 ViewportFrame*
-NS_NewViewportFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewViewportFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) ViewportFrame(aContext);
+  return new (aPresShell) ViewportFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(ViewportFrame)
@@ -184,7 +184,19 @@ ViewportFrame::BuildDisplayListForTopLayer(nsDisplayListBuilder* aBuilder,
   if (nsCanvasFrame* canvasFrame = shell->GetCanvasFrame()) {
     if (Element* container = canvasFrame->GetCustomContentContainer()) {
       if (nsIFrame* frame = container->GetPrimaryFrame()) {
-        BuildDisplayListForTopLayerFrame(aBuilder, frame, aList);
+        // Enter this frame for display list building, but only if it is
+        // actually a top layer frame. There is a bug affecting SVG documents
+        // that makes the custom content container not be a top layer frame in
+        // them, because SVG documents don't load `ua.css` when the custom
+        // content container is created. `ua.css` contains the rule that makes
+        // this a top layer frame. This bug is being fixed in bug 1157592.
+        // We have to do this workaround because otherwise we risk building
+        // display items for this frame twice; if the custom content container
+        // frame is not a top layer frame, it's not out-of-flow, so we'll have
+        // built display items for it already when we entered its parent frame.
+        if (frame->StyleDisplay()->mTopLayer != NS_STYLE_TOP_LAYER_NONE) {
+          BuildDisplayListForTopLayerFrame(aBuilder, frame, aList);
+        }
       }
     }
   }
@@ -425,19 +437,18 @@ ViewportFrame::ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas)
 void
 ViewportFrame::UpdateStyle(ServoRestyleState& aRestyleState)
 {
-  ServoStyleContext* oldContext = StyleContext()->AsServo();
-  nsAtom* pseudo = oldContext->GetPseudo();
-  RefPtr<ServoStyleContext> newContext =
+ nsAtom* pseudo = Style()->GetPseudo();
+  RefPtr<ComputedStyle> newStyle =
     aRestyleState.StyleSet().ResolveInheritingAnonymousBoxStyle(pseudo, nullptr);
 
   // We're special because we have a null GetContent(), so don't call things
   // like UpdateStyleOfOwnedChildFrame that try to append changes for the
   // content to the change list.  Nor do we computed a changehint, since we have
   // no way to apply it anyway.
-  newContext->ResolveSameStructsAs(oldContext);
+  newStyle->ResolveSameStructsAs(Style());
 
   MOZ_ASSERT(!GetNextContinuation(), "Viewport has continuations?");
-  SetStyleContext(newContext);
+  SetComputedStyle(newStyle);
 
   UpdateStyleOfOwnedAnonBoxes(aRestyleState);
 }

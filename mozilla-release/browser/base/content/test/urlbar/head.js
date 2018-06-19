@@ -10,6 +10,10 @@ ChromeUtils.defineModuleGetter(this, "Preferences",
   "resource://gre/modules/Preferences.jsm");
 ChromeUtils.defineModuleGetter(this, "HttpServer",
   "resource://testing-common/httpd.js");
+ChromeUtils.defineModuleGetter(this, "SearchTestUtils",
+  "resource://testing-common/SearchTestUtils.jsm");
+
+SearchTestUtils.init(Assert, registerCleanupFunction);
 
 /**
  * Waits for the next top-level document load in the current browser.  The URI
@@ -58,7 +62,7 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrows
           stopContent(contentStopFromProgressListener, chan.originalURI.spec);
         }
       },
-      QueryInterface: XPCOMUtils.generateQI(["nsISupportsWeakReference"])
+      QueryInterface: ChromeUtils.generateQI(["nsISupportsWeakReference"])
     };
     wp.addProgressListener(progressListener, wp.NOTIFY_STATE_WINDOW);
 
@@ -204,24 +208,6 @@ function promiseAutocompleteResultPopup(inputText,
   return promiseSearchComplete(win, dontAnimate);
 }
 
-function promiseNewSearchEngine(basename) {
-  return new Promise((resolve, reject) => {
-    info("Waiting for engine to be added: " + basename);
-    let url = getRootDirectory(gTestPath) + basename;
-    Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) {
-        info("Search engine added: " + basename);
-        registerCleanupFunction(() => Services.search.removeEngine(engine));
-        resolve(engine);
-      },
-      onError(errCode) {
-        Assert.ok(false, "addEngine failed with error code " + errCode);
-        reject();
-      },
-    });
-  });
-}
-
 function promisePageActionPanelOpen() {
   let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
                   .getInterface(Ci.nsIDOMWindowUtils);
@@ -245,6 +231,38 @@ function promisePageActionPanelOpen() {
     // Wait for items in the panel to become visible.
     return promisePageActionViewChildrenVisible(BrowserPageActions.mainViewNode);
   });
+}
+
+async function waitForActivatedActionPanel() {
+  if (!BrowserPageActions.activatedActionPanelNode) {
+    info("Waiting for activated-action panel to be added to mainPopupSet");
+    await new Promise(resolve => {
+      let observer = new MutationObserver(mutations => {
+        if (BrowserPageActions.activatedActionPanelNode) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+      let popupSet = document.getElementById("mainPopupSet");
+      observer.observe(popupSet, { childList: true });
+    });
+    info("Activated-action panel added to mainPopupSet");
+  }
+  if (!BrowserPageActions.activatedActionPanelNode.state == "open") {
+    info("Waiting for activated-action panel popupshown");
+    await promisePanelShown(BrowserPageActions.activatedActionPanelNode);
+    info("Got activated-action panel popupshown");
+  }
+  let panelView =
+    BrowserPageActions.activatedActionPanelNode.querySelector("panelview");
+  if (panelView) {
+    await BrowserTestUtils.waitForEvent(
+      BrowserPageActions.activatedActionPanelNode,
+      "ViewShown"
+    );
+    await promisePageActionViewChildrenVisible(panelView);
+  }
+  return panelView;
 }
 
 function promisePageActionPanelShown() {
@@ -293,16 +311,18 @@ function promisePageActionViewShown() {
 }
 
 function promisePageActionViewChildrenVisible(panelViewNode) {
-  info("promisePageActionViewChildrenVisible waiting for a child node to be visible");
+  return promiseNodeVisible(panelViewNode.firstChild.firstChild);
+}
+
+function promiseNodeVisible(node) {
+  info(`promiseNodeVisible waiting, node.id=${node.id} node.localeName=${node.localName}\n`);
   let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
                   .getInterface(Ci.nsIDOMWindowUtils);
   return BrowserTestUtils.waitForCondition(() => {
-    let bodyNode = panelViewNode.firstChild;
-    for (let childNode of bodyNode.childNodes) {
-      let bounds = dwu.getBoundsWithoutFlushing(childNode);
-      if (bounds.width > 0 && bounds.height > 0) {
-        return true;
-      }
+    let bounds = dwu.getBoundsWithoutFlushing(node);
+    if (bounds.width > 0 && bounds.height > 0) {
+      info(`promiseNodeVisible OK, node.id=${node.id} node.localeName=${node.localName}\n`);
+      return true;
     }
     return false;
   });

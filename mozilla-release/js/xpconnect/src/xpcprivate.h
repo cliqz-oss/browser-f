@@ -108,7 +108,6 @@
 #include "nsISupportsPrimitives.h"
 #include "nsMemory.h"
 #include "nsIXPConnect.h"
-#include "nsIInterfaceInfo.h"
 #include "nsIXPCScriptable.h"
 #include "nsIObserver.h"
 #include "nsWeakReference.h"
@@ -177,7 +176,6 @@ class Exception;
 #define XPC_DYING_NATIVE_PROTO_MAP_LENGTH        8
 #define XPC_NATIVE_INTERFACE_MAP_LENGTH         32
 #define XPC_NATIVE_SET_MAP_LENGTH               32
-#define XPC_THIS_TRANSLATOR_MAP_LENGTH           4
 #define XPC_WRAPPER_MAP_LENGTH                   8
 
 /***************************************************************************/
@@ -245,7 +243,7 @@ public:
 
     static XPCJSRuntime* GetRuntimeInstance();
 
-    static bool IsISupportsDescendant(nsIInterfaceInfo* info);
+    static bool IsISupportsDescendant(const nsXPTInterfaceInfo* info);
 
     static nsIScriptSecurityManager* SecurityManager()
     {
@@ -269,8 +267,6 @@ public:
     static void ReleaseXPConnectSingleton();
 
     bool IsShuttingDown() const {return mShuttingDown;}
-
-    nsresult GetInfoForIID(const nsIID * aIID, nsIInterfaceInfo** info);
 
     void RecordTraversal(void* p, nsISupports* s);
 
@@ -416,6 +412,8 @@ public:
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
+    bool IsSystemCaller() const override;
+
     AutoMarkingPtr** GetAutoRootsAdr() {return &mAutoRoots;}
 
     nsresult GetPendingResult() { return mPendingResult; }
@@ -465,6 +463,7 @@ public:
         IDX_MESSAGE                 ,
         IDX_LASTINDEX               ,
         IDX_THEN                    ,
+        IDX_ISINSTANCE              ,
         IDX_TOTAL_COUNT // just a count of the above
     };
 
@@ -550,9 +549,6 @@ public:
     NativeSetMap* GetNativeSetMap() const
         {return mNativeSetMap;}
 
-    IID2ThisTranslatorMap* GetThisTranslatorMap() const
-        {return mThisTranslatorMap;}
-
     XPCWrappedNativeProtoMap* GetDyingWrappedNativeProtoMap() const
         {return mDyingWrappedNativeProtoMap;}
 
@@ -636,6 +632,8 @@ public:
     void InitSingletonScopes();
     void DeleteSingletonScopes();
 
+    void SystemIsBeingShutDown();
+
 private:
     explicit XPCJSRuntime(JSContext* aCx);
 
@@ -654,7 +652,6 @@ private:
     IID2NativeInterfaceMap*  mIID2NativeInterfaceMap;
     ClassInfo2NativeSetMap*  mClassInfo2NativeSetMap;
     NativeSetMap*            mNativeSetMap;
-    IID2ThisTranslatorMap*   mThisTranslatorMap;
     XPCWrappedNativeProtoMap* mDyingWrappedNativeProtoMap;
     bool mGCIsRunning;
     nsTArray<nsISupports*> mNativesToReleaseArray;
@@ -926,8 +923,6 @@ public:
     void TraceInside(JSTracer* trc) {
         if (mContentXBLScope)
             mContentXBLScope.trace(trc, "XPCWrappedNativeScope::mXBLScope");
-        for (size_t i = 0; i < mAddonScopes.Length(); i++)
-            mAddonScopes[i].trace(trc, "XPCWrappedNativeScope::mAddonScopes");
         if (mXrayExpandos.initialized())
             mXrayExpandos.trace(trc);
     }
@@ -974,16 +969,10 @@ public:
     static bool
     IsDyingScope(XPCWrappedNativeScope* scope);
 
-    typedef js::HashSet<JSAddonId*,
-                        js::PointerHasher<JSAddonId*>,
-                        js::SystemAllocPolicy> AddonSet;
-
     // Gets the appropriate scope object for XBL in this scope. The context
     // must be same-compartment with the global upon entering, and the scope
     // object is wrapped into the compartment of the global.
     JSObject* EnsureContentXBLScope(JSContext* cx);
-
-    JSObject* EnsureAddonScope(JSContext* cx, JSAddonId* addonId);
 
     XPCWrappedNativeScope(JSContext* cx, JS::HandleObject aGlobal);
 
@@ -996,29 +985,14 @@ public:
     bool UseContentXBLScope() { return mUseContentXBLScope; }
     void ClearContentXBLScope() { mContentXBLScope = nullptr; }
 
-    bool IsAddonScope() { return xpc::IsAddonCompartment(Compartment()); }
-
-    static bool AllowCPOWsInAddon(JSContext* cx, JSAddonId* addonId, bool allow);
-
 protected:
     virtual ~XPCWrappedNativeScope();
 
     XPCWrappedNativeScope() = delete;
 
 private:
-    class ClearInterpositionsObserver final : public nsIObserver {
-        ~ClearInterpositionsObserver() {}
-
-      public:
-        NS_DECL_ISUPPORTS
-        NS_DECL_NSIOBSERVER
-    };
-
     static XPCWrappedNativeScope* gScopes;
     static XPCWrappedNativeScope* gDyingScopes;
-
-    static bool                      gShutdownObserverInitialized;
-    static AddonSet*                 gAllowCPOWAddonSet;
 
     Native2WrappedNativeMap*         mWrappedNativeMap;
     ClassInfo2WrappedNativeProtoMap* mWrappedNativeProtoMap;
@@ -1034,9 +1008,6 @@ private:
     // EnsureContentXBLScope() decides whether it needs to be created or not.
     // This reference is wrapped into the compartment of mGlobalJSObject.
     JS::ObjectPtr                    mContentXBLScope;
-
-    // Lazily created sandboxes for addon code.
-    nsTArray<JS::ObjectPtr>          mAddonScopes;
 
     JS::WeakMapPtr<JSObject*, JSObject*> mXrayExpandos;
 
@@ -1170,12 +1141,12 @@ class XPCNativeInterface final
                                             DestroyInstance(this))
 
     static already_AddRefed<XPCNativeInterface> GetNewOrUsed(const nsIID* iid);
-    static already_AddRefed<XPCNativeInterface> GetNewOrUsed(nsIInterfaceInfo* info);
+    static already_AddRefed<XPCNativeInterface> GetNewOrUsed(const nsXPTInterfaceInfo* info);
     static already_AddRefed<XPCNativeInterface> GetNewOrUsed(const char* name);
     static already_AddRefed<XPCNativeInterface> GetISupports();
 
-    inline nsIInterfaceInfo* GetInterfaceInfo() const {return mInfo.get();}
-    inline jsid              GetName()          const {return mName;}
+    inline const nsXPTInterfaceInfo* GetInterfaceInfo() const {return mInfo;}
+    inline jsid                      GetName()          const {return mName;}
 
     inline const nsIID* GetIID() const;
     inline const char*  GetNameString() const;
@@ -1197,10 +1168,10 @@ class XPCNativeInterface final
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
   protected:
-    static already_AddRefed<XPCNativeInterface> NewInstance(nsIInterfaceInfo* aInfo);
+    static already_AddRefed<XPCNativeInterface> NewInstance(const nsXPTInterfaceInfo* aInfo);
 
     XPCNativeInterface() = delete;
-    XPCNativeInterface(nsIInterfaceInfo* aInfo, jsid aName)
+    XPCNativeInterface(const nsXPTInterfaceInfo* aInfo, jsid aName)
       : mInfo(aInfo), mName(aName), mMemberCount(0)
     {}
     ~XPCNativeInterface();
@@ -1213,7 +1184,7 @@ class XPCNativeInterface final
     static void DestroyInstance(XPCNativeInterface* inst);
 
 private:
-    nsCOMPtr<nsIInterfaceInfo> mInfo;
+    const nsXPTInterfaceInfo*  mInfo;
     jsid                       mName;
     uint16_t                   mMemberCount;
     XPCNativeMember            mMembers[1]; // always last - object sized for array
@@ -1783,7 +1754,7 @@ public:
 
     REFNSIID GetIID() const {return mIID;}
     XPCJSRuntime* GetRuntime() const {return mRuntime;}
-    nsIInterfaceInfo* GetInterfaceInfo() const {return mInfo;}
+    const nsXPTInterfaceInfo* GetInterfaceInfo() const {return mInfo;}
     const char* GetInterfaceName();
 
     NS_IMETHOD DelegatedQueryInterface(nsXPCWrappedJS* self, REFNSIID aIID,
@@ -1820,7 +1791,7 @@ private:
 
     nsXPCWrappedJSClass() = delete;
     nsXPCWrappedJSClass(JSContext* cx, REFNSIID aIID,
-                        nsIInterfaceInfo* aInfo);
+                        const nsXPTInterfaceInfo* aInfo);
 
     bool IsReflectable(uint16_t i) const
         {return (bool)(mDescriptors[i/32] & (1 << (i%32)));}
@@ -1856,7 +1827,7 @@ private:
 
 private:
     XPCJSRuntime* mRuntime;
-    nsCOMPtr<nsIInterfaceInfo> mInfo;
+    const nsXPTInterfaceInfo* mInfo;
     char* mName;
     nsIID mIID;
     uint32_t* mDescriptors;
@@ -2219,15 +2190,15 @@ public:
     NS_DECL_NSIJSIID
     NS_DECL_NSIXPCSCRIPTABLE
 
-    static already_AddRefed<nsJSIID> NewID(nsIInterfaceInfo* aInfo);
+    static already_AddRefed<nsJSIID> NewID(const nsXPTInterfaceInfo* aInfo);
 
-    explicit nsJSIID(nsIInterfaceInfo* aInfo);
+    explicit nsJSIID(const nsXPTInterfaceInfo* aInfo);
     nsJSIID() = delete;
 
 private:
     virtual ~nsJSIID();
 
-    nsCOMPtr<nsIInterfaceInfo> mInfo;
+    const nsXPTInterfaceInfo* mInfo;
 };
 
 // nsJSCID
@@ -2610,9 +2581,6 @@ xpc_GetSafeJSContext()
 
 namespace xpc {
 
-JSAddonId*
-NewAddonId(JSContext* cx, const nsACString& id);
-
 // JSNatives to expose atob and btoa in various non-DOM XPConnect scopes.
 bool
 Atob(JSContext* cx, unsigned argc, JS::Value* vp);
@@ -2646,6 +2614,9 @@ struct GlobalProperties {
     bool CSS : 1;
     bool CSSRule : 1;
     bool Directory : 1;
+    bool DOMParser : 1;
+    bool Element : 1;
+    bool Event : 1;
     bool File : 1;
     bool FileReader: 1;
     bool FormData : 1;
@@ -2657,6 +2628,7 @@ struct GlobalProperties {
     bool URL : 1;
     bool URLSearchParams : 1;
     bool XMLHttpRequest : 1;
+    bool XMLSerializer : 1;
 
     // Ad-hoc property names we implement.
     bool atob : 1;
@@ -2713,8 +2685,6 @@ public:
         , wantExportHelpers(false)
         , isWebExtensionContentScript(false)
         , proto(cx)
-        , addonId(cx)
-        , writeToGlobalPrototype(false)
         , sameZoneAs(cx)
         , freshZone(false)
         , isContentXBLScope(false)
@@ -2734,8 +2704,6 @@ public:
     bool isWebExtensionContentScript;
     JS::RootedObject proto;
     nsCString sandboxName;
-    JS::RootedString addonId;
-    bool writeToGlobalPrototype;
     JS::RootedObject sameZoneAs;
     bool freshZone;
     bool isContentXBLScope;
@@ -2885,10 +2853,6 @@ EvalInSandbox(JSContext* cx, JS::HandleObject sandbox, const nsAString& source,
               const nsACString& filename, int32_t lineNo,
               JS::MutableHandleValue rval);
 
-nsresult
-GetSandboxAddonId(JSContext* cx, JS::HandleObject sandboxArg,
-                  JS::MutableHandleValue rval);
-
 // Helper for retrieving metadata stored in a reserved slot. The metadata
 // is set during the sandbox creation using the "metadata" option.
 nsresult
@@ -2982,17 +2946,6 @@ public:
     // more portable to other browser architectures).
     bool allowWaivers;
 
-    // This flag is intended for a very specific use, internal to Gecko. It may
-    // go away or change behavior at any time. It should not be added to any
-    // documentation and it should not be used without consulting the XPConnect
-    // module owner.
-    bool writeToGlobalPrototype;
-
-    // When writeToGlobalPrototype is true, we use this flag to temporarily
-    // disable the writeToGlobalPrototype behavior (when resolving standard
-    // classes, for example).
-    bool skipWriteToGlobalPrototype;
-
     // This compartment corresponds to a WebExtension content script, and
     // receives various bits of special compatibility behavior.
     bool isWebExtensionContentScript;
@@ -3082,6 +3035,8 @@ public:
     JSObject2WrappedJSMap* GetWrappedJSMap() const { return mWrappedJSMap; }
     void UpdateWeakPointersAfterGC();
 
+    void SystemIsBeingShutDown();
+
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
 private:
@@ -3132,17 +3087,6 @@ public:
         JS::Realm* realm = JS::GetObjectRealmOrNull(object);
         return Get(realm);
     }
-
-    // This flag is intended for a very specific use, internal to Gecko. It may
-    // go away or change behavior at any time. It should not be added to any
-    // documentation and it should not be used without consulting the XPConnect
-    // module owner.
-    bool writeToGlobalPrototype;
-
-    // When writeToGlobalPrototype is true, we use this flag to temporarily
-    // disable the writeToGlobalPrototype behavior (when resolving standard
-    // classes, for example).
-    bool skipWriteToGlobalPrototype;
 
     // The scriptability of this realm.
     Scriptability scriptability;

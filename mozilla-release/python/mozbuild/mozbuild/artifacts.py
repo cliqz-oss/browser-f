@@ -245,7 +245,6 @@ class AndroidArtifactJob(ArtifactJob):
         'application.ini',
         'platform.ini',
         '**/*.so',
-        '**/interfaces.xpt',
     }
 
     def process_package_artifact(self, filename, processed_filename):
@@ -283,7 +282,6 @@ class LinuxArtifactJob(ArtifactJob):
         'firefox/plugin-container',
         'firefox/updater',
         'firefox/**/*.so',
-        'firefox/**/interfaces.xpt',
     }
 
     def process_package_artifact(self, filename, processed_filename):
@@ -382,7 +380,6 @@ class MacArtifactJob(ArtifactJob):
                     'gmp-clearkey/0.1/libclearkey.dylib',
                     # 'gmp-fake/1.0/libfake.dylib',
                     # 'gmp-fakeopenh264/1.0/libfakeopenh264.dylib',
-                    '**/interfaces.xpt',
                 ]),
             ]
 
@@ -425,7 +422,7 @@ class WinArtifactJob(ArtifactJob):
         'firefox/application.ini',
         'firefox/**/*.dll',
         'firefox/*.exe',
-        'firefox/**/interfaces.xpt',
+        'firefox/*.tlb',
     }
 
     product = 'firefox'
@@ -929,7 +926,16 @@ class Artifacts(object):
 
         with self._pushhead_cache as pushhead_cache:
             found_pushids = {}
-            for tree in CANDIDATE_TREES:
+
+            search_trees = list(CANDIDATE_TREES)
+            # We aren't generally interested in pushes from autoland because
+            # people aren't generally working off of autoland locally, but we
+            # sometimes find errant public pushheads on autoland in automation,
+            # so we check autoland in automation as a workaround.
+            if os.environ.get('MOZ_AUTOMATION'):
+                search_trees += ['integration/autoland']
+
+            for tree in search_trees:
                 self.log(logging.INFO, 'artifact',
                          {'tree': tree,
                           'rev': rev},

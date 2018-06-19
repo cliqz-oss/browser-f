@@ -36,7 +36,22 @@ async function zoomNewTab(changeZoom, message) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab");
   changeZoom();
   const level = tab.linkedBrowser.fullZoom;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
+
+  // Wait for the the update of the full-zoom content pref value, that happens
+  // asynchronously after changing the zoom level.
+  let cps2 = Cc["@mozilla.org/content-pref/service;1"].
+      getService(Ci.nsIContentPrefService2);
+  await BrowserTestUtils.waitForCondition(() => {
+    return new Promise(resolve => {
+      cps2.getByDomainAndName("about:newtab", "browser.content.full-zoom", null, {
+        handleResult(pref) {
+          resolve(level == pref.value);
+        },
+        handleCompletion() {},
+      });
+    });
+  });
 
   await checkPreloadedZoom(level, `${message}: ${level}`);
 }

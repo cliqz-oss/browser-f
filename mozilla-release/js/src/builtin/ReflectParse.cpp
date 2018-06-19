@@ -11,9 +11,9 @@
 
 #include <stdlib.h>
 
-#include "jsarray.h"
 #include "jspubtd.h"
 
+#include "builtin/Array.h"
 #include "builtin/Reflect.h"
 #include "frontend/Parser.h"
 #include "frontend/TokenStream.h"
@@ -3184,7 +3184,7 @@ ASTSerializer::function(ParseNode* pn, ASTType type, MutableHandleValue dst)
         : GeneratorStyle::None;
 
     bool isAsync = pn->pn_funbox->isAsync();
-    bool isExpression = pn->pn_funbox->isExprBody();
+    bool isExpression = pn->pn_funbox->hasExprBody();
 
     RootedValue id(cx);
     RootedAtom funcAtom(cx, func->explicitName());

@@ -79,7 +79,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 // Serde types in rustdoc of other crates get linked to here.
-#![doc(html_root_url = "https://docs.rs/serde/1.0.27")]
+#![doc(html_root_url = "https://docs.rs/serde/1.0.37")]
 // Support using Serde without the standard library!
 #![cfg_attr(not(feature = "std"), no_std)]
 // Unstable functionality only if the user asks for it. For tracking and
@@ -92,8 +92,8 @@
 // Whitelisted clippy lints
 #![cfg_attr(feature = "cargo-clippy",
             allow(cast_lossless, const_static_lifetime, doc_markdown, linkedlist,
-                  needless_pass_by_value, type_complexity, unreadable_literal,
-                  zero_prefixed_literal))]
+                  needless_pass_by_value, redundant_field_names, type_complexity,
+                  unreadable_literal, zero_prefixed_literal))]
 // Whitelisted clippy_pedantic lints
 #![cfg_attr(feature = "cargo-clippy", allow(
 // integer and float ser/de requires these sorts of casts
@@ -104,6 +104,7 @@
 // simplifies some macros
     invalid_upcast_comparisons,
 // things are often more readable this way
+    decimal_literal_representation,
     option_unwrap_used,
     result_unwrap_used,
     shadow_reuse,
@@ -111,7 +112,9 @@
     stutter,
     use_self,
 // not practical
+    many_single_char_names,
     missing_docs_in_private_items,
+    similar_names,
 // alternative is not stable
     empty_enum,
     use_debug,
@@ -132,16 +135,16 @@ extern crate core;
 /// module.
 mod lib {
     mod core {
-        #[cfg(feature = "std")]
-        pub use std::*;
         #[cfg(not(feature = "std"))]
         pub use core::*;
+        #[cfg(feature = "std")]
+        pub use std::*;
     }
 
     pub use self::core::{cmp, iter, mem, ops, slice, str};
+    pub use self::core::{f32, f64};
     pub use self::core::{isize, i16, i32, i64, i8};
     pub use self::core::{usize, u16, u32, u64, u8};
-    pub use self::core::{f32, f64};
 
     pub use self::core::cell::{Cell, RefCell};
     pub use self::core::clone::{self, Clone};
@@ -152,40 +155,40 @@ mod lib {
     pub use self::core::option::{self, Option};
     pub use self::core::result::{self, Result};
 
-    #[cfg(feature = "std")]
-    pub use std::borrow::{Cow, ToOwned};
     #[cfg(all(feature = "alloc", not(feature = "std")))]
     pub use alloc::borrow::{Cow, ToOwned};
-
     #[cfg(feature = "std")]
-    pub use std::string::String;
+    pub use std::borrow::{Cow, ToOwned};
+
     #[cfg(all(feature = "alloc", not(feature = "std")))]
     pub use alloc::string::{String, ToString};
-
     #[cfg(feature = "std")]
-    pub use std::vec::Vec;
+    pub use std::string::String;
+
     #[cfg(all(feature = "alloc", not(feature = "std")))]
     pub use alloc::vec::Vec;
-
     #[cfg(feature = "std")]
-    pub use std::boxed::Box;
+    pub use std::vec::Vec;
+
     #[cfg(all(feature = "alloc", not(feature = "std")))]
     pub use alloc::boxed::Box;
+    #[cfg(feature = "std")]
+    pub use std::boxed::Box;
 
-    #[cfg(all(feature = "rc", feature = "std"))]
-    pub use std::rc::Rc;
     #[cfg(all(feature = "rc", feature = "alloc", not(feature = "std")))]
     pub use alloc::rc::Rc;
-
     #[cfg(all(feature = "rc", feature = "std"))]
-    pub use std::sync::Arc;
+    pub use std::rc::Rc;
+
     #[cfg(all(feature = "rc", feature = "alloc", not(feature = "std")))]
     pub use alloc::arc::Arc;
+    #[cfg(all(feature = "rc", feature = "std"))]
+    pub use std::sync::Arc;
 
-    #[cfg(feature = "std")]
-    pub use std::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
     #[cfg(all(feature = "alloc", not(feature = "std")))]
     pub use alloc::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
+    #[cfg(feature = "std")]
+    pub use std::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
 
     #[cfg(feature = "std")]
     pub use std::{error, net};
@@ -203,12 +206,16 @@ mod lib {
     #[cfg(feature = "std")]
     pub use std::path::{Path, PathBuf};
     #[cfg(feature = "std")]
-    pub use std::time::{Duration, SystemTime, UNIX_EPOCH};
-    #[cfg(feature = "std")]
     pub use std::sync::{Mutex, RwLock};
+    #[cfg(feature = "std")]
+    pub use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[cfg(feature = "unstable")]
+    #[allow(deprecated)]
     pub use core::nonzero::{NonZero, Zeroable};
+
+    #[cfg(feature = "unstable")]
+    pub use core::num::{NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -216,13 +223,13 @@ mod lib {
 #[macro_use]
 mod macros;
 
-pub mod ser;
 pub mod de;
+pub mod ser;
 
 #[doc(inline)]
-pub use ser::{Serialize, Serializer};
-#[doc(inline)]
 pub use de::{Deserialize, Deserializer};
+#[doc(inline)]
+pub use ser::{Serialize, Serializer};
 
 // Generated code uses these to support no_std. Not public API.
 #[doc(hidden)]

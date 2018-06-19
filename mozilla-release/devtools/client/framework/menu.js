@@ -6,7 +6,8 @@
 
 "use strict";
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const Services = require("Services");
+const EventEmitter = require("devtools/shared/event-emitter");
 
 /**
  * A partial implementation of the Menu API provided by electron:
@@ -36,7 +37,7 @@ function Menu({ id = null } = {}) {
  *
  * @param {MenuItem} menuItem
  */
-Menu.prototype.append = function (menuItem) {
+Menu.prototype.append = function(menuItem) {
   this.menuitems.push(menuItem);
 };
 
@@ -46,8 +47,26 @@ Menu.prototype.append = function (menuItem) {
  * @param {int} pos
  * @param {MenuItem} menuItem
  */
-Menu.prototype.insert = function (pos, menuItem) {
+Menu.prototype.insert = function(pos, menuItem) {
   throw Error("Not implemented");
+};
+
+/**
+ * Show the Menu with anchor element's coordinate.
+ * For example, In the case of zoom in/out the devtool panel, we should multiply
+ * element's position to zoom value.
+ * If you know the screen coodinate of display position, you should use Menu.pop().
+ *
+ * @param {int} x
+ * @param {int} y
+ * @param Toolbox toolbox
+ */
+Menu.prototype.popupWithZoom = function(x, y, toolbox) {
+  let zoom = parseFloat(Services.prefs.getCharPref("devtools.toolbox.zoomValue"));
+  if (!zoom || isNaN(zoom)) {
+    zoom = 1.0;
+  }
+  this.popup(x * zoom, y * zoom, toolbox);
 };
 
 /**
@@ -62,7 +81,7 @@ Menu.prototype.insert = function (pos, menuItem) {
  * @param Toolbox toolbox (non standard)
  *        Needed so we in which window to inject XUL
  */
-Menu.prototype.popup = function (screenX, screenY, toolbox) {
+Menu.prototype.popup = function(screenX, screenY, toolbox) {
   let doc = toolbox.doc;
   let popupset = doc.querySelector("popupset");
   // See bug 1285229, on Windows, opening the same popup multiple times in a
@@ -76,6 +95,7 @@ Menu.prototype.popup = function (screenX, screenY, toolbox) {
 
   popup = doc.createElement("menupopup");
   popup.setAttribute("menu-api", "true");
+  popup.setAttribute("consumeoutsideclicks", "true");
 
   if (this.id) {
     popup.id = this.id;
@@ -100,7 +120,7 @@ Menu.prototype.popup = function (screenX, screenY, toolbox) {
   popup.openPopupAtScreen(screenX, screenY, true);
 };
 
-Menu.prototype._createMenuItems = function (parent) {
+Menu.prototype._createMenuItems = function(parent) {
   let doc = parent.ownerDocument;
   this.menuitems.forEach(item => {
     if (!item.visible) {
@@ -116,6 +136,9 @@ Menu.prototype._createMenuItems = function (parent) {
       menu.setAttribute("label", item.label);
       if (item.disabled) {
         menu.setAttribute("disabled", "true");
+      }
+      if (item.accelerator) {
+        menu.setAttribute("acceltext", item.accelerator);
       }
       if (item.accesskey) {
         menu.setAttribute("accesskey", item.accesskey);
@@ -148,6 +171,9 @@ Menu.prototype._createMenuItems = function (parent) {
       }
       if (item.checked) {
         menuitem.setAttribute("checked", "true");
+      }
+      if (item.accelerator) {
+        menuitem.setAttribute("acceltext", item.accelerator);
       }
       if (item.accesskey) {
         menuitem.setAttribute("accesskey", item.accesskey);

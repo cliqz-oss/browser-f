@@ -210,7 +210,7 @@ nsNativeTheme::GetCheckedOrSelected(nsIFrame* aFrame, bool aCheckSelected)
     aFrame = aFrame->GetParent();
   } else {
     // Check for an HTML input element
-    HTMLInputElement* inputElt = HTMLInputElement::FromContent(content);
+    HTMLInputElement* inputElt = HTMLInputElement::FromNode(content);
     if (inputElt) {
       return inputElt->Checked();
     }
@@ -260,7 +260,7 @@ nsNativeTheme::GetIndeterminate(nsIFrame* aFrame)
   }
 
   // Check for an HTML input element
-  HTMLInputElement* inputElt = HTMLInputElement::FromContent(content);
+  HTMLInputElement* inputElt = HTMLInputElement::FromNode(content);
   if (inputElt) {
     return inputElt->Indeterminate();
   }
@@ -793,7 +793,7 @@ nsNativeTheme::IsDarkBackground(nsIFrame* aFrame)
       frame = bodyFrame;
     }
   }
-  nsStyleContext* bgSC = nullptr;
+  ComputedStyle* bgSC = nullptr;
   if (!nsCSSRendering::FindBackground(frame, &bgSC) ||
       bgSC->StyleBackground()->IsTransparent(bgSC)) {
     nsIFrame* backgroundFrame = nsCSSRendering::FindNonTransparentBackgroundFrame(frame, true);

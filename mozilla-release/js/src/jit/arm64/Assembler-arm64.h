@@ -119,20 +119,6 @@ REGISTER_CODE_LIST(IMPORT_VIXL_VREGISTERS)
 
 static constexpr ValueOperand JSReturnOperand = ValueOperand(JSReturnReg);
 
-// Registers used in the GenerateFFIIonExit Enable Activation block.
-static constexpr Register WasmIonExitRegCallee = r8;
-static constexpr Register WasmIonExitRegE0 = r0;
-static constexpr Register WasmIonExitRegE1 = r1;
-
-// Registers used in the GenerateFFIIonExit Disable Activation block.
-// None of these may be the second scratch register.
-static constexpr Register WasmIonExitRegReturnData = r2;
-static constexpr Register WasmIonExitRegReturnType = r3;
-static constexpr Register WasmIonExitTlsReg = r17;
-static constexpr Register WasmIonExitRegD0 = r0;
-static constexpr Register WasmIonExitRegD1 = r1;
-static constexpr Register WasmIonExitRegD2 = r4;
-
 // Registerd used in RegExpMatcher instruction (do not use JSReturnOperand).
 static constexpr Register RegExpMatcherRegExpReg = CallTempReg0;
 static constexpr Register RegExpMatcherStringReg = CallTempReg1;
@@ -172,6 +158,7 @@ static_assert(CodeAlignment % SimdMemoryAlignment == 0,
   "alignment for SIMD constants.");
 
 static const uint32_t WasmStackAlignment = SimdMemoryAlignment;
+static const uint32_t WasmTrapInstructionLength = 4;
 
 // Does this architecture support SIMD conversions between Uint32x4 and Float32x4?
 static constexpr bool SupportsUint32x4FloatConversions = false;
@@ -194,7 +181,6 @@ class Assembler : public vixl::Assembler
     bool appendRawCode(const uint8_t* code, size_t numBytes);
     bool reserve(size_t size);
     bool swapBuffer(wasm::Bytes& bytes);
-    void trace(JSTracer* trc);
 
     // Emit the jump table, returning the BufferOffset to the first entry in the table.
     BufferOffset emitExtendedJumpTable();
@@ -213,7 +199,6 @@ class Assembler : public vixl::Assembler
     void bind(Label* label) { bind(label, nextOffset()); }
     void bind(Label* label, BufferOffset boff);
     void bind(RepatchLabel* label);
-    void bindLater(Label* label, wasm::OldTrapDesc target);
 
     bool oom() const {
         return AssemblerShared::oom() ||
@@ -348,8 +333,13 @@ class Assembler : public vixl::Assembler
     static void TraceJumpRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
     static void TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
 
-    static void FixupNurseryObjects(JSContext* cx, JitCode* code, CompactBufferReader& reader,
-                                    const ObjectVector& nurseryObjects);
+    void assertNoGCThings() const {
+#ifdef DEBUG
+        MOZ_ASSERT(dataRelocations_.length() == 0);
+        for (auto& j : pendingJumps_)
+            MOZ_ASSERT(j.kind == Relocation::HARDCODED);
+#endif
+    }
 
   public:
     // A Jump table entry is 2 instructions, with 8 bytes of raw data
@@ -457,6 +447,7 @@ static constexpr FloatRegister ABINonArgDoubleReg = { FloatRegisters::s16, Float
 // Note: these three registers are all guaranteed to be different
 static constexpr Register ABINonArgReturnReg0 = r8;
 static constexpr Register ABINonArgReturnReg1 = r9;
+static constexpr Register ABINonVolatileReg { Registers::x19 };
 
 // This register is guaranteed to be clobberable during the prologue and
 // epilogue of an ABI call which must preserve both ABI argument, return
@@ -524,29 +515,35 @@ Imm64::secondHalf() const
     return hi();
 }
 
-void PatchJump(CodeLocationJump& jump_, CodeLocationLabel label,
-               ReprotectCode reprotect = DontReprotect);
-
-static inline void
-PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target)
-{
-    PatchJump(jump_, label);
-}
+void PatchJump(CodeLocationJump& jump_, CodeLocationLabel label);
 
 // Forbids pool generation during a specified interval. Not nestable.
 class AutoForbidPools
 {
     Assembler* asm_;
-
   public:
     AutoForbidPools(Assembler* asm_, size_t maxInst)
       : asm_(asm_)
     {
         asm_->enterNoPool(maxInst);
     }
-
     ~AutoForbidPools() {
         asm_->leaveNoPool();
+    }
+};
+
+// Forbids nop filling for testing purposes. Not nestable.
+class AutoForbidNops
+{
+    Assembler* asm_;
+  public:
+    explicit AutoForbidNops(Assembler* asm_)
+      : asm_(asm_)
+    {
+        asm_->enterNoNops();
+    }
+    ~AutoForbidNops() {
+        asm_->leaveNoNops();
     }
 };
 

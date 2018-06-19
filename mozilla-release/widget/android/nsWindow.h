@@ -120,7 +120,7 @@ public:
             nsWindow* const mWindow;
 
         public:
-            Locked(WindowPtr<Impl>& aPtr)
+            explicit Locked(WindowPtr<Impl>& aPtr)
                 : mozilla::MutexAutoLock(aPtr.mWindowLock)
                 , mWindow(aPtr.mWindow)
             {}
@@ -166,7 +166,7 @@ private:
 
         NS_FORWARD_NSIANDROIDEVENTDISPATCHER(mEventDispatcher->)
 
-        mozilla::java::GeckoBundle::GlobalRef mSettings;
+        mozilla::java::GeckoBundle::GlobalRef mInitData;
     };
 
     RefPtr<AndroidView> mAndroidView;
@@ -344,7 +344,7 @@ private:
     void CreateLayerManager(int aCompositorWidth, int aCompositorHeight);
     void RedrawAll();
 
-    int64_t GetRootLayerId() const;
+    mozilla::layers::LayersId GetRootLayerId() const;
     RefPtr<mozilla::layers::UiCompositorControllerChild> GetUiCompositorControllerChild();
 };
 

@@ -36,7 +36,7 @@ for (let key of Object.keys(ThreadSafeDevToolsUtils)) {
  * @param Debugger.Object debuggerObject
  * @return bool
  */
-exports.isCPOW = function (debuggerObject) {
+exports.isCPOW = function(debuggerObject) {
   try {
     return Cu.isCrossProcessWrapper(debuggerObject.unsafeDereference());
   } catch (e) { }
@@ -46,7 +46,7 @@ exports.isCPOW = function (debuggerObject) {
 /**
  * Waits for the next tick in the event loop to execute a callback.
  */
-exports.executeSoon = function (fn) {
+exports.executeSoon = function(fn) {
   if (isWorker) {
     setImmediate(fn);
   } else {
@@ -73,7 +73,7 @@ exports.executeSoon = function (fn) {
  * @return Promise
  *         A promise that is resolved after the next tick in the event loop.
  */
-exports.waitForTick = function () {
+exports.waitForTick = function() {
   let deferred = defer();
   exports.executeSoon(deferred.resolve);
   return deferred.promise;
@@ -87,7 +87,7 @@ exports.waitForTick = function () {
  * @return Promise
  *         A promise that is resolved after the specified amount of time passes.
  */
-exports.waitForTime = function (delay) {
+exports.waitForTime = function(delay) {
   let deferred = defer();
   setTimeout(deferred.resolve, delay);
   return deferred.promise;
@@ -108,7 +108,7 @@ exports.waitForTime = function (delay) {
  *          A promise that is resolved once the whole array has been iterated
  *          over, and all promises returned by the fn callback are resolved.
  */
-exports.yieldingEach = function (array, fn) {
+exports.yieldingEach = function(array, fn) {
   const deferred = defer();
 
   let i = 0;
@@ -155,10 +155,10 @@ exports.yieldingEach = function (array, fn) {
  *        The callback that will be called to determine the value. Will be
  *        called with the |this| value of the current instance.
  */
-exports.defineLazyPrototypeGetter = function (object, key, callback) {
+exports.defineLazyPrototypeGetter = function(object, key, callback) {
   Object.defineProperty(object, key, {
     configurable: true,
-    get: function () {
+    get: function() {
       const value = callback.call(this);
 
       Object.defineProperty(this, key, {
@@ -182,7 +182,7 @@ exports.defineLazyPrototypeGetter = function (object, key, callback) {
  *        The key to look for.
  * @return Any
  */
-exports.getProperty = function (object, key) {
+exports.getProperty = function(object, key) {
   let root = object;
   while (object && exports.isSafeDebuggerObject(object)) {
     let desc;
@@ -263,7 +263,7 @@ exports.unwrap = function unwrap(obj) {
  *        The debuggee object to be checked.
  * @return boolean
  */
-exports.isSafeDebuggerObject = function (obj) {
+exports.isSafeDebuggerObject = function(obj) {
   let unwrapped = exports.unwrap(obj);
 
   // Objects belonging to an invisible-to-debugger compartment might be proxies,
@@ -297,7 +297,7 @@ exports.isSafeDebuggerObject = function (obj) {
  * @return Boolean
  *         Whether a safe getter was found.
  */
-exports.hasSafeGetter = function (desc) {
+exports.hasSafeGetter = function(desc) {
   // Scripted functions that are CCWs will not appear scripted until after
   // unwrapping.
   let fn = desc.get;
@@ -317,7 +317,7 @@ exports.hasSafeGetter = function (desc) {
  * @return Boolean
  *         True if it is safe to read properties from obj, or false otherwise.
  */
-exports.isSafeJSObject = function (obj) {
+exports.isSafeJSObject = function(obj) {
   // If we are running on a worker thread, Cu is not available. In this case,
   // we always return false, just to be on the safe side.
   if (isWorker) {
@@ -357,16 +357,24 @@ exports.isSafeJSObject = function (obj) {
   return true;
 };
 
-exports.dumpn = function (str) {
+/**
+ * Dump with newline - This is a logging function that will only output when
+ * the preference "devtools.debugger.log" is set to true. Typically it is used
+ * for logging the remote debugging protocol calls.
+ */
+exports.dumpn = function(str) {
   if (flags.wantLogging) {
     dump("DBG-SERVER: " + str + "\n");
   }
 };
 
 /**
- * A verbose logger for low-level tracing.
+ * Dump verbose - This is a verbose logger for low-level tracing, that is typically
+ * used to provide information about the remote debugging protocol's transport
+ * mechanisms. The logging can be enabled by changing the preferences
+ * "devtools.debugger.log" and "devtools.debugger.log.verbose" to true.
  */
-exports.dumpv = function (msg) {
+exports.dumpv = function(msg) {
   if (flags.wantVerbose) {
     exports.dumpn(msg);
   }
@@ -383,9 +391,9 @@ exports.dumpv = function (msg) {
  *        A function that returns what the getter should return.  This will
  *        only ever be called once.
  */
-exports.defineLazyGetter = function (object, name, lambda) {
+exports.defineLazyGetter = function(object, name, lambda) {
   Object.defineProperty(object, name, {
-    get: function () {
+    get: function() {
       delete object[name];
       object[name] = lambda.apply(object);
       return object[name];
@@ -405,7 +413,7 @@ DevToolsUtils.defineLazyGetter(this, "AppConstants", () => {
 /**
  * No operation. The empty function.
  */
-exports.noop = function () { };
+exports.noop = function() { };
 
 let assertionFailureCount = 0;
 
@@ -432,7 +440,6 @@ function reallyAssert(condition, message) {
  *
  * Assertions are enabled when any of the following are true:
  *   - This is a DEBUG_JS_MODULES build
- *   - This is a DEBUG build
  *   - flags.testing is set to true
  *
  * If assertions are enabled, then `condition` is checked and if false-y, the
@@ -441,7 +448,7 @@ function reallyAssert(condition, message) {
  * If assertions are not enabled, then this function is a no-op.
  */
 Object.defineProperty(exports, "assert", {
-  get: () => (AppConstants.DEBUG || AppConstants.DEBUG_JS_MODULES || flags.testing)
+  get: () => (AppConstants.DEBUG_JS_MODULES || flags.testing)
     ? reallyAssert
     : exports.noop,
 });
@@ -460,8 +467,8 @@ Object.defineProperty(exports, "assert", {
  *        The name of the symbol exported by the module.
  *        This parameter is optional and defaults to name.
  */
-exports.defineLazyModuleGetter = function (object, name, resource, symbol) {
-  this.defineLazyGetter(object, name, function () {
+exports.defineLazyModuleGetter = function(object, name, resource, symbol) {
+  this.defineLazyGetter(object, name, function() {
     let temp = {};
     ChromeUtils.import(resource, temp);
     return temp[symbol || name];
@@ -515,7 +522,7 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
                                              window: null,
                                              charset: null,
                                              principal: null,
-                                             cacheKey: null }) {
+                                             cacheKey: 0 }) {
   // Create a channel.
   let url = urlIn.split(" -> ").pop();
   let channel;
@@ -533,7 +540,7 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
   // When loading from cache, the cacheKey allows us to target a specific
   // SHEntry and offer ways to restore POST requests from cache.
   if (aOptions.loadFromCache &&
-      aOptions.cacheKey && channel instanceof Ci.nsICacheInfoChannel) {
+      aOptions.cacheKey != 0 && channel instanceof Ci.nsICacheInfoChannel) {
     channel.cacheKey = aOptions.cacheKey;
   }
 
@@ -711,7 +718,7 @@ if (this.isWorker) {
   // Services is not available in worker threads, nor is there any other way
   // to fetch a URL. We need to enlist the help from the main thread here, by
   // issuing an rpc request, to fetch the URL on our behalf.
-  exports.fetch = function (url, options) {
+  exports.fetch = function(url, options) {
     return rpc("fetch", url, options);
   };
 } else {
@@ -725,7 +732,7 @@ if (this.isWorker) {
  *
  * @returns Promise<nsIInputStream>
  */
-exports.openFileStream = function (filePath) {
+exports.openFileStream = function(filePath) {
   return new Promise((resolve, reject) => {
     const uri = NetUtil.newURI(new FileUtils.File(filePath));
     NetUtil.asyncFetch(

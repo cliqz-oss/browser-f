@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include shared,prim_shared,clip_shared
+#include shared,clip_shared
 
 varying vec3 vPos;
 varying vec2 vUv;
@@ -12,18 +12,29 @@ flat varying vec4 vEdge;
 flat varying vec4 vUvBounds_NoClamp;
 flat varying float vClipMode;
 
+#define MODE_STRETCH        0
+#define MODE_SIMPLE         1
+
 #ifdef WR_VERTEX_SHADER
 
 struct BoxShadowData {
     vec2 src_rect_size;
     float clip_mode;
+    int stretch_mode_x;
+    int stretch_mode_y;
     RectWithSize dest_rect;
 };
 
 BoxShadowData fetch_data(ivec2 address) {
-    vec4 data[2] = fetch_from_resource_cache_2_direct(address);
-    RectWithSize dest_rect = RectWithSize(data[1].xy, data[1].zw);
-    BoxShadowData bs_data = BoxShadowData(data[0].xy, data[0].z, dest_rect);
+    vec4 data[3] = fetch_from_resource_cache_3_direct(address);
+    RectWithSize dest_rect = RectWithSize(data[2].xy, data[2].zw);
+    BoxShadowData bs_data = BoxShadowData(
+        data[0].xy,
+        data[0].z,
+        int(data[1].x),
+        int(data[1].y),
+        dest_rect
+    );
     return bs_data;
 }
 
@@ -48,9 +59,35 @@ void main(void) {
     vec2 texture_size = vec2(textureSize(sColor0, 0));
     vec2 local_pos = vPos.xy / vPos.z;
 
-    vEdge.xy = vec2(0.5);
-    vEdge.zw = (bs_data.dest_rect.size / bs_data.src_rect_size) - vec2(0.5);
-    vUv = (local_pos - bs_data.dest_rect.p0) / bs_data.src_rect_size;
+    switch (bs_data.stretch_mode_x) {
+        case MODE_STRETCH: {
+            vEdge.x = 0.5;
+            vEdge.z = (bs_data.dest_rect.size.x / bs_data.src_rect_size.x) - 0.5;
+            vUv.x = (local_pos.x - bs_data.dest_rect.p0.x) / bs_data.src_rect_size.x;
+            break;
+        }
+        case MODE_SIMPLE:
+        default: {
+            vEdge.xz = vec2(1.0);
+            vUv.x = (local_pos.x - bs_data.dest_rect.p0.x) / bs_data.dest_rect.size.x;
+            break;
+        }
+    }
+
+    switch (bs_data.stretch_mode_y) {
+        case MODE_STRETCH: {
+            vEdge.y = 0.5;
+            vEdge.w = (bs_data.dest_rect.size.y / bs_data.src_rect_size.y) - 0.5;
+            vUv.y = (local_pos.y - bs_data.dest_rect.p0.y) / bs_data.src_rect_size.y;
+            break;
+        }
+        case MODE_SIMPLE:
+        default: {
+            vEdge.yw = vec2(1.0);
+            vUv.y = (local_pos.y - bs_data.dest_rect.p0.y) / bs_data.dest_rect.size.y;
+            break;
+        }
+    }
 
     vUvBounds = vec4(uv0 + vec2(0.5), uv1 - vec2(0.5)) / texture_size.xyxy;
     vUvBounds_NoClamp = vec4(uv0, uv1) / texture_size.xyxy;
@@ -63,15 +100,10 @@ void main(void) {
 
     vec2 uv = clamp(vUv.xy, vec2(0.0), vEdge.xy);
     uv += max(vec2(0.0), vUv.xy - vEdge.zw);
-
     uv = mix(vUvBounds_NoClamp.xy, vUvBounds_NoClamp.zw, uv);
     uv = clamp(uv, vUvBounds.xy, vUvBounds.zw);
 
-    float in_shadow_rect = point_inside_rect(
-        local_pos,
-        vLocalBounds.xy,
-        vLocalBounds.zw
-    );
+    float in_shadow_rect = init_transform_rough_fs(local_pos);
 
     float texel = TEX_SAMPLE(sColor0, vec3(uv, vLayer)).r;
 

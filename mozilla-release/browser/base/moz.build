@@ -21,6 +21,10 @@ MOCHITEST_CHROME_MANIFESTS += [
     'content/test/chrome/chrome.ini',
 ]
 
+TESTING_JS_MODULES += [
+    'content/test/sanitize/SiteDataTestUtils.jsm',
+]
+
 BROWSER_CHROME_MANIFESTS += [
     'content/test/about/browser.ini',
     'content/test/alerts/browser.ini',
@@ -43,6 +47,7 @@ BROWSER_CHROME_MANIFESTS += [
     'content/test/sidebar/browser.ini',
     'content/test/siteIdentity/browser.ini',
     'content/test/static/browser.ini',
+    'content/test/statuspanel/browser.ini',
     'content/test/sync/browser.ini',
     'content/test/tabcrashed/browser.ini',
     'content/test/tabPrompts/browser.ini',
@@ -60,9 +65,6 @@ DEFINES['APP_LICENSE_BLOCK'] = '%s/content/overrides/app-license.html' % SRCDIR
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3', 'cocoa'):
     DEFINES['CONTEXT_COPY_IMAGE_CONTENTS'] = 1
-
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa', 'gtk3'):
-    DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3'):
     DEFINES['MENUBAR_CAN_AUTOHIDE'] = 1

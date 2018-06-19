@@ -35,6 +35,7 @@ class IDBObjectStore;
 class IDBTransaction;
 template <typename> struct Nullable;
 class OwningIDBObjectStoreOrIDBIndexOrIDBCursor;
+class StrongWorkerRef;
 
 class IDBRequest
   : public IDBWrapperCache
@@ -83,9 +84,8 @@ public:
   static uint64_t
   NextSerialNumber();
 
-  // nsIDOMEventTarget
-  virtual nsresult
-  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  // EventTarget
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   void
   GetSource(Nullable<OwningIDBObjectStoreOrIDBIndexOrIDBCursor>& aSource) const;
@@ -216,12 +216,10 @@ protected:
 class IDBOpenDBRequest final
   : public IDBRequest
 {
-  class WorkerHolder;
-
   // Only touched on the owning thread.
   RefPtr<IDBFactory> mFactory;
 
-  nsAutoPtr<WorkerHolder> mWorkerHolder;
+  RefPtr<StrongWorkerRef> mWorkerRef;
 
   const bool mFileHandleDisabled;
   bool mIncreasedActiveDatabaseCount;
@@ -253,7 +251,7 @@ public:
   void
   NoteComplete();
 
-  // nsIDOMEventTarget
+  // EventTarget
   virtual nsresult
   PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 

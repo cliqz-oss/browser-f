@@ -71,6 +71,7 @@ var webpackModulesEs6 =
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 /* harmony export (immutable) */ __webpack_exports__["default"] = root;
+/* harmony export (immutable) */ __webpack_exports__["example"] = example;
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__src_mod1__ = __webpack_require__(1);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__src_mod2__ = __webpack_require__(2);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_2__src_mod3__ = __webpack_require__(3);
@@ -83,6 +84,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__src_mod10__ = __webpack_require__(10);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_10__src_mod11__ = __webpack_require__(11);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_11__src_mod12__ = __webpack_require__(12);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12__src_optimized_out__ = __webpack_require__(13);
 
 
 
@@ -97,6 +99,9 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 
 
 
+
+
+Object(__WEBPACK_IMPORTED_MODULE_12__src_optimized_out__["a" /* default */])();
 
 function root() {
   console.log("pause here", root);
@@ -104,7 +109,7 @@ function root() {
   console.log(__WEBPACK_IMPORTED_MODULE_0__src_mod1__["a" /* default */]);
   console.log(__WEBPACK_IMPORTED_MODULE_2__src_mod3__["a" /* original */]);
   console.log(__WEBPACK_IMPORTED_MODULE_1__src_mod2__["a" /* aNamed */]);
-  console.log(__WEBPACK_IMPORTED_MODULE_2__src_mod3__["a" /* original */]);
+  console.log(__WEBPACK_IMPORTED_MODULE_1__src_mod2__["a" /* aNamed */]);
   console.log(__WEBPACK_IMPORTED_MODULE_3__src_mod4__);
 
   try {
@@ -113,16 +118,18 @@ function root() {
     console.log(Object(__WEBPACK_IMPORTED_MODULE_4__src_mod5__["a" /* default */])());
     console.log(Object(__WEBPACK_IMPORTED_MODULE_6__src_mod7__["a" /* original */])());
     console.log(Object(__WEBPACK_IMPORTED_MODULE_5__src_mod6__["a" /* aNamed2 */])());
-    console.log(Object(__WEBPACK_IMPORTED_MODULE_6__src_mod7__["a" /* original */])());
+    console.log(Object(__WEBPACK_IMPORTED_MODULE_5__src_mod6__["a" /* aNamed2 */])());
     console.log(__WEBPACK_IMPORTED_MODULE_7__src_mod8__());
 
     console.log(new __WEBPACK_IMPORTED_MODULE_8__src_mod9__["a" /* default */]());
     console.log(new __WEBPACK_IMPORTED_MODULE_10__src_mod11__["a" /* original */]());
     console.log(new __WEBPACK_IMPORTED_MODULE_9__src_mod10__["a" /* aNamed3 */]());
-    console.log(new __WEBPACK_IMPORTED_MODULE_10__src_mod11__["a" /* original */]());
+    console.log(new __WEBPACK_IMPORTED_MODULE_9__src_mod10__["a" /* aNamed3 */]());
     console.log(new __WEBPACK_IMPORTED_MODULE_11__src_mod12__());
   } catch (e) {}
 }
+
+function example() {}
 
 // The build harness sets the wrong global, so just override it.
 Promise.resolve().then(() => {
@@ -236,6 +243,14 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 const aNamed = "a-named3";
 /* harmony export (immutable) */ __webpack_exports__["aNamed"] = aNamed;
 
+
+/***/ }),
+/* 13 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony export (immutable) */ __webpack_exports__["a"] = optimizedOut;
+function optimizedOut() {}
 
 /***/ })
 /******/ ]);

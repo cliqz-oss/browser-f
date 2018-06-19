@@ -14,12 +14,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=549682
   var didRunAsync = false;
   var didRunLocal = false;
 
-  var global = Cc["@mozilla.org/globalmessagemanager;1"]
-                 .getService(Components.interfaces.nsIMessageBroadcaster);
-  var ppm = Cc["@mozilla.org/parentprocessmessagemanager;1"]
-              .getService(Components.interfaces.nsIMessageBroadcaster);
-  var cpm = Cc["@mozilla.org/childprocessmessagemanager;1"]
-              .getService(Components.interfaces.nsISyncMessageSender);
+  var global = Cc["@mozilla.org/globalmessagemanager;1"].getService();
+  var ppm = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService();
+  var cpm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService();
 
   ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -95,8 +92,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=549682
 
   var weakMessageReceived = false;
   var weakListener = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIMessageListener,
-                                           Ci.nsISupportsWeakReference]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
     receiveMessage: function(msg) {
       if (weakMessageReceived) {
@@ -112,8 +108,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=549682
   };
 
   var weakListener2 = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIMessageListener,
-                                           Ci.nsISupportsWeakReference]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
     receiveMessage: function(msg) {
       ok(false, 'Should not have received a message.');

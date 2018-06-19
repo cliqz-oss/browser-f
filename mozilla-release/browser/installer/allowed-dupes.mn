@@ -11,10 +11,10 @@ updater.app/Contents/MacOS/org.mozilla.updater
 updater.app/Contents/PkgInfo
 browser/chrome.manifest
 # browser branding / themes is bug 1313106
-browser/chrome/browser/content/branding/icon128.png
 browser/chrome/browser/content/branding/icon16.png
 browser/chrome/browser/content/branding/icon32.png
 browser/chrome/browser/content/branding/icon48.png
+browser/chrome/browser/content/branding/icon64.png
 browser/chrome/browser/content/browser/defaultthemes/5.header.png
 browser/chrome/browser/content/browser/extension.svg
 browser/chrome/browser/content/browser/places/bookmarkProperties.xul
@@ -29,7 +29,6 @@ browser/chrome/devtools/content/dom/main.js
 browser/chrome/devtools/content/framework/toolbox-options.js
 browser/chrome/devtools/content/inspector/fonts/fonts.js
 browser/chrome/devtools/content/inspector/inspector.xhtml
-browser/chrome/devtools/content/memory/initializer.js
 browser/chrome/devtools/content/projecteditor/lib/helpers/readdir.js
 browser/chrome/devtools/content/shared/theme-switching.js
 browser/chrome/devtools/modules/devtools/client/dom/content/dom-view.css
@@ -40,7 +39,6 @@ browser/chrome/devtools/modules/devtools/client/inspector/fonts/fonts.js
 browser/chrome/devtools/modules/devtools/client/inspector/inspector.xhtml
 browser/chrome/devtools/modules/devtools/client/jsonview/css/controls.png
 browser/chrome/devtools/modules/devtools/client/jsonview/css/controls@2x.png
-browser/chrome/devtools/modules/devtools/client/memory/initializer.js
 browser/chrome/devtools/modules/devtools/client/projecteditor/lib/helpers/readdir.js
 browser/chrome/devtools/modules/devtools/client/shared/theme-switching.js
 browser/chrome/devtools/modules/devtools/client/themes/common.css
@@ -83,7 +81,6 @@ browser/chrome/pdfjs/content/web/images/findbarButton-previous-rtl.png
 browser/chrome/pdfjs/content/web/images/findbarButton-previous-rtl@2x.png
 browser/chrome/pdfjs/content/web/images/findbarButton-previous.png
 browser/chrome/pdfjs/content/web/images/findbarButton-previous@2x.png
-browser/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}/icon.png
 browser/features/firefox@getpocket.com/chrome/skin/linux/menuPanel.png
 browser/features/firefox@getpocket.com/chrome/skin/linux/menuPanel@2x.png
 browser/features/firefox@getpocket.com/chrome/skin/windows/menuPanel.png
@@ -105,7 +102,6 @@ chrome/toolkit/skin/classic/global/popup.css
 chrome/toolkit/skin/classic/global/preferences.css
 chrome/toolkit/skin/classic/global/progressmeter.css
 chrome/toolkit/skin/classic/global/radio.css
-chrome/toolkit/skin/classic/global/resizer.css
 chrome/toolkit/skin/classic/global/richlistbox.css
 chrome/toolkit/skin/classic/global/scale.css
 chrome/toolkit/skin/classic/global/scrollbars.css
@@ -145,5 +141,12 @@ res/table-remove-row.gif
 res/multilocale.txt
 update.locale
 # Aurora branding
-browser/chrome/browser/content/branding/icon64.png
+browser/chrome/browser/content/branding/icon128.png
 browser/chrome/devtools/content/framework/dev-edition-promo/dev-edition-logo.png
+# Bug 1451016 - Nightly-only PaymentRequest & Form Autofill code sharing.
+browser/features/formautofill@mozilla.org/chrome/content/editAddress.xhtml
+browser/chrome/browser/res/payments/formautofill/editAddress.xhtml
+browser/features/formautofill@mozilla.org/chrome/content/editCreditCard.xhtml
+browser/chrome/browser/res/payments/formautofill/editCreditCard.xhtml
+browser/features/formautofill@mozilla.org/chrome/content/autofillEditForms.js
+browser/chrome/browser/res/payments/formautofill/autofillEditForms.js

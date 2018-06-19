@@ -58,6 +58,7 @@
 #endif //  defined(MOZ_WIDGET_ANDROID)
 
 #include "mozilla/AbstractThread.h"
+#include "mozilla/FilePreferences.h"
 
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
@@ -243,9 +244,10 @@ GeckoProcessType sChildProcessType = GeckoProcessType_Default;
 
 #if defined(MOZ_WIDGET_ANDROID)
 void
-XRE_SetAndroidChildFds (JNIEnv* env, int ipcFd, int crashFd, int crashAnnotationFd)
+XRE_SetAndroidChildFds (JNIEnv* env, int prefsFd, int ipcFd, int crashFd, int crashAnnotationFd)
 {
   mozilla::jni::SetGeckoThreadEnv(env);
+  mozilla::dom::SetPrefsFd(prefsFd);
   IPC::Channel::SetClientChannelFd(ipcFd);
   CrashReporter::SetNotificationPipeForChild(crashFd);
   CrashReporter::SetCrashAnnotationPipeForChild(crashAnnotationFd);
@@ -401,7 +403,7 @@ XRE_InitChildProcess(int aArgc,
   // NB: This must be called before profiler_init
   ScopedLogging logger;
 
-  mozilla::LogModule::Init();
+  mozilla::LogModule::Init(aArgc, aArgv);
 
   AUTO_PROFILER_INIT;
   AUTO_PROFILER_LABEL("XRE_InitChildProcess", OTHER);
@@ -707,6 +709,8 @@ XRE_InitChildProcess(int aArgc,
       // InitLoggingIfRequired may need access to prefs.
       mozilla::sandboxing::InitLoggingIfRequired(aChildData->ProvideLogFunction);
 #endif
+      mozilla::FilePreferences::InitDirectoriesWhitelist();
+      mozilla::FilePreferences::InitPrefs();
 
       OverrideDefaultLocaleIfNeeded();
 
@@ -783,7 +787,7 @@ XRE_InitParentProcess(int aArgc,
   // Set main thread before we initialize the profiler
   NS_SetMainThread();
 
-  mozilla::LogModule::Init();
+  mozilla::LogModule::Init(aArgc, aArgv);
 
   AUTO_PROFILER_INIT;
 

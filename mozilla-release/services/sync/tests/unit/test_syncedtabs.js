@@ -52,6 +52,10 @@ let MockClientsEngine = {
     }
     return tabsEngine.clients[id].clientName;
   },
+
+  getClientType(id) {
+    return "desktop";
+  }
 };
 
 function configureClients(clients, clientSettings = {}) {
@@ -188,8 +192,8 @@ add_task(async function test_clientWithTabsIconsDisabled() {
   clients.sort((a, b) => { return a.name.localeCompare(b.name); });
   equal(clients[0].tabs.length, 1);
   equal(clients[0].tabs[0].url, "http://foo.com/");
-  // expect the default favicon (empty string) due to the pref being false.
-  equal(clients[0].tabs[0].icon, "");
+  // Expect the default favicon due to the pref being false.
+  equal(clients[0].tabs[0].icon, "page-icon:http://foo.com/");
   Services.prefs.clearUserPref("services.sync.syncedTabs.showRemoteIcons");
 });
 

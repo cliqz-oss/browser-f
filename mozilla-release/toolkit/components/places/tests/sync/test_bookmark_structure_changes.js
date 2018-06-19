@@ -31,7 +31,7 @@ add_task(async function test_value_structure_conflict() {
       }],
     }],
   });
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "menu",
     type: "folder",
     children: ["folderAAAAAA", "folderDDDDDD"],
@@ -83,7 +83,7 @@ add_task(async function test_value_structure_conflict() {
   });
 
   info("Make remote value change");
-  await buf.store([{
+  await storeRecords(buf, [{
     id: "folderDDDDDD",
     type: "folder",
     title: "D (remote)",
@@ -218,7 +218,7 @@ add_task(async function test_move() {
   });
   await PlacesTestUtils.markBookmarksAsSynced();
 
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "unfiled",
     type: "folder",
     children: ["mozFolder___"],
@@ -449,7 +449,7 @@ add_task(async function test_move_into_parent_sibling() {
       }],
     }],
   });
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "menu",
     type: "folder",
     children: ["folderAAAAAA"],
@@ -467,7 +467,7 @@ add_task(async function test_move_into_parent_sibling() {
   await PlacesTestUtils.markBookmarksAsSynced();
 
   info("Make remote changes: Menu > (A (B > C))");
-  await buf.store([{
+  await storeRecords(buf, [{
     id: "menu",
     type: "folder",
     children: ["folderAAAAAA", "folderCCCCCC"],
@@ -547,7 +547,15 @@ add_task(async function test_move_into_parent_sibling() {
 });
 
 add_task(async function test_complex_move_with_additions() {
-  let buf = await openMirror("complex_move_with_additions");
+  let mergeTelemetryEvents = [];
+  let buf = await openMirror("complex_move_with_additions", {
+    recordTelemetryEvent(object, method, value, extra) {
+      equal(object, "mirror", "Wrong object for telemetry event");
+      if (method == "merge") {
+        mergeTelemetryEvents.push({ value, extra });
+      }
+    },
+  });
 
   info("Set up mirror: Menu > A > (B C)");
   await PlacesUtils.bookmarks.insertTree({
@@ -567,7 +575,7 @@ add_task(async function test_complex_move_with_additions() {
       }],
     }],
   });
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "menu",
     type: "folder",
     children: ["folderAAAAAA"],
@@ -598,7 +606,7 @@ add_task(async function test_complex_move_with_additions() {
   });
 
   info("Make remote change: ((Menu > C) (Toolbar > A > (B E)))");
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "menu",
     type: "folder",
     children: ["bookmarkCCCC"],
@@ -627,6 +635,10 @@ add_task(async function test_complex_move_with_additions() {
   let observer = expectBookmarkChangeNotifications();
   let changesToUpload = await buf.apply();
   deepEqual(await buf.fetchUnmergedGuids(), [], "Should merge all items");
+  deepEqual(mergeTelemetryEvents, [{
+    value: "structure",
+    extra: { new: "1" },
+  }], "Should record telemetry with structure change counts");
 
   let idsToUpload = inspectChangeRecords(changesToUpload);
   deepEqual(idsToUpload, {
@@ -772,7 +784,7 @@ add_task(async function test_reorder_and_insert() {
       title: "F",
     }],
   });
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     id: "menu",
     type: "folder",
     children: ["bookmarkAAAA", "bookmarkBBBB", "bookmarkCCCC"],
@@ -836,7 +848,7 @@ add_task(async function test_reorder_and_insert() {
   });
 
   info("Make remote changes: Reorder Toolbar, Menu > (I J)");
-  await buf.store(shuffle([{
+  await storeRecords(buf, shuffle([{
     // The server has a newer toolbar, so we should use the remote order (F D E)
     // as the base, then append (G H).
     id: "toolbar",

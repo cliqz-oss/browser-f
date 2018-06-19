@@ -1705,24 +1705,6 @@ var gCSSProperties = {
     alias_for: "column-fill",
     subproperties: [ "column-fill" ]
   },
-  "column-gap": {
-    domProp: "columnGap",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "normal" ],
-    other_values: [ "2px", "1em", "4em",
-      "calc(2px)",
-      "calc(-2px)",
-      "calc(0px)",
-      "calc(0pt)",
-      "calc(5em)",
-      "calc(-2em + 3em)",
-      "calc(3*25px)",
-      "calc(25px*3)",
-      "calc(3*25px + 5em)",
-    ],
-    invalid_values: [ "3%", "-1px", "4" ]
-  },
   "-moz-column-gap": {
     domProp: "MozColumnGap",
     inherited: false,
@@ -3320,7 +3302,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "none" ],
-    other_values: [ "left", "right", "both" ],
+    other_values: [ "left", "right", "both", "inline-start", "inline-end" ],
     invalid_values: []
   },
   "clip": {
@@ -3408,7 +3390,20 @@ var gCSSProperties = {
     inherited: true,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "auto" ],
-    other_values: [ "crosshair", "default", "pointer", "move", "e-resize", "ne-resize", "nw-resize", "n-resize", "se-resize", "sw-resize", "s-resize", "w-resize", "text", "wait", "help", "progress", "copy", "alias", "context-menu", "cell", "not-allowed", "col-resize", "row-resize", "no-drop", "vertical-text", "all-scroll", "nesw-resize", "nwse-resize", "ns-resize", "ew-resize", "none", "grab", "grabbing", "zoom-in", "zoom-out", "-moz-grab", "-moz-grabbing", "-moz-zoom-in", "-moz-zoom-out", "url(foo.png), move", "url(foo.png) 5 7, move", "url(foo.png) 12 3, url(bar.png), no-drop", "url(foo.png), url(bar.png) 7 2, wait", "url(foo.png) 3 2, url(bar.png) 7 9, pointer" ],
+    other_values: [
+      "crosshair", "default", "pointer", "move", "e-resize", "ne-resize",
+      "nw-resize", "n-resize", "se-resize", "sw-resize", "s-resize", "w-resize",
+      "text", "wait", "help", "progress", "copy", "alias", "context-menu",
+      "cell", "not-allowed", "col-resize", "row-resize", "no-drop",
+      "vertical-text", "all-scroll", "nesw-resize", "nwse-resize", "ns-resize",
+      "ew-resize", "none", "grab", "grabbing", "zoom-in", "zoom-out",
+      "-moz-grab", "-moz-grabbing", "-moz-zoom-in", "-moz-zoom-out",
+      "url(foo.png), move",
+      "url(foo.png) 5 7, move",
+      "url(foo.png) 12 3, url(bar.png), no-drop",
+      "url(foo.png), url(bar.png) 7 2, wait",
+      "url(foo.png) 3 2, url(bar.png) 7 9, pointer",
+      "url(foo.png) calc(1 + 2) calc(3), pointer" ],
     invalid_values: [ "url(foo.png)", "url(foo.png) 5 5" ]
   },
   "direction": {
@@ -3467,7 +3462,7 @@ var gCSSProperties = {
     type: CSS_TYPE_LONGHAND,
     applies_to_first_letter: true,
     initial_values: [ "none" ],
-    other_values: [ "left", "right" ],
+    other_values: [ "left", "right", "inline-start", "inline-end" ],
     invalid_values: []
   },
   "font": {
@@ -3730,8 +3725,11 @@ var gCSSProperties = {
     applies_to_first_line: true,
     applies_to_placeholder: true,
     initial_values: [ "normal", "400" ],
-    other_values: [ "bold", "100", "200", "300", "500", "600", "700", "800", "900", "bolder", "lighter" ],
-    invalid_values: [ "0", "100.0", "107", "399", "401", "699", "710", "1000" ]
+    other_values: [ "bold", "100", "200", "300", "500", "600", "700", "800",
+                    "900", "bolder", "lighter", "10.5", "calc(10 + 10)",
+                    "calc(10 - 99)", "100.0", "107", "399", "401", "699",
+                    "710", "1000" ],
+    invalid_values: [ "0", "1001", "calc(10%)" ]
   },
   "height": {
     domProp: "height",
@@ -4208,8 +4206,10 @@ var gCSSProperties = {
     prerequisites: { "display": "block", "contain": "none" },
     subproperties: [ "overflow-x", "overflow-y" ],
     initial_values: [ "visible" ],
-    other_values: [ "auto", "scroll", "hidden", "-moz-hidden-unscrollable", "-moz-scrollbars-none" ],
-    invalid_values: []
+    other_values: [ "auto", "scroll", "hidden", "-moz-hidden-unscrollable", "-moz-scrollbars-none",
+                    "auto auto", "auto scroll", "hidden scroll", "auto hidden",
+                    "-moz-hidden-unscrollable -moz-hidden-unscrollable" ],
+    invalid_values: [ "-moz-hidden-unscrollable -moz-scrollbars-none" ]
   },
   "overflow-x": {
     domProp: "overflowX",
@@ -4425,7 +4425,7 @@ var gCSSProperties = {
     // don't know whether left and right are same as start
     initial_values: [ "start" ],
     other_values: [ "center", "justify", "end", "match-parent" ],
-    invalid_values: [ "true", "true true" ]
+    invalid_values: [ "true", "true true", "char", "-moz-center-or-inherit" ]
   },
   "text-align-last": {
     domProp: "textAlignLast",
@@ -4434,6 +4434,16 @@ var gCSSProperties = {
     initial_values: [ "auto" ],
     other_values: [ "center", "justify", "start", "end", "left", "right" ],
     invalid_values: []
+  },
+  "text-combine-upright": {
+    domProp: "textCombineUpright",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "none" ],
+    other_values: [ "all" ],
+    invalid_values: [ "auto", "all 2", "none all", "digits -3", "digits 0",
+                      "digits 12", "none 3", "digits 3.1415", "digits3", "digits 1",
+                      "digits 3 all", "digits foo", "digits all", "digits 3.0" ]
   },
   "text-decoration": {
     domProp: "textDecoration",
@@ -4741,6 +4751,7 @@ var gCSSProperties = {
       "calc(50px/(2 - 1))",
     ],
     invalid_values: [ "none", "-2px",
+      "content",  /* (valid for 'flex-basis' but not 'width') */
       /* invalid calc() values */
       "calc(50%+ 2px)",
       "calc(50% +2px)",
@@ -5151,13 +5162,13 @@ var gCSSProperties = {
     domProp: "justifyItems",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    initial_values: [ "auto", "normal" ],
+    initial_values: [ "legacy", "normal" ],
     other_values: [ "end", "flex-start", "flex-end", "self-start", "self-end",
                     "center", "left", "right", "stretch", "start",
                     "legacy left", "right legacy", "legacy center",
                     "unsafe right", "unsafe left", "safe right",
                     "safe center" ],
-    invalid_values: [ "space-between", "abc", "30px", "legacy", "legacy start",
+    invalid_values: [ "auto", "space-between", "abc", "30px", "legacy start",
                       "end legacy", "legacy baseline", "legacy legacy", "unsafe",
                       "safe legacy left", "legacy left safe", "legacy safe left",
                       "safe left legacy", "legacy left legacy", "baseline unsafe",
@@ -5183,8 +5194,9 @@ var gCSSProperties = {
     initial_values: [ "normal" ],
     other_values: [ "normal start", "baseline end", "end end",
                     "space-between flex-end", "last baseline start",
-                    "space-evenly", "flex-start", "end" ],
-    invalid_values: [ "none", "center safe", "unsafe start", "right / end" ]
+                    "space-evenly", "flex-start", "end", "unsafe start", "safe center",
+                    "baseline", "last baseline" ],
+    invalid_values: [ "none", "center safe", "right / end" ]
   },
   "place-items": {
     domProp: "placeItems",
@@ -5192,10 +5204,11 @@ var gCSSProperties = {
     type: CSS_TYPE_TRUE_SHORTHAND,
     subproperties: [ "align-items", "justify-items" ],
     initial_values: [ "normal" ],
-    other_values: [ "normal center", "baseline end", "end auto",
-                    "end", "flex-end left", "last baseline start", "stretch" ],
+    other_values: [ "normal center", "baseline end", "end legacy",
+                    "end", "flex-end left", "last baseline start", "stretch",
+                    "safe center", "end legacy left" ],
     invalid_values: [ "space-between", "start space-evenly", "none", "end/end",
-                      "center safe", "auto start", "end legacy left" ]
+                      "center safe", "auto start" ]
   },
   "place-self": {
     domProp: "placeSelf",
@@ -5256,12 +5269,14 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ " auto" ],
-        // NOTE: This is cribbed directly from the "width" chunk, since this
-        // property takes the exact same values as width (albeit with
-        // different semantics on 'auto').
+        // NOTE: Besides "content", this is cribbed directly from the "width"
+        // chunk, since this property takes the exact same values as width
+        // (plus 'content' & with different semantics on 'auto').
         // XXXdholbert (Maybe these should get separated out into
         // a reusable array defined at the top of this file?)
-    other_values: [ "15px", "3em", "15%", "-moz-max-content", "-moz-min-content", "-moz-fit-content", "-moz-available",
+    other_values: [
+      "content",
+      "15px", "3em", "15%", "-moz-max-content", "-moz-min-content", "-moz-fit-content", "-moz-available",
       // valid calc() values
       "calc(-2px)",
       "calc(2px)",
@@ -6305,21 +6320,9 @@ if (IsCSSPropertyPrefEnabled("layout.css.touch_action.enabled")) {
     };
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.text-combine-upright.enabled")) {
-  gCSSProperties["text-combine-upright"] = {
-    domProp: "textCombineUpright",
-    inherited: true,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "none" ],
-    other_values: [ "all" ],
-    invalid_values: [ "auto", "all 2", "none all", "digits -3", "digits 0",
-                      "digits 12", "none 3", "digits 3.1415", "digits3", "digits 1",
-                      "digits 3 all", "digits foo", "digits all", "digits 3.0" ]
-  };
-  if (IsCSSPropertyPrefEnabled("layout.css.text-combine-upright-digits.enabled")) {
-    gCSSProperties["text-combine-upright"].other_values.push(
-      "digits", "digits 2", "digits 3", "digits 4", "digits     3");
-  }
+if (IsCSSPropertyPrefEnabled("layout.css.text-combine-upright-digits.enabled")) {
+  gCSSProperties["text-combine-upright"].other_values.push(
+    "digits", "digits 2", "digits 3", "digits 4", "digits     3");
 }
 
 if (IsCSSPropertyPrefEnabled("layout.css.text-justify.enabled")) {
@@ -6407,9 +6410,20 @@ if (IsCSSPropertyPrefEnabled("layout.css.shape-outside.enabled")) {
     domProp: "shapeImageThreshold",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
     initial_values: [ "0", "0.0000", "-3", ],
     other_values: [ "0.4", "1", "17", "397.376", "3e1", "3e+1", "3e-1", "3e0", "3e+0", "3e-0" ],
     invalid_values: [ "0px", "1px", "20%", "default", "auto" ]
+  };
+
+  gCSSProperties["shape-margin"] = {
+    domProp: "shapeMargin",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    initial_values: [ "0", ],
+    other_values: [ "2px", "2%", "1em", "calc(1px + 1em)", "calc(1%)" ],
+    invalid_values: [ "-1px", "auto", "none", "1px 1px", "-1%" ],
   };
 
   gCSSProperties["shape-outside"] = {
@@ -7203,33 +7217,55 @@ gCSSProperties["grid-area"] = {
   invalid_values: gridAreaInvalidValues
 };
 
-gCSSProperties["grid-column-gap"] = {
-  domProp: "gridColumnGap",
+gCSSProperties["column-gap"] = {
+  domProp: "columnGap",
   inherited: false,
   type: CSS_TYPE_LONGHAND,
-  initial_values: [ "0" ],
+  initial_values: [ "normal" ],
   other_values: [ "2px", "2%", "1em", "calc(1px + 1em)", "calc(1%)",
                   "calc(1% + 1ch)" , "calc(1px - 99%)" ],
   invalid_values: [ "-1px", "auto", "none", "1px 1px", "-1%", "fit-content(1px)" ],
 };
-gCSSProperties["grid-row-gap"] = {
-  domProp: "gridRowGap",
+gCSSProperties["grid-column-gap"] = {
+  domProp: "gridColumnGap",
+  inherited: false,
+  type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+  alias_for: "column-gap",
+  subproperties: [ "column-gap" ]
+};
+gCSSProperties["row-gap"] = {
+  domProp: "rowGap",
   inherited: false,
   type: CSS_TYPE_LONGHAND,
-  initial_values: [ "0" ],
+  initial_values: [ "normal" ],
   other_values: [ "2px", "2%", "1em", "calc(1px + 1em)", "calc(1%)",
                   "calc(1% + 1ch)" , "calc(1px - 99%)" ],
   invalid_values: [ "-1px", "auto", "none", "1px 1px", "-1%", "min-content" ],
+};
+gCSSProperties["grid-row-gap"] = {
+  domProp: "gridRowGap",
+  inherited: false,
+  type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+  alias_for: "row-gap",
+  subproperties: [ "row-gap" ]
+};
+gCSSProperties["gap"] = {
+  domProp: "gap",
+  inherited: false,
+  type: CSS_TYPE_TRUE_SHORTHAND,
+  subproperties: [ "column-gap", "row-gap" ],
+  initial_values: [ "normal", "normal normal" ],
+  other_values: [ "1ch 0", "1px 1%", "1em 1px", "calc(1px) calc(1%)",
+                  "normal 0", "1% normal" ],
+  invalid_values: [ "-1px", "1px -1px", "1px 1px 1px", "inherit 1px",
+                    "1px auto" ]
 };
 gCSSProperties["grid-gap"] = {
   domProp: "gridGap",
   inherited: false,
   type: CSS_TYPE_TRUE_SHORTHAND,
-  subproperties: [ "grid-column-gap", "grid-row-gap" ],
-  initial_values: [ "0", "0 0" ],
-  other_values: [ "1ch 0", "1px 1%", "1em 1px", "calc(1px) calc(1%)" ],
-  invalid_values: [ "-1px", "1px -1px", "1px 1px 1px", "inherit 1px",
-                    "1px auto" ]
+  alias_for: "gap",
+  subproperties: [ "column-gap", "row-gap" ],
 };
 
 if (IsCSSPropertyPrefEnabled("layout.css.contain.enabled")) {
@@ -8110,18 +8146,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.text-align-unsafe-value.enabled")) {
   gCSSProperties["text-align"].other_values.push("true left");
 } else {
   gCSSProperties["text-align"].invalid_values.push("true left");
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.float-logical-values.enabled")) {
-  gCSSProperties["float"].other_values.push("inline-start");
-  gCSSProperties["float"].other_values.push("inline-end");
-  gCSSProperties["clear"].other_values.push("inline-start");
-  gCSSProperties["clear"].other_values.push("inline-end");
-} else {
-  gCSSProperties["float"].invalid_values.push("inline-start");
-  gCSSProperties["float"].invalid_values.push("inline-end");
-  gCSSProperties["clear"].invalid_values.push("inline-start");
-  gCSSProperties["clear"].invalid_values.push("inline-end");
 }
 
 gCSSProperties["display"].other_values.push("flow-root");

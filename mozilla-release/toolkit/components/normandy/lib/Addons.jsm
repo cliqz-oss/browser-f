@@ -7,10 +7,6 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "Extension", "resource://gre/modules/Extension.jsm");
-ChromeUtils.defineModuleGetter(
-  this, "CleanupManager", "resource://normandy/lib/CleanupManager.jsm"
-);
 
 var EXPORTED_SYMBOLS = ["Addons"];
 
@@ -47,16 +43,6 @@ var Addons = {
   },
 
   /**
-   * Get information about all installed add-ons.
-   * @async
-   * @returns {Array<SafeAddon>}
-   */
-  async getAll(addonId) {
-    const addons = await AddonManager.getAllAddons();
-    return addons.map(this.serializeForSandbox.bind(this));
-  },
-
-  /**
    * Installs an add-on
    *
    * @param {string} addonUrl
@@ -72,7 +58,7 @@ var Addons = {
    *   add-on with a matching ID is already installed.
    */
   async install(addonUrl, options) {
-    const installObj = await AddonManager.getInstallForURL(addonUrl, null, "application/x-xpinstall");
+    const installObj = await AddonManager.getInstallForURL(addonUrl, "application/x-xpinstall");
     return this.applyInstall(installObj, options);
   },
 

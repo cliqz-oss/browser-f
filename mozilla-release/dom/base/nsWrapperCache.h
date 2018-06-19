@@ -343,12 +343,10 @@ protected:
 private:
   // Friend declarations for things that need to be able to call
   // SetIsNotDOMBinding().  The goal is to get rid of all of these, and
-  // SetIsNotDOMBinding() too.
-  friend class mozilla::dom::TabChildGlobal;
-  friend class mozilla::dom::ProcessGlobal;
+  // SetIsNotDOMBinding() too.  Once that's done, we can remove the
+  // couldBeDOMBinding bits in DoGetOrCreateDOMReflector, as well as any other
+  // consumers of IsDOMBinding().
   friend class SandboxPrivate;
-  friend class nsInProcessTabChildGlobal;
-  friend class nsWindowRoot;
   void SetIsNotDOMBinding()
   {
     MOZ_ASSERT(!mWrapper && !(GetWrapperFlags() & ~WRAPPER_IS_NOT_DOM_BINDING),

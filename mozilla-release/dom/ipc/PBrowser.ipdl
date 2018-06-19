@@ -33,6 +33,7 @@ include "mozilla/layers/LayersMessageUtils.h";
 
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
 using mozilla::gfx::Matrix from "mozilla/gfx/Matrix.h";
+using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
 using mozilla::LayoutDeviceIntPoint from "Units.h";
 using mozilla::LayoutDevicePoint from "Units.h";
 using mozilla::ScreenIntPoint from "Units.h";
@@ -40,6 +41,7 @@ using ScreenIntSize from "Units.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
 using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
 using mozilla::layers::GeckoContentController::TapType from "mozilla/layers/GeckoContentController.h";
 using FrameMetrics::ViewID from "FrameMetrics.h";
@@ -49,6 +51,10 @@ using nscolor from "nsColor.h";
 using class mozilla::WidgetCompositionEvent from "ipc/nsGUIEventIPC.h";
 using struct mozilla::widget::IMENotification from "mozilla/widget/IMEData.h";
 using struct mozilla::widget::IMENotificationRequests from "mozilla/widget/IMEData.h";
+using mozilla::widget::IMEState::Enabled from "mozilla/widget/IMEData.h";
+using mozilla::widget::IMEState::Open from "mozilla/widget/IMEData.h";
+using mozilla::widget::InputContextAction::Cause from "mozilla/widget/IMEData.h";
+using mozilla::widget::InputContextAction::FocusChange from "mozilla/widget/IMEData.h";
 using mozilla::gfx::IntSize from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntPoint from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntRect from "mozilla/gfx/Rect.h";
@@ -67,7 +73,6 @@ using mozilla::layers::CompositorOptions from "mozilla/layers/CompositorOptions.
 using mozilla::CSSToScreenScale from "Units.h";
 using mozilla::CommandInt from "mozilla/EventForwards.h";
 using mozilla::WritingMode from "mozilla/WritingModes.h";
-using mozilla::layers::TouchBehaviorFlags from "mozilla/layers/APZUtils.h";
 using nsIWidget::TouchPointerState from "nsIWidget.h";
 using nsCursor from "nsIWidget.h";
 using struct LookAndFeelInt from "mozilla/widget/WidgetMessageUtils.h";
@@ -345,17 +350,17 @@ parent:
                                 nsCString[] enabledCommands,
                                 nsCString[] disabledCommands);
 
-    nested(inside_cpow) sync GetInputContext() returns (int32_t IMEEnabled,
-                                                        int32_t IMEOpen);
+    nested(inside_cpow) sync GetInputContext() returns (Enabled IMEEnabled,
+                                                        Open IMEOpen);
 
-    nested(inside_cpow) async SetInputContext(int32_t IMEEnabled,
-                                              int32_t IMEOpen,
+    nested(inside_cpow) async SetInputContext(Enabled IMEEnabled,
+                                              Open IMEOpen,
                                               nsString type,
                                               nsString inputmode,
                                               nsString actionHint,
                                               bool inPrivateBrowsing,
-                                              int32_t cause,
-                                              int32_t focusChange);
+                                              Cause cause,
+                                              FocusChange focusChange);
 
     sync IsParentWindowMainWidgetVisible() returns (bool visible);
 
@@ -390,7 +395,7 @@ parent:
      *   update.
      */
     async SetCustomCursor(nsCString cursorData, uint32_t width, uint32_t height,
-                          uint32_t stride, uint8_t format,
+                          uint32_t stride, SurfaceFormat format,
                           uint32_t hotspotX, uint32_t hotspotY, bool force);
 
     /**
@@ -564,7 +569,7 @@ parent:
 
     async InvokeDragSession(IPCDataTransfer[] transfers, uint32_t action,
                             OptionalShmem visualData,
-                            uint32_t stride, uint8_t format,
+                            uint32_t stride, SurfaceFormat format,
                             LayoutDeviceIntRect dragRect,
                             nsCString principalURISpec);
 
@@ -599,7 +604,7 @@ child:
                nsSizeMode sizeMode);
 
     async InitRendering(TextureFactoryIdentifier textureFactoryIdentifier,
-                        uint64_t layersId,
+                        LayersId layersId,
                         CompositorOptions compositorOptions,
                         bool layersConnected,
                         nullable PRenderFrame renderFrame);

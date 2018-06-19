@@ -333,6 +333,7 @@ void nsView::DoResetWidgetBounds(bool aMoveOnly,
     // We're going to hit the early exit below, avoid calling CalcWidgetBounds.
   } else {
     newBounds = CalcWidgetBounds(type);
+    invisiblePopup = newBounds.IsEmpty();
   }
 
   bool curVisibility = widget->IsVisible();
@@ -1077,7 +1078,7 @@ nsView::DidPaintWindow()
 }
 
 void
-nsView::DidCompositeWindow(uint64_t aTransactionId,
+nsView::DidCompositeWindow(mozilla::layers::TransactionId aTransactionId,
                            const TimeStamp& aCompositeStart,
                            const TimeStamp& aCompositeEnd)
 {

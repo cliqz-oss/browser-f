@@ -132,11 +132,10 @@ Load(JSContext *cx,
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
 
-    JS::Rooted<JSObject*> obj(cx, JS_THIS_OBJECT(cx, vp));
-    if (!obj)
+    JS::RootedObject thisObject(cx);
+    if (!args.computeThis(cx, &thisObject))
         return false;
-
-    if (!JS_IsGlobalObject(obj)) {
+    if (!JS_IsGlobalObject(thisObject)) {
         JS_ReportErrorASCII(cx, "Trying to load() into a non-global object");
         return false;
     }

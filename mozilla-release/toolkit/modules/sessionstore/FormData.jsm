@@ -198,14 +198,14 @@ var FormDataInternal = {
       }
 
       // We do not want to collect credit card numbers.
-      if (node instanceof Ci.nsIDOMHTMLInputElement &&
+      if (ChromeUtils.getClassName(node) === "HTMLInputElement" &&
           isValidCCNumber(node.value)) {
         continue;
       }
 
-      if (node instanceof Ci.nsIDOMHTMLInputElement ||
+      if (ChromeUtils.getClassName(node) === "HTMLInputElement" ||
           ChromeUtils.getClassName(node) === "HTMLTextAreaElement" ||
-          node instanceof Ci.nsIDOMXULTextBoxElement) {
+          (node.namespaceURI == this.namespaceURIs.xul && node.localName == "textbox")) {
         switch (node.type) {
           case "checkbox":
           case "radio":

@@ -12,8 +12,6 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/dom/DataTransfer.h"
 #include "nsCOMPtr.h"
-#include "nsIDOMMouseEvent.h"
-#include "nsIDOMWheelEvent.h"
 
 /******************************************************************************
  * nsDragDropEventStatus
@@ -125,7 +123,9 @@ protected:
     , buttons(0)
     , pressure(0)
     , hitCluster(false)
-    , inputSource(nsIDOMMouseEvent::MOZ_SOURCE_MOUSE)
+    // Including MouseEventBinding.h here leads to an include loop, so
+    // we have to hardcode MouseEventBinding::MOZ_SOURCE_MOUSE.
+    , inputSource(/* MouseEventBinding::MOZ_SOURCE_MOUSE = */ 1)
   {
   }
 
@@ -136,7 +136,9 @@ protected:
     , buttons(0)
     , pressure(0)
     , hitCluster(false)
-    , inputSource(nsIDOMMouseEvent::MOZ_SOURCE_MOUSE)
+    // Including MouseEventBinding.h here leads to an include loop, so
+    // we have to hardcode MouseEventBinding::MOZ_SOURCE_MOUSE.
+    , inputSource(/* MouseEventBinding::MOZ_SOURCE_MOUSE = */ 1)
  {
  }
 
@@ -181,7 +183,7 @@ public:
   // Touch near a cluster of links (true)
   bool hitCluster;
 
-  // Possible values at nsIDOMMouseEvent
+  // Possible values a in MouseEvent
   uint16_t inputSource;
 
   // ID of the canvas HitRegion
@@ -468,7 +470,7 @@ public:
   // The delta value of mouse scroll event.
   // If the event message is eLegacyMouseLineOrPageScroll, the value indicates
   // scroll amount in lines.  However, if the value is
-  // nsIDOMUIEvent::SCROLL_PAGE_UP or nsIDOMUIEvent::SCROLL_PAGE_DOWN, the
+  // UIEvent::SCROLL_PAGE_UP or UIEvent::SCROLL_PAGE_DOWN, the
   // value inducates one page scroll.  If the event message is
   // eLegacyMousePixelScroll, the value indicates scroll amount in pixels.
   int32_t mDelta;
@@ -503,7 +505,9 @@ private:
     , mDeltaZ(0.0)
     , mOverflowDeltaX(0.0)
     , mOverflowDeltaY(0.0)
-    , mDeltaMode(nsIDOMWheelEvent::DOM_DELTA_PIXEL)
+    // Including WheelEventBinding.h here leads to an include loop, so
+    // we have to hardcode WheelEventBinding::DOM_DELTA_PIXEL.
+    , mDeltaMode(/* WheelEventBinding::DOM_DELTA_PIXEL = */ 0)
     , mLineOrPageDeltaX(0)
     , mLineOrPageDeltaY(0)
     , mScrollType(SCROLL_DEFAULT)
@@ -513,7 +517,7 @@ private:
     , mViewPortIsOverscrolled(false)
     , mCanTriggerSwipe(false)
     , mAllowToOverrideSystemScrollSpeed(false)
-    , mDeltaValuesAdjustedForDefaultHandler(false)
+    , mDeltaValuesHorizontalizedForDefaultHandler(false)
   {
   }
 
@@ -527,7 +531,9 @@ public:
     , mDeltaZ(0.0)
     , mOverflowDeltaX(0.0)
     , mOverflowDeltaY(0.0)
-    , mDeltaMode(nsIDOMWheelEvent::DOM_DELTA_PIXEL)
+    // Including WheelEventBinding.h here leads to an include loop, so
+    // we have to hardcode WheelEventBinding::DOM_DELTA_PIXEL.
+    , mDeltaMode(/* WheelEventBinding::DOM_DELTA_PIXEL = */ 0)
     , mLineOrPageDeltaX(0)
     , mLineOrPageDeltaY(0)
     , mScrollType(SCROLL_DEFAULT)
@@ -538,7 +544,7 @@ public:
     , mViewPortIsOverscrolled(false)
     , mCanTriggerSwipe(false)
     , mAllowToOverrideSystemScrollSpeed(true)
-    , mDeltaValuesAdjustedForDefaultHandler(false)
+    , mDeltaValuesHorizontalizedForDefaultHandler(false)
   {
   }
 
@@ -572,8 +578,8 @@ public:
   double mDeltaZ;
 
   // overflowed delta values for scroll, these values are set by
-  // nsEventStateManger.  If the default action of the wheel event isn't scroll,
-  // these values always zero.  Otherwise, remaning delta values which are
+  // EventStateManger.  If the default action of the wheel event isn't scroll,
+  // these values are always zero.  Otherwise, remaining delta values which are
   // not used by scroll are set.
   // NOTE: mDeltaX, mDeltaY and mDeltaZ may be modified by EventStateManager.
   //       However, mOverflowDeltaX and mOverflowDeltaY indicate unused original
@@ -583,7 +589,7 @@ public:
   double mOverflowDeltaX;
   double mOverflowDeltaY;
 
-  // Should be one of nsIDOMWheelEvent::DOM_DELTA_*
+  // Should be one of WheelEventBinding::DOM_DELTA_*
   uint32_t mDeltaMode;
 
   // If widget sets mLineOrPageDelta, EventStateManager will dispatch
@@ -656,9 +662,10 @@ public:
   // it's enabled by the pref.
   bool mAllowToOverrideSystemScrollSpeed;
 
-  // While default handler handles a wheel event specially (e.g., treating
-  // mDeltaY as horizontal scroll), this is set to true.
-  bool mDeltaValuesAdjustedForDefaultHandler;
+  // After the event's default action handler has adjusted its delta's values
+  // for horizontalizing a vertical wheel scroll, this variable will be set to
+  // true.
+  bool mDeltaValuesHorizontalizedForDefaultHandler;
 
   void AssignWheelEventData(const WidgetWheelEvent& aEvent, bool aCopyTargets)
   {
@@ -681,8 +688,8 @@ public:
     mCanTriggerSwipe = aEvent.mCanTriggerSwipe;
     mAllowToOverrideSystemScrollSpeed =
       aEvent.mAllowToOverrideSystemScrollSpeed;
-    mDeltaValuesAdjustedForDefaultHandler =
-      aEvent.mDeltaValuesAdjustedForDefaultHandler;
+    mDeltaValuesHorizontalizedForDefaultHandler =
+      aEvent.mDeltaValuesHorizontalizedForDefaultHandler;
   }
 
   // System scroll speed settings may be too slow at using Gecko.  In such

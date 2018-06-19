@@ -15,6 +15,7 @@
 #include "nsIHttpChannelInternal.h"
 #include "nsIInputStreamPump.h"
 #include "nsIIOService.h"
+#include "nsIOService.h"
 #include "nsIProtocolHandler.h"
 #include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
@@ -64,6 +65,7 @@
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/SRILogHelper.h"
+#include "mozilla/dom/ServiceWorkerBinding.h"
 #include "mozilla/UniquePtr.h"
 #include "Principal.h"
 #include "WorkerHolder.h"
@@ -153,6 +155,18 @@ ChannelFromScriptURL(nsIPrincipal* principal,
   uint32_t secFlags = aIsMainScript ? nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED
                                     : nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS;
 
+  bool inheritAttrs = nsContentUtils::ChannelShouldInheritPrincipal(
+    principal, uri, true /* aInheritForAboutBlank */, false /* aForceInherit */);
+
+  bool isData = false;
+  rv = uri->SchemeIs("data", &isData);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  bool isURIUniqueOrigin = nsIOService::IsDataURIUniqueOpaqueOrigin() && isData;
+  if (inheritAttrs && !isURIUniqueOrigin) {
+    secFlags |= nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
+  }
+
   if (aWorkerScriptType == DebuggerScript) {
     // A DebuggerScript needs to be a local resource like chrome: or resource:
     bool isUIResource = false;
@@ -171,14 +185,24 @@ ChannelFromScriptURL(nsIPrincipal* principal,
 
   // Note: this is for backwards compatibility and goes against spec.
   // We should find a better solution.
-  bool isData = false;
-  if (aIsMainScript && NS_SUCCEEDED(uri->SchemeIs("data", &isData)) && isData) {
+  if (aIsMainScript && isData) {
     secFlags = nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL;
   }
 
   nsContentPolicyType contentPolicyType =
     aIsMainScript ? aMainScriptContentPolicyType
                   : nsIContentPolicy::TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS;
+
+  // The main service worker script should never be loaded over the network
+  // in this path.  It should always be offlined by ServiceWorkerScriptCache.
+  // We assert here since this error should also be caught by the runtime
+  // check in CacheScriptLoader.
+  //
+  // Note, if we ever allow service worker scripts to be loaded from network
+  // here we need to configure the channel properly.  For example, it must
+  // not allow redirects.
+  MOZ_DIAGNOSTIC_ASSERT(contentPolicyType !=
+                        nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER);
 
   nsCOMPtr<nsIChannel> channel;
   // If we have the document, use it. Unfortunately, for dedicated workers
@@ -464,6 +488,7 @@ public:
     , mRunnable(aRunnable)
     , mIsWorkerScript(aIsWorkerScript)
     , mFailed(false)
+    , mState(aWorkerPrivate->GetServiceWorkerDescriptor().State())
   {
     MOZ_ASSERT(aWorkerPrivate);
     MOZ_ASSERT(aWorkerPrivate->IsServiceWorker());
@@ -496,6 +521,7 @@ private:
   RefPtr<ScriptLoaderRunnable> mRunnable;
   bool mIsWorkerScript;
   bool mFailed;
+  const ServiceWorkerState mState;
   nsCOMPtr<nsIInputStreamPump> mPump;
   nsCOMPtr<nsIURI> mBaseURI;
   mozilla::dom::ChannelInfo mChannelInfo;
@@ -1757,7 +1783,20 @@ CacheScriptLoader::ResolvedCallback(JSContext* aCx,
 
   nsresult rv;
 
+  // The ServiceWorkerScriptCache will store data for any scripts it
+  // it knows about.  This is always at least the top level script.
+  // Depending on if a previous version of the service worker has
+  // been installed or not it may also know about importScripts().  We
+  // must handle loading and offlining new importScripts() here, however.
   if (aValue.isUndefined()) {
+    // If this is the main script or we're not loading a new service worker
+    // then this is an error.  The storage was probably wiped without
+    // removing the service worker registration.
+    if (NS_WARN_IF(mIsWorkerScript || mState != ServiceWorkerState::Parsed)) {
+      Fail(NS_ERROR_DOM_INVALID_STATE_ERR);
+      return;
+    }
+
     mLoadInfo.mCacheStatus = ScriptLoadInfo::ToBeCached;
     rv = mRunnable->LoadScript(mIndex);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1883,7 +1922,9 @@ public:
     : WorkerMainThreadRunnable(aParentWorker,
                                NS_LITERAL_CSTRING("ScriptLoader :: ChannelGetter"))
     , mScriptURL(aScriptURL)
-    , mClientInfo(aParentWorker->GetClientInfo())
+    // ClientInfo should always be present since this should not be called
+    // if parent's status is greater than Running.
+    , mClientInfo(aParentWorker->GetClientInfo().ref())
     , mLoadInfo(aLoadInfo)
     , mResult(NS_ERROR_FAILURE)
   {
@@ -2047,10 +2088,6 @@ ScriptExecutorRunnable::WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
     if (NS_FAILED(loadInfo.mLoadResult)) {
       workerinternals::ReportLoadError(mScriptLoader.mRv,
                                        loadInfo.mLoadResult, loadInfo.mURL);
-      // Top level scripts only!
-      if (mIsWorkerScript) {
-        aWorkerPrivate->MaybeDispatchLoadFailedRunnable();
-      }
       return true;
     }
 
@@ -2223,7 +2260,7 @@ LoadAllScripts(WorkerPrivate* aWorkerPrivate,
   Maybe<ClientInfo> clientInfo;
   Maybe<ServiceWorkerDescriptor> controller;
   if (!aIsMainScript) {
-    clientInfo.emplace(aWorkerPrivate->GetClientInfo());
+    clientInfo = aWorkerPrivate->GetClientInfo();
     controller = aWorkerPrivate->GetController();
   }
 
@@ -2367,7 +2404,7 @@ LoadMainScript(WorkerPrivate* aWorkerPrivate,
 
   // We are loading the main script, so the worker's Client must be
   // reserved.
-  info->mReservedClientInfo.emplace(aWorkerPrivate->GetClientInfo());
+  info->mReservedClientInfo = aWorkerPrivate->GetClientInfo();
 
   LoadAllScripts(aWorkerPrivate, loadInfos, true, aWorkerScriptType, aRv);
 }

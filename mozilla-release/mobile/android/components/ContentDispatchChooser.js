@@ -12,7 +12,7 @@ ContentDispatchChooser.prototype =
 {
   classID: Components.ID("5a072a22-1e66-4100-afc1-07aed8b62fc5"),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentDispatchChooser]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentDispatchChooser]),
 
   get protoSvc() {
     if (!this._protoSvc) {
@@ -85,8 +85,8 @@ ContentDispatchChooser.prototype =
         // we want to show the neterror page.
         let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
         let millis = dwu.millisSinceLastUserInput;
-        if (millis > 0 && millis >= 1000) {
-          window.location.href = data.uri;
+        if (millis < 0 || millis >= 1000) {
+          window.document.docShell.displayLoadError(Cr.NS_ERROR_UNKNOWN_PROTOCOL, aURI, null);
         } else {
           this._closeBlankWindow(window);
         }

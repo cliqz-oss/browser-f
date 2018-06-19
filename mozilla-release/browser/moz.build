@@ -14,7 +14,6 @@ with Files('docs/**'):
 DIRS += [
     'base',
     'components',
-    'experiments',
     'fonts',
     'locales',
     'modules',
@@ -35,14 +34,6 @@ TEST_DIRS += [
 
 DIST_SUBDIR = 'browser'
 export('DIST_SUBDIR')
-
-if CONFIG['MOZ_ARTIFACT_BUILDS']:
-    # Ensure a pre-built interfaces.xpt installed to the objdir by the artifact
-    # code is included by the top-level chrome.manifest.
-    EXTRA_COMPONENTS += [
-        '../build/prebuilt-interfaces.manifest',
-    ]
-
 
 # These defines are read in firefox.js
 DEFINES['APP_VERSION'] = CONFIG['MOZ_APP_VERSION']
@@ -65,34 +56,34 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "General")
 
 with Files("Makefile.in"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("*.mk"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("**/moz.build"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("moz.configure"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("app.mozbuild"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("moz.build"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("confvars.sh"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("LICENSE"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("branding/**"):
     BUG_COMPONENT = ("Firefox", "General")
 
 with Files("config/**"):
-    BUG_COMPONENT = ("Core", "Build Config")
+    BUG_COMPONENT = ("Firefox Build System", "General")
 
 with Files("docs/**"):
     BUG_COMPONENT = ("Toolkit", "Telemetry")

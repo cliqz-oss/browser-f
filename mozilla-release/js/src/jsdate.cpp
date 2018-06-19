@@ -19,8 +19,10 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/Casting.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/TextUtils.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -50,6 +52,8 @@ using namespace js;
 
 using mozilla::Atomic;
 using mozilla::ArrayLength;
+using mozilla::BitwiseCast;
+using mozilla::IsAsciiAlpha;
 using mozilla::IsFinite;
 using mozilla::IsNaN;
 using mozilla::NumbersAreIdentical;
@@ -1122,7 +1126,7 @@ ParseDate(const CharT* s, size_t length, ClippedTime* result)
             size_t st = i - 1;
             while (i < length) {
                 c = s[i];
-                if (!(('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')))
+                if (!IsAsciiAlpha(c))
                     break;
                 i++;
             }
@@ -1322,7 +1326,7 @@ NowAsMillis(JSContext* cx)
             // with trying to prevent an attacker from calculating the midpoint themselves.
             // So we use a very simple, very fast CRC with a hardcoded seed.
 
-            uint64_t midpoint = *((uint64_t*)&clamped);
+            uint64_t midpoint = BitwiseCast<uint64_t>(clamped);
             midpoint ^= 0x0F00DD1E2BAD2DED; // XOR in a 'secret'
             // MurmurHash3 internal component from
             //   https://searchfox.org/mozilla-central/rev/61d400da1c692453c2dc2c1cf37b616ce13dea5b/dom/canvas/MurmurHash3.cpp#85
@@ -3319,10 +3323,10 @@ const Class DateObject::protoClass_ = {
 JSObject*
 js::NewDateObjectMsec(JSContext* cx, ClippedTime t, HandleObject proto /* = nullptr */)
 {
-    JSObject* obj = NewObjectWithClassProto(cx, &DateObject::class_, proto);
+    DateObject* obj = NewObjectWithClassProto<DateObject>(cx, proto);
     if (!obj)
         return nullptr;
-    obj->as<DateObject>().setUTCTime(t);
+    obj->setUTCTime(t);
     return obj;
 }
 

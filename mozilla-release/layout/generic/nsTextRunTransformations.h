@@ -11,25 +11,27 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/UniquePtr.h"
 #include "gfxTextRun.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
+#include "nsPresContext.h"
 
 class nsTransformedTextRun;
 
 struct nsTransformedCharStyle final {
   NS_INLINE_DECL_REFCOUNTING(nsTransformedCharStyle)
 
-  explicit nsTransformedCharStyle(nsStyleContext* aContext)
-    : mFont(aContext->StyleFont()->mFont)
-    , mLanguage(aContext->StyleFont()->mLanguage)
-    , mPresContext(aContext->PresContext())
-    , mScriptSizeMultiplier(aContext->StyleFont()->mScriptSizeMultiplier)
-    , mTextTransform(aContext->StyleText()->mTextTransform)
-    , mMathVariant(aContext->StyleFont()->mMathVariant)
-    , mExplicitLanguage(aContext->StyleFont()->mExplicitLanguage) {}
+  explicit nsTransformedCharStyle(mozilla::ComputedStyle* aStyle,
+                                  nsPresContext* aPresContext)
+    : mFont(aStyle->StyleFont()->mFont)
+    , mLanguage(aStyle->StyleFont()->mLanguage)
+    , mPresContext(aPresContext)
+    , mScriptSizeMultiplier(aStyle->StyleFont()->mScriptSizeMultiplier)
+    , mTextTransform(aStyle->StyleText()->mTextTransform)
+    , mMathVariant(aStyle->StyleFont()->mMathVariant)
+    , mExplicitLanguage(aStyle->StyleFont()->mExplicitLanguage) {}
 
   nsFont                  mFont;
-  RefPtr<nsAtom>       mLanguage;
-  RefPtr<nsPresContext> mPresContext;
+  RefPtr<nsAtom>          mLanguage;
+  RefPtr<nsPresContext>   mPresContext;
   float                   mScriptSizeMultiplier;
   uint8_t                 mTextTransform;
   uint8_t                 mMathVariant;

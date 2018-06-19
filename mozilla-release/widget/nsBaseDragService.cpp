@@ -19,22 +19,25 @@
 #include "nsIPresShell.h"
 #include "nsViewManager.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMDragEvent.h"
-#include "nsISelection.h"
 #include "nsISelectionPrivate.h"
 #include "nsPresContext.h"
-#include "nsIDOMDataTransfer.h"
 #include "nsIImageLoadingContent.h"
 #include "imgIContainer.h"
 #include "imgIRequest.h"
 #include "ImageRegion.h"
+#include "nsQueryObject.h"
 #include "nsRegion.h"
 #include "nsXULPopupManager.h"
 #include "nsMenuPopupFrame.h"
 #include "SVGImageContext.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/DataTransferItemList.h"
+#include "mozilla/dom/DataTransfer.h"
+#include "mozilla/dom/DragEvent.h"
+#include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/dom/Selection.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/Unused.h"
 #include "nsFrameLoader.h"
@@ -58,7 +61,7 @@ nsBaseDragService::nsBaseDragService()
     mDragAction(DRAGDROP_ACTION_NONE),
     mDragActionFromChildProcess(DRAGDROP_ACTION_UNINITIALIZED), mTargetSize(0,0),
     mContentPolicyType(nsIContentPolicy::TYPE_OTHER),
-    mSuppressLevel(0), mInputSource(nsIDOMMouseEvent::MOZ_SOURCE_MOUSE)
+    mSuppressLevel(0), mInputSource(MouseEventBinding::MOZ_SOURCE_MOUSE)
 {
 }
 
@@ -201,7 +204,7 @@ nsBaseDragService::IsDataFlavorSupported(const char *aDataFlavor,
 }
 
 NS_IMETHODIMP
-nsBaseDragService::GetDataTransfer(nsIDOMDataTransfer** aDataTransfer)
+nsBaseDragService::GetDataTransferXPCOM(DataTransfer** aDataTransfer)
 {
   *aDataTransfer = mDataTransfer;
   NS_IF_ADDREF(*aDataTransfer);
@@ -209,10 +212,23 @@ nsBaseDragService::GetDataTransfer(nsIDOMDataTransfer** aDataTransfer)
 }
 
 NS_IMETHODIMP
-nsBaseDragService::SetDataTransfer(nsIDOMDataTransfer* aDataTransfer)
+nsBaseDragService::SetDataTransferXPCOM(DataTransfer* aDataTransfer)
 {
+  NS_ENSURE_STATE(aDataTransfer);
   mDataTransfer = aDataTransfer;
   return NS_OK;
+}
+
+DataTransfer*
+nsBaseDragService::GetDataTransfer()
+{
+  return mDataTransfer;
+}
+
+void
+nsBaseDragService::SetDataTransfer(DataTransfer* aDataTransfer)
+{
+  mDataTransfer = aDataTransfer;
 }
 
 //-------------------------------------------------------------------------
@@ -264,8 +280,8 @@ nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
                                               uint32_t aActionType,
                                               nsIDOMNode* aImage,
                                               int32_t aImageX, int32_t aImageY,
-                                              nsIDOMDragEvent* aDragEvent,
-                                              nsIDOMDataTransfer* aDataTransfer)
+                                              DragEvent* aDragEvent,
+                                              DataTransfer* aDataTransfer)
 {
   NS_ENSURE_TRUE(aDragEvent, NS_ERROR_NULL_POINTER);
   NS_ENSURE_TRUE(aDataTransfer, NS_ERROR_NULL_POINTER);
@@ -278,9 +294,9 @@ nsBaseDragService::InvokeDragSessionWithImage(nsIDOMNode* aDOMNode,
   mImage = aImage;
   mImageOffset = CSSIntPoint(aImageX, aImageY);
 
-  aDragEvent->GetScreenX(&mScreenPosition.x);
-  aDragEvent->GetScreenY(&mScreenPosition.y);
-  aDragEvent->GetMozInputSource(&mInputSource);
+  mScreenPosition.x = aDragEvent->ScreenX(CallerType::System);
+  mScreenPosition.y = aDragEvent->ScreenY(CallerType::System);
+  mInputSource = aDragEvent->MozInputSource();
 
   nsresult rv = InvokeDragSession(aDOMNode, aPrincipalURISpec,
                                   aTransferableArray,
@@ -301,23 +317,23 @@ nsBaseDragService::InvokeDragSessionWithSelection(nsISelection* aSelection,
                                                   const nsACString& aPrincipalURISpec,
                                                   nsIArray* aTransferableArray,
                                                   uint32_t aActionType,
-                                                  nsIDOMDragEvent* aDragEvent,
-                                                  nsIDOMDataTransfer* aDataTransfer)
+                                                  DragEvent* aDragEvent,
+                                                  DataTransfer* aDataTransfer)
 {
   NS_ENSURE_TRUE(aSelection, NS_ERROR_NULL_POINTER);
   NS_ENSURE_TRUE(aDragEvent, NS_ERROR_NULL_POINTER);
   NS_ENSURE_TRUE(mSuppressLevel == 0, NS_ERROR_FAILURE);
 
   mDataTransfer = aDataTransfer;
-  mSelection = aSelection;
+  mSelection = aSelection ? aSelection->AsSelection() : nullptr;
   mHasImage = true;
   mDragPopup = nullptr;
   mImage = nullptr;
   mImageOffset = CSSIntPoint();
 
-  aDragEvent->GetScreenX(&mScreenPosition.x);
-  aDragEvent->GetScreenY(&mScreenPosition.y);
-  aDragEvent->GetMozInputSource(&mInputSource);
+  mScreenPosition.x = aDragEvent->ScreenX(CallerType::System);
+  mScreenPosition.y = aDragEvent->ScreenY(CallerType::System);
+  mInputSource = aDragEvent->MozInputSource();
 
   // just get the focused node from the selection
   // XXXndeakin this should actually be the deepest node that contains both
@@ -452,7 +468,7 @@ nsBaseDragService::EndDragSession(bool aDoneDrag, uint32_t aKeyModifiers)
   mImageOffset = CSSIntPoint();
   mScreenPosition = CSSIntPoint();
   mEndDragPoint = LayoutDeviceIntPoint(0, 0);
-  mInputSource = nsIDOMMouseEvent::MOZ_SOURCE_MOUSE;
+  mInputSource = MouseEventBinding::MOZ_SOURCE_MOUSE;
 
   return NS_OK;
 }
@@ -461,9 +477,9 @@ void
 nsBaseDragService::DiscardInternalTransferData()
 {
   if (mDataTransfer && mSourceNode) {
-    MOZ_ASSERT(!!DataTransfer::Cast(mDataTransfer));
+    MOZ_ASSERT(mDataTransfer);
 
-    DataTransferItemList* items = DataTransfer::Cast(mDataTransfer)->Items();
+    DataTransferItemList* items = mDataTransfer->Items();
     for (size_t i = 0; i < items->Length(); i++) {
       bool found;
       DataTransferItem* item = items->IndexedGetter(i, found);
@@ -653,7 +669,7 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
   // an image or canvas, fall through to RenderNode below.
   if (mImage) {
     nsCOMPtr<nsIContent> content = do_QueryInterface(dragNode);
-    HTMLCanvasElement *canvas = HTMLCanvasElement::FromContentOrNull(content);
+    HTMLCanvasElement *canvas = HTMLCanvasElement::FromNodeOrNull(content);
     if (canvas) {
       return DrawDragForImage(*aPresContext, nullptr, canvas, aScreenDragRect, aSurface);
     }

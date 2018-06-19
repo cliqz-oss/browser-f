@@ -118,19 +118,6 @@ interface nsIServiceWorkerManagerListener : nsISupports
 interface nsIServiceWorkerManager : nsISupports
 {
   /**
-   * Registers a ServiceWorker with script loaded from `aScriptURI` to act as
-   * the ServiceWorker for aScope.  Requires a valid entry settings object on
-   * the stack. This means you must call this from content code 'within'
-   * a window.
-   *
-   * Returns a Promise.
-   */
-  nsISupports register(in mozIDOMWindow aWindow,
-                       in nsIURI aScope,
-                       in nsIURI aScriptURI,
-                       in uint16_t aUpdateViaCache);
-
-  /**
    * Unregister an existing ServiceWorker registration for `aScope`.
    * It keeps aCallback alive until the operation is concluded.
    */
@@ -138,34 +125,11 @@ interface nsIServiceWorkerManager : nsISupports
                   in nsIServiceWorkerUnregisterCallback aCallback,
                   in DOMString aScope);
 
-  // Returns a Promise
-  nsISupports getRegistrations(in mozIDOMWindow aWindow);
-
-  // Returns a Promise
-  nsISupports getRegistration(in mozIDOMWindow aWindow, in DOMString aScope);
-
-  // Returns a Promise
-  nsISupports getReadyPromise(in mozIDOMWindow aWindow);
-
-  // Remove ready pending Promise
-  void removeReadyPromise(in mozIDOMWindow aWindow);
-
   nsIServiceWorkerRegistrationInfo getRegistrationByPrincipal(in nsIPrincipal aPrincipal,
                                                               in DOMString aScope);
 
   [notxpcom, nostdcall] bool StartControlling(in const_ClientInfoRef aClientInfo,
                                               in const_ServiceWorkerDescriptorRef aServiceWorker);
-
-  /*
-   * Clears ServiceWorker registrations from memory and disk for the specified
-   * host.
-   * - All ServiceWorker instances change their state to redundant.
-   * - Existing ServiceWorker instances handling fetches will keep running.
-   * - All documents will immediately stop being controlled.
-   * - Unregister jobs will be queued for all registrations.
-   *   This eventually results in the registration being deleted from disk too.
-   */
-  void removeAndPropagate(in AUTF8String aHost);
 
   // Testing
   DOMString getScopeForUrl(in nsIPrincipal aPrincipal, in DOMString aPath);

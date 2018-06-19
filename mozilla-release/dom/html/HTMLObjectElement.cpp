@@ -192,12 +192,8 @@ HTMLObjectElement::HandlePluginInstantiated(Element* aElement)
   // to initiate a call to nsIWidget::SetPluginFocused(true).  Otherwise
   // keyboard input won't work in a click-to-play plugin until aElement
   // loses focus and regains it.
-  nsIContent* focusedContent = nullptr;
   nsFocusManager *fm = nsFocusManager::GetFocusManager();
-  if (fm) {
-    focusedContent = fm->GetFocusedContent();
-  }
-  if (SameCOMIdentity(focusedContent, aElement)) {
+  if (fm && fm->GetFocusedElement() == aElement) {
     OnFocusBlurPlugin(aElement, true);
   }
 }
@@ -523,7 +519,7 @@ HTMLObjectElement::IntrinsicState() const
 uint32_t
 HTMLObjectElement::GetCapabilities() const
 {
-  return nsObjectLoadingContent::GetCapabilities();
+  return nsObjectLoadingContent::GetCapabilities() | eFallbackIfClassIDPresent;
 }
 
 void

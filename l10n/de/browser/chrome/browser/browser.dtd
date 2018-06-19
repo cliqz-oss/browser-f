@@ -35,6 +35,7 @@ left instead of right. -->
 <!ENTITY  closeOtherTabs.label               "Andere Tabs schließen">
 <!ENTITY  closeOtherTabs.accesskey           "A">
 
+
 <!-- LOCALIZATION NOTE (pinTab.label, unpinTab.label): "Pin" is being
 used as a metaphor for expressing the fact that these tabs are "pinned" to the
 left edge of the tabstrip. Really we just want the string to express the idea
@@ -61,6 +62,7 @@ can reach it easily. -->
 <!ENTITY  closeTab.label                     "Tab schließen">
 <!ENTITY  closeTab.accesskey                 "c">
 
+<!ENTITY  hiddenTabs.label                   "Ausgeblendete Tabs">
 
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
 
@@ -128,7 +130,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY showAllTabsCmd.label "Alle Tabs anzeigen">
 <!ENTITY showAllTabsCmd.accesskey "z">
 <!ENTITY toggleReaderMode.key "R">
-
 <!ENTITY toggleReaderMode.win.keycode "VK_F9">
 
 <!ENTITY fxaSignIn.label "Bei &syncBrand.shortName.label; anmelden">
@@ -188,10 +189,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY otherBookmarksCmd.label "Weitere Lesezeichen">
 <!ENTITY mobileBookmarksCmd.label "Mobile Lesezeichen">
 <!ENTITY bookmarksToolbarChevron.tooltip "Weitere Lesezeichen anzeigen">
-<!ENTITY showRecentlyBookmarked.label     "Kürzlich hinzugefügte Lesezeichen anzeigen">
-<!ENTITY showRecentlyBookmarked.accesskey "z">
-<!ENTITY hideRecentlyBookmarked.label     "Kürzlich hinzugefügte Lesezeichen ausblenden">
-<!ENTITY hideRecentlyBookmarked.accesskey "b">
 
 <!ENTITY backCmd.label                "Zurück">
 <!ENTITY backCmd.accesskey            "Z">
@@ -223,6 +220,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 
+<!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
 
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
@@ -232,7 +230,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.translateNotificationAnchor.tooltip       "Diese Seite übersetzen">
 <!ENTITY urlbar.translatedNotificationAnchor.tooltip      "Übersetzung von Seiten verwalten">
 <!ENTITY urlbar.emeNotificationAnchor.tooltip             "Verwendung von DRM-geschützter Software verwalten">
-
 <!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
 
 <!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
@@ -243,7 +240,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
 <!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
 <!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
-
 <!ENTITY urlbar.flashPluginBlocked.tooltip       "Sie haben den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
 <!ENTITY urlbar.midiBlocked.tooltip              "Sie haben den Zugriff auf MIDI für diese Website blockiert.">
 
@@ -253,6 +249,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!-- Toolbar items -->
 <!ENTITY homeButton.label             "Startseite">
+
 
 <!ENTITY bookmarksButton.label          "Lesezeichen">
 <!ENTITY bookmarksCmd.commandkey "B">
@@ -302,6 +299,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY inspectContextMenu.label     "Element untersuchen">
 <!ENTITY inspectContextMenu.accesskey "Q">
 
+<!ENTITY inspectA11YContextMenu.label     "Barrierefreiheit-Eigenschaften untersuchen">
 
 <!ENTITY fileMenu.label         "Datei">
 <!ENTITY fileMenu.accesskey       "D">
@@ -392,7 +390,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      when Sync is configured but this appears to be the only device attached to
      the account. We also show links to download Firefox for android/ios. -->
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
 <!ENTITY appMenuRemoteTabs.opensyncprefs.label "Sync-Einstellungen öffnen">
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
@@ -434,6 +431,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY customizeMenu.addMoreItems.label "Mehr Einträge hinzufügen…">
 <!ENTITY customizeMenu.addMoreItems.accesskey "E">
 
+<!ENTITY customizeMenu.manageExtension.label "Erweiterung verwalten">
+
 <!-- LOCALIZATION NOTE (moreMenu.label) This label is used in the new Photon
     app (hamburger) menu. When clicked, it opens a subview that contains
     secondary commands. -->
@@ -441,7 +440,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY openCmd.commandkey           "l">
 <!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
-<!ENTITY urlbar.placeholder3          "Suchwörter und Adressen hier eingeben">
 <!ENTITY urlbar.accesskey             "s">
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Erweiterung:">
@@ -795,6 +793,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.moreInfoLinkText2 "Weitere Informationen">
 
+
 <!ENTITY identity.permissions "Berechtigungen">
 <!ENTITY identity.permissionsEmpty "Der Website wurden keine besonderen Berechtigungen erteilt.">
 <!ENTITY identity.permissionsReloadHint "Eventuell muss die Seite neu geladen werden, um die Änderungen zu übernehmen.">
@@ -985,16 +984,24 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY updateRestart.cancelButton.accesskey "N">
 <!ENTITY updateRestart.panelUI.label2 "Zum Aktualisieren von &brandShorterName; neu starten">
 
-<!ENTITY newTabControlled.message "Eine Erweiterung hat die Startseite neuer Tabs geändert. Falls Sie diese Änderung nicht wollen, so können Sie diese rückgängig machen.">
-
 <!ENTITY newTabControlled.header.message "Startseite neuer Tabs wurde geändert">
 <!ENTITY newTabControlled.keepButton.label "Änderung beibehalten">
 <!ENTITY newTabControlled.keepButton.accesskey "b">
-<!ENTITY newTabControlled.restoreButton.label "Änderung rückgängig machen">
-<!ENTITY newTabControlled.restoreButton.accesskey "r">
-
 <!ENTITY newTabControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY newTabControlled.disableButton.accesskey "d">
+
+<!ENTITY homepageControlled.message "Eine Erweiterung hat die Homepage geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
+<!ENTITY homepageControlled.header.message "Ihre Homepage hat sich geändert.">
+<!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
+<!ENTITY homepageControlled.keepButton.accesskey "b">
+<!ENTITY homepageControlled.disableButton.label "Erweiterung deaktivieren">
+<!ENTITY homepageControlled.disableButton.accesskey "d">
+
+<!ENTITY tabHideControlled.header.message "Auf ausgeblendete Tabs zugreifen">
+<!ENTITY tabHideControlled.keepButton.label "Tabs ausgeblendet belassen">
+<!ENTITY tabHideControlled.keepButton.accesskey "a">
+<!ENTITY tabHideControlled.disableButton.label "Erweiterung deaktivieren">
+<!ENTITY tabHideControlled.disableButton.accesskey "d">
 
 <!ENTITY pageActionButton.tooltip "Aktionen für Seite">
 <!ENTITY pageAction.addToUrlbar.label "Zu Adressleiste hinzufügen">
@@ -1005,6 +1012,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY pageAction.sendTabToDevice.label "Tab an Gerät senden">
 <!ENTITY sendToDevice.syncNotReady.label "Geräte werden synchronisiert…">
+
+<!ENTITY pageAction.shareUrl.label "Teilen">
 
 <!ENTITY libraryButton.tooltip "Öffnen von Chronik, Lesezeichen und mehr">
 
@@ -1018,7 +1027,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-
-<!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
-     The first <image> tag is replaced with the icon for the add-ons menu.
-     The second <image> tag is replaced with the icon for the toolbar menu. -->

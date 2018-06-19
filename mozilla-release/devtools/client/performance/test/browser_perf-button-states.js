@@ -10,8 +10,8 @@ const { SIMPLE_URL } = require("devtools/client/performance/test/helpers/urls");
 const { initPerformanceInNewTab, teardownToolboxAndRemoveTab } = require("devtools/client/performance/test/helpers/panel-utils");
 const { once } = require("devtools/client/performance/test/helpers/event-utils");
 
-add_task(function* () {
-  let { panel } = yield initPerformanceInNewTab({
+add_task(async function() {
+  let { panel } = await initPerformanceInNewTab({
     url: SIMPLE_URL,
     win: window
   });
@@ -24,46 +24,46 @@ add_task(function* () {
 
   let uiStartClick = once(PerformanceView, EVENTS.UI_START_RECORDING);
   let recordingStarted = once(PerformanceController, EVENTS.RECORDING_STATE_CHANGE, {
-    expectedArgs: { "1": "recording-started" }
+    expectedArgs: ["recording-started"]
   });
   let backendStartReady = once(PerformanceController,
                                EVENTS.BACKEND_READY_AFTER_RECORDING_START);
   let uiStateRecording = once(PerformanceView, EVENTS.UI_STATE_CHANGED, {
-    expectedArgs: { "1": "recording" }
+    expectedArgs: ["recording"]
   });
 
   click(recordButton);
-  yield uiStartClick;
+  await uiStartClick;
 
   checkRecordButtonsStates(true, true);
 
-  yield recordingStarted;
+  await recordingStarted;
 
   checkRecordButtonsStates(true, false);
 
-  yield backendStartReady;
-  yield uiStateRecording;
+  await backendStartReady;
+  await uiStateRecording;
 
   let uiStopClick = once(PerformanceView, EVENTS.UI_STOP_RECORDING);
   let recordingStopped = once(PerformanceController, EVENTS.RECORDING_STATE_CHANGE, {
-    expectedArgs: { "1": "recording-stopped" }
+    expectedArgs: ["recording-stopped"]
   });
   let backendStopReady = once(PerformanceController,
                                EVENTS.BACKEND_READY_AFTER_RECORDING_STOP);
   let uiStateRecorded = once(PerformanceView, EVENTS.UI_STATE_CHANGED, {
-    expectedArgs: { "1": "recorded" }
+    expectedArgs: ["recorded"]
   });
 
   click(recordButton);
-  yield uiStopClick;
-  yield recordingStopped;
+  await uiStopClick;
+  await recordingStopped;
 
   checkRecordButtonsStates(false, false);
 
-  yield backendStopReady;
-  yield uiStateRecorded;
+  await backendStopReady;
+  await uiStateRecorded;
 
-  yield teardownToolboxAndRemoveTab(panel);
+  await teardownToolboxAndRemoveTab(panel);
 
   function checkRecordButtonsStates(checked, locked) {
     for (let button of $$(".record-button")) {

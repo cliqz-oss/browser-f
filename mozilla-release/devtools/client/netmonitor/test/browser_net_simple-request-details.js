@@ -7,7 +7,7 @@
  * Tests if requests render correct information in the details UI.
  */
 
-add_task(async function () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
   let { tab, monitor } = await initNetMonitor(SIMPLE_SJS);
@@ -35,8 +35,7 @@ add_task(async function () {
   is(!!document.querySelector(".network-details-panel"), false,
     "The network details panel should still be hidden after first request.");
 
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  store.dispatch(Actions.toggleNetworkDetails());
 
   isnot(getSelectedRequest(store.getState()), undefined,
     "There should be a selected item in the requests menu.");
@@ -162,7 +161,7 @@ add_task(async function () {
   }
 
   async function testCookiesTab() {
-    let onEvent = monitor.panelWin.once(EVENTS.TAB_UPDATED);
+    let onEvent = monitor.panelWin.api.once(EVENTS.TAB_UPDATED);
     EventUtils.sendMouseEvent({ type: "mousedown" },
       document.querySelectorAll("#details-pane tab")[1]);
     await onEvent;
@@ -205,7 +204,7 @@ add_task(async function () {
   }
 
   async function testResponseTab() {
-    let onEvent = monitor.panelWin.once(EVENTS.TAB_UPDATED);
+    let onEvent = monitor.panelWin.api.once(EVENTS.TAB_UPDATED);
     EventUtils.sendMouseEvent({ type: "mousedown" },
       document.querySelectorAll("#details-pane tab")[3]);
     await onEvent;

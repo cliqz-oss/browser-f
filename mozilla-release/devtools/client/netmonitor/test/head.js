@@ -5,7 +5,7 @@
 /* exported Toolbox, restartNetMonitor, teardown, waitForExplicitFinish,
    verifyRequestItemTarget, waitFor, testFilterButtons,
    performRequestsInContent, waitForNetworkEvents, selectIndexAndWaitForSourceEditor,
-   testColumnsAlignment, hideColumn, showColumn */
+   testColumnsAlignment, hideColumn, showColumn, performRequests, waitForRequestData */
 
 "use strict";
 
@@ -18,8 +18,17 @@ const {
   getFormattedIPAndPort,
   getFormattedTime,
 } = require("devtools/client/netmonitor/src/utils/format-utils");
+
 const {
-  decodeUnicodeUrl,
+  getSortedRequests,
+  getRequestById
+} = require("devtools/client/netmonitor/src/selectors/index");
+
+const {
+  getUnicodeUrl,
+  getUnicodeHostname,
+} = require("devtools/client/shared/unicode-url");
+const {
   getFormattedProtocol,
   getUrlBaseName,
   getUrlHost,
@@ -40,6 +49,7 @@ const CONTENT_TYPE_WITHOUT_CACHE_REQUESTS = 8;
 const CYRILLIC_URL = EXAMPLE_URL + "html_cyrillic-test-page.html";
 const STATUS_CODES_URL = EXAMPLE_URL + "html_status-codes-test-page.html";
 const POST_DATA_URL = EXAMPLE_URL + "html_post-data-test-page.html";
+const POST_ARRAY_DATA_URL = EXAMPLE_URL + "html_post-array-data-test-page.html";
 const POST_JSON_URL = EXAMPLE_URL + "html_post-json-test-page.html";
 const POST_RAW_URL = EXAMPLE_URL + "html_post-raw-test-page.html";
 const POST_RAW_WITH_HEADERS_URL = EXAMPLE_URL + "html_post-raw-with-headers-test-page.html";
@@ -62,6 +72,7 @@ const CURL_UTILS_URL = EXAMPLE_URL + "html_curl-utils.html";
 const SEND_BEACON_URL = EXAMPLE_URL + "html_send-beacon.html";
 const CORS_URL = EXAMPLE_URL + "html_cors-test-page.html";
 const PAUSE_URL = EXAMPLE_URL + "html_pause-test-page.html";
+const OPEN_REQUEST_IN_TAB_URL = EXAMPLE_URL + "html_open-request-in-tab.html";
 
 const SIMPLE_SJS = EXAMPLE_URL + "sjs_simple-test-server.sjs";
 const SIMPLE_UNSORTED_COOKIES_SJS = EXAMPLE_URL + "sjs_simple-unsorted-cookies-test-server.sjs";
@@ -72,6 +83,7 @@ const SORTING_SJS = EXAMPLE_URL + "sjs_sorting-test-server.sjs";
 const HTTPS_REDIRECT_SJS = EXAMPLE_URL + "sjs_https-redirect-test-server.sjs";
 const CORS_SJS_PATH = "/browser/devtools/client/netmonitor/test/sjs_cors-test-server.sjs";
 const HSTS_SJS = EXAMPLE_URL + "sjs_hsts-test-server.sjs";
+const METHOD_SJS = EXAMPLE_URL + "sjs_method-test-server.sjs";
 
 const HSTS_BASE_URL = EXAMPLE_URL;
 const HSTS_PAGE_URL = CUSTOM_GET_URL;
@@ -145,17 +157,17 @@ function waitForTimelineMarkers(monitor) {
   return new Promise(resolve => {
     let markers = [];
 
-    function handleTimelineEvent(_, marker) {
+    function handleTimelineEvent(marker) {
       info(`Got marker: ${marker.name}`);
       markers.push(marker);
       if (markers.length == 2) {
-        monitor.panelWin.off(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
+        monitor.panelWin.api.off(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
         info("Got two timeline markers, done waiting");
         resolve(markers);
       }
     }
 
-    monitor.panelWin.on(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
+    monitor.panelWin.api.on(EVENTS.TIMELINE_EVENT, handleTimelineEvent);
   });
 }
 
@@ -184,14 +196,14 @@ function waitForAllRequestsFinished(monitor) {
     // Key is the request id, value is a boolean - is request finished or not?
     let requests = new Map();
 
-    function onRequest(_, id) {
+    function onRequest(id) {
       let networkInfo = getNetworkRequest(id);
       let { url } = networkInfo.request;
       info(`Request ${id} for ${url} not yet done, keep waiting...`);
       requests.set(id, false);
     }
 
-    function onTimings(_, id) {
+    function onTimings(id) {
       let networkInfo = getNetworkRequest(id);
       let { url } = networkInfo.request;
       info(`Request ${id} for ${url} done`);
@@ -206,14 +218,14 @@ function waitForAllRequestsFinished(monitor) {
       }
 
       // All requests are done - unsubscribe from events and resolve!
-      window.off(EVENTS.NETWORK_EVENT, onRequest);
-      window.off(EVENTS.PAYLOAD_READY, onTimings);
+      window.api.off(EVENTS.NETWORK_EVENT, onRequest);
+      window.api.off(EVENTS.PAYLOAD_READY, onTimings);
       info("All requests finished");
       resolve();
     }
 
-    window.on(EVENTS.NETWORK_EVENT, onRequest);
-    window.on(EVENTS.PAYLOAD_READY, onTimings);
+    window.api.on(EVENTS.NETWORK_EVENT, onRequest);
+    window.api.on(EVENTS.PAYLOAD_READY, onTimings);
   });
 }
 
@@ -242,13 +254,13 @@ let updatedTypes = [
 // Start collecting all networkEventUpdate event when panel is opened.
 // removeTab() should be called once all corresponded RECEIVED_* events finished.
 function startNetworkEventUpdateObserver(panelWin) {
-  updatingTypes.forEach((type) => panelWin.on(type, (event, actor) => {
-    let key = actor + "-" + updatedTypes[updatingTypes.indexOf(event)];
+  updatingTypes.forEach((type) => panelWin.api.on(type, actor => {
+    let key = actor + "-" + updatedTypes[updatingTypes.indexOf(type)];
     finishedQueue[key] = finishedQueue[key] ? finishedQueue[key] + 1 : 1;
   }));
 
-  updatedTypes.forEach((type) => panelWin.on(type, (event, actor) => {
-    let key = actor + "-" + event;
+  updatedTypes.forEach((type) => panelWin.api.on(type, actor => {
+    let key = actor + "-" + type;
     finishedQueue[key] = finishedQueue[key] ? finishedQueue[key] - 1 : -1;
   }));
 }
@@ -271,7 +283,7 @@ async function waitForAllNetworkUpdateEvents() {
 function initNetMonitor(url, enableCache) {
   info("Initializing a network monitor pane.");
 
-  return (async function () {
+  return (async function() {
     let tab = await addTab(url);
     info("Net tab added successfully: " + url);
 
@@ -316,7 +328,7 @@ function initNetMonitor(url, enableCache) {
 function restartNetMonitor(monitor, newUrl) {
   info("Restarting the specified network monitor.");
 
-  return (async function () {
+  return (async function() {
     let tab = monitor.toolbox.target.tab;
     let url = newUrl || tab.linkedBrowser.currentURI.spec;
 
@@ -334,7 +346,7 @@ function restartNetMonitor(monitor, newUrl) {
 function teardown(monitor) {
   info("Destroying the specified network monitor.");
 
-  return (async function () {
+  return (async function() {
     let tab = monitor.toolbox.target.tab;
 
     await waitForAllNetworkUpdateEvents();
@@ -353,7 +365,7 @@ function waitForNetworkEvents(monitor, getRequests) {
     let networkEvent = 0;
     let payloadReady = 0;
 
-    function onNetworkEvent(event, actor) {
+    function onNetworkEvent(actor) {
       let networkInfo = getNetworkRequest(actor);
       if (!networkInfo) {
         // Must have been related to reloading document to disable cache.
@@ -361,10 +373,10 @@ function waitForNetworkEvents(monitor, getRequests) {
         return;
       }
       networkEvent++;
-      maybeResolve(event, actor, networkInfo);
+      maybeResolve(EVENTS.NETWORK_EVENT, actor, networkInfo);
     }
 
-    function onPayloadReady(event, actor) {
+    function onPayloadReady(actor) {
       let networkInfo = getNetworkRequest(actor);
       if (!networkInfo) {
         // Must have been related to reloading document to disable cache.
@@ -372,7 +384,7 @@ function waitForNetworkEvents(monitor, getRequests) {
         return;
       }
       payloadReady++;
-      maybeResolve(event, actor, networkInfo);
+      maybeResolve(EVENTS.PAYLOAD_READY, actor, networkInfo);
     }
 
     function maybeResolve(event, actor, networkInfo) {
@@ -383,14 +395,14 @@ function waitForNetworkEvents(monitor, getRequests) {
 
       // Wait until networkEvent & payloadReady finish for each request.
       if (networkEvent >= getRequests && payloadReady >= getRequests) {
-        panel.off(EVENTS.NETWORK_EVENT, onNetworkEvent);
-        panel.off(EVENTS.PAYLOAD_READY, onPayloadReady);
+        panel.api.off(EVENTS.NETWORK_EVENT, onNetworkEvent);
+        panel.api.off(EVENTS.PAYLOAD_READY, onPayloadReady);
         executeSoon(resolve);
       }
     }
 
-    panel.on(EVENTS.NETWORK_EVENT, onNetworkEvent);
-    panel.on(EVENTS.PAYLOAD_READY, onPayloadReady);
+    panel.api.on(EVENTS.NETWORK_EVENT, onNetworkEvent);
+    panel.api.on(EVENTS.PAYLOAD_READY, onPayloadReady);
   });
 }
 
@@ -407,10 +419,10 @@ function verifyRequestItemTarget(document, requestList, requestItem, method,
 
   let target = document.querySelectorAll(".request-list-item")[visibleIndex];
   // Bug 1414981 - Request URL should not show #hash
-  let unicodeUrl = decodeUnicodeUrl(url).split("#")[0];
+  let unicodeUrl = getUnicodeUrl(url.split("#")[0]);
   let name = getUrlBaseName(url);
   let query = getUrlQuery(url);
-  let host = getUrlHost(url);
+  let host = getUnicodeHostname(getUrlHost(url));
   let scheme = getUrlScheme(url);
   let {
     remoteAddress,
@@ -490,7 +502,8 @@ function verifyRequestItemTarget(document, requestList, requestItem, method,
     let value = target.querySelector(".requests-list-status-code")
                       .getAttribute("data-status-code");
     let codeValue = target.querySelector(".requests-list-status-code").textContent;
-    let tooltip = target.querySelector(".requests-list-status").getAttribute("title");
+    let tooltip = target.querySelector(".requests-list-status-code")
+                        .getAttribute("title");
     info("Displayed status: " + value);
     info("Displayed code: " + codeValue);
     info("Tooltip status: " + tooltip);
@@ -556,7 +569,7 @@ function verifyRequestItemTarget(document, requestList, requestItem, method,
 
 /**
  * Helper function for waiting for an event to fire before resolving a promise.
- * Example: waitFor(aMonitor.panelWin, EVENT_NAME);
+ * Example: waitFor(aMonitor.panelWin.api, EVENT_NAME);
  *
  * @param object subject
  *        The event emitter object that is being listened to.
@@ -730,7 +743,7 @@ async function showColumn(monitor, column) {
  */
 async function selectIndexAndWaitForSourceEditor(monitor, index) {
   let document = monitor.panelWin.document;
-  let onResponseContent = monitor.panelWin.once(EVENTS.RECEIVED_RESPONSE_CONTENT);
+  let onResponseContent = monitor.panelWin.api.once(EVENTS.RECEIVED_RESPONSE_CONTENT);
   // Select the request first, as it may try to fetch whatever is the current request's
   // responseContent if we select the ResponseTab first.
   EventUtils.sendMouseEvent({ type: "mousedown" },
@@ -743,4 +756,44 @@ async function selectIndexAndWaitForSourceEditor(monitor, index) {
     await waitDOM;
   }
   await onResponseContent;
+}
+
+/**
+ * Helper function for executing XHRs on a test page.
+ *
+ * @param {Number} count Number of requests to be executed.
+ */
+async function performRequests(monitor, tab, count) {
+  let wait = waitForNetworkEvents(monitor, count);
+  await ContentTask.spawn(tab.linkedBrowser, count, requestCount => {
+    content.wrappedJSObject.performRequests(requestCount);
+  });
+  await wait;
+}
+
+/**
+ * Wait for lazy fields to be loaded in a request.
+ *
+ * @param Object Store redux store containing request list.
+ * @param array fields array of strings which contain field names to be checked
+ * on the request.
+ */
+function waitForRequestData(store, fields, id) {
+  return waitUntil(() => {
+    let item;
+    if (id) {
+      item = getRequestById(store.getState(), id);
+    } else {
+      item = getSortedRequests(store.getState()).get(0);
+    }
+    if (!item) {
+      return false;
+    }
+    for (const field of fields) {
+      if (!item[field]) {
+        return false;
+      }
+    }
+    return true;
+  });
 }

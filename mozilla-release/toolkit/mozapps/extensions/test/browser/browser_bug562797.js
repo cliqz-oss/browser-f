@@ -3,7 +3,6 @@
  */
 
 /* eslint max-nested-callbacks: ["warn", 12] */
-/* eslint-disable mozilla/no-cpows-in-tests */
 
 /**
  * Tests that history navigation works for the add-ons manager.
@@ -31,27 +30,39 @@ var gProgressListener = {
   onProgressChange() { },
   onStatusChange() { },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsISupportsWeakReference]),
 };
 
 function waitForLoad(aManager, aCallback) {
-  var browser = aManager.document.getElementById("discover-browser");
-  browser.addProgressListener(gProgressListener);
+  let promise = new Promise(resolve => {
+    var browser = aManager.document.getElementById("discover-browser");
+    browser.addProgressListener(gProgressListener);
 
-  gLoadCompleteCallback = function() {
-    browser.removeProgressListener(gProgressListener);
-    aCallback();
-  };
+    gLoadCompleteCallback = function() {
+      browser.removeProgressListener(gProgressListener);
+      resolve();
+    };
+  });
+  if (aCallback) {
+    promise.then(aCallback);
+  }
+  return promise;
 }
 
 function clickLink(aManager, aId, aCallback) {
-  waitForLoad(aManager, aCallback);
+  let promise = new Promise(async resolve => {
+    waitForLoad(aManager, resolve);
 
-  var browser = aManager.document.getElementById("discover-browser");
+    var browser = aManager.document.getElementById("discover-browser");
 
-  var link = browser.contentDocument.getElementById(aId);
-  EventUtils.sendMouseEvent({type: "click"}, link);
+    var link = browser.contentDocument.getElementById(aId);
+    EventUtils.sendMouseEvent({type: "click"}, link);
+  });
+  if (aCallback) {
+    promise.then(aCallback);
+  }
+  return promise;
 }
 
 function test() {
@@ -154,55 +165,48 @@ function double_click_addon_element(aManager, aId) {
 
 // Tests simple forward and back navigation and that the right heading and
 // category is selected
-add_test(function() {
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/extension");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-      go_back();
+  go_back();
 
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 3");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-        go_forward();
+  go_forward();
 
-        wait_for_view_load(aManager, function(aManager) {
-          info("Part 4");
-          is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 4");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-          go_back();
+  go_back();
 
-          wait_for_view_load(aManager, function(aManager) {
-            info("Part 5");
-            is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 5");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-            double_click_addon_element(aManager, "test1@tests.mozilla.org");
+  double_click_addon_element(aManager, "test1@tests.mozilla.org");
 
-            wait_for_view_load(aManager, function(aManager) {
-              info("Part 6");
-              is_in_detail(aManager, "addons://list/extension", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 6");
+  is_in_detail(aManager, "addons://list/extension", true, false);
 
-              go_back();
+  go_back();
 
-              wait_for_view_load(aManager, function(aManager) {
-                info("Part 7");
-                is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 7");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-                close_manager(aManager, run_next_test);
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 // Tests that browsing to the add-ons manager from a website and going back works
@@ -263,119 +267,105 @@ add_test(function() {
 // category is selected -- Keyboard navigation [Bug 565359]
 // Only add the test if the backspace key navigates back and addon-manager
 // loaded in a tab
-add_test(function() {
+add_test(async function() {
 
   if (Services.prefs.getIntPref("browser.backspace_action") != 0) {
     run_next_test();
     return;
   }
 
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+  let aManager = await open_manager("addons://list/extension");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-      go_back_backspace();
+  go_back_backspace();
 
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 3");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-        go_forward_backspace();
+  go_forward_backspace();
 
-        wait_for_view_load(aManager, function(aManager) {
-          info("Part 4");
-          is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 4");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-          go_back_backspace();
+  go_back_backspace();
 
-          wait_for_view_load(aManager, function(aManager) {
-            info("Part 5");
-            is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 5");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-            double_click_addon_element(aManager, "test1@tests.mozilla.org");
+  double_click_addon_element(aManager, "test1@tests.mozilla.org");
 
-            wait_for_view_load(aManager, function(aManager) {
-              info("Part 6");
-              is_in_detail(aManager, "addons://list/extension", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 6");
+  is_in_detail(aManager, "addons://list/extension", true, false);
 
-              go_back_backspace();
+  go_back_backspace();
 
-              wait_for_view_load(aManager, function(aManager) {
-                info("Part 7");
-                is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 7");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-                close_manager(aManager, run_next_test);
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 
 // Tests that opening a custom first view only stores a single history entry
-add_test(function() {
-  open_manager("addons://list/plugin", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/plugin", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/plugin");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-extension"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-extension"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_list(aManager, "addons://list/extension", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/extension", true, false);
 
-      go_back();
+  go_back();
 
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_list(aManager, "addons://list/plugin", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 3");
+  is_in_list(aManager, "addons://list/plugin", false, true);
 
-        close_manager(aManager, run_next_test);
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 
 // Tests that opening a view while the manager is already open adds a new
 // history entry
-add_test(function() {
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/extension");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    aManager.loadView("addons://list/plugin");
+  aManager.loadView("addons://list/plugin");
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-      go_back();
+  go_back();
 
-      wait_for_view_load(aManager, function(aManager) {
-        info("Part 3");
-        is_in_list(aManager, "addons://list/extension", false, true);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 3");
+  is_in_list(aManager, "addons://list/extension", false, true);
 
-        go_forward();
+  go_forward();
 
-        wait_for_view_load(aManager, function(aManager) {
-          info("Part 4");
-          is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 4");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-          close_manager(aManager, run_next_test);
-        });
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 function wait_for_page_show(browser) {
@@ -394,53 +384,50 @@ function wait_for_page_show(browser) {
 
 // Tests than navigating to a website and then going back returns to the
 // previous view
-add_test(function() {
+add_test(async function() {
 
-  open_manager("addons://list/plugin", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/plugin", false, false);
+  let aManager = await open_manager("addons://list/plugin");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-    gBrowser.loadURI("http://example.com/");
-    wait_for_page_show(gBrowser.selectedBrowser).then(() => {
-      info("Part 2");
+  gBrowser.loadURI("http://example.com/");
+  wait_for_page_show(gBrowser.selectedBrowser).then(() => {
+    info("Part 2");
 
-      executeSoon(function() {
-        ok(gBrowser.canGoBack, "Should be able to go back");
-        ok(!gBrowser.canGoForward, "Should not be able to go forward");
+    executeSoon(function() {
+      ok(gBrowser.canGoBack, "Should be able to go back");
+      ok(!gBrowser.canGoForward, "Should not be able to go forward");
 
-        go_back();
+      go_back();
 
-        gBrowser.addEventListener("pageshow", function listener(event) {
-          if (event.target.location != "about:addons")
-            return;
-          gBrowser.removeEventListener("pageshow", listener);
+      gBrowser.addEventListener("pageshow", async function listener(event) {
+        if (event.target.location != "about:addons")
+          return;
+        gBrowser.removeEventListener("pageshow", listener);
 
-          wait_for_view_load(gBrowser.contentWindow.wrappedJSObject, function(aManager) {
-            info("Part 3");
-            is_in_list(aManager, "addons://list/plugin", false, true);
+        aManager = await wait_for_view_load(gBrowser.contentWindow.wrappedJSObject);
+        info("Part 3");
+        is_in_list(aManager, "addons://list/plugin", false, true);
 
-            executeSoon(() => go_forward());
-            wait_for_page_show(gBrowser.selectedBrowser).then(() => {
-              info("Part 4");
+        executeSoon(() => go_forward());
+        wait_for_page_show(gBrowser.selectedBrowser).then(() => {
+          info("Part 4");
 
-              executeSoon(function() {
-                ok(gBrowser.canGoBack, "Should be able to go back");
-                ok(!gBrowser.canGoForward, "Should not be able to go forward");
+          executeSoon(function() {
+            ok(gBrowser.canGoBack, "Should be able to go back");
+            ok(!gBrowser.canGoForward, "Should not be able to go forward");
 
-                go_back();
+            go_back();
 
-                gBrowser.addEventListener("pageshow", function listener(event) {
-                  if (event.target.location != "about:addons")
-                    return;
-                  gBrowser.removeEventListener("pageshow", listener);
-                  wait_for_view_load(gBrowser.contentWindow.wrappedJSObject, function(aManager) {
-                    info("Part 5");
-                    is_in_list(aManager, "addons://list/plugin", false, true);
+            gBrowser.addEventListener("pageshow", async function listener(event) {
+              if (event.target.location != "about:addons")
+                return;
+              gBrowser.removeEventListener("pageshow", listener);
+              aManager = await wait_for_view_load(gBrowser.contentWindow.wrappedJSObject);
+              info("Part 5");
+              is_in_list(aManager, "addons://list/plugin", false, true);
 
-                    close_manager(aManager, run_next_test);
-                  });
-                });
-              });
+              close_manager(aManager, run_next_test);
             });
           });
         });
@@ -450,290 +437,261 @@ add_test(function() {
 });
 
 // Tests that refreshing a list view does not affect the history
-add_test(function() {
+add_test(async function() {
 
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+  let aManager = await open_manager("addons://list/extension");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_list(aManager, "addons://list/plugin", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-      gBrowser.reload();
-      gBrowser.addEventListener("pageshow", function listener(event) {
-        if (event.target.location != "about:addons")
-          return;
-        gBrowser.removeEventListener("pageshow", listener);
+  gBrowser.reload();
+  gBrowser.addEventListener("pageshow", async function listener(event) {
+    if (event.target.location != "about:addons")
+      return;
+    gBrowser.removeEventListener("pageshow", listener);
 
-        wait_for_view_load(gBrowser.contentWindow.wrappedJSObject, function(aManager) {
-          info("Part 3");
-          is_in_list(aManager, "addons://list/plugin", true, false);
+    aManager = await wait_for_view_load(gBrowser.contentWindow.wrappedJSObject);
+    info("Part 3");
+    is_in_list(aManager, "addons://list/plugin", true, false);
 
-          go_back();
-          wait_for_view_load(aManager, function(aManager) {
-            info("Part 4");
-            is_in_list(aManager, "addons://list/extension", false, true);
+    go_back();
+    aManager = await wait_for_view_load(aManager);
+    info("Part 4");
+    is_in_list(aManager, "addons://list/extension", false, true);
 
-            close_manager(aManager, run_next_test);
-          });
-        });
-      });
-    });
+    close_manager(aManager, run_next_test);
   });
 });
 
 // Tests that refreshing a detail view does not affect the history
-add_test(function() {
+add_test(async function() {
 
-  open_manager(null, function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+  let aManager = await open_manager(null);
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    double_click_addon_element(aManager, "test1@tests.mozilla.org");
+  double_click_addon_element(aManager, "test1@tests.mozilla.org");
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_detail(aManager, "addons://list/extension", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_detail(aManager, "addons://list/extension", true, false);
 
-      gBrowser.reload();
-      gBrowser.addEventListener("pageshow", function listener(event) {
-        if (event.target.location != "about:addons")
-          return;
-        gBrowser.removeEventListener("pageshow", listener);
+  gBrowser.reload();
+  gBrowser.addEventListener("pageshow", async function listener(event) {
+    if (event.target.location != "about:addons")
+      return;
+    gBrowser.removeEventListener("pageshow", listener);
 
-        wait_for_view_load(gBrowser.contentWindow.wrappedJSObject, function(aManager) {
-          info("Part 3");
-          is_in_detail(aManager, "addons://list/extension", true, false);
+    aManager = await wait_for_view_load(gBrowser.contentWindow.wrappedJSObject);
+    info("Part 3");
+    is_in_detail(aManager, "addons://list/extension", true, false);
 
-          go_back();
-          wait_for_view_load(aManager, function(aManager) {
-            info("Part 4");
-            is_in_list(aManager, "addons://list/extension", false, true);
+    go_back();
+    aManager = await wait_for_view_load(aManager);
+    info("Part 4");
+    is_in_list(aManager, "addons://list/extension", false, true);
 
-            close_manager(aManager, run_next_test);
-          });
-        });
-      });
-    });
+    close_manager(aManager, run_next_test);
   });
 });
 
 // Tests that removing an extension from the detail view goes back and doesn't
 // allow you to go forward again.
-add_test(function() {
-  open_manager("addons://list/extension", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/extension", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/extension");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/extension", false, false);
 
-    double_click_addon_element(aManager, "test1@tests.mozilla.org");
+  double_click_addon_element(aManager, "test1@tests.mozilla.org");
 
-    wait_for_view_load(aManager, function(aManager) {
-      info("Part 2");
-      is_in_detail(aManager, "addons://list/extension", true, false);
+  aManager = await wait_for_view_load(aManager);
+  info("Part 2");
+  is_in_detail(aManager, "addons://list/extension", true, false);
 
-      EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("detail-uninstall-btn"),
-                                         { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("detail-uninstall-btn"),
+                                     { }, aManager);
 
-      wait_for_view_load(aManager, function() {
-        // TODO until bug 590661 is fixed the back button will be enabled
-        // when displaying in content
-        is_in_list(aManager, "addons://list/extension", true, false);
+  await wait_for_view_load(aManager);
+  is_in_list(aManager, "addons://list/extension", true, false);
 
-        close_manager(aManager, run_next_test);
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 // Tests that opening the manager opens the last view
-add_test(function() {
-  open_manager("addons://list/plugin", function(aManager) {
-    info("Part 1");
-    is_in_list(aManager, "addons://list/plugin", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/plugin");
+  info("Part 1");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-    close_manager(aManager, function() {
-      open_manager(null, function(aManager) {
-        info("Part 2");
-        is_in_list(aManager, "addons://list/plugin", false, false);
+  await close_manager(aManager);
+  aManager = await open_manager(null);
+  info("Part 2");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-        close_manager(aManager, run_next_test);
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 // Tests that navigating the discovery page works when that was the first view
-add_test(function() {
-  open_manager("addons://discover/", function(aManager) {
-    info("1");
-    is_in_discovery(aManager, MAIN_URL, false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://discover/");
+  info("1");
+  is_in_discovery(aManager, MAIN_URL, false, false);
 
-    clickLink(aManager, "link-good", function() {
-      info("2");
-      is_in_discovery(aManager, SECOND_URL, true, false);
+  await clickLink(aManager, "link-good");
+  info("2");
+  is_in_discovery(aManager, SECOND_URL, true, false);
 
-      waitForLoad(aManager, function() {
-        info("3");
-        is_in_discovery(aManager, MAIN_URL, false, true);
+  // Execute go_back only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_back);
 
-        waitForLoad(aManager, function() {
-          is_in_discovery(aManager, SECOND_URL, true, false);
+  await waitForLoad(aManager);
+  info("3");
+  is_in_discovery(aManager, MAIN_URL, false, true);
 
-          EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
+  // Execute go_forward only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_forward);
 
-          wait_for_view_load(aManager, function(aManager) {
-            is_in_list(aManager, "addons://list/plugin", true, false);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, false);
 
-            go_back();
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
 
-            wait_for_view_load(aManager, function(aManager) {
-              is_in_discovery(aManager, SECOND_URL, true, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-              go_back();
+  go_back();
 
-              waitForLoad(aManager, function() {
-                is_in_discovery(aManager, MAIN_URL, false, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, true);
 
-                close_manager(aManager, run_next_test);
-              });
-            });
-          });
-        });
+  go_back();
 
-        go_forward();
-      });
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, false, true);
 
-      go_back();
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 // Tests that navigating the discovery page works when that was the second view
-add_test(function() {
-  open_manager("addons://list/plugin", function(aManager) {
-    is_in_list(aManager, "addons://list/plugin", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/plugin");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      is_in_discovery(aManager, MAIN_URL, true, false);
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, false);
 
-      clickLink(aManager, "link-good", function() {
-        is_in_discovery(aManager, SECOND_URL, true, false);
+  await clickLink(aManager, "link-good");
+  is_in_discovery(aManager, SECOND_URL, true, false);
 
-        waitForLoad(aManager, function() {
-          is_in_discovery(aManager, MAIN_URL, true, true);
+  // Execute go_back only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_back);
 
-          waitForLoad(aManager, function() {
-            is_in_discovery(aManager, SECOND_URL, true, false);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, true);
 
-            EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
+  // Execute go_forward only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_forward);
 
-            wait_for_view_load(aManager, function(aManager) {
-              is_in_list(aManager, "addons://list/plugin", true, false);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, false);
 
-              go_back();
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-plugin"), { }, aManager);
 
-              wait_for_view_load(aManager, function(aManager) {
-                is_in_discovery(aManager, SECOND_URL, true, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_list(aManager, "addons://list/plugin", true, false);
 
-                go_back();
+  go_back();
 
-                waitForLoad(aManager, function() {
-                  is_in_discovery(aManager, MAIN_URL, true, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, true);
 
-                  go_back();
+  go_back();
 
-                  wait_for_view_load(aManager, function(aManager) {
-                    is_in_list(aManager, "addons://list/plugin", false, true);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, true);
 
-                    go_forward();
+  go_back();
 
-                    wait_for_view_load(aManager, function(aManager) {
-                      is_in_discovery(aManager, MAIN_URL, true, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_list(aManager, "addons://list/plugin", false, true);
 
-                      waitForLoad(aManager, function() {
-                        is_in_discovery(aManager, SECOND_URL, true, true);
+  go_forward();
 
-                        close_manager(aManager, run_next_test);
-                      });
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, true);
 
-                      go_forward();
-                    });
-                  });
-                });
-              });
-            });
-          });
+  // Execute go_forward only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_forward);
 
-          go_forward();
-        });
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, true);
 
-        go_back();
-      });
-    });
-  });
+  close_manager(aManager, run_next_test);
 });
 
 // Tests that refreshing the disicovery pane integrates properly with history
-add_test(function() {
-  open_manager("addons://list/plugin", function(aManager) {
-    is_in_list(aManager, "addons://list/plugin", false, false);
+add_test(async function() {
+  let aManager = await open_manager("addons://list/plugin");
+  is_in_list(aManager, "addons://list/plugin", false, false);
 
-    EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
 
-    wait_for_view_load(aManager, function(aManager) {
-      is_in_discovery(aManager, MAIN_URL, true, false);
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, false);
 
-      clickLink(aManager, "link-good", function() {
-        is_in_discovery(aManager, SECOND_URL, true, false);
+  await clickLink(aManager, "link-good");
+  is_in_discovery(aManager, SECOND_URL, true, false);
 
-        EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
+  EventUtils.synthesizeMouseAtCenter(aManager.document.getElementById("category-discover"), { }, aManager);
 
-        waitForLoad(aManager, function() {
-          is_in_discovery(aManager, MAIN_URL, true, false);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, false);
 
-          go_back();
+  go_back();
 
-          waitForLoad(aManager, function() {
-            is_in_discovery(aManager, SECOND_URL, true, true);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, true);
 
-            go_back();
+  go_back();
 
-            waitForLoad(aManager, function() {
-              is_in_discovery(aManager, MAIN_URL, true, true);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, true);
 
-              go_back();
+  go_back();
 
-              wait_for_view_load(aManager, function(aManager) {
-                is_in_list(aManager, "addons://list/plugin", false, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_list(aManager, "addons://list/plugin", false, true);
 
-                go_forward();
+  go_forward();
 
-                wait_for_view_load(aManager, function(aManager) {
-                  is_in_discovery(aManager, MAIN_URL, true, true);
+  aManager = await wait_for_view_load(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, true);
 
-                  waitForLoad(aManager, function() {
-                    is_in_discovery(aManager, SECOND_URL, true, true);
+  // Execute go_forward only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_forward);
 
-                    waitForLoad(aManager, function() {
-                      is_in_discovery(aManager, MAIN_URL, true, false);
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, SECOND_URL, true, true);
 
-                      close_manager(aManager, run_next_test);
-                    });
-                    go_forward();
-                  });
+  // Execute go_forward only after waitForLoad() has had a chance to setup
+  // its listeners.
+  executeSoon(go_forward);
 
-                  go_forward();
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  await waitForLoad(aManager);
+  is_in_discovery(aManager, MAIN_URL, true, false);
+
+  close_manager(aManager, run_next_test);
 });

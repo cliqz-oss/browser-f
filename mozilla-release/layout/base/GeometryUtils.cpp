@@ -6,6 +6,7 @@
 
 #include "GeometryUtils.h"
 
+#include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/DOMPointBinding.h"
 #include "mozilla/dom/GeometryUtilsBinding.h"
 #include "mozilla/dom/Element.h"
@@ -15,7 +16,6 @@
 #include "mozilla/dom/DOMRect.h"
 #include "nsContentUtils.h"
 #include "nsIFrame.h"
-#include "nsGenericDOMDataNode.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsLayoutUtils.h"
 #include "nsSVGUtils.h"
@@ -38,7 +38,7 @@ GetFrameForNode(nsINode* aNode, GeometryNodeType aType)
   if (aType == GEOMETRY_NODE_TEXT) {
     if (nsIPresShell* shell = doc->GetShell()) {
       shell->FrameConstructor()->EnsureFrameForTextNodeIsCreatedAfterFlush(
-          static_cast<nsGenericDOMDataNode*>(aNode));
+          static_cast<CharacterData*>(aNode));
     }
   }
   doc->FlushPendingNotifications(FlushType::Layout);
@@ -96,7 +96,7 @@ GetFrameForNode(nsINode* aNode)
   if (aNode == aNode->OwnerDoc()) {
     return GetFrameForNode(aNode, GEOMETRY_NODE_DOCUMENT);
   }
-  NS_ASSERTION(aNode->IsNodeOfType(nsINode::eTEXT), "Unknown node type");
+  NS_ASSERTION(aNode->IsText(), "Unknown node type");
   return GetFrameForNode(aNode, GEOMETRY_NODE_TEXT);
 }
 
@@ -152,11 +152,7 @@ GetBoxRectForFrame(nsIFrame** aFrame, CSSBoxType aType)
   case CSSBoxType::Content: r = f->GetContentRectRelativeToSelf(); break;
   case CSSBoxType::Padding: r = f->GetPaddingRectRelativeToSelf(); break;
   case CSSBoxType::Border: r = nsRect(nsPoint(0, 0), f->GetSize()); break;
-  case CSSBoxType::Margin: {
-    r = nsRect(nsPoint(0, 0), f->GetSize());
-    r.Inflate(f->GetUsedMargin());
-    break;
-  }
+  case CSSBoxType::Margin: r = f->GetMarginRectRelativeToSelf(); break;
   default: MOZ_ASSERT(false, "unknown box type"); return r;
   }
 

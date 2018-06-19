@@ -17,7 +17,7 @@ public:
 
   friend nsIFrame* NS_NewButtonBoxFrame(nsIPresShell* aPresShell);
 
-  explicit nsButtonBoxFrame(nsStyleContext* aContext, ClassID = kClassID);
+  explicit nsButtonBoxFrame(ComputedStyle* aStyle, ClassID = kClassID);
 
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
@@ -58,7 +58,7 @@ private:
       mButtonBoxFrame(aButtonBoxFrame)
       { }
 
-    NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override;
+    NS_DECL_NSIDOMEVENTLISTENER
 
     NS_DECL_ISUPPORTS
 

@@ -16,12 +16,8 @@ loader.lazyRequireGetter(this, "Profiler",
   "devtools/server/performance/profiler", true);
 loader.lazyRequireGetter(this, "PerformanceRecordingActor",
   "devtools/server/actors/performance-recording", true);
-loader.lazyRequireGetter(this, "PerformanceRecordingFront",
-  "devtools/server/actors/performance-recording", true);
 loader.lazyRequireGetter(this, "mapRecordingOptions",
   "devtools/shared/performance/recording-utils", true);
-loader.lazyRequireGetter(this, "DevToolsUtils",
-  "devtools/shared/DevToolsUtils");
 loader.lazyRequireGetter(this, "getSystemInfo",
   "devtools/shared/system", true);
 
@@ -67,7 +63,7 @@ PerformanceRecorder.prototype = {
    * @return object
    *         A promise that is resolved once the connection is established.
    */
-  connect: function (options) {
+  connect: function(options) {
     if (this._connected) {
       return;
     }
@@ -87,7 +83,7 @@ PerformanceRecorder.prototype = {
   /**
    * Destroys this connection.
    */
-  destroy: function () {
+  destroy: function() {
     this._unregisterListeners();
     this._disconnectComponents();
 
@@ -103,7 +99,7 @@ PerformanceRecorder.prototype = {
    * Initializes fronts and connects to the underlying actors using the facades
    * found in ./actors.js.
    */
-  _connectComponents: function () {
+  _connectComponents: function() {
     this._profiler = new Profiler(this.tabActor);
     this._memory = new Memory(this.tabActor);
     this._timeline = new Timeline(this.tabActor);
@@ -114,7 +110,7 @@ PerformanceRecorder.prototype = {
    * Registers listeners on events from the underlying
    * actors, so the connection can handle them.
    */
-  _registerListeners: function () {
+  _registerListeners: function() {
     this._timeline.on("*", this._onTimelineData);
     this._memory.on("*", this._onTimelineData);
     this._profiler.on("*", this._onProfilerEvent);
@@ -123,7 +119,7 @@ PerformanceRecorder.prototype = {
   /**
    * Unregisters listeners on events on the underlying actors.
    */
-  _unregisterListeners: function () {
+  _unregisterListeners: function() {
     this._timeline.off("*", this._onTimelineData);
     this._memory.off("*", this._onTimelineData);
     this._profiler.off("*", this._onProfilerEvent);
@@ -132,14 +128,14 @@ PerformanceRecorder.prototype = {
   /**
    * Closes the connections to non-profiler actors.
    */
-  _disconnectComponents: function () {
+  _disconnectComponents: function() {
     this._profiler.unregisterEventNotifications({ events: PROFILER_EVENTS });
     this._profiler.destroy();
     this._timeline.destroy();
     this._memory.destroy();
   },
 
-  _onProfilerEvent: function (topic, data) {
+  _onProfilerEvent: function(topic, data) {
     if (topic === "console-api-profiler") {
       if (data.subject.action === "profile") {
         this._onConsoleProfileStart(data.details);
@@ -226,7 +222,7 @@ PerformanceRecorder.prototype = {
  /**
   * TODO handle bug 1144438
   */
-  _onProfilerUnexpectedlyStopped: function () {
+  _onProfilerUnexpectedlyStopped: function() {
     Cu.reportError("Profiler unexpectedly stopped.", arguments);
   },
 
@@ -238,7 +234,7 @@ PerformanceRecorder.prototype = {
    * - ticks
    * - allocations
    */
-  _onTimelineData: function (eventName, ...data) {
+  _onTimelineData: function(eventName, ...data) {
     let eventData = Object.create(null);
 
     switch (eventName) {
@@ -277,7 +273,7 @@ PerformanceRecorder.prototype = {
    * Checks whether or not recording is currently supported. At the moment,
    * this is only influenced by private browsing mode and the profiler.
    */
-  canCurrentlyRecord: function () {
+  canCurrentlyRecord: function() {
     let success = true;
     let reasons = [];
 
@@ -312,7 +308,7 @@ PerformanceRecorder.prototype = {
   async startRecording(options) {
     let profilerStart, timelineStart, memoryStart;
 
-    profilerStart = (async function () {
+    profilerStart = (async function() {
       let data = await this._profiler.isActive();
       if (data.isActive) {
         return data;
@@ -438,14 +434,14 @@ PerformanceRecorder.prototype = {
    *
    * @return Boolean
    */
-  isRecording: function () {
+  isRecording: function() {
     return this._recordings.some(h => h.isRecording());
   },
 
   /**
    * Returns all current recordings.
    */
-  getRecordings: function () {
+  getRecordings: function() {
     return this._recordings;
   },
 
@@ -453,7 +449,7 @@ PerformanceRecorder.prototype = {
    * Sets how often the "profiler-status" event should be emitted.
    * Used in tests.
    */
-  setProfilerStatusInterval: function (n) {
+  setProfilerStatusInterval: function(n) {
     this._profiler.setProfilerStatusInterval(n);
   },
 
@@ -464,7 +460,7 @@ PerformanceRecorder.prototype = {
    *
    * @return {object}
    */
-  getConfiguration: function () {
+  getConfiguration: function() {
     let allocationSettings = Object.create(null);
 
     if (this._memory.getState() === "attached") {

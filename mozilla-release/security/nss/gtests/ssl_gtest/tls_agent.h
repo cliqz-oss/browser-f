@@ -10,6 +10,9 @@
 #include "prio.h"
 #include "ssl.h"
 
+// This is an internal header, used to get TLS_1_3_DRAFT_VERSION.
+#include "ssl3prot.h"
+
 #include <functional>
 #include <iostream>
 
@@ -56,6 +59,8 @@ typedef std::function<void(TlsAgent* agent)> HandshakeCallbackFunction;
 typedef std::function<int32_t(TlsAgent* agent, const SECItem* srvNameArr,
                               PRUint32 srvNameArrSize)>
     SniCallbackFunction;
+
+static const uint8_t kD13 = TLS_1_3_DRAFT_VERSION;
 
 class TlsAgent : public PollTarget {
  public:
@@ -143,8 +148,7 @@ class TlsAgent : public PollTarget {
   void SendData(size_t bytes, size_t blocksize = 1024);
   void SendBuffer(const DataBuffer& buf);
   bool SendEncryptedRecord(const std::shared_ptr<TlsCipherSpec>& spec,
-                           uint16_t wireVersion, uint64_t seq, uint8_t ct,
-                           const DataBuffer& buf);
+                           uint64_t seq, uint8_t ct, const DataBuffer& buf);
   // Send data directly to the underlying socket, skipping the TLS layer.
   void SendDirect(const DataBuffer& buf);
   void SendRecordDirect(const TlsRecord& record);
@@ -209,10 +213,10 @@ class TlsAgent : public PollTarget {
     return info_.protocolVersion;
   }
 
-  bool cipher_suite(uint16_t* cipher_suite) const {
+  bool cipher_suite(uint16_t* suite) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *cipher_suite = info_.cipherSuite;
+    *suite = info_.cipherSuite;
     return true;
   }
 
@@ -227,17 +231,17 @@ class TlsAgent : public PollTarget {
                                 info_.sessionID + info_.sessionIDLength);
   }
 
-  bool auth_type(SSLAuthType* auth_type) const {
+  bool auth_type(SSLAuthType* a) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *auth_type = info_.authType;
+    *a = info_.authType;
     return true;
   }
 
-  bool kea_type(SSLKEAType* kea_type) const {
+  bool kea_type(SSLKEAType* k) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *kea_type = info_.keaType;
+    *k = info_.keaType;
     return true;
   }
 
@@ -263,6 +267,8 @@ class TlsAgent : public PollTarget {
 
   void ExpectReceiveAlert(uint8_t alert, uint8_t level = 0);
   void ExpectSendAlert(uint8_t alert, uint8_t level = 0);
+
+  std::string alpn_value_to_use_ = "";
 
  private:
   const static char* states[];
@@ -443,6 +449,7 @@ class TlsAgentTestBase : public ::testing::Test {
                                     size_t hs_len, DataBuffer* out,
                                     uint64_t seq_num, uint32_t fragment_offset,
                                     uint32_t fragment_length) const;
+  DataBuffer MakeCannedTls13ServerHello();
   static void MakeTrivialHandshakeRecord(uint8_t hs_type, size_t hs_len,
                                          DataBuffer* out);
   static inline TlsAgent::Role ToRole(const std::string& str) {

@@ -610,6 +610,8 @@ const AutoMigrate = {
   },
 
   async _removeSomeVisits(visits) {
+    // It is necessary to recreate URL and date objects because the data
+    // can be serialized through JSON that destroys those objects.
     for (let urlVisits of visits) {
       let urlObj;
       try {
@@ -619,8 +621,8 @@ const AutoMigrate = {
       }
       let visitData = {
         url: urlObj,
-        beginDate: PlacesUtils.toDate(urlVisits.first),
-        endDate: PlacesUtils.toDate(urlVisits.last),
+        beginDate: new Date(urlVisits.first),
+        endDate: new Date(urlVisits.last),
         limit: urlVisits.visitCount,
       };
       try {
@@ -674,10 +676,10 @@ const AutoMigrate = {
 
     let url = Services.urlFormatter.formatURL(rawURL);
     url = url.replace("%IMPORTEDBROWSER%", encodeURIComponent(migrationBrowser));
-    chromeWindow.openUILinkIn(url, "tab");
+    chromeWindow.openTrustedLinkIn(url, "tab");
   },
 
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
     [Ci.nsIObserver, Ci.nsINavBookmarkObserver, Ci.nsISupportsWeakReference]
   ),
 

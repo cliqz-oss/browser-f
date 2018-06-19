@@ -759,9 +759,8 @@ fn read_elst_zero_entries() {
     let mut iter = super::BoxIter::new(&mut stream);
     let mut stream = iter.next_box().unwrap().unwrap();
     match super::read_elst(&mut stream) {
-        Err(Error::InvalidData(s)) => assert_eq!(s, "invalid edit count"),
-        Ok(_) => panic!("expected an error result"),
-        _ => panic!("expected a different error result"),
+        Ok(elst) => assert_eq!(elst.edits.len(), 0),
+        _ => panic!("expected no error"),
     }
 }
 
@@ -780,6 +779,7 @@ fn make_elst() -> Cursor<Vec<u8>> {
 fn read_edts_bogus() {
     // First edit list entry has a media_time of -1, so we expect a second
     // edit list entry to be present to provide a valid media_time.
+    // Bogus edts are ignored.
     let mut stream = make_box(BoxSize::Auto, b"edts", |s| {
         s.append_bytes(&make_elst().into_inner())
     });
@@ -787,9 +787,11 @@ fn read_edts_bogus() {
     let mut stream = iter.next_box().unwrap().unwrap();
     let mut track = super::Track::new(0);
     match super::read_edts(&mut stream, &mut track) {
-        Err(Error::InvalidData(s)) => assert_eq!(s, "expected additional edit"),
-        Ok(_) => panic!("expected an error result"),
-        _ => panic!("expected a different error result"),
+        Ok(_) => {
+            assert_eq!(track.media_time, None);
+            assert_eq!(track.empty_duration, None);
+        }
+        _ => panic!("expected no error"),
     }
 }
 
@@ -895,6 +897,34 @@ fn read_qt_wave_atom() {
     let (codec_type, _) = super::read_audio_sample_entry(&mut stream)
           .expect("fail to read qt wave atom");
     assert_eq!(codec_type, super::CodecType::MP3);
+}
+
+#[test]
+fn read_descriptor_80() {
+    let aac_esds =
+        vec![
+            0x03, 0x80, 0x80, 0x80, 0x22, 0x00, 0x02, 0x00,
+            0x04, 0x80, 0x80, 0x80, 0x17, 0x40, 0x15, 0x00,
+            0x00, 0x00, 0x00, 0x03, 0x22, 0xBC, 0x00, 0x01,
+            0xF5, 0x83, 0x05, 0x80, 0x80, 0x80, 0x02, 0x11,
+            0x90, 0x06, 0x80, 0x80, 0x80, 0x01, 0x02
+        ];
+    let aac_dc_descriptor = &aac_esds[31 .. 33];
+    let mut stream = make_box(BoxSize::Auto, b"esds", |s| {
+        s.B32(0) // reserved
+         .append_bytes(aac_esds.as_slice())
+    });
+    let mut iter = super::BoxIter::new(&mut stream);
+    let mut stream = iter.next_box().unwrap().unwrap();
+
+    let es = super::read_esds(&mut stream).unwrap();
+
+    assert_eq!(es.audio_codec, super::CodecType::AAC);
+    assert_eq!(es.audio_object_type, Some(2));
+    assert_eq!(es.audio_sample_rate, Some(48000));
+    assert_eq!(es.audio_channel_count, Some(2));
+    assert_eq!(es.codec_esds, aac_esds);
+    assert_eq!(es.decoder_specific_data, aac_dc_descriptor);
 }
 
 #[test]

@@ -95,7 +95,7 @@ JSObject::finalize(js::FreeOp* fop)
 #ifdef DEBUG
     MOZ_ASSERT(isTenured());
     if (!IsBackgroundFinalized(asTenured().getAllocKind())) {
-        /* Assert we're on the active thread. */
+        /* Assert we're on the main thread. */
         MOZ_ASSERT(CurrentThreadCanAccessZone(zone()));
     }
 #endif
@@ -530,6 +530,11 @@ IsNativeFunction(const js::Value& v, JSNative native)
     return IsFunctionObject(v, &fun) && fun->maybeNative() == native;
 }
 
+static MOZ_ALWAYS_INLINE bool
+IsNativeFunction(const JSObject* obj, JSNative native)
+{
+    return obj->is<JSFunction>() && obj->as<JSFunction>().maybeNative() == native;
+}
 
 // Return whether looking up a method on 'obj' definitely resolves to the
 // original specified native function. The method may conservatively return
@@ -624,19 +629,29 @@ NewObjectWithGivenTaggedProto(JSContext* cx, Handle<TaggedProto> proto,
 
 template <typename T>
 inline T*
+NewObjectWithGivenTaggedProto(JSContext* cx, Handle<TaggedProto> proto,
+                              gc::AllocKind allocKind, NewObjectKind newKind = GenericObject,
+                              uint32_t initialShapeFlags = 0)
+{
+    JSObject* obj = NewObjectWithGivenTaggedProto(cx, &T::class_, proto, allocKind, newKind,
+                                                  initialShapeFlags);
+    return obj ? &obj->as<T>() : nullptr;
+}
+
+template <typename T>
+inline T*
 NewObjectWithNullTaggedProto(JSContext* cx, NewObjectKind newKind = GenericObject,
                              uint32_t initialShapeFlags = 0)
 {
-    Rooted<TaggedProto> nullProto(cx, TaggedProto(nullptr));
+    Handle<TaggedProto> nullProto = AsTaggedProto(nullptr);
     return NewObjectWithGivenTaggedProto<T>(cx, nullProto, newKind, initialShapeFlags);
 }
 
 inline JSObject*
 NewObjectWithGivenProto(JSContext* cx, const Class* clasp, HandleObject proto,
-                        gc::AllocKind allocKind, NewObjectKind newKind)
+                        gc::AllocKind allocKind, NewObjectKind newKind = GenericObject)
 {
-    return NewObjectWithGivenTaggedProto(cx, clasp, AsTaggedProto(proto), allocKind,
-                                         newKind);
+    return NewObjectWithGivenTaggedProto(cx, clasp, AsTaggedProto(proto), allocKind, newKind);
 }
 
 inline JSObject*
@@ -804,8 +819,7 @@ InitClass(JSContext* cx, HandleObject obj, HandleObject parent_proto,
           const Class* clasp, JSNative constructor, unsigned nargs,
           const JSPropertySpec* ps, const JSFunctionSpec* fs,
           const JSPropertySpec* static_ps, const JSFunctionSpec* static_fs,
-          NativeObject** ctorp = nullptr,
-          gc::AllocKind ctorKind = gc::AllocKind::FUNCTION);
+          NativeObject** ctorp = nullptr);
 
 MOZ_ALWAYS_INLINE const char*
 GetObjectClassName(JSContext* cx, HandleObject obj)

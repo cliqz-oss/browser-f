@@ -38,6 +38,7 @@ public:
 
 private:
   static nsresult CheckChannel(nsIChannel* aChannel);
+  static nsresult CheckFTPSubresourceLoad(nsIChannel* aChannel);
 
   virtual ~nsContentSecurityManager() {}
 

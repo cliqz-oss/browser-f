@@ -542,7 +542,7 @@ DebugState::debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals, size_t
     size_t offsetInModule = range.funcLineOrBytecode();
     Decoder d(maybeBytecode_->begin() + offsetInModule,  maybeBytecode_->end(),
               offsetInModule, /* error = */ nullptr);
-    return DecodeLocalEntries(d, metadata().kind, locals);
+    return DecodeLocalEntries(d, metadata().kind, metadata().temporaryHasGcTypes, locals);
 }
 
 ExprType
@@ -581,6 +581,8 @@ DebugState::getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleVal
 
     uint8_t* globalData = instance.globalData();
     void* dataPtr = globalData + global.offset();
+    if (global.isIndirect())
+        dataPtr = *static_cast<void**>(dataPtr);
     switch (global.type()) {
       case ValType::I32: {
         vp.set(Int32Value(*static_cast<int32_t*>(dataPtr)));

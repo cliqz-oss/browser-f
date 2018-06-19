@@ -3,7 +3,7 @@
 <head>
   <title>Test for simple WebExtension</title>
   <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script type="text/javascript" src="chrome_head.js"></script>
   <script type="text/javascript" src="head.js"></script>
@@ -42,7 +42,7 @@ let testExtension = {
     function listener(name, details) {
       // If we get anything, we failed.  Removing the system principal check
       // in ext-webrequest triggers this failure.
-      browser.test.fail(`recieved ${name}`);
+      browser.test.fail(`received ${name}`);
     }
 
     for (let name of eventNames) {

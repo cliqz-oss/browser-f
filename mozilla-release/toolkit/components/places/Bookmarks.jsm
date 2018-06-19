@@ -62,12 +62,8 @@ var EXPORTED_SYMBOLS = [ "Bookmarks" ];
 Cu.importGlobalProperties(["URL"]);
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "NetUtil",
                                "resource://gre/modules/NetUtil.jsm");
-ChromeUtils.defineModuleGetter(this, "Sqlite",
-                               "resource://gre/modules/Sqlite.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
                                "resource://gre/modules/PlacesUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesSyncUtils",
@@ -127,8 +123,9 @@ var Bookmarks = Object.freeze({
     DEFAULT: Ci.nsINavBookmarksService.SOURCE_DEFAULT,
     SYNC: Ci.nsINavBookmarksService.SOURCE_SYNC,
     IMPORT: Ci.nsINavBookmarksService.SOURCE_IMPORT,
-    IMPORT_REPLACE: Ci.nsINavBookmarksService.SOURCE_IMPORT_REPLACE,
     SYNC_REPARENT_REMOVED_FOLDER_CHILDREN: Ci.nsINavBookmarksService.SOURCE_SYNC_REPARENT_REMOVED_FOLDER_CHILDREN,
+    RESTORE: Ci.nsINavBookmarksService.SOURCE_RESTORE,
+    RESTORE_ON_STARTUP: Ci.nsINavBookmarksService.SOURCE_RESTORE_ON_STARTUP,
   },
 
   /**
@@ -152,8 +149,8 @@ var Bookmarks = Object.freeze({
   userContentRoots: ["toolbar_____", "menu________", "unfiled_____", "mobile______"],
 
   /**
-   * GUIDs associated with virtual queries that are used for display in the left
-   * pane.
+   * GUIDs associated with virtual queries that are used for displaying bookmark
+   * folders in the left pane.
    */
   virtualMenuGuid: "menu_______v",
   virtualToolbarGuid: "toolbar____v",
@@ -241,7 +238,9 @@ var Bookmarks = Object.freeze({
         index: { defaultValue: this.DEFAULT_INDEX },
         url: { requiredIf: b => b.type == this.TYPE_BOOKMARK,
                validIf: b => b.type == this.TYPE_BOOKMARK },
-        parentGuid: { required: true },
+        parentGuid: { required: true,
+                      // Inserting into the root folder is not allowed.
+                      validIf: b => b.parentGuid != this.rootGuid },
         title: { defaultValue: "",
                  validIf: b => b.type == this.TYPE_BOOKMARK ||
                                b.type == this.TYPE_FOLDER ||
@@ -610,6 +609,7 @@ var Bookmarks = Object.freeze({
       { guid: { required: true },
         index: { requiredIf: b => b.hasOwnProperty("parentGuid"),
                  validIf: b => b.index >= 0 || b.index == this.DEFAULT_INDEX },
+        parentGuid: { validIf: b => b.parentGuid != this.rootGuid },
         source: { defaultValue: this.SOURCES.DEFAULT }
       });
 
@@ -918,6 +918,8 @@ var Bookmarks = Object.freeze({
                WHERE id IN (SELECT id FROM moz_bookmarks WHERE guid = :folderGuid )
               `, { folderGuid, time, syncChangeDelta });
           }
+
+          await PlacesSyncUtils.bookmarks.resetSyncMetadata(db, options.source);
         });
 
         // We don't wait for the frecency calculation.
@@ -1651,17 +1653,11 @@ async function handleBookmarkItemSpecialData(itemId, item) {
     }
   }
   if ("keyword" in item && item.keyword) {
-    // POST data could be set in 2 ways:
-    // 1. new backups have a postData property
-    // 2. old backups have an item annotation
-    let postDataAnno = item.annos &&
-                       item.annos.find(anno => anno.name == PlacesUtils.POST_DATA_ANNO);
-    let postData = item.postData || (postDataAnno && postDataAnno.value);
     try {
       await PlacesUtils.keywords.insert({
         keyword: item.keyword,
         url: item.url,
-        postData,
+        postData: item.postData,
         source: item.source
       });
     } catch (ex) {

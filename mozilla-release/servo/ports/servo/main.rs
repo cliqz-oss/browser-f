@@ -21,27 +21,19 @@
 extern crate android_injected_glue;
 extern crate backtrace;
 #[macro_use] extern crate bitflags;
-extern crate compositing;
 extern crate euclid;
 #[cfg(target_os = "windows")] extern crate gdi32;
 extern crate gleam;
 extern crate glutin;
 // The window backed by glutin
 #[macro_use] extern crate log;
-extern crate msg;
-extern crate net_traits;
 #[cfg(any(target_os = "linux", target_os = "macos"))] extern crate osmesa_sys;
-extern crate script_traits;
 extern crate servo;
-extern crate servo_config;
-extern crate servo_geometry;
-extern crate servo_url;
 #[cfg(all(feature = "unstable", not(target_os = "android")))]
 #[macro_use]
 extern crate sig;
-extern crate style_traits;
 extern crate tinyfiledialogs;
-extern crate webrender_api;
+extern crate winit;
 #[cfg(target_os = "windows")] extern crate winapi;
 #[cfg(target_os = "windows")] extern crate user32;
 
@@ -61,6 +53,8 @@ use std::env;
 use std::panic;
 use std::process;
 use std::thread;
+
+mod browser;
 
 pub mod platform {
     #[cfg(target_os = "macos")]
@@ -162,6 +156,8 @@ fn main() {
 
     let window = glutin_app::create_window();
 
+    let mut browser = browser::Browser::new(window.clone());
+
     // If the url is not provided, we fallback to the homepage in PREFS,
     // or a blank page in case the homepage is not set either.
     let cwd = env::current_dir().unwrap();
@@ -177,22 +173,40 @@ fn main() {
     let (sender, receiver) = ipc::channel().unwrap();
     servo.handle_events(vec![WindowEvent::NewBrowser(target_url, sender)]);
     let browser_id = receiver.recv().unwrap();
-    window.set_browser_id(browser_id);
+    browser.set_browser_id(browser_id);
     servo.handle_events(vec![WindowEvent::SelectBrowser(browser_id)]);
 
     servo.setup_logging();
 
     window.run(|| {
-        let events = window.get_events();
-        let need_resize = events.iter().any(|e| match *e {
+        let win_events = window.get_events();
+
+        // FIXME: this could be handled by Servo. We don't need
+        // a repaint_synchronously function exposed.
+        let need_resize = win_events.iter().any(|e| match *e {
             WindowEvent::Resize => true,
-            _ => false
+            _ => false,
         });
-        let stop = !servo.handle_events(events);
+
+        browser.handle_window_events(win_events);
+
+        let mut servo_events = servo.get_events();
+        loop {
+            browser.handle_servo_events(servo_events);
+            servo.handle_events(browser.get_events());
+            if browser.shutdown_requested() {
+                return true;
+            }
+            servo_events = servo.get_events();
+            if servo_events.is_empty() {
+                break;
+            }
+        }
+
         if need_resize {
             servo.repaint_synchronously();
         }
-        stop
+        false
     });
 
     servo.deinit();

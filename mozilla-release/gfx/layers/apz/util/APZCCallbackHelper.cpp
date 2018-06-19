@@ -11,6 +11,7 @@
 #include "gfxPrefs.h"
 #include "LayersLogging.h"  // For Stringify
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/TabParent.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/layers/LayerTransactionChild.h"
@@ -517,7 +518,7 @@ APZCCallbackHelper::DispatchSynthesizedMouseEvent(EventMessage aMsg,
   event.mRefPoint = LayoutDeviceIntPoint::Truncate(aRefPoint.x, aRefPoint.y);
   event.mTime = aTime;
   event.button = WidgetMouseEvent::eLeftButton;
-  event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+  event.inputSource = dom::MouseEventBinding::MOZ_SOURCE_TOUCH;
   if (aMsg == eMouseLongTap) {
     event.mFlags.mOnlyChromeDispatch = true;
   }
@@ -674,15 +675,9 @@ PrepareForSetTargetAPZCNotification(nsIWidget* aWidget,
   }
 
   if (!scrollAncestor) {
-    MOZ_ASSERT(false);  // If you hit this, please file a bug with STR.
-
-    // Attempt some sort of graceful handling based on a theory as to why we
-    // reach this point...
-    // If we get here, the document element is non-null, valid, but doesn't have
-    // a displayport. It's possible that the init code in ChromeProcessController
-    // failed for some reason, or the document element got swapped out at some
-    // later time. In this case let's try to set a displayport on the document
-    // element again and bail out on this operation.
+    // This can happen if the document element gets swapped out after ChromeProcessController
+    // runs InitializeRootDisplayport. In this case let's try to set a displayport again and
+    // bail out on this operation.
     APZCCH_LOG("Widget %p's document element %p didn't have a displayport\n",
         aWidget, dpElement.get());
     APZCCallbackHelper::InitializeRootDisplayport(aRootFrame->PresShell());

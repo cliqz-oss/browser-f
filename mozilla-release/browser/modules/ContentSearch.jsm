@@ -118,7 +118,7 @@ var ContentSearch = {
     }
     this._searchSuggestionUIStrings = {};
     let searchBundle = Services.strings.createBundle("chrome://browser/locale/search.properties");
-    let stringNames = ["searchHeader", "searchForSomethingWith",
+    let stringNames = ["searchHeader", "searchForSomethingWith2",
                        "searchWithHeader", "searchSettings"];
 
     for (let name of stringNames) {
@@ -239,15 +239,15 @@ var ContentSearch = {
       // Since we're going to load the search in the same browser, blur the search
       // UI to prevent further interaction before we start loading.
       this._reply(msg, "Blur");
-      browser.loadURIWithFlags(submission.uri.spec,
-                               Ci.nsIWebNavigation.LOAD_FLAGS_NONE, null, null,
-                               submission.postData);
+      browser.loadURI(submission.uri.spec, {
+        postData: submission.postData
+      });
     } else {
       let params = {
         postData: submission.postData,
         inBackground: Services.prefs.getBoolPref("browser.tabs.loadInBackground"),
       };
-      win.openUILinkIn(submission.uri.spec, where, params);
+      win.openTrustedLinkIn(submission.uri.spec, where, params);
     }
     win.BrowserSearch.recordSearchInTelemetry(engine, data.healthReportKey,
                                               { selection: data.selection });
@@ -490,9 +490,7 @@ var ContentSearch = {
   },
 
   _broadcast(type, data) {
-    Cc["@mozilla.org/globalmessagemanager;1"].
-      getService(Ci.nsIMessageListenerManager).
-      broadcastAsyncMessage(...this._msgArgs(type, data));
+    Services.mm.broadcastAsyncMessage(...this._msgArgs(type, data));
   },
 
   _msgArgs(type, data) {

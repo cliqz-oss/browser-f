@@ -230,11 +230,11 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
 
     void implicitPop(uint32_t args) {
         MOZ_ASSERT(args % sizeof(intptr_t) == 0);
-        adjustFrame(-args);
+        adjustFrame(0 - args);
     }
     void Pop(ARMRegister r) {
         vixl::MacroAssembler::Pop(r);
-        adjustFrame(- r.size() / 8);
+        adjustFrame(0 - r.size() / 8);
     }
     // FIXME: This is the same on every arch.
     // FIXME: If we can share framePushed_, we can share this.
@@ -518,7 +518,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     }
 
     using vixl::MacroAssembler::B;
-    void B(wasm::OldTrapDesc, Condition cond = Always);
 
     void convertDoubleToInt32(FloatRegister src, Register dest, Label* fail,
                               bool negativeZeroCheck = true)
@@ -692,9 +691,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void jump(const Address& addr) {
         loadPtr(addr, ip0);
         Br(vixl::ip0);
-    }
-    void jump(wasm::OldTrapDesc target) {
-        B(target);
     }
 
     void align(int alignment) {
@@ -990,6 +986,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     inline void branchTestStackPtr(Condition cond, Imm32 rhs, Label* label);
     inline void branchStackPtr(Condition cond, Register rhs, Label* label);
     inline void branchStackPtrRhs(Condition cond, Address lhs, Label* label);
+    inline void branchStackPtrRhs(Condition cond, AbsoluteAddress lhs, Label* label);
 
     void testPtr(Register lhs, Register rhs) {
         Tst(ARMRegister(lhs, 64), Operand(ARMRegister(rhs, 64)));
@@ -1278,16 +1275,10 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         addPendingJump(loc, ImmPtr(target->raw()), Relocation::JITCODE);
     }
 
-    CodeOffsetJump jumpWithPatch(RepatchLabel* label, Condition cond = Always, Label* documentation = nullptr)
+    CodeOffsetJump jumpWithPatch(RepatchLabel* label)
     {
-#ifdef JS_DISASM_ARM64
-        LabelDoc doc = spew_.refLabel(documentation);
-#else
-        LabelDoc doc;
-#endif
         ARMBuffer::PoolEntry pe;
         BufferOffset load_bo;
-        BufferOffset branch_bo;
 
         // Does not overwrite condition codes from the caller.
         {
@@ -1297,20 +1288,12 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         }
 
         MOZ_ASSERT(!label->bound());
-        if (cond != Always) {
-            Label notTaken;
-            B(&notTaken, Assembler::InvertCondition(cond));
-            branch_bo = b(-1, doc);
-            bind(&notTaken);
-        } else {
-            nop();
-            branch_bo = b(-1, doc);
-        }
+
+        nop();
+        BufferOffset branch_bo = b(-1, LabelDoc());
         label->use(branch_bo.getOffset());
+
         return CodeOffsetJump(load_bo.getOffset(), pe.index());
-    }
-    CodeOffsetJump backedgeJump(RepatchLabel* label, Label* documentation) {
-        return jumpWithPatch(label, Always, documentation);
     }
 
     void compareDouble(DoubleCondition cond, FloatRegister lhs, FloatRegister rhs) {

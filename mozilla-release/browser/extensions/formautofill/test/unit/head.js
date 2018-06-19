@@ -17,10 +17,16 @@ ChromeUtils.import("resource://testing-common/FileTestUtils.jsm");
 ChromeUtils.import("resource://testing-common/MockDocument.jsm");
 ChromeUtils.import("resource://testing-common/TestUtils.jsm");
 
+// eslint-disable-next-line no-unused-vars
 ChromeUtils.defineModuleGetter(this, "DownloadPaths",
                                "resource://gre/modules/DownloadPaths.jsm");
+// eslint-disable-next-line no-unused-vars
 ChromeUtils.defineModuleGetter(this, "FileUtils",
                                "resource://gre/modules/FileUtils.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(this, "resProto",
+                                   "@mozilla.org/network/protocol;1?name=resource",
+                                   "nsISubstitutingProtocolHandler");
 
 do_get_profile();
 
@@ -49,6 +55,9 @@ if (!extensionDir.exists()) {
   bootstrapURI = "jar:" + jarURI.spec + "!/bootstrap.js";
 }
 Components.manager.addBootstrappedManifestLocation(extensionDir);
+
+let resURI = Services.io.newURI("chrome/res/", null, Services.io.newURI(bootstrapURI));
+resProto.setSubstitution("formautofill", resURI);
 
 // Returns a reference to a temporary file that is guaranteed not to exist and
 // is cleaned up later. See FileTestUtils.getTempFile for details.

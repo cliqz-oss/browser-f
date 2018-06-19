@@ -101,6 +101,7 @@ public:
     uint32_t       PhishyUserPassLength()    { return mPhishyUserPassLength; }
     uint8_t        GetQoSBits()              { return mQoSBits; }
     uint16_t       GetIdleSynTimeout()       { return mIdleSynTimeout; }
+    uint16_t       GetFallbackSynTimeout()   { return mFallbackSynTimeout; }
     bool           FastFallbackToIPv4()      { return mFastFallbackToIPv4; }
     uint32_t       MaxSocketCount();
     bool           EnforceAssocReq()         { return mEnforceAssocReq; }
@@ -484,6 +485,7 @@ private:
     uint16_t mMaxRequestAttempts;
     uint16_t mMaxRequestDelay;
     uint16_t mIdleSynTimeout;
+    uint16_t mFallbackSynTimeout; // seconds
 
     bool     mH2MandatorySuiteEnabled;
     uint16_t mMaxUrgentExcessiveConns;
@@ -742,7 +744,7 @@ class nsHttpsHandler : public nsIHttpProtocolHandler
                      , public nsSupportsWeakReference
                      , public nsISpeculativeConnect
 {
-    virtual ~nsHttpsHandler() { }
+    virtual ~nsHttpsHandler() = default;
 public:
     // we basically just want to override GetScheme and GetDefaultPort...
     // all other methods should be forwarded to the nsHttpHandler instance.
@@ -753,7 +755,7 @@ public:
     NS_FORWARD_NSIHTTPPROTOCOLHANDLER    (gHttpHandler->)
     NS_FORWARD_NSISPECULATIVECONNECT     (gHttpHandler->)
 
-    nsHttpsHandler() { }
+    nsHttpsHandler() = default;
 
     MOZ_MUST_USE nsresult Init();
 };

@@ -13,6 +13,7 @@ describe("ActivityStream", () => {
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
     ({ActivityStream, PREFS_CONFIG} = injector({
+      "lib/AboutPreferences.jsm": {AboutPreferences: Fake},
       "lib/ManualMigration.jsm": {ManualMigration: Fake},
       "lib/NewTabInit.jsm": {NewTabInit: Fake},
       "lib/PlacesFeed.jsm": {PlacesFeed: Fake},
@@ -24,7 +25,9 @@ describe("ActivityStream", () => {
       "lib/FaviconFeed.jsm": {FaviconFeed: Fake},
       "lib/TopSitesFeed.jsm": {TopSitesFeed: Fake},
       "lib/TopStoriesFeed.jsm": {TopStoriesFeed: Fake},
-      "lib/HighlightsFeed.jsm": {HighlightsFeed: Fake}
+      "lib/HighlightsFeed.jsm": {HighlightsFeed: Fake},
+      "lib/ThemeFeed.jsm": {ThemeFeed: Fake},
+      "lib/ASRouterFeed.jsm": {ASRouterFeed: Fake}
     }));
     as = new ActivityStream();
     sandbox.stub(as.store, "init");
@@ -133,6 +136,10 @@ describe("ActivityStream", () => {
       }
       assert.isAbove(feedCount, 0);
     });
+    it("should create a AboutPreferences feed", () => {
+      const feed = as.feeds.get("feeds.aboutpreferences")();
+      assert.instanceOf(feed, Fake);
+    });
     it("should create a ManualMigration feed", () => {
       const feed = as.feeds.get("feeds.migration")();
       assert.instanceOf(feed, Fake);
@@ -151,6 +158,14 @@ describe("ActivityStream", () => {
     });
     it("should create a Favicon feed", () => {
       const feed = as.feeds.get("feeds.favicon")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a Theme feed", () => {
+      const feed = as.feeds.get("feeds.theme")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a ASRouter feed", () => {
+      const feed = as.feeds.get("feeds.asrouterfeed")();
       assert.instanceOf(feed, Fake);
     });
   });

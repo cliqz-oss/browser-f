@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use WindowWrapper;
+use {WindowWrapper, NotifierEvent};
 use blob;
 use euclid::{TypedRect, TypedSize2D, TypedPoint2D};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use wrench::Wrench;
 
 pub struct RawtestHarness<'a> {
     wrench: &'a mut Wrench,
-    rx: Receiver<()>,
+    rx: &'a Receiver<NotifierEvent>,
     window: &'a mut WindowWrapper,
 }
 
@@ -30,7 +30,7 @@ fn rect<T: Copy, U>(x: T, y: T, width: T, height: T) -> TypedRect<T, U> {
 }
 
 impl<'a> RawtestHarness<'a> {
-    pub fn new(wrench: &'a mut Wrench, window: &'a mut WindowWrapper, rx: Receiver<()>) -> Self {
+    pub fn new(wrench: &'a mut Wrench, window: &'a mut WindowWrapper, rx: &'a Receiver<NotifierEvent>) -> Self {
         RawtestHarness {
             wrench,
             rx,
@@ -88,7 +88,7 @@ impl<'a> RawtestHarness<'a> {
         let blob_img = self.wrench.api.generate_image_key();
         resources.add_image(
             blob_img,
-            ImageDescriptor::new(151, 56, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(151, 56, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
             Some(128),
         );
@@ -140,7 +140,7 @@ impl<'a> RawtestHarness<'a> {
             blob_img = api.generate_image_key();
             resources.add_image(
                 blob_img,
-                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
                 ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
                 None,
             );
@@ -163,6 +163,17 @@ impl<'a> RawtestHarness<'a> {
 
         self.submit_dl(&mut epoch, layout_size, builder, Some(resources));
 
+        let called = Arc::new(AtomicIsize::new(0));
+        let called_inner = Arc::clone(&called);
+
+        self.wrench.callbacks.lock().unwrap().request = Box::new(move |_| {
+            called_inner.fetch_add(1, Ordering::SeqCst);
+        });
+
+        let pixels_first = self.render_and_get_pixels(window_rect);
+
+        assert!(called.load(Ordering::SeqCst) == 1);
+
         // draw the blob image a second time at a different location
 
         // make a new display list that refers to the first image
@@ -178,16 +189,6 @@ impl<'a> RawtestHarness<'a> {
         );
 
         self.submit_dl(&mut epoch, layout_size, builder, None);
-
-        let called = Arc::new(AtomicIsize::new(0));
-        let called_inner = Arc::clone(&called);
-
-        self.wrench.callbacks.lock().unwrap().request = Box::new(move |_| {
-            called_inner.fetch_add(1, Ordering::SeqCst);
-        });
-
-        let pixels_first = self.render_and_get_pixels(window_rect);
-        assert!(called.load(Ordering::SeqCst) == 1);
 
         let pixels_second = self.render_and_get_pixels(window_rect);
 
@@ -220,14 +221,14 @@ impl<'a> RawtestHarness<'a> {
             blob_img = api.generate_image_key();
             resources.add_image(
                 blob_img,
-                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
                 ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
                 None,
             );
             blob_img2 = api.generate_image_key();
             resources.add_image(
                 blob_img2,
-                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
                 ImageData::new_blob_image(blob::serialize_blob(ColorU::new(80, 50, 150, 255))),
                 None,
             );
@@ -285,13 +286,13 @@ impl<'a> RawtestHarness<'a> {
         let mut resources = ResourceUpdates::new();
         resources.update_image(
             blob_img,
-            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
             Some(rect(100, 100, 100, 100)),
         );
         resources.update_image(
             blob_img2,
-            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(59, 50, 150, 255))),
             Some(rect(100, 100, 100, 100)),
         );
@@ -306,7 +307,7 @@ impl<'a> RawtestHarness<'a> {
         let mut resources = ResourceUpdates::new();
         resources.update_image(
             blob_img,
-            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 150, 150, 255))),
             Some(rect(200, 200, 100, 100)),
         );
@@ -339,7 +340,7 @@ impl<'a> RawtestHarness<'a> {
             let img = self.wrench.api.generate_image_key();
             resources.add_image(
                 img,
-                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+                ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
                 ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
                 None,
             );
@@ -368,7 +369,7 @@ impl<'a> RawtestHarness<'a> {
         let mut resources = ResourceUpdates::new();
         resources.update_image(
             blob_img,
-            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 50, 150, 255))),
             Some(rect(100, 100, 100, 100)),
         );
@@ -392,7 +393,7 @@ impl<'a> RawtestHarness<'a> {
         let mut resources = ResourceUpdates::new();
         resources.update_image(
             blob_img,
-            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(500, 500, ImageFormat::BGRA8, true, false),
             ImageData::new_blob_image(blob::serialize_blob(ColorU::new(50, 150, 150, 255))),
             Some(rect(200, 200, 100, 100)),
         );
@@ -507,7 +508,7 @@ impl<'a> RawtestHarness<'a> {
         let image = self.wrench.api.generate_image_key();
         resources.add_image(
             image,
-            ImageDescriptor::new(1, 1, ImageFormat::BGRA8, true),
+            ImageDescriptor::new(1, 1, ImageFormat::BGRA8, true, false),
             ImageData::new(vec![0xFF, 0, 0, 0xFF]),
             None,
         );
@@ -602,13 +603,6 @@ impl<'a> RawtestHarness<'a> {
             )
         };
 
-        // Add a rounded 100x100 rectangle at 200,0.
-        let rect = LayoutRect::new(LayoutPoint::new(200., 0.), LayoutSize::new(100., 100.));
-        let mut info = LayoutPrimitiveInfo::with_clip(
-            rect, LocalClip::RoundedRect(rect, make_rounded_complex_clip(&rect, 20.)));
-        info.tag = Some((0, 3));
-        builder.push_rect(&info, ColorF::new(1.0, 1.0, 1.0, 1.0));
-
 
         // Add a rectangle that is clipped by a rounded rect clip item.
         let rect = LayoutRect::new(LayoutPoint::new(100., 100.), LayoutSize::new(100., 100.));
@@ -687,7 +681,6 @@ impl<'a> RawtestHarness<'a> {
             assert_hit_test(bottom_right, vec![(0, 1)]);
         };
 
-        test_rounded_rectangle(WorldPoint::new(200., 0.), WorldSize::new(100., 100.), (0, 3));
         test_rounded_rectangle(WorldPoint::new(100., 100.), WorldSize::new(100., 100.), (0, 4));
         test_rounded_rectangle(WorldPoint::new(200., 100.), WorldSize::new(100., 100.), (0, 5));
     }

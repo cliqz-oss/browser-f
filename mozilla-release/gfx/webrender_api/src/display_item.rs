@@ -6,7 +6,7 @@
 use GlyphInstance;
 use euclid::{SideOffsets2D, TypedRect};
 use std::ops::Not;
-use {ColorF, FontInstanceKey, GlyphOptions, ImageKey, LayerPixel, LayoutPixel, LayoutPoint};
+use {ColorF, FontInstanceKey, GlyphOptions, ImageKey, LayoutPixel, LayoutPoint};
 use {LayoutRect, LayoutSize, LayoutTransform, LayoutVector2D, PipelineId, PropertyBinding};
 
 
@@ -64,27 +64,23 @@ pub type DisplayItem = GenericDisplayItem<SpecificDisplayItem>;
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PrimitiveInfo<T> {
     pub rect: TypedRect<f32, T>,
-    pub local_clip: LocalClip,
+    pub clip_rect: TypedRect<f32, T>,
     pub is_backface_visible: bool,
     pub tag: Option<ItemTag>,
 }
 
-impl LayerPrimitiveInfo {
-    pub fn new(rect: TypedRect<f32, LayerPixel>) -> Self {
+impl LayoutPrimitiveInfo {
+    pub fn new(rect: TypedRect<f32, LayoutPixel>) -> Self {
         Self::with_clip_rect(rect, rect)
     }
 
     pub fn with_clip_rect(
-        rect: TypedRect<f32, LayerPixel>,
-        clip_rect: TypedRect<f32, LayerPixel>,
+        rect: TypedRect<f32, LayoutPixel>,
+        clip_rect: TypedRect<f32, LayoutPixel>,
     ) -> Self {
-        Self::with_clip(rect, LocalClip::from(clip_rect))
-    }
-
-    pub fn with_clip(rect: TypedRect<f32, LayerPixel>, clip: LocalClip) -> Self {
         PrimitiveInfo {
-            rect: rect,
-            local_clip: clip,
+            rect,
+            clip_rect,
             is_backface_visible: true,
             tag: None,
         }
@@ -92,9 +88,8 @@ impl LayerPrimitiveInfo {
 }
 
 pub type LayoutPrimitiveInfo = PrimitiveInfo<LayoutPixel>;
-pub type LayerPrimitiveInfo = PrimitiveInfo<LayerPixel>;
 
-#[repr(u8)]
+#[repr(u64)]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum SpecificDisplayItem {
     Clip(ClipDisplayItem),
@@ -422,11 +417,10 @@ pub struct GradientStop {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RadialGradient {
-    pub start_center: LayoutPoint,
-    pub start_radius: f32,
-    pub end_center: LayoutPoint,
-    pub end_radius: f32,
-    pub ratio_xy: f32,
+    pub center: LayoutPoint,
+    pub radius: LayoutSize,
+    pub start_offset: f32,
+    pub end_offset: f32,
     pub extend_mode: ExtendMode,
 } // IMPLICIT stops: Vec<GradientStop>
 
@@ -456,6 +450,8 @@ pub struct StackingContext {
     pub perspective: Option<LayoutTransform>,
     pub mix_blend_mode: MixBlendMode,
     pub reference_frame_id: Option<ClipId>,
+    pub clip_node_id: Option<ClipId>,
+    pub glyph_raster_space: GlyphRasterSpace,
 } // IMPLICIT: filters: Vec<FilterOp>
 
 #[repr(u32)]
@@ -470,6 +466,23 @@ pub enum ScrollPolicy {
 pub enum TransformStyle {
     Flat = 0,
     Preserve3D = 1,
+}
+
+// TODO(gw): In the future, we may modify this to apply to all elements
+//           within a stacking context, rather than just the glyphs. If
+//           this change occurs, we'll update the naming of this.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[repr(u32)]
+pub enum GlyphRasterSpace {
+    // Rasterize glyphs in local-space, applying supplied scale to glyph sizes.
+    // Best performance, but lower quality.
+    Local(f32),
+
+    // Rasterize the glyphs in screen-space, including rotation / skew etc in
+    // the rasterized glyph. Best quality, but slower performance. Note that
+    // any stacking context with a perspective transform will be rasterized
+    // in local-space, even if this is set.
+    Screen,
 }
 
 #[repr(u32)]
@@ -632,7 +645,7 @@ impl LocalClip {
     pub fn clip_rect(&self) -> &LayoutRect {
         match *self {
             LocalClip::Rect(ref rect) => rect,
-            LocalClip::RoundedRect(ref rect, _) => &rect,
+            LocalClip::RoundedRect(ref rect, _) => rect,
         }
     }
 
@@ -654,12 +667,12 @@ impl LocalClip {
         match *self {
             LocalClip::Rect(clip_rect) => {
                 LocalClip::Rect(
-                    clip_rect.intersection(rect).unwrap_or(LayoutRect::zero())
+                    clip_rect.intersection(rect).unwrap_or_else(LayoutRect::zero)
                 )
             }
             LocalClip::RoundedRect(clip_rect, complex) => {
                 LocalClip::RoundedRect(
-                    clip_rect.intersection(rect).unwrap_or(LayoutRect::zero()),
+                    clip_rect.intersection(rect).unwrap_or_else(LayoutRect::zero),
                     complex,
                 )
             }

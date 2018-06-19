@@ -31,7 +31,6 @@
 #include "nsIDocumentObserver.h"
 #include "nsIComponentManager.h"
 #include "nsIRollupListener.h"
-#include "nsIDOMElement.h"
 #include "nsBindingManager.h"
 #include "nsIServiceManager.h"
 #include "nsXULPopupManager.h"
@@ -639,25 +638,19 @@ void nsMenuX::GetMenuPopupContent(nsIContent** aResult)
     return;
   *aResult = nullptr;
 
-  int32_t dummy;
 
   // Check to see if we are a "menupopup" node (if we are a native menu).
-  {
-    RefPtr<nsAtom> tag = mContent->OwnerDoc()->BindingManager()->ResolveTag(mContent, &dummy);
-    if (tag == nsGkAtoms::menupopup) {
-      NS_ADDREF(*aResult = mContent);
-      return;
-    }
+  if (mContent->IsXULElement(nsGkAtoms::menupopup)) {
+    NS_ADDREF(*aResult = mContent);
+    return;
   }
 
   // Otherwise check our child nodes.
 
   for (nsIContent* child = mContent->GetFirstChild();
        child; child = child->GetNextSibling()) {
-    RefPtr<nsAtom> tag = child->OwnerDoc()->BindingManager()->ResolveTag(child, &dummy);
-    if (tag == nsGkAtoms::menupopup) {
-      *aResult = child;
-      NS_ADDREF(*aResult);
+    if (child->IsXULElement(nsGkAtoms::menupopup)) {
+      NS_ADDREF(*aResult = child);
       return;
     }
   }

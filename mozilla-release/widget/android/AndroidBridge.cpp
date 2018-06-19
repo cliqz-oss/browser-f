@@ -32,7 +32,6 @@
 #include "nsPIDOMWindow.h"
 #include "mozilla/dom/ScreenOrientation.h"
 #include "nsIDOMWindowUtils.h"
-#include "nsIDOMClientRect.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "nsPrintfCString.h"
 #include "nsContentUtils.h"
@@ -49,7 +48,6 @@
 #include "mozilla/dom/ContentChild.h"
 #include "nsIObserverService.h"
 #include "nsISupportsPrimitives.h"
-#include "MediaPrefs.h"
 #include "WidgetUtils.h"
 
 #include "FennecJNIWrappers.h"
@@ -131,8 +129,6 @@ AndroidBridge::ConstructBridge()
 
     MOZ_ASSERT(!sBridge);
     sBridge = new AndroidBridge();
-
-    MediaPrefs::GetSingleton();
 }
 
 void
@@ -676,46 +672,6 @@ nsAndroidBridge::nsAndroidBridge() :
 
 nsAndroidBridge::~nsAndroidBridge()
 {
-}
-
-NS_IMETHODIMP nsAndroidBridge::HandleGeckoMessage(JS::HandleValue val,
-                                                  JSContext *cx)
-{
-    // Spit out a warning before sending the message.
-    nsContentUtils::ReportToConsoleNonLocalized(
-        NS_LITERAL_STRING("Use of handleGeckoMessage is deprecated. "
-                          "Please use EventDispatcher from Messaging.jsm."),
-        nsIScriptError::warningFlag,
-        NS_LITERAL_CSTRING("nsIAndroidBridge"),
-        nullptr);
-
-    JS::RootedValue jsonVal(cx);
-
-    if (val.isObject()) {
-        jsonVal = val;
-
-    } else {
-        // Handle legacy JSON messages.
-        if (!val.isString()) {
-            return NS_ERROR_INVALID_ARG;
-        }
-        JS::RootedString jsonStr(cx, val.toString());
-
-        if (!JS_ParseJSON(cx, jsonStr, &jsonVal) || !jsonVal.isObject()) {
-            JS_ClearPendingException(cx);
-            return NS_ERROR_INVALID_ARG;
-        }
-    }
-
-    JS::RootedObject jsonObj(cx, &jsonVal.toObject());
-    JS::RootedValue typeVal(cx);
-
-    if (!JS_GetProperty(cx, jsonObj, "type", &typeVal)) {
-        JS_ClearPendingException(cx);
-        return NS_ERROR_INVALID_ARG;
-    }
-
-    return Dispatch(typeVal, jsonVal, /* callback */ nullptr, cx);
 }
 
 NS_IMETHODIMP nsAndroidBridge::ContentDocumentChanged(mozIDOMWindowProxy* aWindow)

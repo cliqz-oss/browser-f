@@ -6,8 +6,9 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  Services: "resource://gre/modules/Services.jsm",
   EventDispatcher: "resource://gre/modules/Messaging.jsm",
+  Log: "resource://gre/modules/Log.jsm",
+  Services: "resource://gre/modules/Services.jsm",
 });
 
 var EXPORTED_SYMBOLS = ["GeckoViewUtils"];
@@ -179,12 +180,58 @@ var GeckoViewUtils = {
   },
 
   /**
-   * Return the outermost chrome DOM window (the XUL window) for a given DOM
-   * window.
+   * Add lazy pref observers, and only load the actual handler once the pref
+   * value changes from default, and every time the pref value changes
+   * afterwards.
    *
-   * @param aWin a DOM window.
+   * @param aPrefs  Prefs as an object or array. Each pref object has fields
+   *                "name" and "default", indicating the name and default value
+   *                of the pref, respectively.
+   * @param handler If specified, function that, for a given pref, returns the
+   *                actual event handler as an object or an array of objects.
+   *                If handler is not specified, the actual event handler is
+   *                specified using the scope and name pair.
+   * @param scope   See handler.
+   * @param name    See handler.
+   * @param once    If true, only observe the specified prefs once.
    */
-  getChromeWindow: function(aWin) {
+  addLazyPrefObserver: function(aPrefs, {handler, scope, name, once}) {
+    this._addLazyListeners(aPrefs, handler, scope, name,
+      (prefs, observer) => {
+        prefs.forEach(pref => Services.prefs.addObserver(pref.name, observer));
+        prefs.forEach(pref => {
+          if (pref.default === undefined) {
+            return;
+          }
+          let value;
+          switch (typeof pref.default) {
+            case "string":
+              value = Services.prefs.getCharPref(pref.name, pref.default);
+              break;
+            case "number":
+              value = Services.prefs.getIntPref(pref.name, pref.default);
+              break;
+            case "boolean":
+              value = Services.prefs.getBoolPref(pref.name, pref.default);
+              break;
+          }
+          if (pref.default !== value) {
+            // Notify observer if value already changed from default.
+            observer(Services.prefs, "nsPref:changed", pref.name);
+          }
+        });
+      },
+      (handlers, observer, args) => {
+        if (!once) {
+          Services.prefs.removeObserver(args[2], observer);
+          handlers.forEach(handler =>
+            Services.prefs.addObserver(args[2], observer));
+        }
+        handlers.forEach(handler => handler.observe(...args));
+      });
+  },
+
+  getRootDocShell: function(aWin) {
     if (!aWin) {
       return null;
     }
@@ -195,26 +242,51 @@ var GeckoViewUtils = {
       docShell = aWin.QueryInterface(Ci.nsIInterfaceRequestor)
                      .getInterface(Ci.nsIDocShell);
     }
-    return docShell.QueryInterface(Ci.nsIDocShellTreeItem)
-                   .rootTreeItem.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindow);
+    return docShell.QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem
+                   .QueryInterface(Ci.nsIInterfaceRequestor);
   },
 
   /**
-   * Return the per-nsWindow EventDispatcher for a given DOM window.
+   * Return the outermost chrome DOM window (the XUL window) for a given DOM
+   * window, in the parent process.
+   *
+   * @param aWin a DOM window.
+   */
+  getChromeWindow: function(aWin) {
+    const docShell = this.getRootDocShell(aWin);
+    return docShell && docShell.getInterface(Ci.nsIDOMWindow);
+  },
+
+  /**
+   * Return the content frame message manager (aka the frame script global
+   * object) for a given DOM window, in a child process.
+   *
+   * @param aWin a DOM window.
+   */
+  getContentFrameMessageManager: function(aWin) {
+    const docShell = this.getRootDocShell(aWin);
+    return docShell && docShell.getInterface(Ci.nsITabChild).messageManager;
+  },
+
+  /**
+   * Return the per-nsWindow EventDispatcher for a given DOM window, in either
+   * the parent process or a child process.
    *
    * @param aWin a DOM window.
    */
   getDispatcherForWindow: function(aWin) {
     try {
-      let win = this.getChromeWindow(aWin.top || aWin);
-      let dispatcher = win.WindowEventDispatcher || EventDispatcher.for(win);
-      if (!win.closed && dispatcher) {
-        return dispatcher;
+      if (!this.IS_PARENT_PROCESS) {
+        const mm = this.getContentFrameMessageManager(aWin.top || aWin);
+        return mm && EventDispatcher.forMessageManager(mm);
+      }
+      const win = this.getChromeWindow(aWin.top || aWin);
+      if (!win.closed) {
+        return win.WindowEventDispatcher || EventDispatcher.for(win);
       }
     } catch (e) {
-      return null;
     }
+    return null;
   },
 
   getActiveDispatcher: function() {
@@ -233,4 +305,105 @@ var GeckoViewUtils = {
     }
     return null;
   },
+
+  /**
+   * Add logging functions to the specified scope that forward to the given
+   * Log.jsm logger. Currently "debug" and "warn" functions are supported. To
+   * log something, call the function through a template literal:
+   *
+   *   function foo(bar, baz) {
+   *     debug `hello world`;
+   *     debug `foo called with ${bar} as bar`;
+   *     warn `this is a warning for ${baz}`;
+   *   }
+   *
+   * An inline format can also be used for logging:
+   *
+   *   let bar = 42;
+   *   do_something(bar); // No log.
+   *   do_something(debug.foo = bar); // Output "foo = 42" to the log.
+   *
+   * @param aTag Name of the Log.jsm logger to forward logs to.
+   * @param aScope Scope to add the logging functions to.
+   */
+  initLogging: function(aTag, aScope) {
+    // Only provide two levels for simplicity.
+    // For "info", use "debug" instead.
+    // For "error", throw an actual JS error instead.
+    for (const level of ["DEBUG", "WARN"]) {
+      const log = (strings, ...exprs) =>
+          this._log(log.logger, level, strings, exprs);
+
+      XPCOMUtils.defineLazyGetter(log, "logger", _ => {
+        const logger = Log.repository.getLogger(aTag);
+        logger.parent = this.rootLogger;
+        return logger;
+      });
+
+      aScope[level.toLowerCase()] = new Proxy(log, {
+        set: (obj, prop, value) => obj([prop + " = ", ""], value) || true,
+      });
+    }
+    return aScope;
+  },
+
+  get rootLogger() {
+    if (!this._rootLogger) {
+      this._rootLogger = Log.repository.getLogger("GeckoView");
+      this._rootLogger.addAppender(new Log.AndroidAppender());
+    }
+    return this._rootLogger;
+  },
+
+  _log: function(aLogger, aLevel, aStrings, aExprs) {
+    if (!Array.isArray(aStrings)) {
+      const [, file, line] =
+          (new Error()).stack.match(/.*\n.*\n.*@(.*):(\d+):/);
+      throw Error(`Expecting template literal: ${aLevel} \`foo \${bar}\``,
+                  file, +line);
+    }
+
+    if (aLogger.level > Log.Level.Numbers[aLevel]) {
+      // Log disabled.
+      return;
+    }
+
+    // Do some GeckoView-specific formatting:
+    // * Remove newlines so long log lines can be put into multiple lines:
+    //   debug `foo=${foo}
+    //          bar=${bar}`;
+    const strs = Array.from(aStrings);
+    const regex = /\n\s*/g;
+    for (let i = 0; i < strs.length; i++) {
+      strs[i] = strs[i].replace(regex, " ");
+    }
+
+    // * Heuristically format flags as hex.
+    // * Heuristically format nsresult as string name or hex.
+    for (let i = 0; i < aExprs.length; i++) {
+      const expr = aExprs[i];
+      switch (typeof expr) {
+        case "number":
+          if (expr > 0 && /\ba?[fF]lags?[\s=:]+$/.test(strs[i])) {
+            // Likely a flag; display in hex.
+            aExprs[i] = `0x${expr.toString(0x10)}`;
+          } else if (expr >= 0 && /\b(a?[sS]tatus|rv)[\s=:]+$/.test(strs[i])) {
+            // Likely an nsresult; display in name or hex.
+            aExprs[i] = `0x${expr.toString(0x10)}`;
+            for (const name in Cr) {
+              if (expr === Cr[name]) {
+                aExprs[i] = name;
+                break;
+              }
+            }
+          }
+          break;
+      }
+    }
+
+    return aLogger[aLevel.toLowerCase()](strs, ...aExprs);
+  },
 };
+
+XPCOMUtils.defineLazyGetter(GeckoViewUtils, "IS_PARENT_PROCESS", _ =>
+    Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT);

@@ -2,7 +2,6 @@ mochikit.jar:
 % content mochikit %content/
   content/browser-harness.xul (browser-harness.xul)
   content/browser-test.js (browser-test.js)
-  content/browser-test-overlay.xul (browser-test-overlay.xul)
   content/chrome-harness.js (chrome-harness.js)
   content/mochitest-e10s-utils.js (mochitest-e10s-utils.js)
   content/shutdown-leaks-collector.js (shutdown-leaks-collector.js)
@@ -18,7 +17,7 @@ mochikit.jar:
   content/tests/SimpleTest/ChromePowers.js (tests/SimpleTest/ChromePowers.js)
   content/tests/SimpleTest/EventUtils.js (tests/SimpleTest/EventUtils.js)
   content/tests/SimpleTest/ExtensionTestUtils.js (tests/SimpleTest/ExtensionTestUtils.js)
-  content/tests/SimpleTest/SpawnTask.js (tests/SimpleTest/SpawnTask.js)
+  content/tests/SimpleTest/AddTask.js (tests/SimpleTest/AddTask.js)
   content/tests/SimpleTest/AsyncUtilsContent.js (tests/SimpleTest/AsyncUtilsContent.js)
   content/tests/SimpleTest/LogController.js (tests/SimpleTest/LogController.js)
   content/tests/SimpleTest/MemoryStats.js (tests/SimpleTest/MemoryStats.js)

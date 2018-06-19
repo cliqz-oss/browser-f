@@ -43,7 +43,8 @@ decorate_task(
 // start should throw if an experiment with the given name already exists
 decorate_task(
   withMockExperiments,
-  async function(experiments) {
+  withSendEventStub,
+  async function(experiments, sendEventStub) {
     experiments.test = experimentFactory({name: "test"});
     await Assert.rejects(
       PreferenceExperiments.start({
@@ -54,7 +55,14 @@ decorate_task(
         preferenceType: "string",
         preferenceBranchType: "default",
       }),
+      /test.*already exists/,
       "start threw an error due to a conflicting experiment name",
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["enrollFailed", "preference_study", "test", {reason: "name-conflict"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -62,7 +70,8 @@ decorate_task(
 // start should throw if an experiment for the given preference is active
 decorate_task(
   withMockExperiments,
-  async function(experiments) {
+  withSendEventStub,
+  async function(experiments, sendEventStub) {
     experiments.test = experimentFactory({name: "test", preferenceName: "fake.preference"});
     await Assert.rejects(
       PreferenceExperiments.start({
@@ -73,7 +82,14 @@ decorate_task(
         preferenceType: "string",
         preferenceBranchType: "default",
       }),
+      /another.*is currently active/i,
       "start threw an error due to an active experiment for the given preference",
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["enrollFailed", "preference_study", "different", {reason: "pref-conflict"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -81,7 +97,8 @@ decorate_task(
 // start should throw if an invalid preferenceBranchType is given
 decorate_task(
   withMockExperiments,
-  async function() {
+  withSendEventStub,
+  async function(experiments, sendEventStub) {
     await Assert.rejects(
       PreferenceExperiments.start({
         name: "test",
@@ -91,7 +108,14 @@ decorate_task(
         preferenceType: "string",
         preferenceBranchType: "invalid",
       }),
+      /invalid value for preferenceBranchType: invalid/i,
       "start threw an error due to an invalid preference branch type",
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["enrollFailed", "preference_study", "test", {reason: "invalid-branch"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -102,7 +126,7 @@ decorate_task(
   withMockExperiments,
   withMockPreferences,
   withStub(PreferenceExperiments, "startObserver"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStart(experiments, mockPreferences, startObserverStub, sendEventStub) {
     mockPreferences.set("fake.preference", "oldvalue", "default");
     mockPreferences.set("fake.preference", "uservalue", "user");
@@ -202,7 +226,8 @@ decorate_task(
 // start should detect if a new preference value type matches the previous value type
 decorate_task(
   withMockPreferences,
-  async function(mockPreferences) {
+  withSendEventStub,
+  async function(mockPreferences, sendEventStub) {
     mockPreferences.set("fake.type_preference", "oldvalue");
 
     await Assert.rejects(
@@ -214,7 +239,14 @@ decorate_task(
         preferenceValue: 12345,
         preferenceType: "integer",
       }),
+      /previous preference value is of type/i,
       "start threw error for incompatible preference type"
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["enrollFailed", "preference_study", "test", {reason: "invalid-type"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -227,6 +259,7 @@ decorate_task(
     PreferenceExperiments.startObserver("test", "fake.preference", "string", "newvalue");
     Assert.throws(
       () => PreferenceExperiments.startObserver("test", "another.fake", "string", "othervalue"),
+      /observer.*is already active/i,
       "startObserver threw due to a conflicting active observer",
     );
     PreferenceExperiments.stopAllObservers();
@@ -287,6 +320,7 @@ decorate_task(
   async function() {
     Assert.throws(
       () => PreferenceExperiments.stopObserver("neveractive", "another.fake", "othervalue"),
+      /no observer.*found/i,
       "stopObserver threw because there was not matching active observer",
     );
   }
@@ -360,6 +394,7 @@ decorate_task(
   async function() {
     await Assert.rejects(
       PreferenceExperiments.markLastSeen("neveractive"),
+      /could not find/i,
       "markLastSeen threw because there was not a matching experiment",
     );
   }
@@ -383,10 +418,18 @@ decorate_task(
 // stop should throw if an experiment with the given name doesn't exist
 decorate_task(
   withMockExperiments,
-  async function() {
+  withSendEventStub,
+  async function(experiments, sendEventStub) {
     await Assert.rejects(
       PreferenceExperiments.stop("test"),
+      /could not find/i,
       "stop threw an error because there are no experiments with the given name",
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["unenrollFailed", "preference_study", "test", {reason: "does-not-exist"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -394,11 +437,19 @@ decorate_task(
 // stop should throw if the experiment is already expired
 decorate_task(
   withMockExperiments,
-  async function(experiments) {
+  withSendEventStub,
+  async function(experiments, sendEventStub) {
     experiments.test = experimentFactory({name: "test", expired: true});
     await Assert.rejects(
       PreferenceExperiments.stop("test"),
+      /already expired/,
       "stop threw an error because the experiment was already expired",
+    );
+
+    Assert.deepEqual(
+      sendEventStub.args,
+      [["unenrollFailed", "preference_study", "test", {reason: "already-unenrolled"}]],
+      "event should be sent for failure",
     );
   }
 );
@@ -409,7 +460,7 @@ decorate_task(
   withMockExperiments,
   withMockPreferences,
   withSpy(PreferenceExperiments, "stopObserver"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStop(experiments, mockPreferences, stopObserverSpy, sendEventStub) {
     // this assertion is mostly useful for --verify test runs, to make
     // sure that tests clean up correctly.
@@ -420,6 +471,7 @@ decorate_task(
     experiments.test = experimentFactory({
       name: "test",
       expired: false,
+      branch: "fakebranch",
       preferenceName: "fake.preference",
       preferenceValue: "experimentvalue",
       preferenceType: "string",
@@ -442,11 +494,12 @@ decorate_task(
     );
 
     Assert.deepEqual(
-      sendEventStub.getCall(0).args,
-      ["unenroll", "preference_study", experiments.test.name, {
+      sendEventStub.args,
+      [["unenroll", "preference_study", experiments.test.name, {
         didResetValue: "true",
         reason: "test-reason",
-      }],
+        branch: "fakebranch",
+      }]],
       "stop should send the correct telemetry event"
     );
 
@@ -520,12 +573,13 @@ decorate_task(
   withMockExperiments,
   withMockPreferences,
   withStub(PreferenceExperiments, "stopObserver"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStopReset(experiments, mockPreferences, stopObserverStub, sendEventStub) {
     mockPreferences.set("fake.preference", "customvalue", "default");
     experiments.test = experimentFactory({
       name: "test",
       expired: false,
+      branch: "fakebranch",
       preferenceName: "fake.preference",
       preferenceValue: "experimentvalue",
       preferenceType: "string",
@@ -540,11 +594,12 @@ decorate_task(
       "stop did not modify the preference",
     );
     Assert.deepEqual(
-      sendEventStub.getCall(0).args,
-      ["unenroll", "preference_study", experiments.test.name, {
+      sendEventStub.args,
+      [["unenroll", "preference_study", experiments.test.name, {
         didResetValue: "false",
         reason: "test-reason",
-      }],
+        branch: "fakebranch"
+      }]],
       "stop should send the correct telemetry event"
     );
   }
@@ -556,6 +611,7 @@ decorate_task(
   async function() {
     await Assert.rejects(
       PreferenceExperiments.get("neverexisted"),
+      /could not find/i,
       "get rejects if no experiment with the given name is found",
     );
   }
@@ -701,7 +757,7 @@ decorate_task(
   withMockExperiments,
   withStub(TelemetryEnvironment, "setExperimentActive"),
   withStub(TelemetryEnvironment, "setExperimentInactive"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStartAndStopTelemetry(experiments, setActiveStub, setInactiveStub, sendEventStub) {
     await PreferenceExperiments.start({
       name: "test",
@@ -718,24 +774,22 @@ decorate_task(
       "Experiment is registered by start()",
     );
     await PreferenceExperiments.stop("test", {reason: "test-reason"});
-    ok(setInactiveStub.calledWith("test", "branch"), "Experiment is unregistered by stop()");
+    Assert.deepEqual(setInactiveStub.args, [["test"]], "Experiment is unregistered by stop()");
 
     Assert.deepEqual(
-      sendEventStub.getCall(0).args,
-      ["enroll", "preference_study", "test", {
-        experimentType: "exp",
-        branch: "branch",
-      }],
-      "PreferenceExperiments.start() should send the correct telemetry event"
-    );
-
-    Assert.deepEqual(
-      sendEventStub.getCall(1).args,
-      ["unenroll", "preference_study", "test", {
-        reason: "test-reason",
-        didResetValue: "true",
-      }],
-      "PreferenceExperiments.stop() should send the correct telemetry event"
+      sendEventStub.args,
+      [
+        ["enroll", "preference_study", "test", {
+          experimentType: "exp",
+          branch: "branch",
+        }],
+        ["unenroll", "preference_study", "test", {
+          reason: "test-reason",
+          didResetValue: "true",
+          branch: "branch",
+        }],
+      ],
+      "PreferenceExperiments.start() and stop() should send the correct telemetry event"
     );
   },
 );
@@ -745,7 +799,7 @@ decorate_task(
   withMockExperiments,
   withStub(TelemetryEnvironment, "setExperimentActive"),
   withStub(TelemetryEnvironment, "setExperimentInactive"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testInitTelemetryExperimentType(experiments, setActiveStub, setInactiveStub, sendEventStub) {
     await PreferenceExperiments.start({
       name: "test",
@@ -897,6 +951,7 @@ decorate_task(
 
     await Assert.rejects(
       PreferenceExperiments.saveStartupPrefs(),
+      /invalid preference type/i,
       "saveStartupPrefs throws if an experiment has an invalid preference value type",
     );
   },
@@ -1002,7 +1057,7 @@ decorate_task(
   withMockExperiments,
   withMockPreferences,
   withStub(PreferenceExperiments, "stopObserver"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStopUnknownReason(experiments, mockPreferences, stopObserverStub, sendEventStub) {
     mockPreferences.set("fake.preference", "default value", "default");
     experiments.test = experimentFactory({ name: "test", preferenceName: "fake.preference" });
@@ -1020,7 +1075,7 @@ decorate_task(
   withMockExperiments,
   withMockPreferences,
   withStub(PreferenceExperiments, "stopObserver"),
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   async function testStopResetValue(experiments, mockPreferences, stopObserverStub, sendEventStub) {
     mockPreferences.set("fake.preference1", "default value", "default");
     experiments.test1 = experimentFactory({ name: "test1", preferenceName: "fake.preference1" });
@@ -1048,7 +1103,7 @@ decorate_task(
 // the user changed preferences during a browser run.
 decorate_task(
   withMockPreferences,
-  withStub(TelemetryEvents, "sendEvent"),
+  withSendEventStub,
   withMockExperiments,
   async function testPrefChangeEventTelemetry(mockPreferences, sendEventStub, mockExperiments) {
     is(Preferences.get("fake.preference"), null, "preference should start unset");
@@ -1056,6 +1111,7 @@ decorate_task(
     mockExperiments.test = experimentFactory({
       name: "test",
       expired: false,
+      branch: "fakebranch",
       preferenceName: "fake.preference",
       preferenceValue: "experimentvalue",
       preferenceType: "string",
@@ -1071,11 +1127,12 @@ decorate_task(
     await Promise.resolve();
 
     Assert.deepEqual(
-      sendEventStub.getCall(0).args,
-      ["unenroll", "preference_study", "test", {
+      sendEventStub.args,
+      [["unenroll", "preference_study", "test", {
         didResetValue: "false",
         reason: "user-preference-changed",
-      }],
+        branch: "fakebranch",
+      }]],
       "stop should send a telemetry event indicating the user unenrolled manually",
     );
   },

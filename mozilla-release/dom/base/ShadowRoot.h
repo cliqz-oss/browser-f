@@ -23,6 +23,10 @@ namespace mozilla {
 
 class EventChainPreVisitor;
 
+namespace css {
+class Rule;
+}
+
 namespace dom {
 
 class Element;
@@ -81,9 +85,13 @@ public:
     return mMode == ShadowRootMode::Closed;
   }
 
-  // [deprecated] Shadow DOM v0
   void InsertSheet(StyleSheet* aSheet, nsIContent* aLinkingContent);
   void RemoveSheet(StyleSheet* aSheet);
+  void RuleAdded(StyleSheet&, css::Rule&);
+  void RuleRemoved(StyleSheet&, css::Rule&);
+  void RuleChanged(StyleSheet&, css::Rule*);
+  void StyleSheetApplicableStateChanged(StyleSheet&, bool aApplicable);
+
   StyleSheetList* StyleSheets()
   {
     return &DocumentOrShadowRoot::EnsureDOMStyleSheets();
@@ -94,28 +102,56 @@ public:
    */
   void CloneInternalDataFrom(ShadowRoot* aOther);
 private:
+  void InsertSheetIntoAuthorData(size_t aIndex, StyleSheet&);
+
+  void InsertSheetAt(size_t aIndex, StyleSheet&);
+  void AppendStyleSheet(StyleSheet&);
 
   /**
    * Try to reassign an element to a slot and returns whether the assignment
    * changed.
    */
-  bool MaybeReassignElement(Element* aElement, const nsAttrValue* aOldValue);
+  void MaybeReassignElement(Element* aElement);
 
   /**
-   * Try to assign aContent to a slot in the shadow tree, returns the assigned
-   * slot if found.
+   * Represents the insertion point in a slot for a given node.
    */
-  const HTMLSlotElement* AssignSlotFor(nsIContent* aContent);
+  struct SlotAssignment
+  {
+    HTMLSlotElement* mSlot = nullptr;
+    Maybe<uint32_t> mIndex;
+
+    SlotAssignment() = default;
+    SlotAssignment(HTMLSlotElement* aSlot, const Maybe<uint32_t>& aIndex)
+      : mSlot(aSlot)
+      , mIndex(aIndex)
+    { }
+  };
 
   /**
-   * Unassign aContent from the assigned slot in the shadow tree, returns the
-   * assigned slot if found.
+   * Return the assignment corresponding to the content node at this particular
+   * point in time.
    *
-   * Note: slot attribute of aContent may have changed already, so pass slot
-   *       name explicity here.
+   * It's the caller's responsibility to actually call InsertAssignedNode /
+   * AppendAssignedNode in the slot as needed.
    */
-  const HTMLSlotElement* UnassignSlotFor(nsIContent* aContent,
-                                         const nsAString& aSlotName);
+  SlotAssignment SlotAssignmentFor(nsIContent* aContent);
+
+  /**
+   * Explicitly invalidates the style and layout of the flattened-tree subtree
+   * rooted at the element.
+   *
+   * You need to use this whenever the flat tree is going to be shuffled in a
+   * way that layout doesn't understand via the usual ContentInserted /
+   * ContentAppended / ContentRemoved notifications. For example, if removing an
+   * element will cause a change in the flat tree such that other element will
+   * start showing up (like fallback content), this method needs to be called on
+   * an ancestor of that element.
+   *
+   * It is important that this runs _before_ actually shuffling the flat tree
+   * around, so that layout knows the actual tree that it needs to invalidate.
+   */
+  void InvalidateStyleAndLayoutOnSubtree(Element*);
 
 public:
   void AddSlot(HTMLSlotElement* aSlot);
@@ -130,9 +166,6 @@ public:
   {
     return mServoStyles.get();
   }
-
-  // FIXME(emilio): This will need to become more fine-grained.
-  void StyleSheetChanged();
 
   mozilla::ServoStyleRuleMap& ServoStyleRuleMap();
 
@@ -153,17 +186,15 @@ public:
     return mIsComposedDocParticipant;
   }
 
-  void SetIsComposedDocParticipant(bool aIsComposedDocParticipant)
-  {
-    mIsComposedDocParticipant = aIsComposedDocParticipant;
-  }
+  void SetIsComposedDocParticipant(bool aIsComposedDocParticipant);
 
-  nsresult GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
 protected:
-  virtual ~ShadowRoot();
+  // FIXME(emilio): This will need to become more fine-grained.
+  void ApplicableRulesChanged();
 
-  void SyncServoStyles();
+  virtual ~ShadowRoot();
 
   const ShadowRootMode mMode;
 

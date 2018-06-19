@@ -170,7 +170,7 @@ gfxContext::Restore()
     mDT->PopClip();
   }
 
-  mStateStack.RemoveElementAt(mStateStack.Length() - 1);
+  mStateStack.RemoveLastElement();
 
   mDT = CurrentState().drawTarget;
 
@@ -210,13 +210,6 @@ void gfxContext::SetPath(Path* path)
   mPathBuilder = nullptr;
   mPathIsRect = false;
   mTransformChanged = false;
-}
-
-gfxPoint
-gfxContext::CurrentPoint()
-{
-  EnsurePathBuilder();
-  return ThebesPoint(mPathBuilder->CurrentPoint());
 }
 
 void
@@ -609,7 +602,7 @@ gfxContext::PopClip()
 {
   MOZ_ASSERT(CurrentState().pushedClips.Length() > 0);
 
-  CurrentState().pushedClips.RemoveElementAt(CurrentState().pushedClips.Length() - 1);
+  CurrentState().pushedClips.RemoveLastElement();
   mDT->PopClip();
 }
 

@@ -14,12 +14,12 @@
 
 native nsSize (nsSize);
 
-
 interface nsIDOMDocument;
 interface nsIDOMNode;
-interface nsIDOMDataTransfer;
 
-[scriptable, uuid(25bce737-73f0-43c7-bc20-c71044a73c5a)]
+webidl DataTransfer;
+
+[scriptable, builtinclass, uuid(25bce737-73f0-43c7-bc20-c71044a73c5a)]
 interface nsIDragSession : nsISupports
 {
   /**
@@ -72,11 +72,14 @@ interface nsIDragSession : nsISupports
   /**
    * The data transfer object for the current drag.
    */
-  attribute nsIDOMDataTransfer dataTransfer;
+  [binaryname(DataTransferXPCOM)]
+  attribute DataTransfer dataTransfer;
+  [notxpcom, nostdcall] DataTransfer getDataTransfer();
+  [notxpcom, nostdcall] void setDataTransfer(in DataTransfer aDataTransfer);
 
   /**
     * Get data from a Drag&Drop. Can be called while the drag is in process
-    * or after the drop has completed.  
+    * or after the drop has completed.
     *
     * @param  aTransferable the transferable for the data to be put into
     * @param  aItemIndex which of multiple drag items, zero-based

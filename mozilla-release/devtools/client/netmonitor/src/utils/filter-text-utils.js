@@ -32,6 +32,7 @@
 
 const { FILTER_FLAGS } = require("../constants");
 const { getFormattedIPAndPort } = require("./format-utils");
+const { getUnicodeUrl } = require("devtools/client/shared/unicode-url");
 
 /*
   The function `parseFilters` is from:
@@ -103,6 +104,10 @@ function processFlagFilter(type, value) {
 }
 
 function isFlagFilterMatch(item, { type, value, negative }) {
+  if (value == null) {
+    return false;
+  }
+
   // Ensures when filter token is exactly a flag ie. "remote-ip:", all values are shown
   if (value.length < 1) {
     return true;
@@ -127,8 +132,8 @@ function isFlagFilterMatch(item, { type, value, negative }) {
       match = item.urlDetails.host.toLowerCase().includes(value);
       break;
     case "remote-ip":
-      match = getFormattedIPAndPort(item.remoteAddress, item.remotePort)
-        .toLowerCase().includes(value);
+      let data = getFormattedIPAndPort(item.remoteAddress, item.remotePort);
+      match = data ? data.toLowerCase().includes(value) : false;
       break;
     case "has-response-header":
       if (typeof item.responseHeaders === "object") {
@@ -217,7 +222,7 @@ function isSizeMatch(value, size) {
 }
 
 function isTextFilterMatch({ url }, text) {
-  let lowerCaseUrl = url.toLowerCase();
+  let lowerCaseUrl = getUnicodeUrl(url).toLowerCase();
   let lowerCaseText = text.toLowerCase();
   let textLength = text.length;
   // Support negative filtering

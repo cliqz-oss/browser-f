@@ -17,7 +17,6 @@ namespace dom {
 NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(XMLStylesheetProcessingInstruction,
                                              ProcessingInstruction,
                                              nsIDOMNode,
-                                             nsIDOMProcessingInstruction,
                                              nsIStyleSheetLinkingElement)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(XMLStylesheetProcessingInstruction)
@@ -70,7 +69,7 @@ XMLStylesheetProcessingInstruction::UnbindFromTree(bool aDeep, bool aNullParent)
   nsCOMPtr<nsIDocument> oldDoc = GetUncomposedDoc();
 
   ProcessingInstruction::UnbindFromTree(aDeep, aNullParent);
-  UpdateStyleSheetInternal(oldDoc, nullptr);
+  Unused << UpdateStyleSheetInternal(oldDoc, nullptr);
 }
 
 // nsIDOMNode
@@ -79,9 +78,9 @@ void
 XMLStylesheetProcessingInstruction::SetNodeValueInternal(const nsAString& aNodeValue,
                                                          ErrorResult& aError)
 {
-  nsGenericDOMDataNode::SetNodeValueInternal(aNodeValue, aError);
+  CharacterData::SetNodeValueInternal(aNodeValue, aError);
   if (!aError.Failed()) {
-    UpdateStyleSheetInternal(nullptr, nullptr, true);
+    Unused << UpdateStyleSheetInternal(nullptr, nullptr, ForceUpdate::Yes);
   }
 }
 
@@ -128,13 +127,11 @@ void
 XMLStylesheetProcessingInstruction::GetStyleSheetInfo(nsAString& aTitle,
                                                       nsAString& aType,
                                                       nsAString& aMedia,
-                                                      bool* aIsScoped,
                                                       bool* aIsAlternate)
 {
   aTitle.Truncate();
   aType.Truncate();
   aMedia.Truncate();
-  *aIsScoped = false;
   *aIsAlternate = false;
 
   // xml-stylesheet PI is special only in prolog
@@ -180,14 +177,14 @@ XMLStylesheetProcessingInstruction::GetStyleSheetInfo(nsAString& aTitle,
   aType.AssignLiteral("text/css");
 }
 
-nsGenericDOMDataNode*
+already_AddRefed<CharacterData>
 XMLStylesheetProcessingInstruction::CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
                                                   bool aCloneText) const
 {
   nsAutoString data;
-  nsGenericDOMDataNode::GetData(data);
+  GetData(data);
   RefPtr<mozilla::dom::NodeInfo> ni = aNodeInfo;
-  return new XMLStylesheetProcessingInstruction(ni.forget(), data);
+  return do_AddRef(new XMLStylesheetProcessingInstruction(ni.forget(), data));
 }
 
 } // namespace dom

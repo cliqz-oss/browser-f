@@ -83,8 +83,7 @@ RemoteMediator.prototype = {
         element = element.ownerGlobal.frameElement;
 
       if (element) {
-        let listener = Cc["@mozilla.org/addons/integration;1"].
-                       getService(Ci.nsIMessageListener);
+        let listener = Cc["@mozilla.org/addons/integration;1"].getService();
         return listener.wrappedJSObject.receiveMessage({
           name: MSG_INSTALL_ADDON,
           target: element,
@@ -113,7 +112,7 @@ RemoteMediator.prototype = {
     return callbackID;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference])
 };
 
 
@@ -121,30 +120,22 @@ function InstallTrigger() {
 }
 
 InstallTrigger.prototype = {
-  // Here be magic. We've declared ourselves as providing the
-  // nsIDOMGlobalPropertyInitializer interface, and are registered in the
-  // "JavaScript-global-property" category in the XPCOM category manager. This
-  // means that for newly created windows, XPCOM will createinstance this
-  // object, and then call init, passing in the window for which we need to
-  // provide an instance. We then initialize ourselves and return the webidl
-  // version of this object using the webidl-provided _create method, which
-  // XPCOM will then duly expose as a property value on the window. All this
-  // indirection is necessary because webidl does not (yet) support statics
-  // (bug 863952). See bug 926712 for more details about this implementation.
+  // We've declared ourselves as providing the nsIDOMGlobalPropertyInitializer
+  // interface.  This means that when the InstallTrigger property is gotten from
+  // the window that will createInstance this object and then call init(),
+  // passing the window were bound to.  It will then automatically create the
+  // WebIDL wrapper (InstallTriggerImpl) for this object.  This indirection is
+  // necessary because webidl does not (yet) support statics (bug 863952). See
+  // bug 926712 and then bug 1442360 for more details about this implementation.
   init(window) {
     this._window = window;
     this._principal = window.document.nodePrincipal;
     this._url = window.document.documentURIObject;
 
-    try {
-      this._mediator = new RemoteMediator(window);
-    } catch (ex) {
-      // If we can't set up IPC (e.g., because this is a top-level window
-      // or something), then don't expose InstallTrigger.
-      return null;
-    }
-
-    return window.InstallTriggerImpl._create(window, this);
+    this._mediator = new RemoteMediator(window);
+    // If we can't set up IPC (e.g., because this is a top-level window or
+    // something), then don't expose InstallTrigger.  The Window code handles
+    // that, if we throw an exception here.
   },
 
   enabled() {
@@ -224,7 +215,7 @@ InstallTrigger.prototype = {
 
   classID: Components.ID("{9df8ef2b-94da-45c9-ab9f-132eb55fddf1}"),
   contractID: "@mozilla.org/addons/installtrigger;1",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports, Ci.nsIDOMGlobalPropertyInitializer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer])
 };
 
 

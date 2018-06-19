@@ -5,10 +5,9 @@
 "use strict";
 
 const promise = require("promise");
-const {Task} = require("devtools/shared/task");
 const {KeyCodes} = require("devtools/client/shared/keycodes");
 
-const EventEmitter = require("devtools/shared/old-event-emitter");
+const EventEmitter = require("devtools/shared/event-emitter");
 const AutocompletePopup = require("devtools/client/shared/autocomplete-popup");
 const Services = require("Services");
 
@@ -61,7 +60,7 @@ InspectorSearch.prototype = {
     return this.inspector.walker;
   },
 
-  destroy: function () {
+  destroy: function() {
     this.searchBox.removeEventListener("keydown", this._onKeyDown, true);
     this.searchBox.removeEventListener("input", this._onInput, true);
     this.searchClearButton.removeEventListener("click", this._onClearSearch);
@@ -70,12 +69,12 @@ InspectorSearch.prototype = {
     this.autocompleter.destroy();
   },
 
-  _onSearch: function (reverse = false) {
+  _onSearch: function(reverse = false) {
     this.doFullTextSearch(this.searchBox.value, reverse)
         .catch(console.error);
   },
 
-  doFullTextSearch: Task.async(function* (query, reverse) {
+  async doFullTextSearch(query, reverse) {
     let lastSearched = this._lastSearched;
     this._lastSearched = query;
 
@@ -87,7 +86,7 @@ InspectorSearch.prototype = {
       return;
     }
 
-    let res = yield this.walker.search(query, { reverse });
+    let res = await this.walker.search(query, { reverse });
 
     // Value has changed since we started this request, we're done.
     if (query !== this.searchBox.value) {
@@ -95,7 +94,7 @@ InspectorSearch.prototype = {
     }
 
     if (res) {
-      this.inspector.selection.setNodeFront(res.node, "inspectorsearch");
+      this.inspector.selection.setNodeFront(res.node, { reason: "inspectorsearch" });
       this.searchBox.classList.remove("devtools-style-searchbox-no-match");
 
       res.query = query;
@@ -104,9 +103,9 @@ InspectorSearch.prototype = {
       this.searchBox.classList.add("devtools-style-searchbox-no-match");
       this.emit("search-result");
     }
-  }),
+  },
 
-  _onInput: function () {
+  _onInput: function() {
     if (this.searchBox.value.length === 0) {
       this.searchClearButton.hidden = true;
       this._onSearch();
@@ -115,7 +114,7 @@ InspectorSearch.prototype = {
     }
   },
 
-  _onKeyDown: function (event) {
+  _onKeyDown: function(event) {
     if (event.keyCode === KeyCodes.DOM_VK_RETURN) {
       this._onSearch(event.shiftKey);
     }
@@ -128,7 +127,7 @@ InspectorSearch.prototype = {
     }
   },
 
-  _onClearSearch: function () {
+  _onClearSearch: function() {
     this.searchBox.classList.remove("devtools-style-searchbox-no-match");
     this.searchBox.value = "";
     this.searchClearButton.hidden = true;
@@ -311,7 +310,7 @@ SelectorAutocompleter.prototype = {
   /**
    * Removes event listeners and cleans up references.
    */
-  destroy: function () {
+  destroy: function() {
     this.searchBox.removeEventListener("input", this.showSuggestions, true);
     this.searchBox.removeEventListener("keypress",
       this._onSearchKeypress, true);
@@ -325,7 +324,7 @@ SelectorAutocompleter.prototype = {
   /**
    * Handles keypresses inside the input box.
    */
-  _onSearchKeypress: function (event) {
+  _onSearchKeypress: function(event) {
     let popup = this.searchPopup;
     switch (event.keyCode) {
       case KeyCodes.DOM_VK_RETURN:
@@ -387,7 +386,7 @@ SelectorAutocompleter.prototype = {
   /**
    * Handles click events from the autocomplete popup.
    */
-  _onSearchPopupClick: function (event) {
+  _onSearchPopupClick: function(event) {
     let selectedItem = this.searchPopup.selectedItem;
     if (selectedItem) {
       this.searchBox.value = selectedItem.label;
@@ -402,7 +401,7 @@ SelectorAutocompleter.prototype = {
    * Reset previous search results on markup-mutations to make sure we search
    * again after nodes have been added/removed/changed.
    */
-  _onMarkupMutation: function () {
+  _onMarkupMutation: function() {
     this._searchResults = null;
     this._lastSearched = null;
   },
@@ -413,7 +412,7 @@ SelectorAutocompleter.prototype = {
    * @return {Promise} promise that will resolve when the autocomplete popup is fully
    * displayed or hidden.
    */
-  _showPopup: function (list, firstPart, popupState) {
+  _showPopup: function(list, firstPart, popupState) {
     let total = 0;
     let query = this.searchBox.value;
     let items = [];
@@ -472,7 +471,7 @@ SelectorAutocompleter.prototype = {
   /**
    * Hide the suggestion popup if necessary.
    */
-  hidePopup: function () {
+  hidePopup: function() {
     let onPopupClosed = this.searchPopup.once("popup-closed");
     this.searchPopup.hidePopup();
     return onPopupClosed;
@@ -482,7 +481,7 @@ SelectorAutocompleter.prototype = {
    * Suggests classes,ids and tags based on the user input as user types in the
    * searchbox.
    */
-  showSuggestions: function () {
+  showSuggestions: function() {
     let query = this.searchBox.value;
     let state = this.state;
     let firstPart = "";

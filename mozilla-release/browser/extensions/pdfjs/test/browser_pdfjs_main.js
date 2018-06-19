@@ -18,12 +18,9 @@ add_task(async function test() {
     async function(newTabBrowser) {
       await waitForPdfJS(newTabBrowser, TESTROOT + "file_pdfjs_test.pdf");
 
-      ok(gBrowser.isFindBarInitialized(), "Browser FindBar initialized!");
-
       await ContentTask.spawn(newTabBrowser, null, async function() {
         // Overall sanity tests
         Assert.ok(content.document.querySelector("div#viewer"), "document content has viewer UI");
-        Assert.ok("PDFJS" in content.wrappedJSObject, "window content has PDFJS object");
 
         // Sidebar: open
         var sidebar = content.document.querySelector("button#sidebarToggle"),

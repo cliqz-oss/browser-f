@@ -55,7 +55,9 @@ function getEngineModules() {
   }
   result.Bookmarks = {
     module: "bookmarks.js",
-    symbol: "BookmarksEngine",
+    controllingPref: "services.sync.engine.bookmarks.buffer",
+    whenFalse: "BookmarksEngine",
+    whenTrue: "BufferedBookmarksEngine",
   };
   return result;
 }
@@ -380,19 +382,32 @@ Sync11Service.prototype = {
         this._log.info("Do not know about engine: " + name);
         continue;
       }
-      let {module, symbol} = engineModules[name];
-      if (!module.includes(":")) {
-        module = "resource://services-sync/engines/" + module;
+      let modInfo = engineModules[name];
+      if (!modInfo.module.includes(":")) {
+        modInfo.module = "resource://services-sync/engines/" + modInfo.module;
       }
       let ns = {};
       try {
-        ChromeUtils.import(module, ns);
-        if (!(symbol in ns)) {
-          this._log.warn("Could not find exported engine instance: " + symbol);
-          continue;
+        ChromeUtils.import(modInfo.module, ns);
+        if (modInfo.symbol) {
+          let symbol = modInfo.symbol;
+          if (!(symbol in ns)) {
+            this._log.warn("Could not find exported engine instance: " + symbol);
+            continue;
+          }
+          await this.engineManager.register(ns[symbol]);
+        } else {
+          let {whenTrue, whenFalse, controllingPref} = modInfo;
+          if (!(whenTrue in ns) || !(whenFalse in ns)) {
+            this._log.warn("Could not find all exported engine instances",
+                           { whenTrue, whenFalse });
+            continue;
+          }
+          await this.engineManager.registerAlternatives(name.toLowerCase(),
+                                                        controllingPref,
+                                                        ns[whenTrue],
+                                                        ns[whenFalse]);
         }
-
-        await this.engineManager.register(ns[symbol]);
       } catch (ex) {
         this._log.warn("Could not register engine " + name, ex);
       }
@@ -401,8 +416,8 @@ Sync11Service.prototype = {
     this.engineManager.setDeclined(declined);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   observe(subject, topic, data) {
     switch (topic) {
@@ -744,7 +759,7 @@ Sync11Service.prototype = {
     // Now verify that info/collections shows them!
     this._log.debug("Verifying server collection records.");
     let info = await this._fetchInfo();
-    this._log.debug("info/collections is: " + info);
+    this._log.debug("info/collections is: " + info.data);
 
     if (info.status != 200) {
       this._log.warn("Non-200 info/collections response. Aborting.");

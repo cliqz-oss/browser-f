@@ -222,11 +222,15 @@ template<class Impl>
 class GeckoThread::Natives : public mozilla::jni::NativeImpl<GeckoThread, Impl>
 {
 public:
-    static const JNINativeMethod methods[7];
+    static const JNINativeMethod methods[8];
 };
 
 template<class Impl>
 const JNINativeMethod GeckoThread::Natives<Impl>::methods[] = {
+
+    mozilla::jni::MakeNativeMethod<GeckoThread::Crash_t>(
+            mozilla::jni::NativeStub<GeckoThread::Crash_t, Impl>
+            ::template Wrap<&Impl::Crash>),
 
     mozilla::jni::MakeNativeMethod<GeckoThread::ForceQuit_t>(
             mozilla::jni::NativeStub<GeckoThread::ForceQuit_t, Impl>
@@ -327,6 +331,41 @@ const JNINativeMethod ScreenManagerHelper::Natives<Impl>::methods[] = {
 };
 
 template<class Impl>
+class SpeechSynthesisService::Natives : public mozilla::jni::NativeImpl<SpeechSynthesisService, Impl>
+{
+public:
+    static const JNINativeMethod methods[6];
+};
+
+template<class Impl>
+const JNINativeMethod SpeechSynthesisService::Natives<Impl>::methods[] = {
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::DispatchBoundary_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::DispatchBoundary_t, Impl>
+            ::template Wrap<&Impl::DispatchBoundary>),
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::DispatchEnd_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::DispatchEnd_t, Impl>
+            ::template Wrap<&Impl::DispatchEnd>),
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::DispatchError_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::DispatchError_t, Impl>
+            ::template Wrap<&Impl::DispatchError>),
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::DispatchStart_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::DispatchStart_t, Impl>
+            ::template Wrap<&Impl::DispatchStart>),
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::DoneRegisteringVoices_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::DoneRegisteringVoices_t, Impl>
+            ::template Wrap<&Impl::DoneRegisteringVoices>),
+
+    mozilla::jni::MakeNativeMethod<SpeechSynthesisService::RegisterVoice_t>(
+            mozilla::jni::NativeStub<SpeechSynthesisService::RegisterVoice_t, Impl>
+            ::template Wrap<&Impl::RegisterVoice>)
+};
+
+template<class Impl>
 class SurfaceTextureListener::Natives : public mozilla::jni::NativeImpl<SurfaceTextureListener, Impl>
 {
 public:
@@ -409,33 +448,33 @@ const JNINativeMethod LayerSession::Compositor::Natives<Impl>::methods[] = {
 };
 
 template<class Impl>
-class NativePanZoomController::Natives : public mozilla::jni::NativeImpl<NativePanZoomController, Impl>
+class PanZoomController::Natives : public mozilla::jni::NativeImpl<PanZoomController, Impl>
 {
 public:
     static const JNINativeMethod methods[5];
 };
 
 template<class Impl>
-const JNINativeMethod NativePanZoomController::Natives<Impl>::methods[] = {
+const JNINativeMethod PanZoomController::Natives<Impl>::methods[] = {
 
-    mozilla::jni::MakeNativeMethod<NativePanZoomController::DisposeNative_t>(
-            mozilla::jni::NativeStub<NativePanZoomController::DisposeNative_t, Impl>
+    mozilla::jni::MakeNativeMethod<PanZoomController::DisposeNative_t>(
+            mozilla::jni::NativeStub<PanZoomController::DisposeNative_t, Impl>
             ::template Wrap<&Impl::DisposeNative>),
 
-    mozilla::jni::MakeNativeMethod<NativePanZoomController::HandleMotionEvent_t>(
-            mozilla::jni::NativeStub<NativePanZoomController::HandleMotionEvent_t, Impl>
+    mozilla::jni::MakeNativeMethod<PanZoomController::HandleMotionEvent_t>(
+            mozilla::jni::NativeStub<PanZoomController::HandleMotionEvent_t, Impl>
             ::template Wrap<&Impl::HandleMotionEvent>),
 
-    mozilla::jni::MakeNativeMethod<NativePanZoomController::HandleMouseEvent_t>(
-            mozilla::jni::NativeStub<NativePanZoomController::HandleMouseEvent_t, Impl>
+    mozilla::jni::MakeNativeMethod<PanZoomController::HandleMouseEvent_t>(
+            mozilla::jni::NativeStub<PanZoomController::HandleMouseEvent_t, Impl>
             ::template Wrap<&Impl::HandleMouseEvent>),
 
-    mozilla::jni::MakeNativeMethod<NativePanZoomController::HandleScrollEvent_t>(
-            mozilla::jni::NativeStub<NativePanZoomController::HandleScrollEvent_t, Impl>
+    mozilla::jni::MakeNativeMethod<PanZoomController::HandleScrollEvent_t>(
+            mozilla::jni::NativeStub<PanZoomController::HandleScrollEvent_t, Impl>
             ::template Wrap<&Impl::HandleScrollEvent>),
 
-    mozilla::jni::MakeNativeMethod<NativePanZoomController::SetIsLongpressEnabled_t>(
-            mozilla::jni::NativeStub<NativePanZoomController::SetIsLongpressEnabled_t, Impl>
+    mozilla::jni::MakeNativeMethod<PanZoomController::SetIsLongpressEnabled_t>(
+            mozilla::jni::NativeStub<PanZoomController::SetIsLongpressEnabled_t, Impl>
             ::template Wrap<&Impl::SetIsLongpressEnabled>)
 };
 

@@ -23,8 +23,7 @@ namespace layers {
 using namespace mozilla::gfx;
 
 WebRenderBridgeChild::WebRenderBridgeChild(const wr::PipelineId& aPipelineId)
-  : mReadLockSequenceNumber(0)
-  , mIsInTransaction(false)
+  : mIsInTransaction(false)
   , mIsInClearCachedResources(false)
   , mIdNamespace{0}
   , mResourceId(0)
@@ -84,7 +83,6 @@ WebRenderBridgeChild::DoDestroy()
 void
 WebRenderBridgeChild::AddWebRenderParentCommand(const WebRenderParentCommand& aCmd)
 {
-  MOZ_ASSERT(mIsInTransaction || mIsInClearCachedResources);
   mParentCommands.AppendElement(aCmd);
 }
 
@@ -102,23 +100,6 @@ WebRenderBridgeChild::BeginTransaction()
 
   UpdateFwdTransactionId();
   mIsInTransaction = true;
-  mReadLockSequenceNumber = 0;
-  mReadLocks.AppendElement();
-}
-
-void
-WebRenderBridgeChild::ClearReadLocks()
-{
-  for (nsTArray<ReadLockInit>& locks : mReadLocks) {
-    if (locks.Length()) {
-      if (!SendInitReadLocks(locks)) {
-        NS_WARNING("WARNING: sending read locks failed!");
-        return;
-      }
-    }
-  }
-
-  mReadLocks.Clear();
 }
 
 void
@@ -146,7 +127,7 @@ WebRenderBridgeChild::EndTransaction(const wr::LayoutSize& aContentSize,
                                      wr::BuiltDisplayList& aDL,
                                      wr::IpcResourceUpdateQueue& aResources,
                                      const gfx::IntSize& aSize,
-                                     uint64_t aTransactionId,
+                                     TransactionId aTransactionId,
                                      const WebRenderScrollData& aScrollData,
                                      const mozilla::TimeStamp& aTxnStartTime)
 {
@@ -180,7 +161,7 @@ WebRenderBridgeChild::EndTransaction(const wr::LayoutSize& aContentSize,
 
 void
 WebRenderBridgeChild::EndEmptyTransaction(const FocusTarget& aFocusTarget,
-                                          uint64_t aTransactionId,
+                                          TransactionId aTransactionId,
                                           const mozilla::TimeStamp& aTxnStartTime)
 {
   MOZ_ASSERT(!mDestroyed);
@@ -216,25 +197,23 @@ void
 WebRenderBridgeChild::AddPipelineIdForAsyncCompositable(const wr::PipelineId& aPipelineId,
                                                         const CompositableHandle& aHandle)
 {
-  MOZ_ASSERT(!mDestroyed);
-  SendAddPipelineIdForCompositable(aPipelineId, aHandle, true);
+  AddWebRenderParentCommand(
+    OpAddPipelineIdForCompositable(aPipelineId, aHandle, /* isAsync */ true));
 }
 
 void
 WebRenderBridgeChild::AddPipelineIdForCompositable(const wr::PipelineId& aPipelineId,
                                                    const CompositableHandle& aHandle)
 {
-  MOZ_ASSERT(!mDestroyed);
-  SendAddPipelineIdForCompositable(aPipelineId, aHandle, false);
+  AddWebRenderParentCommand(
+    OpAddPipelineIdForCompositable(aPipelineId, aHandle, /* isAsync */ false));
 }
 
 void
 WebRenderBridgeChild::RemovePipelineIdForCompositable(const wr::PipelineId& aPipelineId)
 {
-  if (!IPCOpen()) {
-    return;
-  }
-  SendRemovePipelineIdForCompositable(aPipelineId);
+  AddWebRenderParentCommand(
+    OpRemovePipelineIdForCompositable(aPipelineId));
 }
 
 wr::ExternalImageId
@@ -248,23 +227,17 @@ WebRenderBridgeChild::GetNextExternalImageId()
 wr::ExternalImageId
 WebRenderBridgeChild::AllocExternalImageIdForCompositable(CompositableClient* aCompositable)
 {
-  MOZ_ASSERT(!mDestroyed);
-  MOZ_ASSERT(aCompositable->IsConnected());
-
   wr::ExternalImageId imageId = GetNextExternalImageId();
-  SendAddExternalImageIdForCompositable(imageId, aCompositable->GetIPCHandle());
+  AddWebRenderParentCommand(
+    OpAddExternalImageIdForCompositable(imageId, aCompositable->GetIPCHandle()));
   return imageId;
 }
 
 void
 WebRenderBridgeChild::DeallocExternalImageId(const wr::ExternalImageId& aImageId)
 {
-  if (mDestroyed) {
-    // This can happen if the IPC connection was torn down, because, e.g.
-    // the GPU process died.
-    return;
-  }
-  SendRemoveExternalImageId(aImageId);
+  AddWebRenderParentCommand(
+    OpRemoveExternalImageId(aImageId));
 }
 
 struct FontFileDataSink
@@ -299,7 +272,7 @@ WriteFontDescriptor(const uint8_t* aData, uint32_t aLength, uint32_t aIndex,
 void
 WebRenderBridgeChild::PushGlyphs(wr::DisplayListBuilder& aBuilder, Range<const wr::GlyphInstance> aGlyphs,
                                  gfx::ScaledFont* aFont, const wr::ColorF& aColor, const StackingContextHelper& aSc,
-                                 const wr::LayerRect& aBounds, const wr::LayerRect& aClip, bool aBackfaceVisible,
+                                 const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip, bool aBackfaceVisible,
                                  const wr::GlyphOptions* aGlyphOptions)
 {
   MOZ_ASSERT(aFont);
@@ -382,15 +355,14 @@ WebRenderBridgeChild::GetFontKeyForUnscaledFont(gfx::UnscaledFont* aUnscaled)
 }
 
 void
-WebRenderBridgeChild::RemoveExpiredFontKeys()
+WebRenderBridgeChild::RemoveExpiredFontKeys(wr::IpcResourceUpdateQueue& aResourceUpdates)
 {
   uint32_t counter = gfx::ScaledFont::DeletionCounter();
-  wr::IpcResourceUpdateQueue resources(this);
   if (mFontInstanceKeysDeleted != counter) {
     mFontInstanceKeysDeleted = counter;
     for (auto iter = mFontInstanceKeys.Iter(); !iter.Done(); iter.Next()) {
       if (!iter.Key()) {
-        resources.DeleteFontInstance(iter.Data());
+        aResourceUpdates.DeleteFontInstance(iter.Data());
         iter.Remove();
       }
     }
@@ -400,12 +372,11 @@ WebRenderBridgeChild::RemoveExpiredFontKeys()
     mFontKeysDeleted = counter;
     for (auto iter = mFontKeys.Iter(); !iter.Done(); iter.Next()) {
       if (!iter.Key()) {
-        resources.DeleteFont(iter.Data());
+        aResourceUpdates.DeleteFont(iter.Data());
         iter.Remove();
       }
     }
   }
-  UpdateResources(resources);
 }
 
 CompositorBridgeChild*

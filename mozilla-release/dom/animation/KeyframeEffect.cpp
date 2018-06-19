@@ -6,13 +6,13 @@
 
 #include "mozilla/dom/KeyframeEffect.h"
 
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
   // For UnrestrictedDoubleOrKeyframeAnimationOptions
 #include "mozilla/dom/AnimationEffectTiming.h"
 #include "mozilla/dom/KeyframeEffectBinding.h"
 #include "nsDocument.h" // For nsDocument::IsWebAnimationsEnabled
 #include "nsDOMMutationObserver.h" // For nsAutoAnimationMutationBatch
-#include "nsStyleContext.h"
 
 namespace mozilla {
 namespace dom {
@@ -110,9 +110,9 @@ KeyframeEffect::SetTarget(const Nullable<ElementOrCSSPseudoElement>& aTarget)
 
   if (mTarget) {
     UpdateTargetRegistration();
-    RefPtr<nsStyleContext> styleContext = GetTargetStyleContext();
-    if (styleContext) {
-      UpdateProperties(styleContext);
+    RefPtr<ComputedStyle> computedStyle = GetTargetComputedStyle();
+    if (computedStyle) {
+      UpdateProperties(computedStyle);
     }
 
     MaybeUpdateFrameForCompositor();
@@ -163,9 +163,9 @@ KeyframeEffect::SetComposite(const CompositeOperation& aComposite)
   }
 
   if (mTarget) {
-    RefPtr<nsStyleContext> styleContext = GetTargetStyleContext();
-    if (styleContext) {
-      UpdateProperties(styleContext);
+    RefPtr<ComputedStyle> computedStyle = GetTargetComputedStyle();
+    if (computedStyle) {
+      UpdateProperties(computedStyle);
     }
   }
 }

@@ -78,7 +78,7 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 // QueryInterface implementation for nsBaseContentList
 NS_INTERFACE_TABLE_HEAD(nsBaseContentList)
   NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
-  NS_INTERFACE_TABLE(nsBaseContentList, nsINodeList, nsIDOMNodeList)
+  NS_INTERFACE_TABLE(nsBaseContentList, nsINodeList)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsBaseContentList)
 NS_INTERFACE_MAP_END
 
@@ -86,29 +86,6 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsBaseContentList)
 NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(nsBaseContentList,
                                                    LastRelease())
-
-
-NS_IMETHODIMP
-nsBaseContentList::GetLength(uint32_t* aLength)
-{
-  *aLength = mElements.Length();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsBaseContentList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsISupports *tmp = Item(aIndex);
-
-  if (!tmp) {
-    *aReturn = nullptr;
-
-    return NS_OK;
-  }
-
-  return CallQueryInterface(tmp, aReturn);
-}
 
 nsIContent*
 nsBaseContentList::Item(uint32_t aIndex)
@@ -148,6 +125,7 @@ nsSimpleContentList::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto
 NS_IMPL_CYCLE_COLLECTION_INHERITED(nsEmptyContentList, nsBaseContentList, mRoot)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsEmptyContentList)
+  NS_INTERFACE_MAP_ENTRY(nsIHTMLCollection)
 NS_INTERFACE_MAP_END_INHERITING(nsBaseContentList)
 
 
@@ -157,22 +135,7 @@ NS_IMPL_RELEASE_INHERITED(nsEmptyContentList, nsBaseContentList)
 JSObject*
 nsEmptyContentList::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return NodeListBinding::Wrap(cx, this, aGivenProto);
-}
-
-NS_IMETHODIMP
-nsEmptyContentList::GetLength(uint32_t* aLength)
-{
-  *aLength = 0;
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsEmptyContentList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  *aReturn = nullptr;
-  return NS_OK;
+  return HTMLCollectionBinding::Wrap(cx, this, aGivenProto);
 }
 
 mozilla::dom::Element*
@@ -583,7 +546,7 @@ nsContentList::GetSupportedNames(nsTArray<nsString>& aNames)
       }
     }
 
-    nsGenericHTMLElement* el = nsGenericHTMLElement::FromContent(content);
+    nsGenericHTMLElement* el = nsGenericHTMLElement::FromNode(content);
     if (el) {
       // XXXbz should we be checking for particular tags here?  How
       // stable is this part of the spec?
@@ -644,28 +607,6 @@ nsContentList::LastRelease()
     mRootNode = nullptr;
   }
   SetDirty();
-}
-
-NS_IMETHODIMP
-nsContentList::GetLength(uint32_t* aLength)
-{
-  *aLength = Length(true);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsContentList::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsINode* node = Item(aIndex);
-
-  if (node) {
-    return CallQueryInterface(node, aReturn);
-  }
-
-  *aReturn = nullptr;
-
-  return NS_OK;
 }
 
 Element*
@@ -1052,13 +993,9 @@ nsContentList::AssertInSync()
 
   // XXX This code will need to change if nsContentLists can ever match
   // elements that are outside of the document element.
-  nsIContent *root;
-  if (mRootNode->IsNodeOfType(nsINode::eDOCUMENT)) {
-    root = static_cast<nsIDocument*>(mRootNode)->GetRootElement();
-  }
-  else {
-    root = static_cast<nsIContent*>(mRootNode);
-  }
+  nsIContent* root = mRootNode->IsDocument()
+    ? mRootNode->AsDocument()->GetRootElement()
+    : mRootNode->AsContent();
 
   nsCOMPtr<nsIContentIterator> iter;
   if (mDeep) {

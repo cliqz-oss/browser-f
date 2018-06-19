@@ -6,17 +6,18 @@
 
 #include "nsISupports.idl"
 
-interface nsIDOMHTMLFormElement;
 interface mozIDOMWindow;
 interface nsIURI;
 interface nsIArray;
 
+webidl HTMLFormElement;
+
 [scriptable, uuid(867cb7e7-835d-408b-9788-d2834d284e03)]
 interface nsIFormSubmitObserver: nsISupports
 {
-  void notify(in nsIDOMHTMLFormElement formNode, in mozIDOMWindow window, in nsIURI actionURL, out boolean cancelSubmit);
+  void notify(in HTMLFormElement formNode, in mozIDOMWindow window, in nsIURI actionURL, out boolean cancelSubmit);
 
-  void notifyInvalidSubmit(in nsIDOMHTMLFormElement formNode,
+  void notifyInvalidSubmit(in HTMLFormElement formNode,
                            in nsIArray invalidElements);
 };
 

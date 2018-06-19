@@ -3,7 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-env mozilla/places-overlay */
+/* import-globals-from ../../../toolkit/components/places/PlacesUtils.jsm */
+/* import-globals-from ../../../toolkit/content/globalOverlay.js */
 
 /**
  * SelectBookmarkDialog controls the user interface for the "Use Bookmark for
@@ -58,8 +59,8 @@ var SelectBookmarkDialog = {
    */
   accept: function SBD_accept() {
     var bookmarks = document.getElementById("bookmarks");
-    NS_ASSERT(bookmarks.hasSelection,
-              "Should not be able to accept dialog if there is no selected URL!");
+    if (!bookmarks.hasSelection)
+      throw new Error("Should not be able to accept dialog if there is no selected URL!");
     var urls = [];
     var names = [];
     var selectedNode = bookmarks.selectedNode;

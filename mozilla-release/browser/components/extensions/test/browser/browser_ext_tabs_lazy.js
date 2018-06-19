@@ -14,6 +14,7 @@ const SESSION = {
 
 add_task(async function() {
   SessionStore.setBrowserState(JSON.stringify(SESSION));
+  await promiseWindowRestored(window);
   const tab = gBrowser.tabs[1];
 
   is(tab.getAttribute("pending"), "true", "The tab is pending restore");
@@ -39,5 +40,5 @@ add_task(async function() {
   is(tab.getAttribute("pending"), "true", "The tab is still pending restore");
   is(tab.linkedBrowser.isConnected, false, "The tab is still lazy");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

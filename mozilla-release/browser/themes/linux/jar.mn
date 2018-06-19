@@ -7,7 +7,6 @@ browser.jar:
 % override chrome://global/skin/icons/warning-16.png moz-icon://stock/gtk-dialog-warning?size=menu
 #include ../shared/jar.inc.mn
   skin/classic/browser/sanitizeDialog.css
-  skin/classic/browser/aboutSessionRestore-window-icon.png
 * skin/classic/browser/syncedtabs/sidebar.css     (syncedtabs/sidebar.css)
 * skin/classic/browser/browser.css
 * skin/classic/browser/compacttheme.css
@@ -22,7 +21,7 @@ browser.jar:
   skin/classic/browser/webRTC-indicator.css  (../shared/webRTC-indicator.css)
 * skin/classic/browser/controlcenter/panel.css        (controlcenter/panel.css)
 * skin/classic/browser/customizableui/panelUI.css (customizableui/panelUI.css)
-* skin/classic/browser/downloads/allDownloadsViewOverlay.css   (downloads/allDownloadsViewOverlay.css)
+* skin/classic/browser/downloads/allDownloadsView.css   (downloads/allDownloadsView.css)
 * skin/classic/browser/downloads/downloads.css        (downloads/downloads.css)
   skin/classic/browser/feeds/feedIcon.png             (feeds/feedIcon.png)
   skin/classic/browser/feeds/feedIcon16.png           (feeds/feedIcon16.png)
@@ -33,8 +32,7 @@ browser.jar:
   skin/classic/browser/places/allBookmarks.png        (places/allBookmarks.png)
   skin/classic/browser/places/bookmarksMenu.png       (places/bookmarksMenu.png)
   skin/classic/browser/places/bookmarksToolbar.png    (places/bookmarksToolbar.png)
-  skin/classic/browser/places/bookmarks-menu-arrow.png           (places/bookmarks-menu-arrow.png)
-* skin/classic/browser/places/editBookmarkOverlay.css (places/editBookmarkOverlay.css)
+* skin/classic/browser/places/editBookmark.css (places/editBookmark.css)
   skin/classic/browser/places/livemark-item.png       (places/livemark-item.png)
 * skin/classic/browser/places/places.css              (places/places.css)
   skin/classic/browser/places/organizer.css           (places/organizer.css)
@@ -50,11 +48,8 @@ browser.jar:
   skin/classic/browser/preferences/applications.css   (preferences/applications.css)
   skin/classic/browser/tabbrowser/tabDragIndicator.png      (tabbrowser/tabDragIndicator.png)
 
-  skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
-  skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
   skin/classic/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
 
-[extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}] chrome.jar:
 % override chrome://browser/skin/feeds/audioFeedIcon.png              chrome://browser/skin/feeds/feedIcon.png
 % override chrome://browser/skin/feeds/audioFeedIcon16.png            chrome://browser/skin/feeds/feedIcon16.png
 % override chrome://browser/skin/feeds/videoFeedIcon.png              chrome://browser/skin/feeds/feedIcon.png

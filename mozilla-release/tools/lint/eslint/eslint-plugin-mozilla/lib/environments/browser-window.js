@@ -17,25 +17,37 @@ var fs = require("fs");
 var path = require("path");
 var helpers = require("../helpers");
 var globals = require("../globals");
-var placesGlobals = require("./places-overlay").globals;
 
 const rootDir = helpers.rootDir;
+
+// When updating EXTRA_SCRIPTS or MAPPINGS, be sure to also update the
+// 'support-files' config in `tools/lint/eslint.yml`.
 
 // These are scripts not included in global-scripts.inc, but which are loaded
 // via overlays.
 const EXTRA_SCRIPTS = [
   "browser/base/content/nsContextMenu.js",
   "toolkit/content/contentAreaUtils.js",
-  "browser/components/places/content/editBookmarkOverlay.js",
+  "browser/components/places/content/editBookmark.js",
   "browser/components/downloads/content/downloads.js",
   "browser/components/downloads/content/indicator.js",
-  // This gets loaded into the same scopes as browser.js via browser.xul and
-  // placesOverlay.xul.
-  "toolkit/content/globalOverlay.js",
   // Via editMenuCommands.inc.xul
-  "toolkit/content/editMenuOverlay.js",
-  // Via baseMenuOverlay.xul
-  "browser/base/content/utilityOverlay.js"
+  "toolkit/content/editMenuOverlay.js"
+];
+
+const extraDefinitions = [
+  // Via Components.utils, defineModuleGetter, defineLazyModuleGetters or
+  // defineLazyScriptGetter (and map to
+  // single) variable.
+  {name: "XPCOMUtils", writable: false},
+  {name: "Task", writable: false},
+  {name: "PlacesUtils", writable: false},
+  {name: "PlacesUIUtils", writable: false},
+  {name: "PlacesTransactions", writable: false},
+  {name: "PlacesTreeView", writable: false},
+  {name: "PlacesInsertionPoint", writable: false},
+  {name: "PlacesController", writable: false},
+  {name: "PlacesControllerDragHelper", writable: false}
 ];
 
 // Some files in global-scripts.inc need mapping to specific locations.
@@ -103,13 +115,11 @@ function getScriptGlobals() {
     }
   }
 
-  return fileGlobals;
+  return fileGlobals.concat(extraDefinitions);
 }
 
 function mapGlobals(fileGlobals) {
-  // placesOverlay.xul is also included in the browser scope, so include
-  // those globals here.
-  let globalObjects = Object.assign({}, placesGlobals);
+  let globalObjects = {};
   for (let global of fileGlobals) {
     globalObjects[global.name] = global.writable;
   }

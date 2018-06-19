@@ -25,16 +25,8 @@
 #include "nsIFrame.h"
 #include "nsError.h"
 
-#include "nsCSSParser.h"
 #include "nsCSSPseudoElements.h"
-#ifdef MOZ_OLD_STYLE
-#include "mozilla/css/StyleRule.h"
-#include "mozilla/css/Declaration.h"
-#endif
 #include "nsComputedDOMStyle.h"
-#ifdef MOZ_OLD_STYLE
-#include "nsStyleSet.h"
-#endif
 
 #include "nsPrintfCString.h"
 
@@ -126,8 +118,7 @@
 #include "Units.h"
 #include "CanvasUtils.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
+#include "mozilla/ServoStyleSet.h"
 #include "mozilla/layers/CanvasClient.h"
 #include "mozilla/layers/WebRenderUserData.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
@@ -750,37 +741,12 @@ CanvasGradient::AddColorStop(float aOffset, const nsAString& aColorstr, ErrorRes
     return;
   }
 
-  nscolor color;
-  bool ok;
-
   nsIPresShell* shell = mContext ? mContext->GetPresShell() : nullptr;
-  ServoStyleSet* servoStyleSet = shell && shell->StyleSet()
-    ? shell->StyleSet()->GetAsServo()
-    : nullptr;
+  ServoStyleSet* styleSet = shell ? shell->StyleSet() : nullptr;
 
-  bool useServoParser =
-#ifdef MOZ_OLD_STYLE
-    servoStyleSet;
-#else
-    true;
-#endif
-
-  if (useServoParser) {
-    ok = ServoCSSParser::ComputeColor(servoStyleSet, NS_RGB(0, 0, 0), aColorstr,
-                                      &color);
-  } else {
-#ifdef MOZ_OLD_STYLE
-    nsCSSValue value;
-    nsCSSParser parser;
-
-    nsPresContext* presContext = shell ? shell->GetPresContext() : nullptr;
-
-    ok = parser.ParseColorString(aColorstr, nullptr, 0, value) &&
-         nsRuleNode::ComputeColor(value, presContext, nullptr, color);
-#else
-    MOZ_CRASH("old style system disabled");
-#endif
-  }
+  nscolor color;
+  bool ok = ServoCSSParser::ComputeColor(styleSet, NS_RGB(0, 0, 0),
+                                         aColorstr, &color);
 
   if (!ok) {
     aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
@@ -1119,7 +1085,10 @@ CanvasRenderingContext2D::CanvasRenderingContext2D(layers::LayersBackend aCompos
   , mCompositorBackend(aCompositorBackend)
   // these are the default values from the Canvas spec
   , mWidth(0), mHeight(0)
-  , mZero(false), mOpaque(false)
+  , mZero(false)
+  , mOpaqueAttrValue(false)
+  , mContextAttributesHasAlpha(true)
+  , mOpaque(false)
   , mResetLayer(true)
   , mIPC(false)
   , mIsSkiaGL(false)
@@ -1179,67 +1148,27 @@ CanvasRenderingContext2D::ParseColor(const nsAString& aString,
   nsIDocument* document = mCanvasElement ? mCanvasElement->OwnerDoc() : nullptr;
   css::Loader* loader = document ? document->CSSLoader() : nullptr;
 
-  bool useServoParser =
-#ifdef MOZ_OLD_STYLE
-    document && document->IsStyledByServo();
-#else
-    true;
-#endif
+  nsIPresShell* presShell = GetPresShell();
+  ServoStyleSet* set = presShell ? presShell->StyleSet() : nullptr;
 
-  if (useServoParser) {
-    nsIPresShell* presShell = GetPresShell();
-    ServoStyleSet* set = presShell ? presShell->StyleSet()->AsServo() : nullptr;
-
-    // First, try computing the color without handling currentcolor.
-    bool wasCurrentColor = false;
-    if (!ServoCSSParser::ComputeColor(set, NS_RGB(0, 0, 0), aString, aColor,
-                                      &wasCurrentColor, loader)) {
-      return false;
-    }
-
-    if (wasCurrentColor && mCanvasElement) {
-      // Otherwise, get the value of the color property, flushing style
-      // if necessary.
-      RefPtr<nsStyleContext> canvasStyle =
-        nsComputedDOMStyle::GetStyleContext(mCanvasElement, nullptr);
-      if (canvasStyle) {
-        *aColor = canvasStyle->StyleColor()->mColor;
-      }
-      // Beware that the presShell could be gone here.
-    }
-    return true;
-  }
-
-#ifdef MOZ_OLD_STYLE
-  // Pass the CSS Loader object to the parser, to allow parser error
-  // reports to include the outer window ID.
-  nsCSSParser parser(loader);
-  nsCSSValue value;
-  if (!parser.ParseColorString(aString, nullptr, 0, value)) {
+  // First, try computing the color without handling currentcolor.
+  bool wasCurrentColor = false;
+  if (!ServoCSSParser::ComputeColor(set, NS_RGB(0, 0, 0), aString, aColor,
+                                    &wasCurrentColor, loader)) {
     return false;
   }
 
-  if (value.IsNumericColorUnit()) {
-    // if we already have a color we can just use it directly
-    *aColor = value.GetColorValue();
-  } else {
-    // otherwise resolve it
-    nsCOMPtr<nsIPresShell> presShell = GetPresShell();
-    RefPtr<nsStyleContext> parentContext;
-    if (mCanvasElement && mCanvasElement->IsInComposedDoc()) {
-      // Inherit from the canvas element.
-      parentContext =
-        nsComputedDOMStyle::GetStyleContext(mCanvasElement, nullptr);
+  if (wasCurrentColor && mCanvasElement) {
+    // Otherwise, get the value of the color property, flushing style
+    // if necessary.
+    RefPtr<ComputedStyle> canvasStyle =
+      nsComputedDOMStyle::GetComputedStyle(mCanvasElement, nullptr);
+    if (canvasStyle) {
+      *aColor = canvasStyle->StyleColor()->mColor;
     }
-
-    Unused << nsRuleNode::ComputeColor(
-      value, presShell ? presShell->GetPresContext() : nullptr, parentContext,
-      *aColor);
+    // Beware that the presShell could be gone here.
   }
   return true;
-#else
-  MOZ_CRASH("old style system disabled");
-#endif
 }
 
 nsresult
@@ -1438,7 +1367,8 @@ CanvasRenderingContext2D::AllowOpenGLCanvas() const
   // HTMLCanvasElement::GetCompositorBackendType would return LAYERS_NONE
   // as well, so it wouldn't help much.
 
-  return (mCompositorBackend == LayersBackend::LAYERS_OPENGL) &&
+  return (mCompositorBackend == LayersBackend::LAYERS_OPENGL ||
+          mCompositorBackend == LayersBackend::LAYERS_WR) &&
     gfxPlatform::GetPlatform()->AllowOpenGLCanvas();
 }
 
@@ -1975,8 +1905,6 @@ CanvasRenderingContext2D::TryBasicTarget(RefPtr<gfx::DrawTarget>& aOutDT,
 NS_IMETHODIMP
 CanvasRenderingContext2D::SetDimensions(int32_t aWidth, int32_t aHeight)
 {
-  ClearTarget();
-
   // Zero sized surfaces can cause problems.
   mZero = false;
   if (aHeight == 0) {
@@ -1987,14 +1915,14 @@ CanvasRenderingContext2D::SetDimensions(int32_t aWidth, int32_t aHeight)
     aWidth = 1;
     mZero = true;
   }
-  mWidth = aWidth;
-  mHeight = aHeight;
+
+  ClearTarget(aWidth, aHeight);
 
   return NS_OK;
 }
 
 void
-CanvasRenderingContext2D::ClearTarget()
+CanvasRenderingContext2D::ClearTarget(int32_t aWidth, int32_t aHeight)
 {
   Reset();
 
@@ -2002,14 +1930,20 @@ CanvasRenderingContext2D::ClearTarget()
 
   SetInitialState();
 
+  // Update dimensions only if new (strictly positive) values were passed.
+  if (aWidth > 0 && aHeight > 0) {
+    mWidth = aWidth;
+    mHeight = aHeight;
+  }
+
   if (!mCanvasElement || !mCanvasElement->IsInComposedDoc()) {
     return;
   }
 
   // For vertical writing-mode, unless text-orientation is sideways,
   // we'll modify the initial value of textBaseline to 'middle'.
-  RefPtr<nsStyleContext> canvasStyle =
-    nsComputedDOMStyle::GetStyleContext(mCanvasElement, nullptr);
+  RefPtr<ComputedStyle> canvasStyle =
+    nsComputedDOMStyle::GetComputedStyle(mCanvasElement, nullptr);
   if (canvasStyle) {
     WritingMode wm(canvasStyle);
     if (wm.IsVertical() && !wm.IsSideways()) {
@@ -2068,12 +2002,19 @@ CanvasRenderingContext2D::InitializeWithDrawTarget(nsIDocShell* aShell,
 }
 
 void
-CanvasRenderingContext2D::SetIsOpaque(bool aIsOpaque)
+CanvasRenderingContext2D::SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue)
 {
-  if (aIsOpaque != mOpaque) {
-    mOpaque = aIsOpaque;
-    ClearTarget();
+  if (aOpaqueAttrValue != mOpaqueAttrValue) {
+    mOpaqueAttrValue = aOpaqueAttrValue;
+    UpdateIsOpaque();
   }
+}
+
+void
+CanvasRenderingContext2D::UpdateIsOpaque()
+{
+  mOpaque = !mContextAttributesHasAlpha || mOpaqueAttrValue;
+  ClearTarget();
 }
 
 NS_IMETHODIMP
@@ -2116,9 +2057,8 @@ CanvasRenderingContext2D::SetContextOptions(JSContext* aCx,
     }
   }
 
-  if (!attributes.mAlpha) {
-    SetIsOpaque(true);
-  }
+  mContextAttributesHasAlpha = attributes.mAlpha;
+  UpdateIsOpaque();
 
   return NS_OK;
 }
@@ -2239,7 +2179,7 @@ CanvasRenderingContext2D::Restore()
     }
   }
 
-  mStyleStack.RemoveElementAt(mStyleStack.Length() - 1);
+  mStyleStack.RemoveLastElement();
 
   mTarget->SetTransform(CurrentState().transform);
 }
@@ -2690,161 +2630,6 @@ CanvasRenderingContext2D::SetShadowColor(const nsAString& aShadowColor)
 // filters
 //
 
-#ifdef MOZ_OLD_STYLE
-static already_AddRefed<Declaration>
-CreateDeclaration(nsINode* aNode,
-  const nsCSSPropertyID aProp1, const nsAString& aValue1, bool* aChanged1,
-  const nsCSSPropertyID aProp2, const nsAString& aValue2, bool* aChanged2)
-{
-  nsIPrincipal* principal = aNode->NodePrincipal();
-  nsIDocument* document = aNode->OwnerDoc();
-
-  nsIURI* docURL = document->GetDocumentURI();
-  nsIURI* baseURL = document->GetDocBaseURI();
-
-  // Pass the CSS Loader object to the parser, to allow parser error reports
-  // to include the outer window ID.
-  nsCSSParser parser(document->CSSLoader());
-
-  RefPtr<Declaration> declaration =
-    parser.ParseStyleAttribute(EmptyString(), docURL, baseURL, principal);
-
-  if (aProp1 != eCSSProperty_UNKNOWN) {
-    parser.ParseProperty(aProp1, aValue1, docURL, baseURL, principal,
-                         declaration, aChanged1, false);
-  }
-
-  if (aProp2 != eCSSProperty_UNKNOWN) {
-    parser.ParseProperty(aProp2, aValue2, docURL, baseURL, principal,
-                         declaration, aChanged2, false);
-  }
-
-  declaration->SetImmutable();
-  return declaration.forget();
-}
-
-static already_AddRefed<Declaration>
-CreateFontDeclaration(const nsAString& aFont,
-                      nsINode* aNode,
-                      bool* aOutFontChanged)
-{
-  bool lineHeightChanged;
-  return CreateDeclaration(aNode,
-    eCSSProperty_font, aFont, aOutFontChanged,
-    eCSSProperty_line_height, NS_LITERAL_STRING("normal"), &lineHeightChanged);
-}
-
-static already_AddRefed<GeckoStyleContext>
-GetFontParentStyleContext(Element* aElement,
-                          nsIPresShell* aPresShell,
-                          ErrorResult& aError)
-{
-  if (aElement && aElement->IsInComposedDoc()) {
-    // Inherit from the canvas element.
-    RefPtr<nsStyleContext> result =
-      nsComputedDOMStyle::GetStyleContext(aElement, nullptr);
-    if (!result) {
-      aError.Throw(NS_ERROR_FAILURE);
-      return nullptr;
-    }
-    return GeckoStyleContext::TakeRef(result.forget());
-  }
-
-  // otherwise inherit from default (10px sans-serif)
-
-  bool changed;
-  RefPtr<css::Declaration> parentRule =
-    CreateFontDeclaration(NS_LITERAL_STRING("10px sans-serif"),
-                          aPresShell->GetDocument(), &changed);
-
-  nsTArray<nsCOMPtr<nsIStyleRule>> parentRules;
-  parentRules.AppendElement(parentRule);
-
-  nsStyleSet* styleSet = aPresShell->StyleSet()->GetAsGecko();
-  MOZ_RELEASE_ASSERT(styleSet);
-
-  RefPtr<GeckoStyleContext> result =
-    styleSet->ResolveStyleForRules(nullptr, parentRules);
-
-  if (!result) {
-    aError.Throw(NS_ERROR_FAILURE);
-    return nullptr;
-  }
-  return result.forget();
-}
-
-static bool
-PropertyIsInheritOrInitial(Declaration* aDeclaration, const nsCSSPropertyID aProperty)
-{
-  // We know the declaration is not !important, so we can use
-  // GetNormalBlock().
-  const nsCSSValue* filterVal =
-    aDeclaration->GetNormalBlock()->ValueFor(aProperty);
-  return (!filterVal || (filterVal->GetUnit() == eCSSUnit_Unset ||
-                         filterVal->GetUnit() == eCSSUnit_Inherit ||
-                         filterVal->GetUnit() == eCSSUnit_Initial));
-}
-
-static already_AddRefed<GeckoStyleContext>
-GetFontStyleContext(Element* aElement, const nsAString& aFont,
-                    nsIPresShell* aPresShell,
-                    nsAString& aOutUsedFont,
-                    ErrorResult& aError)
-{
-  bool fontParsedSuccessfully = false;
-  RefPtr<css::Declaration> decl =
-    CreateFontDeclaration(aFont, aPresShell->GetDocument(),
-                          &fontParsedSuccessfully);
-
-  if (!fontParsedSuccessfully) {
-    // We got a syntax error.  The spec says this value must be ignored.
-    return nullptr;
-  }
-
-  // In addition to unparseable values, the spec says we need to reject
-  // 'inherit' and 'initial'. The easiest way to check for this is to look
-  // at font-size-adjust, which the font shorthand resets to either 'none' or
-  // '-moz-system-font'.
-  if (PropertyIsInheritOrInitial(decl, eCSSProperty_font_size_adjust)) {
-    return nullptr;
-  }
-
-  // have to get a parent style context for inherit-like relative
-  // values (2em, bolder, etc.)
-  RefPtr<GeckoStyleContext> parentContext =
-    GetFontParentStyleContext(aElement, aPresShell, aError);
-
-  if (aError.Failed()) {
-    aError.Throw(NS_ERROR_FAILURE);
-    return nullptr;
-  }
-
-  MOZ_RELEASE_ASSERT(parentContext,
-                     "GFX: GetFontParentStyleContext should have returned an error if it couldn't get a parent context.");
-
-  MOZ_ASSERT(!aPresShell->IsDestroying(),
-             "GetFontParentStyleContext should have returned an error if the presshell is being destroyed.");
-
-  nsTArray<nsCOMPtr<nsIStyleRule>> rules;
-  rules.AppendElement(decl);
-  // add a rule to prevent text zoom from affecting the style
-  rules.AppendElement(new nsDisableTextZoomStyleRule);
-
-  nsStyleSet* styleSet = aPresShell->StyleSet()->GetAsGecko();
-  MOZ_RELEASE_ASSERT(styleSet);
-
-  RefPtr<GeckoStyleContext> sc =
-    styleSet->ResolveStyleForRules(parentContext, rules);
-
-  // The font getter is required to be reserialized based on what we
-  // parsed (including having line-height removed).  (Older drafts of
-  // the spec required font sizes be converted to pixels, but that no
-  // longer seems to be required.)
-  decl->GetPropertyValueByID(eCSSProperty_font, aOutUsedFont);
-
-  return sc.forget();
-}
-#endif
 
 static already_AddRefed<RawServoDeclarationBlock>
 CreateDeclarationForServo(nsCSSPropertyID aProperty,
@@ -2891,14 +2676,12 @@ CreateFontDeclarationForServo(const nsAString& aFont,
   return CreateDeclarationForServo(eCSSProperty_font, aFont, aDocument);
 }
 
-static already_AddRefed<ServoStyleContext>
+static already_AddRefed<ComputedStyle>
 GetFontStyleForServo(Element* aElement, const nsAString& aFont,
                      nsIPresShell* aPresShell,
                      nsAString& aOutUsedFont,
                      ErrorResult& aError)
 {
-  MOZ_ASSERT(aPresShell->StyleSet()->IsServo());
-
   RefPtr<RawServoDeclarationBlock> declarations =
     CreateFontDeclarationForServo(aFont, aPresShell->GetDocument());
   if (!declarations) {
@@ -2914,13 +2697,13 @@ GetFontStyleForServo(Element* aElement, const nsAString& aFont,
     return nullptr;
   }
 
-  ServoStyleSet* styleSet = aPresShell->StyleSet()->AsServo();
+  ServoStyleSet* styleSet = aPresShell->StyleSet();
 
-  RefPtr<nsStyleContext> parentStyle;
-  // have to get a parent style context for inherit-like relative
+  RefPtr<ComputedStyle> parentStyle;
+  // have to get a parent ComputedStyle for inherit-like relative
   // values (2em, bolder, etc.)
   if (aElement && aElement->IsInComposedDoc()) {
-    parentStyle = nsComputedDOMStyle::GetStyleContext(aElement, nullptr);
+    parentStyle = nsComputedDOMStyle::GetComputedStyle(aElement, nullptr);
     if (!parentStyle) {
       // The flush killed the shell, so we couldn't get any meaningful style
       // back.
@@ -2933,7 +2716,7 @@ GetFontStyleForServo(Element* aElement, const nsAString& aFont,
                                     aPresShell->GetDocument());
     MOZ_ASSERT(declarations);
 
-    parentStyle = aPresShell->StyleSet()->AsServo()->
+    parentStyle = aPresShell->StyleSet()->
       ResolveForDeclarations(nullptr, declarations);
   }
 
@@ -2943,8 +2726,8 @@ GetFontStyleForServo(Element* aElement, const nsAString& aFont,
              "We should have returned an error above if the presshell is "
              "being destroyed.");
 
-  RefPtr<ServoStyleContext> sc =
-    styleSet->ResolveForDeclarations(parentStyle->AsServo(), declarations);
+  RefPtr<ComputedStyle> sc =
+    styleSet->ResolveForDeclarations(parentStyle, declarations);
 
   // The font getter is required to be reserialized based on what we
   // parsed (including having line-height removed).  (Older drafts of
@@ -2954,52 +2737,6 @@ GetFontStyleForServo(Element* aElement, const nsAString& aFont,
   return sc.forget();
 }
 
-#ifdef MOZ_OLD_STYLE
-static already_AddRefed<Declaration>
-CreateFilterDeclaration(const nsAString& aFilter,
-                        nsINode* aNode,
-                        bool* aOutFilterChanged)
-{
-  bool dummy;
-  return CreateDeclaration(aNode,
-    eCSSProperty_filter, aFilter, aOutFilterChanged,
-    eCSSProperty_UNKNOWN, EmptyString(), &dummy);
-}
-
-static already_AddRefed<GeckoStyleContext>
-ResolveFilterStyle(const nsAString& aFilterString,
-                   nsIPresShell* aPresShell,
-                   GeckoStyleContext* aParentContext,
-                   ErrorResult& aError)
-{
-  nsIDocument* document = aPresShell->GetDocument();
-  bool filterChanged = false;
-  RefPtr<css::Declaration> decl =
-    CreateFilterDeclaration(aFilterString, document, &filterChanged);
-
-  if (!filterChanged) {
-    // Refuse to accept the filter, but do not throw an error.
-    return nullptr;
-  }
-
-  // In addition to unparseable values, the spec says we need to reject
-  // 'inherit' and 'initial'.
-  if (PropertyIsInheritOrInitial(decl, eCSSProperty_filter)) {
-    return nullptr;
-  }
-
-  nsTArray<nsCOMPtr<nsIStyleRule>> rules;
-  rules.AppendElement(decl);
-
-  nsStyleSet* styleSet = aPresShell->StyleSet()->GetAsGecko();
-  MOZ_RELEASE_ASSERT(styleSet);
-
-  RefPtr<GeckoStyleContext> sc =
-    styleSet->ResolveStyleForRules(aParentContext, rules);
-
-  return sc.forget();
-}
-#endif
 
 static already_AddRefed<RawServoDeclarationBlock>
 CreateFilterDeclarationForServo(const nsAString& aFilter,
@@ -3008,14 +2745,12 @@ CreateFilterDeclarationForServo(const nsAString& aFilter,
   return CreateDeclarationForServo(eCSSProperty_filter, aFilter, aDocument);
 }
 
-static already_AddRefed<ServoStyleContext>
+static already_AddRefed<ComputedStyle>
 ResolveFilterStyleForServo(const nsAString& aFilterString,
-                           const ServoStyleContext* aParentStyle,
+                           const ComputedStyle* aParentStyle,
                            nsIPresShell* aPresShell,
                            ErrorResult& aError)
 {
-  MOZ_ASSERT(aPresShell->StyleSet()->IsServo());
-
   RefPtr<RawServoDeclarationBlock> declarations =
     CreateFilterDeclarationForServo(aFilterString, aPresShell->GetDocument());
   if (!declarations) {
@@ -3030,8 +2765,8 @@ ResolveFilterStyleForServo(const nsAString& aFilterString,
     return nullptr;
   }
 
-  ServoStyleSet* styleSet = aPresShell->StyleSet()->AsServo();
-  RefPtr<ServoStyleContext> computedValues =
+  ServoStyleSet* styleSet = aPresShell->StyleSet();
+  RefPtr<ComputedStyle> computedValues =
     styleSet->ResolveForDeclarations(aParentStyle, declarations);
 
   return computedValues.forget();
@@ -3054,34 +2789,9 @@ CanvasRenderingContext2D::ParseFilter(const nsAString& aString,
     return false;
   }
 
-  nsString usedFont;
-  if (presShell->StyleSet()->IsGecko()) {
-#ifdef MOZ_OLD_STYLE
-    RefPtr<GeckoStyleContext> parentContext =
-      GetFontStyleContext(mCanvasElement, GetFont(),
-                          presShell, usedFont, aError);
-    if (!parentContext) {
-      aError.Throw(NS_ERROR_FAILURE);
-      return false;
-    }
-    RefPtr<GeckoStyleContext> sc =
-      ResolveFilterStyle(aString, presShell, parentContext, aError);
+  nsString usedFont; // unused
 
-    if (!sc) {
-      return false;
-    }
-    aFilterChain = sc->StyleEffects()->mFilters;
-    return true;
-#else
-    MOZ_CRASH("old style system disabled");
-    return false;
-#endif
-  }
-
-  // For stylo
-  MOZ_ASSERT(presShell->StyleSet()->IsServo());
-
-  RefPtr<ServoStyleContext> parentStyle =
+  RefPtr<ComputedStyle> parentStyle =
     GetFontStyleForServo(mCanvasElement,
                          GetFont(),
                          presShell,
@@ -3091,7 +2801,7 @@ CanvasRenderingContext2D::ParseFilter(const nsAString& aString,
     return false;
   }
 
-  RefPtr<ServoStyleContext> computedValues =
+  RefPtr<ComputedStyle> computedValues =
     ResolveFilterStyleForServo(aString,
                                parentStyle,
                                presShell,
@@ -3682,12 +3392,10 @@ bool CanvasRenderingContext2D::DrawCustomFocusRing(mozilla::dom::Element& aEleme
     return false;
   }
 
-  nsIFocusManager* fm = nsFocusManager::GetFocusManager();
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm) {
-    // check that the element i focused
-    nsCOMPtr<nsIDOMElement> focusedElement;
-    fm->GetFocusedElement(getter_AddRefs(focusedElement));
-    if (SameCOMIdentity(aElement.AsDOMNode(), focusedElement)) {
+    // check that the element is focused
+    if (&aElement == fm->GetFocusedElement()) {
       if (nsPIDOMWindowOuter* window = aElement.OwnerDoc()->GetWindow()) {
         return window->ShouldShowFocusRing();
       }
@@ -3989,7 +3697,7 @@ CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
 {
   /*
     * If font is defined with relative units (e.g. ems) and the parent
-    * style context changes in between calls, setting the font to the
+    * ComputedStyle changes in between calls, setting the font to the
     * same value as previous could result in a different computed value,
     * so we cannot have the optimization where we check if the new font
     * string is equal to the old one.
@@ -4007,19 +3715,9 @@ CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
     return false;
   }
 
-  RefPtr<nsStyleContext> sc;
   nsString usedFont;
-  if (presShell->StyleSet()->IsServo()) {
-    sc =
-      GetFontStyleForServo(mCanvasElement, aFont, presShell, usedFont, aError);
-  } else {
-#ifdef MOZ_OLD_STYLE
-    sc =
-      GetFontStyleContext(mCanvasElement, aFont, presShell, usedFont, aError);
-#else
-    MOZ_CRASH("old style system disabled");
-#endif
-  }
+  RefPtr<ComputedStyle> sc =
+    GetFontStyleForServo(mCanvasElement, aFont, presShell, usedFont, aError);
   if (!sc) {
     return false;
   }
@@ -4032,8 +3730,8 @@ CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
   // size (fontStyle->mSize).  See
   // https://bugzilla.mozilla.org/show_bug.cgi?id=698652.
   // FIXME: Nobody initializes mAllowZoom for servo?
-  MOZ_ASSERT(presShell->StyleSet()->IsServo() || !fontStyle->mAllowZoom,
-             "expected text zoom to be disabled on this nsStyleFont");
+  //MOZ_ASSERT(!fontStyle->mAllowZoom,
+  //           "expected text zoom to be disabled on this nsStyleFont");
   nsFont resizedFont(fontStyle->mFont);
   // Create a font group working in units of CSS pixels instead of the usual
   // device pixels, to avoid being affected by page zoom. nsFontMetrics will
@@ -4042,7 +3740,7 @@ CanvasRenderingContext2D::SetFontInternal(const nsAString& aFont,
   // pixels to CSS pixels, to adjust for the difference in expectations from
   // other nsFontMetrics clients.
   resizedFont.size =
-    (fontStyle->mSize * c->AppUnitsPerDevPixel()) / c->AppUnitsPerCSSPixel();
+    (fontStyle->mSize * c->AppUnitsPerDevPixel()) / nsPresContext::AppUnitsPerCSSPixel();
 
   nsFontMetrics::Params params;
   params.language = fontStyle->mLanguage;
@@ -4582,11 +4280,11 @@ CanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
   // for now, default to ltr if not in doc
   bool isRTL = false;
 
-  RefPtr<nsStyleContext> canvasStyle;
+  RefPtr<ComputedStyle> canvasStyle;
   if (mCanvasElement && mCanvasElement->IsInComposedDoc()) {
     // try to find the closest context
     canvasStyle =
-      nsComputedDOMStyle::GetStyleContext(mCanvasElement, nullptr);
+      nsComputedDOMStyle::GetComputedStyle(mCanvasElement, nullptr);
     if (!canvasStyle) {
       return NS_ERROR_FAILURE;
     }
@@ -4611,9 +4309,10 @@ CanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
   MOZ_ASSERT(!presShell->IsDestroying(),
              "GetCurrentFontStyle() should have returned null if the presshell is being destroyed");
 
+  nsPresContext* presContext = presShell->GetPresContext();
+
   // ensure user font set is up to date
-  currentFontStyle->
-    SetUserFontSet(presShell->GetPresContext()->GetUserFontSet());
+  currentFontStyle->SetUserFontSet(presContext->GetUserFontSet());
 
   if (currentFontStyle->GetStyle()->size == 0.0F) {
     if (aWidth) {
@@ -4628,10 +4327,11 @@ CanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
 
   CanvasBidiProcessor processor;
 
-  // If we don't have a style context, we can't set up vertical-text flags
+  // If we don't have a ComputedStyle, we can't set up vertical-text flags
   // (for now, at least; perhaps we need new Canvas API to control this).
   processor.mTextRunFlags = canvasStyle
     ? nsLayoutUtils::GetTextRunFlagsForStyle(canvasStyle,
+                                             presContext,
                                              canvasStyle->StyleFont(),
                                              canvasStyle->StyleText(),
                                              0)

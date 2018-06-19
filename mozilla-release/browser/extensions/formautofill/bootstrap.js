@@ -20,6 +20,12 @@ ChromeUtils.defineModuleGetter(this, "formAutofillParent",
 ChromeUtils.defineModuleGetter(this, "FormAutofillUtils",
                                "resource://formautofill/FormAutofillUtils.jsm");
 
+XPCOMUtils.defineLazyServiceGetter(this, "resProto",
+                                   "@mozilla.org/network/protocol;1?name=resource",
+                                   "nsISubstitutingProtocolHandler");
+
+const RESOURCE_HOST = "formautofill";
+
 function insertStyleSheet(domWindow, url) {
   let doc = domWindow.document;
   let styleSheetAttr = `href="${url}" type="text/css"`;
@@ -70,6 +76,12 @@ function isAvailable() {
 }
 
 function startup(data) {
+  // We have to do this before actually determining if we're enabled, since
+  // there are scripts inside of the core browser code that depend on the
+  // FormAutofill JSMs being registered.
+  resProto.setSubstitution(RESOURCE_HOST,
+                           Services.io.newURI("chrome/res/", null, data.resourceURI));
+
   if (!isAvailable()) {
     Services.prefs.clearUserPref("dom.forms.autocomplete.formautofill");
     // reset the sync related prefs incase the feature was previously available
@@ -121,6 +133,8 @@ function startup(data) {
 }
 
 function shutdown() {
+  resProto.setSubstitution(RESOURCE_HOST, null);
+
   Services.mm.removeMessageListener("FormAutoComplete:MaybeOpenPopup", onMaybeOpenPopup);
 
   let enumerator = Services.wm.getEnumerator("navigator:browser");

@@ -8,11 +8,13 @@
 #define mozilla_layers_Axis_h
 
 #include <sys/types.h>                  // for int32_t
+
 #include "APZUtils.h"
 #include "AxisPhysicsMSDModel.h"
-#include "Units.h"
+#include "mozilla/gfx/Types.h"          // for Side
 #include "mozilla/TimeStamp.h"          // for TimeDuration
 #include "nsTArray.h"                   // for nsTArray
+#include "Units.h"
 
 namespace mozilla {
 namespace layers {
@@ -152,19 +154,6 @@ public:
    * StartTouch() and the supplied position.
    */
   ParentLayerCoord PanDistance(ParentLayerCoord aPos) const;
-
-  /**
-   * Applies friction during a fling, or cancels the fling if the velocity is
-   * too low. Returns true if the fling should continue to another frame, or
-   * false if it should end.
-   * |aDelta| is the amount of time that has passed since the last time
-   * friction was applied.
-   * |aFriction| is the amount of friction to apply.
-   * |aThreshold| is the velocity below which the fling is cancelled.
-   */
-  bool FlingApplyFrictionOrCancel(const TimeDuration& aDelta,
-                                  float aFriction,
-                                  float aThreshold);
 
   /**
    * Returns true if the page has room to be scrolled along this axis.
@@ -313,6 +302,7 @@ public:
   virtual CSSToParentLayerScale GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const override;
   virtual ScreenPoint MakePoint(ScreenCoord aCoord) const override;
   virtual const char* Name() const override;
+  bool CanScrollTo(Side aSide) const;
 private:
   virtual OverscrollBehavior GetOverscrollBehavior() const override;
 };
@@ -326,6 +316,7 @@ public:
   virtual CSSToParentLayerScale GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const override;
   virtual ScreenPoint MakePoint(ScreenCoord aCoord) const override;
   virtual const char* Name() const override;
+  bool CanScrollTo(Side aSide) const;
 private:
   virtual OverscrollBehavior GetOverscrollBehavior() const override;
 };

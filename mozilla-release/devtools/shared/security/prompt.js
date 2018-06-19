@@ -9,8 +9,6 @@
 var { Ci } = require("chrome");
 var Services = require("Services");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
-loader.lazyRequireGetter(this, "DebuggerSocket",
-  "devtools/shared/security/socket", true);
 loader.lazyRequireGetter(this, "AuthenticationResult",
   "devtools/shared/security/auth", true);
 
@@ -64,7 +62,7 @@ Client.defaultSendOOB = ({ authResult, oob }) => {
     onOpenWindow(xulWindow) {
       let win = xulWindow.QueryInterface(Ci.nsIInterfaceRequestor)
                          .getInterface(Ci.nsIDOMWindow);
-      win.addEventListener("load", function () {
+      win.addEventListener("load", function() {
         if (win.document.documentElement.getAttribute("id") != "commonDialog") {
           return;
         }

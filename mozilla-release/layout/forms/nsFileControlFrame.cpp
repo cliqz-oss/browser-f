@@ -11,8 +11,13 @@
 #include "nsIDocument.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/DataTransfer.h"
 #include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/DOMStringList.h"
+#include "mozilla/dom/DataTransfer.h"
+#include "mozilla/dom/Directory.h"
+#include "mozilla/dom/DragEvent.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/FileList.h"
 #include "mozilla/dom/HTMLButtonElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/MutationEventBinding.h"
@@ -21,26 +26,21 @@
 #include "nsContentCreatorFunctions.h"
 #include "nsContentUtils.h"
 #include "mozilla/EventStates.h"
-#include "mozilla/dom/DOMStringList.h"
-#include "mozilla/dom/Directory.h"
-#include "mozilla/dom/FileList.h"
-#include "nsIDOMDragEvent.h"
-#include "nsIDOMFileList.h"
 #include "nsTextNode.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIFrame*
-NS_NewFileControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewFileControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsFileControlFrame(aContext);
+  return new (aPresShell) nsFileControlFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsFileControlFrame)
 
-nsFileControlFrame::nsFileControlFrame(nsStyleContext* aContext)
-  : nsBlockFrame(aContext, kClassID)
+nsFileControlFrame::nsFileControlFrame(ComputedStyle* aStyle)
+  : nsBlockFrame(aStyle, kClassID)
 {
   AddStateBits(NS_BLOCK_FLOAT_MGR);
 }
@@ -87,6 +87,8 @@ MakeAnonButton(nsIDocument* aDoc, const char* labelKey,
   button->SetIsNativeAnonymousRoot();
   button->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
                   NS_LITERAL_STRING("button"), false);
+  button->SetAttr(kNameSpaceID_None, nsGkAtoms::dir,
+                  NS_LITERAL_STRING("auto"), false);
 
   // Set the file picking button text depending on the current locale.
   nsAutoString buttonTxt;
@@ -108,7 +110,7 @@ MakeAnonButton(nsIDocument* aDoc, const char* labelKey,
   // Make sure access key and tab order for the element actually redirect to the
   // file picking button.
   RefPtr<HTMLButtonElement> buttonElement =
-    HTMLButtonElement::FromContentOrNull(button);
+    HTMLButtonElement::FromNodeOrNull(button);
 
   if (!aAccessKey.IsEmpty()) {
     buttonElement->SetAccessKey(aAccessKey, IgnoreErrors());
@@ -127,7 +129,7 @@ nsFileControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
   nsCOMPtr<nsIDocument> doc = mContent->GetComposedDoc();
 
-  RefPtr<HTMLInputElement> fileContent = HTMLInputElement::FromContentOrNull(mContent);
+  RefPtr<HTMLInputElement> fileContent = HTMLInputElement::FromNodeOrNull(mContent);
 
   // The access key is transferred to the "Choose files..." button only. In
   // effect that access key allows access to the control via that button, then
@@ -154,7 +156,7 @@ nsFileControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 
   // Update the displayed text to reflect the current element's value.
   nsAutoString value;
-  HTMLInputElement::FromContent(mContent)->GetDisplayFileName(value);
+  HTMLInputElement::FromNode(mContent)->GetDisplayFileName(value);
   UpdateDisplayedValue(value, false);
 
   if (!aElements.AppendElement(mTextContent)) {
@@ -234,30 +236,27 @@ AppendBlobImplAsDirectory(nsTArray<OwningFileOrDirectory>& aArray,
  * This is called when we receive a drop or a dragover.
  */
 NS_IMETHODIMP
-nsFileControlFrame::DnDListener::HandleEvent(nsIDOMEvent* aEvent)
+nsFileControlFrame::DnDListener::HandleEvent(Event* aEvent)
 {
   NS_ASSERTION(mFrame, "We should have been unregistered");
 
-  bool defaultPrevented = false;
-  aEvent->GetDefaultPrevented(&defaultPrevented);
-  if (defaultPrevented) {
+  if (aEvent->DefaultPrevented()) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDOMDragEvent> dragEvent = do_QueryInterface(aEvent);
+  DragEvent* dragEvent = aEvent->AsDragEvent();
   if (!dragEvent) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDOMDataTransfer> dataTransfer;
-  dragEvent->GetDataTransfer(getter_AddRefs(dataTransfer));
+  RefPtr<DataTransfer> dataTransfer = dragEvent->GetDataTransfer();
   if (!IsValidDropData(dataTransfer)) {
     return NS_OK;
   }
 
 
   RefPtr<HTMLInputElement> inputElement =
-    HTMLInputElement::FromContent(mFrame->GetContent());
+    HTMLInputElement::FromNode(mFrame->GetContent());
   bool supportsMultiple =
     inputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::multiple);
   if (!CanDropTheseFiles(dataTransfer, supportsMultiple)) {
@@ -278,8 +277,8 @@ nsFileControlFrame::DnDListener::HandleEvent(nsIDOMEvent* aEvent)
     aEvent->StopPropagation();
     aEvent->PreventDefault();
 
-    nsCOMPtr<nsIDOMFileList> fileList;
-    dataTransfer->GetFiles(getter_AddRefs(fileList));
+    RefPtr<FileList> fileList =
+      dataTransfer->GetFiles(*nsContentUtils::GetSystemPrincipal());
 
     RefPtr<BlobImpl> webkitDir;
     nsresult rv =
@@ -344,13 +343,13 @@ nsFileControlFrame::DnDListener::HandleEvent(nsIDOMEvent* aEvent)
 }
 
 nsresult
-nsFileControlFrame::DnDListener::GetBlobImplForWebkitDirectory(nsIDOMFileList* aFileList,
+nsFileControlFrame::DnDListener::GetBlobImplForWebkitDirectory(FileList* aFileList,
                                                                BlobImpl** aBlobImpl)
 {
   *aBlobImpl = nullptr;
 
   HTMLInputElement* inputElement =
-    HTMLInputElement::FromContent(mFrame->GetContent());
+    HTMLInputElement::FromNode(mFrame->GetContent());
   bool webkitDirPicker =
     DOMPrefs::WebkitBlinkDirectoryPickerEnabled() &&
     inputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory);
@@ -362,12 +361,11 @@ nsFileControlFrame::DnDListener::GetBlobImplForWebkitDirectory(nsIDOMFileList* a
     return NS_ERROR_FAILURE;
   }
 
-  FileList* files = static_cast<FileList*>(aFileList);
   // webkitdirectory doesn't care about the length of the file list but
   // only about the first item on it.
-  uint32_t len = files->Length();
+  uint32_t len = aFileList->Length();
   if (len) {
-    File* file = files->Item(0);
+    File* file = aFileList->Item(0);
     if (file) {
       BlobImpl* impl = file->Impl();
       if (impl && impl->IsDirectory()) {
@@ -382,27 +380,21 @@ nsFileControlFrame::DnDListener::GetBlobImplForWebkitDirectory(nsIDOMFileList* a
 }
 
 bool
-nsFileControlFrame::DnDListener::IsValidDropData(nsIDOMDataTransfer* aDOMDataTransfer)
+nsFileControlFrame::DnDListener::IsValidDropData(DataTransfer* aDataTransfer)
 {
-  nsCOMPtr<DataTransfer> dataTransfer = do_QueryInterface(aDOMDataTransfer);
-  NS_ENSURE_TRUE(dataTransfer, false);
-
   // We only support dropping files onto a file upload control
   nsTArray<nsString> types;
-  dataTransfer->GetTypes(types, CallerType::System);
+  aDataTransfer->GetTypes(types, CallerType::System);
 
   return types.Contains(NS_LITERAL_STRING("Files"));
 }
 
 bool
-nsFileControlFrame::DnDListener::CanDropTheseFiles(nsIDOMDataTransfer* aDOMDataTransfer,
+nsFileControlFrame::DnDListener::CanDropTheseFiles(DataTransfer* aDataTransfer,
                                                    bool aSupportsMultiple)
 {
-  nsCOMPtr<DataTransfer> dataTransfer = do_QueryInterface(aDOMDataTransfer);
-  NS_ENSURE_TRUE(dataTransfer, false);
-
-  nsCOMPtr<nsIDOMFileList> fileList;
-  dataTransfer->GetFiles(getter_AddRefs(fileList));
+  RefPtr<FileList> fileList =
+    aDataTransfer->GetFiles(*nsContentUtils::GetSystemPrincipal());
 
   RefPtr<BlobImpl> webkitDir;
   nsresult rv =
@@ -414,7 +406,7 @@ nsFileControlFrame::DnDListener::CanDropTheseFiles(nsIDOMDataTransfer* aDOMDataT
 
   uint32_t listLength = 0;
   if (fileList) {
-    fileList->GetLength(&listLength);
+    listLength = fileList->Length();
   }
   return listLength <= 1 || aSupportsMultiple;
 }

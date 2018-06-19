@@ -49,10 +49,6 @@
 #include "nsNodeUtils.h"
 #include "nsJSUtils.h"
 
-// Nasty hack.  Maybe we could move some of the classinfo utility methods
-// (e.g. WrapNative) over to nsContentUtils?
-#include "nsDOMClassInfo.h"
-
 #include "mozilla/DeferredFinalize.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -230,9 +226,8 @@ nsXBLBinding::BindAnonymousContent(nsIContent* aAnonParent,
     // To make XUL templates work (and other goodies that happen when
     // an element is added to a XUL document), we need to notify the
     // XUL document using its special API.
-    XULDocument* xuldoc = doc ? doc->AsXULDocument() : nullptr;
-    if (xuldoc) {
-      xuldoc->AddSubtreeToDocument(child);
+    if (doc && doc->IsXULDocument()) {
+      doc->AsXULDocument()->AddSubtreeToDocument(child);
     }
 #endif
   }
@@ -247,15 +242,15 @@ nsXBLBinding::UnbindAnonymousContent(nsIDocument* aDocument,
   // Hold a strong ref while doing this, just in case.
   nsCOMPtr<nsIContent> anonParent = aAnonParent;
 #ifdef MOZ_XUL
-  XULDocument* xuldoc = aDocument ? aDocument->AsXULDocument() : nullptr;
+  const bool isXULDocument = aDocument && aDocument->IsXULDocument();
 #endif
   for (nsIContent* child = aAnonParent->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
     child->UnbindFromTree(true, aNullParent);
 #ifdef MOZ_XUL
-    if (xuldoc) {
-      xuldoc->RemoveSubtreeFromDocument(child);
+    if (isXULDocument) {
+      aDocument->AsXULDocument()->RemoveSubtreeFromDocument(child);
     }
 #endif
   }
@@ -351,7 +346,10 @@ nsXBLBinding::GenerateAnonymousContent()
     if (mDefaultInsertionPoint && mInsertionPoints.IsEmpty()) {
       ExplicitChildIterator iter(mBoundElement);
       for (nsIContent* child = iter.GetNextChild(); child; child = iter.GetNextChild()) {
-        mDefaultInsertionPoint->AppendInsertedChild(child);
+        // Pass aNotify = false because we're just setting up the whole thing.
+        // Furthermore we do it from frame construction, so passing true here
+        // would reenter into it which is... not great.
+        mDefaultInsertionPoint->AppendInsertedChild(child, false);
       }
     } else {
       // It is odd to come into this code if mInsertionPoints is not empty, but
@@ -361,7 +359,9 @@ nsXBLBinding::GenerateAnonymousContent()
       for (nsIContent* child = iter.GetNextChild(); child; child = iter.GetNextChild()) {
         XBLChildrenElement* point = FindInsertionPointForInternal(child);
         if (point) {
-          point->AppendInsertedChild(child);
+          // Pass aNotify = false because we're just setting up the whole thing.
+          // (see the similar call above for more details).
+          point->AppendInsertedChild(child, false);
         } else {
           NodeInfo *ni = child->NodeInfo();
           if (ni->NamespaceID() != kNameSpaceID_XUL ||
@@ -825,18 +825,6 @@ nsXBLBinding::InheritsStyle() const
   return true;
 }
 
-#ifdef MOZ_OLD_STYLE
-void
-nsXBLBinding::WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc, void* aData)
-{
-  if (mNextBinding)
-    mNextBinding->WalkRules(aFunc, aData);
-
-  nsIStyleRuleProcessor *rules = mPrototypeBinding->GetRuleProcessor();
-  if (rules)
-    (*aFunc)(rules, aData);
-}
-#endif
 
 const RawServoAuthorStyles*
 nsXBLBinding::GetServoStyles() const
@@ -975,7 +963,17 @@ nsXBLBinding::DoInitJSClass(JSContext *cx,
   NS_ENSURE_TRUE(xblScope, NS_ERROR_UNEXPECTED);
 
   JS::Rooted<JSObject*> parent_proto(cx);
-  if (!JS_GetPrototype(cx, obj, &parent_proto)) {
+  {
+    JS::RootedObject wrapped(cx, obj);
+    JSAutoCompartment ac(cx, xblScope);
+    if (!JS_WrapObject(cx, &wrapped)) {
+      return NS_ERROR_FAILURE;
+    }
+    if (!JS_GetPrototype(cx, wrapped, &parent_proto)) {
+      return NS_ERROR_FAILURE;
+    }
+  }
+  if (!JS_WrapObject(cx, &parent_proto)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1115,7 +1113,6 @@ nsXBLBinding::LookupMember(JSContext* aCx, JS::Handle<jsid> aId,
   // add-on scopes here.
   JS::Rooted<JSObject*> boundScope(aCx,
     js::GetGlobalForObjectCrossCompartment(mBoundElement->GetWrapper()));
-  MOZ_RELEASE_ASSERT(!xpc::IsInAddonScope(boundScope));
   MOZ_RELEASE_ASSERT(!xpc::IsInContentXBLScope(boundScope));
   JS::Rooted<JSObject*> xblScope(aCx, xpc::GetXBLScope(aCx, boundScope));
   NS_ENSURE_TRUE(xblScope, false);

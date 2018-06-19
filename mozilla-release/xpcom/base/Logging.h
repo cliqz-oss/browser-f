@@ -76,7 +76,15 @@ public:
    */
   static LogModule* Get(const char* aName);
 
-  static void Init();
+  /**
+   * Logging processes -MOZ_LOG and -MOZ_LOG_FILE command line arguments
+   * to override or set modules and the file as if passed through MOZ_LOG
+   * and MOZ_LOG_FILE env vars.  It's fine to pass (0, nullptr) if args
+   * are not accessible in the caller's context, it will just do nothing.
+   * Note that the args take effect (are processed) only when this function
+   * is called the first time.
+   */
+  static void Init(int argc, char* argv[]);
 
   /**
    * Sets the log file to the given filename.
@@ -182,7 +190,6 @@ void log_print(const LogModule* aModule,
 } // namespace detail
 
 } // namespace mozilla
-
 
 // Helper macro used convert MOZ_LOG's third parameter, |_args|, from a
 // parenthesized form to a varargs form. For example:

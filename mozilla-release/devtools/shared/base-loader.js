@@ -54,7 +54,7 @@ function sourceURI(uri) {
 }
 
 function isntLoaderFrame(frame) {
-  return frame.fileName !== __URI__;
+  return frame.fileName !== __URI__ && !frame.fileName.endsWith("/browser-loader.js");
 }
 
 function parseURI(uri) {
@@ -63,7 +63,7 @@ function parseURI(uri) {
 
 function parseStack(stack) {
   let lines = String(stack).split("\n");
-  return lines.reduce(function (frames, line) {
+  return lines.reduce(function(frames, line) {
     if (line) {
       let atIndex = line.indexOf("@");
       let columnIndex = line.lastIndexOf(":");
@@ -84,7 +84,7 @@ function parseStack(stack) {
 }
 
 function serializeStack(frames) {
-  return frames.reduce(function (stack, frame) {
+  return frames.reduce(function(stack, frame) {
     return frame.name + "@" +
            frame.fileName + ":" +
            frame.lineNumber + ":" +
@@ -533,7 +533,7 @@ function Require(loader, requirer) {
   }
 
   // Expose the `resolve` function for this `Require` instance
-  require.resolve = _require.resolve = function (id) {
+  require.resolve = _require.resolve = function(id) {
     let { uri } = getRequirements(id);
     return uri;
   };
@@ -571,7 +571,7 @@ function unload(loader, reason) {
   // some modules may do cleanup in subsequent turns of event loop. Destroying
   // cache may cause module identity problems in such cases.
   let subject = { wrappedJSObject: loader.destructor };
-  Services.obs.notifyObservers(subject, "sdk:loader:destroy", reason);
+  Services.obs.notifyObservers(subject, "devtools:loader:destroy", reason);
 }
 
 // Function makes new loader that can be used to load CommonJS modules.
@@ -628,7 +628,7 @@ function Loader(options) {
     // allow them to be loaded lazily.
     Object.defineProperty(module, "exports", {
       enumerable: true,
-      get: function () {
+      get: function() {
         return builtinModuleExports[id];
       }
     });

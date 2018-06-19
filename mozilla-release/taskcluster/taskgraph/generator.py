@@ -20,7 +20,7 @@ from .util.verify import (
     verify_docs,
     verifications,
 )
-from .config import validate_graph_config
+from .config import load_graph_config
 
 logger = logging.getLogger(__name__)
 
@@ -85,19 +85,6 @@ class Kind(object):
             config = yaml.load(f)
 
         return cls(kind_name, path, config, graph_config)
-
-
-def load_graph_config(root_dir):
-    config_yml = os.path.join(root_dir, "config.yml")
-    if not os.path.exists(config_yml):
-        raise Exception("Couldn't find taskgraph configuration: {}".format(config_yml))
-
-    logger.debug("loading config from `{}`".format(config_yml))
-    with open(config_yml) as f:
-        config = yaml.load(f)
-
-    validate_graph_config(config)
-    return config
 
 
 class TaskGraphGenerator(object):
@@ -213,6 +200,15 @@ class TaskGraphGenerator(object):
         """
         return self._run_until('morphed_task_graph')
 
+    @property
+    def graph_config(self):
+        """
+        The configuration for this graph.
+
+        @type: TaskGraph
+        """
+        return self._run_until('graph_config')
+
     def _load_kinds(self, graph_config):
         for kind_name in os.listdir(self.root_dir):
             try:
@@ -223,6 +219,8 @@ class TaskGraphGenerator(object):
     def _run(self):
         logger.info("Loading graph configuration.")
         graph_config = load_graph_config(self.root_dir)
+
+        yield verifications('graph_config', graph_config)
 
         logger.info("Loading kinds")
         # put the kinds into a graph and sort topologically so that kinds are loaded

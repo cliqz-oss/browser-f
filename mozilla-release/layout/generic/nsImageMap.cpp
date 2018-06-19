@@ -9,7 +9,7 @@
 #include "nsImageMap.h"
 
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/Event.h" // for Event
 #include "mozilla/dom/HTMLAreaElement.h"
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/UniquePtr.h"
@@ -756,7 +756,7 @@ nsImageMap::SearchForAreas(nsIContent* aParent)
   for (nsIContent* child = aParent->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (auto* area = HTMLAreaElement::FromContent(child)) {
+    if (auto* area = HTMLAreaElement::FromNode(child)) {
       AddArea(area);
 
       // Continue to next child. This stops mConsiderWholeSubtree from
@@ -947,7 +947,7 @@ nsImageMap::ContentRemoved(nsIContent* aChild,
     return;
   }
 
-  auto* areaElement = HTMLAreaElement::FromContent(aChild);
+  auto* areaElement = HTMLAreaElement::FromNode(aChild);
   if (!areaElement) {
     return;
   }
@@ -977,7 +977,7 @@ nsImageMap::ParentChainChanged(nsIContent* aContent)
 }
 
 nsresult
-nsImageMap::HandleEvent(nsIDOMEvent* aEvent)
+nsImageMap::HandleEvent(Event* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
@@ -986,8 +986,7 @@ nsImageMap::HandleEvent(nsIDOMEvent* aEvent)
              "Unexpected event type");
 
   //Set which one of our areas changed focus
-  nsCOMPtr<nsIContent> targetContent = do_QueryInterface(
-    aEvent->InternalDOMEvent()->GetTarget());
+  nsCOMPtr<nsIContent> targetContent = do_QueryInterface(aEvent->GetTarget());
   if (!targetContent) {
     return NS_OK;
   }

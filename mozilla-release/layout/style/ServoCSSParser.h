@@ -73,42 +73,6 @@ public:
                            css::Loader* aLoader = nullptr);
 
   /**
-   * Parses a IntersectionObserver's initialization dictionary's rootMargin
-   * property.
-   *
-   * @param aValue The rootMargin value.
-   * @param aResult The nsCSSRect object to write the result into.
-   * @return Whether the value was successfully parsed.
-   */
-  static bool ParseIntersectionObserverRootMargin(const nsAString& aValue,
-                                                  nsCSSRect* aResult);
-
-  /**
-   * Parses a @counter-style name.
-   *
-   * @param aValue The name to parse.
-   * @return The name as an atom, lowercased if a built-in counter style name,
-   *   or nullptr if parsing failed or if the name was invalid (like "inherit").
-   */
-  static already_AddRefed<nsAtom> ParseCounterStyleName(const nsAString& aValue);
-
-  /**
-   * Parses a @counter-style descriptor.
-   *
-   * @param aDescriptor The descriptor to parse.
-   * @param aValue The value of the descriptor.
-   * @param aURLExtraData URL data for parsing. This would be used for
-   *   image value URL resolution.
-   * @param aResult The nsCSSValue to store the result in.
-   * @return Whether parsing succeeded.
-   */
-  static bool
-  ParseCounterStyleDescriptor(nsCSSCounterDesc aDescriptor,
-                              const nsAString& aValue,
-                              URLExtraData* aURLExtraData,
-                              nsCSSValue& aResult);
-
-  /**
    * Parse a string representing a CSS property value into a
    * RawServoDeclarationBlock.
    *
@@ -150,20 +114,6 @@ public:
   static bool ParseTransformIntoMatrix(const nsAString& aValue,
                                        bool& aContains3DTransform,
                                        RawGeckoGfxMatrix4x4& aResult);
-
-  /**
-   * Parse a font descriptor.
-   *
-   * @param aDescID The font descriptor id.
-   * @param aValue The specified value.
-   * @param aUrl The parser url extra data.
-   * @param aResult The parsed result. (output)
-   * @return Whether the value was successfully parsed.
-   */
-  static bool ParseFontDescriptor(nsCSSFontDesc aDescID,
-                                  const nsAString& aValue,
-                                  URLExtraData* aUrl,
-                                  nsCSSValue& aResult);
 
   /**
    * Parse a font shorthand for FontFaceSet matching, so we only care about

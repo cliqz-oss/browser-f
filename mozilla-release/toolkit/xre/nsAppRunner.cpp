@@ -9,6 +9,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/FilePreferences.h"
 #include "mozilla/ChaosMode.h"
 #include "mozilla/IOInterposer.h"
 #include "mozilla/Likely.h"
@@ -231,6 +232,8 @@
 #include "mozilla/CodeCoverageHandler.h"
 #endif
 
+#include "mozilla/mozalloc_oom.h"
+
 extern uint32_t gRestartMode;
 extern void InstallSignalHandlers(const char *ProgramName);
 
@@ -240,6 +243,8 @@ extern void InstallSignalHandlers(const char *ProgramName);
 
 int    gArgc;
 char **gArgv;
+
+#include "buildid.h"
 
 static const char gToolkitVersion[] = NS_STRINGIFY(GRE_MILESTONE);
 static const char gToolkitBuildID[] = NS_STRINGIFY(MOZ_BUILDID);
@@ -271,12 +276,6 @@ nsString gAbsoluteArgv0Path;
 #include <fontconfig/fontconfig.h>
 #endif
 #include "BinaryPath.h"
-#ifndef MOZ_BUILDID
-// See comment in Makefile.in why we want to avoid including buildid.h.
-// Still include it when MOZ_BUILDID is not set, which can happen with some
-// build backends.
-#include "buildid.h"
-#endif
 
 #ifdef MOZ_LINKER
 extern "C" MFBT_API bool IsSignalHandlingBroken();
@@ -1252,6 +1251,7 @@ nsXULAppInfo::SetEnabled(bool aEnabled)
 NS_IMETHODIMP
 nsXULAppInfo::GetServerURL(nsIURL** aServerURL)
 {
+  NS_ENSURE_ARG_POINTER(aServerURL);
   if (!CrashReporter::GetEnabled())
     return NS_ERROR_NOT_INITIALIZED;
 
@@ -1718,7 +1718,12 @@ DumpHelp()
          "                     --new-instance.\n"
          "  --new-instance     Open new instance, not a new window in running instance.\n"
          "  --UILocale <locale> Start with <locale> resources as UI Locale.\n"
-         "  --safe-mode        Disables extensions and themes for this session.\n", (const char*) gAppData->name);
+         "  --safe-mode        Disables extensions and themes for this session.\n"
+         "  -MOZ_LOG=<modules> Treated as MOZ_LOG=<modules> environment variable, overrides it.\n"
+         "  -MOZ_LOG_FILE=<file> Treated as MOZ_LOG_FILE=<file> environment variable, overrides it.\n"
+         "                     If MOZ_LOG_FILE is not specified as an argument or as an environment variable,\n"
+         "                     logging will be written to stdout.\n"
+         , (const char*)gAppData->name);
 
 #if defined(XP_WIN)
   printf("  --console          Start %s with a debugging console.\n", (const char*) gAppData->name);
@@ -3431,7 +3436,7 @@ XREMain::XRE_mainInit(bool* aExitFlag)
       NS_SUCCEEDED(
         CrashReporter::SetExceptionHandler(xreBinDirectory))) {
     nsCOMPtr<nsIFile> file;
-    rv = mDirProvider.GetUserAppDataDirectory(getter_AddRefs(file));
+    rv = nsXREDirProvider::GetUserAppDataDirectory(getter_AddRefs(file));
     if (NS_SUCCEEDED(rv)) {
       CrashReporter::SetUserAppDataDirectory(file);
     }
@@ -4661,6 +4666,10 @@ XREMain::XRE_mainRun()
 
   mDirProvider.DoStartup();
 
+  // As FilePreferences need the profile directory, we must initialize right here.
+  mozilla::FilePreferences::InitDirectoriesWhitelist();
+  mozilla::FilePreferences::InitPrefs();
+
   OverrideDefaultLocaleIfNeeded();
 
   nsCString userAgentLocale;
@@ -4842,7 +4851,7 @@ XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
 {
   ScopedLogging log;
 
-  mozilla::LogModule::Init();
+  mozilla::LogModule::Init(argc, argv);
 
 #ifdef MOZ_CODE_COVERAGE
   CodeCoverageHandler::Init();
@@ -5366,4 +5375,11 @@ XRE_EnableSameExecutableForContentProc() {
   if (!PR_GetEnv("MOZ_SEPARATE_CHILD_PROCESS")) {
     mozilla::ipc::GeckoChildProcessHost::EnableSameExecutableForContentProc();
   }
+}
+
+// Because rust doesn't handle weak symbols, this function wraps the weak
+// malloc_handle_oom for it.
+extern "C" void
+GeckoHandleOOM(size_t size) {
+  mozalloc_handle_oom(size);
 }

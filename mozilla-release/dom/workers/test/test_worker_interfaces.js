@@ -107,8 +107,6 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "Directory", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "DOMCursor", insecureContext: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DOMError", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DOMException", insecureContext: true},
@@ -190,6 +188,8 @@ var interfaceNamesInGlobalScope =
     {name: "PerformanceObserverEntryList", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PerformanceResourceTiming", insecureContext: true},
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "PerformanceServerTiming", insecureContext: false},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "ProgressEvent", insecureContext: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!

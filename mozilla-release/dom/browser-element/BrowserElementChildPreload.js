@@ -123,8 +123,8 @@ function BrowserElementChild() {
 
 BrowserElementChild.prototype = {
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   _init: function() {
     debug("Starting up.");
@@ -139,8 +139,10 @@ BrowserElementChild.prototype = {
 
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
     if (!webNavigation.sessionHistory) {
-      webNavigation.sessionHistory = Cc["@mozilla.org/browser/shistory;1"]
-                                       .createInstance(Ci.nsISHistory);
+      // XXX(nika): I don't think this code should ever be hit? We should run
+      // TabChild::Init before we run this code which will perform this setup
+      // for us.
+      docShell.initSessionHistory();
     }
 
     // This is necessary to get security web progress notifications.
@@ -875,13 +877,13 @@ BrowserElementChild.prototype = {
               hasVideo: hasVideo,
               documentURI: documentURI};
     }
-    if (elem instanceof Ci.nsIDOMHTMLInputElement &&
+    if (ChromeUtils.getClassName(elem) === "HTMLInputElement" &&
         elem.hasAttribute("name")) {
       // For input elements, we look for a parent <form> and if there is
       // one we return the form's method and action uri.
       let parent = elem.parentNode;
       while (parent) {
-        if (parent instanceof Ci.nsIDOMHTMLFormElement &&
+        if (ChromeUtils.getClassName(parent) === "HTMLFormElement" &&
             parent.hasAttribute("action")) {
           let actionHref = docShell.QueryInterface(Ci.nsIWebNavigation)
                                    .currentURI
@@ -919,7 +921,7 @@ BrowserElementChild.prototype = {
 
     try {
       if (history && history.count) {
-        history.PurgeHistory(history.count);
+        history.legacySHistory.PurgeHistory(history.count);
       }
     } catch(e) {}
 
@@ -1378,8 +1380,8 @@ BrowserElementChild.prototype = {
   // The docShell keeps a weak reference to the progress listener, so we need
   // to keep a strong ref to it ourselves.
   _progressListener: {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                           Ci.nsISupportsWeakReference]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                            Ci.nsISupportsWeakReference]),
     _seenLoadStart: false,
 
     onLocationChange: function(webProgress, request, location, flags) {

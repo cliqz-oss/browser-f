@@ -21,7 +21,7 @@
 #include "base/singleton.h"
 #include "mozilla/ipc/Faulty.h"
 #endif
-#if (!defined(RELEASE_OR_BETA) && !defined(FUZZING)) || defined(DEBUG)
+#if !defined(FUZZING) && (!defined(RELEASE_OR_BETA) || defined(DEBUG))
 #define MOZ_PICKLE_SENTINEL_CHECKING
 #endif
 class Pickle;
@@ -138,6 +138,14 @@ class Pickle {
   // generated IPDL code, as it is used to trigger the IPC_READ_LATENCY_MS
   // telemetry probe.
   void EndRead(PickleIterator& iter, uint32_t ipcMessageType = 0) const;
+
+  // Returns true if the given iterator has at least |len| bytes remaining it,
+  // across all segments. If there is not that much data available, returns
+  // false. Generally used when reading a (len, data) pair from the message,
+  // before allocating |len| bytes of space, to ensure that reading |len| bytes
+  // will succeed.
+  bool HasBytesAvailable(const PickleIterator* iter, uint32_t len) const;
+
 
   // Methods for adding to the payload of the Pickle.  These values are
   // appended to the end of the Pickle's payload.  When reading values from a

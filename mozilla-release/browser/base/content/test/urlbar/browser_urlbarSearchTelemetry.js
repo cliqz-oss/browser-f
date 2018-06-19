@@ -9,7 +9,8 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 add_task(async function prepare() {
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
 
@@ -45,7 +46,7 @@ add_task(async function heuristicResultMouse() {
     let loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     gURLBar.popup.richlistbox.getItemAtIndex(0).click();
     await loadPromise;
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });
 
@@ -60,7 +61,7 @@ add_task(async function heuristicResultKeyboard() {
     let loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     EventUtils.sendKey("return");
     await loadPromise;
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });
 
@@ -74,7 +75,7 @@ add_task(async function searchSuggestionMouse() {
     let loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     gURLBar.popup.richlistbox.getItemAtIndex(idx).click();
     await loadPromise;
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });
 
@@ -91,7 +92,7 @@ add_task(async function searchSuggestionKeyboard() {
     }
     EventUtils.sendKey("return");
     await loadPromise;
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });
 

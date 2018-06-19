@@ -1,4 +1,4 @@
-// |reftest| skip -- BigInt is not supported
+// |reftest| skip-if(!this.hasOwnProperty('BigInt')) -- BigInt is not enabled unconditionally
 // Copyright (C) 2017 Caio Lima. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,15 +15,18 @@ features: [BigInt]
 
 assert.throws(Test262Error, function() {
   BigInt({
-    valueOf: function() { throw new Test262Error(); }
+    valueOf: function() {
+      throw new Test262Error();
+    }
   });
 });
 
 assert.throws(Test262Error, function() {
   BigInt({
-    toString: function() { throw new Test262Error(); }
+    toString: function() {
+      throw new Test262Error();
+    }
   });
 });
-
 
 reportCompare(0, 0);

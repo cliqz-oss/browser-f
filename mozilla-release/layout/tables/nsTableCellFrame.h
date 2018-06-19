@@ -10,7 +10,7 @@
 #include "nsITableCellLayout.h"
 #include "nscore.h"
 #include "nsContainerFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsIPercentBSizeObserver.h"
 #include "nsTArray.h"
 #include "nsTableRowFrame.h"
@@ -35,11 +35,11 @@ class nsTableCellFrame : public nsContainerFrame,
   typedef mozilla::image::ImgDrawResult ImgDrawResult;
 
   friend nsTableCellFrame* NS_NewTableCellFrame(nsIPresShell*   aPresShell,
-                                                nsStyleContext* aContext,
+                                                ComputedStyle* aStyle,
                                                 nsTableFrame* aTableFrame);
 
-  nsTableCellFrame(nsStyleContext* aContext, nsTableFrame* aTableFrame)
-    : nsTableCellFrame(aContext, aTableFrame, kClassID) {}
+  nsTableCellFrame(ComputedStyle* aStyle, nsTableFrame* aTableFrame)
+    : nsTableCellFrame(aStyle, aTableFrame, kClassID) {}
 
 protected:
   typedef mozilla::WritingMode WritingMode;
@@ -76,8 +76,8 @@ public:
                                      nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
 #ifdef DEBUG
   // Our anonymous block frame is the content insertion frame so these
@@ -110,7 +110,8 @@ public:
 
   virtual nscoord GetMinISize(gfxContext *aRenderingContext) override;
   virtual nscoord GetPrefISize(gfxContext *aRenderingContext) override;
-  virtual IntrinsicISizeOffsetData IntrinsicISizeOffsets() override;
+  IntrinsicISizeOffsetData IntrinsicISizeOffsets(nscoord aPercentageBasis =
+                                                 NS_UNCONSTRAINEDSIZE) override;
 
   virtual void Reflow(nsPresContext*      aPresContext,
                       ReflowOutput& aDesiredSize,
@@ -240,8 +241,8 @@ public:
     return nsContainerFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
   }
 
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
   bool ShouldPaintBordersAndBackgrounds() const;
@@ -249,7 +250,7 @@ public:
   bool ShouldPaintBackground(nsDisplayListBuilder* aBuilder);
 
 protected:
-  nsTableCellFrame(nsStyleContext* aContext, nsTableFrame* aTableFrame,
+  nsTableCellFrame(ComputedStyle* aStyle, nsTableFrame* aTableFrame,
                    ClassID aID);
   ~nsTableCellFrame();
 
@@ -323,7 +324,7 @@ class nsBCTableCellFrame final : public nsTableCellFrame
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsBCTableCellFrame)
 
-  nsBCTableCellFrame(nsStyleContext* aContext, nsTableFrame* aTableFrame);
+  nsBCTableCellFrame(ComputedStyle* aStyle, nsTableFrame* aTableFrame);
 
   ~nsBCTableCellFrame();
 

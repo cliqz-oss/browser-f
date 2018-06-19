@@ -19,34 +19,25 @@ interface URL {
   //  stringifier attribute USVString href;
 
   // Bug 824857 should remove this.
-  [Throws]
   stringifier;
 
-  [Throws]
+  [SetterThrows]
   attribute USVString href;
-  [Throws]
+  [GetterThrows]
   readonly attribute USVString origin;
-  [Throws]
+  [SetterThrows]
            attribute USVString protocol;
-  [Throws]
            attribute USVString username;
-  [Throws]
            attribute USVString password;
-  [Throws]
            attribute USVString host;
-  [Throws]
            attribute USVString hostname;
-  [Throws]
            attribute USVString port;
-  [Throws]
            attribute USVString pathname;
-  [Throws]
            attribute USVString search;
-  [SameObject] readonly attribute URLSearchParams searchParams;
-  [Throws]
+  [SameObject]
+  readonly attribute URLSearchParams searchParams;
            attribute USVString hash;
 
-  [Throws]
   USVString toJSON();
 };
 
@@ -64,5 +55,5 @@ partial interface URL {
 // https://dvcs.w3.org/hg/html-media/raw-file/default/media-source/media-source.html
 partial interface URL {
   [Throws]
-  static DOMString? createObjectURL(MediaSource source);
+  static DOMString createObjectURL(MediaSource source);
 };

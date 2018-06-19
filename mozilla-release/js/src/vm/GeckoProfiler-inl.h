@@ -21,7 +21,7 @@ GeckoProfilerThread::updatePC(JSContext* cx, JSScript* script, jsbytecode* pc)
         return;
 
     uint32_t sp = pseudoStack_->stackPointer;
-    if (sp - 1 < PseudoStack::MaxEntries) {
+    if (sp - 1 < pseudoStack_->stackCapacity()) {
         MOZ_ASSERT(sp > 0);
         MOZ_ASSERT(pseudoStack_->entries[sp - 1].rawScript() == script);
         pseudoStack_->entries[sp - 1].setPC(pc);
@@ -42,7 +42,6 @@ class MOZ_RAII AutoSuppressProfilerSampling
   private:
     JSContext* cx_;
     bool previouslyEnabled_;
-    JSRuntime::AutoProhibitActiveContextChange prohibitContextChange_;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 

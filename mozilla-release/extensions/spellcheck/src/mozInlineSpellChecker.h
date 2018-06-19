@@ -24,6 +24,10 @@ namespace mozilla {
 class EditorSpellCheck;
 class TextEditor;
 enum class EditAction : int32_t;
+
+namespace dom {
+class Event;
+} // namespace dom
 } // namespace mozilla
 
 class mozInlineSpellStatus
@@ -58,8 +62,10 @@ public:
   int32_t mWordCount;
 
   // what happened?
-  enum Operation { eOpChange,       // for SpellCheckAfterChange except deleteSelection
-                   eOpChangeDelete, // for SpellCheckAfterChange deleteSelection
+  enum Operation { eOpChange,       // for SpellCheckAfterEditorChange except
+                                    // deleteSelection
+                   eOpChangeDelete, // for SpellCheckAfterEditorChange with
+                                    // deleteSelection
                    eOpNavigation,   // for HandleNavigationEvent
                    eOpSelection,    // re-check all misspelled words
                    eOpResume };     // for resuming a previously started check
@@ -190,26 +196,22 @@ public:
   // update the cached value whenever the list of available dictionaries changes
   static void UpdateCanEnableInlineSpellChecking();
 
-  nsresult OnBlur(nsIDOMEvent* aEvent);
-  nsresult OnMouseClick(nsIDOMEvent* aMouseEvent);
-  nsresult OnKeyPress(nsIDOMEvent* aKeyEvent);
+  nsresult OnBlur(mozilla::dom::Event* aEvent);
+  nsresult OnMouseClick(mozilla::dom::Event* aMouseEvent);
+  nsresult OnKeyPress(mozilla::dom::Event* aKeyEvent);
 
   mozInlineSpellChecker();
 
   // spell checks all of the words between two nodes
-  nsresult SpellCheckBetweenNodes(nsIDOMNode *aStartNode,
+  nsresult SpellCheckBetweenNodes(nsINode* aStartNode,
                                   int32_t aStartOffset,
-                                  nsIDOMNode *aEndNode,
+                                  nsINode* aEndNode,
                                   int32_t aEndOffset);
 
   // examines the dom node in question and returns true if the inline spell
   // checker should skip the node (i.e. the text is inside of a block quote
   // or an e-mail signature...)
   bool ShouldSpellCheckNode(mozilla::TextEditor* aTextEditor, nsINode *aNode);
-
-  nsresult SpellCheckAfterChange(nsIDOMNode* aCursorNode, int32_t aCursorOffset,
-                                 nsIDOMNode* aPreviousNode, int32_t aPreviousOffset,
-                                 nsISelection* aSpellCheckSelection);
 
   // spell check the text contained within aRange, potentially scheduling
   // another check in the future if the time threshold is reached
@@ -223,7 +225,7 @@ public:
                         bool* aDoneChecking);
 
   // helper routine to determine if a point is inside of the passed in selection.
-  nsresult IsPointInSelection(nsISelection *aSelection,
+  nsresult IsPointInSelection(mozilla::dom::Selection& aSelection,
                               nsIDOMNode *aNode,
                               int32_t aOffset,
                               nsIDOMRange **aRange);
@@ -232,11 +234,12 @@ public:
 
   nsresult RemoveRange(mozilla::dom::Selection *aSpellCheckSelection,
                        nsRange *aRange);
-  nsresult AddRange(nsISelection *aSpellCheckSelection, nsIDOMRange * aRange);
+  nsresult AddRange(mozilla::dom::Selection *aSpellCheckSelection,
+                    nsRange* aRange);
   bool     SpellCheckSelectionIsFull() { return mNumWordsInSpellSelection >= mMaxNumWordsInSpellSelection; }
 
-  nsresult MakeSpellCheckRange(nsIDOMNode* aStartNode, int32_t aStartOffset,
-                               nsIDOMNode* aEndNode, int32_t aEndOffset,
+  nsresult MakeSpellCheckRange(nsINode* aStartNode, int32_t aStartOffset,
+                               nsINode* aEndNode, int32_t aEndOffset,
                                nsRange** aRange);
 
   // DOM and editor event registration helper routines
@@ -253,6 +256,15 @@ public:
   // given nodes.
   void DidSplitNode(nsINode* aExistingRightNode, nsINode* aNewLeftNode);
   void DidJoinNodes(nsINode& aRightNode, nsINode& aLeftNode);
+
+  nsresult SpellCheckAfterEditorChange(mozilla::EditAction aAction,
+                                       mozilla::dom::Selection& aSelection,
+                                       nsINode* aPreviousSelectedNode,
+                                       uint32_t aPreviousSelectedOffset,
+                                       nsINode* aStartNode,
+                                       uint32_t aStartOffset,
+                                       nsINode* aEndNode,
+                                       uint32_t aEndOffset);
 
 protected:
   virtual ~mozInlineSpellChecker();

@@ -24,7 +24,6 @@ TASKBAR_AUTOHIDE_REG_PATH = {
 config = {
     "exes": {
         'python': sys.executable,
-        'mozinstall': ['build/venv/scripts/python', 'build/venv/scripts/mozinstall-script.py'],
         'hg': os.path.join(os.environ['PROGRAMFILES'], 'Mercurial', 'hg')
     },
     ###
@@ -34,10 +33,6 @@ config = {
     "virtualenv_modules": ['pypiwin32'],
     "virtualenv_path": 'venv',
 
-    "find_links": [
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
     "exe_suffix": EXE_SUFFIX,
     "run_file_names": {
         "mochitest": "runtests.py",
@@ -204,11 +199,6 @@ config = {
             "options": ["--suite=reftest",
                         "--setpref=layers.acceleration.disabled=true"],
             "tests": ["tests/reftest/tests/layout/reftests/reftest.list"]
-        },
-        "reftest-stylo": {
-            "options": ["--suite=reftest",
-                        "--setpref=reftest.compareStyloToGecko=true"],
-            "tests": ["tests/reftest/tests/layout/reftests/reftest.list"],
         },
     },
     "all_xpcshell_suites": {

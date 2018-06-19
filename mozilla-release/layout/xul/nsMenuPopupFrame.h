@@ -135,7 +135,7 @@ enum MenuPopupAnchorType {
 #define POPUPPOSITION_HFLIP(v) (v ^ 1)
 #define POPUPPOSITION_VFLIP(v) (v ^ 2)
 
-nsIFrame* NS_NewMenuPopupFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+nsIFrame* NS_NewMenuPopupFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle* aStyle);
 
 class nsView;
 class nsMenuPopupFrame;
@@ -173,7 +173,7 @@ public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsMenuPopupFrame)
 
-  explicit nsMenuPopupFrame(nsStyleContext* aContext);
+  explicit nsMenuPopupFrame(ComputedStyle* aStyle);
 
   // nsMenuParent interface
   virtual nsMenuFrame* GetCurrentMenuItem() override;
@@ -218,9 +218,6 @@ public:
   virtual bool IsMenuLocked() override { return mIsMenuLocked; }
 
   nsIWidget* GetWidget();
-
-  // The dismissal listener gets created and attached to the window.
-  void AttachedDismissalListener();
 
   // Overridden methods
   virtual void Init(nsIContent*       aContent,
@@ -328,11 +325,6 @@ public:
                                int32_t aXPos, int32_t aYPos,
                                bool aIsContextMenu);
 
-  void InitializePopupWithAnchorAlign(nsIContent* aAnchorContent,
-                                      nsAString& aAnchor,
-                                      nsAString& aAlign,
-                                      int32_t aXPos, int32_t aYPos);
-
   // indicate that the popup should be opened
   void ShowPopup(bool aIsContextMenu);
   // indicate that the popup should be hidden. The new state should either be
@@ -377,7 +369,6 @@ public:
 
   bool GetAutoPosition();
   void SetAutoPosition(bool aShouldAutoPosition);
-  void SetConsumeRollupEvent(uint32_t aConsumeMode);
 
   nsIScrollableFrame* GetScrollFrame(nsIFrame* aStart);
 
@@ -610,8 +601,6 @@ protected:
   int8_t mPopupAnchor;
   int8_t mPosition;
 
-  // One of PopupBoxObject::ROLLUP_DEFAULT/ROLLUP_CONSUME/ROLLUP_NO_CONSUME
-  uint8_t mConsumeRollupEvent;
   FlipType mFlip; // Whether to flip
 
   struct ReflowCallbackData {

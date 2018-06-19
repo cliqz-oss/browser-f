@@ -79,13 +79,9 @@ async function syncAndExpectNodeReassignment(server, firstNotification, between,
   Service.identity._tokenServerClient = mockTSC;
 
   // Make sure that it works!
-  await new Promise(res => {
-    let request = new RESTRequest(url);
-    request.get(function() {
-      Assert.equal(request.response.status, 401);
-      res();
-    });
-  });
+  let request = new RESTRequest(url);
+  let response = await request.get();
+  Assert.equal(response.status, 401);
 
   function onFirstSync() {
     _("First sync completed.");
@@ -127,14 +123,13 @@ add_task(async function test_momentary_401_engine() {
   let john   = server.user("johndoe");
 
   _("Enabling the Rotary engine.");
-  let { engine, tracker } = await registerRotaryEngine();
+  let { engine, syncID, tracker } = await registerRotaryEngine();
 
   // We need the server to be correctly set up prior to experimenting. Do this
   // through a sync.
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
-                rotary: {version: engine.version,
-                         syncID:  engine.syncID}};
+                rotary: {version: engine.version, syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");
@@ -360,7 +355,7 @@ add_task(async function test_loop_avoidance_engine() {
   let john   = server.user("johndoe");
 
   _("Enabling the Rotary engine.");
-  let { engine, tracker } = await registerRotaryEngine();
+  let { engine, syncID, tracker } = await registerRotaryEngine();
   let deferred = PromiseUtils.defer();
 
   let getTokenCount = 0;
@@ -376,8 +371,7 @@ add_task(async function test_loop_avoidance_engine() {
   // through a sync.
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
-                rotary: {version: engine.version,
-                         syncID:  engine.syncID}};
+                rotary: {version: engine.version, syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");

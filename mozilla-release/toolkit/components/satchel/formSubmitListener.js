@@ -10,7 +10,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 let satchelFormListener = {
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIFormSubmitObserver,
     Ci.nsIObserver,
     Ci.nsISupportsWeakReference,
@@ -101,7 +101,7 @@ let satchelFormListener = {
       let entries = [];
       for (let i = 0; i < form.elements.length; i++) {
         let input = form.elements[i];
-        if (!(input instanceof Ci.nsIDOMHTMLInputElement)) {
+        if (ChromeUtils.getClassName(input) !== "HTMLInputElement") {
           continue;
         }
 

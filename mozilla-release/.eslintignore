@@ -101,63 +101,48 @@ browser/extensions/mortar/**
 browser/extensions/formautofill/phonenumberutils/PhoneNumberMetaData.jsm
 
 # devtools/ exclusions
-devtools/client/canvasdebugger/**
-devtools/client/commandline/**
-devtools/client/debugger/**
-devtools/client/framework/**
-!devtools/client/framework/devtools.js
-!devtools/client/framework/devtools-browser.js
-!devtools/client/framework/selection.js
-!devtools/client/framework/target*
-!devtools/client/framework/toolbox*
 devtools/client/inspector/markup/test/doc_markup_events_*.html
 devtools/client/inspector/rules/test/doc_media_queries.html
 devtools/client/memory/test/chrome/*.html
 devtools/client/performance/components/test/test_jit_optimizations_01.html
-devtools/client/projecteditor/**
 devtools/client/responsive.html/test/browser/touch.html
-devtools/client/scratchpad/**
-devtools/client/shadereditor/**
-devtools/client/shared/*.jsm
-devtools/client/shared/components/reps/reps.js
-devtools/client/shared/components/reps/test/mochitest/*.html
-!devtools/client/shared/components/reps/test/mochitest/test_reps_infinity.html
-!devtools/client/shared/components/reps/test/mochitest/test_reps_nan.html
-!devtools/client/shared/components/reps/test/mochitest/test_reps_promise.html
-!devtools/client/shared/components/reps/test/mochitest/test_reps_symbol.html
-!devtools/client/shared/components/reps/test/mochitest/test_reps_text-node.html
 devtools/client/shared/components/test/mochitest/*.html
 !devtools/client/shared/components/test/mochitest/test_stack-trace.html
 devtools/client/shared/shim/test/test_*.html
 devtools/client/shared/test/browser_toolbar_webconsole_errors_count.html
-devtools/client/shared/webgl-utils.js
-devtools/client/shared/widgets/*.jsm
 devtools/client/storage/test/*.html
 !devtools/client/storage/test/storage-cookies.html
 !devtools/client/storage/test/storage-overflow.html
 !devtools/client/storage/test/storage-search.html
 !devtools/client/storage/test/storage-unsecured-iframe.html
 !devtools/client/storage/test/storage-unsecured-iframe-usercontextid.html
-devtools/client/webaudioeditor/**
-devtools/client/webconsole/net/**
-!devtools/client/webconsole/new-console-output/test/mochitest/**
-devtools/client/webconsole/test/**
-devtools/client/webconsole/webconsole-connection-proxy.js
-devtools/client/webconsole/webconsole.js
-devtools/client/webide/**
-!devtools/client/webide/components/webideCli.js
 devtools/server/tests/browser/storage-*.html
 !devtools/server/tests/browser/storage-unsecured-iframe.html
 devtools/server/tests/browser/stylesheets-nested-iframes.html
-devtools/server/tests/unit/xpcshell_debugging_script.js
 devtools/client/shared/webpack/shims/test/test_clipboard.html
 devtools/shared/qrcode/tests/mochitest/test_decode.html
 devtools/shared/tests/mochitest/*.html
 devtools/shared/webconsole/test/test_*.html
 
+# Soon to be removed
+devtools/client/commandline/**
+# Soon to be removed, the new/ directory is explicitly excluded below due to
+# also being an imported repository.
+devtools/client/debugger/**
+# Soon to be removed
+devtools/client/webconsole/old/net/**
+devtools/client/webconsole/old/test/**
+devtools/client/webconsole/old/webconsole.js
+
+# Ignore devtools imported repositories
+devtools/client/debugger/new/**
+devtools/client/shared/components/reps/**
+
 # Ignore devtools preferences files
 devtools/client/preferences/**
-devtools/shim/devtools-startup-prefs.js
+devtools/client/webide/preferences/**
+devtools/shared/preferences/**
+devtools/startup/preferences/devtools-startup.js
 
 # Ignore devtools third-party libs
 devtools/shared/jsbeautify/*
@@ -169,6 +154,8 @@ devtools/shared/sourcemap/*
 devtools/shared/sprintfjs/*
 devtools/shared/qrcode/decoder/*
 devtools/shared/qrcode/encoder/*
+devtools/client/inspector/markup/test/lib_*
+devtools/client/jsonview/lib/require.js
 devtools/client/shared/demangle.js
 devtools/client/shared/source-map/*
 devtools/client/shared/vendor/*
@@ -177,25 +164,21 @@ devtools/client/sourceeditor/codemirror/**/*.js
 devtools/client/sourceeditor/tern/*
 devtools/client/sourceeditor/test/cm_mode_ruby.js
 devtools/client/sourceeditor/test/codemirror/*
-devtools/client/inspector/markup/test/lib_*
-devtools/client/jsonview/lib/require.js
 devtools/server/actors/utils/automation-timeline.js
 
 # Ignore devtools files testing sourcemaps / code style
-devtools/client/debugger/test/mochitest/code_binary_search.js
-devtools/client/debugger/test/mochitest/code_binary_search_absolute.js
-devtools/client/debugger/test/mochitest/code_math.min.js
-devtools/client/debugger/test/mochitest/code_math_bogus_map.js
-devtools/client/debugger/test/mochitest/code_ugly*
-devtools/client/debugger/test/mochitest/code_worker-source-map.js
-devtools/client/framework/test/code_ugly*
+devtools/client/debugger/test/mochitest/code_*.js
+devtools/client/framework/test/code_*
 devtools/client/inspector/markup/test/events_bundle.js
 devtools/client/netmonitor/test/xhr_bundle.js
-devtools/client/webconsole/new-console-output/test/mochitest/code_bundle_nosource.js
-devtools/client/webconsole/new-console-output/test/mochitest/code_bundle_invalidmap.js
+devtools/client/webconsole/test/mochitest/code_bundle_nosource.js
+devtools/client/webconsole/test/mochitest/code_bundle_invalidmap.js
 devtools/server/tests/unit/babel_and_browserify_script_with_source_map.js
 devtools/server/tests/unit/setBreakpoint*
 devtools/server/tests/unit/sourcemapped.js
+
+# devtools specific format test file
+devtools/server/tests/unit/xpcshell_debugging_script.js
 
 # dom/ exclusions
 dom/abort/**
@@ -360,7 +343,6 @@ services/sync/services-sync.js
 servo/**
 
 # Remote protocol exclusions
-testing/marionette/test_*.js
 testing/marionette/atom.js
 testing/marionette/legacyaction.js
 testing/marionette/client
@@ -368,8 +350,11 @@ testing/marionette/doc
 testing/marionette/harness
 
 # other testing/ exclusions
-testing/mochitest/**
 # third party modules
+testing/mochitest/tests/Harness_sanity/**
+testing/mochitest/MochiKit/**
+testing/mochitest/tests/MochiKit-1.4.2/**
+testing/mochitest/tests/SimpleTest/**
 testing/modules/ajv-4.1.1.js
 testing/modules/sinon-2.3.2.js
 # octothorpe used for pref file comment causes parsing error
@@ -405,18 +390,15 @@ toolkit/components/workerloader/tests/moduleF-syntax-error.js
 toolkit/modules/tests/xpcshell/test_task.js
 
 # External code:
+browser/components/payments/res/vendor/*
 toolkit/components/microformats/test/**
 toolkit/components/microformats/microformat-shiv.js
 toolkit/components/reader/Readability.js
 toolkit/components/reader/JSDOMParser.js
-toolkit/components/payments/res/vendor/*
 
 # Uses preprocessing
 toolkit/content/widgets/wizard.xml
-toolkit/components/osfile/osfile.jsm
-toolkit/components/urlformatter/nsURLFormatter.js
 toolkit/modules/AppConstants.jsm
-toolkit/mozapps/downloads/nsHelperAppDlg.js
 toolkit/mozapps/update/tests/data/xpcshellConstantsPP.js
 
 # Third party

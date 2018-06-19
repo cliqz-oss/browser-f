@@ -18,10 +18,6 @@
 #include "nscore.h"
 
 class nsAtom;
-class nsIDOMCharacterData;
-class nsIDOMDocument;
-class nsIDOMElement;
-class nsIDOMNode;
 class nsIEditor;
 class nsINode;
 class nsRange;
@@ -190,12 +186,13 @@ protected:
                                         nsIEditor::EDirection aAction);
 
   /**
-   * TryToJoinBlocks() tries to join two block elements.  The right element is
-   * always joined to the left element.  If the elements are the same type and
-   * not nested within each other, JoinNodesSmart() is called (example, joining
-   * two list items together into one).  If the elements are not the same type,
-   * or one is a descendant of the other, we instead destroy the right block
-   * placing its children into leftblock.  DTD containment rules are followed
+   * TryToJoinBlocksWithTransaction() tries to join two block elements.  The
+   * right element is always joined to the left element.  If the elements are
+   * the same type and not nested within each other,
+   * JoinEditableNodesWithTransaction() is called (example, joining two list
+   * items together into one).  If the elements are not the same type, or one
+   * is a descendant of the other, we instead destroy the right block placing
+   * its children into leftblock.  DTD containment rules are followed
    * throughout.
    *
    * @return            Sets canceled to true if the operation should do
@@ -206,8 +203,8 @@ protected:
    *                    be joined or it's impossible to join them but it's not
    *                    unexpected case, this returns true with this.
    */
-  EditActionResult TryToJoinBlocks(nsIContent& aLeftNode,
-                                   nsIContent& aRightNode);
+  EditActionResult TryToJoinBlocksWithTransaction(nsIContent& aLeftNode,
+                                                  nsIContent& aRightNode);
 
   /**
    * MoveBlock() moves the content from aRightBlock starting from aRightOffset
@@ -277,8 +274,8 @@ protected:
   nsresult DidMakeBasicBlock(Selection* aSelection, RulesInfo* aInfo,
                              nsresult aResult);
   nsresult DidAbsolutePosition();
-  nsresult AlignInnerBlocks(nsINode& aNode, const nsAString* alignType);
-  nsresult AlignBlockContents(nsIDOMNode* aNode, const nsAString* alignType);
+  nsresult AlignInnerBlocks(nsINode& aNode, const nsAString& aAlignType);
+  nsresult AlignBlockContents(nsINode& aNode, const nsAString& aAlignType);
   nsresult AppendInnerFormatNodes(nsTArray<OwningNonNull<nsINode>>& aArray,
                                   nsINode* aNode);
   nsresult GetFormatString(nsINode* aNode, nsAString &outFormat);
@@ -322,9 +319,10 @@ protected:
    *                            If this is not nullptr, the <br> node may be
    *                            removed.
    */
+  template<typename PT, typename CT>
   nsresult SplitParagraph(Selection& aSelection,
                           Element& aParentDivOrP,
-                          const EditorRawDOMPoint& aStartOfRightNode,
+                          const EditorDOMPointBase<PT, CT>& aStartOfRightNode,
                           nsIContent* aBRNode);
 
   nsresult ReturnInListItem(Selection& aSelection, Element& aHeader,
@@ -370,8 +368,6 @@ protected:
   Element* CheckForInvisibleBR(Element& aBlock, BRLocation aWhere,
                                int32_t aOffset = 0);
   nsresult ExpandSelectionForDeletion(Selection& aSelection);
-  bool IsFirstNode(nsIDOMNode* aNode);
-  bool IsLastNode(nsIDOMNode* aNode);
   nsresult NormalizeSelection(Selection* aSelection);
   EditorDOMPoint GetPromotedPoint(RulesEndpoint aWhere, nsINode& aNode,
                                   int32_t aOffset, EditAction actionID);
@@ -443,7 +439,7 @@ protected:
   nsresult MakeBlockquote(nsTArray<OwningNonNull<nsINode>>& aNodeArray);
 
   /**
-   * MaybeSplitAncestorsForInsert() does nothing if container of
+   * MaybeSplitAncestorsForInsertWithTransaction() does nothing if container of
    * aStartOfDeepestRightNode can have an element whose tag name is aTag.
    * Otherwise, looks for an ancestor node which is or is in active editing
    * host and can have an element whose name is aTag.  If there is such
@@ -459,13 +455,35 @@ protected:
    * @return                            When succeeded, SplitPoint() returns
    *                                    the point to insert the element.
    */
-  SplitNodeResult MaybeSplitAncestorsForInsert(
+  template<typename PT, typename CT>
+  SplitNodeResult MaybeSplitAncestorsForInsertWithTransaction(
                     nsAtom& aTag,
-                    const EditorRawDOMPoint& aStartOfDeepestRightNode);
+                    const EditorDOMPointBase<PT, CT>& aStartOfDeepestRightNode);
 
-  nsresult AddTerminatingBR(nsIDOMNode *aBlock);
-  EditorDOMPoint JoinNodesSmart(nsIContent& aNodeLeft,
-                                nsIContent& aNodeRight);
+  /**
+   * JoinNearestEditableNodesWithTransaction() joins two editable nodes which
+   * are themselves or the nearest editable node of aLeftNode and aRightNode.
+   * XXX This method's behavior is odd.  For example, if user types Backspace
+   *     key at the second editable paragraph in this case:
+   *     <div contenteditable>
+   *       <p>first editable paragraph</p>
+   *       <p contenteditable="false">non-editable paragraph</p>
+   *       <p>second editable paragraph</p>
+   *     </div>
+   *     The first editable paragraph's content will be moved into the second
+   *     editable paragraph and the non-editable paragraph becomes the first
+   *     paragraph of the editor.  I don't think that it's expected behavior of
+   *     any users...
+   *
+   * @param aLeftNode   The node which will be removed.
+   * @param aRightNode  The node which will be inserted the content of
+   *                    aLeftNode.
+   * @return            The point at the first child of aRightNode.
+   */
+  EditorDOMPoint
+  JoinNearestEditableNodesWithTransaction(nsIContent& aLeftNode,
+                                          nsIContent& aRightNode);
+
   Element* GetTopEnclosingMailCite(nsINode& aNode);
   nsresult PopListItem(nsIContent& aListItem, bool* aOutOfList = nullptr);
   nsresult RemoveListStructure(Element& aList);
@@ -492,7 +510,8 @@ protected:
    *                    And also if aDirection is not nsIEditor::ePrevious,
    *                    the result may be the node pointed by aPoint.
    */
-  nsIContent* FindNearEditableNode(const EditorRawDOMPoint& aPoint,
+  template<typename PT, typename CT>
+  nsIContent* FindNearEditableNode(const EditorDOMPointBase<PT, CT>& aPoint,
                                    nsIEditor::EDirection aDirection);
   /**
    * Returns true if aNode1 or aNode2 or both is the descendant of some type of
@@ -501,7 +520,6 @@ protected:
    * The nodes count as being their own descendants for this purpose, so a
    * table element is its own nearest table element ancestor.
    */
-  bool InDifferentTableElements(nsIDOMNode* aNode1, nsIDOMNode* aNode2);
   bool InDifferentTableElements(nsINode* aNode1, nsINode* aNode2);
   nsresult RemoveEmptyNodes();
   nsresult SelectionEndpointInNode(nsINode* aNode, bool* aResult);

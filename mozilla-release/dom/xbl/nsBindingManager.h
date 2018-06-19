@@ -26,7 +26,6 @@
 struct ElementDependentRuleProcessorData;
 class nsIXPConnectWrappedJS;
 class nsAtom;
-class nsIDOMNodeList;
 class nsIDocument;
 class nsIURI;
 class nsXBLDocumentInfo;
@@ -90,7 +89,6 @@ public:
    * <children> tags directly as kids of <content>.  This will only end up
    * returning a non-null list for nodes which have a binding attached.
    */
-  nsresult GetAnonymousNodesFor(nsIContent* aContent, nsIDOMNodeList** aResult);
   nsINodeList* GetAnonymousNodesFor(nsIContent* aContent);
 
   nsresult ClearBinding(mozilla::dom::Element* aElement);
@@ -126,27 +124,10 @@ public:
 
   nsresult GetBindingImplementation(nsIContent* aContent, REFNSIID aIID, void** aResult);
 
-#ifdef MOZ_OLD_STYLE
-  // Style rule methods
-  nsresult WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc,
-                     ElementDependentRuleProcessorData* aData,
-                     bool* aCutOffInheritance);
-
-  void WalkAllRules(nsIStyleRuleProcessor::EnumFunc aFunc,
-                    ElementDependentRuleProcessorData* aData);
-#endif
-
-  // Do any processing that needs to happen as a result of a change in the
-  // characteristics of the medium, and return whether this rule processor's
-  // rules or the servo style set have changed (e.g., because of media
-  // queries).
-  bool MediumFeaturesChanged(nsPresContext* aPresContext,
-                             mozilla::MediaFeatureChangeReason);
 
   void AppendAllSheets(nsTArray<mozilla::StyleSheet*>& aArray);
 
-  void Traverse(nsIContent *aContent,
-                            nsCycleCollectionTraversalCallback &cb);
+  void Traverse(nsIContent *aContent, nsCycleCollectionTraversalCallback &cb);
 
   NS_DECL_CYCLE_COLLECTION_CLASS(nsBindingManager)
 

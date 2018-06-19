@@ -144,7 +144,6 @@ load 371681-1.xhtml
 load 372237-1.html
 load 372475-1.xhtml
 load 372550-1.html
-load 372576.xul
 load 373628-1.html
 load 373919.xhtml
 load 374193-1.xhtml
@@ -383,7 +382,7 @@ load 629035-1.html
 load 629908-1.html
 load 635329.html
 load 636229-1.html
-skip-if(webrender&&winWidget) == 640272.html 640272-ref.html # bug 1426199 for webrender
+== 640272.html 640272-ref.html
 load 645193.html
 load 645572-1.html
 load 650475.xhtml
@@ -489,13 +488,13 @@ load 1308793.svg
 load 1308848-1.html
 load 1308848-2.html
 load 1338772-1.html
-load 1343937.html
 asserts(0-1) load 1343606.html # bug 1343948
+load 1343937.html
 load 1352380.html
 load 1362423-1.html
 load 1381323.html
 load 1382534.html
-asserts-if(!stylo,1) load 1388625-1.html # bug 1389286
+load 1388625-1.html
 load 1390389.html
 load 1391736.html
 load 1395591-1.html
@@ -509,21 +508,29 @@ load 1400599-1.html
 load 1401739.html
 load 1401840.html
 load 1402476.html
-load 1404789-1.html
 load 1404789-2.html
 load 1406562.html
-load 1409088.html
 load 1409147.html
 load 1411138.html
 load 1419762.html
 load 1420533.html
-load 1425959.html
 load 1425893.html
+load 1425959.html
 load 1428353.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1429088.html
 load 1429961.html
-load 1435015.html
 load 1429962.html
+load 1435015.html
+load 1437155.html
 pref(dom.webcomponents.shadowdom.enabled,true) load 1439016.html
 load 1442506.html
-asserts-if(!stylo,1) load 1437155.html
+load 1443027-1.html
+load 1448841-1.html
+load 1452839.html
+load 1453196.html
+load 1453342.html
+load 1453702.html
+load 1461812.html
+load 1462412.html
+load 1463940.html
+pref(dom.webcomponents.shadowdom.enabled,true) HTTP load 1464641.html

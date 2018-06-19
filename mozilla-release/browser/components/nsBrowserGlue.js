@@ -64,11 +64,16 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
     win.resizeTo(width, height);
   }
 
+  // Set this before showing the window so that graphics code can use it to
+  // decide to skip some expensive code paths (eg. starting the GPU process).
+  docElt.setAttribute("windowtype", "navigator:blank");
+
   // The window becomes visible after OnStopRequest, so make this happen now.
   win.stop();
 
-  // Used in nsBrowserContentHandler.js to close unwanted blank windows.
-  docElt.setAttribute("windowtype", "navigator:blank");
+  let { TelemetryTimestamps } =
+    ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", {});
+  TelemetryTimestamps.add("blankWindowShown");
 })();
 
 Cu.importGlobalProperties(["fetch"]);
@@ -86,18 +91,19 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AsyncPrefs: "resource://gre/modules/AsyncPrefs.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
   AutoCompletePopup: "resource://gre/modules/AutoCompletePopup.jsm",
+  Blocklist: "resource://gre/modules/Blocklist.jsm",
   BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.jsm",
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.jsm",
   BrowserErrorReporter: "resource:///modules/BrowserErrorReporter.jsm",
   BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   ContentClick: "resource:///modules/ContentClick.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
   DateTimePickerHelper: "resource://gre/modules/DateTimePickerHelper.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   Feeds: "resource:///modules/Feeds.jsm",
-  FileUtils: "resource://gre/modules/FileUtils.jsm",
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
   FormValidationHandler: "resource:///modules/FormValidationHandler.jsm",
   FxAccounts: "resource://gre/modules/FxAccounts.jsm",
@@ -108,7 +114,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
   LoginManagerParent: "resource://gre/modules/LoginManagerParent.jsm",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
   NewTabUtils: "resource://gre/modules/NewTabUtils.jsm",
   Normandy: "resource://normandy/Normandy.jsm",
   ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
@@ -124,13 +129,12 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ProcessHangMonitor: "resource:///modules/ProcessHangMonitor.jsm",
   ReaderParent: "resource:///modules/ReaderParent.jsm",
-  RecentWindow: "resource:///modules/RecentWindow.jsm",
   RemotePrompt: "resource:///modules/RemotePrompt.jsm",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Sanitizer: "resource:///modules/Sanitizer.jsm",
+  SavantShieldStudy: "resource:///modules/SavantShieldStudy.jsm",
   SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
-  SimpleServiceDiscovery: "resource://gre/modules/SimpleServiceDiscovery.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   UIState: "resource://services-sync/UIState.jsm",
   UITour: "resource:///modules/UITour.jsm",
@@ -223,6 +227,9 @@ const listeners = {
     "RemoteLogins:autoCompleteLogins": ["LoginManagerParent"],
     "RemoteLogins:removeLogin": ["LoginManagerParent"],
     "RemoteLogins:insecureLoginFormPresent": ["LoginManagerParent"],
+    // For Savant Shield study, bug 1465685. Study on desktop only.
+    "LoginStats:LoginFillSuccessful": ["LoginManagerParent"],
+    "LoginStats:LoginEncountered": ["LoginManagerParent"],
     // PLEASE KEEP THIS LIST IN SYNC WITH THE MOBILE LISTENERS IN BrowserCLH.js
     "WCCR:registerProtocolHandler": ["Feeds"],
     "WCCR:registerContentHandler": ["Feeds"],
@@ -380,7 +387,7 @@ BrowserGlue.prototype = {
   },
 
   // nsIObserver implementation
-  observe: function BG_observe(subject, topic, data) {
+  observe: async function BG_observe(subject, topic, data) {
     switch (topic) {
       case "notifications-open-settings":
         this._openPreferences("privacy", { origin: "notifOpenSettings" });
@@ -442,6 +449,7 @@ BrowserGlue.prototype = {
           this._onDeviceDisconnected();
         }
         break;
+      case "fxaccounts:messages:display-tabs":
       case "weave:engine:clients:display-uris":
         this._onDisplaySyncURIs(subject);
         break;
@@ -503,7 +511,7 @@ BrowserGlue.prototype = {
       case "handle-xul-text-link":
         let linkHandled = subject.QueryInterface(Ci.nsISupportsPRBool);
         if (!linkHandled.data) {
-          let win = RecentWindow.getMostRecentBrowserWindow();
+          let win = BrowserWindowTracker.getTopWindow();
           if (win) {
             data = JSON.parse(data);
             let where = win.whereToOpenLink(data);
@@ -512,7 +520,7 @@ BrowserGlue.prototype = {
             if (where == "current") {
               where = "tab";
             }
-            win.openUILinkIn(data.href, where);
+            win.openTrustedLinkIn(data.href, where);
             linkHandled.data = true;
           }
         }
@@ -532,7 +540,7 @@ BrowserGlue.prototype = {
         } catch (ex) {
           Cu.reportError(ex);
         }
-        let win = RecentWindow.getMostRecentBrowserWindow();
+        let win = BrowserWindowTracker.getTopWindow();
         win.BrowserSearch.recordSearchInTelemetry(engine, "urlbar");
         break;
       case "browser-search-engine-modified":
@@ -551,14 +559,10 @@ BrowserGlue.prototype = {
         break;
       case "xpi-signature-changed":
         let disabledAddons = JSON.parse(data).disabled;
-        AddonManager.getAddonsByIDs(disabledAddons, (addons) => {
-          for (let addon of addons) {
-            if (addon.type != "experiment") {
-              this._notifyUnsignedAddonsDisabled();
-              break;
-            }
-          }
-        });
+        let addons = await AddonManager.getAddonsByIDs(disabledAddons);
+        if (addons.some(addon => addon)) {
+          this._notifyUnsignedAddonsDisabled();
+        }
         break;
       case "sync-ui-state:update":
         this._updateFxaBadges();
@@ -600,6 +604,7 @@ BrowserGlue.prototype = {
     os.addObserver(this, "fxaccounts:device_connected");
     os.addObserver(this, "fxaccounts:verify_login");
     os.addObserver(this, "fxaccounts:device_disconnected");
+    os.addObserver(this, "fxaccounts:messages:display-tabs");
     os.addObserver(this, "weave:engine:clients:display-uris");
     os.addObserver(this, "session-save");
     os.addObserver(this, "places-init-complete");
@@ -642,6 +647,7 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "fxaccounts:device_connected");
     os.removeObserver(this, "fxaccounts:verify_login");
     os.removeObserver(this, "fxaccounts:device_disconnected");
+    os.removeObserver(this, "fxaccounts:messages:display-tabs");
     os.removeObserver(this, "weave:engine:clients:display-uris");
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
@@ -704,6 +710,9 @@ BrowserGlue.prototype = {
       iconURL: "resource:///chrome/browser/content/browser/defaultthemes/light.icon.svg",
       textcolor: "black",
       accentcolor: "white",
+      popup: "#fff",
+      popup_text: "#0c0c0d",
+      popup_border: "#ccc",
       author: vendorShortName,
     });
     LightweightThemeManager.addBuiltInTheme({
@@ -713,6 +722,11 @@ BrowserGlue.prototype = {
       iconURL: "resource:///chrome/browser/content/browser/defaultthemes/dark.icon.svg",
       textcolor: "white",
       accentcolor: "black",
+      popup: "#4a4a4f",
+      popup_text: "rgb(249, 249, 250)",
+      popup_border: "#27272b",
+      toolbar_field_text: "rgb(249, 249, 250)",
+      toolbar_field_border: "rgba(249, 249, 250, 0.2)",
       author: vendorShortName,
     });
 
@@ -827,7 +841,7 @@ BrowserGlue.prototype = {
     if (profileAge < 90) // 3 months
       return;
 
-    let win = RecentWindow.getMostRecentBrowserWindow();
+    let win = BrowserWindowTracker.getTopWindow();
     if (!win)
       return;
 
@@ -839,7 +853,7 @@ BrowserGlue.prototype = {
         label:     win.gNavigatorBundle.getString("slowStartup.helpButton.label"),
         accessKey: win.gNavigatorBundle.getString("slowStartup.helpButton.accesskey"),
         callback() {
-          win.openUILinkIn("https://support.mozilla.org/kb/reset-firefox-easily-fix-most-problems", "tab");
+          win.openTrustedLinkIn("https://support.mozilla.org/kb/reset-firefox-easily-fix-most-problems", "tab");
         }
       },
       {
@@ -865,7 +879,7 @@ BrowserGlue.prototype = {
    *        why a profile reset is offered.
    */
   _resetProfileNotification(reason) {
-    let win = RecentWindow.getMostRecentBrowserWindow();
+    let win = BrowserWindowTracker.getTopWindow();
     if (!win)
       return;
 
@@ -902,7 +916,7 @@ BrowserGlue.prototype = {
   },
 
   _notifyUnsignedAddonsDisabled() {
-    let win = RecentWindow.getMostRecentBrowserWindow();
+    let win = BrowserWindowTracker.getTopWindow();
     if (!win)
       return;
 
@@ -933,7 +947,7 @@ BrowserGlue.prototype = {
   _onFirstWindowLoaded: function BG__onFirstWindowLoaded(aWindow) {
     // Set up listeners and, if PdfJs is enabled, register the PDF stream converter.
     // We delay all of the parent's initialization other than stream converter
-    // registration, because it requires file IO from nsHandlerService-json.js
+    // registration, because it requires file IO from HandlerService.js
     Services.ppmm.loadProcessScript("resource://pdf.js/pdfjschildbootstrap.js", true);
     if (PdfJs.enabled) {
       PdfJs.ensureRegistered();
@@ -1065,6 +1079,8 @@ BrowserGlue.prototype = {
     }
 
     Normandy.uninit();
+
+    SavantShieldStudy.uninit();
   },
 
   // All initial windows have opened.
@@ -1097,11 +1113,8 @@ BrowserGlue.prototype = {
 
     if (signingRequired) {
       let disabledAddons = AddonManager.getStartupChanges(AddonManager.STARTUP_CHANGE_DISABLED);
-      AddonManager.getAddonsByIDs(disabledAddons, (addons) => {
+      AddonManager.getAddonsByIDs(disabledAddons).then(addons => {
         for (let addon of addons) {
-          if (addon.type == "experiment")
-            continue;
-
           if (addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
             this._notifyUnsignedAddonsDisabled();
             break;
@@ -1222,7 +1235,11 @@ BrowserGlue.prototype = {
     });
 
     Services.tm.idleDispatchToMainThread(() => {
-      Services.blocklist.loadBlocklistAsync();
+      Blocklist.loadBlocklistAsync();
+    });
+
+    Services.tm.idleDispatchToMainThread(() => {
+      SavantShieldStudy.init();
     });
   },
 
@@ -1476,7 +1493,7 @@ BrowserGlue.prototype = {
       let key = getNotifyString({propName: "notificationButtonAccessKey",
                                  stringName: "pu.notifyButton.accesskey"});
 
-      let win = RecentWindow.getMostRecentBrowserWindow();
+      let win = BrowserWindowTracker.getTopWindow();
       let notifyBox = win.document.getElementById("high-priority-global-notificationbox");
 
       let buttons = [
@@ -1485,7 +1502,7 @@ BrowserGlue.prototype = {
                         accessKey: key,
                         popup:     null,
                         callback(aNotificationBar, aButton) {
-                          win.openUILinkIn(url, "tab");
+                          win.openTrustedLinkIn(url, "tab");
                         }
                       }
                     ];
@@ -1511,8 +1528,8 @@ BrowserGlue.prototype = {
       // This callback will be called twice but only once with this topic
       if (topic != "alertclickcallback")
         return;
-      let win = RecentWindow.getMostRecentBrowserWindow();
-      win.openUILinkIn(data, "tab");
+      let win = BrowserWindowTracker.getTopWindow();
+      win.openTrustedLinkIn(data, "tab");
     }
 
     try {
@@ -1613,7 +1630,10 @@ BrowserGlue.prototype = {
         lastBackupFile = await PlacesBackups.getMostRecentBackup();
         if (lastBackupFile) {
           // restore from JSON backup
-          await BookmarkJSONUtils.importFromFile(lastBackupFile, true);
+          await BookmarkJSONUtils.importFromFile(lastBackupFile, {
+            replace: true,
+            source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+          });
           importBookmarks = false;
         } else {
           // We have created a new database but we don't have any backup available
@@ -1662,7 +1682,10 @@ BrowserGlue.prototype = {
           // Import from bookmarks.html file.
           try {
             if (Services.policies.isAllowed("defaultBookmarks")) {
-              await BookmarkHTMLUtils.importFromURL(bookmarksUrl, true);
+              await BookmarkHTMLUtils.importFromURL(bookmarksUrl, {
+                replace: true,
+                source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+              });
             }
           } catch (e) {
             Cu.reportError("Bookmarks.html file could be corrupt. " + e);
@@ -1766,7 +1789,7 @@ BrowserGlue.prototype = {
     var url = Services.urlFormatter.formatURLPref("app.support.baseURL");
     url += helpTopic;
 
-    var win = RecentWindow.getMostRecentBrowserWindow();
+    var win = BrowserWindowTracker.getTopWindow();
 
     var buttons = [
                     {
@@ -1774,7 +1797,7 @@ BrowserGlue.prototype = {
                       accessKey,
                       popup:     null,
                       callback(aNotificationBar, aButton) {
-                        win.openUILinkIn(url, "tab");
+                        win.openTrustedLinkIn(url, "tab");
                       }
                     }
                   ];
@@ -1832,7 +1855,9 @@ BrowserGlue.prototype = {
 
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 66;
+    // Use an increasing number to keep track of the current migration state.
+    // Completely unrelated to the current Firefox release number.
+    const UI_VERSION = 68;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
 
     let currentUIVersion;
@@ -1857,190 +1882,6 @@ BrowserGlue.prototype = {
       return;
 
     let xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
-
-    if (currentUIVersion < 14) {
-      // DOM Storage doesn't specially handle about: pages anymore.
-      let path = OS.Path.join(OS.Constants.Path.profileDir,
-                              "chromeappsstore.sqlite");
-      OS.File.remove(path);
-    }
-
-    if (currentUIVersion < 16) {
-      xulStore.removeValue(BROWSER_DOCURL, "nav-bar", "collapsed");
-    }
-
-    // Insert the bookmarks-menu-button into the nav-bar if it isn't already
-    // there.
-    if (currentUIVersion < 17) {
-      let currentset = xulStore.getValue(BROWSER_DOCURL, "nav-bar", "currentset");
-      // Need to migrate only if toolbar is customized.
-      if (currentset) {
-        if (!currentset.includes("bookmarks-menu-button")) {
-          // The button isn't in the nav-bar, so let's look for an appropriate
-          // place to put it.
-          if (currentset.includes("bookmarks-menu-button-container")) {
-            currentset = currentset.replace(/(^|,)bookmarks-menu-button-container($|,)/,
-                                            "$1bookmarks-menu-button$2");
-          } else if (currentset.includes("downloads-button")) {
-            currentset = currentset.replace(/(^|,)downloads-button($|,)/,
-                                            "$1bookmarks-menu-button,downloads-button$2");
-          } else if (currentset.includes("home-button")) {
-            currentset = currentset.replace(/(^|,)home-button($|,)/,
-                                            "$1bookmarks-menu-button,home-button$2");
-          } else {
-            // Just append.
-            currentset = currentset.replace(/(^|,)window-controls($|,)/,
-                                            "$1bookmarks-menu-button,window-controls$2");
-          }
-          xulStore.setValue(BROWSER_DOCURL, "nav-bar", "currentset", currentset);
-        }
-      }
-    }
-
-    if (currentUIVersion < 19) {
-      let detector = null;
-      try {
-        detector = Services.prefs.getComplexValue("intl.charset.detector",
-                                                  Ci.nsIPrefLocalizedString).data;
-      } catch (ex) {}
-      if (!(detector == "" ||
-            detector == "ja_parallel_state_machine" ||
-            detector == "ruprob" ||
-            detector == "ukprob")) {
-        // If the encoding detector pref value is not reachable from the UI,
-        // reset to default (varies by localization).
-        Services.prefs.clearUserPref("intl.charset.detector");
-      }
-    }
-
-    if (currentUIVersion < 20) {
-      // Remove persisted collapsed state from TabsToolbar.
-      xulStore.removeValue(BROWSER_DOCURL, "TabsToolbar", "collapsed");
-    }
-
-    if (currentUIVersion < 24) {
-      // Reset homepage pref for users who have it set to start.mozilla.org
-      // or google.com/firefox.
-      const HOMEPAGE_PREF = "browser.startup.homepage";
-      if (Services.prefs.prefHasUserValue(HOMEPAGE_PREF)) {
-        const DEFAULT =
-          Services.prefs.getDefaultBranch(HOMEPAGE_PREF)
-                        .getComplexValue("", Ci.nsIPrefLocalizedString).data;
-        let value = Services.prefs.getStringPref(HOMEPAGE_PREF);
-        let updated =
-          value.replace(/https?:\/\/start\.mozilla\.org[^|]*/i, DEFAULT)
-               .replace(/https?:\/\/(www\.)?google\.[a-z.]+\/firefox[^|]*/i,
-                        DEFAULT);
-        if (updated != value) {
-          if (updated == DEFAULT) {
-            Services.prefs.clearUserPref(HOMEPAGE_PREF);
-          } else {
-            Services.prefs.setStringPref(HOMEPAGE_PREF, updated);
-          }
-        }
-      }
-    }
-
-    if (currentUIVersion < 25) {
-      // Make sure the doNotTrack value conforms to the conversion from
-      // three-state to two-state. (This reverts a setting of "please track me"
-      // to the default "don't say anything").
-      try {
-        if (Services.prefs.getBoolPref("privacy.donottrackheader.enabled") &&
-            Services.prefs.getIntPref("privacy.donottrackheader.value") != 1) {
-          Services.prefs.clearUserPref("privacy.donottrackheader.enabled");
-          Services.prefs.clearUserPref("privacy.donottrackheader.value");
-        }
-      } catch (ex) {}
-    }
-
-    if (currentUIVersion < 26) {
-      // Refactor urlbar suggestion preferences to make it extendable and
-      // allow new suggestion types (e.g: search suggestions).
-      let types = ["history", "bookmark", "openpage"];
-      let defaultBehavior = Services.prefs.getIntPref("browser.urlbar.default.behavior", 0);
-      try {
-        let autocompleteEnabled = Services.prefs.getBoolPref("browser.urlbar.autocomplete.enabled");
-        if (!autocompleteEnabled) {
-          defaultBehavior = -1;
-        }
-      } catch (ex) {}
-
-      // If the default behavior is:
-      //    -1  - all new "...suggest.*" preferences will be false
-      //     0  - all new "...suggest.*" preferences will use the default values
-      //   > 0  - all new "...suggest.*" preferences will be inherited
-      for (let type of types) {
-        let prefValue = defaultBehavior == 0;
-        if (defaultBehavior > 0) {
-          prefValue = !!(defaultBehavior & Ci.mozIPlacesAutoComplete["BEHAVIOR_" + type.toUpperCase()]);
-        }
-        Services.prefs.setBoolPref("browser.urlbar.suggest." + type, prefValue);
-      }
-
-      // Typed behavior will be used only for results from history.
-      if (defaultBehavior != -1 &&
-          !!(defaultBehavior & Ci.mozIPlacesAutoComplete.BEHAVIOR_TYPED)) {
-        Services.prefs.setBoolPref("browser.urlbar.suggest.history.onlyTyped", true);
-      }
-    }
-
-    if (currentUIVersion < 27) {
-      // Fix up document color use:
-      const kOldColorPref = "browser.display.use_document_colors";
-      if (Services.prefs.prefHasUserValue(kOldColorPref) &&
-          !Services.prefs.getBoolPref(kOldColorPref)) {
-        Services.prefs.setIntPref("browser.display.document_color_use", 2);
-      }
-    }
-
-    if (currentUIVersion < 29) {
-      let group = null;
-      try {
-        group = Services.prefs.getComplexValue("font.language.group",
-                                               Ci.nsIPrefLocalizedString);
-      } catch (ex) {}
-      if (group &&
-          ["tr", "x-baltic", "x-central-euro"].some(g => g == group.data)) {
-        // Latin groups were consolidated.
-        group.data = "x-western";
-        Services.prefs.setComplexValue("font.language.group",
-                                       Ci.nsIPrefLocalizedString, group);
-      }
-    }
-
-    if (currentUIVersion < 30) {
-      // Convert old devedition theme pref to lightweight theme storage
-      let lightweightThemeSelected = false;
-      let selectedThemeID = null;
-      try {
-        lightweightThemeSelected = Services.prefs.prefHasUserValue("lightweightThemes.selectedThemeID");
-        selectedThemeID = Services.prefs.getCharPref("lightweightThemes.selectedThemeID");
-      } catch (e) {}
-
-      let defaultThemeSelected = false;
-      try {
-         defaultThemeSelected = Services.prefs.getCharPref("general.skins.selectedSkin") == "classic/1.0";
-      } catch (e) {}
-
-      // If we are on the devedition channel, the devedition theme is on by
-      // default.  But we need to handle the case where they didn't want it
-      // applied, and unapply the theme.
-      let userChoseToNotUseDeveditionTheme =
-        !defaultThemeSelected ||
-        (lightweightThemeSelected && selectedThemeID != "firefox-devedition@mozilla.org");
-
-      if (userChoseToNotUseDeveditionTheme && selectedThemeID == "firefox-devedition@mozilla.org") {
-        Services.prefs.setCharPref("lightweightThemes.selectedThemeID", "");
-      }
-
-      Services.prefs.clearUserPref("browser.devedition.showCustomizeButton");
-    }
-
-    if (currentUIVersion < 31) {
-      xulStore.removeValue(BROWSER_DOCURL, "bookmarks-menu-button", "class");
-      xulStore.removeValue(BROWSER_DOCURL, "home-button", "class");
-    }
 
     if (currentUIVersion < 36) {
       xulStore.removeValue("chrome://passwordmgr/content/passwordManager.xul",
@@ -2365,6 +2206,19 @@ BrowserGlue.prototype = {
       this._migrateMatchBucketsPrefForUI66();
     }
 
+    if (currentUIVersion < 67) {
+      // Migrate devtools firebug theme users to light theme (bug 1378108):
+      if (Services.prefs.getCharPref("devtools.theme") == "firebug") {
+        Services.prefs.setCharPref("devtools.theme", "light");
+      }
+    }
+
+    if (currentUIVersion < 68) {
+      // Remove blocklists legacy storage, now relying on IndexedDB.
+      OS.File.remove(OS.Path.join(OS.Constants.Path.profileDir,
+                                  "kinto.sqlite"), {ignoreAbsent: true});
+    }
+
     // Update the migration version.
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
   },
@@ -2442,7 +2296,7 @@ BrowserGlue.prototype = {
     } catch (ex) { /* Don't break the default prompt if telemetry is broken. */ }
 
     if (willPrompt) {
-      DefaultBrowserCheck.prompt(RecentWindow.getMostRecentBrowserWindow());
+      DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
     }
   },
 
@@ -2567,7 +2421,7 @@ BrowserGlue.prototype = {
         },
         RecentTags: {
           title: bundle.GetStringFromName("recentTagsTitle"),
-          url: "place:type=" + queryOptions.RESULTS_AS_TAG_QUERY +
+          url: "place:type=" + queryOptions.RESULTS_AS_TAGS_ROOT +
                     "&sort=" + queryOptions.SORT_BY_LASTMODIFIED_DESCENDING +
                     "&maxResults=" + MAX_RESULTS,
           parentGuid: PlacesUtils.bookmarks.menuGuid,
@@ -2664,7 +2518,7 @@ BrowserGlue.prototype = {
       return;
     }
 
-    let chromeWindow = RecentWindow.getMostRecentBrowserWindow();
+    let chromeWindow = BrowserWindowTracker.getTopWindow();
     chromeWindow.openPreferences(...args);
   },
 
@@ -2689,7 +2543,7 @@ BrowserGlue.prototype = {
       const URIs = data.wrappedJSObject.object;
 
       // win can be null, but it's ok, we'll assign it later in openTab()
-      let win = RecentWindow.getMostRecentBrowserWindow({private: false});
+      let win = BrowserWindowTracker.getTopWindow({private: false});
 
       const openTab = async (URI) => {
         let tab;
@@ -2708,7 +2562,7 @@ BrowserGlue.prototype = {
       await Promise.all(URIs.slice(1).map(URI => openTab(URI)));
 
       let title, body;
-      const deviceName = Weave.Service.clientsEngine.getClientName(URIs[0].clientId);
+      const deviceName = URIs[0].sender.name;
       const bundle = Services.strings.createBundle("chrome://browser/locale/accounts.properties");
       if (URIs.length == 1) {
         // Due to bug 1305895, tabs from iOS may not have device information, so
@@ -2732,7 +2586,7 @@ BrowserGlue.prototype = {
         }
       } else {
         title = bundle.GetStringFromName("multipleTabsArrivingNotification.title");
-        const allSameDevice = URIs.every(URI => URI.clientId == URIs[0].clientId);
+        const allSameDevice = URIs.every(URI => URI.sender.id == URIs[0].sender.id);
         const unknownDevice = allSameDevice && !deviceName;
         let tabArrivingBody;
         if (unknownDevice) {
@@ -2772,7 +2626,7 @@ BrowserGlue.prototype = {
     if (AppConstants.platform == "win") {
       imageURL = "chrome://branding/content/icon64.png";
     }
-    let win = RecentWindow.getMostRecentBrowserWindow({private: false});
+    let win = BrowserWindowTracker.getTopWindow({private: false});
     if (!win) {
       win = await this._openURLInNewWindow(url);
       let tabs = win.gBrowser.tabs;
@@ -2807,7 +2661,7 @@ BrowserGlue.prototype = {
       if (topic != "alertclickcallback")
         return;
       let url = await FxAccounts.config.promiseManageDevicesURI("device-connected-notification");
-      let win = RecentWindow.getMostRecentBrowserWindow({private: false});
+      let win = BrowserWindowTracker.getTopWindow({private: false});
       if (!win) {
         this._openURLInNewWindow(url);
       } else {
@@ -2857,7 +2711,7 @@ BrowserGlue.prototype = {
     Services.prefs.setBoolPref("dom.ipc.plugins.flash.disable-protected-mode", true);
     Services.prefs.setBoolPref("browser.flash-protected-mode-flip.done", true);
 
-    let win = RecentWindow.getMostRecentBrowserWindow();
+    let win = BrowserWindowTracker.getTopWindow();
     if (!win) {
       return;
     }
@@ -2868,7 +2722,7 @@ BrowserGlue.prototype = {
       label: win.gNavigatorBundle.getString("flashHang.helpButton.label"),
       accessKey: win.gNavigatorBundle.getString("flashHang.helpButton.accesskey"),
       callback() {
-        win.openUILinkIn("https://support.mozilla.org/kb/flash-protected-mode-autodisabled", "tab");
+        win.openTrustedLinkIn("https://support.mozilla.org/kb/flash-protected-mode-autodisabled", "tab");
       }
     }];
     let nb = win.document.getElementById("global-notificationbox");
@@ -2889,8 +2743,8 @@ BrowserGlue.prototype = {
   // for XPCOM
   classID:          Components.ID("{eab9012e-5f74-4cbc-b2b5-a590235513cc}"),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(BrowserGlue),
 };
@@ -2934,9 +2788,7 @@ const ContentPermissionIntegration = {
         return new PermissionUI.DesktopNotificationPermissionPrompt(request);
       }
       case "persistent-storage": {
-        if (Services.prefs.getBoolPref("browser.storageManager.enabled")) {
-          return new PermissionUI.PersistentStoragePermissionPrompt(request);
-        }
+        return new PermissionUI.PersistentStoragePermissionPrompt(request);
       }
       case "midi": {
         return new PermissionUI.MIDIPermissionPrompt(request);
@@ -2951,7 +2803,7 @@ function ContentPermissionPrompt() {}
 ContentPermissionPrompt.prototype = {
   classID:          Components.ID("{d8903bf6-68d5-4e97-bcd1-e4d3012f721a}"),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionPrompt]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionPrompt]),
 
   /**
    * This implementation of nsIContentPermissionPrompt.prompt ensures
@@ -3204,7 +3056,7 @@ var JawsScreenReaderVersionCheck = {
     Services.obs.addObserver(this, "a11y-init-or-shutdown", true);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
 
   observe(subject, topic, data) {
     if (topic == "a11y-init-or-shutdown" && data == "1") {
@@ -3226,7 +3078,7 @@ var JawsScreenReaderVersionCheck = {
       return;
     }
 
-    let win = RecentWindow.getMostRecentBrowserWindow();
+    let win = BrowserWindowTracker.getTopWindow();
     if (!win || !win.gBrowser || !win.gBrowser.selectedBrowser) {
       Services.console.logStringMessage(
           "Content access support for older versions of JAWS is disabled " +
@@ -3279,14 +3131,13 @@ this.NSGetFactory = XPCOMUtils.generateNSGetFactory(components);
 // Listen for UITour messages.
 // Do it here instead of the UITour module itself so that the UITour module is lazy loaded
 // when the first message is received.
-var globalMM = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
-globalMM.addMessageListener("UITour:onPageEvent", function(aMessage) {
+Services.mm.addMessageListener("UITour:onPageEvent", function(aMessage) {
   UITour.onPageEvent(aMessage, aMessage.data);
 });
 
 // Listen for HybridContentTelemetry messages.
 // Do it here instead of HybridContentTelemetry.init() so that
 // the module can be lazily loaded on the first message.
-globalMM.addMessageListener("HybridContentTelemetry:onTelemetryMessage", aMessage => {
+Services.mm.addMessageListener("HybridContentTelemetry:onTelemetryMessage", aMessage => {
   HybridContentTelemetry.onTelemetryMessage(aMessage, aMessage.data);
 });

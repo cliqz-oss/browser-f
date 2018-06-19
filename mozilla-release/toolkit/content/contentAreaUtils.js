@@ -191,12 +191,12 @@ function saveDocument(aDocument, aSkipPrompt) {
     throw "Must have a document when calling saveDocument";
 
   let contentDisposition = null;
-  let cacheKeyInt = null;
+  let cacheKey = 0;
 
   if (aDocument instanceof Ci.nsIWebBrowserPersistDocument) {
     // nsIWebBrowserPersistDocument exposes these directly.
     contentDisposition = aDocument.contentDisposition;
-    cacheKeyInt = aDocument.cacheKey;
+    cacheKey = aDocument.cacheKey;
   } else if (aDocument instanceof Ci.nsIDOMDocument) {
     // Otherwise it's an actual nsDocument (and possibly a CPOW).
     // We want to use cached data because the document is currently visible.
@@ -219,23 +219,10 @@ function saveDocument(aDocument, aSkipPrompt) {
              .currentDescriptor
              .QueryInterface(Ci.nsISHEntry);
 
-      let cacheKey = shEntry.cacheKey
-                            .QueryInterface(Ci.nsISupportsPRUint32)
-                            .data;
-      // cacheKey might be a CPOW, which can't be passed to native
-      // code, but the data attribute is just a number.
-      cacheKeyInt = cacheKey.data;
+      cacheKey = shEntry.cacheKey;
     } catch (ex) {
       // We might not find it in the cache.  Oh, well.
     }
-  }
-
-  // Convert the cacheKey back into an XPCOM object.
-  let cacheKey = null;
-  if (cacheKeyInt) {
-    cacheKey = Cc["@mozilla.org/supports-PRUint32;1"]
-      .createInstance(Ci.nsISupportsPRUint32);
-    cacheKey.data = cacheKeyInt;
   }
 
   internalSave(aDocument.documentURI, aDocument, null, contentDisposition,
@@ -261,15 +248,9 @@ function DownloadListener(win, transfer) {
 }
 
 DownloadListener.prototype = {
-  QueryInterface: function dl_qi(aIID) {
-    if (aIID.equals(Ci.nsIInterfaceRequestor) ||
-        aIID.equals(Ci.nsIWebProgressListener) ||
-        aIID.equals(Ci.nsIWebProgressListener2) ||
-        aIID.equals(Ci.nsISupports)) {
-      return this;
-    }
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  },
+  QueryInterface: ChromeUtils.generateQI(["nsIInterfaceRequestor",
+                                          "nsIWebProgressListener",
+                                          "nsIWebProgressListener2"]),
 
   getInterface: function dl_gi(aIID) {
     if (aIID.equals(Ci.nsIAuthPrompt) ||
@@ -364,7 +345,7 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
     aSkipPrompt = false;
 
   if (aCacheKey == undefined)
-    aCacheKey = null;
+    aCacheKey = 0;
 
   // Note: aDocument == null when this code is used by save-link-as...
   var saveMode = GetSaveModeForContentType(aContentType, aDocument);
@@ -454,7 +435,7 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
  * @param persistArgs.sourceURI
  *        The nsIURI of the document being saved
  * @param persistArgs.sourceCacheKey [optional]
- *        If set will be passed to saveURI
+ *        If set will be passed to savePrivacyAwareURI
  * @param persistArgs.sourceDocument [optional]
  *        The document to be saved, or null if not saving a complete document
  * @param persistArgs.sourceReferrer
@@ -1180,7 +1161,9 @@ function openURL(aURL) {
   } else {
     var recentWindow = Services.wm.getMostRecentWindow("navigator:browser");
     if (recentWindow) {
-      recentWindow.openUILinkIn(uri.spec, "tab");
+      recentWindow.openWebLinkIn(uri.spec, "tab", {
+        triggeringPrincipal: recentWindow.document.contentPrincipal
+      });
       return;
     }
 
@@ -1195,13 +1178,8 @@ function openURL(aURL) {
       onStopRequest: function ll_stop(aRequest, aContext, aStatusCode) {
         appstartup.exitLastWindowClosingSurvivalArea();
       },
-      QueryInterface: function ll_QI(iid) {
-        if (iid.equals(Ci.nsISupports) ||
-            iid.equals(Ci.nsIRequestObserver) ||
-            iid.equals(Ci.nsISupportsWeakReference))
-          return this;
-        throw Cr.NS_ERROR_NO_INTERFACE;
-      }
+      QueryInterface: ChromeUtils.generateQI(["nsIRequestObserver",
+                                              "nsISupportsWeakReference"]),
     };
     loadgroup.groupObserver = loadListener;
 

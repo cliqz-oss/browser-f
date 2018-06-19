@@ -6,6 +6,8 @@
 #ifndef GFX_DWRITEFONTLIST_H
 #define GFX_DWRITEFONTLIST_H
 
+#include "mozilla/FontPropertyTypes.h"
+#include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
 #include "gfxDWriteCommon.h"
 #include "dwrite_3.h"
@@ -32,7 +34,6 @@
 
 #include "mozilla/gfx/UnscaledFontDWrite.h"
 
-
 /**
  * gfxDWriteFontFamily is a class that describes one of the fonts on the
  * users system.  It holds each gfxDWriteFontEntry (maps more directly to
@@ -46,6 +47,10 @@ class gfxDWriteFontEntry;
 class gfxDWriteFontFamily : public gfxFontFamily
 {
 public:
+    typedef mozilla::FontStretch FontStretch;
+    typedef mozilla::FontSlantStyle FontSlantStyle;
+    typedef mozilla::FontWeight FontWeight;
+
     /**
      * Constructs a new DWriteFont Family.
      *
@@ -110,16 +115,20 @@ public:
         mHasVariations(false), mHasVariationsInitialized(false)
     {
         DWRITE_FONT_STYLE dwriteStyle = aFont->GetStyle();
-        mStyle = (dwriteStyle == DWRITE_FONT_STYLE_ITALIC ?
-                  NS_FONT_STYLE_ITALIC :
-                  (dwriteStyle == DWRITE_FONT_STYLE_OBLIQUE ?
-                   NS_FONT_STYLE_OBLIQUE : NS_FONT_STYLE_NORMAL));
-        mStretch = FontStretchFromDWriteStretch(aFont->GetStretch());
-        uint16_t weight = NS_ROUNDUP(aFont->GetWeight() - 50, 100);
+        FontSlantStyle style =
+            (dwriteStyle == DWRITE_FONT_STYLE_ITALIC
+                ? FontSlantStyle::Italic()
+                : (dwriteStyle == DWRITE_FONT_STYLE_OBLIQUE
+                    ? FontSlantStyle::Oblique()
+                    : FontSlantStyle::Normal()));
+        mStyleRange = SlantStyleRange(style);
 
-        weight = std::max<uint16_t>(100, weight);
-        weight = std::min<uint16_t>(900, weight);
-        mWeight = weight;
+        mStretchRange =
+            StretchRange(FontStretchFromDWriteStretch(aFont->GetStretch()));
+
+        int weight = NS_ROUNDUP(aFont->GetWeight() - 50, 100);
+        weight = mozilla::Clamp(weight, 100, 900);
+        mWeightRange = WeightRange(FontWeight(weight));
 
         mIsCJK = UNINITIALIZED_VALUE;
     }
@@ -136,17 +145,17 @@ public:
      * \param aStyle italic or oblique of font
      */
     gfxDWriteFontEntry(const nsAString& aFaceName,
-                              IDWriteFont *aFont,
-                              uint16_t aWeight,
-                              int16_t aStretch,
-                              uint8_t aStyle)
+                       IDWriteFont *aFont,
+                       WeightRange aWeight,
+                       StretchRange aStretch,
+                       SlantStyleRange aStyle)
       : gfxFontEntry(aFaceName), mFont(aFont), mFontFile(nullptr),
         mIsSystemFont(false), mForceGDIClassic(false),
         mHasVariations(false), mHasVariationsInitialized(false)
     {
-        mWeight = aWeight;
-        mStretch = aStretch;
-        mStyle = aStyle;
+        mWeightRange = aWeight;
+        mStretchRange = aStretch;
+        mStyleRange = aStyle;
         mIsLocalUserFont = true;
         mIsCJK = UNINITIALIZED_VALUE;
     }
@@ -164,17 +173,17 @@ public:
     gfxDWriteFontEntry(const nsAString& aFaceName,
                               IDWriteFontFile *aFontFile,
                               IDWriteFontFileStream *aFontFileStream,
-                              uint16_t aWeight,
-                              int16_t aStretch,
-                              uint8_t aStyle)
+                              WeightRange aWeight,
+                              StretchRange aStretch,
+                              SlantStyleRange aStyle)
       : gfxFontEntry(aFaceName), mFont(nullptr),
         mFontFile(aFontFile), mFontFileStream(aFontFileStream),
         mIsSystemFont(false), mForceGDIClassic(false),
         mHasVariations(false), mHasVariationsInitialized(false)
     {
-        mWeight = aWeight;
-        mStretch = aStretch;
-        mStyle = aStyle;
+        mWeightRange = aWeight;
+        mStretchRange = aStretch;
+        mStyleRange = aStyle;
         mIsDataUserFont = true;
         mIsCJK = UNINITIALIZED_VALUE;
     }
@@ -208,12 +217,11 @@ protected:
     virtual nsresult CopyFontTable(uint32_t aTableTag,
                                    nsTArray<uint8_t>& aBuffer) override;
 
-    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                        bool aNeedsBold);
+    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle);
     
     nsresult CreateFontFace(
         IDWriteFontFace **aFontFace,
-        const nsTArray<gfxFontVariation>* aVariations = nullptr,
+        const gfxFontStyle* aFontStyle = nullptr,
         DWRITE_FONT_SIMULATIONS aSimulations = DWRITE_FONT_SIMULATIONS_NONE);
 
     static bool InitLogFont(IDWriteFont *aFont, LOGFONTW *aLogFont);
@@ -401,14 +409,14 @@ public:
     gfxFontFamily* CreateFontFamily(const nsAString& aName) const override;
 
     virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-                                          uint16_t aWeight,
-                                          int16_t aStretch,
-                                          uint8_t aStyle);
+                                          WeightRange aWeightForEntry,
+                                          StretchRange aStretchForEntry,
+                                          SlantStyleRange aStyleForEntry);
 
     virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-                                           uint16_t aWeight,
-                                           int16_t aStretch,
-                                           uint8_t aStyle,
+                                           WeightRange aWeightForEntry,
+                                           StretchRange aStretchForEntry,
+                                           SlantStyleRange aStyleForEntry,
                                            const uint8_t* aFontData,
                                            uint32_t aLength);
     

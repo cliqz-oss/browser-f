@@ -91,8 +91,9 @@ RemoteFinder.prototype = {
       } catch (e) {
         if (!l[callback]) {
           Cu.reportError(`Missing ${callback} callback on RemoteFinderListener`);
+        } else {
+          Cu.reportError(e);
         }
-        Cu.reportError(e);
       }
     }
   },
@@ -328,3 +329,9 @@ RemoteFinderListener.prototype = {
     }
   }
 };
+
+XPCOMUtils.defineLazyPreferenceGetter(RemoteFinder, "_typeAheadLinksOnly",
+  "accessibility.typeaheadfind.linksonly");
+XPCOMUtils.defineLazyPreferenceGetter(RemoteFinder, "_findAsYouType",
+  "accessibility.typeaheadfind");
+

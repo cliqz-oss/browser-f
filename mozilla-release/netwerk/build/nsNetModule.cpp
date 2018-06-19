@@ -22,7 +22,6 @@
 #include "nsLoadGroup.h"
 #include "nsStreamLoader.h"
 #include "nsIncrementalStreamLoader.h"
-#include "nsUnicharStreamLoader.h"
 #include "nsFileStreams.h"
 #include "nsBufferedStreams.h"
 #include "nsMIMEInputStream.h"
@@ -222,10 +221,10 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsWifiMonitor)
 #include "nsAboutBlank.h"
 typedef mozilla::net::nsAboutProtocolHandler nsAboutProtocolHandler;
 typedef mozilla::net::nsSafeAboutProtocolHandler nsSafeAboutProtocolHandler;
-typedef mozilla::net::nsNestedAboutURI nsNestedAboutURI;
+typedef mozilla::net::nsNestedAboutURI::Mutator nsNestedAboutURIMutator;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAboutProtocolHandler)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSafeAboutProtocolHandler)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsNestedAboutURI)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsNestedAboutURIMutator)
 
 // about
 #include "nsAboutCache.h"
@@ -294,12 +293,13 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(NamedPipeService, Init)
 #include "nsResProtocolHandler.h"
 #include "ExtensionProtocolHandler.h"
 #include "SubstitutingProtocolHandler.h"
+typedef mozilla::net::SubstitutingURL::Mutator SubstitutingURLMutator;
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsResProtocolHandler, Init)
 
 namespace mozilla {
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(ExtensionProtocolHandler,
     ExtensionProtocolHandler::GetSingleton)
-NS_GENERIC_FACTORY_CONSTRUCTOR(SubstitutingURL)
+NS_GENERIC_FACTORY_CONSTRUCTOR(SubstitutingURLMutator)
 } // namespace mozilla
 
 #include "nsViewSourceHandler.h"
@@ -363,17 +363,13 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsAuthURLParser)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsStdURLParser)
 
 #include "nsStandardURL.h"
-typedef mozilla::net::nsStandardURL nsStandardURL;
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsStandardURL)
 typedef mozilla::net::nsStandardURL::Mutator nsStandardURLMutator;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsStandardURLMutator)
-typedef mozilla::net::nsSimpleURI nsSimpleURI;
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleURI)
 typedef mozilla::net::nsSimpleURI::Mutator nsSimpleURIMutator;
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleURIMutator)
 
-typedef mozilla::net::nsSimpleNestedURI nsSimpleNestedURI;
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleNestedURI)
+typedef mozilla::net::nsSimpleNestedURI::Mutator nsSimpleNestedURIMutator;
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsSimpleNestedURIMutator)
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -406,13 +402,6 @@ nsresult NS_NewFTPDirListingConv(nsFTPDirListingConv** result);
 #include "mozTXTToHTMLConv.h"
 #include "nsUnknownDecoder.h"
 
-#include "nsTXTToHTMLConv.h"
-namespace mozilla {
-namespace net {
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsTXTToHTMLConv, Init)
-} // namespace net
-} // namespace mozilla
-
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef BUILD_NETWORK_INFO_SERVICE
@@ -441,7 +430,6 @@ nsresult NS_NewStreamConv(nsStreamConverterService **aStreamConv);
 #define COMPRESS_TO_UNCOMPRESSED     "?from=compress&to=uncompressed"
 #define XCOMPRESS_TO_UNCOMPRESSED    "?from=x-compress&to=uncompressed"
 #define DEFLATE_TO_UNCOMPRESSED      "?from=deflate&to=uncompressed"
-#define PLAIN_TO_HTML                "?from=text/plain&to=text/html"
 
 static const mozilla::Module::CategoryEntry kNeckoCategories[] = {
     { NS_ISTREAMCONVERTER_KEY, FTP_TO_INDEX, "" },
@@ -456,7 +444,6 @@ static const mozilla::Module::CategoryEntry kNeckoCategories[] = {
     { NS_ISTREAMCONVERTER_KEY, COMPRESS_TO_UNCOMPRESSED, "" },
     { NS_ISTREAMCONVERTER_KEY, XCOMPRESS_TO_UNCOMPRESSED, "" },
     { NS_ISTREAMCONVERTER_KEY, DEFLATE_TO_UNCOMPRESSED, "" },
-    { NS_ISTREAMCONVERTER_KEY, PLAIN_TO_HTML, "" },
     NS_BINARYDETECTOR_CATEGORYENTRY,
     { nullptr }
 };
@@ -639,6 +626,7 @@ CreateNewBinaryDetectorFactory(nsISupports *aOuter, REFNSIID aIID, void **aResul
 // Net module startup hook
 static nsresult nsNetStartup()
 {
+    mozilla::net::nsStandardURL::InitGlobalObjects();
     return NS_OK;
 }
 
@@ -646,7 +634,7 @@ static nsresult nsNetStartup()
 static void nsNetShutdown()
 {
     // Release the url parser that the stdurl is holding.
-    nsStandardURL::ShutdownGlobalObjects();
+    mozilla::net::nsStandardURL::ShutdownGlobalObjects();
 
     // Release global state used by the URL helper module.
     net_ShutdownURLHelper();
@@ -681,12 +669,12 @@ NS_DEFINE_NAMED_CID(NS_EFFECTIVETLDSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_SIMPLEURI_CID);
 NS_DEFINE_NAMED_CID(NS_SIMPLEURIMUTATOR_CID);
 NS_DEFINE_NAMED_CID(NS_SIMPLENESTEDURI_CID);
+NS_DEFINE_NAMED_CID(NS_SIMPLENESTEDURIMUTATOR_CID);
 NS_DEFINE_NAMED_CID(NS_ASYNCSTREAMCOPIER_CID);
 NS_DEFINE_NAMED_CID(NS_INPUTSTREAMPUMP_CID);
 NS_DEFINE_NAMED_CID(NS_INPUTSTREAMCHANNEL_CID);
 NS_DEFINE_NAMED_CID(NS_STREAMLOADER_CID);
 NS_DEFINE_NAMED_CID(NS_INCREMENTALSTREAMLOADER_CID);
-NS_DEFINE_NAMED_CID(NS_UNICHARSTREAMLOADER_CID);
 NS_DEFINE_NAMED_CID(NS_DOWNLOADER_CID);
 NS_DEFINE_NAMED_CID(NS_BACKGROUNDFILESAVEROUTPUTSTREAM_CID);
 NS_DEFINE_NAMED_CID(NS_BACKGROUNDFILESAVERSTREAMLISTENER_CID);
@@ -723,7 +711,6 @@ NS_DEFINE_NAMED_CID(NS_MULTIMIXEDCONVERTER_CID);
 NS_DEFINE_NAMED_CID(NS_UNKNOWNDECODER_CID);
 NS_DEFINE_NAMED_CID(NS_BINARYDETECTOR_CID);
 NS_DEFINE_NAMED_CID(NS_HTTPCOMPRESSCONVERTER_CID);
-NS_DEFINE_NAMED_CID(NS_NSTXTTOHTMLCONVERTER_CID);
 NS_DEFINE_NAMED_CID(MOZITXTTOHTMLCONV_CID);
 NS_DEFINE_NAMED_CID(NS_DIRINDEX_CID);
 NS_DEFINE_NAMED_CID(NS_MIMEHEADERPARAM_CID);
@@ -742,10 +729,12 @@ NS_DEFINE_NAMED_CID(NS_FTPPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_RESPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_EXTENSIONPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_SUBSTITUTINGURL_CID);
+NS_DEFINE_NAMED_CID(NS_SUBSTITUTINGURLMUTATOR_CID);
 NS_DEFINE_NAMED_CID(NS_ABOUTPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_SAFEABOUTPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_ABOUT_BLANK_MODULE_CID);
 NS_DEFINE_NAMED_CID(NS_NESTEDABOUTURI_CID);
+NS_DEFINE_NAMED_CID(NS_NESTEDABOUTURIMUTATOR_CID);
 NS_DEFINE_NAMED_CID(NS_ABOUT_CACHE_MODULE_CID);
 NS_DEFINE_NAMED_CID(NS_ABOUT_CACHE_ENTRY_MODULE_CID);
 NS_DEFINE_NAMED_CID(NS_SOCKSSOCKETPROVIDER_CID);
@@ -798,15 +787,15 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_DNSSERVICE_CID, false, nullptr, nsIDNSServiceConstructor },
     { &kNS_IDNSERVICE_CID, false, nullptr, nsIDNServiceConstructor },
     { &kNS_EFFECTIVETLDSERVICE_CID, false, nullptr, nsEffectiveTLDServiceConstructor },
-    { &kNS_SIMPLEURI_CID, false, nullptr, nsSimpleURIConstructor },
+    { &kNS_SIMPLEURI_CID, false, nullptr, nsSimpleURIMutatorConstructor }, // do_CreateInstance returns mutator
     { &kNS_SIMPLEURIMUTATOR_CID, false, nullptr, nsSimpleURIMutatorConstructor },
-    { &kNS_SIMPLENESTEDURI_CID, false, nullptr, nsSimpleNestedURIConstructor },
+    { &kNS_SIMPLENESTEDURI_CID, false, nullptr, nsSimpleNestedURIMutatorConstructor }, // do_CreateInstance returns mutator
+    { &kNS_SIMPLENESTEDURIMUTATOR_CID, false, nullptr, nsSimpleNestedURIMutatorConstructor },
     { &kNS_ASYNCSTREAMCOPIER_CID, false, nullptr, nsAsyncStreamCopierConstructor },
     { &kNS_INPUTSTREAMPUMP_CID, false, nullptr, nsInputStreamPumpConstructor },
     { &kNS_INPUTSTREAMCHANNEL_CID, false, nullptr, nsInputStreamChannelConstructor },
     { &kNS_STREAMLOADER_CID, false, nullptr, mozilla::net::nsStreamLoader::Create },
     { &kNS_INCREMENTALSTREAMLOADER_CID, false, nullptr, nsIncrementalStreamLoader::Create },
-    { &kNS_UNICHARSTREAMLOADER_CID, false, nullptr, nsUnicharStreamLoader::Create },
     { &kNS_DOWNLOADER_CID, false, nullptr, nsDownloaderConstructor },
     { &kNS_BACKGROUNDFILESAVEROUTPUTSTREAM_CID, false, nullptr,
       mozilla::net::BackgroundFileSaverOutputStreamConstructor },
@@ -826,7 +815,7 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_STDURLPARSER_CID, false, nullptr, nsStdURLParserConstructor },
     { &kNS_NOAUTHURLPARSER_CID, false, nullptr, nsNoAuthURLParserConstructor },
     { &kNS_AUTHURLPARSER_CID, false, nullptr, nsAuthURLParserConstructor },
-    { &kNS_STANDARDURL_CID, false, nullptr, nsStandardURLConstructor },
+    { &kNS_STANDARDURL_CID, false, nullptr, nsStandardURLMutatorConstructor }, // do_CreateInstance returns mutator
     { &kNS_STANDARDURLMUTATOR_CID, false, nullptr, nsStandardURLMutatorConstructor },
     { &kNS_ARRAYBUFFERINPUTSTREAM_CID, false, nullptr, ArrayBufferInputStreamConstructor },
     { &kNS_BUFFEREDINPUTSTREAM_CID, false, nullptr, nsBufferedInputStream::Create },
@@ -845,7 +834,6 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_UNKNOWNDECODER_CID, false, nullptr, CreateNewUnknownDecoderFactory },
     { &kNS_BINARYDETECTOR_CID, false, nullptr, CreateNewBinaryDetectorFactory },
     { &kNS_HTTPCOMPRESSCONVERTER_CID, false, nullptr, CreateNewHTTPCompressConvFactory },
-    { &kNS_NSTXTTOHTMLCONVERTER_CID, false, nullptr, mozilla::net::nsTXTToHTMLConvConstructor },
     { &kMOZITXTTOHTMLCONV_CID, false, nullptr, CreateNewTXTToHTMLConvFactory },
     { &kNS_DIRINDEX_CID, false, nullptr, nsDirIndexConstructor },
     { &kNS_MIMEHEADERPARAM_CID, false, nullptr, nsMIMEHeaderParamImplConstructor },
@@ -863,11 +851,13 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_FTPPROTOCOLHANDLER_CID, false, nullptr, nsFtpProtocolHandlerConstructor },
     { &kNS_RESPROTOCOLHANDLER_CID, false, nullptr, nsResProtocolHandlerConstructor },
     { &kNS_EXTENSIONPROTOCOLHANDLER_CID, false, nullptr, mozilla::ExtensionProtocolHandlerConstructor },
-    { &kNS_SUBSTITUTINGURL_CID, false, nullptr, mozilla::SubstitutingURLConstructor },
+    { &kNS_SUBSTITUTINGURL_CID, false, nullptr, mozilla::SubstitutingURLMutatorConstructor }, // do_CreateInstance returns mutator
+    { &kNS_SUBSTITUTINGURLMUTATOR_CID, false, nullptr, mozilla::SubstitutingURLMutatorConstructor },
     { &kNS_ABOUTPROTOCOLHANDLER_CID, false, nullptr, nsAboutProtocolHandlerConstructor },
     { &kNS_SAFEABOUTPROTOCOLHANDLER_CID, false, nullptr, nsSafeAboutProtocolHandlerConstructor },
     { &kNS_ABOUT_BLANK_MODULE_CID, false, nullptr, nsAboutBlank::Create },
-    { &kNS_NESTEDABOUTURI_CID, false, nullptr, nsNestedAboutURIConstructor },
+    { &kNS_NESTEDABOUTURI_CID, false, nullptr, nsNestedAboutURIMutatorConstructor }, // do_CreateInstance returns mutator
+    { &kNS_NESTEDABOUTURIMUTATOR_CID, false, nullptr, nsNestedAboutURIMutatorConstructor },
     { &kNS_ABOUT_CACHE_MODULE_CID, false, nullptr, nsAboutCache::Create },
     { &kNS_ABOUT_CACHE_ENTRY_MODULE_CID, false, nullptr, nsAboutCacheEntryConstructor },
     { &kNS_SOCKSSOCKETPROVIDER_CID, false, nullptr, nsSOCKSSocketProvider::CreateV5 },
@@ -925,14 +915,12 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_DNSSERVICE_CONTRACTID, &kNS_DNSSERVICE_CID },
     { NS_IDNSERVICE_CONTRACTID, &kNS_IDNSERVICE_CID },
     { NS_EFFECTIVETLDSERVICE_CONTRACTID, &kNS_EFFECTIVETLDSERVICE_CID },
-    { NS_SIMPLEURI_CONTRACTID, &kNS_SIMPLEURI_CID },
     { NS_SIMPLEURIMUTATOR_CONTRACTID, &kNS_SIMPLEURIMUTATOR_CID },
     { NS_ASYNCSTREAMCOPIER_CONTRACTID, &kNS_ASYNCSTREAMCOPIER_CID },
     { NS_INPUTSTREAMPUMP_CONTRACTID, &kNS_INPUTSTREAMPUMP_CID },
     { NS_INPUTSTREAMCHANNEL_CONTRACTID, &kNS_INPUTSTREAMCHANNEL_CID },
     { NS_STREAMLOADER_CONTRACTID, &kNS_STREAMLOADER_CID },
     { NS_INCREMENTALSTREAMLOADER_CONTRACTID, &kNS_INCREMENTALSTREAMLOADER_CID },
-    { NS_UNICHARSTREAMLOADER_CONTRACTID, &kNS_UNICHARSTREAMLOADER_CID },
     { NS_DOWNLOADER_CONTRACTID, &kNS_DOWNLOADER_CID },
     { NS_BACKGROUNDFILESAVEROUTPUTSTREAM_CONTRACTID, &kNS_BACKGROUNDFILESAVEROUTPUTSTREAM_CID },
     { NS_BACKGROUNDFILESAVERSTREAMLISTENER_CONTRACTID, &kNS_BACKGROUNDFILESAVERSTREAMLISTENER_CID },
@@ -950,7 +938,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_STDURLPARSER_CONTRACTID, &kNS_STDURLPARSER_CID },
     { NS_NOAUTHURLPARSER_CONTRACTID, &kNS_NOAUTHURLPARSER_CID },
     { NS_AUTHURLPARSER_CONTRACTID, &kNS_AUTHURLPARSER_CID },
-    { NS_STANDARDURL_CONTRACTID, &kNS_STANDARDURL_CID },
     { NS_STANDARDURLMUTATOR_CONTRACTID, &kNS_STANDARDURLMUTATOR_CID },
     { NS_ARRAYBUFFERINPUTSTREAM_CONTRACTID, &kNS_ARRAYBUFFERINPUTSTREAM_CID },
     { NS_BUFFEREDINPUTSTREAM_CONTRACTID, &kNS_BUFFEREDINPUTSTREAM_CID },
@@ -977,7 +964,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_ISTREAMCONVERTER_KEY COMPRESS_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY XCOMPRESS_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
     { NS_ISTREAMCONVERTER_KEY DEFLATE_TO_UNCOMPRESSED, &kNS_HTTPCOMPRESSCONVERTER_CID },
-    { NS_ISTREAMCONVERTER_KEY PLAIN_TO_HTML, &kNS_NSTXTTOHTMLCONVERTER_CID },
     { MOZ_TXTTOHTMLCONV_CONTRACTID, &kMOZITXTTOHTMLCONV_CID },
     { "@mozilla.org/dirIndex;1", &kNS_DIRINDEX_CID },
     { NS_MIMEHEADERPARAM_CONTRACTID, &kNS_MIMEHEADERPARAM_CID },

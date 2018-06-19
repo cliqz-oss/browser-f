@@ -13,9 +13,6 @@
 #include "nsXMLContentSerializer.h"
 
 #include "nsGkAtoms.h"
-#include "nsIDOMProcessingInstruction.h"
-#include "nsIDOMComment.h"
-#include "nsIDOMDocumentType.h"
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
 #include "nsIDocument.h"
@@ -29,7 +26,10 @@
 #include "nsCRT.h"
 #include "nsContentUtils.h"
 #include "nsAttrName.h"
+#include "mozilla/dom/Comment.h"
+#include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/ProcessingInstruction.h"
 #include "mozilla/intl/LineBreaker.h"
 #include "nsParserConstants.h"
 #include "mozilla/Encoding.h"
@@ -254,23 +254,18 @@ nsXMLContentSerializer::AppendCDATASection(nsIContent* aCDATASection,
 }
 
 NS_IMETHODIMP
-nsXMLContentSerializer::AppendProcessingInstruction(nsIContent* aPI,
+nsXMLContentSerializer::AppendProcessingInstruction(ProcessingInstruction* aPI,
                                                     int32_t aStartOffset,
                                                     int32_t aEndOffset,
                                                     nsAString& aStr)
 {
-  nsCOMPtr<nsIDOMProcessingInstruction> pi = do_QueryInterface(aPI);
-  NS_ENSURE_ARG(pi);
-  nsresult rv;
   nsAutoString target, data, start;
 
   NS_ENSURE_TRUE(MaybeAddNewlineForRootNode(aStr), NS_ERROR_OUT_OF_MEMORY);
 
-  rv = pi->GetTarget(target);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  aPI->GetTarget(target);
 
-  rv = pi->GetData(data);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  aPI->GetData(data);
 
   NS_ENSURE_TRUE(start.AppendLiteral("<?", mozilla::fallible), NS_ERROR_OUT_OF_MEMORY);
   NS_ENSURE_TRUE(start.Append(target, mozilla::fallible), NS_ERROR_OUT_OF_MEMORY);
@@ -303,18 +298,13 @@ nsXMLContentSerializer::AppendProcessingInstruction(nsIContent* aPI,
 }
 
 NS_IMETHODIMP
-nsXMLContentSerializer::AppendComment(nsIContent* aComment,
+nsXMLContentSerializer::AppendComment(Comment* aComment,
                                       int32_t aStartOffset,
                                       int32_t aEndOffset,
                                       nsAString& aStr)
 {
-  nsCOMPtr<nsIDOMComment> comment = do_QueryInterface(aComment);
-  NS_ENSURE_ARG(comment);
-  nsresult rv;
   nsAutoString data;
-
-  rv = comment->GetData(data);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  aComment->GetData(data);
 
   int32_t dataLength = data.Length();
   if (aStartOffset || (aEndOffset != -1 && aEndOffset < dataLength)) {
@@ -360,20 +350,13 @@ nsXMLContentSerializer::AppendComment(nsIContent* aComment,
 }
 
 NS_IMETHODIMP
-nsXMLContentSerializer::AppendDoctype(nsIContent* aDocType,
+nsXMLContentSerializer::AppendDoctype(DocumentType* aDocType,
                                       nsAString& aStr)
 {
-  nsCOMPtr<nsIDOMDocumentType> docType = do_QueryInterface(aDocType);
-  NS_ENSURE_ARG(docType);
-  nsresult rv;
   nsAutoString name, publicId, systemId;
-
-  rv = docType->GetName(name);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
-  rv = docType->GetPublicId(publicId);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
-  rv = docType->GetSystemId(systemId);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  aDocType->GetName(name);
+  aDocType->GetPublicId(publicId);
+  aDocType->GetSystemId(systemId);
 
   NS_ENSURE_TRUE(MaybeAddNewlineForRootNode(aStr), NS_ERROR_OUT_OF_MEMORY);
 
@@ -1289,7 +1272,7 @@ nsXMLContentSerializer::MaybeFlagNewlineForRootNode(nsINode* aNode)
 {
   nsINode* parent = aNode->GetParentNode();
   if (parent) {
-    mAddNewlineForRootNode = parent->IsNodeOfType(nsINode::eDOCUMENT);
+    mAddNewlineForRootNode = parent->IsDocument();
   }
 }
 

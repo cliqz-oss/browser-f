@@ -6,6 +6,7 @@
 
 #include "jsfriendapi.h"
 
+#include "mozilla/Atomics.h"
 #include "mozilla/PodOperations.h"
 
 #include <stdint.h>
@@ -129,8 +130,7 @@ JS_NewObjectWithUniqueType(JSContext* cx, const JSClass* clasp, HandleObject pro
      * ObjectGroup attached to our proto with information about our object, since
      * we're not going to be using that ObjectGroup anyway.
      */
-    RootedObject obj(cx, NewObjectWithGivenProto(cx, (const js::Class*)clasp, nullptr,
-                                                 SingletonObject));
+    RootedObject obj(cx, NewObjectWithGivenProto(cx, Valueify(clasp), nullptr, SingletonObject));
     if (!obj)
         return nullptr;
     if (!JS_SplicePrototype(cx, obj, proto))
@@ -167,7 +167,7 @@ JS_SetCompartmentPrincipals(JSCompartment* compartment, JSPrincipals* principals
 
     // Any compartment with the trusted principals -- and there can be
     // multiple -- is a system compartment.
-    const JSPrincipals* trusted = compartment->runtimeFromActiveCooperatingThread()->trustedPrincipals();
+    const JSPrincipals* trusted = compartment->runtimeFromMainThread()->trustedPrincipals();
     bool isSystem = principals && principals == trusted;
 
     // Clear out the old principals, if any.
@@ -398,7 +398,7 @@ js::NotifyAnimationActivity(JSObject* obj)
 {
     int64_t timeNow = PRMJ_Now();
     obj->compartment()->lastAnimationTime = timeNow;
-    obj->runtimeFromActiveCooperatingThread()->lastAnimationTime = timeNow;
+    obj->runtimeFromMainThread()->lastAnimationTime = timeNow;
 }
 
 JS_FRIEND_API(uint32_t)
@@ -1051,21 +1051,26 @@ FormatFrame(JSContext* cx, const FrameIter& iter, JS::UniqueChars&& inBuf, int n
 static JS::UniqueChars
 FormatWasmFrame(JSContext* cx, const FrameIter& iter, JS::UniqueChars&& inBuf, int num)
 {
-    JSAtom* functionDisplayAtom = iter.functionDisplayAtom();
     UniqueChars nameStr;
-    if (functionDisplayAtom)
+    if (JSAtom* functionDisplayAtom = iter.functionDisplayAtom()) {
         nameStr = StringToNewUTF8CharsZ(cx, *functionDisplayAtom);
+        if (!nameStr)
+            return nullptr;
+    }
 
     JS::UniqueChars buf = sprintf_append(cx, Move(inBuf), "%d %s()",
                                          num,
                                          nameStr ? nameStr.get() : "<wasm-function>");
     if (!buf)
         return nullptr;
+
     const char* filename = iter.filename();
     uint32_t lineno = iter.computeLine();
     buf = sprintf_append(cx, Move(buf), " [\"%s\":%d]\n",
                          filename ? filename : "<unknown>",
                          lineno);
+    if (!buf)
+        return nullptr;
 
     MOZ_ASSERT(!cx->isExceptionPending());
     return buf;
@@ -1218,7 +1223,7 @@ void
 js::DumpHeap(JSContext* cx, FILE* fp, js::DumpHeapNurseryBehaviour nurseryBehaviour)
 {
     if (nurseryBehaviour == js::CollectNurseryBeforeDump)
-        EvictAllNurseries(cx->runtime(), JS::gcreason::API);
+        cx->runtime()->gc.evictNursery(JS::gcreason::API);
 
     DumpHeapTracer dtrc(fp, cx);
 
@@ -1269,7 +1274,7 @@ js::GetAnyCompartmentInZone(JS::Zone* zone)
 void
 JS::ObjectPtr::finalize(JSRuntime* rt)
 {
-    if (IsIncrementalBarrierNeeded(rt->activeContextFromOwnThread()))
+    if (IsIncrementalBarrierNeeded(rt->mainContextFromOwnThread()))
         IncrementalPreWriteBarrier(value);
     value = nullptr;
 }
@@ -1534,15 +1539,34 @@ js::SetCompartmentValidAccessPtr(JSContext* cx, JS::HandleObject global, bool* a
     global->compartment()->setValidAccessPtr(accessp);
 }
 
-JS_FRIEND_API(void)
-js::SetCooperativeYieldCallback(JSContext* cx, YieldCallback callback)
-{
-    cx->setYieldCallback(callback);
-}
-
 JS_FRIEND_API(bool)
 js::SystemZoneAvailable(JSContext* cx)
 {
-    CooperatingContext& owner = cx->runtime()->gc.systemZoneGroup->ownerContext();
-    return owner.context() == nullptr;
+    return true;
+}
+
+static LogCtorDtor sLogCtor = nullptr;
+static LogCtorDtor sLogDtor = nullptr;
+
+JS_FRIEND_API(void)
+js::SetLogCtorDtorFunctions(LogCtorDtor ctor, LogCtorDtor dtor)
+{
+    MOZ_ASSERT(!sLogCtor && !sLogDtor);
+    MOZ_ASSERT(ctor && dtor);
+    sLogCtor = ctor;
+    sLogDtor = dtor;
+}
+
+JS_FRIEND_API(void)
+js::LogCtor(void* self, const char* type, uint32_t sz)
+{
+    if (LogCtorDtor fun = sLogCtor)
+        fun(self, type, sz);
+}
+
+JS_FRIEND_API(void)
+js::LogDtor(void* self, const char* type, uint32_t sz)
+{
+    if (LogCtorDtor fun = sLogDtor)
+        fun(self, type, sz);
 }

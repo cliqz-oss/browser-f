@@ -7,8 +7,7 @@
                 onpopupshowing="if (event.target.parentNode.parentNode == this &amp;&amp;
                                     !('@mozilla.org/widget/nativemenuservice;1' in Cc))
                                   this.setAttribute('openedwithkey',
-                                                    event.target.parentNode.openedWithKey);"
-                style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+                                                    event.target.parentNode.openedWithKey);">
             <menu id="file-menu" label="&fileMenu.label;"
                   accesskey="&fileMenu.accesskey;">
               <menupopup id="menu_FilePopup"
@@ -97,17 +96,13 @@
 #ifdef XP_WIN
                           label="&quitApplicationCmdWin2.label;"
                           accesskey="&quitApplicationCmdWin2.accesskey;"
-#else
-#ifdef XP_MACOSX
+#elifdef XP_MACOSX
                           label="&quitApplicationCmdMac2.label;"
 #else
                           label="&quitApplicationCmd.label;"
                           accesskey="&quitApplicationCmd.accesskey;"
 #endif
-#ifdef XP_UNIX
                           key="key_quitApplication"
-#endif
-#endif
                           command="cmd_quitApplication"/>
               </menupopup>
             </menu>

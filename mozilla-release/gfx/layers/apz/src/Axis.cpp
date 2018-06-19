@@ -60,7 +60,7 @@ Axis::Axis(AsyncPanZoomController* aAsyncPanZoomController)
 }
 
 float Axis::ToLocalVelocity(float aVelocityInchesPerMs) const {
-  ScreenPoint velocity = MakePoint(aVelocityInchesPerMs * APZCTreeManager::GetDPI());
+  ScreenPoint velocity = MakePoint(aVelocityInchesPerMs * mAsyncPanZoomController->GetDPI());
   // Use ToScreenCoordinates() to convert a point rather than a vector by
   // treating the point as a vector, and using (0, 0) as the anchor.
   ScreenPoint panStart = mAsyncPanZoomController->ToScreenCoordinates(
@@ -372,23 +372,6 @@ bool Axis::CanScrollNow() const {
   return !mAxisLocked && CanScroll();
 }
 
-bool Axis::FlingApplyFrictionOrCancel(const TimeDuration& aDelta,
-                                      float aFriction,
-                                      float aThreshold) {
-  if (fabsf(mVelocity) <= aThreshold) {
-    // If the velocity is very low, just set it to 0 and stop the fling,
-    // otherwise we'll just asymptotically approach 0 and the user won't
-    // actually see any changes.
-    mVelocity = 0.0f;
-    return false;
-  } else {
-    mVelocity *= pow(1.0f - aFriction, float(aDelta.ToMilliseconds()));
-  }
-  AXIS_LOG("%p|%s reduced velocity to %f due to friction\n",
-    mAsyncPanZoomController, Name(), mVelocity);
-  return true;
-}
-
 ParentLayerCoord Axis::DisplacementWillOverscrollAmount(ParentLayerCoord aDisplacement) const {
   ParentLayerCoord newOrigin = GetOrigin() + aDisplacement;
   ParentLayerCoord newCompositionEnd = GetCompositionEnd() + aDisplacement;
@@ -545,6 +528,19 @@ const char* AxisX::Name() const
   return "X";
 }
 
+bool AxisX::CanScrollTo(Side aSide) const
+{
+  switch (aSide) {
+    case eSideLeft:
+      return CanScroll(-COORDINATE_EPSILON * 2);
+    case eSideRight:
+      return CanScroll(COORDINATE_EPSILON * 2);
+    default:
+      MOZ_ASSERT_UNREACHABLE("aSide is out of valid values");
+      return false;
+  }
+}
+
 OverscrollBehavior AxisX::GetOverscrollBehavior() const
 {
   return GetScrollMetadata().GetOverscrollBehavior().mBehaviorX;
@@ -584,6 +580,19 @@ ScreenPoint AxisY::MakePoint(ScreenCoord aCoord) const
 const char* AxisY::Name() const
 {
   return "Y";
+}
+
+bool AxisY::CanScrollTo(Side aSide) const
+{
+  switch (aSide) {
+    case eSideTop:
+      return CanScroll(-COORDINATE_EPSILON * 2);
+    case eSideBottom:
+      return CanScroll(COORDINATE_EPSILON * 2);
+    default:
+      MOZ_ASSERT_UNREACHABLE("aSide is out of valid values");
+      return false;
+  }
 }
 
 OverscrollBehavior AxisY::GetOverscrollBehavior() const

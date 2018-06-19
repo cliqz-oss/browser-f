@@ -13,6 +13,8 @@
 #include "Role.h"
 
 #include "nsFocusManager.h"
+#include "mozilla/a11y/DocAccessibleParent.h"
+#include "mozilla/a11y/DocManager.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/TabParent.h"
@@ -197,7 +199,7 @@ FocusManager::ActiveItemChanged(Accessible* aItem, bool aCheckIfActive)
   if (!mActiveItem && XRE_IsParentProcess()) {
     nsFocusManager* domfm = nsFocusManager::GetFocusManager();
     if (domfm) {
-      nsIContent* focusedElm = domfm->GetFocusedContent();
+      nsIContent* focusedElm = domfm->GetFocusedElement();
       if (EventStateManager::IsRemoteTarget(focusedElm)) {
         dom::TabParent* tab = dom::TabParent::GetFrom(focusedElm);
         if (tab) {
@@ -397,7 +399,7 @@ nsINode*
 FocusManager::FocusedDOMNode() const
 {
   nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
-  nsIContent* focusedElm = DOMFocusManager->GetFocusedContent();
+  nsIContent* focusedElm = DOMFocusManager->GetFocusedElement();
 
   // No focus on remote target elements like xul:browser having DOM focus and
   // residing in chrome process because it means an element in content process

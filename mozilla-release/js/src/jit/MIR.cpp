@@ -27,7 +27,7 @@
 #include "js/Conversions.h"
 #include "util/Text.h"
 
-#include "jsboolinlines.h"
+#include "builtin/Boolean-inl.h"
 
 #include "vm/JSAtom-inl.h"
 #include "vm/JSObject-inl.h"
@@ -71,20 +71,28 @@ CheckUsesAreFloat32Consumers(const MInstruction* ins)
     return allConsumerUses;
 }
 
-void
-MDefinition::PrintOpcodeName(GenericPrinter& out, MDefinition::Opcode op)
+#ifdef JS_JITSPEW
+static const char*
+OpcodeName(MDefinition::Opcode op)
 {
-    static const char * const names[] =
+    static const char* const names[] =
     {
 #define NAME(x) #x,
         MIR_OPCODE_LIST(NAME)
 #undef NAME
     };
-    const char* name = names[unsigned(op)];
+    return names[unsigned(op)];
+}
+
+void
+MDefinition::PrintOpcodeName(GenericPrinter& out, Opcode op)
+{
+    const char* name = OpcodeName(op);
     size_t len = strlen(name);
     for (size_t i = 0; i < len; i++)
         out.printf("%c", tolower(name[i]));
 }
+#endif
 
 static MConstant*
 EvaluateConstantOperands(TempAllocator& alloc, MBinaryInstruction* ins, bool* ptypeChange = nullptr)
@@ -220,12 +228,20 @@ EvaluateExactReciprocal(TempAllocator& alloc, MDiv* ins)
     return mul;
 }
 
+#ifdef JS_JITSPEW
+const char*
+MDefinition::opName() const
+{
+    return OpcodeName(op());
+}
+
 void
 MDefinition::printName(GenericPrinter& out) const
 {
     PrintOpcodeName(out, op());
     out.printf("%u", id());
 }
+#endif
 
 HashNumber
 MDefinition::valueHash() const
@@ -616,6 +632,7 @@ MTest::filtersUndefinedOrNull(bool trueBranch, MDefinition** subject, bool* filt
     *subject = nullptr;
 }
 
+#ifdef JS_JITSPEW
 void
 MDefinition::printOpcode(GenericPrinter& out) const
 {
@@ -680,6 +697,7 @@ MDefinition::dumpLocation() const
     dumpLocation(out);
     out.finish();
 }
+#endif
 
 #if defined(DEBUG) || defined(JS_JITSPEW)
 size_t
@@ -936,16 +954,16 @@ bool
 jit::IonCompilationCanUseNurseryPointers()
 {
     // If we are doing backend compilation, which could occur on a helper
-    // thread but might actually be on the active thread, check the flag set on
+    // thread but might actually be on the main thread, check the flag set on
     // the JSContext by AutoEnterIonCompilation.
     if (CurrentThreadIsIonCompiling())
         return !CurrentThreadIsIonCompilingSafeForMinorGC();
 
-    // Otherwise, we must be on the active thread during MIR construction. The
+    // Otherwise, we must be on the main thread during MIR construction. The
     // store buffer must have been notified that minor GCs must cancel pending
     // or in progress Ion compilations.
-    JSContext* cx = TlsContext.get();
-    return cx->zone()->group()->storeBuffer().cancelIonCompilations();
+    JSRuntime* rt = TlsContext.get()->zone()->runtimeFromMainThread();
+    return rt->gc.storeBuffer().cancelIonCompilations();
 }
 
 #endif // DEBUG
@@ -1106,6 +1124,7 @@ MConstant::congruentTo(const MDefinition* ins) const
     return ins->isConstant() && equals(ins->toConstant());
 }
 
+#ifdef JS_JITSPEW
 void
 MConstant::printOpcode(GenericPrinter& out) const
 {
@@ -1180,6 +1199,7 @@ MConstant::printOpcode(GenericPrinter& out) const
         MOZ_CRASH("unexpected type");
     }
 }
+#endif
 
 bool
 MConstant::canProduceFloat32() const
@@ -1266,8 +1286,11 @@ MConstant::valueToBoolean(bool* res) const
         *res = toString()->length() != 0;
         return true;
       case MIRType::Object:
-        *res = !EmulatesUndefined(&toObject());
-        return true;
+        // We have to call EmulatesUndefined but that reads obj->group->clasp
+        // and so it's racy when the object has a lazy group. The main callers
+        // of this (MTest, MNot) already know how to fold the object case, so
+        // just give up.
+        return false;
       default:
         MOZ_ASSERT(IsMagicType(type()));
         return false;
@@ -1759,6 +1782,7 @@ PrintOpcodeOperation(T* mir, GenericPrinter& out)
     out.printf(" (%s)", T::OperationName(mir->operation()));
 }
 
+#ifdef JS_JITSPEW
 void
 MSimdBinaryArith::printOpcode(GenericPrinter& out) const
 {
@@ -1865,6 +1889,7 @@ void MNearbyInt::printOpcode(GenericPrinter& out) const
     }
     out.printf(" %s", roundingModeStr);
 }
+#endif
 
 const char*
 MMathFunction::FunctionName(Function function)
@@ -1899,12 +1924,14 @@ MMathFunction::FunctionName(Function function)
     }
 }
 
+#ifdef JS_JITSPEW
 void
 MMathFunction::printOpcode(GenericPrinter& out) const
 {
     MDefinition::printOpcode(out);
     out.printf(" %s", FunctionName(function()));
 }
+#endif
 
 MDefinition*
 MMathFunction::foldsTo(TempAllocator& alloc)
@@ -2013,6 +2040,7 @@ MAtomicIsLockFree::foldsTo(TempAllocator& alloc)
 // TRIVIAL_NEW_WRAPPERS.
 const int32_t MParameter::THIS_SLOT;
 
+#ifdef JS_JITSPEW
 void
 MParameter::printOpcode(GenericPrinter& out) const
 {
@@ -2022,6 +2050,7 @@ MParameter::printOpcode(GenericPrinter& out) const
     else
         out.printf(" %d", index());
 }
+#endif
 
 HashNumber
 MParameter::valueHash() const
@@ -2275,6 +2304,7 @@ MGoto::New(TempAllocator& alloc)
     return new(alloc) MGoto(nullptr);
 }
 
+#ifdef JS_JITSPEW
 void
 MUnbox::printOpcode(GenericPrinter& out) const
 {
@@ -2300,6 +2330,7 @@ MUnbox::printOpcode(GenericPrinter& out) const
       default: break;
     }
 }
+#endif
 
 MDefinition*
 MUnbox::foldsTo(TempAllocator &alloc)
@@ -2325,6 +2356,7 @@ MUnbox::foldsTo(TempAllocator &alloc)
     return ins;
 }
 
+#ifdef JS_JITSPEW
 void
 MTypeBarrier::printOpcode(GenericPrinter& out) const
 {
@@ -2332,6 +2364,7 @@ MTypeBarrier::printOpcode(GenericPrinter& out) const
     out.printf(" ");
     getOperand(0)->printName(out);
 }
+#endif
 
 bool
 MTypeBarrier::congruentTo(const MDefinition* def) const
@@ -3159,6 +3192,7 @@ NeedNegativeZeroCheck(MDefinition* def)
     return false;
 }
 
+#ifdef JS_JITSPEW
 void
 MBinaryArithInstruction::printOpcode(GenericPrinter& out) const
 {
@@ -3191,6 +3225,7 @@ MBinaryArithInstruction::printOpcode(GenericPrinter& out) const
         break;
     }
 }
+#endif
 
 MBinaryArithInstruction*
 MBinaryArithInstruction::New(TempAllocator& alloc, Opcode op,
@@ -4279,6 +4314,7 @@ MResumePoint::addStore(TempAllocator& alloc, MDefinition* store, const MResumePo
     stores_.push(top);
 }
 
+#ifdef JS_JITSPEW
 void
 MResumePoint::dump(GenericPrinter& out) const
 {
@@ -4319,6 +4355,7 @@ MResumePoint::dump() const
     dump(out);
     out.finish();
 }
+#endif
 
 bool
 MResumePoint::isObservableOperand(MUse* u) const
@@ -5008,6 +5045,7 @@ MNot::trySpecializeFloat32(TempAllocator& alloc)
         ConvertDefinitionToDouble<0>(alloc, in, this);
 }
 
+#ifdef JS_JITSPEW
 void
 MBeta::printOpcode(GenericPrinter& out) const
 {
@@ -5016,6 +5054,7 @@ MBeta::printOpcode(GenericPrinter& out) const
     out.printf(" ");
     comparison_->dump(out);
 }
+#endif
 
 bool
 MCreateThisWithTemplate::canRecoverOnBailout() const
@@ -5484,6 +5523,7 @@ MLoadSlot::foldsTo(TempAllocator& alloc)
     return this;
 }
 
+#ifdef JS_JITSPEW
 void
 MLoadSlot::printOpcode(GenericPrinter& out) const
 {
@@ -5500,6 +5540,7 @@ MStoreSlot::printOpcode(GenericPrinter& out) const
     out.printf(" %d ", slot());
     getOperand(1)->printName(out);
 }
+#endif
 
 MDefinition*
 MFunctionEnvironment::foldsTo(TempAllocator& alloc)
@@ -6085,7 +6126,8 @@ MConvertUnboxedObjectToNative::New(TempAllocator& alloc, MDefinition* obj, Objec
 {
     MConvertUnboxedObjectToNative* res = new(alloc) MConvertUnboxedObjectToNative(obj, group);
 
-    ObjectGroup* nativeGroup = group->unboxedLayout().nativeGroup();
+    AutoSweepObjectGroup sweep(group);
+    ObjectGroup* nativeGroup = group->unboxedLayout(sweep).nativeGroup();
 
     // Make a new type set for the result of this instruction which replaces
     // the input group with the native group we will convert it to.
@@ -6229,7 +6271,7 @@ PropertyReadNeedsTypeBarrier(CompilerConstraintList* constraints,
     }
 
     if (!name && IsTypedArrayClass(key->clasp())) {
-        Scalar::Type arrayType = Scalar::Type(key->clasp() - &TypedArrayObject::classes[0]);
+        Scalar::Type arrayType = GetTypedArrayClassType(key->clasp());
         MIRType type = MIRTypeForTypedArrayRead(arrayType, true);
         if (observed->mightBeMIRType(type))
             return BarrierKind::NoBarrier;
@@ -6674,10 +6716,12 @@ jit::PropertyWriteNeedsTypeBarrier(TempAllocator& alloc, CompilerConstraintList*
     // being written can accommodate the value.
     for (size_t i = 0; i < types->getObjectCount(); i++) {
         TypeSet::ObjectKey* key = types->getObject(i);
-        if (key && key->isGroup() && key->group()->maybeUnboxedLayout()) {
-            const UnboxedLayout& layout = key->group()->unboxedLayout();
+        if (!key || !key->isGroup())
+            continue;
+        AutoSweepObjectGroup sweep(key->group());
+        if (const auto* layout = key->group()->maybeUnboxedLayout(sweep)) {
             if (name) {
-                const UnboxedLayout::Property* property = layout.lookup(name);
+                const UnboxedLayout::Property* property = layout->lookup(name);
                 if (property && !CanStoreUnboxedType(alloc, property->type, *pvalue))
                     return true;
             }
@@ -6718,7 +6762,8 @@ jit::PropertyWriteNeedsTypeBarrier(TempAllocator& alloc, CompilerConstraintList*
     // does not have a corresponding native group. Objects with the native
     // group might appear even though they are not in the type set.
     if (excluded->isGroup()) {
-        if (UnboxedLayout* layout = excluded->group()->maybeUnboxedLayout()) {
+        AutoSweepObjectGroup sweep(excluded->group());
+        if (UnboxedLayout* layout = excluded->group()->maybeUnboxedLayout(sweep)) {
             if (layout->nativeGroup())
                 return true;
             excluded->watchStateChangeForUnboxedConvertedToNative(constraints);

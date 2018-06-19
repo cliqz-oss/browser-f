@@ -3,27 +3,27 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 ifndef MOZ_PKG_FORMAT
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-MOZ_PKG_FORMAT  = DMG
-else
-ifeq (,$(filter-out WINNT, $(OS_ARCH)))
-MOZ_PKG_FORMAT  = ZIP
-else
-ifeq (,$(filter-out SunOS, $(OS_ARCH)))
-   MOZ_PKG_FORMAT  = BZ2
-else
-   ifeq (,$(filter-out gtk3 qt, $(MOZ_WIDGET_TOOLKIT)))
-      MOZ_PKG_FORMAT  = BZ2
-   else
-      ifeq (android,$(MOZ_WIDGET_TOOLKIT))
-          MOZ_PKG_FORMAT = APK
-      else
-          MOZ_PKG_FORMAT = TGZ
-      endif
-   endif
-endif
-endif
-endif
+    ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
+        MOZ_PKG_FORMAT  = DMG
+    else
+        ifeq (WINNT,$(OS_ARCH))
+            MOZ_PKG_FORMAT  = ZIP
+        else
+            ifeq (SunOS,$(OS_ARCH))
+                MOZ_PKG_FORMAT  = BZ2
+            else
+                ifeq (gtk3,$(MOZ_WIDGET_TOOLKIT))
+                    MOZ_PKG_FORMAT  = BZ2
+                else
+                    ifeq (android,$(MOZ_WIDGET_TOOLKIT))
+                        MOZ_PKG_FORMAT = APK
+                    else
+                        MOZ_PKG_FORMAT = TGZ
+                    endif
+                endif
+            endif
+        endif
+    endif
 endif # MOZ_PKG_FORMAT
 
 ifeq ($(OS_ARCH),WINNT)
@@ -78,6 +78,10 @@ endif
 
 ifdef LLVM_SYMBOLIZER
   JSSHELL_BINS += $(notdir $(LLVM_SYMBOLIZER))
+  # On Windows, llvm-symbolizer depends on the MS DIA library.
+  ifdef WIN_DIA_SDK_BIN_DIR
+    JSSHELL_BINS += msdia140.dll
+  endif
 endif
 ifdef MOZ_CLANG_RT_ASAN_LIB_PATH
   JSSHELL_BINS += $(notdir $(MOZ_CLANG_RT_ASAN_LIB_PATH))
@@ -386,19 +390,11 @@ UPLOAD_FILES= \
   $(call QUOTED_WILDCARD,$(DIST)/$(LANGPACK)) \
   $(call QUOTED_WILDCARD,$(wildcard $(DIST)/$(PARTIAL_MAR))) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZHARNESS_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(CPP_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(XPC_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOCHITEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(TALOS_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(AWSY_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(REFTEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(WP_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(GTEST_PACKAGE)) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(SYMBOL_ARCHIVE_BASENAME).zip) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(GENERATED_SOURCE_FILE_PACKAGE)) \
   $(call QUOTED_WILDCARD,$(MOZ_SOURCESTAMP_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_BUILDINFO_FILE)) \
+  $(call QUOTED_WILDCARD,$(MOZ_BUILDHUB_JSON)) \
   $(call QUOTED_WILDCARD,$(MOZ_BUILDID_INFO_TXT_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_MOZINFO_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_TEST_PACKAGES_FILE)) \
@@ -423,9 +419,6 @@ ifdef MOZ_CODE_COVERAGE
     $(NULL)
 endif
 
-ifdef MOZ_STYLO
-  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(STYLO_BINDINGS_PACKAGE))
-endif
 
 ifdef ENABLE_MOZSEARCH_PLUGIN
   UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZSEARCH_ARCHIVE_BASENAME).zip)

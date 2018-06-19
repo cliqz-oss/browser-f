@@ -17,7 +17,11 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "mozilla/WheelHandlingHelper.h"    // for WheelDeltaAdjustmentStrategy
+#include "mozilla/dom/DataTransfer.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/SimpleGestureEventBinding.h"
+#include "mozilla/dom/WheelEventBinding.h"
 
 #include "nsArrayUtils.h"
 #include "nsExceptionHandler.h"
@@ -64,6 +68,7 @@
 #include "ScopedGLHelpers.h"
 #include "HeapCopyOfStackArray.h"
 #include "mozilla/layers/IAPZCTreeManager.h"
+#include "mozilla/layers/APZInputBridge.h"
 #include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/layers/GLManager.h"
 #include "mozilla/layers/CompositorOGL.h"
@@ -93,7 +98,6 @@
 
 #include "GeckoProfiler.h"
 
-#include "nsIDOMWheelEvent.h"
 #include "mozilla/layers/ChromeProcessController.h"
 #include "nsLayoutUtils.h"
 #include "InputData.h"
@@ -2548,9 +2552,11 @@ nsChildView::UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometri
   int32_t titlebarHeight = CocoaPointsToDevPixels([win titlebarHeight]);
   int32_t devUnifiedHeight = titlebarHeight + unifiedToolbarBottom;
   [win setUnifiedToolbarHeight:DevPixelsToCocoaPoints(devUnifiedHeight)];
-  int32_t devSheetPosition = titlebarHeight +
-                             std::max(toolboxBottom, unifiedToolbarBottom);
-  [win setSheetAttachmentPosition:DevPixelsToCocoaPoints(devSheetPosition)];
+
+  int32_t sheetPositionDevPx = std::max(toolboxBottom, unifiedToolbarBottom);
+  NSPoint sheetPositionView = { 0, DevPixelsToCocoaPoints(sheetPositionDevPx) };
+  NSPoint sheetPositionWindow = [mView convertPoint:sheetPositionView toView:nil];
+  [win setSheetAttachmentPosition:sheetPositionWindow.y];
 
   // Update titlebar control offsets.
   LayoutDeviceIntRect windowButtonRect = FindFirstRectOfType(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeWindowButtons);
@@ -2753,6 +2759,12 @@ nsChildView::SwipeFinished()
   mSwipeTracker = nullptr;
 }
 
+void
+nsChildView::UpdateBoundsFromView()
+{
+  mBounds = CocoaPointsToDevPixels([mView frame]);
+}
+
 already_AddRefed<gfx::DrawTarget>
 nsChildView::StartRemoteDrawingInRegion(LayoutDeviceIntRegion& aInvalidRegion,
                                         BufferMode* aBufferMode)
@@ -2915,7 +2927,7 @@ nsChildView::DispatchAPZWheelInputEvent(InputData& aEvent, bool aCanTriggerSwipe
 
     switch (aEvent.mInputType) {
       case PANGESTURE_INPUT: {
-        result = mAPZC->ReceiveInputEvent(aEvent, &guid, &inputBlockId);
+        result = mAPZC->InputBridge()->ReceiveInputEvent(aEvent, &guid, &inputBlockId);
         if (result == nsEventStatus_eConsumeNoDefault) {
           return;
         }
@@ -2954,12 +2966,12 @@ nsChildView::DispatchAPZWheelInputEvent(InputData& aEvent, bool aCanTriggerSwipe
       }
       case SCROLLWHEEL_INPUT: {
         // For wheel events on OS X, send it to APZ using the WidgetInputEvent
-        // variant of ReceiveInputEvent, because the IAPZCTreeManager version of
+        // variant of ReceiveInputEvent, because the APZInputBridge version of
         // that function has special handling (for delta multipliers etc.) that
         // we need to run. Using the InputData variant would bypass that and
         // go straight to the APZCTreeManager subclass.
         event = aEvent.AsScrollWheelInput().ToWidgetWheelEvent(this);
-        result = mAPZC->ReceiveInputEvent(event, &guid, &inputBlockId);
+        result = mAPZC->InputBridge()->ReceiveInputEvent(event, &guid, &inputBlockId);
         if (result == nsEventStatus_eConsumeNoDefault) {
           return;
         }
@@ -3036,37 +3048,6 @@ nsChildView::DispatchAPZWheelInputEvent(InputData& aEvent, bool aCanTriggerSwipe
   }
 }
 
-// When using 10.11, calling showDefinitionForAttributedString causes the
-// following exception on LookupViewService. (rdar://26476091)
-//
-// Exception: decodeObjectForKey: class "TitlebarAndBackgroundColor" not
-// loaded or does not exist
-//
-// So we set temporary color that is NSColor before calling it.
-
-class MOZ_RAII AutoBackgroundSetter final {
-public:
-  explicit AutoBackgroundSetter(NSView* aView) {
-    if (nsCocoaFeatures::OnElCapitanOrLater() &&
-        [[aView window] isKindOfClass:[ToolbarWindow class]]) {
-      mWindow = [(ToolbarWindow*)[aView window] retain];
-      [mWindow setTemporaryBackgroundColor];
-    } else {
-      mWindow = nullptr;
-    }
-  }
-
-  ~AutoBackgroundSetter() {
-    if (mWindow) {
-      [mWindow restoreBackgroundColor];
-      [mWindow release];
-    }
-  }
-
-private:
-  ToolbarWindow* mWindow; // strong
-};
-
 void
 nsChildView::LookUpDictionary(
                const nsAString& aText,
@@ -3092,7 +3073,6 @@ nsChildView::LookUpDictionary(
     }
   }
 
-  AutoBackgroundSetter setter(mView);
   [mView showDefinitionForAttributedString:attrStr atPoint:pt];
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
@@ -3877,8 +3857,9 @@ NSEvent* gLastDragMouseDownEvent = nil;
 {
   CGLLockContext((CGLContextObj)[mGLContext CGLContextObj]);
   // Make the context opaque for fullscreen (since it performs better), and transparent
-  // for windowed (since we need it for rounded corners).
-  GLint opaque = aOpaque ? 1 : 0;
+  // for windowed (since we need it for rounded corners), but allow overriding
+  // it to opaque for testing purposes, even if that breaks the rounded corners.
+  GLint opaque = aOpaque || gfxPrefs::CompositorGLContextOpaque();
   [mGLContext setValues:&opaque forParameter:NSOpenGLCPSurfaceOpacity];
   CGLUnlockContext((CGLContextObj)[mGLContext CGLContextObj]);
 }
@@ -4600,6 +4581,10 @@ NSEvent* gLastDragMouseDownEvent = nil;
   bool defaultPrevented =
     (mGeckoChild->DispatchInputEvent(&geckoEvent) == nsEventStatus_eConsumeNoDefault);
 
+  if (!mGeckoChild) {
+    return;
+  }
+
   // Check to see if we are double-clicking in draggable parts of the window.
   if (!defaultPrevented && [theEvent clickCount] == 2 &&
       !mGeckoChild->GetNonDraggableRegion().Contains(pos.x, pos.y)) {
@@ -5033,7 +5018,17 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
                                 position,
                                 preciseDelta.x,
                                 preciseDelta.y,
-                                false);
+                                false,
+                                // This parameter is used for wheel delta
+                                // adjustment, such as auto-dir scrolling,
+                                // but we do't need to do anything special here
+                                // since this wheel event is sent to
+                                // DispatchAPZWheelInputEvent, which turns this
+                                // ScrollWheelInput back into a WidgetWheelEvent
+                                // and then it goes through the regular handling
+                                // in APZInputBridge. So passing |eNone| won't
+                                // pass up the necessary wheel delta adjustment.
+                                WheelDeltaAdjustmentStrategy::eNone);
     wheelEvent.mLineOrPageDeltaX = lineOrPageDelta.x;
     wheelEvent.mLineOrPageDeltaY = lineOrPageDelta.y;
     wheelEvent.mIsMomentum = nsCocoaUtils::IsMomentumScrollEvent(theEvent);
@@ -5049,7 +5044,17 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
                                 position,
                                 lineOrPageDelta.x,
                                 lineOrPageDelta.y,
-                                false);
+                                false,
+                                // This parameter is used for wheel delta
+                                // adjustment, such as auto-dir scrolling,
+                                // but we do't need to do anything special here
+                                // since this wheel event is sent to
+                                // DispatchAPZWheelInputEvent, which turns this
+                                // ScrollWheelInput back into a WidgetWheelEvent
+                                // and then it goes through the regular handling
+                                // in APZInputBridge. So passing |eNone| won't
+                                // pass up the necessary wheel delta adjustment.
+                                WheelDeltaAdjustmentStrategy::eNone);
     wheelEvent.mLineOrPageDeltaX = lineOrPageDelta.x;
     wheelEvent.mLineOrPageDeltaY = lineOrPageDelta.y;
     geckoChildDeathGrip->DispatchAPZWheelInputEvent(wheelEvent, false);
@@ -5102,13 +5107,13 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
     if (phase == NSEventPhaseMayBegin) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_MAYSTART, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
       return;
     }
     if (phase == NSEventPhaseCancelled) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_CANCELLED, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
       return;
     }
 
@@ -5125,34 +5130,34 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
     if (phase == NSEventPhaseBegan || isLegacyScroll) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_START, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
     if (momentumPhase == NSEventPhaseNone && delta != ScreenPoint(0, 0)) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_PAN, eventTime,
                                eventTimeStamp, location, delta, 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
     if (phase == NSEventPhaseEnded || isLegacyScroll) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_END, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
 
     // Any device that can dispatch momentum events supports all three momentum phases.
     if (momentumPhase == NSEventPhaseBegan) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_MOMENTUMSTART, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
     if (momentumPhase == NSEventPhaseChanged && delta != ScreenPoint(0, 0)) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_MOMENTUMPAN, eventTime,
                                eventTimeStamp, location, delta, 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
     if (momentumPhase == NSEventPhaseEnded) {
       PanGestureInput panInput(PanGestureInput::PANGESTURE_MOMENTUMEND, eventTime,
                                eventTimeStamp, location, ScreenPoint(0, 0), 0);
-      apzctm->ReceiveInputEvent(panInput, &guid, nullptr);
+      apzctm->InputBridge()->ReceiveInputEvent(panInput, &guid, nullptr);
     }
   }
 }
@@ -5218,8 +5223,8 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
     Preferences::GetBool("mousewheel.enable_pixel_scrolling", true);
 
   outWheelEvent->mDeltaMode =
-    usePreciseDeltas ? nsIDOMWheelEvent::DOM_DELTA_PIXEL
-                     : nsIDOMWheelEvent::DOM_DELTA_LINE;
+    usePreciseDeltas ? dom::WheelEventBinding::DOM_DELTA_PIXEL
+                     : dom::WheelEventBinding::DOM_DELTA_LINE;
   outWheelEvent->mIsMomentum = nsCocoaUtils::IsMomentumScrollEvent(aMouseEvent);
 }
 
@@ -5296,7 +5301,7 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
     MOZ_ASSERT(aOutGeckoEvent->pressure >= 0.0 &&
                aOutGeckoEvent->pressure <= 1.0);
   }
-  aOutGeckoEvent->inputSource = nsIDOMMouseEvent::MOZ_SOURCE_PEN;
+  aOutGeckoEvent->inputSource = dom::MouseEventBinding::MOZ_SOURCE_PEN;
   aOutGeckoEvent->tiltX = lround([aPointerEvent tilt].x * 90);
   aOutGeckoEvent->tiltY = lround([aPointerEvent tilt].y * 90);
   aOutGeckoEvent->tangentialPressure = [aPointerEvent tangentialPressure];
@@ -6263,10 +6268,10 @@ GetIntegerDeltaForEvent(NSEvent* aEvent)
     // value for NSDragOperationGeneric that is passed by other applications.
     // All that said, NSDragOperationNone is still reliable.
     if (aOperation == NSDragOperationNone) {
-      nsCOMPtr<nsIDOMDataTransfer> dataTransfer;
-      dragService->GetDataTransfer(getter_AddRefs(dataTransfer));
-      if (dataTransfer)
+      RefPtr<dom::DataTransfer> dataTransfer = dragService->GetDataTransfer();
+      if (dataTransfer) {
         dataTransfer->SetDropEffectInt(nsIDragService::DRAGDROP_ACTION_NONE);
+      }
     }
 
     mDragService->EndDragSession(

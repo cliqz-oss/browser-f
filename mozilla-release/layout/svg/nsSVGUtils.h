@@ -34,7 +34,6 @@ class nsIContent;
 class nsIDocument;
 class nsIFrame;
 class nsPresContext;
-class nsStyleContext;
 class nsStyleSVGPaint;
 class nsSVGDisplayContainerFrame;
 class nsSVGElement;
@@ -71,7 +70,6 @@ class GeneralPattern;
 #define SVG_HIT_TEST_CHECK_MRECT 0x04
 
 
-bool NS_SVGPathCachingEnabled();
 bool NS_SVGDisplayListHitTestingEnabled();
 bool NS_SVGDisplayListPaintingEnabled();
 bool NS_SVGNewGetBBoxEnabled();
@@ -414,6 +412,9 @@ public:
     // this flag is set; Otherwise, getBBox returns the union bounds in
     // the coordinate system formed by the <use> element.
     eUseUserSpaceOfUseElement = 1 << 9,
+    // For a frame with a clip-path, if this flag is set then the result
+    // will not be clipped to the bbox of the content inside the clip-path.
+    eDoNotClipToBBoxOfContentInsideClipPath = 1 << 10,
   };
   /**
    * This function in primarily for implementing the SVG DOM function getBBox()
@@ -518,7 +519,7 @@ public:
                             std::min(double(INT32_MAX), aVal)));
   }
 
-  static nscolor GetFallbackOrPaintColor(nsStyleContext *aStyleContext,
+  static nscolor GetFallbackOrPaintColor(mozilla::ComputedStyle *aComputedStyle,
                                          nsStyleSVGPaint nsStyleSVG::*aFillOrStroke);
 
   static void

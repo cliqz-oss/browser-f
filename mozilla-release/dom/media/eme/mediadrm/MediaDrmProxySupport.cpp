@@ -8,7 +8,6 @@
 #include "mozilla/EMEUtils.h"
 #include "FennecJNINatives.h"
 #include "MediaCodec.h" // For MediaDrm::KeyStatus
-#include "MediaPrefs.h"
 
 using namespace mozilla::java;
 
@@ -27,7 +26,7 @@ public:
   using MediaDrmProxyNativeCallbacks::DisposeNative;
   using MediaDrmProxyNativeCallbacks::AttachNative;
 
-  MediaDrmJavaCallbacksSupport(DecryptorProxyCallback* aDecryptorProxyCallback)
+  explicit MediaDrmJavaCallbacksSupport(DecryptorProxyCallback* aDecryptorProxyCallback)
     : mDecryptorProxyCallback(aDecryptorProxyCallback)
   {
     MOZ_ASSERT(aDecryptorProxyCallback);

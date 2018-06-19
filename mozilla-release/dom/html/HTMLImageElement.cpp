@@ -500,7 +500,7 @@ HTMLImageElement::AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
   }
 }
 
-nsresult
+void
 HTMLImageElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   // We handle image element with attribute ismap in its corresponding frame
@@ -510,7 +510,7 @@ HTMLImageElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   if (mouseEvent && mouseEvent->IsLeftClickEvent() && IsMap()) {
     mouseEvent->mFlags.mMultipleActionsPrevented = true;
   }
-  return nsGenericHTMLElement::GetEventTargetParent(aVisitor);
+  nsGenericHTMLElement::GetEventTargetParent(aVisitor);
 }
 
 bool
@@ -632,12 +632,8 @@ HTMLImageElement::UnbindFromTree(bool aDeep, bool aNullParent)
   }
 
   if (mInDocResponsiveContent) {
-    nsIDocument* doc = GetOurOwnerDoc();
-    MOZ_ASSERT(doc);
-    if (doc) {
-      doc->RemoveResponsiveContent(this);
-      mInDocResponsiveContent = false;
-    }
+    OwnerDoc()->RemoveResponsiveContent(this);
+    mInDocResponsiveContent = false;
   }
 
   nsImageLoadingContent::UnbindFromTree(aDeep, aNullParent);
@@ -859,7 +855,7 @@ HTMLImageElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 }
 
 #ifdef DEBUG
-nsIDOMHTMLFormElement*
+HTMLFormElement*
 HTMLImageElement::GetForm() const
 {
   return mForm;
@@ -867,13 +863,13 @@ HTMLImageElement::GetForm() const
 #endif
 
 void
-HTMLImageElement::SetForm(nsIDOMHTMLFormElement* aForm)
+HTMLImageElement::SetForm(HTMLFormElement* aForm)
 {
   NS_PRECONDITION(aForm, "Don't pass null here");
   NS_ASSERTION(!mForm,
                "We don't support switching from one non-null form to another.");
 
-  mForm = static_cast<HTMLFormElement*>(aForm);
+  mForm = aForm;
 }
 
 void
@@ -1043,18 +1039,15 @@ HTMLImageElement::PictureSourceSrcsetChanged(nsIContent *aSourceNode,
     nsCOMPtr<nsIPrincipal> principal;
     if (aSourceNode == this) {
       principal = mSrcsetTriggeringPrincipal;
-    } else if (auto* source = HTMLSourceElement::FromContent(aSourceNode)) {
+    } else if (auto* source = HTMLSourceElement::FromNode(aSourceNode)) {
       principal = source->GetSrcsetTriggeringPrincipal();
     }
     mResponsiveSelector->SetCandidatesFromSourceSet(aNewValue, principal);
   }
 
   if (!mInDocResponsiveContent && IsInComposedDoc()) {
-    nsIDocument* doc = GetOurOwnerDoc();
-    if (doc) {
-      doc->AddResponsiveContent(this);
-      mInDocResponsiveContent = true;
-    }
+    OwnerDoc()->AddResponsiveContent(this);
+    mInDocResponsiveContent = true;
   }
 
   // This always triggers the image update steps per the spec, even if
@@ -1239,7 +1232,7 @@ HTMLImageElement::TryCreateResponsiveSelector(Element* aSourceElement)
     if (!SourceElementMatches(aSourceElement)) {
       return false;
     }
-    auto* source = HTMLSourceElement::FromContent(aSourceElement);
+    auto* source = HTMLSourceElement::FromNode(aSourceElement);
     principal = source->GetSrcsetTriggeringPrincipal();
   } else if (aSourceElement->IsHTMLElement(nsGkAtoms::img)) {
     // Otherwise this is the <img> tag itself

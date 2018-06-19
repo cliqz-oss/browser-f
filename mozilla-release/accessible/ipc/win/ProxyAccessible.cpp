@@ -22,7 +22,7 @@
 
 #include <comutil.h>
 
-static const VARIANT kChildIdSelf = {VT_I4};
+static const VARIANT kChildIdSelf = {{{VT_I4}}};
 
 namespace mozilla {
 namespace a11y {
@@ -42,7 +42,7 @@ ProxyAccessible::GetCOMInterface(void** aOutAccessible) const
     // NB: Don't pass CHILDID_SELF here, use the absolute MSAA ID. Otherwise
     // GetIAccessibleFor will recurse into this function and we will just
     // overflow the stack.
-    VARIANT realId = {VT_I4};
+    VARIANT realId = {{{VT_I4}}};
     realId.ulVal = wrap->GetExistingID();
     thisPtr->mCOMProxy = wrap->GetIAccessibleFor(realId, &isDefunct);
   }
@@ -232,6 +232,19 @@ ProxyAccessible::Bounds()
     return rect;
   }
   rect.SetRect(left, top, width, height);
+  return rect;
+}
+
+nsIntRect
+ProxyAccessible::BoundsInCSSPixels()
+{
+  RefPtr<IGeckoCustom> custom = QueryInterface<IGeckoCustom>(this);
+  if (!custom) {
+    return nsIntRect();
+  }
+
+  nsIntRect rect;
+  HRESULT hr = custom->get_boundsInCSSPixels(&rect.x, &rect.y, &rect.width, &rect.height);
   return rect;
 }
 

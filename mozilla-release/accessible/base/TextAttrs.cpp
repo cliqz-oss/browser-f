@@ -14,6 +14,7 @@
 #include "nsFontMetrics.h"
 #include "nsLayoutUtils.h"
 #include "nsContainerFrame.h"
+#include "nsStyleUtil.h"
 #include "HyperTextAccessible.h"
 #include "mozilla/AppUnits.h"
 #include "mozilla/gfx/2D.h"
@@ -549,7 +550,7 @@ TextAttrsMgr::FontSizeTextAttr::
 
 TextAttrsMgr::FontStyleTextAttr::
   FontStyleTextAttr(nsIFrame* aRootFrame, nsIFrame* aFrame) :
-  TTextAttr<nscoord>(!aFrame)
+  TTextAttr<FontSlantStyle>(!aFrame)
 {
   mRootNativeValue = aRootFrame->StyleFont()->mFont.style;
   mIsRootDefined = true;
@@ -562,7 +563,7 @@ TextAttrsMgr::FontStyleTextAttr::
 
 bool
 TextAttrsMgr::FontStyleTextAttr::
-  GetValueFor(Accessible* aAccessible, nscoord* aValue)
+  GetValueFor(Accessible* aAccessible, FontSlantStyle* aValue)
 {
   nsIContent* elm = nsCoreUtils::GetDOMElementFor(aAccessible->GetContent());
   if (elm) {
@@ -577,12 +578,12 @@ TextAttrsMgr::FontStyleTextAttr::
 
 void
 TextAttrsMgr::FontStyleTextAttr::
-  ExposeValue(nsIPersistentProperties* aAttributes, const nscoord& aValue)
+  ExposeValue(nsIPersistentProperties* aAttributes,
+              const FontSlantStyle& aValue)
 {
-  nsAutoString formattedValue;
-  StyleInfo::FormatFontStyle(aValue, formattedValue);
-
-  nsAccUtils::SetAccAttr(aAttributes, nsGkAtoms::font_style, formattedValue);
+  nsAutoString string;
+  nsStyleUtil::AppendFontSlantStyle(aValue, string);
+  nsAccUtils::SetAccAttr(aAttributes, nsGkAtoms::font_style, string);
 }
 
 
@@ -592,7 +593,7 @@ TextAttrsMgr::FontStyleTextAttr::
 
 TextAttrsMgr::FontWeightTextAttr::
   FontWeightTextAttr(nsIFrame* aRootFrame, nsIFrame* aFrame) :
-  TTextAttr<int32_t>(!aFrame)
+  TTextAttr<FontWeight>(!aFrame)
 {
   mRootNativeValue = GetFontWeight(aRootFrame);
   mIsRootDefined = true;
@@ -605,7 +606,7 @@ TextAttrsMgr::FontWeightTextAttr::
 
 bool
 TextAttrsMgr::FontWeightTextAttr::
-  GetValueFor(Accessible* aAccessible, int32_t* aValue)
+  GetValueFor(Accessible* aAccessible, FontWeight* aValue)
 {
   nsIContent* elm = nsCoreUtils::GetDOMElementFor(aAccessible->GetContent());
   if (elm) {
@@ -620,15 +621,16 @@ TextAttrsMgr::FontWeightTextAttr::
 
 void
 TextAttrsMgr::FontWeightTextAttr::
-  ExposeValue(nsIPersistentProperties* aAttributes, const int32_t& aValue)
+  ExposeValue(nsIPersistentProperties* aAttributes,
+              const FontWeight& aValue)
 {
   nsAutoString formattedValue;
-  formattedValue.AppendInt(aValue);
+  formattedValue.AppendFloat(aValue.ToFloat());
 
   nsAccUtils::SetAccAttr(aAttributes, nsGkAtoms::fontWeight, formattedValue);
 }
 
-int32_t
+FontWeight
 TextAttrsMgr::FontWeightTextAttr::
   GetFontWeight(nsIFrame* aFrame)
 {
@@ -645,17 +647,19 @@ TextAttrsMgr::FontWeightTextAttr::
   // bold font, i.e. synthetic bolding is used. IsSyntheticBold method is only
   // needed on Mac, but it is "safe" to use on all platforms.  (For non-Mac
   // platforms it always return false.)
-  if (font->IsSyntheticBold())
-    return 700;
+  if (font->IsSyntheticBold()) {
+    return FontWeight::Bold();
+  }
 
   // On Windows, font->GetStyle()->weight will give the same weight as
   // fontEntry->Weight(), the weight of the first font in the font group,
   // which may not be the weight of the font face used to render the
   // characters. On Mac, font->GetStyle()->weight will just give the same
   // number as getComputedStyle(). fontEntry->Weight() will give the weight
-  // of the font face used.
+  // range supported by the font face used, so we clamp the weight that was
+  // requested by style to what is actually supported by the font.
   gfxFontEntry *fontEntry = font->GetFontEntry();
-  return fontEntry->Weight();
+  return fontEntry->Weight().Clamp(font->GetStyle()->weight);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

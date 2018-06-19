@@ -5,6 +5,7 @@
 "use strict";
 
 const {StorageFront} = require("devtools/shared/fronts/storage");
+/* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js", this);
 
 const storeMap = {
@@ -348,7 +349,7 @@ function testCookies(cookiesActor) {
   return testCookiesObjects(0, cookiesActor.hosts, cookiesActor);
 }
 
-var testCookiesObjects = async function (index, hosts, cookiesActor) {
+var testCookiesObjects = async function(index, hosts, cookiesActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     let cookiesLength = 0;
@@ -393,7 +394,7 @@ function testLocalStorage(localStorageActor) {
   return testLocalStorageObjects(0, localStorageActor.hosts, localStorageActor);
 }
 
-var testLocalStorageObjects = async function (index, hosts, localStorageActor) {
+var testLocalStorageObjects = async function(index, hosts, localStorageActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     is(data.total, storeMap.localStorage[host].length,
@@ -427,7 +428,7 @@ function testSessionStorage(sessionStorageActor) {
                                    sessionStorageActor);
 }
 
-var testSessionStorageObjects = async function (index, hosts, sessionStorageActor) {
+var testSessionStorageObjects = async function(index, hosts, sessionStorageActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     is(data.total, storeMap.sessionStorage[host].length,
@@ -454,7 +455,7 @@ var testSessionStorageObjects = async function (index, hosts, sessionStorageActo
   await testSessionStorageObjects(++index, hosts, sessionStorageActor);
 };
 
-var testIndexedDB = async function (indexedDBActor) {
+var testIndexedDB = async function(indexedDBActor) {
   is(Object.keys(indexedDBActor.hosts).length, 3,
      "Correct number of host entries for indexed db");
 
@@ -477,7 +478,7 @@ var testIndexedDB = async function (indexedDBActor) {
   await testIDBEntries(0, indexedDBActor.hosts, indexedDBActor);
 };
 
-var testIndexedDBs = async function (index, hosts, indexedDBActor) {
+var testIndexedDBs = async function(index, hosts, indexedDBActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     is(data.total, IDBValues.dbDetails[host].length,
@@ -507,7 +508,7 @@ var testIndexedDBs = async function (index, hosts, indexedDBActor) {
   await testIndexedDBs(++index, hosts, indexedDBActor);
 };
 
-var testObjectStores = async function (ix, hosts, indexedDBActor) {
+var testObjectStores = async function(ix, hosts, indexedDBActor) {
   let host = Object.keys(hosts)[ix];
   let matchItems = (data, db) => {
     is(data.total, IDBValues.objectStoreDetails[host][db].length,
@@ -558,7 +559,7 @@ var testObjectStores = async function (ix, hosts, indexedDBActor) {
   await testObjectStores(++ix, hosts, indexedDBActor);
 };
 
-var testIDBEntries = async function (index, hosts, indexedDBActor) {
+var testIDBEntries = async function(index, hosts, indexedDBActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = (data, obj) => {
     is(data.total, IDBValues.entries[host][obj].length,
@@ -596,7 +597,7 @@ var testIDBEntries = async function (index, hosts, indexedDBActor) {
   await testObjectStores(++index, hosts, indexedDBActor);
 };
 
-add_task(async function () {
+add_task(async function() {
   await openTabAndSetupStorage(MAIN_DOMAIN + "storage-listings.html");
 
   initDebuggerServer();

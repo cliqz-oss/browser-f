@@ -178,7 +178,9 @@ var Authentication = {
       let client = new FxAccountsClient();
       let credentials = await client.signIn(account.username, account.password, true);
       await fxAccounts.setSignedInUser(credentials);
-      await this._completeVerification(account.username);
+      if (!credentials.verified) {
+        await this._completeVerification(account.username);
+      }
 
       if (Weave.Status.login !== Weave.LOGIN_SUCCEEDED) {
         Logger.logInfo("Logging into Weave.");
@@ -191,24 +193,12 @@ var Authentication = {
   },
 
   /**
-   * Sign out of Firefox Accounts. It also clears out the device ID, if we find one.
+   * Sign out of Firefox Accounts.
    */
   async signOut() {
     if (await Authentication.isLoggedIn()) {
-      let user = await Authentication.getSignedInUser();
-      if (!user) {
-        throw new Error("Failed to get signed in user!");
-      }
-      let fxc = new FxAccountsClient();
-      let { sessionToken, deviceId } = user;
-      if (deviceId) {
-        Logger.logInfo("Destroying device " + deviceId);
-        await fxAccounts.deleteDeviceRegistration(sessionToken, deviceId);
-        await fxAccounts.signOut(true);
-      } else {
-        Logger.logError("No device found.");
-        await fxc.signOut(sessionToken, { service: "sync" });
-      }
+      // Note: This will clean up the device ID.
+      await fxAccounts.signOut();
     }
   }
 };

@@ -25,7 +25,7 @@ class UiCompositorControllerChild final : protected PUiCompositorControllerChild
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(UiCompositorControllerChild)
 
-  static RefPtr<UiCompositorControllerChild> CreateForSameProcess(const int64_t& aRootLayerTreeId);
+  static RefPtr<UiCompositorControllerChild> CreateForSameProcess(const LayersId& aRootLayerTreeId);
   static RefPtr<UiCompositorControllerChild> CreateForGPUProcess(const uint64_t& aProcessToken,
                                                                  Endpoint<PUiCompositorControllerChild>&& aEndpoint);
 
@@ -51,7 +51,7 @@ protected:
   void ActorDestroy(ActorDestroyReason aWhy) override;
   void DeallocPUiCompositorControllerChild() override;
   void ProcessingError(Result aCode, const char* aReason) override;
-  virtual void HandleFatalError(const char* aName, const char* aMsg) const override;
+  virtual void HandleFatalError(const char* aMsg) const override;
   mozilla::ipc::IPCResult RecvToolbarAnimatorMessageFromCompositor(const int32_t& aMessage) override;
   mozilla::ipc::IPCResult RecvRootFrameMetrics(const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) override;
   mozilla::ipc::IPCResult RecvScreenPixels(ipc::Shmem&& aMem, const ScreenIntSize& aSize) override;

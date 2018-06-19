@@ -25,14 +25,11 @@
 #include "nsIWebNavigation.h"
 #include "nsIWindowWatcher.h"
 
-#include "nsIDOMXULElement.h"
-
 #include "nsWidgetInitData.h"
 #include "nsWidgetsCID.h"
 #include "nsIWidget.h"
 #include "nsIWidgetListener.h"
 
-#include "nsIDOMCharacterData.h"
 #include "nsINodeList.h"
 
 #include "nsITimer.h"
@@ -45,7 +42,6 @@
 
 #include "nsIDocument.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMElement.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIObserverService.h"
 

@@ -3,8 +3,6 @@
  * This file contains tests for the Preferences search bar.
  */
 
-/* eslint-disable mozilla/no-cpows-in-tests */
-
 /**
  * Enabling searching functionality. Will display search bar from this testcase forward.
  */
@@ -14,8 +12,8 @@ add_task(async function() {
 
 /**
  * Test that we only search the selected child of a XUL deck.
- * When we search "Cancel Setup",
- * it should not show the "Cancel Setup" button if the Firefox account is not logged in yet.
+ * When we search "Remove Account",
+ * it should not show the "Remove Account" button if the Firefox account is not logged in yet.
  */
 add_task(async function() {
   await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
@@ -50,20 +48,81 @@ add_task(async function() {
     }
   }
 
-  // Ensure the "Cancel Setup" button exists in the hidden child of the <xul:deck>.
+  // Ensure the "Remove Account" button exists in the hidden child of the <xul:deck>.
   let unlinkFxaAccount = weavePrefsDeck.childNodes[1].querySelector("#unverifiedUnlinkFxaAccount");
-  is(unlinkFxaAccount.label, "Cancel Setup", "The Cancel Setup button should exist");
+  is(unlinkFxaAccount.label, "Remove Account", "The Remove Account button should exist");
 
   // Performs search.
   searchInput.focus();
-  query = "Cancel Setup";
+  query = "Remove Account";
   searchCompletedPromise = BrowserTestUtils.waitForEvent(
       gBrowser.contentWindow, "PreferencesSearchCompleted", evt => evt.detail == query);
   EventUtils.sendString(query);
   await searchCompletedPromise;
 
-  let noResultsEl = gBrowser.contentDocument.querySelector(".no-results-message");
+  let noResultsEl = gBrowser.contentDocument.querySelector("#no-results-message");
   is_element_visible(noResultsEl, "Should be reporting no results");
+
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
+
+/**
+ * Test that we search using `search-l10n-ids`.
+ *
+ * The test uses element `showUpdateHistory` and
+ * l10n id `language-and-appearance-header` and expects the element
+ * to be matched on the first word from the l10n id value ("Language" in en-US).
+ */
+add_task(async function() {
+  let l10nId = "language-and-appearance-header";
+
+  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+
+  // First, lets make sure that the element is not matched without
+  // `search-l10n-ids`.
+  {
+    let searchInput = gBrowser.contentDocument.getElementById("searchInput");
+    let suhElem = gBrowser.contentDocument.getElementById("showUpdateHistory");
+
+    is(searchInput, gBrowser.contentDocument.activeElement.closest("#searchInput"),
+      "Search input should be focused when visiting preferences");
+
+    ok(!suhElem.getAttribute("search-l10n-ids").includes(l10nId),
+      "showUpdateHistory element should not contain the l10n id here.");
+
+    let query = "Language";
+    let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+        gBrowser.contentWindow, "PreferencesSearchCompleted", evt => evt.detail == query);
+    EventUtils.sendString(query);
+    await searchCompletedPromise;
+
+    is_element_hidden(suhElem, "showUpdateHistory should not be in search results");
+  }
+
+  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  // Now, let's add the l10n id to the element and perform the same search again.
+
+  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
+
+  {
+    let searchInput = gBrowser.contentDocument.getElementById("searchInput");
+
+    is(searchInput, gBrowser.contentDocument.activeElement.closest("#searchInput"),
+      "Search input should be focused when visiting preferences");
+
+    let suhElem = gBrowser.contentDocument.getElementById("showUpdateHistory");
+    suhElem.setAttribute("search-l10n-ids", l10nId);
+
+    let query = "Language";
+    let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+        gBrowser.contentWindow, "PreferencesSearchCompleted", evt => evt.detail == query);
+    EventUtils.sendString(query);
+    await searchCompletedPromise;
+
+    is_element_visible(suhElem, "showUpdateHistory should be in search results");
+  }
 
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

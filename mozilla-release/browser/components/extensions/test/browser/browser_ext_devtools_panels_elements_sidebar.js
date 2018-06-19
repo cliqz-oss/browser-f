@@ -6,8 +6,6 @@ ChromeUtils.defineModuleGetter(this, "gDevTools",
                                "resource://devtools/client/framework/gDevTools.jsm");
 ChromeUtils.defineModuleGetter(this, "devtools",
                                "resource://devtools/shared/Loader.jsm");
-ChromeUtils.defineModuleGetter(this, "ContentTaskUtils",
-                               "resource://testing-common/ContentTaskUtils.jsm");
 
 /* globals getExtensionSidebarActors, expectNoSuchActorIDs, testSetExpressionSidebarPanel */
 
@@ -209,5 +207,5 @@ add_task(async function test_devtools_panels_elements_sidebar() {
 
   await target.destroy();
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

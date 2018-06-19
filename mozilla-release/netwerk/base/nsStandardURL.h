@@ -55,9 +55,10 @@ class nsStandardURL : public nsIFileURL
 {
 protected:
     virtual ~nsStandardURL();
+    explicit nsStandardURL(bool aSupportsFileURL = false, bool aTrackURL = true);
 
 public:
-    NS_DECL_ISUPPORTS
+    NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSIURI
     NS_DECL_NSIURL
     NS_DECL_NSIFILEURL
@@ -71,8 +72,6 @@ public:
     // nsISizeOf
     virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
     virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override;
-
-    explicit nsStandardURL(bool aSupportsFileURL = false, bool aTrackURL = true);
 
     static void InitGlobalObjects();
     static void ShutdownGlobalObjects();
@@ -88,7 +87,7 @@ public: /* internal -- HPUX compiler can't handle this being private */
 
         URLSegment() : mPos(0), mLen(-1) {}
         URLSegment(uint32_t pos, int32_t len) : mPos(pos), mLen(len) {}
-        URLSegment(const URLSegment& aCopy) : mPos(aCopy.mPos), mLen(aCopy.mLen) {}
+        URLSegment(const URLSegment& aCopy) = default;
         void Reset() { mPos = 0; mLen = -1; }
         // Merge another segment following this one to it if they're contiguous
         // Assumes we have something like "foo;bar" where this object is 'foo' and right
@@ -101,21 +100,6 @@ public: /* internal -- HPUX compiler can't handle this being private */
             }
         }
     };
-
-    //
-    // Pref observer
-    //
-    class nsPrefObserver final : public nsIObserver
-    {
-        ~nsPrefObserver() {}
-
-    public:
-        NS_DECL_ISUPPORTS
-        NS_DECL_NSIOBSERVER
-
-        nsPrefObserver() { }
-    };
-    friend class nsPrefObserver;
 
     //
     // URL segment encoder : performs charset conversion and URL escaping.
@@ -194,6 +178,7 @@ protected:
     virtual nsresult SetQuery(const nsACString &input);
     virtual nsresult SetQueryWithEncoding(const nsACString &input, const Encoding* encoding);
     bool Deserialize(const mozilla::ipc::URIParams&);
+    nsresult ReadPrivate(nsIObjectInputStream *stream);
 
 private:
     nsresult Init(uint32_t urlType, int32_t defaultPort, const nsACString &spec,
@@ -276,8 +261,6 @@ private:
     nsresult ReadSegment(nsIBinaryInputStream *, URLSegment &);
     nsresult WriteSegment(nsIBinaryOutputStream *, const URLSegment &);
 
-    static void PrefsChanged(nsIPrefBranch *prefs, const char *pref);
-
     void FindHostLimit(nsACString::const_iterator& aStart,
                        nsACString::const_iterator& aEnd);
 
@@ -316,7 +299,6 @@ private:
         eEncoding_UTF8
     };
 
-    uint32_t mSpecEncoding    : 2; // eEncoding_xxx
     uint32_t mURLType         : 2; // nsIStandardURL::URLTYPE_xxx
     uint32_t mMutable         : 1; // nsIStandardURL::mutable
     uint32_t mSupportsFileURL : 1; // QI to nsIFileURL?
@@ -347,6 +329,7 @@ public:
         , public nsIStandardURLMutator
         , public nsIURLMutator
         , public nsIFileURLMutator
+        , public nsISerializable
     {
         NS_FORWARD_SAFE_NSIURISETTERS_RET(BaseURIMutator<T>::mURI)
 
@@ -354,6 +337,13 @@ public:
         Deserialize(const mozilla::ipc::URIParams& aParams) override
         {
             return BaseURIMutator<T>::InitFromIPCParams(aParams);
+        }
+
+        NS_IMETHOD
+        Write(nsIObjectOutputStream *aOutputStream) override
+        {
+            NS_NOTREACHED("Use nsIURIMutator.read() instead");
+            return NS_ERROR_NOT_IMPLEMENTED;
         }
 
         MOZ_MUST_USE NS_IMETHOD
@@ -393,7 +383,7 @@ public:
                 // We don't need a new URI object if we already have one
                 BaseURIMutator<T>::mURI.swap(uri);
             } else {
-                uri = new T();
+                uri = Create();
             }
             nsresult rv = uri->Init(aURLType, aDefaultPort, aSpec, aCharset, aBaseURI);
             if (NS_FAILED(rv)) {
@@ -455,6 +445,18 @@ public:
             return BaseURIMutator<T>::mURI->SetFileExtensionInternal(aFileExtension);
         }
 
+        T* Create() override
+        {
+            return new T(mMarkedFileURL);
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        MarkFileURL() override
+        {
+            mMarkedFileURL = true;
+            return NS_OK;
+        }
+
         MOZ_MUST_USE NS_IMETHOD
         SetFile(nsIFile* aFile) override
         {
@@ -463,7 +465,7 @@ public:
                 // We don't need a new URI object if we already have one
                 BaseURIMutator<T>::mURI.swap(uri);
             } else {
-                uri = new T(/* supportsFileURL = */ true);
+                uri = new T(/* aSupportsFileURL = */ true);
             }
 
             nsresult rv = uri->SetFile(aFile);
@@ -474,9 +476,11 @@ public:
             return NS_OK;
         }
 
-        explicit TemplatedMutator() { }
+        explicit TemplatedMutator() = default;
     private:
-        virtual ~TemplatedMutator() { }
+        virtual ~TemplatedMutator() = default;
+
+        bool mMarkedFileURL = false;
 
         friend T;
     };

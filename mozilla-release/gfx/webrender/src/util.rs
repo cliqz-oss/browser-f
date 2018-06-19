@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{BorderRadius, DeviceIntPoint, DeviceIntRect, DeviceIntSize, DevicePixelScale};
-use api::{DevicePoint, DeviceRect, DeviceSize, LayerPixel, LayerPoint, LayerRect, LayerSize};
-use api::{LayoutPixel, WorldPixel, WorldRect};
+use api::{DevicePoint, DeviceRect, DeviceSize, LayoutPixel, LayoutPoint, LayoutRect, LayoutSize};
+use api::{WorldPixel, WorldRect};
 use euclid::{Point2D, Rect, Size2D, TypedPoint2D, TypedPoint3D, TypedRect, TypedSize2D};
 use euclid::{TypedTransform2D, TypedTransform3D, TypedVector2D};
 use num_traits::Zero;
@@ -157,8 +157,8 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 pub fn calculate_screen_bounding_rect(
-    transform: &LayerToWorldFastTransform,
-    rect: &LayerRect,
+    transform: &LayoutToWorldFastTransform,
+    rect: &LayoutRect,
     device_pixel_scale: DevicePixelScale,
 ) -> DeviceIntRect {
     let points = [
@@ -283,7 +283,7 @@ pub fn recycle_vec<T>(mut old_vec: Vec<T>) -> Vec<T> {
 
     old_vec.clear();
 
-    return old_vec;
+    old_vec
 }
 
 
@@ -309,11 +309,11 @@ pub trait MaxRect {
     fn max_rect() -> Self;
 }
 
-impl MaxRect for LayerRect {
+impl MaxRect for LayoutRect {
     fn max_rect() -> Self {
-        LayerRect::new(
-            LayerPoint::new(f32::MIN / 2.0, f32::MIN / 2.0),
-            LayerSize::new(f32::MAX, f32::MAX),
+        LayoutRect::new(
+            LayoutPoint::new(f32::MIN / 2.0, f32::MIN / 2.0),
+            LayoutSize::new(f32::MAX, f32::MAX),
         )
     }
 }
@@ -412,10 +412,10 @@ impl<Src, Dst> FastTransform<Src, Dst> {
 
     #[inline(always)]
     pub fn pre_translate(&self, other_offset: &TypedVector2D<f32, Src>) -> Self {
-        match self {
-            &FastTransform::Offset(ref offset) =>
-                return FastTransform::Offset(*offset + *other_offset),
-            &FastTransform::Transform { transform, .. } =>
+        match *self {
+            FastTransform::Offset(ref offset) =>
+                FastTransform::Offset(*offset + *other_offset),
+            FastTransform::Transform { transform, .. } =>
                 FastTransform::with_transform(transform.pre_translate(other_offset.to_3d()))
         }
     }
@@ -479,7 +479,7 @@ impl<Src, Dst> FastTransform<Src, Dst> {
             FastTransform::Offset(offset) =>
                 Some(TypedRect::from_untyped(&rect.to_untyped().translate(&-offset.to_untyped()))),
             FastTransform::Transform { inverse: Some(ref inverse), is_2d: true, .. }  =>
-                Some(inverse.transform_rect(&rect)),
+                Some(inverse.transform_rect(rect)),
             FastTransform::Transform { ref transform, is_2d: false, .. } =>
                 Some(transform.inverse_rect_footprint(rect)),
             FastTransform::Transform { inverse: None, .. }  => None,
@@ -556,6 +556,5 @@ impl<Src, Dst> From<TypedVector2D<f32, Src>> for FastTransform<Src, Dst> {
 }
 
 pub type LayoutFastTransform = FastTransform<LayoutPixel, LayoutPixel>;
-pub type LayerFastTransform = FastTransform<LayerPixel, LayerPixel>;
-pub type LayerToWorldFastTransform = FastTransform<LayerPixel, WorldPixel>;
-pub type WorldToLayerFastTransform = FastTransform<WorldPixel, LayerPixel>;
+pub type LayoutToWorldFastTransform = FastTransform<LayoutPixel, WorldPixel>;
+pub type WorldToLayoutFastTransform = FastTransform<WorldPixel, LayoutPixel>;

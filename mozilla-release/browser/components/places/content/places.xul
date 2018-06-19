@@ -5,30 +5,28 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
-<?xml-stylesheet href="chrome://browser/content/places/organizer.css"?>
 
 <?xml-stylesheet href="chrome://global/skin/"?>
 <?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/organizer.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css"?>
 
-<?xul-overlay href="chrome://browser/content/places/editBookmarkOverlay.xul"?>
-
-#ifdef XP_MACOSX
-<?xul-overlay href="chrome://browser/content/macBrowserOverlay.xul"?>
-#else
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
-#endif
+<?xml-stylesheet href="chrome://browser/content/downloads/downloads.css"?>
+<?xml-stylesheet href="chrome://browser/skin/downloads/allDownloadsView.css"?>
 
 <!DOCTYPE window [
 <!ENTITY % placesDTD SYSTEM "chrome://browser/locale/places/places.dtd">
 %placesDTD;
+<!ENTITY % downloadsDTD SYSTEM "chrome://browser/locale/downloads/downloads.dtd">
+%downloadsDTD;
 <!ENTITY % editMenuOverlayDTD SYSTEM "chrome://global/locale/editMenuOverlay.dtd">
 %editMenuOverlayDTD;
 <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
 %browserDTD;
+<!ENTITY % editBookmarkOverlayDTD SYSTEM "chrome://browser/locale/places/editBookmarkOverlay.dtd">
+%editBookmarkOverlayDTD;
 #ifdef XP_MACOSX
-<!ENTITY % baseMenuOverlayDTD SYSTEM "chrome://browser/locale/baseMenuOverlay.dtd">
-%baseMenuOverlayDTD;
+#include ../../../base/content/browser-doctype.inc
 #endif
 ]>
 
@@ -47,22 +45,48 @@
   <script type="application/javascript"
           src="chrome://browser/content/places/places.js"/>
 #ifndef XP_MACOSX
-  <!-- On Mac, these are included via macBrowserOverlay.xul -> browser.js -> defineLazyScriptGetter -->
+  <!-- On Mac, this is included via macWindow.inc.xul -> global-scripts.inc -> browser.js -> defineLazyScriptGetter -->
   <script type="application/javascript"
-          src="chrome://browser/content/places/editBookmarkOverlay.js"/>
+          src="chrome://browser/content/places/editBookmark.js"/>
+  <!-- On Mac, thes are included via macWindow.inc.xul -> global-scripts.inc -->
+  <script type="application/javascript"
+          src="chrome://global/content/globalOverlay.js"/>
+  <script type="application/javascript"
+          src="chrome://browser/content/utilityOverlay.js"/>
+  <!-- On Mac, these are included via macWindow.inc.xul -->
+  <script type="application/javascript"><![CDATA[
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
+
+    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+    XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
+      "chrome://browser/content/places/treeView.js");
+    XPCOMUtils.defineLazyScriptGetter(window,
+      ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
+       "chrome://browser/content/places/controller.js");
+  ]]></script>
 #endif
 
   <stringbundleset id="placesStringSet">
     <stringbundle id="brandStrings" src="chrome://branding/locale/brand.properties"/>
   </stringbundleset>
 
-
 #ifdef XP_MACOSX
-#include ../../../base/content/browserMountPoints.inc
+#include ../../../base/content/macWindow.inc.xul
 #else
 #include ../../../../toolkit/content/editMenuCommands.inc.xul
-  <commandset id="placesCommands"/>
+#include placesCommands.inc.xul
 #endif
+
+  <!-- This must be included after macWindow.inc.xul to override DownloadsView -->
+  <script type="application/javascript"
+          src="chrome://browser/content/downloads/allDownloadsView.js"/>
+  <script type="application/javascript"
+          src="chrome://global/content/contentAreaUtils.js"/>
 
   <commandset id="organizerCommandSet">
     <command id="OrganizerCommand_find:all"
@@ -86,7 +110,7 @@
     <command id="OrganizerCommand:Forward"
              oncommand="PlacesOrganizer.forward();"/>
   </commandset>
-
+#include ../../downloads/content/downloadsCommands.inc.xul
 
   <keyset id="placesOrganizerKeyset">
     <!-- Instantiation Keys -->
@@ -139,10 +163,11 @@
 #endif
 
   <popupset id="placesPopupset">
-    <menupopup id="placesContext"/>
+#include placesContextMenu.inc.xul
     <menupopup id="placesColumnsContext"
                onpopupshowing="ViewMenu.fillWithColumns(event, null, null, 'checkbox', null);"
                oncommand="ViewMenu.showHideColumn(event.target); event.stopPropagation();"/>
+#include ../../downloads/content/downloadsContextMenu.inc.xul
   </popupset>
 
   <toolbox id="placesToolbox">
@@ -327,11 +352,20 @@
       <spacer id="libraryToolbarSpacer" flex="1"/>
 
       <textbox id="searchFilter"
+               flex="1"
                type="search"
                aria-controls="placeContent"
                oncommand="PlacesSearchBox.search(this.value);"
                collection="bookmarks">
       </textbox>
+      <toolbarbutton id="clearDownloadsButton"
+#ifdef XP_MACOSX
+                     class="tabbable"
+#endif
+                     insertbefore="libraryToolbarSpacer"
+                     label="&clearDownloadsButton.label;"
+                     command="downloadsCmd_clearDownloads"
+                     tooltiptext="&clearDownloadsButton.tooltip;"/>
     </toolbar>
   </toolbox>
 
@@ -398,6 +432,7 @@
           </treecols>
           <treechildren flex="1" onclick="ContentTree.onClick(event);"/>
         </tree>
+#include ../../downloads/content/downloadsRichListBox.inc.xul
       </deck>
       <deck id="detailsDeck" style="height: 11em;">
         <vbox id="itemsCountBox" align="center">
@@ -410,7 +445,7 @@
           <spacer flex="3"/>
         </vbox>
         <vbox id="infoBox" minimal="true">
-          <vbox id="editBookmarkPanelContent" flex="1"/>
+#include editBookmarkPanel.inc.xul
           <hbox id="infoBoxExpanderWrapper" align="center">
 
             <button type="image" id="infoBoxExpander"

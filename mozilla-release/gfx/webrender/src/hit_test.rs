@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BorderRadius, ClipMode, HitTestFlags, HitTestItem, HitTestResult, ItemTag, LayerPoint};
-use api::{LayerPrimitiveInfo, LayerRect, LocalClip, PipelineId, WorldPoint};
-use clip::{ClipSource, ClipStore, Contains, rounded_rectangle_contains_point};
+use api::{BorderRadius, ClipMode, HitTestFlags, HitTestItem, HitTestResult, ItemTag, LayoutPoint};
+use api::{LayoutPrimitiveInfo, LayoutRect, PipelineId, WorldPoint};
+use clip::{ClipSource, ClipStore, rounded_rectangle_contains_point};
 use clip_scroll_node::{ClipScrollNode, NodeType};
 use clip_scroll_tree::{ClipChainIndex, ClipScrollNodeIndex, ClipScrollTree};
 use internal_types::FastHashMap;
 use prim_store::ScrollNodeAndClipChain;
-use util::LayerToWorldFastTransform;
+use util::LayoutToWorldFastTransform;
 
 /// A copy of important clip scroll node data to use during hit testing. This a copy of
 /// data from the ClipScrollTree that will persist as a new frame is under construction,
@@ -23,13 +23,13 @@ pub struct HitTestClipScrollNode {
     regions: Vec<HitTestRegion>,
 
     /// World transform for content transformed by this node.
-    world_content_transform: LayerToWorldFastTransform,
+    world_content_transform: LayoutToWorldFastTransform,
 
     /// World viewport transform for content transformed by this node.
-    world_viewport_transform: LayerToWorldFastTransform,
+    world_viewport_transform: LayoutToWorldFastTransform,
 
     /// Origin of the viewport of the node, used to calculate node-relative positions.
-    node_origin: LayerPoint,
+    node_origin: LayoutPoint,
 }
 
 /// A description of a clip chain in the HitTester. This is used to describe
@@ -54,17 +54,19 @@ impl HitTestClipChainDescriptor {
 
 #[derive(Clone)]
 pub struct HitTestingItem {
-    rect: LayerRect,
-    clip: LocalClip,
+    rect: LayoutRect,
+    clip_rect: LayoutRect,
     tag: ItemTag,
+    is_backface_visible: bool,
 }
 
 impl HitTestingItem {
-    pub fn new(tag: ItemTag, info: &LayerPrimitiveInfo) -> HitTestingItem {
+    pub fn new(tag: ItemTag, info: &LayoutPrimitiveInfo) -> HitTestingItem {
         HitTestingItem {
             rect: info.rect,
-            clip: info.local_clip,
-            tag: tag,
+            clip_rect: info.clip_rect,
+            tag,
+            is_backface_visible: info.is_backface_visible,
         }
     }
 }
@@ -73,17 +75,20 @@ impl HitTestingItem {
 pub struct HitTestingRun(pub Vec<HitTestingItem>, pub ScrollNodeAndClipChain);
 
 enum HitTestRegion {
-    Rectangle(LayerRect),
-    RoundedRectangle(LayerRect, BorderRadius, ClipMode),
+    Rectangle(LayoutRect, ClipMode),
+    RoundedRectangle(LayoutRect, BorderRadius, ClipMode),
 }
 
 impl HitTestRegion {
-    pub fn contains(&self, point: &LayerPoint) -> bool {
-        match self {
-            &HitTestRegion::Rectangle(ref rectangle) => rectangle.contains(point),
-            &HitTestRegion::RoundedRectangle(rect, radii, ClipMode::Clip) =>
+    pub fn contains(&self, point: &LayoutPoint) -> bool {
+        match *self {
+            HitTestRegion::Rectangle(ref rectangle, ClipMode::Clip) =>
+                rectangle.contains(point),
+            HitTestRegion::Rectangle(ref rectangle, ClipMode::ClipOut) =>
+                !rectangle.contains(point),
+            HitTestRegion::RoundedRectangle(rect, radii, ClipMode::Clip) =>
                 rounded_rectangle_contains_point(point, &rect, &radii),
-            &HitTestRegion::RoundedRectangle(rect, radii, ClipMode::ClipOut) =>
+            HitTestRegion::RoundedRectangle(rect, radii, ClipMode::ClipOut) =>
                 !rounded_rectangle_contains_point(point, &rect, &radii),
         }
     }
@@ -232,6 +237,7 @@ impl HitTester {
             }
 
             let transform = scroll_node.world_content_transform;
+            let mut facing_backwards: Option<bool> = None;  // will be computed on first use
             let point_in_layer = match transform.inverse() {
                 Some(inverted) => inverted.transform_point2d(&point),
                 None => continue,
@@ -239,7 +245,8 @@ impl HitTester {
 
             let mut clipped_in = false;
             for item in items.iter().rev() {
-                if !item.rect.contains(&point_in_layer) || !item.clip.contains(&point_in_layer) {
+                if !item.rect.contains(&point_in_layer) ||
+                    !item.clip_rect.contains(&point_in_layer) {
                     continue;
                 }
 
@@ -263,6 +270,13 @@ impl HitTester {
                     Some(point) => point,
                     None => continue,
                 };
+
+                // Don't hit items with backface-visibility:hidden if they are facing the back.
+                if !item.is_backface_visible {
+                    if *facing_backwards.get_or_insert_with(|| transform.is_backface_visible()) {
+                        continue;
+                    }
+                }
 
                 result.items.push(HitTestItem {
                     pipeline: pipeline_id,
@@ -294,15 +308,16 @@ fn get_regions_for_clip_scroll_node(
         _ => return Vec::new(),
     };
 
-    clips.iter().map(|ref source| {
+    clips.iter().map(|source| {
         match source.0 {
-            ClipSource::Rectangle(ref rect) => HitTestRegion::Rectangle(*rect),
+            ClipSource::Rectangle(ref rect, mode) => HitTestRegion::Rectangle(*rect, mode),
             ClipSource::RoundedRectangle(ref rect, ref radii, ref mode) =>
                 HitTestRegion::RoundedRectangle(*rect, *radii, *mode),
-            ClipSource::Image(ref mask) => HitTestRegion::Rectangle(mask.rect),
+            ClipSource::Image(ref mask) => HitTestRegion::Rectangle(mask.rect, ClipMode::Clip),
             ClipSource::BorderCorner(_) |
+            ClipSource::LineDecoration(_) |
             ClipSource::BoxShadow(_) => {
-                unreachable!("Didn't expect to hit test against BorderCorner / BoxShadow");
+                unreachable!("Didn't expect to hit test against BorderCorner / BoxShadow / LineDecoration");
             }
         }
     }).collect()
@@ -312,7 +327,7 @@ pub struct HitTest {
     pipeline_id: Option<PipelineId>,
     point: WorldPoint,
     flags: HitTestFlags,
-    node_cache: FastHashMap<ClipScrollNodeIndex, Option<LayerPoint>>,
+    node_cache: FastHashMap<ClipScrollNodeIndex, Option<LayoutPoint>>,
     clip_chain_cache: Vec<Option<bool>>,
 }
 
@@ -351,9 +366,9 @@ impl HitTest {
             return self.point;
         }
 
-        let point =  &LayerPoint::new(self.point.x, self.point.y);
+        let point =  &LayoutPoint::new(self.point.x, self.point.y);
         self.pipeline_id.map(|id|
-            hit_tester.get_pipeline_root(id).world_viewport_transform.transform_point2d(&point)
+            hit_tester.get_pipeline_root(id).world_viewport_transform.transform_point2d(point)
         ).unwrap_or_else(|| WorldPoint::new(self.point.x, self.point.y))
     }
 }

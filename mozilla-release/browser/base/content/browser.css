@@ -132,7 +132,7 @@ panelview[mainview] > .panel-header {
 }
 
 
-#tabbrowser-tabs:not([overflow="true"]) ~ #alltabs-button,
+#tabbrowser-tabs:not([overflow="true"]):not([hashiddentabs]) ~ #alltabs-button,
 #tabbrowser-tabs[hasadjacentnewtabbutton]:not([overflow="true"]) ~ #new-tab-button,
 #tabbrowser-tabs[overflow="true"] > .tabbrowser-arrowscrollbox > .tabs-newtab-button,
 #tabbrowser-tabs:not([hasadjacentnewtabbutton]) > .tabbrowser-arrowscrollbox > .tabs-newtab-button,
@@ -168,15 +168,6 @@ panelview[mainview] > .panel-header {
   visibility: hidden;
 }
 
-.tab-icon-image,
-.tab-close-button,
-.tabbrowser-tab::after,
-.tab-background {
-  /* Explicitly set the visibility to override the value (collapsed)
-   * we inherit from #TabsToolbar[collapsed] upon opening a browser window. */
-  visibility: visible;
-}
-
 .tab-icon-image[fadein],
 .tab-close-button[fadein],
 .tabbrowser-tab[fadein]::after,
@@ -197,6 +188,15 @@ panelview[mainview] > .panel-header {
 .tab-throbber-fallback:not([fadein]) {
   display: none;
 }
+
+%ifdef NIGHTLY_BUILD
+@supports -moz-bool-pref("browser.tabs.hideThrobber") {
+  .tab-throbber,
+  .tab-throbber-fallback {
+    display: none;
+  }
+}
+%endif
 
 #tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] {
   position: fixed !important;
@@ -270,7 +270,6 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 }
 
 
-%ifdef CAN_DRAW_IN_TITLEBAR
 %ifdef MENUBAR_CAN_AUTOHIDE
 #toolbar-menubar:not([autohide=true]) + #TabsToolbar > .titlebar-placeholder,
 %endif
@@ -338,8 +337,6 @@ toolbarpaletteitem {
 #main-window[tabletmode] #titlebar-max {
   display: none !important;
 }
-%endif
-
 %endif
 
 #main-window[inFullscreen][inDOMFullscreen] #navigator-toolbox,
@@ -617,8 +614,16 @@ html|input.urlbar-input[textoverflow]:not([focused]) {
 #PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-tags:not([empty]),
 #PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-separator:not([type=keyword]),
 #PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-url:not([actiontype]),
-#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-action[actiontype] {
+#PopupAutoCompleteRichResult > richlistbox > richlistitem > .ac-action[actiontype],
+#PopupAutoCompleteRichResult > richlistbox > richlistitem[selected] > .ac-url[actiontype=remotetab],
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:hover > .ac-url[actiontype=remotetab]
+{
   display: -moz-box;
+}
+
+#PopupAutoCompleteRichResult > richlistbox > richlistitem[selected] > .ac-action[actiontype=remotetab],
+#PopupAutoCompleteRichResult > richlistbox > richlistitem:hover > .ac-action[actiontype=remotetab] {
+  display: none;
 }
 
 /* Only show the "Search with" label on hover or selection. */
@@ -978,51 +983,50 @@ browser[tabmodalPromptShowing] {
 
 /* Status panel */
 
-statuspanel {
-  -moz-binding: url("chrome://browser/content/tabbrowser.xml#statuspanel");
+#statuspanel {
   position: fixed;
   margin-top: -3em;
   max-width: calc(100% - 5px);
   pointer-events: none;
 }
 
-statuspanel[mirror] {
+#statuspanel[mirror] {
   offset-inline-start: auto;
   offset-inline-end: 0;
 }
 
-statuspanel[sizelimit] {
+#statuspanel[sizelimit] {
   max-width: 50%;
 }
 
-statuspanel[type=status] {
+#statuspanel[type=status] {
   min-width: 23em;
 }
 
 @media all and (max-width: 800px) {
-  statuspanel[type=status] {
+  #statuspanel[type=status] {
     min-width: 33%;
   }
 }
 
-statuspanel[type=overLink] {
+#statuspanel[type=overLink] {
   transition: opacity 120ms ease-out;
 }
 
-statuspanel[type=overLink] > .statuspanel-inner {
+#statuspanel[type=overLink] > #statuspanel-inner {
   direction: ltr;
 }
 
-statuspanel[inactive] {
+#statuspanel[inactive] {
   transition: none;
   opacity: 0;
 }
 
-statuspanel[inactive][previoustype=overLink] {
+#statuspanel[inactive][previoustype=overLink] {
   transition: opacity 200ms ease-out;
 }
 
-.statuspanel-inner {
+#statuspanel-inner {
   height: 3em;
   width: 100%;
   -moz-box-align: end;
@@ -1209,7 +1213,7 @@ toolbarpaletteitem[place="palette"] > #downloads-button[indicator] > #downloads-
 #customization-panelHolder {
   flex-direction: column;
   display: flex;
-  min-height: calc(174px + 8em);
+  min-height: calc(174px + 9em);
 }
 
 #customization-panelWrapper {
@@ -1380,8 +1384,8 @@ toolbarpaletteitem[place="palette"][hidden] {
 }
 
 /* Page action panel */
-#pageAction-panel-sendToDevice-subview-body:not([state="notready"]) > #pageAction-panel-sendToDevice-notReady,
-#pageAction-urlbar-sendToDevice-subview-body:not([state="notready"]) > #pageAction-urlbar-sendToDevice-notReady {
+#pageAction-panel-sendToDevice-subview-body:not([state="notready"]) > .pageAction-sendToDevice-notReady,
+#pageAction-urlbar-sendToDevice-subview-body:not([state="notready"]) > .pageAction-sendToDevice-notReady {
   display: none;
 }
 

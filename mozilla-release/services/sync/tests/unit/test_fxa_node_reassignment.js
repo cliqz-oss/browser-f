@@ -149,10 +149,9 @@ async function syncAndExpectNodeReassignment(server, firstNotification, between,
   if (Service.isLoggedIn) {
     _("Making request to " + url + " which should 401");
     let request = new RESTRequest(url);
-    request.get(function() {
-      Assert.equal(request.response.status, 401);
-      CommonUtils.nextTick(onwards);
-    });
+    await request.get();
+    Assert.equal(request.response.status, 401);
+    CommonUtils.nextTick(onwards);
   } else {
     _("Skipping preliminary validation check for a 401 as we aren't logged in");
     CommonUtils.nextTick(onwards);
@@ -203,14 +202,13 @@ add_task(async function test_momentary_401_engine() {
   let john   = server.user("johndoe");
 
   _("Enabling the Rotary engine.");
-  let { engine, tracker } = await registerRotaryEngine();
+  let { engine, syncID, tracker } = await registerRotaryEngine();
 
   // We need the server to be correctly set up prior to experimenting. Do this
   // through a sync.
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
-                rotary: {version: engine.version,
-                         syncID:  engine.syncID}};
+                rotary: {version: engine.version, syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");

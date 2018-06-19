@@ -66,7 +66,7 @@ W32API_VERSION=3.14
 GCONF_VERSION=1.2.1
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.22.0
+SQLITE_VERSION=3.23.1
 
 dnl Set various checks
 dnl ========================================================
@@ -227,6 +227,13 @@ case "$target" in
             AC_MSG_ERROR([Invalid Windows UCRT Redist directory: ${WIN_UCRT_REDIST_DIR}])
           fi
           WIN_UCRT_REDIST_DIR=`cd "$WIN_UCRT_REDIST_DIR" && pwd -W`
+        fi
+
+        if test -n "$WIN_DIA_SDK_BIN_DIR"; then
+          if test ! -d "$WIN_DIA_SDK_BIN_DIR"; then
+            AC_MSG_ERROR([Invalid Windows DIA SDK directory: ${WIN_DIA_SDK_BIN_DIR}])
+          fi
+          WIN_DIA_SDK_BIN_DIR=`cd "$WIN_DIA_SDK_BIN_DIR" && pwd -W`
         fi
 
         AC_SUBST(MSVC_HAS_DIA_SDK)
@@ -1016,7 +1023,13 @@ case "$target" in
         LIBS="$LIBS kernel32.lib user32.lib gdi32.lib winmm.lib wsock32.lib advapi32.lib secur32.lib"
         MOZ_DEBUG_LDFLAGS='-DEBUG -DEBUGTYPE:CV'
         WARNINGS_AS_ERRORS='-WX'
-        MOZ_OPTIMIZE_FLAGS='-O1 -Oi'
+        # Use a higher optimization level for clang-cl, so we can come closer
+        # to MSVC's performance numbers (see bug 1443590).
+        if test -n "$CLANG_CL"; then
+            MOZ_OPTIMIZE_FLAGS='-O2'
+        else
+            MOZ_OPTIMIZE_FLAGS='-O1 -Oi'
+        fi
         MOZ_FIX_LINK_PATHS=
         LDFLAGS="$LDFLAGS -LARGEADDRESSAWARE -NXCOMPAT"
         if test -z "$DEVELOPER_OPTIONS"; then
@@ -1760,12 +1773,10 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.36.4, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.37.3, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
-if test -n "$MOZ_SYSTEM_NSS"; then
-   NSS_LIBS="$NSS_LIBS -lcrmf"
-else
+if test -z "$MOZ_SYSTEM_NSS"; then
    NSS_CFLAGS="-I${DIST}/include/nss"
    case "${OS_ARCH}" in
         # Only few platforms have been tested with GYP
@@ -2595,50 +2606,6 @@ MOZ_WEBM_ENCODER=1
 AC_DEFINE(MOZ_WEBM_ENCODER)
 AC_SUBST(MOZ_WEBM_ENCODER)
 
-dnl ==================================
-dnl = Check alsa availability on Linux
-dnl ==================================
-
-MOZ_ARG_ENABLE_BOOL(alsa,
-[  --enable-alsa          Enable Alsa support],
-   MOZ_ALSA=1,
-   MOZ_ALSA=)
-
-if test -n "$MOZ_ALSA"; then
-    PKG_CHECK_MODULES(MOZ_ALSA, alsa, ,
-         [echo "$MOZ_ALSA_PKG_ERRORS"
-          AC_MSG_ERROR([Need alsa for audio output on Linux. (On Ubuntu, you might try installing the package libasound2-dev.)])])
-fi
-
-AC_SUBST(MOZ_ALSA)
-
-dnl ========================================================
-dnl = Disable PulseAudio
-dnl ========================================================
-
-dnl If using Desktop Linux, ensure that the PA library is available
-case "$OS_TARGET" in
-WINNT|Darwin|Android|OpenBSD)
-    ;;
-*)
-    MOZ_PULSEAUDIO=1
-    ;;
-esac
-
-MOZ_ARG_DISABLE_BOOL(pulseaudio,
-[  --disable-pulseaudio          Disable PulseAudio support],
-   MOZ_PULSEAUDIO=,
-   MOZ_PULSEAUDIO=1)
-
-if test -n "$MOZ_PULSEAUDIO"; then
-    AC_DEFINE(MOZ_PULSEAUDIO)
-    PKG_CHECK_MODULES(MOZ_PULSEAUDIO, libpulse, ,
-         [echo "$MOZ_PULSEAUDIO_PKG_ERRORS"
-          AC_MSG_ERROR([pulseaudio audio backend requires libpulse development package])])
-fi
-
-AC_SUBST(MOZ_PULSEAUDIO)
-
 dnl ========================================================
 dnl NegotiateAuth
 dnl ========================================================
@@ -2831,13 +2798,15 @@ i?86-apple-darwin*|x86_64-apple-darwin*)
     MOZ_CRASHREPORTER=1
   fi
   ;;
+*-android*|*-linuxandroid*)
+  dnl Android/arm is arm-unknown-linux-androideabi, so android condition should
+  dnl be before Linux condition
+  MOZ_CRASHREPORTER=1
+  ;;
 i?86-*-linux*|x86_64-*-linux*|arm-*-linux*)
   if test "$MOZ_ENABLE_GTK"; then
     MOZ_CRASHREPORTER=1
   fi
-  ;;
-*-android*|*-linuxandroid*)
-  MOZ_CRASHREPORTER=1
   ;;
 esac
 
@@ -3856,6 +3825,13 @@ if test "$COMPILE_ENVIRONMENT"; then
 if test "$GNU_CC" -a "$GNU_CXX"; then
   _DEPEND_CFLAGS='-MD -MP -MF $(MDDEPDIR)/$(@F).pp'
 else
+  # clang-cl doesn't accept the normal -MD -MP -MF options that clang does, but
+  # the underlying cc1 binary understands how to generate dependency files.
+  # These options are based on analyzing what the normal clang driver sends to
+  # cc1 when given the "correct" dependency options.
+  if test -n "$CLANG_CL"; then
+   _DEPEND_CFLAGS='-Xclang -MP -Xclang -MG -Xclang -dependency-file -Xclang $(MDDEPDIR)/$(@F).pp -Xclang -MT -Xclang $@'
+  fi
   dnl Don't override this for MSVC
   if test -z "$_WIN32_MSVC"; then
     _USE_CPP_INCLUDE_FLAG=
@@ -4438,6 +4414,7 @@ fi
 dnl win32 options
 AC_SUBST(WIN32_REDIST_DIR)
 AC_SUBST(WIN_UCRT_REDIST_DIR)
+AC_SUBST(WIN_DIA_SDK_BIN_DIR)
 
 dnl ========================================================
 dnl ICU Support

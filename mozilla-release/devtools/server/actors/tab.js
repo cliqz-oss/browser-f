@@ -24,6 +24,7 @@ var { assert } = DevToolsUtils;
 var { TabSources } = require("./utils/TabSources");
 var makeDebugger = require("./utils/make-debugger");
 const EventEmitter = require("devtools/shared/event-emitter");
+const InspectorUtils = require("InspectorUtils");
 
 const EXTENSION_CONTENT_JSM = "resource://gre/modules/ExtensionContent.jsm";
 
@@ -33,6 +34,7 @@ loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker
 loader.lazyImporter(this, "ExtensionContent", EXTENSION_CONTENT_JSM);
 
 loader.lazyRequireGetter(this, "StyleSheetActor", "devtools/server/actors/stylesheets", true);
+loader.lazyRequireGetter(this, "getSheetText", "devtools/server/actors/stylesheets", true);
 
 function getWindowID(window) {
   return window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -256,6 +258,17 @@ TabActor.prototype = {
 
   get attached() {
     return !!this._attached;
+  },
+
+  /**
+   * Try to locate the console actor if it exists.
+   */
+  get _consoleActor() {
+    if (this.exited) {
+      return null;
+    }
+    let form = this.form();
+    return this.conn._getOrCreateActor(form.consoleActor);
   },
 
   _tabPool: null,
@@ -598,7 +611,7 @@ TabActor.prototype = {
     }
   },
 
-  onSwitchToFrame(request) {
+  switchToFrame(request) {
     let windowId = request.windowId;
     let win;
 
@@ -620,12 +633,12 @@ TabActor.prototype = {
     return {};
   },
 
-  onListFrames(request) {
+  listFrames(request) {
     let windows = this._docShellsToWindows(this.docShells);
     return { frames: windows };
   },
 
-  onListWorkers(request) {
+  listWorkers(request) {
     if (!this.attached) {
       return { error: "wrongState" };
     }
@@ -656,7 +669,7 @@ TabActor.prototype = {
     });
   },
 
-  onLogInPage(request) {
+  logInPage(request) {
     let {text, category, flags} = request;
     let scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
     let scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
@@ -926,7 +939,7 @@ TabActor.prototype = {
 
   // Protocol Request Handlers
 
-  onAttach(request) {
+  attach(request) {
     if (this.exited) {
       return { type: "exited" };
     }
@@ -942,7 +955,7 @@ TabActor.prototype = {
     };
   },
 
-  onDetach(request) {
+  detach(request) {
     if (!this._detach()) {
       return { error: "wrongState" };
     }
@@ -953,7 +966,7 @@ TabActor.prototype = {
   /**
    * Bring the tab's window to front.
    */
-  onFocus() {
+  focus() {
     if (this.window) {
       this.window.focus();
     }
@@ -963,7 +976,7 @@ TabActor.prototype = {
   /**
    * Reload the page in this tab.
    */
-  onReload(request) {
+  reload(request) {
     let force = request && request.options && request.options.force;
     // Wait a tick so that the response packet can be dispatched before the
     // subsequent navigation event packet.
@@ -976,26 +989,26 @@ TabActor.prototype = {
       this.webNavigation.reload(force ?
         Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE :
         Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
-    }, "TabActor.prototype.onReload's delayed body"));
+    }, "TabActor.prototype.reload's delayed body"));
     return {};
   },
 
   /**
    * Navigate this tab to a new location
    */
-  onNavigateTo(request) {
+  navigateTo(request) {
     // Wait a tick so that the response packet can be dispatched before the
     // subsequent navigation event packet.
     Services.tm.dispatchToMainThread(DevToolsUtils.makeInfallible(() => {
       this.window.location = request.url;
-    }, "TabActor.prototype.onNavigateTo's delayed body"));
+    }, "TabActor.prototype.navigateTo's delayed body"));
     return {};
   },
 
   /**
    * Reconfigure options.
    */
-  onReconfigure(request) {
+  reconfigure(request) {
     let options = request.options || {};
 
     if (!this.docShell) {
@@ -1003,6 +1016,33 @@ TabActor.prototype = {
       return {};
     }
     this._toggleDevToolsSettings(options);
+
+    return {};
+  },
+
+  /**
+   * Ensure that CSS error reporting is enabled.
+   */
+  ensureCSSErrorReportingEnabled(request) {
+    for (let docShell of this.docShells) {
+      if (docShell.cssErrorReportingEnabled) {
+        continue;
+      }
+      try {
+        docShell.cssErrorReportingEnabled = true;
+      } catch (e) {
+        continue;
+      }
+      // We don't really want to reparse UA sheets and such, but want to do
+      // Shadow DOM / XBL.
+      let sheets =
+        InspectorUtils.getAllStyleSheets(docShell.document, /* documentOnly = */ true);
+      for (let sheet of sheets) {
+        getSheetText(sheet, this._consoleActor).then(text => {
+          InspectorUtils.parseStyleSheet(sheet, text, /* aUpdate = */ false);
+        });
+      }
+    }
 
     return {};
   },
@@ -1038,7 +1078,7 @@ TabActor.prototype = {
     let hasExplicitReloadFlag = "performReload" in options;
     if ((hasExplicitReloadFlag && options.performReload) ||
        (!hasExplicitReloadFlag && reload)) {
-      this.onReload();
+      this.reload();
     }
   },
 
@@ -1424,16 +1464,17 @@ TabActor.prototype = {
  * The request types this actor can handle.
  */
 TabActor.prototype.requestTypes = {
-  "attach": TabActor.prototype.onAttach,
-  "detach": TabActor.prototype.onDetach,
-  "focus": TabActor.prototype.onFocus,
-  "reload": TabActor.prototype.onReload,
-  "navigateTo": TabActor.prototype.onNavigateTo,
-  "reconfigure": TabActor.prototype.onReconfigure,
-  "switchToFrame": TabActor.prototype.onSwitchToFrame,
-  "listFrames": TabActor.prototype.onListFrames,
-  "listWorkers": TabActor.prototype.onListWorkers,
-  "logInPage": TabActor.prototype.onLogInPage,
+  "attach": TabActor.prototype.attach,
+  "detach": TabActor.prototype.detach,
+  "focus": TabActor.prototype.focus,
+  "reload": TabActor.prototype.reload,
+  "navigateTo": TabActor.prototype.navigateTo,
+  "reconfigure": TabActor.prototype.reconfigure,
+  "ensureCSSErrorReportingEnabled": TabActor.prototype.ensureCSSErrorReportingEnabled,
+  "switchToFrame": TabActor.prototype.switchToFrame,
+  "listFrames": TabActor.prototype.listFrames,
+  "listWorkers": TabActor.prototype.listWorkers,
+  "logInPage": TabActor.prototype.logInPage,
 };
 
 exports.TabActor = TabActor;
@@ -1467,7 +1508,6 @@ DebuggerProgressListener.prototype = {
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsISupportsWeakReference,
-    Ci.nsISupports,
   ]),
 
   destroy() {
@@ -1536,7 +1576,7 @@ DebuggerProgressListener.prototype = {
     });
   },
 
-  onWindowCreated: DevToolsUtils.makeInfallible(function (evt) {
+  onWindowCreated: DevToolsUtils.makeInfallible(function(evt) {
     if (!this._tabActor.attached) {
       return;
     }
@@ -1566,7 +1606,7 @@ DebuggerProgressListener.prototype = {
     this._knownWindowIDs.set(innerID, window);
   }, "DebuggerProgressListener.prototype.onWindowCreated"),
 
-  onWindowHidden: DevToolsUtils.makeInfallible(function (evt) {
+  onWindowHidden: DevToolsUtils.makeInfallible(function(evt) {
     if (!this._tabActor.attached) {
       return;
     }
@@ -1590,7 +1630,7 @@ DebuggerProgressListener.prototype = {
     this._knownWindowIDs.delete(getWindowID(window));
   }, "DebuggerProgressListener.prototype.onWindowHidden"),
 
-  observe: DevToolsUtils.makeInfallible(function (subject, topic) {
+  observe: DevToolsUtils.makeInfallible(function(subject, topic) {
     if (!this._tabActor.attached) {
       return;
     }
@@ -1607,7 +1647,7 @@ DebuggerProgressListener.prototype = {
   }, "DebuggerProgressListener.prototype.observe"),
 
   onStateChange:
-  DevToolsUtils.makeInfallible(function (progress, request, flag, status) {
+  DevToolsUtils.makeInfallible(function(progress, request, flag, status) {
     if (!this._tabActor.attached) {
       return;
     }

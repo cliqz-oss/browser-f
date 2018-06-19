@@ -106,6 +106,9 @@ with Files('NewTabUtils.jsm'):
 with Files('ObjectUtils.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Telemetry')
 
+with Files("offlineAppCache.jsm"):
+    BUG_COMPONENT = ("Toolkit", "Preferences")
+
 with Files('PageMenu.jsm'):
     BUG_COMPONENT = ('Firefox', 'Menus')
 
@@ -187,7 +190,6 @@ EXTRA_JS_MODULES += [
     'Console.jsm',
     'css-selector.js',
     'DateTimePickerHelper.jsm',
-    'debug.js',
     'DeferredTask.jsm',
     'Deprecated.jsm',
     'E10SUtils.jsm',
@@ -212,6 +214,7 @@ EXTRA_JS_MODULES += [
     'NewTabUtils.jsm',
     'NLP.jsm',
     'ObjectUtils.jsm',
+    'offlineAppCache.jsm',
     'PageMenu.jsm',
     'PageMetadata.jsm',
     'PermissionsUtils.jsm',
@@ -256,13 +259,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 
 EXTRA_JS_MODULES.third_party.jsesc += ['third_party/jsesc/jsesc.js']
 EXTRA_JS_MODULES.sessionstore += [
+    'sessionstore/PrivacyFilter.jsm',
     'sessionstore/PrivacyLevel.jsm',
     'sessionstore/SessionHistory.jsm',
     'sessionstore/Utils.jsm',
 ]
-
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa', 'gtk3'):
-    DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3'):
     DEFINES['MENUBAR_CAN_AUTOHIDE'] = 1

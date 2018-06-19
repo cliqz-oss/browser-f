@@ -8,7 +8,6 @@ ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
-ChromeUtils.import("resource://testing-common/AddonManagerTesting.jsm");
 ChromeUtils.import("resource://testing-common/httpd.js");
 ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", this);
 ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
@@ -26,6 +25,11 @@ ChromeUtils.defineModuleGetter(this, "ProfileAge",
 
 ChromeUtils.defineModuleGetter(this, "ExtensionTestUtils",
                                "resource://testing-common/ExtensionXPCShellUtils.jsm");
+
+async function installXPIFromURL(url) {
+  let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall");
+  return install.install();
+}
 
 // The webserver hosting the addons.
 var gHttpServer = null;
@@ -79,10 +83,20 @@ const SYSTEM_ADDON_INSTALL_DATE = Date.now();
 // Valid attribution code to write so that settings.attribution can be tested.
 const ATTRIBUTION_CODE = "source%3Dgoogle.com";
 
+const pluginHost = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
+
 /**
  * Used to mock plugin tags in our fake plugin host.
  */
 function PluginTag(aName, aDescription, aVersion, aEnabled) {
+  this.pluginTag = pluginHost.createFakePlugin({
+    handlerURI: "resource://fake-plugin/${Math.random()}.xhtml",
+    mimeEntries: this.mimeTypes.map(type => ({type})),
+    name: aName,
+    description: aDescription,
+    fileName: `${aName}.so`,
+    version: aVersion,
+  });
   this.name = aName;
   this.description = aDescription;
   this.version = aVersion;
@@ -95,9 +109,15 @@ PluginTag.prototype = {
   version: null,
   filename: null,
   fullpath: null,
-  disabled: false,
   blocklisted: false,
   clicktoplay: true,
+
+  get disabled() {
+    return this.pluginTag.enabledState == Ci.nsIPluginTag.STATE_DISABLED;
+  },
+  set disabled(val) {
+    this.pluginTag.enabledState = Ci.nsIPluginTag[val ? "STATE_DISABLED" : "STATE_CLICKTOPLAY"];
+  },
 
   mimeTypes: [ PLUGIN_MIME_TYPE1, PLUGIN_MIME_TYPE2 ],
 
@@ -117,7 +137,7 @@ var gInstalledPlugins = [
 var PluginHost = {
   getPluginTags(countRef) {
     countRef.value = gInstalledPlugins.length;
-    return gInstalledPlugins;
+    return gInstalledPlugins.map(plugin => plugin.pluginTag);
   },
 
   QueryInterface(iid) {
@@ -251,8 +271,8 @@ function createMockAddonProvider(aName) {
       AddonManagerPrivate.callAddonListeners("onInstalled", new MockAddonWrapper(aAddon));
     },
 
-    getAddonsByTypes(aTypes, aCallback) {
-      aCallback(this._addons.map(a => new MockAddonWrapper(a)));
+    async getAddonsByTypes(aTypes) {
+      return this._addons.map(a => new MockAddonWrapper(a));
     },
 
     shutdown() {
@@ -560,15 +580,6 @@ function checkSystemSection(data) {
   Assert.ok(Number.isFinite(cpuData.count), "CPU count must be a number.");
   Assert.ok(Array.isArray(cpuData.extensions), "CPU extensions must be available.");
 
-  // Device data is only available on Android.
-  if (gIsAndroid) {
-    let deviceData = data.system.device;
-    Assert.ok(checkNullOrString(deviceData.model));
-    Assert.ok(checkNullOrString(deviceData.manufacturer));
-    Assert.ok(checkNullOrString(deviceData.hardware));
-    Assert.ok(checkNullOrBool(deviceData.isTablet));
-  }
-
   let osData = data.system.os;
   Assert.ok(checkNullOrString(osData.name));
   Assert.ok(checkNullOrString(osData.version));
@@ -786,7 +797,7 @@ function checkActiveGMPlugin(data) {
 
 function checkAddonsSection(data, expectBrokenAddons, partialAddonsRecords) {
   const EXPECTED_FIELDS = [
-    "activeAddons", "theme", "activePlugins", "activeGMPlugins", "activeExperiment",
+    "activeAddons", "theme", "activePlugins", "activeGMPlugins",
     "persona",
   ];
 
@@ -818,13 +829,6 @@ function checkAddonsSection(data, expectBrokenAddons, partialAddonsRecords) {
   let activeGMPlugins = data.addons.activeGMPlugins;
   for (let gmPlugin in activeGMPlugins) {
     checkActiveGMPlugin(activeGMPlugins[gmPlugin]);
-  }
-
-  // Check the active Experiment
-  let experiment = data.addons.activeExperiment;
-  if (Object.keys(experiment).length !== 0) {
-    Assert.ok(checkString(experiment.id));
-    Assert.ok(checkString(experiment.branch));
   }
 
   // Check persona
@@ -863,7 +867,6 @@ function checkEnvironmentData(data, options = {}) {
   checkPartnerSection(data, isInitial);
   checkSystemSection(data);
   checkAddonsSection(data, expectBrokenAddons);
-  checkExperimentsSection(data);
 }
 
 add_task(async function setup() {
@@ -905,9 +908,6 @@ add_task(async function setup() {
   gDataRoot = gHttpRoot + "data/";
   gHttpServer.registerDirectory("/data/", do_get_cwd());
   registerCleanupFunction(() => gHttpServer.stop(() => {}));
-
-  // Allow non-multiprocessCompatible extensions
-  Preferences.set("extensions.allow-non-mpc-extensions", true);
 
   // Create the attribution data file, so that settings.attribution will exist.
   // The attribution functionality only exists in Firefox.
@@ -1101,13 +1101,13 @@ add_task(async function test_addonsWatch_InterestingChange() {
 
   // Test for receiving one notification after each change.
   let checkpointPromise = registerCheckpointPromise(1);
-  await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  await installXPIFromURL(ADDON_INSTALL_URL);
   await checkpointPromise;
   assertCheckpoint(1);
   Assert.ok(ADDON_ID in TelemetryEnvironment.currentEnvironment.addons.activeAddons);
 
   checkpointPromise = registerCheckpointPromise(2);
-  let addon = await AddonManagerTesting.getAddonById(ADDON_ID);
+  let addon = await AddonManager.getAddonByID(ADDON_ID);
   addon.userDisabled = true;
   await checkpointPromise;
   assertCheckpoint(2);
@@ -1122,7 +1122,7 @@ add_task(async function test_addonsWatch_InterestingChange() {
   await startupPromise;
 
   checkpointPromise = registerCheckpointPromise(4);
-  await AddonManagerTesting.uninstallAddonByID(ADDON_ID);
+  (await AddonManager.getAddonByID(ADDON_ID)).uninstall();
   await checkpointPromise;
   assertCheckpoint(4);
   Assert.ok(!(ADDON_ID in TelemetryEnvironment.currentEnvironment.addons.activeAddons));
@@ -1204,8 +1204,8 @@ add_task(async function test_addonsWatch_NotInterestingChange() {
       deferred.resolve();
     });
 
-  let dictionaryAddon = await AddonManagerTesting.installXPIFromURL(DICTIONARY_ADDON_INSTALL_URL);
-  let interestingAddon = await AddonManagerTesting.installXPIFromURL(INTERESTING_ADDON_INSTALL_URL);
+  let dictionaryAddon = await installXPIFromURL(DICTIONARY_ADDON_INSTALL_URL);
+  let interestingAddon = await installXPIFromURL(INTERESTING_ADDON_INSTALL_URL);
 
   await deferred.promise;
   Assert.ok(!("telemetry-dictionary@tests.mozilla.org" in
@@ -1300,7 +1300,7 @@ add_task(async function test_addonsAndPlugins() {
   );
 
   // Install an add-on so we have some data.
-  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await installXPIFromURL(ADDON_INSTALL_URL);
 
   // Install a webextension as well.
   ExtensionTestUtils.init(this);
@@ -1400,7 +1400,7 @@ add_task(async function test_signedAddon() {
   TelemetryEnvironment.registerChangeListener("test_signedAddon", deferred.resolve);
 
   // Install the addon.
-  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await installXPIFromURL(ADDON_INSTALL_URL);
 
   await deferred.promise;
   // Unregister the listener.
@@ -1428,7 +1428,7 @@ add_task(async function test_addonsFieldsLimit() {
   // Install the addon and wait for the TelemetryEnvironment to pick it up.
   let deferred = PromiseUtils.defer();
   TelemetryEnvironment.registerChangeListener("test_longFieldsAddon", deferred.resolve);
-  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await installXPIFromURL(ADDON_INSTALL_URL);
   await deferred.promise;
   TelemetryEnvironment.unregisterChangeListener("test_longFieldsAddon");
 
@@ -1508,7 +1508,7 @@ add_task(async function test_collectionWithbrokenAddonData() {
 
   // Now install an addon which returns the correct information.
   checkpointPromise = registerCheckpointPromise(2);
-  let addon = await AddonManagerTesting.installXPIFromURL(ADDON_INSTALL_URL);
+  let addon = await installXPIFromURL(ADDON_INSTALL_URL);
   await checkpointPromise;
   assertCheckpoint(2);
 

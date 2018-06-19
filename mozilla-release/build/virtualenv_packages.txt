@@ -6,6 +6,7 @@ mozilla.pth:python/mozrelease
 mozilla.pth:python/mozterm
 mozilla.pth:python/mozversioncontrol
 mozilla.pth:python/l10n
+mozilla.pth:third_party/python/attrs/src
 mozilla.pth:third_party/python/blessings
 mozilla.pth:third_party/python/compare-locales
 mozilla.pth:third_party/python/configobj
@@ -35,6 +36,7 @@ mozilla.pth:build
 objdir:build
 mozilla.pth:build/pymake
 mozilla.pth:config
+mozilla.pth:config/mozunit
 mozilla.pth:dom/bindings
 mozilla.pth:dom/bindings/parser
 mozilla.pth:layout/tools/reftest
@@ -46,6 +48,7 @@ mozilla.pth:testing/marionette/client
 mozilla.pth:testing/marionette/harness
 mozilla.pth:testing/marionette/harness/marionette_harness/runner/mixins/browsermob-proxy-py
 mozilla.pth:testing/marionette/puppeteer/firefox
+mozilla.pth:testing/raptor
 mozilla.pth:testing/talos
 packages.txt:testing/mozbase/packages.txt
 mozilla.pth:tools

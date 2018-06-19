@@ -8,7 +8,7 @@
  * when loaded directly from an HTML page.
  */
 
-add_task(async function () {
+add_task(async function() {
   let { tab, monitor } = await initNetMonitor(CYRILLIC_URL);
   info("Starting test... ");
 
@@ -23,7 +23,7 @@ add_task(async function () {
   await wait;
 
   let requestItem = document.querySelectorAll(".request-list-item")[0];
-  let requestsListStatus = requestItem.querySelector(".requests-list-status");
+  let requestsListStatus = requestItem.querySelector(".status-code");
   requestItem.scrollIntoView();
   EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
   await waitUntil(() => requestsListStatus.title);

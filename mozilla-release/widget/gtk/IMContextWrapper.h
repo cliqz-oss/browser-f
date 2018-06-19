@@ -65,13 +65,26 @@ public:
     void OnSelectionChange(nsWindow* aCaller,
                            const IMENotification& aIMENotification);
 
-    // OnKeyEvent is called when aWindow gets a native key press event or a
-    // native key release event.  If this returns TRUE, the key event was
-    // filtered by IME.  Otherwise, this returns FALSE.
-    // NOTE: When the keypress event starts composition, this returns TRUE but
-    //       this dispatches keydown event before compositionstart event.
+    /**
+     * OnKeyEvent() is called when aWindow gets a native key press event or a
+     * native key release event.  If this returns true, the key event was
+     * filtered by IME.  Otherwise, this returns false.
+     * NOTE: When the native key press event starts composition, this returns
+     *       true but dispatches an eKeyDown event or eKeyUp event before
+     *       dispatching composition events or content command event.
+     *
+     * @param aWindow                       A window on which user operate the
+     *                                      key.
+     * @param aEvent                        A native key press or release
+     *                                      event.
+     * @param aKeyboardEventWasDispatched   true if eKeyDown or eKeyUp event
+     *                                      for aEvent has already been
+     *                                      dispatched.  In this case,
+     *                                      this class doesn't dispatch
+     *                                      keyboard event anymore.
+     */
     bool OnKeyEvent(nsWindow* aWindow, GdkEventKey* aEvent,
-                      bool aKeyDownEventWasSent = false);
+                    bool aKeyboardEventWasDispatched = false);
 
     // IME related nsIWidget methods.
     nsresult EndIMEComposition(nsWindow* aCaller);
@@ -83,6 +96,37 @@ public:
     void OnLayoutChange();
 
     TextEventDispatcher* GetTextEventDispatcher();
+
+    // TODO: Typically, new IM comes every several years.  And now, our code
+    //       becomes really IM behavior dependent.  So, perhaps, we need prefs
+    //       to control related flags for IM developers.
+    enum class IMContextID : uint8_t
+    {
+        eFcitx,
+        eIBus,
+        eIIIMF,
+        eScim,
+        eUim,
+        eUnknown,
+    };
+
+    static const char* GetIMContextIDName(IMContextID aIMContextID)
+    {
+        switch (aIMContextID) {
+            case IMContextID::eFcitx:
+                return "eFcitx";
+            case IMContextID::eIBus:
+                return "eIBus";
+            case IMContextID::eIIIMF:
+                return "eIIIMF";
+            case IMContextID::eScim:
+                return "eScim";
+            case IMContextID::eUim:
+                return "eUim";
+            default:
+                return "eUnknown";
+        }
+    }
 
 protected:
     ~IMContextWrapper();
@@ -139,6 +183,100 @@ protected:
     // event.
     GdkEventKey* mProcessingKeyEvent;
 
+    /**
+     * GdkEventKeyQueue stores *copy* of GdkEventKey instances.  However, this
+     * must be safe to our usecase since it has |time| and the value should not
+     * be same as older event.
+     */
+    class GdkEventKeyQueue final
+    {
+    public:
+        ~GdkEventKeyQueue() { Clear(); }
+
+        void Clear()
+        {
+            if (!mEvents.IsEmpty()) {
+                RemoveEventsAt(0, mEvents.Length());
+            }
+        }
+
+        /**
+         * PutEvent() puts new event into the queue.
+         */
+        void PutEvent(const GdkEventKey* aEvent)
+        {
+            GdkEventKey* newEvent =
+                reinterpret_cast<GdkEventKey*>(
+                    gdk_event_copy(reinterpret_cast<const GdkEvent*>(aEvent)));
+            newEvent->state &= GDK_MODIFIER_MASK;
+            mEvents.AppendElement(newEvent);
+        }
+
+        /**
+         * RemoveEvent() removes oldest same event and its preceding events
+         * from the queue.
+         */
+        void RemoveEvent(const GdkEventKey* aEvent)
+        {
+            size_t index = IndexOf(aEvent);
+            if (NS_WARN_IF(index == mEvents.NoIndex)) {
+                return;
+            }
+            RemoveEventsAt(0, index + 1);
+        }
+
+        /**
+         * FirstEvent() returns oldest event in the queue.
+         */
+        GdkEventKey* GetFirstEvent() const
+        {
+            if (mEvents.IsEmpty()) {
+                return nullptr;
+            }
+            return mEvents[0];
+        }
+
+        bool IsEmpty() const { return mEvents.IsEmpty(); }
+
+    private:
+        nsTArray<GdkEventKey*> mEvents;
+
+        void RemoveEventsAt(size_t aStart, size_t aCount)
+        {
+            for (size_t i = aStart; i < aStart + aCount; i++) {
+                gdk_event_free(reinterpret_cast<GdkEvent*>(mEvents[i]));
+            }
+            mEvents.RemoveElementsAt(aStart, aCount);
+        }
+
+        size_t IndexOf(const GdkEventKey* aEvent) const
+        {
+            static_assert(!(GDK_MODIFIER_MASK & (1 << 24)),
+                "We assumes 25th bit is used by some IM, but used by GDK");
+            static_assert(!(GDK_MODIFIER_MASK & (1 << 25)),
+                "We assumes 26th bit is used by some IM, but used by GDK");
+            for (size_t i = 0; i < mEvents.Length(); i++) {
+                GdkEventKey* event = mEvents[i];
+                // It must be enough to compare only type, time, keyval and
+                // part of state.   Note that we cannot compaire two events
+                // simply since IME may have changed unused bits of state.
+                if (event->time == aEvent->time) {
+                    if (NS_WARN_IF(event->type != aEvent->type) ||
+                        NS_WARN_IF(event->keyval != aEvent->keyval) ||
+                        NS_WARN_IF(event->state !=
+                                       (aEvent->state & GDK_MODIFIER_MASK))) {
+                        continue;
+                    }
+                }
+                return i;
+            }
+            return mEvents.NoIndex;
+        }
+    };
+    // OnKeyEvent() append mPostingKeyEvents when it believes that a key event
+    // is posted to other IME process.
+    GdkEventKeyQueue mPostingKeyEvents;
+
     struct Range
     {
         uint32_t mOffset;
@@ -162,7 +300,8 @@ protected:
     Range mCompositionTargetRange;
 
     // mCompositionState indicates current status of composition.
-    enum eCompositionState {
+    enum eCompositionState : uint8_t
+    {
         eCompositionState_NotComposing,
         eCompositionState_CompositionStartDispatched,
         eCompositionState_CompositionChangeEventDispatched
@@ -214,6 +353,10 @@ protected:
         }
     }
 
+    // mIMContextID indicates the ID of mContext.  This is actually indicates
+    // IM which user selected.
+    IMContextID mIMContextID;
+
     struct Selection final
     {
         nsString mString;
@@ -263,16 +406,20 @@ protected:
     // mIsIMFocused is set to TRUE when we call gtk_im_context_focus_in(). And
     // it's set to FALSE when we call gtk_im_context_focus_out().
     bool mIsIMFocused;
-    // mFilterKeyEvent is used by OnKeyEvent().  If the commit event should
-    // be processed as simple key event, this is set to TRUE by the commit
-    // handler.
-    bool mFilterKeyEvent;
-    // mKeyDownEventWasSent is used by OnKeyEvent() and
-    // DispatchCompositionStart().  DispatchCompositionStart() dispatches
-    // a keydown event if the composition start is caused by a native
-    // keypress event.  If this is true, the keydown event has been dispatched.
-    // Then, DispatchCompositionStart() doesn't dispatch keydown event.
-    bool mKeyDownEventWasSent;
+    // mFallbackToKeyEvent is set to false when this class starts to handle
+    // a native key event (at that time, mProcessingKeyEvent is set to the
+    // native event).  If active IME just commits composition with a character
+    // which is produced by the key with current keyboard layout, this is set
+    // to true.
+    bool mFallbackToKeyEvent;
+    // mKeyboardEventWasDispatched is used by OnKeyEvent() and
+    // MaybeDispatchKeyEventAsProcessedByIME().
+    // MaybeDispatchKeyEventAsProcessedByIME() dispatches an eKeyDown or
+    // eKeyUp event event if the composition is caused by a native
+    // key press event.  If this is true, a keyboard event has been dispatched
+    // for the native event.  If so, MaybeDispatchKeyEventAsProcessedByIME()
+    // won't dispatch keyboard event anymore.
+    bool mKeyboardEventWasDispatched;
     // mIsDeletingSurrounding is true while OnDeleteSurroundingNative() is
     // trying to delete the surrounding text.
     bool mIsDeletingSurrounding;
@@ -293,6 +440,24 @@ protected:
     // mRetrieveSurroundingSignalReceived is true after "retrieve_surrounding"
     // signal is received until selection is changed in Gecko.
     bool mRetrieveSurroundingSignalReceived;
+    // mMaybeInDeadKeySequence is set to true when we detect a dead key press
+    // and set to false when we're sure dead key sequence has been finished.
+    // Note that we cannot detect which key event causes ending a dead key
+    // sequence.  For example, when you press dead key grave with ibus Spanish
+    // keyboard layout, it just consumes the key event when we call
+    // gtk_im_context_filter_keypress().  Then, pressing "Escape" key cancels
+    // the dead key sequence but we don't receive any signal and it's consumed
+    // by gtk_im_context_filter_keypress() normally.  On the other hand, when
+    // pressing "Shift" key causes exactly same behavior but dead key sequence
+    // isn't finished yet.
+    bool mMaybeInDeadKeySequence;
+    // mIsIMInAsyncKeyHandlingMode is set to true if we know that IM handles
+    // key events asynchronously.  I.e., filtered key event may come again
+    // later.
+    bool mIsIMInAsyncKeyHandlingMode;
+    // mIsKeySnooped is set to true if IM uses key snooper to listen key events.
+    // In such case, we won't receive key events if IME consumes the event.
+    bool mIsKeySnooped;
 
     // sLastFocusedContext is a pointer to the last focused instance of this
     // class.  When a instance is destroyed and sLastFocusedContext refers it,
@@ -443,10 +608,29 @@ protected:
      *    Following methods dispatch gecko events.  Then, the focused widget
      *    can be destroyed, and also it can be stolen focus.  If they returns
      *    FALSE, callers cannot continue the composition.
+     *      - MaybeDispatchKeyEventAsProcessedByIME
      *      - DispatchCompositionStart
      *      - DispatchCompositionChangeEvent
      *      - DispatchCompositionCommitEvent
      */
+
+    /**
+     * Dispatch an eKeyDown or eKeyUp event whose mKeyCode value is
+     * NS_VK_PROCESSKEY and mKeyNameIndex is KEY_NAME_INDEX_Process if
+     * we're not in a dead key sequence, mProcessingKeyEvent is nullptr
+     * but mPostingKeyEvents is not empty or mProcessingKeyEvent is not
+     * nullptr and mKeyboardEventWasDispatched is still false.  If this
+     * dispatches a keyboard event, this sets mKeyboardEventWasDispatched
+     * to true.
+     *
+     * @param aFollowingEvent       The following event message.
+     * @return                      If the caller can continue to handle
+     *                              composition, returns true.  Otherwise,
+     *                              false.  For example, if focus is moved
+     *                              by dispatched keyboard event, returns
+     *                              false.
+     */
+    bool MaybeDispatchKeyEventAsProcessedByIME(EventMessage aFollowingEvent);
 
     /**
      * Dispatches a composition start event.

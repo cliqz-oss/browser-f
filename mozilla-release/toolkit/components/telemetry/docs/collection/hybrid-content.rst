@@ -29,7 +29,7 @@ For security/privacy reasons `Mozilla.ContentTelemetry` will only work on a list
 
 Example:
 
-.. code-block:: csv
+::
 
   origin  hc_telemetry  1 https://discovery.addons.mozilla.org
 
@@ -267,6 +267,51 @@ Example:
                                        {"querylen": "7", "results": "23"});
   // event: [982134, "ui", "completion", "search-bar", "yahoo",
   //           {"qerylen": "7", "results": "23"}]
+
+Data Review
+===========
+
+Adding the ``hc_telemetry`` permission for a new domain in `browser/app/permissions <https://dxr.mozilla.org/mozilla-central/source/browser/app/permissions>`_
+requires `Data Collection Review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ as we are enabling a new method of data collection.
+
+Giving a domain permission to use Hybrid Content Telemetry also gives any Extensions running on this domain permission to use Hybrid Content Telemetry.
+If the domain is already on the `list of restricted domains <https://hg.mozilla.org/integration/mozilla-inbound/file/39e131181d44/modules/libpref/init/all.js#l5120>`_
+(configured by the ``extensions.webextensions.restrictedDomains`` preference), Extensions don't run on this domain and therefore cannot access the Hybrid Content Telemetry API.
+No additional approval is necessary.
+
+If the domain is not on that list, you need additional privacy review. In that case request help from the Telemetry team.
+
+Testing
+=======
+
+In order to test Hybrid Content Telemetry integrations, the permission API can be used to enable certain hosts.
+The ``Services.perms.add`` API is available in the Browser Console as well as in ``xpcshell`` and ``mochi`` tests with access to the ``Services.*`` APIs.
+
+The respective ``hc_telemetry`` permission needs to be set before any pages on that host load the ``HybridContentTelemetry-lib.js`` file.
+
+Manual testing
+--------------
+
+After starting the browser, open the Browser Console (Tools -> Web Developer -> Browser Console).
+To enable Hybrid Content Telemetry on ``https://example.mozilla.org``, execute this code snippet in the console:
+
+.. code-block:: js
+
+  let hostURI = Services.io.newURI("https://example.mozilla.org");
+  Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
+
+Afterwards load the page on ``https://example.mozilla.org`` and it will be able to record Telemetry data.
+
+Automated testing
+-----------------
+
+In test frameworks with privileged access the permission can be set in the ``head.js`` or during test setup.
+Add the code snippet in your ``head.js`` to enable Hybrid Content ContentTelemetry on ``https://example.mozilla.org``:
+
+.. code-block:: js
+
+  let hostURI = Services.io.newURI("https://example.mozilla.org");
+  Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
 
 Version History
 ===============

@@ -41,17 +41,6 @@ static constexpr Register IntArgReg2 { Registers::invalid_reg };
 static constexpr Register IntArgReg3 { Registers::invalid_reg };
 static constexpr Register HeapReg { Registers::invalid_reg };
 
-static constexpr Register WasmIonExitRegCallee { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegE0 { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegE1 { Registers::invalid_reg };
-
-static constexpr Register WasmIonExitRegReturnData { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegReturnType { Registers::invalid_reg };
-static constexpr Register WasmIonExitTlsReg { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegD0 { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegD1 { Registers::invalid_reg };
-static constexpr Register WasmIonExitRegD2 { Registers::invalid_reg };
-
 static constexpr Register RegExpTesterRegExpReg { Registers::invalid_reg };
 static constexpr Register RegExpTesterStringReg { Registers::invalid_reg };
 static constexpr Register RegExpTesterLastIndexReg { Registers::invalid_reg };
@@ -81,6 +70,7 @@ static constexpr Register ABINonArgReg1 { Registers::invalid_reg };
 static constexpr Register ABINonArgReg2 { Registers::invalid_reg };
 static constexpr Register ABINonArgReturnReg0 { Registers::invalid_reg };
 static constexpr Register ABINonArgReturnReg1 { Registers::invalid_reg };
+static constexpr Register ABINonVolatileReg { Registers::invalid_reg };
 static constexpr Register ABINonArgReturnVolatileReg { Registers::invalid_reg };
 
 static constexpr FloatRegister ABINonArgDoubleReg = { FloatRegisters::invalid_reg };
@@ -211,7 +201,8 @@ class MacroAssemblerNone : public Assembler
     bool appendRawCode(const uint8_t* code, size_t numBytes) { MOZ_CRASH(); }
     bool swapBuffer(wasm::Bytes& bytes) { MOZ_CRASH(); }
 
-    void trace(JSTracer*) { MOZ_CRASH(); }
+    void assertNoGCThings() const { MOZ_CRASH(); }
+
     static void TraceJumpRelocations(JSTracer*, JitCode*, CompactBufferReader&) { MOZ_CRASH(); }
     static void TraceDataRelocations(JSTracer*, JitCode*, CompactBufferReader&) { MOZ_CRASH(); }
 
@@ -228,7 +219,6 @@ class MacroAssemblerNone : public Assembler
     void flushBuffer() { MOZ_CRASH(); }
 
     template <typename T> void bind(T) { MOZ_CRASH(); }
-    void bindLater(Label*, wasm::OldTrapDesc) { MOZ_CRASH(); }
     template <typename T> void j(Condition, T) { MOZ_CRASH(); }
     template <typename T> void jump(T) { MOZ_CRASH(); }
     void writeCodePointer(CodeLabel* label) { MOZ_CRASH(); }
@@ -265,9 +255,7 @@ class MacroAssemblerNone : public Assembler
     template <typename T> void Pop(T) { MOZ_CRASH(); }
     template <typename T> CodeOffset pushWithPatch(T) { MOZ_CRASH(); }
 
-    CodeOffsetJump jumpWithPatch(RepatchLabel*, Label* doc = nullptr) { MOZ_CRASH(); }
-    CodeOffsetJump jumpWithPatch(RepatchLabel*, Condition, Label* doc = nullptr) { MOZ_CRASH(); }
-    CodeOffsetJump backedgeJump(RepatchLabel* label, Label* doc = nullptr) { MOZ_CRASH(); }
+    CodeOffsetJump jumpWithPatch(RepatchLabel*) { MOZ_CRASH(); }
 
     void testNullSet(Condition, ValueOperand, Register) { MOZ_CRASH(); }
     void testObjectSet(Condition, ValueOperand, Register) { MOZ_CRASH(); }
@@ -414,18 +402,12 @@ class ABIArgGenerator
 };
 
 static inline void
-PatchJump(CodeLocationJump&, CodeLocationLabel, ReprotectCode reprotect = DontReprotect)
+PatchJump(CodeLocationJump&, CodeLocationLabel)
 {
     MOZ_CRASH();
 }
 
 static inline bool GetTempRegForIntArg(uint32_t, uint32_t, Register*) { MOZ_CRASH(); }
-
-static inline
-void PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target)
-{
-    MOZ_CRASH();
-}
 
 } // namespace jit
 } // namespace js

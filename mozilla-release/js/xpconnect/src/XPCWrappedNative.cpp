@@ -19,6 +19,7 @@
 #include "nsContentUtils.h"
 #include "nsCycleCollectionNoteRootCallback.h"
 
+#include <new>
 #include <stdint.h>
 #include "mozilla/DeferredFinalize.h"
 #include "mozilla/Likely.h"
@@ -1136,7 +1137,7 @@ class MOZ_STACK_CLASS CallMethodHelper
 {
     XPCCallContext& mCallContext;
     nsresult mInvokeResult;
-    nsIInterfaceInfo* const mIFaceInfo;
+    const nsXPTInterfaceInfo* const mIFaceInfo;
     const nsXPTMethodInfo* mMethodInfo;
     nsISupports* const mCallee;
     const uint16_t mVTableIndex;
@@ -1351,10 +1352,15 @@ CallMethodHelper::GetArraySizeFromParam(uint8_t paramIndex,
                                                                      : nullptr);
 
         bool isArray;
-        if (!JS_IsArrayObject(mCallContext, maybeArray, &isArray) ||
-            !isArray ||
-            !JS_GetArrayLength(mCallContext, arrayOrNull, &GetDispatchParam(paramIndex)->val.u32))
-        {
+        bool ok = false;
+        if (JS_IsArrayObject(mCallContext, maybeArray, &isArray) && isArray) {
+            ok = JS_GetArrayLength(mCallContext, arrayOrNull, &GetDispatchParam(paramIndex)->val.u32);
+        } else if (JS_IsTypedArrayObject(&maybeArray.toObject())) {
+            GetDispatchParam(paramIndex)->val.u32 = JS_GetTypedArrayLength(&maybeArray.toObject());
+            ok = true;
+        }
+
+        if (!ok) {
             return Throw(NS_ERROR_XPC_CANT_CONVERT_OBJECT_TO_ARRAY, mCallContext);
         }
     }
@@ -1399,9 +1405,10 @@ bool
 CallMethodHelper::GetOutParamSource(uint8_t paramIndex, MutableHandleValue srcp) const
 {
     const nsXPTParamInfo& paramInfo = mMethodInfo->GetParam(paramIndex);
+    bool isRetval = &paramInfo == mMethodInfo->GetRetval();
 
     MOZ_ASSERT(!paramInfo.IsDipper(), "Dipper params are handled separately");
-    if (paramInfo.IsOut() && !paramInfo.IsRetval()) {
+    if (paramInfo.IsOut() && !isRetval) {
         MOZ_ASSERT(paramIndex < mArgc || paramInfo.IsOptional(),
                    "Expected either enough arguments or an optional argument");
         Value arg = paramIndex < mArgc ? mArgv[paramIndex] : JS::NullValue();
@@ -1488,7 +1495,7 @@ CallMethodHelper::GatherAndConvertResults()
             }
         }
 
-        if (paramInfo.IsRetval()) {
+        if (&paramInfo == mMethodInfo->GetRetval()) {
             mCallContext.SetRetVal(v);
         } else if (i < mArgc) {
             // we actually assured this before doing the invoke
@@ -1541,7 +1548,7 @@ CallMethodHelper::QueryInterfaceFastPath()
     nsresult err;
     bool success =
         XPCConvert::NativeData2JS(&v, &qiresult,
-                                  nsXPTType::T_INTERFACE_IS,
+                                  { nsXPTType::T_INTERFACE_IS },
                                   iid, &err);
     NS_IF_RELEASE(qiresult);
 
@@ -1564,7 +1571,7 @@ CallMethodHelper::InitializeDispatchParams()
     uint8_t hasRetval = 0;
 
     // XXX ASSUMES that retval is last arg. The xpidl compiler ensures this.
-    if (paramCount && mMethodInfo->GetParam(paramCount-1).IsRetval()) {
+    if (mMethodInfo->HasRetval()) {
         hasRetval = 1;
         requiredArgs--;
     }
@@ -1675,8 +1682,9 @@ CallMethodHelper::ConvertIndependentParam(uint8_t i)
     // indirectly, regardless of in/out-ness.
     if (type_tag == nsXPTType::T_JSVAL) {
         // Root the value.
-        dp->val.j.asValueRef().setUndefined();
-        if (!js::AddRawValueRoot(mCallContext, &dp->val.j.asValueRef(),
+        new (&dp->val.j) JS::Value();
+        MOZ_ASSERT(dp->val.j.isUndefined());
+        if (!js::AddRawValueRoot(mCallContext, &dp->val.j,
                                  "XPCWrappedNative::CallMethod param"))
         {
             return false;
@@ -1888,11 +1896,14 @@ CallMethodHelper::CleanupParam(nsXPTCMiniVariant& param, nsXPTType& type)
 
     switch (type.TagPart()) {
         case nsXPTType::T_JSVAL:
-            js::RemoveRawValueRoot(mCallContext, (Value*)&param.val);
+            js::RemoveRawValueRoot(mCallContext, &param.val.j);
             break;
         case nsXPTType::T_INTERFACE:
         case nsXPTType::T_INTERFACE_IS:
             ((nsISupports*)param.val.p)->Release();
+            break;
+        case nsXPTType::T_DOMOBJECT:
+            type.GetDOMObjectInfo().Cleanup(param.val.p);
             break;
         case nsXPTType::T_ASTRING:
         case nsXPTType::T_DOMSTRING:
@@ -2072,7 +2083,7 @@ static void DEBUG_CheckClassInfoClaims(XPCWrappedNative* wrapper)
     for (uint16_t i = 0; i < count; i++) {
         nsIClassInfo* clsInfo = wrapper->GetClassInfo();
         XPCNativeInterface* iface = set->GetInterfaceAt(i);
-        nsIInterfaceInfo* info = iface->GetInterfaceInfo();
+        const nsXPTInterfaceInfo* info = iface->GetInterfaceInfo();
         const nsIID* iid;
         nsISupports* ptr;
 

@@ -40,7 +40,7 @@ namespace mozilla {
 namespace layers {
 
 AndroidDynamicToolbarAnimator::AndroidDynamicToolbarAnimator(APZCTreeManager* aApz)
-  : mRootLayerTreeId(0)
+  : mRootLayerTreeId{0}
   , mApz(aApz)
   // Read/Write Compositor Thread, Read only Controller thread
   , mToolbarState(eToolbarVisible)
@@ -81,7 +81,7 @@ AndroidDynamicToolbarAnimator::AndroidDynamicToolbarAnimator(APZCTreeManager* aA
 {}
 
 void
-AndroidDynamicToolbarAnimator::Initialize(uint64_t aRootLayerTreeId)
+AndroidDynamicToolbarAnimator::Initialize(LayersId aRootLayerTreeId)
 {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   mRootLayerTreeId = aRootLayerTreeId;
@@ -116,7 +116,7 @@ GetTouchY(MultiTouchInput& multiTouch, ScreenIntCoord* value)
 }
 
 nsEventStatus
-AndroidDynamicToolbarAnimator::ReceiveInputEvent(InputData& aEvent, const ScreenPoint& aScrollOffset)
+AndroidDynamicToolbarAnimator::ReceiveInputEvent(const RefPtr<APZCTreeManager>& aApz, InputData& aEvent, const ScreenPoint& aScrollOffset)
 {
   MOZ_ASSERT(APZThreadUtils::IsControllerThread());
 
@@ -199,7 +199,7 @@ AndroidDynamicToolbarAnimator::ReceiveInputEvent(InputData& aEvent, const Screen
       const uint32_t dragThreshold = Abs(std::lround(0.01f * gfxPrefs::ToolbarScrollThreshold() * mControllerCompositionHeight));
       if ((Abs(mControllerTotalDistance.value) > dragThreshold) && (delta != 0)) {
         mControllerDragThresholdReached = true;
-        status = ProcessTouchDelta(currentToolbarState, delta, multiTouch.mTime);
+        status = ProcessTouchDelta(aApz, currentToolbarState, delta, multiTouch.mTime);
       }
       mControllerLastEventTimeStamp = multiTouch.mTime;
     }
@@ -587,9 +587,10 @@ AndroidDynamicToolbarAnimator::Shutdown()
 }
 
 nsEventStatus
-AndroidDynamicToolbarAnimator::ProcessTouchDelta(StaticToolbarState aCurrentToolbarState, ScreenIntCoord aDelta, uint32_t aTimeStamp)
+AndroidDynamicToolbarAnimator::ProcessTouchDelta(const RefPtr<APZCTreeManager>& aApz, StaticToolbarState aCurrentToolbarState, ScreenIntCoord aDelta, uint32_t aTimeStamp)
 {
   MOZ_ASSERT(APZThreadUtils::IsControllerThread());
+  MOZ_ASSERT(aApz);
   nsEventStatus status = nsEventStatus_eIgnore;
 
   const bool tryingToHideToolbar = aDelta < 0;
@@ -642,9 +643,10 @@ AndroidDynamicToolbarAnimator::ProcessTouchDelta(StaticToolbarState aCurrentTool
     uint32_t timeDelta = aTimeStamp - mControllerLastEventTimeStamp;
     if (mControllerLastEventTimeStamp && timeDelta && aDelta) {
       float speed = -(float)aDelta / (float)timeDelta;
-      if (mApz) {
-        mApz->ProcessTouchVelocity(aTimeStamp, speed);
-      }
+      // we can't use mApz because we're on the controller thread, so we have
+      // the caller provide a RefPtr to the same underlying object, which should
+      // be safe to use.
+      aApz->ProcessTouchVelocity(aTimeStamp, speed);
     }
   }
 
@@ -744,7 +746,7 @@ void
 AndroidDynamicToolbarAnimator::PostMessage(int32_t aMessage) {
   // if the root layer tree id is zero then Initialize() has not been called yet
   // so queue the message until Initialize() is called.
-  if (mRootLayerTreeId == 0) {
+  if (!mRootLayerTreeId.IsValid()) {
     QueueMessage(aMessage);
     return;
   }
@@ -1175,7 +1177,7 @@ AndroidDynamicToolbarAnimator::QueueMessage(int32_t aMessage)
 
   // If the root layer tree id is no longer zero, Initialize() was called before QueueMessage was processed
   // so just post the message now.
-  if (mRootLayerTreeId != 0) {
+  if (mRootLayerTreeId.IsValid()) {
     PostMessage(aMessage);
     return;
   }

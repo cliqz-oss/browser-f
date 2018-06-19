@@ -16,7 +16,6 @@
 
 #include <stddef.h>
 
-#include "frontend/LanguageExtensions.h"
 #include "gc/Barrier.h"
 #include "gc/NurseryAwareHashMap.h"
 #include "gc/Zone.h"
@@ -608,10 +607,7 @@ struct JSCompartment
     }
 
     // Used to approximate non-content code when reporting telemetry.
-    inline bool isProbablySystemOrAddonCode() const {
-        if (creationOptions_.addonIdOrNull())
-            return true;
-
+    inline bool isProbablySystemCode() const {
         return isSystem_;
     }
   private:
@@ -622,7 +618,6 @@ struct JSCompartment
   public:
     bool                         isSelfHosting;
     bool                         marked;
-    bool                         warnedAboutExprClosure : 1;
     uint32_t                     warnedAboutStringGenericsMethods;
 
 #ifdef DEBUG
@@ -637,7 +632,6 @@ struct JSCompartment
     js::ReadBarrieredGlobalObject global_;
 
     unsigned                     enterCompartmentDepth;
-    unsigned                     globalHolds;
 
   public:
     js::PerformanceGroupHolder performanceMonitoring;
@@ -650,14 +644,7 @@ struct JSCompartment
     }
     bool hasBeenEntered() const { return !!enterCompartmentDepth; }
 
-    void holdGlobal() {
-        globalHolds++;
-    }
-    void releaseGlobal() {
-        MOZ_ASSERT(globalHolds > 0);
-        globalHolds--;
-    }
-    bool shouldTraceGlobal() const { return globalHolds > 0 || hasBeenEntered(); }
+    bool shouldTraceGlobal() const { return hasBeenEntered(); }
 
     JS::Zone* zone() { return zone_; }
     const JS::Zone* zone() const { return zone_; }
@@ -666,7 +653,7 @@ struct JSCompartment
     JS::CompartmentBehaviors& behaviors() { return behaviors_; }
     const JS::CompartmentBehaviors& behaviors() const { return behaviors_; }
 
-    JSRuntime* runtimeFromActiveCooperatingThread() const {
+    JSRuntime* runtimeFromMainThread() const {
         MOZ_ASSERT(js::CurrentThreadCanAccessRuntime(runtime_));
         return runtime_;
     }
@@ -969,9 +956,7 @@ struct JSCompartment
         return allocationMetadataBuilder;
     }
     void setAllocationMetadataBuilder(const js::AllocationMetadataBuilder* builder);
-    void forgetAllocationMetadataBuilder() {
-        allocationMetadataBuilder = nullptr;
-    }
+    void forgetAllocationMetadataBuilder();
     void setNewObjectMetadata(JSContext* cx, JS::HandleObject obj);
     void clearObjectMetadata();
     const void* addressOfMetadataBuilder() const {
@@ -1198,16 +1183,6 @@ struct JSCompartment
     static const size_t IterResultObjectDoneSlot = 1;
     js::NativeObject* getOrCreateIterResultTemplateObject(JSContext* cx);
 
-  private:
-    // Used for collecting telemetry on SpiderMonkey's deprecated language extensions.
-    bool sawDeprecatedLanguageExtension[size_t(js::DeprecatedLanguageExtension::Count)];
-
-    void reportTelemetry();
-
-  public:
-    void addTelemetry(const char* filename, js::DeprecatedLanguageExtension e);
-
-  public:
     // Aggregated output used to collect JSScript hit counts when code coverage
     // is enabled.
     js::coverage::LCovCompartment lcovOutput;

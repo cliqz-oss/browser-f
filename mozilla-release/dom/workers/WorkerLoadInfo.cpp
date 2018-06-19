@@ -16,6 +16,7 @@
 #include "nsINetworkInterceptController.h"
 #include "nsIProtocolHandler.h"
 #include "nsITabChild.h"
+#include "nsScriptSecurityManager.h"
 #include "nsNetUtil.h"
 
 namespace mozilla {
@@ -132,9 +133,6 @@ WorkerLoadInfo::StealFrom(WorkerLoadInfo& aOther)
 
   MOZ_ASSERT(!mLoadGroup);
   aOther.mLoadGroup.swap(mLoadGroup);
-
-  MOZ_ASSERT(!mLoadFailedAsyncRunnable);
-  aOther.mLoadFailedAsyncRunnable.swap(mLoadFailedAsyncRunnable);
 
   MOZ_ASSERT(!mInterfaceRequestor);
   aOther.mInterfaceRequestor.swap(mInterfaceRequestor);
@@ -382,11 +380,20 @@ WorkerLoadInfo::PrincipalURIMatchesScriptURL()
   NS_ENSURE_SUCCESS(rv, false);
   NS_ENSURE_TRUE(principalURI, false);
 
-  bool equal = false;
-  rv = principalURI->Equals(mBaseURI, &equal);
-  NS_ENSURE_SUCCESS(rv, false);
+  if (nsScriptSecurityManager::SecurityCompareURIs(mBaseURI, principalURI)) {
+    return true;
+  }
 
-  return equal;
+  // If strict file origin policy is in effect, local files will always fail
+  // SecurityCompareURIs unless they are identical. Explicitly check file origin
+  // policy, in that case.
+  if (nsScriptSecurityManager::GetStrictFileOriginPolicy() &&
+      NS_URIIsLocalFile(mBaseURI) &&
+      NS_RelaxStrictFileOriginPolicy(mBaseURI, principalURI)) {
+    return true;
+  }
+
+  return false;
 }
 #endif // MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
@@ -402,7 +409,7 @@ WorkerLoadInfo::ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
                                               nsCOMPtr<nsILoadGroup>& aLoadGroupToCancel)
 {
 
-  static const uint32_t kDoomedCount = 11;
+  static const uint32_t kDoomedCount = 10;
   nsTArray<nsCOMPtr<nsISupports>> doomed(kDoomedCount);
 
   SwapToISupportsArray(mWindow, doomed);
@@ -414,7 +421,6 @@ WorkerLoadInfo::ProxyReleaseMainThreadObjects(WorkerPrivate* aWorkerPrivate,
   SwapToISupportsArray(mChannel, doomed);
   SwapToISupportsArray(mCSP, doomed);
   SwapToISupportsArray(mLoadGroup, doomed);
-  SwapToISupportsArray(mLoadFailedAsyncRunnable, doomed);
   SwapToISupportsArray(mInterfaceRequestor, doomed);
   // Before adding anything here update kDoomedCount above!
 
@@ -529,7 +535,7 @@ InterfaceRequestor::GetAnyLiveTabChild()
     }
 
     // Otherwise remove the stale weak reference and check the next one
-    mTabChildList.RemoveElementAt(mTabChildList.Length() - 1);
+    mTabChildList.RemoveLastElement();
   }
 
   return nullptr;

@@ -22,8 +22,11 @@ class nsDisplayListBuilder;
 class nsDisplayListSet;
 class nsPresContext;
 struct nsBoundingMetrics;
-class nsStyleContext;
 struct nsFont;
+
+namespace mozilla {
+class ComputedStyle;
+}
 
 // Hints for Stretch() to indicate criteria for stretching
 enum {
@@ -91,7 +94,7 @@ public:
   // constructor and destructor
   nsMathMLChar() {
     MOZ_COUNT_CTOR(nsMathMLChar);
-    mStyleContext = nullptr;
+    mComputedStyle = nullptr;
     mUnscaledAscent = 0;
     mScaleX = mScaleY = 1.0;
     mDraw = DRAW_NORMAL;
@@ -173,7 +176,7 @@ public:
 
   // Metrics that _exactly_ enclose the char. The char *must* have *already*
   // being stretched before you can call the GetBoundingMetrics() method.
-  // IMPORTANT: since chars have their own style contexts, and may be rendered
+  // IMPORTANT: since chars have their own ComputedStyles, and may be rendered
   // with glyphs that are not in the parent font, just calling the default
   // aRenderingContext.GetBoundingMetrics(aChar) can give incorrect results.
   void
@@ -186,13 +189,13 @@ public:
     mBoundingMetrics = aBoundingMetrics;
   }
 
-  // Hooks to access the extra leaf style contexts given to the MathMLChars.
+  // Hooks to access the extra leaf ComputedStyles given to the MathMLChars.
   // They provide an interface to make them accessible to the Style System via
-  // the Get/Set AdditionalStyleContext() APIs. Owners of MathMLChars
+  // the Get/Set AdditionalComputedStyle() APIs. Owners of MathMLChars
   // should honor these APIs.
-  nsStyleContext* GetStyleContext() const;
+  mozilla::ComputedStyle* GetComputedStyle() const;
 
-  void SetStyleContext(nsStyleContext* aStyleContext);
+  void SetComputedStyle(mozilla::ComputedStyle* aComputedStyle);
 
 protected:
   friend class nsGlyphTable;
@@ -204,7 +207,7 @@ private:
   nsRect             mRect;
   nsStretchDirection mDirection;
   nsBoundingMetrics  mBoundingMetrics;
-  RefPtr<nsStyleContext> mStyleContext;
+  RefPtr<mozilla::ComputedStyle> mComputedStyle;
   // mGlyphs/mBmData are arrays describing the glyphs used to draw the operator.
   // See the drawing methods below.
   RefPtr<gfxTextRun> mGlyphs[4];

@@ -10,13 +10,13 @@
 #include "AccessibleCaret.h"
 
 #include "mozilla/dom/CaretStateChangedEvent.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/EnumSet.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 #include "nsCoord.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIFrame.h"
 #include "nsISelectionListener.h"
 
@@ -59,44 +59,57 @@ public:
 
   // Press caret on the given point. Return NS_OK if the point is actually on
   // one of the carets.
-  virtual nsresult PressCaret(const nsPoint& aPoint, EventClassID aEventClass);
+  MOZ_CAN_RUN_SCRIPT
+  virtual nsresult PressCaret(const nsPoint& aPoint,
+                              EventClassID aEventClass);
 
   // Drag caret to the given point. It's required to call PressCaret()
   // beforehand.
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult DragCaret(const nsPoint& aPoint);
 
   // Release caret from he previous press action. It's required to call
   // PressCaret() beforehand.
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult ReleaseCaret();
 
   // A quick single tap on caret on given point without dragging.
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult TapCaret(const nsPoint& aPoint);
 
   // Select a word or bring up paste shortcut (if Gaia is listening) under the
   // given point.
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult SelectWordOrShortcut(const nsPoint& aPoint);
 
   // Handle scroll-start event.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollStart();
 
   // Handle scroll-end event.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollEnd();
 
   // Handle ScrollPositionChanged from nsIScrollObserver. This might be called
   // at anytime, not necessary between OnScrollStart and OnScrollEnd.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnScrollPositionChanged();
 
   // Handle reflow event from nsIReflowObserver.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnReflow();
 
   // Handle blur event from nsFocusManager.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnBlur();
 
   // Handle NotifySelectionChanged event from nsISelectionListener.
+  MOZ_CAN_RUN_SCRIPT
   virtual nsresult OnSelectionChanged(nsIDOMDocument* aDoc,
                                       nsISelection* aSel,
                                       int16_t aReason);
   // Handle key event.
+  MOZ_CAN_RUN_SCRIPT
   virtual void OnKeyboardEvent();
 
   // The canvas frame holding the accessible caret anonymous content elements
@@ -145,12 +158,18 @@ protected:
   // Update carets based on current selection status. This function will flush
   // layout, so caller must ensure the PresShell is still valid after calling
   // this method.
-  void UpdateCarets(const UpdateCaretsHintSet& aHints = UpdateCaretsHint::Default);
+  MOZ_CAN_RUN_SCRIPT
+  void UpdateCarets(
+    const UpdateCaretsHintSet& aHints = UpdateCaretsHint::Default);
 
   // Force hiding all carets regardless of the current selection status.
+  MOZ_CAN_RUN_SCRIPT
   void HideCarets();
 
+  MOZ_CAN_RUN_SCRIPT
   void UpdateCaretsForCursorMode(const UpdateCaretsHintSet& aHints);
+
+  MOZ_CAN_RUN_SCRIPT
   void UpdateCaretsForSelectionMode(const UpdateCaretsHintSet& aHints);
 
   // Provide haptic / touch feedback, primarily for select on longpress.
@@ -205,7 +224,8 @@ protected:
   // See the mRefCnt assertions in AccessibleCaretEventHub.
   //
   // Returns whether mPresShell we're holding is still valid.
-  MOZ_MUST_USE bool FlushLayout();
+  MOZ_MUST_USE MOZ_CAN_RUN_SCRIPT
+  bool FlushLayout();
 
   dom::Element* GetEditingHostForFrame(nsIFrame* aFrame) const;
   dom::Selection* GetSelection() const;
@@ -261,6 +281,7 @@ protected:
 
   // This function will flush layout, so caller must ensure the PresShell is
   // still valid after calling this method.
+  MOZ_CAN_RUN_SCRIPT
   virtual void DispatchCaretStateChangedEvent(dom::CaretChangedReason aReason);
 
   // ---------------------------------------------------------------------------
@@ -289,18 +310,11 @@ protected:
   // The caret mode since last update carets.
   CaretMode mLastUpdateCaretMode = CaretMode::None;
 
-  // Store the appearance of the carets when calling OnScrollStart() so that it
-  // can be restored in OnScrollEnd().
-  AccessibleCaret::Appearance mFirstCaretAppearanceOnScrollStart =
-                                 AccessibleCaret::Appearance::None;
-  AccessibleCaret::Appearance mSecondCaretAppearanceOnScrollStart =
-                                 AccessibleCaret::Appearance::None;
-
   // The last input source that the event hub saw. We use this to decide whether
   // or not show the carets when the selection is updated, as we want to hide
   // the carets for mouse-triggered selection changes but show them for other
   // input types such as touch.
-  uint16_t mLastInputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+  uint16_t mLastInputSource = dom::MouseEventBinding::MOZ_SOURCE_UNKNOWN;
 
   // Set to true in OnScrollStart() and set to false in OnScrollEnd().
   bool mIsScrollStarted = false;
@@ -333,11 +347,6 @@ protected:
   // Preference to make carets always tilt in selection mode. By default, the
   // carets become tilt only when they are overlapping.
   static bool sCaretsAlwaysTilt;
-
-  // Preference to allow carets always show when scrolling (either panning or
-  // zooming) the page. When set to false, carets will hide during scrolling,
-  // and show again after the user lifts the finger off the screen.
-  static bool sCaretsAlwaysShowWhenScrolling;
 
   // By default, javascript content selection changes closes AccessibleCarets and
   // UI interactions. Optionally, we can try to maintain the active UI, keeping

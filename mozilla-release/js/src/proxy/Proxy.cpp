@@ -725,8 +725,8 @@ ProxyObject::trace(JSTracer* trc, JSObject* obj)
     Proxy::trace(trc, obj);
 }
 
-JSObject*
-js::proxy_WeakmapKeyDelegate(JSObject* obj)
+static JSObject*
+proxy_WeakmapKeyDelegate(JSObject* obj)
 {
     MOZ_ASSERT(obj->is<ProxyObject>());
     return obj->as<ProxyObject>().handler()->weakmapKeyDelegate(obj);
@@ -809,12 +809,10 @@ const ObjectOps js::ProxyObjectOps = {
     Proxy::fun_toString
 };
 
-const Class js::ProxyObject::proxyClass =
+const Class js::ProxyClass =
     PROXY_CLASS_DEF("Proxy",
                     JSCLASS_HAS_CACHED_PROTO(JSProto_Proxy) |
                     JSCLASS_HAS_RESERVED_SLOTS(2));
-
-const Class* const js::ProxyClassPtr = &js::ProxyObject::proxyClass;
 
 JS_FRIEND_API(JSObject*)
 js::NewProxyObject(JSContext* cx, const BaseProxyHandler* handler, HandleValue priv, JSObject* proto_,
@@ -833,7 +831,7 @@ ProxyObject::renew(const BaseProxyHandler* handler, const Value& priv)
 {
     MOZ_ASSERT(!IsInsideNursery(this));
     MOZ_ASSERT_IF(IsCrossCompartmentWrapper(this), IsDeadProxyObject(this));
-    MOZ_ASSERT(getClass() == &ProxyObject::proxyClass);
+    MOZ_ASSERT(getClass() == &ProxyClass);
     MOZ_ASSERT(!IsWindowProxy(this));
     MOZ_ASSERT(hasDynamicPrototype());
 
@@ -843,15 +841,14 @@ ProxyObject::renew(const BaseProxyHandler* handler, const Value& priv)
         setReservedSlot(i, UndefinedValue());
 }
 
-JS_FRIEND_API(JSObject*)
-js::InitProxyClass(JSContext* cx, HandleObject obj)
+JSObject*
+js::InitProxyClass(JSContext* cx, Handle<GlobalObject*> global)
 {
     static const JSFunctionSpec static_methods[] = {
         JS_FN("revocable",      proxy_revocable,       2, 0),
         JS_FS_END
     };
 
-    Handle<GlobalObject*> global = obj.as<GlobalObject>();
     RootedFunction ctor(cx);
     ctor = GlobalObject::createConstructor(cx, proxy, cx->names().Proxy, 2);
     if (!ctor)
@@ -859,7 +856,7 @@ js::InitProxyClass(JSContext* cx, HandleObject obj)
 
     if (!JS_DefineFunctions(cx, ctor, static_methods))
         return nullptr;
-    if (!JS_DefineProperty(cx, obj, "Proxy", ctor, JSPROP_RESOLVING))
+    if (!JS_DefineProperty(cx, global, "Proxy", ctor, JSPROP_RESOLVING))
         return nullptr;
 
     global->setConstructor(JSProto_Proxy, ObjectValue(*ctor));

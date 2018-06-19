@@ -15,21 +15,22 @@
   <body>
 
     <script type="application/javascript">
+      /* import-globals-from device_front_shared.js */
       window.onload = function() {
         SimpleTest.waitForExplicitFinish();
 
-        Task.spawn(function* () {
+        (async function() {
           DebuggerServer.init();
           DebuggerServer.registerAllActors();
 
-          let win = yield openWebIDE();
+          let win = await openWebIDE();
 
           let prefIframe = win.document.querySelector("#deck-panel-devicepreferences");
           let docRuntime = getRuntimeDocument(win);
 
           win.AppManager.update("runtime-list");
 
-          yield connectToLocalRuntime(win);
+          await connectToLocalRuntime(win);
 
           let prefs = docRuntime.querySelector("#runtime-preferences");
 
@@ -40,11 +41,11 @@
           win.Cmds.showDevicePrefs();
           is(deck.selectedPanel, prefIframe, "device preferences iframe selected");
 
-          yield nextTick();
+          await nextTick();
 
-          yield lazyIframeIsLoaded(prefIframe);
+          await lazyIframeIsLoaded(prefIframe);
 
-          yield prefIframe.contentWindow.getAllPrefs;
+          await prefIframe.contentWindow.getAllPrefs;
 
           setDocument(prefIframe);
 
@@ -62,9 +63,9 @@
 
           addNewFieldInteger();
 
-          yield editFieldInteger();
+          await editFieldInteger();
 
-          yield resetExistingField("accessibility.accesskeycausesactivation");
+          await resetExistingField("accessibility.accesskeycausesactivation");
 
           addNewFieldBoolean();
 
@@ -72,14 +73,14 @@
 
           DebuggerServer.destroy();
 
-          yield closeWebIDE(win);
+          await closeWebIDE(win);
 
           SimpleTest.finish();
-        }).catch(e => {
+        })().catch(e => {
           ok(false, "Exception: " + e);
           SimpleTest.finish();
         });
-      }
+      };
     </script>
   </body>
 </html>

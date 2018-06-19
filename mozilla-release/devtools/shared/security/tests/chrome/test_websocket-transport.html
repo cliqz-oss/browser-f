@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <title>Test the WebSocket debugger transport</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
 <script>
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const Services = require("Services");
   const {DebuggerClient} = require("devtools/shared/client/debugger-client");
@@ -25,7 +25,7 @@ window.onload = function () {
     Services.prefs.clearUserPref("devtools.debugger.prompt-connection");
   });
 
-  add_task(async function () {
+  add_task(async function() {
     DebuggerServer.init();
     DebuggerServer.registerAllActors();
 

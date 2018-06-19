@@ -156,7 +156,7 @@ GetterSetterWriteBarrierPost(AccessorShape* shape)
             oomUnsafe.crash("GetterSetterWriteBarrierPost");
     }
 
-    auto& storeBuffer = shape->runtimeFromActiveCooperatingThread()->gc.storeBuffer();
+    auto& storeBuffer = shape->runtimeFromMainThread()->gc.storeBuffer();
     if (nurseryShapes.length() == 1) {
         storeBuffer.putGeneric(NurseryShapesRef(shape->zone()));
     } else if (nurseryShapes.length() == MaxShapeVectorLength) {
@@ -181,7 +181,7 @@ Shape::initDictionaryShape(const StackShape& child, uint32_t nfixed, GCPtrShape*
         new (this) AccessorShape(child, nfixed);
     else
         new (this) Shape(child, nfixed);
-    this->flags |= IN_DICTIONARY;
+    this->immutableFlags |= IN_DICTIONARY;
 
     this->listp = nullptr;
     if (dictp)

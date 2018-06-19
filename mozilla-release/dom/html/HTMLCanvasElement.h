@@ -133,7 +133,7 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
 public:
   explicit HTMLCanvasElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLCanvasElement, canvas)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLCanvasElement, canvas)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -299,8 +299,7 @@ public:
   nsresult CopyInnerTo(mozilla::dom::Element* aDest,
                        bool aPreallocateChildren);
 
-  virtual nsresult GetEventTargetParent(
-                     mozilla::EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   /*
    * Helpers called by various users of Canvas

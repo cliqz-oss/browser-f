@@ -9,7 +9,6 @@ add_task(async function() {
     "special-powers@mozilla.org",
     "mochikit@mozilla.org",
     "workerbootstrap-test@mozilla.org",
-    "worker-test@mozilla.org",
     "mozscreenshots@mozilla.org",
     "indexedDB-test@mozilla.org",
   ];
@@ -184,6 +183,8 @@ add_task(async function() {
       ["xpinstall.signatures.required", false],
     ],
   });
+
+  await new Promise(executeSoon);
 
   // The name of the pane should go back to "Legacy Extensions"
   await mgrWin.gLegacyView.refreshVisibility();

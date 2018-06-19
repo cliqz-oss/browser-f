@@ -22,9 +22,9 @@ var ContentPolicy = {
   _classID: Components.ID("938e5d24-9ccc-4b55-883e-c252a41f7ce9"),
   _contractID: "@mozilla.org/webrequest/policy;1",
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPolicy,
-                                         Ci.nsIFactory,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPolicy,
+                                          Ci.nsIFactory,
+                                          Ci.nsISupportsWeakReference]),
 
   init() {
     let registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
@@ -76,15 +76,21 @@ var ContentPolicy = {
     catMan.deleteCategoryEntry("content-policy", this._contractID, false);
   },
 
-  shouldLoad(policyType, contentLocation, requestOrigin,
-             node, mimeTypeGuess, extra, requestPrincipal) {
+  shouldLoad(contentLocation, loadInfo, mimeTypeGuess) {
+    let policyType = loadInfo.externalContentPolicyType;
+    let node = loadInfo.loadingContext;
+    let loadingPrincipal = loadInfo.loadingPrincipal;
+    let requestPrincipal = loadInfo.triggeringPrincipal;
+    let requestOrigin = null;
+    if (loadingPrincipal) {
+      requestOrigin = loadingPrincipal.URI;
+    }
+
     // Loads of TYPE_DOCUMENT and TYPE_SUBDOCUMENT perform a ConPol check
     // within docshell as well as within the ContentSecurityManager. To avoid
     // duplicate evaluations we ignore ConPol checks performed within docShell.
-    if (extra instanceof Ci.nsISupportsString) {
-      if (extra.data === "conPolCheckFromDocShell") {
-        return Ci.nsIContentPolicy.ACCEPT;
-      }
+    if (loadInfo.skipContentPolicyCheckForWebRequest) {
+      return Ci.nsIContentPolicy.ACCEPT;
     }
 
     if (requestPrincipal &&
@@ -121,7 +127,8 @@ var ContentPolicy = {
     }
 
     if (policyType == Ci.nsIContentPolicy.TYPE_SUBDOCUMENT ||
-        (node instanceof Ci.nsIDOMXULElement && node.localName == "browser")) {
+        (ChromeUtils.getClassName(node) == "XULElement" &&
+         node.localName == "browser")) {
       // Chrome sets frameId to the ID of the sub-window. But when
       // Firefox loads an iframe, it sets |node| to the <iframe>
       // element, whose window is the parent window. We adopt the
@@ -192,7 +199,7 @@ var ContentPolicy = {
     return Ci.nsIContentPolicy.ACCEPT;
   },
 
-  shouldProcess: function(contentType, contentLocation, requestOrigin, insecNode, mimeType, extra) {
+  shouldProcess: function(contentLocation, loadInfo, mimeType) {
     return Ci.nsIContentPolicy.ACCEPT;
   },
 

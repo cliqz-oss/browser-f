@@ -11,27 +11,17 @@ ChromeUtils.import("resource://normandy/lib/LogManager.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "timerManager",
                                    "@mozilla.org/updates/timer-manager;1",
                                    "nsIUpdateTimerManager");
-ChromeUtils.defineModuleGetter(this, "Preferences", "resource://gre/modules/Preferences.jsm");
-ChromeUtils.defineModuleGetter(this, "Storage",
-                               "resource://normandy/lib/Storage.jsm");
-ChromeUtils.defineModuleGetter(this, "NormandyDriver",
-                               "resource://normandy/lib/NormandyDriver.jsm");
-ChromeUtils.defineModuleGetter(this, "FilterExpressions",
-                               "resource://normandy/lib/FilterExpressions.jsm");
-ChromeUtils.defineModuleGetter(this, "NormandyApi",
-                               "resource://normandy/lib/NormandyApi.jsm");
-ChromeUtils.defineModuleGetter(this, "SandboxManager",
-                               "resource://normandy/lib/SandboxManager.jsm");
-ChromeUtils.defineModuleGetter(this, "ClientEnvironment",
-                               "resource://normandy/lib/ClientEnvironment.jsm");
-ChromeUtils.defineModuleGetter(this, "CleanupManager",
-                               "resource://normandy/lib/CleanupManager.jsm");
-ChromeUtils.defineModuleGetter(this, "ActionSandboxManager",
-                               "resource://normandy/lib/ActionSandboxManager.jsm");
-ChromeUtils.defineModuleGetter(this, "AddonStudies",
-                               "resource://normandy/lib/AddonStudies.jsm");
-ChromeUtils.defineModuleGetter(this, "Uptake",
-                               "resource://normandy/lib/Uptake.jsm");
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  Storage: "resource://normandy/lib/Storage.jsm",
+  FilterExpressions: "resource://normandy/lib/FilterExpressions.jsm",
+  NormandyApi: "resource://normandy/lib/NormandyApi.jsm",
+  ClientEnvironment: "resource://normandy/lib/ClientEnvironment.jsm",
+  CleanupManager: "resource://normandy/lib/CleanupManager.jsm",
+  AddonStudies: "resource://normandy/lib/AddonStudies.jsm",
+  Uptake: "resource://normandy/lib/Uptake.jsm",
+  ActionsManager: "resource://normandy/lib/ActionsManager.jsm",
+});
 
 Cu.importGlobalProperties(["fetch"]);
 
@@ -57,6 +47,21 @@ const PREFS_TO_WATCH = [
   SHIELD_ENABLED_PREF,
   API_URL_PREF,
 ];
+
+/**
+ * cacheProxy returns an object Proxy that will memoize properties of the target.
+ */
+function cacheProxy(target) {
+  const cache = new Map();
+  return new Proxy(target, {
+    get(target, prop, receiver) {
+      if (!cache.has(prop)) {
+        cache.set(prop, target[prop]);
+      }
+      return cache.get(prop);
+    }
+  });
+}
 
 var RecipeRunner = {
   async init() {
@@ -198,6 +203,11 @@ var RecipeRunner = {
     let recipes;
     try {
       recipes = await NormandyApi.fetchRecipes({enabled: true});
+      log.debug(
+        `Fetched ${recipes.length} recipes from the server: ` +
+        recipes.map(r => r.name).join(", ")
+      );
+
     } catch (e) {
       const apiUrl = Services.prefs.getCharPref(API_URL_PREF);
       log.error(`Could not fetch recipes from ${apiUrl}: "${e}"`);
@@ -212,21 +222,9 @@ var RecipeRunner = {
       return;
     }
 
-    const actionSandboxManagers = await this.loadActionSandboxManagers();
-    Object.values(actionSandboxManagers).forEach(manager => manager.addHold("recipeRunner"));
-
-    // Run pre-execution hooks. If a hook fails, we don't run recipes with that
-    // action to avoid inconsistencies.
-    for (const [actionName, manager] of Object.entries(actionSandboxManagers)) {
-      try {
-        await manager.runAsyncCallback("preExecution");
-        manager.disabled = false;
-      } catch (err) {
-        log.error(`Could not run pre-execution hook for ${actionName}:`, err.message);
-        manager.disabled = true;
-        Uptake.reportAction(actionName, Uptake.ACTION_PRE_EXECUTION_ERROR);
-      }
-    }
+    const actions = new ActionsManager();
+    await actions.fetchRemoteActions();
+    await actions.preExecution();
 
     // Evaluate recipe filters
     const recipesToRun = [];
@@ -241,54 +239,11 @@ var RecipeRunner = {
       log.debug("No recipes to execute");
     } else {
       for (const recipe of recipesToRun) {
-        const manager = actionSandboxManagers[recipe.action];
-        let status;
-        if (!manager) {
-          log.error(
-            `Could not execute recipe ${recipe.name}:`,
-            `Action ${recipe.action} is either missing or invalid.`
-          );
-          status = Uptake.RECIPE_INVALID_ACTION;
-        } else if (manager.disabled) {
-          log.warn(
-            `Skipping recipe ${recipe.name} because ${recipe.action} failed during pre-execution.`
-          );
-          status = Uptake.RECIPE_ACTION_DISABLED;
-        } else {
-          try {
-            log.info(`Executing recipe "${recipe.name}" (action=${recipe.action})`);
-            await manager.runAsyncCallback("action", recipe);
-            status = Uptake.RECIPE_SUCCESS;
-          } catch (e) {
-            log.error(`Could not execute recipe ${recipe.name}:`);
-            Cu.reportError(e);
-            status = Uptake.RECIPE_EXECUTION_ERROR;
-          }
-        }
-
-        Uptake.reportRecipe(recipe.id, status);
+        await actions.runRecipe(recipe);
       }
     }
 
-    // Run post-execution hooks
-    for (const [actionName, manager] of Object.entries(actionSandboxManagers)) {
-      // Skip if pre-execution failed.
-      if (manager.disabled) {
-        log.info(`Skipping post-execution hook for ${actionName} due to earlier failure.`);
-        continue;
-      }
-
-      try {
-        await manager.runAsyncCallback("postExecution");
-        Uptake.reportAction(actionName, Uptake.ACTION_SUCCESS);
-      } catch (err) {
-        log.info(`Could not run post-execution hook for ${actionName}:`, err.message);
-        Uptake.reportAction(actionName, Uptake.ACTION_POST_EXECUTION_ERROR);
-      }
-    }
-
-    // Nuke sandboxes
-    Object.values(actionSandboxManagers).forEach(manager => manager.removeHold("recipeRunner"));
+    await actions.finalize();
 
     // Close storage connections
     await AddonStudies.close();
@@ -296,34 +251,14 @@ var RecipeRunner = {
     Uptake.reportRunner(Uptake.RUNNER_SUCCESS);
   },
 
-  async loadActionSandboxManagers() {
-    const actions = await NormandyApi.fetchActions();
-    const actionSandboxManagers = {};
-    for (const action of actions) {
-      try {
-        const implementation = await NormandyApi.fetchImplementation(action);
-        actionSandboxManagers[action.name] = new ActionSandboxManager(implementation);
-      } catch (err) {
-        log.warn(`Could not fetch implementation for ${action.name}:`, err);
-
-        let status = Uptake.ACTION_SERVER_ERROR;
-        if (/NetworkError/.test(err)) {
-          status = Uptake.ACTION_NETWORK_ERROR;
-        }
-        Uptake.reportAction(action.name, status);
-      }
-    }
-    return actionSandboxManagers;
-  },
-
   getFilterContext(recipe) {
+    const environment = cacheProxy(ClientEnvironment);
+    environment.recipe = {
+      id: recipe.id,
+      arguments: recipe.arguments,
+    };
     return {
-      normandy: Object.assign(ClientEnvironment.getEnvironment(), {
-        recipe: {
-          id: recipe.id,
-          arguments: recipe.arguments,
-        },
-      }),
+      normandy: environment
     };
   },
 
@@ -340,9 +275,7 @@ var RecipeRunner = {
       const result = await FilterExpressions.eval(recipe.filter_expression, context);
       return !!result;
     } catch (err) {
-      log.error(`Error checking filter for "${recipe.name}"`);
-      log.error(`Filter: "${recipe.filter_expression}"`);
-      log.error(`Error: "${err}"`);
+      log.error(`Error checking filter for "${recipe.name}". Filter: [${recipe.filter_expression}]. Error: "${err}"`);
       return false;
     }
   },

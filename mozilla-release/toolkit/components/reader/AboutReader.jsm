@@ -13,7 +13,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AsyncPrefs", "resource://gre/modules/AsyncPrefs.jsm");
 ChromeUtils.defineModuleGetter(this, "NarrateControls", "resource://gre/modules/narrate/NarrateControls.jsm");
-ChromeUtils.defineModuleGetter(this, "Rect", "resource://gre/modules/Geometry.jsm");
 ChromeUtils.defineModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
 ChromeUtils.defineModuleGetter(this, "PluralForm", "resource://gre/modules/PluralForm.jsm");
 
@@ -703,7 +702,10 @@ AboutReader.prototype = {
     };
 
     this._mm.addMessageListener("Reader:FaviconReturn", handleFaviconReturn);
-    this._mm.sendAsyncMessage("Reader:FaviconRequest", { url: this._article.url });
+    this._mm.sendAsyncMessage("Reader:FaviconRequest", {
+      url: this._article.url,
+      preferredWidth: 16 * this._win.devicePixelRatio
+    });
   },
 
   _loadFavicon(url, faviconUrl) {

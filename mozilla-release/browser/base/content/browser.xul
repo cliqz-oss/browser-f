@@ -13,14 +13,17 @@
 <?xml-stylesheet href="chrome://browser/skin/controlcenter/panel.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/customizableui/panelUI.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/downloads/downloads.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css"?>
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/tabbrowser.css" type="text/css"?>
-
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
+<?xml-stylesheet href="chrome://browser/skin/compacttheme.css" type="text/css" alternate="yes" title="Light/Dark"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
 # hiddenWindow.xul.
+<!DOCTYPE window [
 #include browser-doctype.inc
+]>
 
 <window id="main-window"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -43,14 +46,12 @@
         titlemodifier_normal="&mainWindow.titlemodifier;"
         titlemodifier_privatebrowsing="&mainWindow.titlemodifier; &mainWindow.titlePrivateBrowsingSuffix;"
 #endif
-#ifdef CAN_DRAW_IN_TITLEBAR
 #ifdef XP_WIN
         chromemargin="0,2,2,2"
 #else
         chromemargin="0,-1,-1,-1"
 #endif
         tabsintitlebar="true"
-#endif
         titlemenuseparator="&mainWindow.titlemodifiermenuseparator;"
         windowtype="navigator:browser"
         macanimationtype="document"
@@ -60,18 +61,33 @@
         retargetdocumentfocus="urlbar"
         persist="screenX screenY width height sizemode">
 
-# All JS files which are not content (only) dependent that browser.xul
-# wishes to include *must* go into the global-scripts.inc file
-# so that they can be shared by macBrowserOverlay.xul.
+# All JS files which are needed by browser.xul and other top level windows to
+# support MacOS specific features *must* go into the global-scripts.inc file so
+# that they can be shared with macWindow.inc.xul.
 #include global-scripts.inc
 
 <script type="application/javascript">
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser.js", this);
+
+  ChromeUtils.defineModuleGetter(window,
+    "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+  ChromeUtils.defineModuleGetter(window,
+    "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
+  ChromeUtils.defineModuleGetter(window,
+    "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
+
+  ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+  XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
+    "chrome://browser/content/places/treeView.js");
+  XPCOMUtils.defineLazyScriptGetter(window,
+    ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
+     "chrome://browser/content/places/controller.js");
 </script>
 
-# All sets except for popupsets (commands, keys, stringbundles and broadcasters) *must* go into the
-# browser-sets.inc file for sharing with hiddenWindow.xul.
+# All sets except for popupsets (commands, keys, stringbundles and broadcasters)
+# *must* go into the browser-sets.inc file so that they can be shared with other
+# top level windows in macWindow.inc.xul.
 #define FULL_BROWSER_WINDOW
 #include browser-sets.inc
 #undef FULL_BROWSER_WINDOW
@@ -211,7 +227,7 @@
           <description id="editBookmarkPanelDescription"/>
         </vbox>
       </row>
-      <vbox id="editBookmarkPanelContent" flex="1" hidden="true"/>
+#include ../../components/places/content/editBookmarkPanel.inc.xul
       <hbox id="editBookmarkPanelBottomButtons" pack="end">
 #ifndef XP_UNIX
         <button id="editBookmarkPanelDoneButton"
@@ -395,7 +411,7 @@
 #include browser-context.inc
     </menupopup>
 
-    <menupopup id="placesContext"/>
+#include ../../components/places/content/placesContextMenu.inc.xul
 
     <panel id="ctrlTab-panel" hidden="true" norestorefocus="true" level="top">
       <hbox>
@@ -424,7 +440,8 @@
            copyURL-title="&pageAction.copyLink.label;"
            emailLink-title="&emailPageCmd.label;"
            sendToDevice-title="&pageAction.sendTabToDevice.label;"
-           sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;">
+           sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;"
+           shareURL-title="&pageAction.shareUrl.label;">
       <panelmultiview id="pageActionPanelMultiView"
                       mainViewId="pageActionPanelMainView"
                       viewCacheId="appMenu-viewCache">
@@ -472,8 +489,7 @@
                 oncommand="BrowserPageActions.openAboutAddonsForContextAction();"/>
     </menupopup>
 
-    <!-- Bookmarks and history tooltip -->
-    <tooltip id="bhTooltip"/>
+#include ../../components/places/content/bookmarksHistoryTooltip.inc.xul
 
     <tooltip id="tabbrowser-tab-tooltip" onpopupshowing="gBrowser.createTooltip(event);"/>
 
@@ -504,15 +520,6 @@
     <hbox id="downloads-animation-container" mousethrough="always">
       <vbox id="downloads-notification-anchor" hidden="true">
         <vbox id="downloads-indicator-notification"/>
-      </vbox>
-    </hbox>
-
-    <hbox id="bookmarked-notification-container" mousethrough="always">
-      <vbox id="bookmarked-notification-anchor">
-        <vbox id="bookmarked-notification"/>
-      </vbox>
-      <vbox id="bookmarked-notification-dropmarker-anchor">
-        <image id="bookmarked-notification-dropmarker-icon"/>
       </vbox>
     </hbox>
 
@@ -581,7 +588,6 @@
   </popupset>
   <box id="appMenu-viewCache" hidden="true"/>
 
-#ifdef CAN_DRAW_IN_TITLEBAR
 <vbox id="titlebar">
   <hbox id="titlebar-content">
     <spacer id="titlebar-spacer" flex="1"/>
@@ -603,7 +609,6 @@
 #endif
   </hbox>
 </vbox>
-#endif
 
   <toolbox id="navigator-toolbox">
     <!-- Menu -->
@@ -618,16 +623,14 @@
 #endif
              context="toolbar-context-menu">
       <toolbaritem id="menubar-items" align="center">
-# The entire main menubar is placed into browser-menubar.inc, so that it can be shared by
-# hiddenWindow.xul.
+# The entire main menubar is placed into browser-menubar.inc, so that it can be
+# shared with other top level windows in macWindow.inc.xul.
 #include browser-menubar.inc
       </toolbaritem>
 
-#ifdef CAN_DRAW_IN_TITLEBAR
 #ifndef XP_MACOSX
       <hbox class="titlebar-placeholder" type="caption-buttons" ordinal="1000"
             skipintoolbarset="true"/>
-#endif
 #endif
     </toolbar>
 
@@ -637,13 +640,9 @@
              customizable="true"
              mode="icons"
              aria-label="&tabsToolbar.label;"
-             context="toolbar-context-menu"
-             collapsed="true">
-
-#ifdef CAN_DRAW_IN_TITLEBAR
+             context="toolbar-context-menu">
       <hbox class="titlebar-placeholder" type="pre-tabs"
             skipintoolbarset="true"/>
-#endif
 
       <tabs id="tabbrowser-tabs"
             flex="1"
@@ -667,7 +666,7 @@
                      removable="true"/>
 
       <toolbarbutton id="alltabs-button"
-                     class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button"
+                     class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button badged-button"
                      type="menu"
                      label="&listAllTabs.label;"
                      tooltiptext="&listAllTabs.label;"
@@ -684,21 +683,23 @@
             <menupopup id="alltabs_containersMenuTab" />
           </menu>
           <menuseparator id="alltabs-popup-separator-2"/>
+          <menu id="alltabs_hiddenTabs"
+                label="&hiddenTabs.label;">
+            <menupopup id="alltabs_hiddenTabsMenu"/>
+          </menu>
+          <menuseparator id="alltabs-popup-separator-3"/>
         </menupopup>
       </toolbarbutton>
 
-#ifdef CAN_DRAW_IN_TITLEBAR
       <hbox class="titlebar-placeholder" type="post-tabs"
             ordinal="1000"
             skipintoolbarset="true"/>
-#endif
 
       <button class="accessibility-indicator" tooltiptext="&accessibilityIndicator.tooltip;"
               ordinal="1000"
               aria-live="polite" skipintoolbarset="true"/>
       <hbox class="private-browsing-indicator" skipintoolbarset="true"
             ordinal="1000"/>
-#ifdef CAN_DRAW_IN_TITLEBAR
       <hbox class="titlebar-placeholder" type="caption-buttons"
 #ifndef XP_MACOSX
             ordinal="1000"
@@ -708,7 +709,6 @@
 #ifdef XP_MACOSX
       <hbox class="titlebar-placeholder" type="fullscreen-button"
             skipintoolbarset="true"/>
-#endif
 #endif
     </toolbar>
 
@@ -868,7 +868,7 @@
                   <image id="midi-notification-icon" class="notification-anchor-icon midi-icon" role="button"
                          tooltiptext="&urlbar.midiNotificationAnchor.tooltip;"/>
                   <image id="webauthn-notification-icon" class="notification-anchor-icon" role="button"
-                         tooltiptext="&urlbar.defaultNotificationAnchor.tooltip;"/>
+                         tooltiptext="&urlbar.webAuthnAnchor.tooltip;"/>
                 </box>
                 <image id="connection-icon"/>
                 <image id="extension-icon"/>
@@ -1220,8 +1220,12 @@
                     onselect="if (event.target.localName == 'tabpanels') gBrowser.updateCurrentBrowser();">
           <tabpanels flex="1" class="plain" selectedIndex="0" id="tabbrowser-tabpanels">
             <notificationbox flex="1" notificationside="top">
-              <hbox flex="1" class="browserSidebarContainer">
-                <vbox flex="1" class="browserContainer">
+              <!-- Set large flex to allow the devtools toolbox to set a flex attribute.
+                   We don't want the toolbox to actually take up free space, but we do want it to collapse when the window shrinks, and with flex=0 it can't.
+                   When the toolbox is on the bottom it's a sibling of browserSidebarContainer,
+                   and when it's on the side it's a sibling of browserContainer.  -->
+              <hbox flex="10000" class="browserSidebarContainer">
+                <vbox flex="10000" class="browserContainer">
                   <stack flex="1" class="browserStack">
                     <browser id="tabbrowser-initialBrowser" type="content"
                              message="true" messagemanagergroup="browsers"
@@ -1232,6 +1236,15 @@
                              selectmenulist="ContentSelectDropdown"
                              datetimepicker="DateTimePickerPanel"/>
                   </stack>
+                  <hbox id="statuspanel" inactive="true" layer="true">
+                    <hbox id="statuspanel-inner">
+                      <label id="statuspanel-label"
+                             role="status"
+                             aria-live="off"
+                             flex="1"
+                             crop="end"/>
+                    </hbox>
+                  </hbox>
                 </vbox>
               </hbox>
             </notificationbox>

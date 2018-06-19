@@ -14,8 +14,6 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
   PanelView: "resource:///modules/PanelMultiView.jsm",
-  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
-  PlacesUIUtils: "resource:///modules/PlacesUIUtils.jsm",
   RecentlyClosedTabsAndWindowsMenuUtils: "resource:///modules/sessionstore/RecentlyClosedTabsAndWindowsMenuUtils.jsm",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.jsm",
   CharsetMenu: "resource://gre/modules/CharsetMenu.jsm",
@@ -27,10 +25,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyGetter(this, "CharsetBundle", function() {
   const kCharsetBundle = "chrome://global/locale/charsetMenu.properties";
   return Services.strings.createBundle(kCharsetBundle);
-});
-XPCOMUtils.defineLazyGetter(this, "BrandBundle", function() {
-  const kBrandBundle = "chrome://branding/locale/brand.properties";
-  return Services.strings.createBundle(kBrandBundle);
 });
 
 const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
@@ -181,8 +175,8 @@ const CustomizableWidgets = [
     tooltiptext: "find-button.tooltiptext3",
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
-      if (win.gFindBar) {
-        win.gFindBar.onFindCommand();
+      if (win.gLazyFindCommand) {
+        win.gLazyFindCommand("onFindCommand");
       }
     }
   }, {
@@ -565,26 +559,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     },
     TABS_PER_PAGE: 25,
     NEXT_PAGE_MIN_TABS: 5, // Minimum number of tabs displayed when we click "Show All"
-    onCreated(aNode) {
-      this._initialize(aNode);
-    },
-    _initialize(aNode) {
-      if (this._initialized) {
-        return;
-      }
-      // Add an observer to the button so we get the animation during sync.
-      // (Note the observer sets many attributes, including label and
-      // tooltiptext, but we only want the 'syncstatus' attribute for the
-      // animation)
-      let doc = aNode.ownerDocument;
-      let obnode = doc.createElementNS(kNSXUL, "observes");
-      obnode.setAttribute("element", "sync-status");
-      obnode.setAttribute("attribute", "syncstatus");
-      aNode.appendChild(obnode);
-      this._initialized = true;
-    },
     onViewShowing(aEvent) {
-      this._initialize(aEvent.target);
       let doc = aEvent.target.ownerDocument;
       this._tabsList = doc.getElementById("PanelUI-remotetabs-tabslist");
       Services.obs.addObserver(this, SyncedTabs.TOPIC_TABS_CHANGED);
@@ -763,7 +738,9 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
       // We need to use "click" instead of "command" here so openUILink
       // respects different buttons (eg, to open in a new tab).
       item.addEventListener("click", e => {
-        doc.defaultView.openUILink(tabInfo.url, e);
+        doc.defaultView.openUILink(tabInfo.url, e, {
+          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({})
+        });
         if (doc.defaultView.whereToOpenLink(e) != "current") {
           e.preventDefault();
           e.stopPropagation();
@@ -829,7 +806,7 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
       let group = doc.getElementById("PanelUI-panic-timeSpan");
       BrowserUITelemetry.countPanicEvent(group.selectedItem.id);
       let itemsToClear = [
-        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads"
+        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads", "offlineApps"
       ];
       let newWindowPrivateState = PrivateBrowsingUtils.isWindowPrivate(doc.defaultView) ?
                                   "private" : "non-private";

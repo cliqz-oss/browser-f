@@ -63,16 +63,9 @@ using namespace mozilla::dom::SVGUnitTypesBinding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 
-static bool sSVGPathCachingEnabled;
 static bool sSVGDisplayListHitTestingEnabled;
 static bool sSVGDisplayListPaintingEnabled;
 static bool sSVGNewGetBBoxEnabled;
-
-bool
-NS_SVGPathCachingEnabled()
-{
-  return sSVGPathCachingEnabled;
-}
 
 bool
 NS_SVGDisplayListHitTestingEnabled()
@@ -138,9 +131,6 @@ SVGAutoRenderState::IsPaintingToWindow(DrawTarget* aDrawTarget)
 void
 nsSVGUtils::Init()
 {
-  Preferences::AddBoolVarCache(&sSVGPathCachingEnabled,
-                               "svg.path-caching.enabled");
-
   Preferences::AddBoolVarCache(&sSVGDisplayListHitTestingEnabled,
                                "svg.display-lists.hit-testing.enabled");
 
@@ -1072,7 +1062,7 @@ gfxRect
 nsSVGUtils::GetBBox(nsIFrame* aFrame, uint32_t aFlags,
                     const gfxMatrix* aToBoundsSpace)
 {
-  if (aFrame->GetContent()->IsNodeOfType(nsINode::eTEXT)) {
+  if (aFrame->GetContent()->IsText()) {
     aFrame = aFrame->GetParent();
   }
 
@@ -1191,7 +1181,7 @@ nsSVGUtils::GetBBox(nsIFrame* aFrame, uint32_t aFlags,
         }
         matrix = clipContent->PrependLocalTransformsTo(matrix, eUserSpaceToParent);
         bbox =
-          clipPathFrame->GetBBoxForClipPathFrame(bbox, matrix).ToThebesRect();
+          clipPathFrame->GetBBoxForClipPathFrame(bbox, matrix, aFlags).ToThebesRect();
       }
 
       if (hasClip) {
@@ -1305,7 +1295,7 @@ nsSVGUtils::CanOptimizeOpacity(nsIFrame *aFrame)
     return false;
   }
 
-  if (nsLayoutUtils::HasAnimationOfProperty(aFrame, eCSSProperty_opacity)) {
+  if (nsLayoutUtils::MayHaveAnimationOfProperty(aFrame, eCSSProperty_opacity)) {
     return false;
   }
 
@@ -1348,7 +1338,7 @@ bool
 nsSVGUtils::GetNonScalingStrokeTransform(nsIFrame *aFrame,
                                          gfxMatrix* aUserToOuterSVG)
 {
-  if (aFrame->GetContent()->IsNodeOfType(nsINode::eTEXT)) {
+  if (aFrame->GetContent()->IsText()) {
     aFrame = aFrame->GetParent();
   }
 
@@ -1439,11 +1429,11 @@ nsSVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
 // ----------------------------------------------------------------------
 
 /* static */ nscolor
-nsSVGUtils::GetFallbackOrPaintColor(nsStyleContext *aStyleContext,
+nsSVGUtils::GetFallbackOrPaintColor(ComputedStyle *aComputedStyle,
                                     nsStyleSVGPaint nsStyleSVG::*aFillOrStroke)
 {
-  const nsStyleSVGPaint &paint = aStyleContext->StyleSVG()->*aFillOrStroke;
-  nsStyleContext *styleIfVisited = aStyleContext->GetStyleIfVisited();
+  const nsStyleSVGPaint &paint = aComputedStyle->StyleSVG()->*aFillOrStroke;
+  ComputedStyle *styleIfVisited = aComputedStyle->GetStyleIfVisited();
   nscolor color;
   switch (paint.Type()) {
     case eStyleSVGPaintType_Server:
@@ -1472,8 +1462,8 @@ nsSVGUtils::GetFallbackOrPaintColor(nsStyleContext *aStyleContext,
     if (paintIfVisited.Type() == eStyleSVGPaintType_Color &&
         paint.Type() == eStyleSVGPaintType_Color) {
       nscolor colors[2] = { color, paintIfVisited.GetColor() };
-      return nsStyleContext::CombineVisitedColors(
-               colors, aStyleContext->RelevantLinkVisited());
+      return ComputedStyle::CombineVisitedColors(
+               colors, aComputedStyle->RelevantLinkVisited());
     }
   }
   return color;
@@ -1549,7 +1539,7 @@ nsSVGUtils::MakeFillPatternFor(nsIFrame* aFrame,
   // On failure, use the fallback colour in case we have an
   // objectBoundingBox where the width or height of the object is zero.
   // See http://www.w3.org/TR/SVG11/coords.html#ObjectBoundingBox
-  Color color(Color::FromABGR(GetFallbackOrPaintColor(aFrame->StyleContext(),
+  Color color(Color::FromABGR(GetFallbackOrPaintColor(aFrame->Style(),
                                                       &nsStyleSVG::mFill)));
   color.a *= fillOpacity;
   aOutPattern->InitColorPattern(ToDeviceColor(color));
@@ -1625,7 +1615,7 @@ nsSVGUtils::MakeStrokePatternFor(nsIFrame* aFrame,
   // On failure, use the fallback colour in case we have an
   // objectBoundingBox where the width or height of the object is zero.
   // See http://www.w3.org/TR/SVG11/coords.html#ObjectBoundingBox
-  Color color(Color::FromABGR(GetFallbackOrPaintColor(aFrame->StyleContext(),
+  Color color(Color::FromABGR(GetFallbackOrPaintColor(aFrame->Style(),
                                                       &nsStyleSVG::mStroke)));
   color.a *= strokeOpacity;
   aOutPattern->InitColorPattern(ToDeviceColor(color));
@@ -1677,7 +1667,7 @@ nsSVGUtils::GetStrokeWidth(nsIFrame* aFrame, SVGContextPaint* aContextPaint)
   }
 
   nsIContent* content = aFrame->GetContent();
-  if (content->IsNodeOfType(nsINode::eTEXT)) {
+  if (content->IsText()) {
     content = content->GetParent();
   }
 
@@ -1694,7 +1684,7 @@ nsSVGUtils::SetupStrokeGeometry(nsIFrame* aFrame,
   SVGContentUtils::AutoStrokeOptions strokeOptions;
   SVGContentUtils::GetStrokeOptions(
     &strokeOptions, static_cast<nsSVGElement*>(aFrame->GetContent()),
-    aFrame->StyleContext(), aContextPaint);
+    aFrame->Style(), aContextPaint);
 
   if (strokeOptions.mLineWidth <= 0) {
     return;
@@ -1783,7 +1773,7 @@ nsSVGUtils::PaintSVGGlyph(Element* aElement, gfxContext* aContext)
           PrependLocalTransformsTo(gfxMatrix(), eUserSpaceToParent);
   }
 
-  // SVG-in-OpenType is not allowed to paint exteral resources, so we can
+  // SVG-in-OpenType is not allowed to paint external resources, so we can
   // just pass a dummy params into PatintSVG.
   imgDrawingParams dummy;
   svgFrame->PaintSVG(*aContext, m, dummy);

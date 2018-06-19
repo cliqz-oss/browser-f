@@ -19,7 +19,6 @@
 #include "nsAttrAndChildArray.h"          // member
 #include "nsCycleCollectionParticipant.h" // NS_DECL_CYCLE_*
 #include "nsIContent.h"                   // base class
-#include "nsIWeakReference.h"             // base class
 #include "nsNodeUtils.h"                  // class member nsNodeUtils::CloneNodeImpl
 #include "nsIHTMLCollection.h"
 #include "nsDataHashtable.h"
@@ -44,34 +43,6 @@ struct CustomElementData;
 class Element;
 } // namespace dom
 } // namespace mozilla
-
-/**
- * A class that implements nsIWeakReference
- */
-
-class nsNodeWeakReference final : public nsIWeakReference
-{
-public:
-  explicit nsNodeWeakReference(nsINode* aNode)
-    : nsIWeakReference(aNode)
-  {
-  }
-
-  // nsISupports
-  NS_DECL_ISUPPORTS
-
-  // nsIWeakReference
-  NS_DECL_NSIWEAKREFERENCE
-  virtual size_t SizeOfOnlyThis(mozilla::MallocSizeOf aMallocSizeOf) const override;
-
-  void NoticeNodeDestruction()
-  {
-    mObject = nullptr;
-  }
-
-private:
-  ~nsNodeWeakReference();
-};
 
 /**
  * Tearoff to use for nodes to implement nsISupportsWeakReference
@@ -99,8 +70,8 @@ private:
 };
 
 /**
- * A generic base class for DOM elements, implementing many nsIContent,
- * nsIDOMNode and nsIDOMElement methods.
+ * A generic base class for DOM elements and document fragments,
+ * implementing many nsIContent, nsIDOMNode and Element methods.
  */
 namespace mozilla {
 namespace dom {
@@ -113,7 +84,11 @@ public:
   explicit FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
   explicit FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  // We want to avoid the overhead of extra function calls for
+  // refcounting when we're not doing refcount logging, so we can't
+  // NS_DECL_ISUPPORTS_INHERITED.
+  NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(FragmentOrElement, nsIContent);
 
   NS_DECL_ADDSIZEOFEXCLUDINGTHIS
 
@@ -137,21 +112,8 @@ public:
   virtual already_AddRefed<nsINodeList> GetChildren(uint32_t aFilter) override;
   virtual const nsTextFragment *GetText() override;
   virtual uint32_t TextLength() const override;
-  virtual nsresult SetText(const char16_t* aBuffer, uint32_t aLength,
-                           bool aNotify) override;
-  // Need to implement this here too to avoid hiding.
-  nsresult SetText(const nsAString& aStr, bool aNotify)
-  {
-    return SetText(aStr.BeginReading(), aStr.Length(), aNotify);
-  }
-  virtual nsresult AppendText(const char16_t* aBuffer, uint32_t aLength,
-                              bool aNotify) override;
   virtual bool TextIsOnlyWhitespace() override;
   virtual bool ThreadSafeTextIsOnlyWhitespace() const override;
-  virtual bool HasTextForTranslation() override;
-  virtual void AppendTextTo(nsAString& aResult) override;
-  MOZ_MUST_USE
-  virtual bool AppendTextTo(nsAString& aResult, const mozilla::fallible_t&) override;
   virtual nsXBLBinding* DoGetXBLBinding() const override;
   virtual bool IsLink(nsIURI** aURI) const override;
 
@@ -164,14 +126,6 @@ public:
     return Children()->Length();
   }
 
-  /**
-   * Sets the IsElementInStyleScope flag on each element in the subtree rooted
-   * at this node, including any elements reachable through shadow trees.
-   *
-   * @param aInStyleScope The flag value to set.
-   */
-  void SetIsElementInStyleScopeFlagOnSubtree(bool aInStyleScope);
-
 public:
   /**
    * If there are listeners for DOMNodeInserted event, fires the event on all
@@ -181,32 +135,13 @@ public:
                                nsINode* aParent,
                                nsTArray<nsCOMPtr<nsIContent> >& aNodes);
 
-  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(FragmentOrElement)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_INHERITED(FragmentOrElement,
+                                                                   nsIContent)
 
   /**
    * Fire a DOMNodeRemoved mutation event for all children of this node
    */
   void FireNodeRemovedForChildren();
-
-  virtual bool OwnedOnlyByTheDOMTree() override
-  {
-    uint32_t rc = mRefCnt.get();
-    if (GetParent()) {
-      --rc;
-    }
-    rc -= mAttrsAndChildren.ChildCount();
-    return rc == 0;
-  }
-
-  virtual bool IsPurple() override
-  {
-    return mRefCnt.IsPurple();
-  }
-
-  virtual void RemovePurple() override
-  {
-    mRefCnt.RemovePurple();
-  }
 
   static void ClearContentUnbinder();
   static bool CanSkip(nsINode* aNode, bool aRemovingAllowed);
@@ -215,8 +150,6 @@ public:
   static void RemoveBlackMarkedNode(nsINode* aNode);
   static void MarkNodeChildren(nsINode* aNode);
   static void InitCCCallbacks();
-  static void MarkUserData(void* aObject, nsAtom* aKey, void* aChild,
-                           void *aData);
 
   /**
    * Is the HTML local name a void element?
@@ -374,14 +307,6 @@ protected:
   {
     return static_cast<nsExtendedDOMSlots*>(GetExistingExtendedContentSlots());
   }
-
-  /**
-   * Calls SetIsElementInStyleScopeFlagOnSubtree for each shadow tree attached
-   * to this node, which is assumed to be an Element.
-   *
-   * @param aInStyleScope The IsElementInStyleScope flag value to set.
-   */
-  void SetIsElementInStyleScopeFlagOnShadowTree(bool aInStyleScope);
 
   friend class ::ContentUnbinder;
   /**

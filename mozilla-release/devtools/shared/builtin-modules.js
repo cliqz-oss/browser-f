@@ -15,12 +15,13 @@
 
 const { Cu, CC, Cc, Ci } = require("chrome");
 const promise = require("resource://gre/modules/Promise.jsm").Promise;
-const jsmScope = require("resource://gre/modules/Services.jsm");
+const jsmScope = require("resource://devtools/shared/Loader.jsm");
 const { Services } = jsmScope;
 // Steal various globals only available in JSM scope (and not Sandbox one)
 const {
   console,
   HeapSnapshot,
+  StructuredCloneHolder,
 } = Cu.getGlobalForObject(jsmScope);
 
 // Create a single Sandbox to access global properties needed in this module.
@@ -31,6 +32,9 @@ const {
   ChromeUtils,
   CSS,
   CSSRule,
+  DOMParser,
+  Element,
+  Event,
   FileReader,
   FormData,
   indexedDB,
@@ -46,6 +50,9 @@ const {
     "ChromeUtils",
     "CSS",
     "CSSRule",
+    "DOMParser",
+    "Element",
+    "Event",
     "FileReader",
     "FormData",
     "indexedDB",
@@ -70,7 +77,7 @@ const {
  */
 function defineLazyGetter(object, name, lambda) {
   Object.defineProperty(object, name, {
-    get: function () {
+    get: function() {
       // Redefine this accessor property as a data property.
       // Delete it first, to rule out "too much recursion" in case object is
       // a proxy whose defineProperty handler might unwittingly trigger this
@@ -104,7 +111,7 @@ function defineLazyGetter(object, name, lambda) {
  *        The name of the interface to query the service to.
  */
 function defineLazyServiceGetter(object, name, contract, interfaceName) {
-  defineLazyGetter(object, name, function () {
+  defineLazyGetter(object, name, function() {
     return Cc[contract].getService(Ci[interfaceName]);
   });
 }
@@ -143,7 +150,7 @@ function defineLazyModuleGetter(object, name, resource, symbol,
     preLambda.apply(proxy);
   }
 
-  defineLazyGetter(object, name, function () {
+  defineLazyGetter(object, name, function() {
     let temp = {};
     try {
       ChromeUtils.import(resource, temp);
@@ -226,7 +233,7 @@ defineLazyGetter(exports.modules, "Debugger", () => {
 
 defineLazyGetter(exports.modules, "Timer", () => {
   let {setTimeout, clearTimeout} = require("resource://gre/modules/Timer.jsm");
-  // Do not return Cu.import result, as SDK loader would freeze Timer.jsm globals...
+  // Do not return Cu.import result, as DevTools loader would freeze Timer.jsm globals...
   return {
     setTimeout,
     clearTimeout
@@ -261,8 +268,9 @@ exports.globals = {
   define(factory) {
     factory(this.require, this.exports, this.module);
   },
-  DocumentFragment: Ci.nsIDOMDocumentFragment,
-  Element: Ci.nsIDOMElement,
+  DOMParser,
+  Element,
+  Event,
   FormData,
   isWorker: false,
   loader: {
@@ -275,13 +283,14 @@ exports.globals = {
   },
   Node: Ci.nsIDOMNode,
   reportError: Cu.reportError,
+  StructuredCloneHolder,
   TextDecoder,
   TextEncoder,
   URL,
   XMLHttpRequest,
 };
-// SDK loader copy globals property descriptors on each module global object
-// so that we have to memoize them from here in order to instanciate each
+// DevTools loader copy globals property descriptors on each module global
+// object so that we have to memoize them from here in order to instantiate each
 // global only once.
 // `globals` is a cache object on which we put all global values
 // and we set getters on `exports.globals` returning `globals` values.
@@ -289,7 +298,7 @@ let globals = {};
 function lazyGlobal(name, getter) {
   defineLazyGetter(globals, name, getter);
   Object.defineProperty(exports.globals, name, {
-    get: function () {
+    get: function() {
       return globals[name];
     },
     configurable: true,
@@ -310,9 +319,6 @@ lazyGlobal("clearInterval", () => {
 });
 lazyGlobal("setInterval", () => {
   return require("resource://gre/modules/Timer.jsm").setInterval;
-});
-lazyGlobal("DOMParser", () => {
-  return CC("@mozilla.org/xmlextras/domparser;1", "nsIDOMParser");
 });
 lazyGlobal("WebSocket", () => {
   return Services.appShell.hiddenDOMWindow.WebSocket;

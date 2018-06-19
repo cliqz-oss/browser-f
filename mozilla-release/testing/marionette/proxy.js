@@ -14,14 +14,14 @@ const {
 } = ChromeUtils.import("chrome://marionette/content/error.js", {});
 ChromeUtils.import("chrome://marionette/content/evaluate.js");
 ChromeUtils.import("chrome://marionette/content/modal.js");
+const {
+  MessageManagerDestroyedPromise,
+} = ChromeUtils.import("chrome://marionette/content/sync.js", {});
 
 this.EXPORTED_SYMBOLS = ["proxy"];
 
 XPCOMUtils.defineLazyServiceGetter(
     this, "uuidgen", "@mozilla.org/uuid-generator;1", "nsIUUIDGenerator");
-XPCOMUtils.defineLazyServiceGetter(
-    this, "globalMessageManager", "@mozilla.org/globalmessagemanager;1",
-    "nsIMessageBroadcaster");
 
 const log = Log.repository.getLogger("Marionette");
 
@@ -142,18 +142,24 @@ proxy.AsyncMessageChannel = class {
         }
       };
 
-      // The currently selected tab or window has been closed. No clean-up
-      // is necessary to do because all loaded listeners are gone.
-      this.closeHandler = ({type, target}) => {
+      // The currently selected tab or window is closing. Make sure to wait
+      // until it's fully gone.
+      this.closeHandler = async ({type, target}) => {
         log.debug(`Received DOM event ${type} for ${target}`);
 
+        let messageManager;
         switch (type) {
-          case "TabClose":
           case "unload":
-            this.removeHandlers();
-            resolve();
+            messageManager = this.browser.window.messageManager;
+            break;
+          case "TabClose":
+            messageManager = this.browser.messageManager;
             break;
         }
+
+        await new MessageManagerDestroyedPromise(messageManager);
+        this.removeHandlers();
+        resolve();
       };
 
       // A modal or tab modal dialog has been opened. To be able to handle it,
@@ -211,7 +217,9 @@ proxy.AsyncMessageChannel = class {
       if (this.browser.tab) {
         let node = this.browser.tab.addEventListener ?
             this.browser.tab : this.browser.contentBrowser;
-        node.removeEventListener("TabClose", this.closeHandler);
+        if (node) {
+          node.removeEventListener("TabClose", this.closeHandler);
+        }
       }
     }
   }
@@ -289,7 +297,7 @@ proxy.AsyncMessageChannel = class {
       callback(msg);
     };
 
-    globalMessageManager.addMessageListener(path, autoRemover);
+    Services.mm.addMessageListener(path, autoRemover);
     this.listeners_.set(path, autoRemover);
   }
 
@@ -299,7 +307,7 @@ proxy.AsyncMessageChannel = class {
     }
 
     let l = this.listeners_.get(path);
-    globalMessageManager.removeMessageListener(path, l[1]);
+    Services.mm.removeMessageListener(path, l);
     return this.listeners_.delete(path);
   }
 

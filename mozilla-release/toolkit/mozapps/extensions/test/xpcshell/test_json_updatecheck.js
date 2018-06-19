@@ -61,7 +61,7 @@ function checkUpdates(aData) {
 
 
   return new Promise((resolve, reject) => {
-    AddonUpdateChecker.checkForUpdates(aData.id, aData.updateKey, updateUrl, {
+    AddonUpdateChecker.checkForUpdates(aData.id, updateUrl, {
       onUpdateCheckComplete: resolve,
 
       onUpdateCheckError(status) {
@@ -88,7 +88,7 @@ add_task(async function test_default_values() {
   equal(updates.length, 1);
   let update = updates[0];
 
-  equal(update.targetApplications.length, 1);
+  equal(update.targetApplications.length, 2);
   let targetApp = update.targetApplications[0];
 
   equal(targetApp.id, TOOLKIT_ID);
@@ -96,7 +96,6 @@ add_task(async function test_default_values() {
   equal(targetApp.maxVersion, "*");
 
   equal(update.version, "0.2");
-  equal(update.multiprocessCompatible, true, "multiprocess_compatible flag");
   equal(update.strictCompatibility, false, "inferred strictConpatibility flag");
   equal(update.updateURL, null, "updateURL");
   equal(update.updateHash, null, "updateHash");
@@ -138,7 +137,6 @@ add_task(async function test_explicit_values() {
       update_link: "https://example.com/foo.xpi",
       update_hash: "sha256:0",
       update_info_url: "https://example.com/update_info.html",
-      multiprocess_compatible: false,
       applications: {
         gecko: {
           strict_min_version: "42.0a2.xpcshell",
@@ -151,7 +149,7 @@ add_task(async function test_explicit_values() {
   equal(updates.length, 1);
   let update = updates[0];
 
-  equal(update.targetApplications.length, 1);
+  equal(update.targetApplications.length, 2);
   let targetApp = update.targetApplications[0];
 
   equal(targetApp.id, TOOLKIT_ID);
@@ -159,7 +157,6 @@ add_task(async function test_explicit_values() {
   equal(targetApp.maxVersion, "43.xpcshell");
 
   equal(update.version, "0.2");
-  equal(update.multiprocessCompatible, false, "multiprocess_compatible flag");
   equal(update.strictCompatibility, true, "inferred strictCompatibility flag");
   equal(update.updateURL, "https://example.com/foo.xpi", "updateURL");
   equal(update.updateHash, "sha256:0", "updateHash");
@@ -274,29 +271,7 @@ add_task(async function test_update_url_security() {
   equal(updates[1].updateURL, "http://example.com/update.xpi", "safe update URL was accepted");
 
   messages = messages.filter(msg => /http:\/\/localhost.*\/updates\/.*may not load or link to chrome:/.test(msg.message));
-  equal(messages.length, 1, "privileged upate URL generated the expected console message");
-});
-
-
-add_task(async function test_no_update_key() {
-  // Checks that updates fail when an update key has been specified.
-
-  let { messages } = await promiseConsoleOutput(async function() {
-    await Assert.rejects(
-      checkUpdates({
-        id: "updatecheck-updatekey@tests.mozilla.org",
-        version: "0.1",
-        updateKey: "ayzzx=",
-        updates: [
-          { version: "0.2" },
-          { version: "0.3" },
-        ]
-      }),
-      null, "updated expected to fail");
-  });
-
-  messages = messages.filter(msg => /Update keys are not supported for JSON update manifests/.test(msg.message));
-  equal(messages.length, 1, "got expected update-key-unsupported error");
+  equal(messages.length, 1, "privileged update URL generated the expected console message");
 });
 
 

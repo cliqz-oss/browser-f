@@ -17,6 +17,8 @@ ChromeUtils.defineModuleGetter(this, "SelectContentHelper",
   "resource://gre/modules/SelectContentHelper.jsm");
 ChromeUtils.defineModuleGetter(this, "FindContent",
   "resource://gre/modules/FindContent.jsm");
+ChromeUtils.defineModuleGetter(this, "RemoteFinder",
+  "resource://gre/modules/RemoteFinder.jsm");
 
 var global = this;
 
@@ -495,8 +497,8 @@ var Printing = {
   // really all the interface is used for, hence the fact that I don't actually
   // implement the interface here. Bug 1088061 has been filed to remove
   // this hackery.
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsIPrintingPromptService]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsIPrintingPromptService]),
 
   MESSAGES: [
     "Printing:Preview:Enter",
@@ -629,22 +631,28 @@ var Printing = {
         onStateChange(webProgress, req, flags, status) {
           if (flags & Ci.nsIWebProgressListener.STATE_STOP) {
             webProgress.removeProgressListener(webProgressListener);
-            let domUtils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                                  .getInterface(Ci.nsIDOMWindowUtils);
+            let domUtils = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                                        .getInterface(Ci.nsIDOMWindowUtils);
             // Here we tell the parent that we have parsed the document successfully
             // using ReaderMode primitives and we are able to enter on preview mode.
             if (domUtils.isMozAfterPaintPending) {
-              addEventListener("MozAfterPaint", function onPaint() {
+              let onPaint = function() {
                 removeEventListener("MozAfterPaint", onPaint);
                 sendAsyncMessage("Printing:Preview:ReaderModeReady");
-              });
+              };
+              contentWindow.addEventListener("MozAfterPaint", onPaint);
+              // This timer need when display list invalidation doesn't invalidate.
+              setTimeout(() => {
+                removeEventListener("MozAfterPaint", onPaint);
+                sendAsyncMessage("Printing:Preview:ReaderModeReady");
+              }, 100);
             } else {
               sendAsyncMessage("Printing:Preview:ReaderModeReady");
             }
           }
         },
 
-        QueryInterface: XPCOMUtils.generateQI([
+        QueryInterface: ChromeUtils.generateQI([
           Ci.nsIWebProgressListener,
           Ci.nsISupportsWeakReference,
           Ci.nsIObserver,
@@ -921,16 +929,37 @@ var FindBar = {
 
   _findMode: 0,
 
+  /**
+   * _findKey and _findModifiers are used to determine whether a keypress
+   * is a user attempting to use the find shortcut, after which we'll
+   * route keypresses to the parent until we know the findbar has focus
+   * there. To do this, we need shortcut data from the parent.
+   */
+  _findKey: null,
+  _findModifiers: null,
+
   init() {
     addMessageListener("Findbar:UpdateState", this);
     Services.els.addSystemEventListener(global, "keypress", this, false);
     Services.els.addSystemEventListener(global, "mouseup", this, false);
+    this._initShortcutData();
   },
 
   receiveMessage(msg) {
     switch (msg.name) {
       case "Findbar:UpdateState":
         this._findMode = msg.data.findMode;
+        this._quickFindTimeout = msg.data.hasQuickFindTimeout;
+        if (msg.data.isOpenAndFocused) {
+          this._keepPassingUntilToldOtherwise = false;
+        }
+        break;
+      case "Findbar:ShortcutData":
+        // Set us up to never need this again for the lifetime of this process,
+        // and remove the listener.
+        Services.cpmm.initialProcessData.findBarShortcutData = msg.data;
+        Services.cpmm.removeMessageListener("Findbar:ShortcutData", this);
+        this._initShortcutData(msg.data);
         break;
     }
   },
@@ -944,6 +973,36 @@ var FindBar = {
         this._onMouseup(event);
         break;
     }
+  },
+
+  /**
+   * Use initial process data for find key/modifier data if we have it.
+   * Otherwise, add a listener so we get the data when the parent process has
+   * it.
+   */
+  _initShortcutData(data = Services.cpmm.initialProcessData.findBarShortcutData) {
+    if (data) {
+      this._findKey = data.key;
+      this._findModifiers = data.modifiers;
+    } else {
+      Services.cpmm.addMessageListener("Findbar:ShortcutData", this);
+    }
+  },
+
+  /**
+   * Check whether this key event will start the findbar in the parent,
+   * in which case we should pass any further key events to the parent to avoid
+   * them being lost.
+   * @param aEvent the key event to check.
+   */
+  _eventMatchesFindShortcut(aEvent) {
+    let modifiers = this._findModifiers;
+    if (!modifiers) {
+      return false;
+    }
+    return aEvent.ctrlKey == modifiers.ctrlKey && aEvent.altKey == modifiers.altKey &&
+      aEvent.shiftKey == modifiers.shiftKey && aEvent.metaKey == modifiers.metaKey &&
+      aEvent.key == this._findKey;
   },
 
   /**
@@ -964,9 +1023,14 @@ var FindBar = {
   },
 
   _onKeypress(event) {
+    const FAYT_LINKS_KEY = "'";
+    const FAYT_TEXT_KEY = "/";
+    if (this._eventMatchesFindShortcut(event)) {
+      this._keepPassingUntilToldOtherwise = true;
+    }
     // Useless keys:
     if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) {
-      return undefined;
+      return;
     }
 
     // Check the focused element etc.
@@ -974,26 +1038,51 @@ var FindBar = {
 
     // Can we even use find in this page at all?
     if (!fastFind.can) {
-      return undefined;
+      return;
+    }
+    if (this._keepPassingUntilToldOtherwise) {
+      this._passKeyToParent(event);
+      return;
+    }
+    if (!fastFind.should) {
+      return;
     }
 
-    let fakeEvent = {};
-    for (let k in event) {
-      if (typeof event[k] != "object" && typeof event[k] != "function" &&
-          !(k in content.KeyboardEvent)) {
-        fakeEvent[k] = event[k];
+    let charCode = event.charCode;
+    // If the find bar is open and quick find is on, send the key to the parent.
+    if (this._findMode != this.FIND_NORMAL && this._quickFindTimeout) {
+      if (!charCode)
+        return;
+      this._passKeyToParent(event);
+    } else {
+      let key = charCode ? String.fromCharCode(charCode) : null;
+      let manualstartFAYT = (key == FAYT_LINKS_KEY || key == FAYT_TEXT_KEY);
+      let autostartFAYT = !manualstartFAYT && RemoteFinder._findAsYouType && key && key != " ";
+      if (manualstartFAYT || autostartFAYT) {
+        let mode = (key == FAYT_LINKS_KEY || (autostartFAYT && RemoteFinder._typeAheadLinksOnly)) ?
+          this.FIND_LINKS : this.FIND_TYPEAHEAD;
+        // Set _findMode immediately (without waiting for child->parent->child roundtrip)
+        // to ensure we pass any further keypresses, too.
+        this._findMode = mode;
+        this._passKeyToParent(event);
       }
     }
-    // sendSyncMessage returns an array of the responses from all listeners
-    let rv = sendSyncMessage("Findbar:Keypress", {
-      fakeEvent,
-      shouldFastFind: fastFind.should
-    });
-    if (rv.includes(false)) {
-      event.preventDefault();
-      return false;
+  },
+
+  _passKeyToParent(event) {
+    event.preventDefault();
+    // These are the properties required to dispatch another 'real' event
+    // to the findbar in the parent in _dispatchKeypressEvent in findbar.xml .
+    // If you make changes here, verify that that method can still do its job.
+    const kRequiredProps = [
+      "type", "bubbles", "cancelable", "ctrlKey", "altKey", "shiftKey",
+      "metaKey", "keyCode", "charCode",
+    ];
+    let fakeEvent = {};
+    for (let prop of kRequiredProps) {
+      fakeEvent[prop] = event[prop];
     }
-    return undefined;
+    sendAsyncMessage("Findbar:Keypress", fakeEvent);
   },
 
   _onMouseup(event) {
@@ -1089,7 +1178,7 @@ addMessageListener("WebChannelMessageToContent", function(e) {
 });
 
 var AudioPlaybackListener = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   init() {
     Services.obs.addObserver(this, "audio-playback");
@@ -1192,10 +1281,11 @@ addMessageListener("Browser:PurgeSessionHistory", function BrowserPurgeHistory()
 
   // place the entry at current index at the end of the history list, so it won't get removed
   if (sessionHistory.index < sessionHistory.count - 1) {
-    let indexEntry = sessionHistory.getEntryAtIndex(sessionHistory.index, false);
-    sessionHistory.QueryInterface(Ci.nsISHistoryInternal);
+    let legacy = sessionHistory.legacySHistory;
+    legacy.QueryInterface(Ci.nsISHistoryInternal);
+    let indexEntry = legacy.getEntryAtIndex(sessionHistory.index, false);
     indexEntry.QueryInterface(Ci.nsISHEntry);
-    sessionHistory.addEntry(indexEntry, true);
+    legacy.addEntry(indexEntry, true);
   }
 
   let purge = sessionHistory.count;
@@ -1204,7 +1294,7 @@ addMessageListener("Browser:PurgeSessionHistory", function BrowserPurgeHistory()
   }
 
   if (purge > 0) {
-    sessionHistory.PurgeHistory(purge);
+    sessionHistory.legacySHistory.PurgeHistory(purge);
   }
 });
 
@@ -1549,7 +1639,7 @@ addEventListener("MozApplicationManifest", function(e) {
 }, false);
 
 let AutoCompletePopup = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompletePopup]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompletePopup]),
 
   _connected: false,
 

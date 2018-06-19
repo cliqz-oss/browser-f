@@ -17,6 +17,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/CanvasCaptureMediaStream.h"
 #include "mozilla/dom/CanvasRenderingContext2D.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/HTMLCanvasElementBinding.h"
 #include "mozilla/dom/MediaStreamTrack.h"
@@ -26,6 +27,7 @@
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/layers/AsyncCanvasRenderer.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
+#include "mozilla/layers/WebRenderUserData.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
@@ -374,7 +376,7 @@ HTMLCanvasElementObserver::Observe(nsISupports*, const char* aTopic, const char1
 }
 
 NS_IMETHODIMP
-HTMLCanvasElementObserver::HandleEvent(nsIDOMEvent* aEvent)
+HTMLCanvasElementObserver::HandleEvent(Event* aEvent)
 {
   nsAutoString type;
   aEvent->GetType(type);
@@ -606,14 +608,16 @@ HTMLCanvasElement::CopyInnerTo(Element* aDest,
   return rv;
 }
 
-nsresult HTMLCanvasElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
+void
+HTMLCanvasElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   if (aVisitor.mEvent->mClass == eMouseEventClass) {
     WidgetMouseEventBase* evt = (WidgetMouseEventBase*)aVisitor.mEvent;
     if (mCurrentContext) {
       nsIFrame *frame = GetPrimaryFrame();
-      if (!frame)
-        return NS_OK;
+      if (!frame) {
+        return;
+      }
       nsPoint ptInRoot = nsLayoutUtils::GetEventCoordinatesRelativeTo(evt, frame);
       nsRect paddingRect = frame->GetContentRectRelativeToSelf();
       Point hitpoint;
@@ -624,7 +628,7 @@ nsresult HTMLCanvasElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
       aVisitor.mCanHandle = true;
     }
   }
-  return nsGenericHTMLElement::GetEventTargetParent(aVisitor);
+  nsGenericHTMLElement::GetEventTargetParent(aVisitor);
 }
 
 nsChangeHint
@@ -1098,14 +1102,9 @@ HTMLCanvasElement::InvalidateCanvasContent(const gfx::Rect* damageRect)
   // Instead, we mark the CanvasRenderer dirty and scheduling an empty transaction
   // which is effectively equivalent.
   CanvasRenderer* renderer = nullptr;
-  if (frame->HasProperty(nsIFrame::WebRenderUserDataProperty())) {
-    nsIFrame::WebRenderUserDataTable* userDataTable =
-      frame->GetProperty(nsIFrame::WebRenderUserDataProperty());
-    RefPtr<WebRenderUserData> data;
-    userDataTable->Get(static_cast<uint32_t>(DisplayItemType::TYPE_CANVAS), getter_AddRefs(data));
-    if (data && data->AsCanvasData()) {
-      renderer = data->AsCanvasData()->GetCanvasRenderer();
-    }
+  RefPtr<WebRenderCanvasData> data = GetWebRenderUserData<WebRenderCanvasData>(frame, static_cast<uint32_t>(DisplayItemType::TYPE_CANVAS));
+  if (data) {
+    renderer = data->GetCanvasRenderer();
   }
 
   if (renderer) {

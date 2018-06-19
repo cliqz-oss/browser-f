@@ -6,12 +6,26 @@
 const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
 const {PrerenderData} = ChromeUtils.import("resource://activity-stream/common/PrerenderData.jsm", {});
+const {INITIAL_STATE} = ChromeUtils.import("resource://activity-stream/common/Reducers.jsm", {});
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+  "resource://gre/modules/AppConstants.jsm");
 const ONBOARDING_FINISHED_PREF = "browser.onboarding.notification.finished";
+
+// List of prefs that require migration to indexedDB.
+// Object key is the name of the pref in indexedDB, each will contain a
+// map (key: name of preference to migrate, value: name of component).
+const PREF_MIGRATION = {
+  collapsed: new Map([
+    ["collapseTopSites", "topsites"],
+    ["section.highlights.collapsed", "highlights"],
+    ["section.topstories.collapsed", "topstories"]
+  ])
+};
 
 this.PrefsFeed = class PrefsFeed {
   constructor(prefMap) {
@@ -19,10 +33,13 @@ this.PrefsFeed = class PrefsFeed {
     this._prefs = new Prefs();
   }
 
-  // If the any prefs are set to something other than what the prerendered version
-  // of AS expects, we can't use it.
-  _setPrerenderPref(name) {
-    this._prefs.set("prerender", PrerenderData.arePrefsValid(pref => this._prefs.get(pref)));
+  // If any prefs or the theme are set to something other than what the
+  // prerendered version of AS expects, we can't use it.
+  async _setPrerenderPref(theme) {
+    const indexedDBPrefs = await this._storage.getAll();
+    const prefsAreValid = PrerenderData.arePrefsValid(pref => this._prefs.get(pref), indexedDBPrefs);
+    const themeIsDefault = (theme || this.store.getState().Theme).className === INITIAL_STATE.Theme.className;
+    this._prefs.set("prerender", prefsAreValid && themeIsDefault);
   }
 
   _checkPrerender(name) {
@@ -57,8 +74,23 @@ this.PrefsFeed = class PrefsFeed {
     }
   }
 
+  _migratePrefs() {
+    for (const indexedDBPref of Object.keys(PREF_MIGRATION)) {
+      for (const migratePref of PREF_MIGRATION[indexedDBPref].keys()) {
+        // Check if pref exists (if the user changed the default)
+        if (this._prefs.get(migratePref, null) === true) {
+          const data = {id: PREF_MIGRATION[indexedDBPref].get(migratePref), value: {}};
+          data.value[indexedDBPref] = true;
+          this.store.dispatch(ac.OnlyToMain({type: at.UPDATE_SECTION_PREFS, data}));
+          this._prefs.reset(migratePref);
+        }
+      }
+    }
+  }
+
   init() {
     this._prefs.observeBranch(this);
+    this._storage = this.store.dbStorage.getDbTable("sectionPrefs");
 
     // Get the initial value of each activity stream pref
     const values = {};
@@ -66,18 +98,31 @@ this.PrefsFeed = class PrefsFeed {
       values[name] = this._prefs.get(name);
     }
 
-    // Not a pref, but we need this to determine whether to show private-browsing-related stuff
+    // These are not prefs, but are needed to determine stuff in content that can only be
+    // computed in main process
     values.isPrivateBrowsingEnabled = PrivateBrowsingUtils.enabled;
+    values.platform = AppConstants.platform;
 
     // Set the initial state of all prefs in redux
     this.store.dispatch(ac.BroadcastToContent({type: at.PREFS_INITIAL_VALUES, data: values}));
 
+    this._migratePrefs();
     this._setPrerenderPref();
     this._initOnboardingPref();
   }
 
   removeListeners() {
     this._prefs.ignoreBranch(this);
+  }
+
+  async _setIndexedDBPref(id, value) {
+    const name = id === "topsites" ? id : `feeds.section.${id}`;
+    try {
+      await this._storage.set(name, value);
+      this._setPrerenderPref();
+    } catch (e) {
+      Cu.reportError("Could not set section preferences.");
+    }
   }
 
   onAction(action) {
@@ -92,8 +137,14 @@ this.PrefsFeed = class PrefsFeed {
       case at.SET_PREF:
         this._prefs.set(action.data.name, action.data.value);
         break;
+      case at.THEME_UPDATE:
+        this._setPrerenderPref(action.data);
+        break;
       case at.DISABLE_ONBOARDING:
         this.setOnboardingDisabledDefault(true);
+        break;
+      case at.UPDATE_SECTION_PREFS:
+        this._setIndexedDBPref(action.data.id, action.data.value);
         break;
     }
   }

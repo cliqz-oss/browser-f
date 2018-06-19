@@ -13,6 +13,7 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/DefineEnum.h"
 #include "mozilla/MozPromise.h"
+#include "mozilla/NonDereferenceable.h"
 #include "nsString.h"
 
 namespace mozilla {
@@ -285,24 +286,32 @@ public:
   }
 
   template<typename Subject>
-  static void LogConstruction(const Subject* aSubject)
+  static void LogConstruction(NonDereferenceable<const Subject> aSubject)
   {
     using Traits = DDLoggedTypeTraits<Subject>;
     if (!Traits::HasBase::value) {
       Log(DDLoggedTypeTraits<Subject>::Name(),
-          aSubject,
+          reinterpret_cast<const void*>(aSubject.value()),
           DDLogCategory::_Construction,
           "",
           DDLogValue{ DDNoValue{} });
     } else {
       Log(DDLoggedTypeTraits<Subject>::Name(),
-          aSubject,
+          reinterpret_cast<const void*>(aSubject.value()),
           DDLogCategory::_DerivedConstruction,
           "",
           DDLogValue{ DDLogObject{
             DDLoggedTypeTraits<typename Traits::BaseType>::Name(),
-            static_cast<const typename Traits::BaseType*>(aSubject) } });
+            reinterpret_cast<const void*>(
+              NonDereferenceable<const typename Traits::BaseType>(aSubject)
+                .value()) } });
     }
+  }
+
+  template<typename Subject>
+  static void LogConstruction(const Subject* aSubject)
+  {
+    LogConstruction(NonDereferenceable<const Subject>(aSubject));
   }
 
   static void LogDestruction(const char* aSubjectTypeName,
@@ -316,13 +325,19 @@ public:
   }
 
   template<typename Subject>
-  static void LogDestruction(const Subject* aSubject)
+  static void LogDestruction(NonDereferenceable<const Subject> aSubject)
   {
     Log(DDLoggedTypeTraits<Subject>::Name(),
-        aSubject,
+        reinterpret_cast<const void*>(aSubject.value()),
         DDLogCategory::_Destruction,
         "",
         DDLogValue{ DDNoValue{} });
+  }
+
+  template<typename Subject>
+  static void LogDestruction(const Subject* aSubject)
+  {
+    LogDestruction(NonDereferenceable<const Subject>(aSubject));
   }
 
   template<typename P, typename C>
@@ -480,11 +495,11 @@ class DecoderDoctorLifeLogger
 public:
   DecoderDoctorLifeLogger()
   {
-    DecoderDoctorLogger::LogConstruction(static_cast<const T*>(this));
+    DecoderDoctorLogger::LogConstruction(NonDereferenceable<const T>(this));
   }
   ~DecoderDoctorLifeLogger()
   {
-    DecoderDoctorLogger::LogDestruction(static_cast<const T*>(this));
+    DecoderDoctorLogger::LogDestruction(NonDereferenceable<const T>(this));
   }
 };
 

@@ -27,6 +27,7 @@
 
 #include "gc/Nursery-inl.h"
 #include "jit/shared/Lowering-shared-inl.h"
+#include "jit/TemplateObject-inl.h"
 #include "vm/Interpreter-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/TypeInference-inl.h"
@@ -997,26 +998,26 @@ MacroAssembler::allocateObject(Register result, Register temp, gc::AllocKind all
 }
 
 void
-MacroAssembler::createGCObject(Register obj, Register temp, JSObject* templateObj,
-                               gc::InitialHeap initialHeap, Label* fail, bool initContents,
-                               bool convertDoubleElements)
+MacroAssembler::createGCObject(Register obj, Register temp, const TemplateObject& templateObj,
+                               gc::InitialHeap initialHeap, Label* fail, bool initContents)
 {
-    gc::AllocKind allocKind = templateObj->asTenured().getAllocKind();
+    gc::AllocKind allocKind = templateObj.getAllocKind();
     MOZ_ASSERT(gc::IsObjectAllocKind(allocKind));
 
     uint32_t nDynamicSlots = 0;
-    if (templateObj->isNative()) {
-        nDynamicSlots = templateObj->as<NativeObject>().numDynamicSlots();
+    if (templateObj.isNative()) {
+        const NativeTemplateObject& ntemplate = templateObj.asNativeTemplateObject();
+        nDynamicSlots = ntemplate.numDynamicSlots();
 
         // Arrays with copy on write elements do not need fixed space for an
         // elements header. The template object, which owns the original
         // elements, might have another allocation kind.
-        if (templateObj->as<NativeObject>().denseElementsAreCopyOnWrite())
+        if (ntemplate.denseElementsAreCopyOnWrite())
             allocKind = gc::AllocKind::OBJECT0_BACKGROUND;
     }
 
     allocateObject(obj, temp, allocKind, nDynamicSlots, initialHeap, fail);
-    initGCThing(obj, temp, templateObj, initContents, convertDoubleElements);
+    initGCThing(obj, temp, templateObj, initContents);
 }
 
 
@@ -1109,10 +1110,10 @@ MacroAssembler::newGCFatInlineString(Register result, Register temp, Label* fail
 }
 
 void
-MacroAssembler::copySlotsFromTemplate(Register obj, const NativeObject* templateObj,
+MacroAssembler::copySlotsFromTemplate(Register obj, const NativeTemplateObject& templateObj,
                                       uint32_t start, uint32_t end)
 {
-    uint32_t nfixed = Min(templateObj->numFixedSlotsForCompilation(), end);
+    uint32_t nfixed = Min(templateObj.numFixedSlots(), end);
     for (unsigned i = start; i < nfixed; i++) {
         // Template objects are not exposed to script and therefore immutable.
         // However, regexp template objects are sometimes used directly (when
@@ -1120,10 +1121,10 @@ MacroAssembler::copySlotsFromTemplate(Register obj, const NativeObject* template
         // non-zero lastIndex. Detect this case here and just substitute 0, to
         // avoid racing with the main thread updating this slot.
         Value v;
-        if (templateObj->is<RegExpObject>() && i == RegExpObject::lastIndexSlot())
+        if (templateObj.isRegExpObject() && i == RegExpObject::lastIndexSlot())
             v = Int32Value(0);
         else
-            v = templateObj->getFixedSlot(i);
+            v = templateObj.getSlot(i);
         storeValue(v, Address(obj, NativeObject::getFixedSlotOffset(i)));
     }
 }
@@ -1169,23 +1170,23 @@ MacroAssembler::fillSlotsWithUninitialized(Address base, Register temp, uint32_t
 }
 
 static void
-FindStartOfUninitializedAndUndefinedSlots(NativeObject* templateObj, uint32_t nslots,
+FindStartOfUninitializedAndUndefinedSlots(const NativeTemplateObject& templateObj, uint32_t nslots,
                                           uint32_t* startOfUninitialized,
                                           uint32_t* startOfUndefined)
 {
-    MOZ_ASSERT(nslots == templateObj->lastProperty()->slotSpan(templateObj->getClass()));
+    MOZ_ASSERT(nslots == templateObj.slotSpan());
     MOZ_ASSERT(nslots > 0);
 
     uint32_t first = nslots;
     for (; first != 0; --first) {
-        if (templateObj->getSlot(first - 1) != UndefinedValue())
+        if (templateObj.getSlot(first - 1) != UndefinedValue())
             break;
     }
     *startOfUndefined = first;
 
-    if (first != 0 && IsUninitializedLexical(templateObj->getSlot(first - 1))) {
+    if (first != 0 && IsUninitializedLexical(templateObj.getSlot(first - 1))) {
         for (; first != 0; --first) {
-            if (!IsUninitializedLexical(templateObj->getSlot(first - 1)))
+            if (!IsUninitializedLexical(templateObj.getSlot(first - 1)))
                 break;
         }
         *startOfUninitialized = first;
@@ -1295,17 +1296,17 @@ MacroAssembler::initTypedArraySlots(Register obj, Register temp, Register length
 }
 
 void
-MacroAssembler::initGCSlots(Register obj, Register temp, NativeObject* templateObj,
+MacroAssembler::initGCSlots(Register obj, Register temp, const NativeTemplateObject& templateObj,
                             bool initContents)
 {
     // Slots of non-array objects are required to be initialized.
     // Use the values currently in the template object.
-    uint32_t nslots = templateObj->lastProperty()->slotSpan(templateObj->getClass());
+    uint32_t nslots = templateObj.slotSpan();
     if (nslots == 0)
         return;
 
-    uint32_t nfixed = templateObj->numUsedFixedSlots();
-    uint32_t ndynamic = templateObj->numDynamicSlots();
+    uint32_t nfixed = templateObj.numUsedFixedSlots();
+    uint32_t ndynamic = templateObj.numDynamicSlots();
 
     // Attempt to group slot writes such that we minimize the amount of
     // duplicated data we need to embed in code and load into registers. In
@@ -1326,7 +1327,7 @@ MacroAssembler::initGCSlots(Register obj, Register temp, NativeObject* templateO
                                               &startOfUninitialized, &startOfUndefined);
     MOZ_ASSERT(startOfUninitialized <= nfixed); // Reserved slots must be fixed.
     MOZ_ASSERT(startOfUndefined >= startOfUninitialized);
-    MOZ_ASSERT_IF(!templateObj->is<CallObject>(), startOfUninitialized == startOfUndefined);
+    MOZ_ASSERT_IF(!templateObj.isCallObject(), startOfUninitialized == startOfUndefined);
 
     // Copy over any preserved reserved slots.
     copySlotsFromTemplate(obj, templateObj, 0, startOfUninitialized);
@@ -1364,81 +1365,77 @@ MacroAssembler::initGCSlots(Register obj, Register temp, NativeObject* templateO
 }
 
 void
-MacroAssembler::initGCThing(Register obj, Register temp, JSObject* templateObj,
-                            bool initContents, bool convertDoubleElements)
+MacroAssembler::initGCThing(Register obj, Register temp, const TemplateObject& templateObj,
+                            bool initContents)
 {
     // Fast initialization of an empty object returned by allocateObject().
 
-    storePtr(ImmGCPtr(templateObj->group()), Address(obj, JSObject::offsetOfGroup()));
+    storePtr(ImmGCPtr(templateObj.group()), Address(obj, JSObject::offsetOfGroup()));
 
-    if (templateObj->is<ShapedObject>())
-        storePtr(ImmGCPtr(templateObj->maybeShape()), Address(obj, ShapedObject::offsetOfShape()));
+    if (gc::Cell* shape = templateObj.maybeShape())
+        storePtr(ImmGCPtr(shape), Address(obj, ShapedObject::offsetOfShape()));
 
-    MOZ_ASSERT_IF(convertDoubleElements, templateObj->is<ArrayObject>());
-
-    if (templateObj->isNative()) {
-        NativeObject* ntemplate = &templateObj->as<NativeObject>();
-        MOZ_ASSERT_IF(!ntemplate->denseElementsAreCopyOnWrite(), !ntemplate->hasDynamicElements());
+    if (templateObj.isNative()) {
+        const NativeTemplateObject& ntemplate = templateObj.asNativeTemplateObject();
+        MOZ_ASSERT_IF(!ntemplate.denseElementsAreCopyOnWrite(), !ntemplate.hasDynamicElements());
+        MOZ_ASSERT_IF(ntemplate.convertDoubleElements(), ntemplate.isArrayObject());
 
         // If the object has dynamic slots, the slots member has already been
         // filled in.
-        if (!ntemplate->hasDynamicSlots())
+        if (!ntemplate.hasDynamicSlots())
             storePtr(ImmPtr(nullptr), Address(obj, NativeObject::offsetOfSlots()));
 
-        if (ntemplate->denseElementsAreCopyOnWrite()) {
-            storePtr(ImmPtr((const Value*) ntemplate->getDenseElements()),
+        if (ntemplate.denseElementsAreCopyOnWrite()) {
+            storePtr(ImmPtr(ntemplate.getDenseElements()),
                      Address(obj, NativeObject::offsetOfElements()));
-        } else if (ntemplate->is<ArrayObject>()) {
+        } else if (ntemplate.isArrayObject()) {
             int elementsOffset = NativeObject::offsetOfFixedElements();
 
             computeEffectiveAddress(Address(obj, elementsOffset), temp);
             storePtr(temp, Address(obj, NativeObject::offsetOfElements()));
 
             // Fill in the elements header.
-            store32(Imm32(ntemplate->getDenseCapacity()),
+            store32(Imm32(ntemplate.getDenseCapacity()),
                     Address(obj, elementsOffset + ObjectElements::offsetOfCapacity()));
-            store32(Imm32(ntemplate->getDenseInitializedLength()),
+            store32(Imm32(ntemplate.getDenseInitializedLength()),
                     Address(obj, elementsOffset + ObjectElements::offsetOfInitializedLength()));
-            store32(Imm32(ntemplate->as<ArrayObject>().length()),
+            store32(Imm32(ntemplate.getArrayLength()),
                     Address(obj, elementsOffset + ObjectElements::offsetOfLength()));
-            store32(Imm32(convertDoubleElements
+            store32(Imm32(ntemplate.convertDoubleElements()
                           ? ObjectElements::CONVERT_DOUBLE_ELEMENTS
                           : 0),
                     Address(obj, elementsOffset + ObjectElements::offsetOfFlags()));
-            MOZ_ASSERT(!ntemplate->hasPrivate());
-        } else if (ntemplate->is<ArgumentsObject>()) {
+            MOZ_ASSERT(!ntemplate.hasPrivate());
+        } else if (ntemplate.isArgumentsObject()) {
             // The caller will initialize the reserved slots.
             MOZ_ASSERT(!initContents);
-            MOZ_ASSERT(!ntemplate->hasPrivate());
+            MOZ_ASSERT(!ntemplate.hasPrivate());
             storePtr(ImmPtr(emptyObjectElements), Address(obj, NativeObject::offsetOfElements()));
         } else {
             // If the target type could be a TypedArray that maps shared memory
             // then this would need to store emptyObjectElementsShared in that case.
-            MOZ_ASSERT(!ntemplate->isSharedMemory());
+            MOZ_ASSERT(!ntemplate.isSharedMemory());
 
             storePtr(ImmPtr(emptyObjectElements), Address(obj, NativeObject::offsetOfElements()));
 
             initGCSlots(obj, temp, ntemplate, initContents);
 
-            if (ntemplate->hasPrivate() && !ntemplate->is<TypedArrayObject>()) {
-                uint32_t nfixed = ntemplate->numFixedSlotsForCompilation();
+            if (ntemplate.hasPrivate() && !ntemplate.isTypedArrayObject()) {
+                uint32_t nfixed = ntemplate.numFixedSlots();
                 Address privateSlot(obj, NativeObject::getPrivateDataOffset(nfixed));
-                if (ntemplate->is<RegExpObject>()) {
+                if (ntemplate.isRegExpObject()) {
                     // RegExpObject stores a GC thing (RegExpShared*) in its
                     // private slot, so we have to use ImmGCPtr.
-                    RegExpObject* regexp = &ntemplate->as<RegExpObject>();
-                    MOZ_ASSERT(regexp->hasShared());
-                    MOZ_ASSERT(ntemplate->getPrivate() == regexp->sharedRef().get());
-                    storePtr(ImmGCPtr(regexp->sharedRef().get()), privateSlot);
+                    storePtr(ImmGCPtr(ntemplate.regExpShared()), privateSlot);
                 } else {
-                    storePtr(ImmPtr(ntemplate->getPrivate()), privateSlot);
+                    storePtr(ImmPtr(ntemplate.getPrivate()), privateSlot);
                 }
             }
         }
-    } else if (templateObj->is<InlineTypedObject>()) {
+    } else if (templateObj.isInlineTypedObject()) {
         JS::AutoAssertNoGC nogc; // off-thread, so cannot GC
-        size_t nbytes = templateObj->as<InlineTypedObject>().size();
-        const uint8_t* memory = templateObj->as<InlineTypedObject>().inlineTypedMem(nogc);
+        size_t nbytes = templateObj.getInlineTypedObjectSize();
+        const uint8_t* memory = templateObj.getInlineTypedObjectMem(nogc);
 
         // Memcpy the contents of the template object to the new object.
         size_t offset = 0;
@@ -1449,11 +1446,11 @@ MacroAssembler::initGCThing(Register obj, Register temp, JSObject* templateObj,
             nbytes = (nbytes < sizeof(uintptr_t)) ? 0 : nbytes - sizeof(uintptr_t);
             offset += sizeof(uintptr_t);
         }
-    } else if (templateObj->is<UnboxedPlainObject>()) {
-        MOZ_ASSERT(!templateObj->as<UnboxedPlainObject>().maybeExpando());
+    } else if (templateObj.isUnboxedPlainObject()) {
+        MOZ_ASSERT(!templateObj.unboxedObjectHasExpando());
         storePtr(ImmPtr(nullptr), Address(obj, UnboxedPlainObject::offsetOfExpando()));
         if (initContents)
-            initUnboxedObjectContents(obj, &templateObj->as<UnboxedPlainObject>());
+            initUnboxedObjectContents(obj, templateObj.unboxedObjectLayout());
     } else {
         MOZ_CRASH("Unknown object");
     }
@@ -1475,10 +1472,8 @@ MacroAssembler::initGCThing(Register obj, Register temp, JSObject* templateObj,
 }
 
 void
-MacroAssembler::initUnboxedObjectContents(Register object, UnboxedPlainObject* templateObject)
+MacroAssembler::initUnboxedObjectContents(Register object, const UnboxedLayout& layout)
 {
-    const UnboxedLayout& layout = templateObject->layoutDontCheckGeneration();
-
     // Initialize reference fields of the object, per UnboxedPlainObject::create.
     if (const int32_t* list = layout.traceList()) {
         while (*list != -1) {
@@ -1778,19 +1773,7 @@ void
 MacroAssembler::loadJSContext(Register dest)
 {
     JitContext* jcx = GetJitContext();
-    CompileCompartment* compartment = jcx->compartment;
-    if (compartment->zone()->isAtomsZone()) {
-        // If we are in the atoms zone then we are generating a runtime wide
-        // trampoline which can run in any zone. Load the context which is
-        // currently running using cooperative scheduling in the runtime.
-        // (This will need to be fixed when we have preemptive scheduling,
-        // bug 1323066).
-        loadPtr(AbsoluteAddress(jcx->runtime->addressOfActiveJSContext()), dest);
-    } else {
-        // If we are in a specific zone then the current context will be stored
-        // in the containing zone group.
-        loadPtr(AbsoluteAddress(compartment->zone()->addressOfJSContext()), dest);
-    }
+    movePtr(ImmPtr(jcx->runtime->mainContextPtr()), dest);
 }
 
 void
@@ -2809,15 +2792,13 @@ MacroAssembler::alignJitStackBasedOnNArgs(uint32_t nargs)
 
 // ===============================================================
 
-MacroAssembler::MacroAssembler(JSContext* cx, IonScript* ion,
-                               JSScript* script, jsbytecode* pc)
+MacroAssembler::MacroAssembler(JSContext* cx)
   : framePushed_(0),
 #ifdef DEBUG
     inCall_(false),
 #endif
     emitProfilingInstrumentation_(false)
 {
-    constructRoot(cx);
     jitContext_.emplace(cx, (js::jit::TempAllocator*)nullptr);
     alloc_.emplace(cx);
     moveResolver_.setAllocator(*jitContext_->temp);
@@ -2828,11 +2809,53 @@ MacroAssembler::MacroAssembler(JSContext* cx, IonScript* ion,
     initWithAllocator();
     armbuffer_.id = GetJitContext()->getNextAssemblerId();
 #endif
-    if (ion) {
-        setFramePushed(ion->frameSize());
-        if (pc && cx->runtime()->geckoProfiler().enabled())
-            enableProfilingInstrumentation();
+}
+
+MacroAssembler::MacroAssembler()
+  : framePushed_(0),
+#ifdef DEBUG
+    inCall_(false),
+#endif
+    emitProfilingInstrumentation_(false)
+{
+    JitContext* jcx = GetJitContext();
+
+    if (!jcx->temp) {
+        JSContext* cx = jcx->cx;
+        MOZ_ASSERT(cx);
+        alloc_.emplace(cx);
     }
+
+    moveResolver_.setAllocator(*jcx->temp);
+
+#if defined(JS_CODEGEN_ARM)
+    initWithAllocator();
+    m_buffer.id = jcx->getNextAssemblerId();
+#elif defined(JS_CODEGEN_ARM64)
+    initWithAllocator();
+    armbuffer_.id = jcx->getNextAssemblerId();
+#endif
+}
+
+MacroAssembler::MacroAssembler(WasmToken, TempAllocator& alloc)
+  : framePushed_(0),
+#ifdef DEBUG
+    inCall_(false),
+#endif
+    emitProfilingInstrumentation_(false)
+{
+    moveResolver_.setAllocator(alloc);
+
+#if defined(JS_CODEGEN_ARM)
+    initWithAllocator();
+    m_buffer.id = 0;
+#elif defined(JS_CODEGEN_ARM64)
+    initWithAllocator();
+    // Stubs + builtins + the baseline compiler all require the native SP,
+    // not the PSP.
+    SetStackPointer64(sp);
+    armbuffer_.id = 0;
+#endif
 }
 
 bool
@@ -3169,7 +3192,7 @@ MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode, wasm::SymbolicAddress
     // points when placing arguments.
     loadWasmTlsRegFromFrame();
 
-    call(wasm::CallSiteDesc(bytecode.offset, wasm::CallSite::Symbolic), imm);
+    call(wasm::CallSiteDesc(bytecode.offset(), wasm::CallSite::Symbolic), imm);
     callWithABIPost(stackAdjust, result, /* callFromWasm = */ true);
 
     Pop(WasmTlsReg);
@@ -3382,7 +3405,50 @@ MacroAssembler::maybeBranchTestType(MIRType type, MDefinition* maybeDef, Registe
 void
 MacroAssembler::wasmTrap(wasm::Trap trap, wasm::BytecodeOffset bytecodeOffset)
 {
-    append(trap, wasm::TrapSite(wasmTrapInstruction().offset(), bytecodeOffset));
+    uint32_t trapOffset = wasmTrapInstruction().offset();
+    MOZ_ASSERT_IF(!oom(), currentOffset() - trapOffset == WasmTrapInstructionLength);
+
+    append(trap, wasm::TrapSite(trapOffset, bytecodeOffset));
+}
+
+void
+MacroAssembler::wasmInterruptCheck(Register tls, wasm::BytecodeOffset bytecodeOffset)
+{
+    Label ok;
+    branch32(Assembler::Equal, Address(tls, offsetof(wasm::TlsData, interrupt)), Imm32(0), &ok);
+    wasmTrap(wasm::Trap::CheckInterrupt, bytecodeOffset);
+    bind(&ok);
+}
+
+void
+MacroAssembler::wasmReserveStackChecked(uint32_t amount, wasm::BytecodeOffset trapOffset)
+{
+    if (!amount)
+        return;
+
+    // If the frame is large, don't bump sp until after the stack limit check so
+    // that the trap handler isn't called with a wild sp.
+
+    if (amount > MAX_UNCHECKED_LEAF_FRAME_SIZE) {
+        Label ok;
+        Register scratch = ABINonArgReg0;
+        moveStackPtrTo(scratch);
+        subPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, stackLimit)), scratch);
+        branchPtr(Assembler::GreaterThan, scratch, Imm32(amount), &ok);
+        wasmTrap(wasm::Trap::StackOverflow, trapOffset);
+        bind(&ok);
+    }
+
+    reserveStack(amount);
+
+    if (amount <= MAX_UNCHECKED_LEAF_FRAME_SIZE) {
+        Label ok;
+        branchStackPtrRhs(Assembler::Below,
+                          Address(WasmTlsReg, offsetof(wasm::TlsData, stackLimit)),
+                          &ok);
+        wasmTrap(wasm::Trap::StackOverflow, trapOffset);
+        bind(&ok);
+    }
 }
 
 void
@@ -3461,8 +3527,10 @@ MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc, const wasm::Cal
     if (needsBoundsCheck) {
         loadWasmGlobalPtr(callee.tableLengthGlobalDataOffset(), scratch);
 
-        wasm::OldTrapDesc oobTrap(trapOffset, wasm::Trap::OutOfBounds, framePushed());
-        branch32(Assembler::Condition::AboveOrEqual, index, scratch, oobTrap);
+        Label ok;
+        branch32(Assembler::Condition::Below, index, scratch, &ok);
+        wasmTrap(wasm::Trap::OutOfBounds, trapOffset);
+        bind(&ok);
     }
 
     // Load the base pointer of the table.
@@ -3499,70 +3567,6 @@ MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc, const wasm::Cal
     }
 
     call(desc, scratch);
-}
-
-void
-MacroAssembler::wasmEmitOldTrapOutOfLineCode()
-{
-    for (const wasm::OldTrapSite& site : oldTrapSites()) {
-        // Trap out-of-line codes are created for two kinds of trap sites:
-        //  - jumps, which are bound directly to the trap out-of-line path
-        //  - memory accesses, which can fault and then have control transferred
-        //    to the out-of-line path directly via signal handler setting pc
-        switch (site.kind) {
-          case wasm::OldTrapSite::Jump: {
-            RepatchLabel jump;
-            jump.use(site.codeOffset);
-            bind(&jump);
-            break;
-          }
-          case wasm::OldTrapSite::MemoryAccess: {
-            append(wasm::MemoryAccess(site.codeOffset, currentOffset()));
-            break;
-          }
-        }
-
-        MOZ_ASSERT(site.trap != wasm::Trap::IndirectCallBadSig);
-
-        // Inherit the frame depth of the trap site. This value is captured
-        // by the wasm::CallSite to allow unwinding this frame.
-        setFramePushed(site.framePushed);
-
-        // Align the stack for a nullary call.
-        size_t alreadyPushed = sizeof(wasm::Frame) + framePushed();
-        size_t toPush = ABIArgGenerator().stackBytesConsumedSoFar();
-        if (size_t dec = StackDecrementForCall(ABIStackAlignment, alreadyPushed, toPush))
-            reserveStack(dec);
-
-        // To call the trap handler function, we must have the WasmTlsReg
-        // filled since this is the normal calling ABI. To avoid requiring
-        // every trapping operation to have the TLS register filled for the
-        // rare case that it takes a trap, we restore it from the frame on
-        // the out-of-line path. However, there are millions of out-of-line
-        // paths (viz. for loads/stores), so the load is factored out into
-        // the shared FarJumpIsland generated by patchCallSites.
-
-        // Call the trap's exit, using the bytecode offset of the trap site.
-        // Note that this code is inside the same CodeRange::Function as the
-        // trap site so it's as if the trapping instruction called the
-        // trap-handling function. The frame iterator knows to skip the trap
-        // exit's frame so that unwinding begins at the frame and offset of
-        // the trapping instruction.
-        wasm::CallSiteDesc desc(site.offset, wasm::CallSiteDesc::OldTrapExit);
-        call(desc, site.trap);
-
-#ifdef DEBUG
-        // Traps do not return, so no need to freeStack().
-        breakpoint();
-#endif
-    }
-
-    // Ensure that the return address of the last emitted call above is always
-    // within this function's CodeRange which is necessary for the stack
-    // iterator to find the right CodeRange while walking the stack.
-    breakpoint();
-
-    oldTrapSites().clear();
 }
 
 void
@@ -3762,7 +3766,7 @@ MacroAssembler::debugAssertObjHasFixedSlots(Register obj, Register scratch)
     Label hasFixedSlots;
     loadPtr(Address(obj, ShapedObject::offsetOfShape()), scratch);
     branchTest32(Assembler::NonZero,
-                 Address(scratch, Shape::offsetOfSlotInfo()),
+                 Address(scratch, Shape::offsetOfImmutableFlags()),
                  Imm32(Shape::fixedSlotsMask()),
                  &hasFixedSlots);
     assumeUnreachable("Expected a fixed slot");

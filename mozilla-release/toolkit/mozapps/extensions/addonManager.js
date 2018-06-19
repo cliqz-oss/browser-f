@@ -10,6 +10,9 @@
 
 "use strict";
 
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
+
 // The old XPInstall error codes
 const EXECUTION_ERROR   = -203;
 const CANT_READ_ARCHIVE = -207;
@@ -70,23 +73,15 @@ amManager.prototype = {
     }
   },
 
-  /**
-   * @see amIAddonManager.idl
-   */
-  mapURIToAddonID(uri, id) {
-    id.value = AddonManager.mapURIToAddonID(uri);
-    return !!id.value;
-  },
-
   installAddonFromWebpage(aMimetype, aBrowser, aInstallingPrincipal,
-                                    aUri, aHash, aName, aIcon, aCallback) {
+                          aUri, aHash, aName, aIcon, aCallback) {
     let retval = true;
     if (!AddonManager.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
       aCallback = null;
       retval = false;
     }
 
-    AddonManager.getInstallForURL(aUri, function(aInstall) {
+    AddonManager.getInstallForURL(aUri, aMimetype, aHash, aName, aIcon, null, aBrowser).then(aInstall => {
       function callCallback(uri, status) {
         try {
           aCallback.onInstallEnded(uri, status);
@@ -124,7 +119,7 @@ amManager.prototype = {
       }
 
       AddonManager.installAddonFromWebpage(aMimetype, aBrowser, aInstallingPrincipal, aInstall);
-    }, aMimetype, aHash, aName, aIcon, null, aBrowser);
+    });
 
     return retval;
   },
@@ -260,10 +255,59 @@ amManager.prototype = {
       return gSingleton.QueryInterface(aIid);
     }
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.amIAddonManager,
-                                         Ci.nsITimerCallback,
-                                         Ci.nsIObserver,
-                                         Ci.nsIMessageListener])
+  QueryInterface: ChromeUtils.generateQI([Ci.amIAddonManager,
+                                          Ci.nsITimerCallback,
+                                          Ci.nsIObserver])
 };
 
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([amManager]);
+const BLOCKLIST_JSM = "resource://gre/modules/Blocklist.jsm";
+ChromeUtils.defineModuleGetter(this, "Blocklist", BLOCKLIST_JSM);
+
+function BlocklistService() {
+  this.wrappedJSObject = this;
+  this.pluginQueries = [];
+}
+
+BlocklistService.prototype = {
+  STATE_NOT_BLOCKED: Ci.nsIBlocklistService.STATE_NOT_BLOCKED,
+  STATE_SOFTBLOCKED: Ci.nsIBlocklistService.STATE_SOFTBLOCKED,
+  STATE_BLOCKED: Ci.nsIBlocklistService.STATE_BLOCKED,
+  STATE_OUTDATED: Ci.nsIBlocklistService.STATE_OUTDATED,
+  STATE_VULNERABLE_UPDATE_AVAILABLE: Ci.nsIBlocklistService.STATE_VULNERABLE_UPDATE_AVAILABLE,
+  STATE_VULNERABLE_NO_UPDATE: Ci.nsIBlocklistService.STATE_VULNERABLE_NO_UPDATE,
+
+  get isLoaded() {
+    return Cu.isModuleLoaded(BLOCKLIST_JSM) && Blocklist.isLoaded;
+  },
+
+  async getPluginBlocklistState(plugin, appVersion, toolkitVersion) {
+    if (AppConstants.platform == "android") {
+      return Ci.nsIBlocklistService.STATE_NOT_BLOCKED;
+    }
+    if (Cu.isModuleLoaded(BLOCKLIST_JSM)) {
+      return Blocklist.getPluginBlocklistState(plugin, appVersion, toolkitVersion);
+    }
+
+    // Blocklist module isn't loaded yet. Queue the query until it is.
+    let request = {plugin, appVersion, toolkitVersion};
+    let promise = new Promise(resolve => { request.resolve = resolve; });
+
+    this.pluginQueries.push(request);
+    return promise;
+  },
+
+  observe(...args) {
+    return Blocklist.observe(...args);
+  },
+
+  notify() {
+    Blocklist.notify();
+  },
+
+  classID: Components.ID("{66354bc9-7ed1-4692-ae1d-8da97d6b205e}"),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsIBlocklistService,
+                                          Ci.nsITimerCallback]),
+};
+
+this.NSGetFactory = XPCOMUtils.generateNSGetFactory([amManager, BlocklistService]);

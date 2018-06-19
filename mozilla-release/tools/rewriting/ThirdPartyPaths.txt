@@ -1,6 +1,8 @@
 browser/components/translation/cld2/
 browser/extensions/mortar/ppapi/
 db/sqlite3/src/
+devtools/client/sourceeditor/codemirror/
+devtools/client/sourceeditor/tern/
 extensions/spellcheck/hunspell/src/
 gfx/angle/
 gfx/cairo/
@@ -11,8 +13,8 @@ gfx/qcms/
 gfx/sfntly/
 gfx/skia/
 gfx/vr/openvr/
-gfx/webrender
-gfx/webrender_api
+gfx/webrender/
+gfx/webrender_api/
 gfx/wrench/
 gfx/ycbcr/
 intl/hyphenation/hyphen/
@@ -21,6 +23,15 @@ ipc/chromium/
 js/src/ctypes/libffi/
 js/src/dtoa.c
 js/src/jit/arm64/vixl/
+js/src/vtune/disable_warnings.h
+js/src/vtune/ittnotify.h
+js/src/vtune/ittnotify_config.h
+js/src/vtune/ittnotify_static.c
+js/src/vtune/ittnotify_static.h
+js/src/vtune/ittnotify_types.h
+js/src/vtune/jitprofiling.c
+js/src/vtune/jitprofiling.h
+js/src/vtune/legacy/
 media/ffvpx/
 media/gmp-clearkey/0.1/openaes/
 media/kiss_fft/
@@ -34,7 +45,6 @@ media/libopus/
 media/libpng/
 media/libsoundtouch/
 media/libspeex_resampler/
-media/libstagefright/
 media/libtheora/
 media/libtremor/
 media/libvorbis/
@@ -42,11 +52,11 @@ media/libvpx/
 media/libyuv/
 media/mtransport/third_party/
 media/openmax_dl/
-media/sphinxbase/
 media/webrtc/signaling/src/sdp/sipcc/
 media/webrtc/trunk/
 mfbt/decimal/
 mfbt/double-conversion/double-conversion/
+mfbt/lz4.*
 mobile/android/geckoview/src/thirdparty/
 mobile/android/thirdparty/
 modules/brotli/
@@ -56,6 +66,7 @@ modules/libbz2/
 modules/libmar/
 modules/pdfium/
 modules/woff2/
+modules/xz-embedded/
 modules/zlib/
 netwerk/sctp/src/
 netwerk/srtp/src/
@@ -90,9 +101,8 @@ third_party/python/six/
 third_party/python/which/
 third_party/rust/
 toolkit/components/jsoncpp/
-toolkit/components/lz4/
 toolkit/components/protobuf/
 toolkit/components/url-classifier/chromium/
 toolkit/components/url-classifier/protobuf/
 toolkit/crashreporter/google-breakpad/
-tools/fuzzing/libfuzzer
+tools/fuzzing/libfuzzer/

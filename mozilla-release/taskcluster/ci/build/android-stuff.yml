@@ -30,7 +30,6 @@ android-test/opt:
         actions: [get-secrets build]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-test
@@ -63,14 +62,14 @@ android-lint/opt:
             GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             PERFHERDER_EXTRA_OPTIONS: android-lint
         artifacts:
-            - name: public/android/lint/lint-results-officialPhotonDebug.html
-              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialPhotonDebug.html
+            - name: public/android/lint/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug.html
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug.html
               type: file
-            - name: public/android/lint/lint-results-officialPhotonDebug.xml
-              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialPhotonDebug.xml
+            - name: public/android/lint/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug.xml
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug.xml
               type: file
-            - name: public/android/lint/lint-results-officialPhotonDebug_files
-              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialPhotonDebug_files
+            - name: public/android/lint/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug_files
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/lint-results-officialWithoutGeckoBinariesNoMinApiPhotonDebug_files
               type: directory
             - name: public/build
               path: /builds/worker/artifacts/
@@ -81,7 +80,6 @@ android-lint/opt:
         actions: [get-secrets build]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-lint
@@ -135,7 +133,6 @@ android-checkstyle/opt:
         actions: [get-secrets build]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-checkstyle
@@ -170,11 +167,11 @@ android-findbugs/opt:
             GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             PERFHERDER_EXTRA_OPTIONS: android-findbugs
         artifacts:
-            - name: public/android/findbugs/findbugs-officialPhotonDebug-output.html
-              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/findbugs/findbugs-officialPhotonDebug-output.html
+            - name: public/android/findbugs/findbugs-officialWithoutGeckoBinariesNoMinApiPhotonDebug-output.html
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/findbugs/findbugs-officialWithoutGeckoBinariesNoMinApiPhotonDebug-output.html
               type: file
-            - name: public/android/findbugs/findbugs-officialPhotonDebug-output.xml
-              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/findbugs/findbugs-officialPhotonDebug-output.xml
+            - name: public/android/findbugs/findbugs-officialWithoutGeckoBinariesNoMinApiPhotonDebug-output.xml
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/reports/findbugs/findbugs-officialWithoutGeckoBinariesNoMinApiPhotonDebug-output.xml
               type: file
             - name: public/build
               path: /builds/worker/artifacts/
@@ -185,7 +182,6 @@ android-findbugs/opt:
         actions: [get-secrets build]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-findbugs
@@ -230,7 +226,6 @@ android-geckoview-docs/opt:
         actions: [get-secrets build]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: android-geckoview-docs

@@ -12,7 +12,6 @@
 <!ENTITY aboutTelemetry.optionGroupToday "Today">
 <!ENTITY aboutTelemetry.optionGroupYesterday "Yesterday">
 <!ENTITY aboutTelemetry.optionGroupOlder "Older">
-<!ENTITY aboutTelemetry.payloadChoiceHeader "Payload">
 <!-- LOCALIZATION NOTE(aboutTelemetry.previousPing, aboutTelemetry.nextPing):
 	These strings are displayed when selecting Archived pings, and they’re
 	used to move to the next or previous ping. -->
@@ -37,7 +36,6 @@
 <!ENTITY aboutTelemetry.keyedHistogramsSection "Keyed Histograms">
 <!ENTITY aboutTelemetry.eventsSection "Events">
 <!ENTITY aboutTelemetry.simpleMeasurementsSection "Simple Measurements">
-<!ENTITY aboutTelemetry.telemetryLogSection "Telemetry Log">
 <!ENTITY aboutTelemetry.slowSqlSection "Slow SQL Statements">
 <!ENTITY aboutTelemetry.chromeHangsSection "Browser Hangs">
 <!ENTITY aboutTelemetry.addonDetailsSection "Add-on Details">

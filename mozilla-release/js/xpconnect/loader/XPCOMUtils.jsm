@@ -101,18 +101,7 @@ var XPCOMUtils = {
    * property.
    */
   generateQI: function XPCU_generateQI(interfaces) {
-    /* Note that Ci[Ci.x] == Ci.x for all x */
-    let a = [];
-    if (interfaces) {
-      for (let i = 0; i < interfaces.length; i++) {
-        let iface = interfaces[i];
-        let name = (iface && iface.name) || String(iface);
-        if (name in Ci) {
-          a.push(name);
-        }
-      }
-    }
-    return makeQI(a);
+    return ChromeUtils.generateQI(interfaces);
   },
 
   /**
@@ -258,7 +247,10 @@ var XPCOMUtils = {
                                                                  aInterfaceName)
   {
     this.defineLazyGetter(aObject, aName, function XPCU_serviceLambda() {
-      return Cc[aContract].getService(Ci[aInterfaceName]);
+      if (aInterfaceName) {
+        return Cc[aContract].getService(Ci[aInterfaceName]);
+      }
+      return Cc[aContract].getService().wrappedJSObject;
     });
   },
 
@@ -271,9 +263,9 @@ var XPCOMUtils = {
    * @param aServices
    *        An object with a property for each service to be
    *        imported, where the property name is the name of the
-   *        symbol to define, and the value is a 2-element array
-   *        containing the contract ID and the interface name of the
-   *        service, as passed to defineLazyServiceGetter.
+   *        symbol to define, and the value is a 1 or 2 element array
+   *        containing the contract ID and, optionally, the interface
+   *        name of the service, as passed to defineLazyServiceGetter.
    */
   defineLazyServiceGetters: function XPCU_defineLazyServiceGetters(
                                    aObject, aServices)
@@ -282,7 +274,7 @@ var XPCOMUtils = {
       // Note: This is hot code, and cross-compartment array wrappers
       // are not JIT-friendly to destructuring or spread operators, so
       // we need to use indexed access instead.
-      this.defineLazyServiceGetter(aObject, name, service[0], service[1]);
+      this.defineLazyServiceGetter(aObject, name, service[0], service[1] || null);
     }
   },
 
@@ -510,7 +502,7 @@ var XPCOMUtils = {
             throw Cr.NS_ERROR_NO_AGGREGATION;
           return (new component()).QueryInterface(iid);
         },
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
+        QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
       }
     }
     return factory;
@@ -551,7 +543,7 @@ var XPCOMUtils = {
       lockFactory: function XPCU_SF_lockFactory(aDoLock) {
         throw Cr.NS_ERROR_NOT_IMPLEMENTED;
       },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
     };
   },
 
@@ -567,7 +559,7 @@ var XPCOMUtils = {
   },
 };
 
-var XPCU_lazyPreferenceObserverQI = XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]);
+var XPCU_lazyPreferenceObserverQI = ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]);
 
 ChromeUtils.defineModuleGetter(this, "Services",
                                "resource://gre/modules/Services.jsm");
@@ -575,21 +567,3 @@ ChromeUtils.defineModuleGetter(this, "Services",
 XPCOMUtils.defineLazyServiceGetter(XPCOMUtils, "categoryManager",
                                    "@mozilla.org/categorymanager;1",
                                    "nsICategoryManager");
-
-/**
- * Helper for XPCOMUtils.generateQI to avoid leaks - see bug 381651#c1
- */
-function makeQI(interfaceNames) {
-  return function XPCOMUtils_QueryInterface(iid) {
-    if (iid.equals(Ci.nsISupports))
-      return this;
-    if (iid.equals(Ci.nsIClassInfo) && "classInfo" in this)
-      return this.classInfo;
-    for (let i = 0; i < interfaceNames.length; i++) {
-      if (Ci[interfaceNames[i]].equals(iid))
-        return this;
-    }
-
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  };
-}

@@ -27,7 +27,6 @@
 #include "nsIKeyEventInPluginCallback.h"
 #include "nsISecureBrowserUI.h"
 #include "nsITabParent.h"
-#include "nsIWebBrowserPersistable.h"
 #include "nsIXULBrowserWindow.h"
 #include "nsRefreshDriver.h"
 #include "nsWeakReference.h"
@@ -35,12 +34,12 @@
 #include "nsIWidget.h"
 
 class nsFrameLoader;
-class nsIFrameLoader;
 class nsIContent;
 class nsIPrincipal;
 class nsIURI;
 class nsILoadContext;
 class nsIDocShell;
+class nsIWebBrowserPersistDocumentReceiver;
 
 namespace mozilla {
 
@@ -88,7 +87,6 @@ class TabParent final : public PBrowserParent
                       , public nsIKeyEventInPluginCallback
                       , public nsSupportsWeakReference
                       , public TabContext
-                      , public nsIWebBrowserPersistable
                       , public LiveResizeListener
 {
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
@@ -240,18 +238,19 @@ public:
   virtual mozilla::ipc::IPCResult
   RecvDefaultProcOfPluginEvent(const WidgetPluginEvent& aEvent) override;
 
-  virtual mozilla::ipc::IPCResult RecvGetInputContext(int32_t* aIMEEnabled,
-                                                      int32_t* aIMEOpen) override;
+  virtual mozilla::ipc::IPCResult RecvGetInputContext(
+    widget::IMEState::Enabled* aIMEEnabled,
+    widget::IMEState::Open* aIMEOpen) override;
 
-  virtual mozilla::ipc::IPCResult RecvSetInputContext(const int32_t& aIMEEnabled,
-                                                      const int32_t& aIMEOpen,
-                                                      const nsString& aType,
-                                                      const nsString& aInputmode,
-                                                      const nsString& aActionHint,
-                                                      const bool& aInPrivateBrowsing,
-                                                      const int32_t& aCause,
-                                                      const int32_t& aFocusChange) override;
-
+  virtual mozilla::ipc::IPCResult RecvSetInputContext(
+    const widget::IMEState::Enabled& aIMEEnabled,
+    const widget::IMEState::Open& aIMEOpen,
+    const nsString& aType,
+    const nsString& aInputmode,
+    const nsString& aActionHint,
+    const bool& aInPrivateBrowsing,
+    const widget::InputContextAction::Cause& aCause,
+    const widget::InputContextAction::FocusChange& aFocusChange) override;
 
   // See nsIKeyEventInPluginCallback
   virtual void HandledWindowedPluginKeyEvent(
@@ -281,7 +280,7 @@ public:
                                                       const uint32_t& aWidth,
                                                       const uint32_t& aHeight,
                                                       const uint32_t& aStride,
-                                                      const uint8_t& aFormat,
+                                                      const gfx::SurfaceFormat& aFormat,
                                                       const uint32_t& aHotspotX,
                                                       const uint32_t& aHotspotY,
                                                       const bool& aForce) override;
@@ -491,7 +490,10 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIAUTHPROMPTPROVIDER
   NS_DECL_NSISECUREBROWSERUI
-  NS_DECL_NSIWEBBROWSERPERSISTABLE
+
+  void StartPersistence(uint64_t aOuterWindowID,
+                        nsIWebBrowserPersistDocumentReceiver* aRecv,
+                        ErrorResult& aRv);
 
   bool HandleQueryContentEvent(mozilla::WidgetQueryContentEvent& aEvent);
 
@@ -501,8 +503,6 @@ public:
                              const uint32_t& aContentPolicyType);
 
   static TabParent* GetFrom(nsFrameLoader* aFrameLoader);
-
-  static TabParent* GetFrom(nsIFrameLoader* aFrameLoader);
 
   static TabParent* GetFrom(nsITabParent* aTabParent);
 
@@ -571,7 +571,7 @@ public:
   RecvInvokeDragSession(nsTArray<IPCDataTransfer>&& aTransfers,
                         const uint32_t& aAction,
                         const OptionalShmem& aVisualDnDData,
-                        const uint32_t& aStride, const uint8_t& aFormat,
+                        const uint32_t& aStride, const gfx::SurfaceFormat& aFormat,
                         const LayoutDeviceIntRect& aDragRect,
                         const nsCString& aPrincipalURISpec) override;
 
@@ -585,7 +585,7 @@ public:
 
   bool SetRenderFrame(PRenderFrameParent* aRFParent);
   bool GetRenderFrameInfo(TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                          uint64_t* aLayersId);
+                          layers::LayersId* aLayersId);
 
   mozilla::ipc::IPCResult RecvEnsureLayersConnected(CompositorOptions* aCompositorOptions) override;
 
@@ -756,9 +756,9 @@ private:
   typedef nsDataHashtable<nsUint64HashKey, TabParent*> LayerToTabParentTable;
   static LayerToTabParentTable* sLayerToTabParentTable;
 
-  static void AddTabParentToTable(uint64_t aLayersId, TabParent* aTabParent);
+  static void AddTabParentToTable(layers::LayersId aLayersId, TabParent* aTabParent);
 
-  static void RemoveTabParentFromTable(uint64_t aLayersId);
+  static void RemoveTabParentFromTable(layers::LayersId aLayersId);
 
   uint64_t mLayerTreeEpoch;
 
@@ -792,7 +792,7 @@ private:
   bool mIsMouseEnterIntoWidgetEventSuppressed;
 
 public:
-  static TabParent* GetTabParentFromLayersId(uint64_t aLayersId);
+  static TabParent* GetTabParentFromLayersId(layers::LayersId aLayersId);
 };
 
 struct MOZ_STACK_CLASS TabParent::AutoUseNewTab final

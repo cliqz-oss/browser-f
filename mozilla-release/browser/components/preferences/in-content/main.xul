@@ -43,6 +43,11 @@
   </vbox>
 #endif
 
+  <vbox id="startupPageBox">
+    <checkbox id="browserRestoreSession"
+              data-l10n-id="startup-restore-previous-session"/>
+  </vbox>
+
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
     <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
@@ -64,74 +69,6 @@
   </vbox>
 #endif
 
-  <vbox id="startupPageBox">
-    <label data-l10n-id="startup-page"
-           control="browserStartupPage"/>
-    <radiogroup id="browserStartupPage"
-                preference="browser.startup.page">
-      <radio data-l10n-id="startup-user-homepage"
-             value="1"
-             id="browserStartupHomePage"/>
-      <radio data-l10n-id="startup-blank-page"
-             value="0"
-             id="browserStartupBlank"/>
-      <radio data-l10n-id="startup-prev-session"
-             value="3"
-             id="browserStartupLastSession"/>
-    </radiogroup>
-    <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
-      <description control="disableNewTabExtension" flex="1" />
-      <button id="disableNewTabExtension"
-              class="extension-controlled-button accessory-button"
-              data-l10n-id="disable-extension" />
-    </hbox>
-  </vbox>
-</groupbox>
-
-<!-- Home Page -->
-<groupbox id="homepageGroup"
-          data-category="paneGeneral"
-          hidden="true">
-  <caption><label data-l10n-id="home-page-header"/></caption>
-
-  <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
-    <description control="disableHomePageExtension" flex="1" />
-    <button id="disableHomePageExtension"
-            class="extension-controlled-button accessory-button"
-            data-l10n-id="disable-extension" />
-  </hbox>
-
-  <vbox>
-    <textbox id="browserHomePage"
-             class="uri-element"
-             type="autocomplete"
-             autocompletesearch="unifiedcomplete"
-             onsyncfrompreference="return gMainPane.syncFromHomePref();"
-             onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-             placeholder="&abouthome.pageTitle;"
-             preference="browser.startup.homepage"/>
-  </vbox>
-
-  <hbox class="homepage-buttons">
-    <button id="useCurrent"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="use-current-pages"
-            data-l10n-args='{"tabCount": 0}'
-            disabled="true"
-            preference="pref.browser.homepage.disable_button.current_page"/>
-    <button id="useBookmark"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="choose-bookmark"
-            preference="pref.browser.homepage.disable_button.bookmark_page"
-            searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
-    <button id="restoreDefaultHomePage"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="restore-default"
-            preference="pref.browser.homepage.disable_button.restore_default"/>
-  </hbox>
 </groupbox>
 
 <!-- Tab preferences -->
@@ -181,9 +118,10 @@
           <button id="browserContainersSettings"
                   class="accessory-button"
                   data-l10n-id="browser-containers-settings"
-                  searchkeywords="&addButton.label;
-                                  &preferencesButton.label;
-                                  &removeButton.label;"/>
+                  search-l10n-ids="containers-add-button.label,
+                    containers-preferences-button.label,
+                    containers-remove-button.label"
+                  />
         </hbox>
       </hbox>
     </vbox>
@@ -249,66 +187,68 @@
                 class="accessory-button"
                 icon="select-font"
                 data-l10n-id="advanced-fonts"
-                searchkeywords="&fontsDialog.title;
-                                &fonts.label;
-                                &size2.label;
-                                &proportional2.label;
-                                &serif2.label;
-                                &sans-serif2.label;
-                                &monospace2.label;
-                                &font.langGroup.latin;
-                                &font.langGroup.japanese;
-                                &font.langGroup.trad-chinese;
-                                &font.langGroup.simpl-chinese;
-                                &font.langGroup.trad-chinese-hk;
-                                &font.langGroup.korean;
-                                &font.langGroup.cyrillic;
-                                &font.langGroup.el;
-                                &font.langGroup.other;
-                                &font.langGroup.thai;
-                                &font.langGroup.hebrew;
-                                &font.langGroup.arabic;
-                                &font.langGroup.devanagari;
-                                &font.langGroup.tamil;
-                                &font.langGroup.armenian;
-                                &font.langGroup.bengali;
-                                &font.langGroup.canadian;
-                                &font.langGroup.ethiopic;
-                                &font.langGroup.georgian;
-                                &font.langGroup.gujarati;
-                                &font.langGroup.gurmukhi;
-                                &font.langGroup.khmer;
-                                &font.langGroup.malayalam;
-                                &font.langGroup.math;
-                                &font.langGroup.odia;
-                                &font.langGroup.telugu;
-                                &font.langGroup.kannada;
-                                &font.langGroup.sinhala;
-                                &font.langGroup.tibetan;
-                                &minSize2.label;
-                                &minSize.none;
-                                &useDefaultFontSerif.label;
-                                &useDefaultFontSansSerif.label;
-                                &allowPagesToUseOwn.label;
-                                &languages.customize.Fallback2.grouplabel;
-                                &languages.customize.Fallback3.label;
-                                &languages.customize.Fallback2.desc;
-                                &languages.customize.Fallback.auto;
-                                &languages.customize.Fallback.arabic;
-                                &languages.customize.Fallback.baltic;
-                                &languages.customize.Fallback.ceiso;
-                                &languages.customize.Fallback.cewindows;
-                                &languages.customize.Fallback.simplified;
-                                &languages.customize.Fallback.traditional;
-                                &languages.customize.Fallback.cyrillic;
-                                &languages.customize.Fallback.greek;
-                                &languages.customize.Fallback.hebrew;
-                                &languages.customize.Fallback.japanese;
-                                &languages.customize.Fallback.korean;
-                                &languages.customize.Fallback.thai;
-                                &languages.customize.Fallback.turkish;
-                                &languages.customize.Fallback.vietnamese;
-                                &languages.customize.Fallback.other;"/>
+                search-l10n-ids="
+                  fonts-window.title,
+                  fonts-langgroup-header,
+                  fonts-proportional-size,
+                  fonts-proportional-header,
+                  fonts-serif,
+                  fonts-sans-serif,
+                  fonts-monospace,
+                  fonts-langgroup-arabic.label,
+                  fonts-langgroup-armenian.label,
+                  fonts-langgroup-bengali.label,
+                  fonts-langgroup-simpl-chinese.label,
+                  fonts-langgroup-trad-chinese-hk.label,
+                  fonts-langgroup-trad-chinese.label,
+                  fonts-langgroup-cyrillic.label,
+                  fonts-langgroup-devanagari.label,
+                  fonts-langgroup-ethiopic.label,
+                  fonts-langgroup-georgian.label,
+                  fonts-langgroup-el.label,
+                  fonts-langgroup-gujarati.label,
+                  fonts-langgroup-gurmukhi.label,
+                  fonts-langgroup-japanese.label,
+                  fonts-langgroup-hebrew.label,
+                  fonts-langgroup-kannada.label,
+                  fonts-langgroup-khmer.label,
+                  fonts-langgroup-korean.label,
+                  fonts-langgroup-latin.label,
+                  fonts-langgroup-malayalam.label,
+                  fonts-langgroup-math.label,
+                  fonts-langgroup-odia.label,
+                  fonts-langgroup-sinhala.label,
+                  fonts-langgroup-tamil.label,
+                  fonts-langgroup-telugu.label,
+                  fonts-langgroup-thai.label,
+                  fonts-langgroup-tibetan.label,
+                  fonts-langgroup-canadian.label,
+                  fonts-langgroup-other.label,
+                  fonts-minsize,
+                  fonts-minsize-none.label,
+                  fonts-default-serif.label,
+                  fonts-default-sans-serif.label,
+                  fonts-allow-own.label,
+                  fonts-languages-fallback-header,
+                  fonts-languages-fallback-label,
+                  fonts-languages-fallback-desc,
+                  fonts-languages-fallback-name-auto.label,
+                  fonts-languages-fallback-name-arabic.label,
+                  fonts-languages-fallback-name-baltic.label,
+                  fonts-languages-fallback-name-ceiso.label,
+                  fonts-languages-fallback-name-cewindows.label,
+                  fonts-languages-fallback-name-simplified.label,
+                  fonts-languages-fallback-name-traditional.label,
+                  fonts-languages-fallback-name-cyrillic.label,
+                  fonts-languages-fallback-name-greek.label,
+                  fonts-languages-fallback-name-hebrew.label,
+                  fonts-languages-fallback-name-japanese.label,
+                  fonts-languages-fallback-name-korean.label,
+                  fonts-languages-fallback-name-thai.label,
+                  fonts-languages-fallback-name-turkish.label,
+                  fonts-languages-fallback-name-vietnamese.label,
+                  fonts-languages-fallback-name-other.label,
+                " />
       </hbox>
     </hbox>
     <hbox id="colorsSettings">
@@ -319,18 +259,20 @@
                 class="accessory-button"
                 icon="select-color"
                 data-l10n-id="colors-settings"
-                searchkeywords="&overrideDefaultPageColors2.label;
-                                &overrideDefaultPageColors.always.label;
-                                &overrideDefaultPageColors.auto.label;
-                                &overrideDefaultPageColors.never.label;
-                                &color;
-                                &textColor2.label;
-                                &backgroundColor2.label;
-                                &useSystemColors.label;
-                                &underlineLinks.label;
-                                &links;
-                                &linkColor2.label;
-                                &visitedLinkColor2.label;"/>
+                search-l10n-ids="
+                  colors-page-override,
+                  colors-page-override-option-always.label,
+                  colors-page-override-option-auto.label,
+                  colors-page-override-option-never.label,
+                  colors-text-and-background,
+                  colors-text-header,
+                  colors-background,
+                  colors-use-system,
+                  colors-underline-links,
+                  colors-links-header,
+                  colors-unvisited-links,
+                  colors-visited-links
+                "/>
       </hbox>
     </hbox>
   </vbox>
@@ -347,13 +289,15 @@
       <button id="chooseLanguage"
               class="accessory-button"
               data-l10n-id="choose-button"
-              searchkeywords="&languages.customize.Header;
-                              &languages.customize2.description;
-                              &languages.customize.moveUp.label;
-                              &languages.customize.moveDown.label;
-                              &languages.customize.deleteButton.label;
-                              &languages.customize.selectLanguage.label;
-                              &languages.customize.addButton.label;"/>
+              search-l10n-ids="
+                languages-window.title,
+                languages-description,
+                languages-customize-moveup.label,
+                languages-customize-movedown.label,
+                languages-customize-remove.label,
+                languages-customize-select-language.placeholder,
+                languages-customize-add.label,
+              " />
     </hbox>
   </hbox>
 
@@ -364,12 +308,11 @@
                 onsyncfrompreference="return gMainPane.updateButtons('translateButton',
                                               'browser.translation.detectLanguage');"/>
       <hbox id="bingAttribution" hidden="true" align="center">
-        <label>&translation.options.attribution.beforeLogo;</label>
-        <separator orient="vertical" class="thin"/>
-        <image id="translationAttributionImage" aria-label="Microsoft Translator"
-               src="chrome://browser/content/microsoft-translator-attribution.png"/>
-        <separator orient="vertical" class="thin"/>
-        <label>&translation.options.attribution.afterLogo;</label>
+        <label data-l10n-id="translate-attribution">
+          <html:img id="translationAttributionImage" aria-label="Microsoft Translator"
+            src="chrome://browser/content/microsoft-translator-attribution.png"
+            data-l10n-name="logo"/>
+        </label>
       </hbox>
     </hbox>
     <button id="translateButton"
@@ -398,28 +341,24 @@
   <radiogroup id="saveWhere"
               preference="browser.download.useDownloadDir"
               onsyncfrompreference="return gMainPane.readUseDownloadDir();">
-    <hbox id="saveToRow">
+    <hbox>
       <radio id="saveTo"
-            value="true"
-            data-l10n-id="download-save-to"
-            aria-labelledby="saveTo downloadFolder"/>
-      <filefield id="downloadFolder"
-                flex="1"
-                preference="browser.download.folderList"
-                preference-editable="true"
-                aria-labelledby="saveTo"
-                onsyncfrompreference="return gMainPane.displayDownloadDirPref();"/>
+             value="true"
+             data-l10n-id="download-save-to"/>
+      <textbox id="downloadFolder" flex="1"
+               readonly="true"
+               aria-labelledby="saveTo"/>
       <button id="chooseFolder"
-              data-l10n-id="download-choose-folder"
-      />
+              class="accessory-button"
+              data-l10n-id="download-choose-folder"/>
     </hbox>
     <!-- Additional radio button added to support CloudStorage - Bug 1357171 -->
     <radio id="saveToCloud"
-          value="true"
-          hidden="true"/>
+           value="true"
+           hidden="true"/>
     <radio id="alwaysAsk"
-          value="false"
-          data-l10n-id="download-always-ask-where"/>
+           value="false"
+           data-l10n-id="download-always-ask-where"/>
   </radiogroup>
 </groupbox>
 
@@ -486,7 +425,7 @@
   <hbox align="center">
     <vbox flex="1">
       <description id="updateAppInfo">
-        <html:a id="releasenotes" class="learnMore text-link" hidden="true"/>
+        <html:a id="releasenotes" target="_blank" data-l10n-name="learn-more" class="learnMore text-link" hidden="true"/>
       </description>
       <description id="distribution" class="text-blurb" hidden="true"/>
       <description id="distributionId" class="text-blurb" hidden="true"/>
@@ -659,8 +598,8 @@
       </menulist>
     </hbox>
     <description id="contentProcessCountEnabledDescription" class="tip-caption" data-l10n-id="performance-limit-content-process-enabled-desc"/>
-    <description id="contentProcessCountDisabledDescription" class="tip-caption" data-l10n-id="performance-limit-content-process-disabled-desc">
-      <html:a class="text-link" href="https://wiki.mozilla.org/Electrolysis"/>
+    <description id="contentProcessCountDisabledDescription" class="tip-caption" data-l10n-id="performance-limit-content-process-blocked-desc">
+      <html:a class="text-link" data-l10n-name="learn-more" href="https://wiki.mozilla.org/Electrolysis"/>
     </description>
   </vbox>
 </groupbox>
@@ -724,25 +663,27 @@
               class="accessory-button"
               icon="network"
               data-l10n-id="network-proxy-connection-settings"
-              searchkeywords="&connectionsDialog.title;
-                              &noProxyTypeRadio.label;
-                              &WPADTypeRadio.label;
-                              &systemTypeRadio.label;
-                              &manualTypeRadio2.label;
-                              &http2.label;
-                              &ssl2.label;
-                              &ftp2.label;
-                              &port2.label;
-                              &socks2.label;
-                              &socks4.label;
-                              &socks5.label;
-                              &noproxy2.label;
-                              &noproxyExplain.label;
-                              &shareproxy.label;
-                              &autoTypeRadio2.label;
-                              &reload.label;
-                              &autologinproxy.label;
-                              &socksRemoteDNS.label2;"/>
+              search-l10n-ids="
+                connection-window.title,
+                connection-proxy-option-no.label,
+                connection-proxy-option-auto.label,
+                connection-proxy-option-system.label,
+                connection-proxy-option-manual.label,
+                connection-proxy-http,
+                connection-proxy-ssl,
+                connection-proxy-ftp,
+                connection-proxy-http-port,
+                connection-proxy-socks,
+                connection-proxy-socks4,
+                connection-proxy-socks5,
+                connection-proxy-noproxy,
+                connection-proxy-noproxy-desc,
+                connection-proxy-http-share.label,
+                connection-proxy-autotype.label,
+                connection-proxy-reload.label,
+                connection-proxy-autologin.label,
+                connection-proxy-socks-remote-dns.label
+            " />
     </hbox>
   </hbox>
 </groupbox>

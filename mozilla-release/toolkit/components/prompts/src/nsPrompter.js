@@ -14,7 +14,7 @@ function Prompter() {
 
 Prompter.prototype = {
     classID: Components.ID("{1c978d25-b37f-43a8-a2d6-0c7a239ead87}"),
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIPromptFactory, Ci.nsIPromptService]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIPromptFactory, Ci.nsIPromptService]),
 
 
     /* ----------  private members  ---------- */
@@ -366,7 +366,6 @@ function openTabPrompt(domWin, tabPrompt, args) {
 
     let frameMM = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                           .getInterface(Ci.nsIContentFrameMessageManager);
-    frameMM.QueryInterface(Ci.nsIDOMEventTarget);
 
     // We provide a callback so the prompt can close itself. We don't want to
     // wait for this event loop to return... Otherwise the presence of other
@@ -441,13 +440,17 @@ function openRemotePrompt(domWin, args, tabPrompt) {
     let eventDetail = Cu.cloneInto({tabPrompt, inPermitUnload}, domWin);
     PromptUtils.fireDialogEvent(domWin, "DOMWillOpenModalDialog", null, eventDetail);
 
-    let winUtils = domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+    // If domWin is reloaded while we're showing a remote modal
+    // dialog, it is possible to detach domWin from its tree, and make
+    // it impossible to reach its scriptable top,
+    // a.k.a. window.top. To prevent this, make sure to enter/exit
+    // modal state beginning from top.
+    let winUtils = domWin.top.QueryInterface(Ci.nsIInterfaceRequestor)
+                             .getInterface(Ci.nsIDOMWindowUtils);
     winUtils.enterModalState();
     let closed = false;
 
     let frameMM = docShell.getInterface(Ci.nsIContentFrameMessageManager);
-    frameMM.QueryInterface(Ci.nsIDOMEventTarget);
 
     // It should be hard or impossible to cause a window to create multiple
     // prompts, but just in case, give our prompt an ID.
@@ -517,9 +520,9 @@ ModalPrompter.prototype = {
      */
     allowTabModal: false,
 
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrompt, Ci.nsIAuthPrompt,
-                                            Ci.nsIAuthPrompt2,
-                                            Ci.nsIWritablePropertyBag2]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIPrompt, Ci.nsIAuthPrompt,
+                                             Ci.nsIAuthPrompt2,
+                                             Ci.nsIWritablePropertyBag2]),
 
 
     /* ---------- internal methods ---------- */
@@ -884,7 +887,7 @@ function AuthPromptAdapterFactory() {
 }
 AuthPromptAdapterFactory.prototype = {
     classID: Components.ID("{6e134924-6c3a-4d86-81ac-69432dd971dc}"),
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIAuthPromptAdapterFactory]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAuthPromptAdapterFactory]),
 
     /* ----------  nsIAuthPromptAdapterFactory ---------- */
 
@@ -899,7 +902,7 @@ function AuthPromptAdapter(oldPrompter) {
     this.oldPrompter = oldPrompter;
 }
 AuthPromptAdapter.prototype = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIAuthPrompt2]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAuthPrompt2]),
     oldPrompter: null,
 
     /* ----------  nsIAuthPrompt2 ---------- */

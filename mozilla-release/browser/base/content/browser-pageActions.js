@@ -48,29 +48,43 @@ var BrowserPageActions = {
    */
   init() {
     this.placeAllActions();
+    this._onPanelShowing = this._onPanelShowing.bind(this);
+    this.panelNode.addEventListener("popupshowing", this._onPanelShowing);
+    this.panelNode.addEventListener("popuphiding", () => {
+      this.mainButtonNode.removeAttribute("open");
+    });
   },
+
+  _onPanelShowing() {
+    this.placeLazyActionsInPanel();
+    for (let action of PageActions.actionsInPanel(window)) {
+      let buttonNode = this.panelButtonNodeForActionID(action.id);
+      action.onShowingInPanel(buttonNode);
+    }
+  },
+
+  placeLazyActionsInPanel() {
+    let actions = this._actionsToLazilyPlaceInPanel;
+    this._actionsToLazilyPlaceInPanel = [];
+    for (let action of actions) {
+      this._placeActionInPanelNow(action);
+    }
+  },
+
+  // Actions placed in the panel aren't actually placed until the panel is
+  // subsequently opened.
+  _actionsToLazilyPlaceInPanel: [],
 
   /**
    * Places all registered actions.
    */
   placeAllActions() {
-    // Place actions in the panel.  Notify of onBeforePlacedInWindow too.
-    for (let action of PageActions.actions) {
-      action.onBeforePlacedInWindow(window);
+    let panelActions = PageActions.actionsInPanel(window);
+    for (let action of panelActions) {
       this.placeActionInPanel(action);
     }
-
-    // Place actions in the urlbar.  Do this in reverse order.  The reason is
-    // subtle.  If there were no urlbar nodes already in markup (like the
-    // bookmark star button), then doing this in forward order would be fine.
-    // Forward order means that the insert-before relationship is always broken:
-    // there's never a next-sibling node before which to insert a new node, so
-    // node.insertBefore() is always passed null, and nodes are always appended.
-    // That will break the position of nodes that should be inserted before
-    // nodes that are in markup, which in turn can break other nodes.
-    let actionsInUrlbar = PageActions.actionsInUrlbar(window);
-    for (let i = actionsInUrlbar.length - 1; i >= 0; i--) {
-      let action = actionsInUrlbar[i];
+    let urlbarActions = PageActions.actionsInUrlbar(window);
+    for (let action of urlbarActions) {
       this.placeActionInUrlbar(action);
     }
   },
@@ -82,7 +96,6 @@ var BrowserPageActions = {
    *         The action to place.
    */
   placeAction(action) {
-    action.onBeforePlacedInWindow(window);
     this.placeActionInPanel(action);
     this.placeActionInUrlbar(action);
   },
@@ -94,32 +107,132 @@ var BrowserPageActions = {
    *         The action to place.
    */
   placeActionInPanel(action) {
+    if (this.panelNode.state != "closed") {
+      this._placeActionInPanelNow(action);
+    } else {
+      // Lazily place the action in the panel the next time it opens.
+      this._actionsToLazilyPlaceInPanel.push(action);
+    }
+  },
+
+  _placeActionInPanelNow(action) {
+    if (action.shouldShowInPanel(window)) {
+      this._addActionToPanel(action);
+    } else {
+      this._removeActionFromPanel(action);
+    }
+  },
+
+  _addActionToPanel(action) {
     let id = this.panelButtonNodeIDForActionID(action.id);
     let node = document.getElementById(id);
+    if (node) {
+      return;
+    }
+    this._maybeNotifyBeforePlacedInWindow(action);
+    node = this._makePanelButtonNodeForAction(action);
+    node.id = id;
+    let insertBeforeNode = this._getNextNode(action, false);
+    this.mainViewBodyNode.insertBefore(node, insertBeforeNode);
+    this.updateAction(action, null, {
+      panelNode: node,
+    });
+    this._updateActionDisabledInPanel(action, node);
+    action.onPlacedInPanel(node);
+    this._addOrRemoveSeparatorsInPanel();
+  },
+
+  _removeActionFromPanel(action) {
+    let lazyIndex =
+      this._actionsToLazilyPlaceInPanel.findIndex(a => a.id == action.id);
+    if (lazyIndex >= 0) {
+      this._actionsToLazilyPlaceInPanel.splice(lazyIndex, 1);
+    }
+    let node = this.panelButtonNodeForActionID(action.id);
     if (!node) {
-      let panelViewNode;
-      [node, panelViewNode] = this._makePanelButtonNodeForAction(action);
-      node.id = id;
-      let insertBeforeID = PageActions.nextActionIDInPanel(action);
-      let insertBeforeNode =
-        insertBeforeID ? this.panelButtonNodeForActionID(insertBeforeID) :
-        null;
-      this.mainViewBodyNode.insertBefore(node, insertBeforeNode);
-      this.updateAction(action);
-      this._updateActionDisabledInPanel(action);
-      action.onPlacedInPanel(node);
+      return;
+    }
+    node.remove();
+    if (action.getWantsSubview(window)) {
+      let panelViewNodeID = this._panelViewNodeIDForActionID(action.id, false);
+      let panelViewNode = document.getElementById(panelViewNodeID);
       if (panelViewNode) {
-        action.subview.onPlaced(panelViewNode);
+        panelViewNode.remove();
       }
     }
+    this._addOrRemoveSeparatorsInPanel();
+  },
+
+  _addOrRemoveSeparatorsInPanel() {
+    let actions = PageActions.actionsInPanel(window);
+    let ids = [
+      PageActions.ACTION_ID_BUILT_IN_SEPARATOR,
+      PageActions.ACTION_ID_TRANSIENT_SEPARATOR,
+    ];
+    for (let id of ids) {
+      let sep = actions.find(a => a.id == id);
+      if (sep) {
+        this._addActionToPanel(sep);
+      } else {
+        let node = this.panelButtonNodeForActionID(id);
+        if (node) {
+          node.remove();
+        }
+      }
+    }
+  },
+
+  /**
+   * Returns the node before which an action's node should be inserted.
+   *
+   * @param  action (PageActions.Action, required)
+   *         The action that will be inserted.
+   * @param  forUrlbar (bool, required)
+   *         True if you're inserting into the urlbar, false if you're inserting
+   *         into the panel.
+   * @return (DOM node, maybe null) The DOM node before which to insert the
+   *         given action.  Null if the action should be inserted at the end.
+   */
+  _getNextNode(action, forUrlbar) {
+    let actions =
+      forUrlbar ?
+      PageActions.actionsInUrlbar(window) :
+      PageActions.actionsInPanel(window);
+    let index = actions.findIndex(a => a.id == action.id);
+    if (index < 0) {
+      return null;
+    }
+    for (let i = index + 1; i < actions.length; i++) {
+      let node =
+        forUrlbar ?
+        this.urlbarButtonNodeForActionID(actions[i].id) :
+        this.panelButtonNodeForActionID(actions[i].id);
+      if (node) {
+        return node;
+      }
+    }
+    return null;
+  },
+
+  _maybeNotifyBeforePlacedInWindow(action) {
+    if (!this._isActionPlacedInWindow(action)) {
+      action.onBeforePlacedInWindow(window);
+    }
+  },
+
+  _isActionPlacedInWindow(action) {
+    if (this.panelButtonNodeForActionID(action.id)) {
+      return true;
+    }
+    let urlbarNode = this.urlbarButtonNodeForActionID(action.id);
+    return urlbarNode && !urlbarNode.hidden;
   },
 
   _makePanelButtonNodeForAction(action) {
     if (action.__isSeparator) {
       let node = document.createElement("toolbarseparator");
-      return [node, null];
+      return node;
     }
-
     let buttonNode = document.createElement("toolbarbutton");
     buttonNode.classList.add(
       "subviewbutton",
@@ -132,16 +245,10 @@ var BrowserPageActions = {
         buttonNode.setAttribute(name, action.nodeAttributes[name]);
       }
     }
-    let panelViewNode = null;
-    if (action.subview) {
-      buttonNode.classList.add("subviewbutton-nav");
-      panelViewNode = this._makePanelViewNodeForAction(action, false);
-      this.multiViewNode.appendChild(panelViewNode);
-    }
     buttonNode.addEventListener("command", event => {
       this.doCommandForAction(action, event, buttonNode);
     });
-    return [buttonNode, panelViewNode];
+    return buttonNode;
   },
 
   _makePanelViewNodeForAction(action, forUrlbar) {
@@ -152,23 +259,6 @@ var BrowserPageActions = {
     bodyNode.id = panelViewNode.id + "-body";
     bodyNode.classList.add("panel-subview-body");
     panelViewNode.appendChild(bodyNode);
-    for (let button of action.subview.buttons) {
-      let buttonNode = document.createElement("toolbarbutton");
-      buttonNode.id =
-        this._panelViewButtonNodeIDForActionID(action.id, button.id, forUrlbar);
-      buttonNode.classList.add("subviewbutton", "subviewbutton-iconic");
-      buttonNode.setAttribute("label", button.title);
-      if (button.shortcut) {
-        buttonNode.setAttribute("shortcut", button.shortcut);
-      }
-      if (button.disabled) {
-        buttonNode.setAttribute("disabled", "true");
-      }
-      buttonNode.addEventListener("command", event => {
-        button.onCommand(event, buttonNode);
-      });
-      bodyNode.appendChild(buttonNode);
-    }
     return panelViewNode;
   },
 
@@ -229,14 +319,10 @@ var BrowserPageActions = {
     panelNode.setAttribute("tabspecific", "true");
     panelNode.setAttribute("photon", "true");
 
-    if (this._disablePanelAnimations) {
-      panelNode.setAttribute("animate", "false");
-    }
-
     let panelViewNode = null;
     let iframeNode = null;
 
-    if (action.subview) {
+    if (action.getWantsSubview(window)) {
       let multiViewNode = document.createElement("panelmultiview");
       panelViewNode = this._makePanelViewNodeForAction(action, true);
       multiViewNode.setAttribute("mainViewId", panelViewNode.id);
@@ -267,26 +353,13 @@ var BrowserPageActions = {
     }
 
     if (panelViewNode) {
-      action.subview.onPlaced(panelViewNode);
+      action.onSubviewPlaced(panelViewNode);
       panelNode.addEventListener("popupshowing", () => {
-        action.subview.onShowing(panelViewNode);
+        action.onSubviewShowing(panelViewNode);
       }, { once: true });
     }
 
     return panelNode;
-  },
-
-  // For tests.
-  get _disablePanelAnimations() {
-    return this.__disablePanelAnimations || false;
-  },
-  set _disablePanelAnimations(val) {
-    this.__disablePanelAnimations = val;
-    if (val) {
-      this.panelNode.setAttribute("animate", "false");
-    } else {
-      this.panelNode.removeAttribute("animate");
-    }
   },
 
   /**
@@ -299,8 +372,7 @@ var BrowserPageActions = {
    *         This is used to display the feedback panel on the right node when
    *         the command can be invoked from both the main panel and another
    *         location, such as an activated action panel or a button.
-   * @return (DOM node, nonnull) The node to which the action should be
-   *         anchored.
+   * @return (DOM node) The node to which the action should be anchored.
    */
   panelAnchorNodeForAction(action, event) {
     if (event && event.target.closest("panel") == this.panelNode) {
@@ -362,32 +434,41 @@ var BrowserPageActions = {
 
     let newlyPlaced = false;
     if (action.__urlbarNodeInMarkup) {
-      newlyPlaced = node && node.hidden;
+      this._maybeNotifyBeforePlacedInWindow(action);
+      // Allow the consumer to add the node in response to the
+      // onBeforePlacedInWindow notification.
+      node = document.getElementById(id);
+      if (!node) {
+        return;
+      }
+      newlyPlaced = node.hidden;
       node.hidden = false;
     } else if (!node) {
       newlyPlaced = true;
+      this._maybeNotifyBeforePlacedInWindow(action);
       node = this._makeUrlbarButtonNode(action);
       node.id = id;
     }
 
-    if (newlyPlaced) {
-      let insertBeforeID = PageActions.nextActionIDInUrlbar(window, action);
-      let insertBeforeNode =
-        insertBeforeID ? this.urlbarButtonNodeForActionID(insertBeforeID) :
-        null;
-      this.mainButtonNode.parentNode.insertBefore(node, insertBeforeNode);
-      this.updateAction(action);
-      action.onPlacedInUrlbar(node);
+    if (!newlyPlaced) {
+      return;
+    }
 
-      // urlbar buttons should always have tooltips, so if the node doesn't have
-      // one, then as a last resort use the label of the corresponding panel
-      // button.  Why not set tooltiptext to action.title when the node is
-      // created?  Because the consumer may set a title dynamically.
-      if (!node.hasAttribute("tooltiptext")) {
-        let panelNode = this.panelButtonNodeForActionID(action.id);
-        if (panelNode) {
-          node.setAttribute("tooltiptext", panelNode.getAttribute("label"));
-        }
+    let insertBeforeNode = this._getNextNode(action, true);
+    this.mainButtonNode.parentNode.insertBefore(node, insertBeforeNode);
+    this.updateAction(action, null, {
+      urlbarNode: node,
+    });
+    action.onPlacedInUrlbar(node);
+
+    // urlbar buttons should always have tooltips, so if the node doesn't have
+    // one, then as a last resort use the label of the corresponding panel
+    // button.  Why not set tooltiptext to action.title when the node is
+    // created?  Because the consumer may set a title dynamically.
+    if (!node.hasAttribute("tooltiptext")) {
+      let panelNode = this.panelButtonNodeForActionID(action.id);
+      if (panelNode) {
+        node.setAttribute("tooltiptext", panelNode.getAttribute("label"));
       }
     }
   },
@@ -420,32 +501,6 @@ var BrowserPageActions = {
     action.onRemovedFromWindow(window);
   },
 
-  _removeActionFromPanel(action) {
-    let node = this.panelButtonNodeForActionID(action.id);
-    if (node) {
-      node.remove();
-    }
-    if (action.subview) {
-      let panelViewNodeID = this._panelViewNodeIDForActionID(action.id, false);
-      let panelViewNode = document.getElementById(panelViewNodeID);
-      if (panelViewNode) {
-        panelViewNode.remove();
-      }
-    }
-    // If there are now no more non-built-in actions, remove the separator
-    // between the built-ins and non-built-ins.
-    if (!PageActions.nonBuiltInActions.length) {
-      let separator = document.getElementById(
-        this.panelButtonNodeIDForActionID(
-          PageActions.ACTION_ID_BUILT_IN_SEPARATOR
-        )
-      );
-      if (separator) {
-        separator.remove();
-      }
-    }
-  },
-
   _removeActionFromUrlbar(action) {
     let node = this.urlbarButtonNodeForActionID(action.id);
     if (node) {
@@ -462,55 +517,76 @@ var BrowserPageActions = {
    * @param  propertyName (string, optional)
    *         The name of the property to update.  If not given, then DOM nodes
    *         will be updated to reflect the current values of all properties.
+   * @param  opts (object, optional)
+   *         - panelNode: The action's node in the panel to update.
+   *         - urlbarNode: The action's node in the urlbar to update.
+   *         - value: If a property name is passed, this argument may contain
+   *           its current value, in order to prevent a further look-up.
    */
-  updateAction(action, propertyName = null) {
-    let propertyNames = propertyName ? [propertyName] : [
-      "iconURL",
-      "title",
-      "tooltip",
-    ];
-    for (let name of propertyNames) {
-      let upper = name[0].toUpperCase() + name.substr(1);
-      this[`_updateAction${upper}`](action);
+  updateAction(action, propertyName = null, opts = {}) {
+    let anyNodeGiven = "panelNode" in opts || "urlbarNode" in opts;
+    let panelNode =
+      anyNodeGiven ?
+      opts.panelNode || null :
+      this.panelButtonNodeForActionID(action.id);
+    let urlbarNode =
+      anyNodeGiven ?
+      opts.urlbarNode || null :
+      this.urlbarButtonNodeForActionID(action.id);
+    let value = opts.value || undefined;
+    if (propertyName) {
+      this[this._updateMethods[propertyName]](action, panelNode, urlbarNode,
+                                              value);
+    } else {
+      for (let name of ["iconURL", "title", "tooltip", "wantsSubview"]) {
+        this[this._updateMethods[name]](action, panelNode, urlbarNode, value);
+      }
     }
   },
 
-  _updateActionDisabled(action) {
-    this._updateActionDisabledInPanel(action);
+  _updateMethods: {
+    disabled: "_updateActionDisabled",
+    iconURL: "_updateActionIconURL",
+    title: "_updateActionTitle",
+    tooltip: "_updateActionTooltip",
+    wantsSubview: "_updateActionWantsSubview",
+  },
+
+  _updateActionDisabled(action, panelNode, urlbarNode,
+                        disabled = action.getDisabled(window)) {
+    if (action.__transient) {
+      this.placeActionInPanel(action);
+    } else {
+      this._updateActionDisabledInPanel(action, panelNode, disabled);
+    }
     this.placeActionInUrlbar(action);
   },
 
-  _updateActionDisabledInPanel(action) {
-    let panelButton = this.panelButtonNodeForActionID(action.id);
-    if (panelButton) {
-      if (action.getDisabled(window)) {
-        panelButton.setAttribute("disabled", "true");
+  _updateActionDisabledInPanel(action, panelNode,
+                               disabled = action.getDisabled(window)) {
+    if (panelNode) {
+      if (disabled) {
+        panelNode.setAttribute("disabled", "true");
       } else {
-        panelButton.removeAttribute("disabled");
+        panelNode.removeAttribute("disabled");
       }
     }
   },
 
-  _updateActionIconURL(action) {
-    let nodes = [
-      this.panelButtonNodeForActionID(action.id),
-      this.urlbarButtonNodeForActionID(action.id),
-    ].filter(n => !!n);
-    for (let node of nodes) {
-      for (let size of [16, 32]) {
-        let url = action.iconURLForSize(size, window);
-        let prop = `--pageAction-image-${size}px`;
-        if (url) {
-          node.style.setProperty(prop, `url("${url}")`);
-        } else {
-          node.style.removeProperty(prop);
-        }
+  _updateActionIconURL(action, panelNode, urlbarNode,
+                       properties = action.getIconProperties(window)) {
+    for (let [prop, value] of Object.entries(properties)) {
+      if (panelNode) {
+        panelNode.style.setProperty(prop, value);
+      }
+      if (urlbarNode) {
+        urlbarNode.style.setProperty(prop, value);
       }
     }
   },
 
-  _updateActionTitle(action) {
-    let title = action.getTitle(window);
+  _updateActionTitle(action, panelNode, urlbarNode,
+                     title = action.getTitle(window)) {
     if (!title) {
       // `title` is a required action property, but the bookmark action's is an
       // empty string since its actual title is set via
@@ -518,25 +594,49 @@ var BrowserPageActions = {
       // return is to ignore that empty title.
       return;
     }
-    let attrNamesByNodeFnName = {
-      panelButtonNodeForActionID: "label",
-      urlbarButtonNodeForActionID: "aria-label",
-    };
-    for (let [fnName, attrName] of Object.entries(attrNamesByNodeFnName)) {
-      let node = this[fnName](action.id);
-      if (node) {
-        node.setAttribute(attrName, title);
+    if (panelNode) {
+      panelNode.setAttribute("label", title);
+    }
+    if (urlbarNode) {
+      urlbarNode.setAttribute("aria-label", title);
+      // tooltiptext falls back to the title, so update it too if necessary.
+      let tooltip = action.getTooltip(window);
+      if (!tooltip && title) {
+        urlbarNode.setAttribute("tooltiptext", title);
       }
     }
-    // tooltiptext falls back to the title, so update it, too.
-    this._updateActionTooltip(action);
   },
 
-  _updateActionTooltip(action) {
-    let node = this.urlbarButtonNodeForActionID(action.id);
-    if (node) {
-      let tooltip = action.getTooltip(window) || action.getTitle(window);
-      node.setAttribute("tooltiptext", tooltip);
+  _updateActionTooltip(action, panelNode, urlbarNode,
+                       tooltip = action.getTooltip(window)) {
+    if (urlbarNode) {
+      if (!tooltip) {
+        tooltip = action.getTitle(window);
+      }
+      if (tooltip) {
+        urlbarNode.setAttribute("tooltiptext", tooltip);
+      }
+    }
+  },
+
+  _updateActionWantsSubview(action, panelNode, urlbarNode,
+                            wantsSubview = action.getWantsSubview(window)) {
+    if (!panelNode) {
+      return;
+    }
+    let panelViewID = this._panelViewNodeIDForActionID(action.id, false);
+    let panelViewNode = document.getElementById(panelViewID);
+    panelNode.classList.toggle("subviewbutton-nav", wantsSubview);
+    if (!wantsSubview) {
+      if (panelViewNode) {
+        panelViewNode.remove();
+      }
+      return;
+    }
+    if (!panelViewNode) {
+      panelViewNode = this._makePanelViewNodeForAction(action, false);
+      this.multiViewNode.appendChild(panelViewNode);
+      action.onSubviewPlaced(panelViewNode);
     }
   },
 
@@ -548,26 +648,25 @@ var BrowserPageActions = {
     // If we're in the panel, open a subview inside the panel:
     // Note that we can't use this.panelNode.contains(buttonNode) here
     // because of XBL boundaries breaking Element.contains.
-    if (action.subview &&
+    if (action.getWantsSubview(window) &&
         buttonNode &&
         buttonNode.closest("panel") == this.panelNode) {
       let panelViewNodeID = this._panelViewNodeIDForActionID(action.id, false);
       let panelViewNode = document.getElementById(panelViewNodeID);
-      action.subview.onShowing(panelViewNode);
+      action.onSubviewShowing(panelViewNode);
       this.multiViewNode.showSubView(panelViewNode, buttonNode);
       return;
     }
     // Otherwise, hide the main popup in case it was open:
     PanelMultiView.hidePopup(this.panelNode);
 
-    // Toggle the activated action's panel if necessary
-    if (action.subview || action.wantsIframe) {
-      this.togglePanelForAction(action);
-      return;
+    let aaPanelNode = this.activatedActionPanelNode;
+    if (!aaPanelNode || aaPanelNode.getAttribute("actionID") != action.id) {
+      action.onCommand(event, buttonNode);
     }
-
-    // Otherwise, run the action.
-    action.onCommand(event, buttonNode);
+    if (action.getWantsSubview(window) || action.wantsIframe) {
+      this.togglePanelForAction(action);
+    }
   },
 
   /**
@@ -655,12 +754,6 @@ var BrowserPageActions = {
     return `pageAction-${placementID}-${actionID}-subview`;
   },
 
-  // The ID of the given button in the given action's panelview.
-  _panelViewButtonNodeIDForActionID(actionID, buttonID, forUrlbar) {
-    let placementID = forUrlbar ? "urlbar" : "panel";
-    return `pageAction-${placementID}-${actionID}-${buttonID}`;
-  },
-
   // The ID of the action corresponding to the given top-level button in the
   // panel or button in the urlbar.
   _actionIDForNodeID(nodeID) {
@@ -717,15 +810,7 @@ var BrowserPageActions = {
    *         if the user clicked something to open the panel)
    */
   showPanel(event = null) {
-    for (let action of PageActions.actions) {
-      let buttonNode = this.panelButtonNodeForActionID(action.id);
-      action.onShowingInPanel(buttonNode);
-    }
-
     this.panelNode.hidden = false;
-    this.panelNode.addEventListener("popuphiding", () => {
-      this.mainButtonNode.removeAttribute("open");
-    }, {once: true});
     this.mainButtonNode.setAttribute("open", "true");
     PanelMultiView.openPopup(this.panelNode, this.mainButtonNode, {
       position: "bottomcenter topright",
@@ -880,10 +965,29 @@ var BrowserPageActionFeedback = {
     return this.feedbackLabel = document.getElementById("pageActionFeedbackMessage");
   },
 
-  show(action, event, textContentOverride) {
-    this.feedbackLabel.textContent = this.panelNode.getAttribute((textContentOverride || action.id) + "Feedback");
+  /**
+   * Shows the feedback popup for an action.
+   *
+   * @param  action (PageActions.Action, required)
+   *         The action associated with the feedback.
+   * @param  opts (object, optional)
+   *         An object with the following optional properties:
+   *         - event (DOM event): The event that triggered the feedback.
+   *         - textAttributeOverride (string): Normally the feedback text is
+   *           taken from an attribute on the feedback panel.  The attribute's
+   *           name is `${action.id}Feedback`.  Use this to override the
+   *           action.id part of the name.
+   *         - text (string): The text string.  If not given, an attribute on
+   *           panel is assumed to contain the text, as described above.
+   */
+  show(action, opts = {}) {
+    this.feedbackLabel.textContent =
+      opts.text ||
+      this.panelNode.getAttribute((opts.textAttributeOverride || action.id) +
+                                  "Feedback");
     this.panelNode.hidden = false;
 
+    let event = opts.event || null;
     let anchor = BrowserPageActions.panelAnchorNodeForAction(action, event);
     PanelMultiView.openPopup(this.panelNode, anchor, {
       position: "bottomcenter topright",
@@ -934,7 +1038,9 @@ BrowserPageActions.copyURL = {
       .getService(Ci.nsIClipboardHelper)
       .copyString(gURLBar.makeURIReadable(gBrowser.selectedBrowser.currentURI).displaySpec);
     let action = PageActions.actionForID("copyURL");
-    BrowserPageActionFeedback.show(action, event);
+    BrowserPageActionFeedback.show(action, {
+      event,
+    });
   },
 };
 
@@ -960,6 +1066,15 @@ BrowserPageActions.sendToDevice = {
 
   onSubviewPlaced(panelViewNode) {
     let bodyNode = panelViewNode.querySelector(".panel-subview-body");
+    let notReady = document.createElement("toolbarbutton");
+    notReady.classList.add(
+      "subviewbutton",
+      "subviewbutton-iconic",
+      "pageAction-sendToDevice-notReady"
+    );
+    notReady.setAttribute("label", "sendToDevice-notReadyTitle");
+    notReady.setAttribute("disabled", "true");
+    bodyNode.appendChild(notReady);
     for (let node of bodyNode.childNodes) {
       BrowserPageActions.takeNodeAttributeFromPanel(node, "title");
       BrowserPageActions.takeNodeAttributeFromPanel(node, "shortcut");
@@ -1002,8 +1117,11 @@ BrowserPageActions.sendToDevice = {
         // in", "Learn about Sync", etc.  Device items will be .sendtab-target.
         if (event.target.classList.contains("sendtab-target")) {
           let action = PageActions.actionForID("sendToDevice");
-          let textOverride = gSync.offline && "sendToDeviceOffline";
-          BrowserPageActionFeedback.show(action, event, textOverride);
+          let textAttributeOverride = gSync.offline && "sendToDeviceOffline";
+          BrowserPageActionFeedback.show(action, {
+            event,
+            textAttributeOverride,
+          });
         }
       });
       return item;
@@ -1026,3 +1144,177 @@ BrowserPageActions.sendToDevice = {
     }
   },
 };
+
+// add search engine
+BrowserPageActions.addSearchEngine = {
+  get action() {
+    return PageActions.actionForID("addSearchEngine");
+  },
+
+  get engines() {
+    return gBrowser.selectedBrowser.engines || [];
+  },
+
+  get strings() {
+    delete this.strings;
+    let uri = "chrome://browser/locale/search.properties";
+    return this.strings = Services.strings.createBundle(uri);
+  },
+
+  updateEngines() {
+    // As a slight optimization, if the action isn't in the urlbar, don't do
+    // anything here except disable it.  The action's panel nodes are updated
+    // when the panel is shown.
+    this.action.setDisabled(!this.engines.length, window);
+    if (this.action.shouldShowInUrlbar(window)) {
+      this._updateTitleAndIcon();
+    }
+  },
+
+  _updateTitleAndIcon() {
+    if (!this.engines.length) {
+      return;
+    }
+    let title = this.strings.GetStringFromName("searchAddFoundEngine2");
+    this.action.setTitle(title, window);
+    this.action.setIconURL(this.engines[0].icon, window);
+  },
+
+  onShowingInPanel() {
+    this._updateTitleAndIcon();
+    this.action.setWantsSubview(this.engines.length > 1, window);
+    let button = BrowserPageActions.panelButtonNodeForActionID(this.action.id);
+    button.classList.add("badged-button");
+    button.setAttribute("image", this.engines[0].icon);
+    button.setAttribute("uri", this.engines[0].uri);
+    button.setAttribute("crop", "center");
+  },
+
+  onSubviewShowing(panelViewNode) {
+    let body = panelViewNode.querySelector(".panel-subview-body");
+    while (body.firstChild) {
+      body.firstChild.remove();
+    }
+    for (let engine of this.engines) {
+      let button = document.createElement("toolbarbutton");
+      button.classList.add("subviewbutton", "subviewbutton-iconic");
+      button.setAttribute("label", engine.title);
+      button.setAttribute("image", engine.icon);
+      button.setAttribute("uri", engine.uri);
+      button.addEventListener("command", event => {
+        let panelNode = panelViewNode.closest("panel");
+        PanelMultiView.hidePopup(panelNode);
+        this._installEngine(button.getAttribute("uri"),
+                            button.getAttribute("image"));
+      });
+      body.appendChild(button);
+    }
+  },
+
+  onCommand(event, buttonNode) {
+    if (!buttonNode.closest("panel")) {
+      // The urlbar button was clicked.  It should have a subview if there are
+      // many engines.
+      let manyEngines = this.engines.length > 1;
+      this.action.setWantsSubview(manyEngines, window);
+      if (manyEngines) {
+        return;
+      }
+    }
+    // Either the panel button or urlbar button was clicked -- not a button in
+    // the subview -- but in either case, there's only one search engine.
+    // (Because this method isn't called when the panel button is clicked and it
+    // shows a subview, and the many-engines case for the urlbar returned early
+    // above.)
+    let engine = this.engines[0];
+    this._installEngine(engine.uri, engine.icon);
+  },
+
+  _installEngine(uri, image) {
+    Services.search.addEngine(uri, null, image, false, {
+      onSuccess: engine => {
+        BrowserPageActionFeedback.show(this.action, {
+          text: this.strings.GetStringFromName("searchAddedFoundEngine2"),
+        });
+      },
+      onError(errorCode) {
+        if (errorCode != Ci.nsISearchInstallCallback.ERROR_DUPLICATE_ENGINE) {
+          // Download error is shown by the search service
+          return;
+        }
+        const kSearchBundleURI = "chrome://global/locale/search/search.properties";
+        let searchBundle = Services.strings.createBundle(kSearchBundleURI);
+        let brandBundle = document.getElementById("bundle_brand");
+        let brandName = brandBundle.getString("brandShortName");
+        let title = searchBundle.GetStringFromName("error_invalid_engine_title");
+        let text = searchBundle.formatStringFromName("error_duplicate_engine_msg",
+                                                     [brandName, uri], 2);
+        Services.prompt.QueryInterface(Ci.nsIPromptFactory);
+        let prompt = Services.prompt.getPrompt(gBrowser.contentWindow, Ci.nsIPrompt);
+        prompt.QueryInterface(Ci.nsIWritablePropertyBag2);
+        prompt.setPropertyAsBool("allowTabModal", true);
+        prompt.alert(title, text);
+      },
+    });
+  },
+};
+
+// share URL
+BrowserPageActions.shareURL = {
+  onShowingInPanel(buttonNode) {
+    this._cached = false;
+  },
+
+  onPlacedInPanel(buttonNode) {
+    let action = PageActions.actionForID("shareURL");
+    BrowserPageActions.takeActionTitleFromPanel(action);
+  },
+
+  onShowingSubview(panelViewNode) {
+    let bodyNode = panelViewNode.querySelector(".panel-subview-body");
+
+    // We cache the providers + the UI if the user selects the share
+    // panel multiple times while the panel is open.
+    if (this._cached && bodyNode.childNodes.length > 0) {
+      return;
+    }
+
+    let sharingService = this._sharingService;
+    let url = gBrowser.selectedBrowser.currentURI;
+    let currentURI = gURLBar.makeURIReadable(url).displaySpec;
+    let shareProviders = sharingService.getSharingProviders(currentURI);
+    let fragment = document.createDocumentFragment();
+
+    shareProviders.forEach(function(share) {
+      let item = document.createElement("toolbarbutton");
+      item.setAttribute("label", share.menuItemTitle);
+      item.setAttribute("share-name", share.name);
+      item.setAttribute("image", share.image);
+      item.classList.add("subviewbutton", "subviewbutton-iconic");
+
+      item.addEventListener("command", event => {
+        let shareName = event.target.getAttribute("share-name");
+        if (shareName) {
+          sharingService.shareUrl(shareName,
+                                  currentURI,
+                                  gBrowser.selectedBrowser.contentTitle);
+        }
+        PanelMultiView.hidePopup(BrowserPageActions.panelNode);
+      });
+
+      fragment.appendChild(item);
+    });
+
+    while (bodyNode.firstChild) {
+      bodyNode.firstChild.remove();
+    }
+    bodyNode.appendChild(fragment);
+    this._cached = true;
+  }
+};
+
+// Attach sharingService here so tests can override the implementation
+XPCOMUtils.defineLazyServiceGetter(BrowserPageActions.shareURL,
+                                   "_sharingService",
+                                   "@mozilla.org/widget/macsharingservice;1",
+                                   "nsIMacSharingService");

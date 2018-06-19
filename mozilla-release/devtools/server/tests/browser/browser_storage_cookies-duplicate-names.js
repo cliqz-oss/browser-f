@@ -8,6 +8,7 @@
 // name (and different paths).
 
 const {StorageFront} = require("devtools/shared/fronts/storage");
+/* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js", this);
 
 const TESTDATA = {
@@ -42,7 +43,7 @@ const TESTDATA = {
   ]
 };
 
-add_task(async function () {
+add_task(async function() {
   await openTabAndSetupStorage(MAIN_DOMAIN + "storage-cookies-same-name.html");
 
   initDebuggerServer();
@@ -70,7 +71,7 @@ function testCookies(cookiesActor) {
   return testCookiesObjects(0, cookiesActor.hosts, cookiesActor);
 }
 
-var testCookiesObjects = async function (index, hosts, cookiesActor) {
+var testCookiesObjects = async function(index, hosts, cookiesActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     is(data.total, TESTDATA[host].length,

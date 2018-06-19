@@ -23,7 +23,7 @@ class ArenaLists;
  * that can be swept and allocated off thread.
  *
  * In non-threadsafe builds, all actual sweeping and allocation is performed
- * on the active thread, but GCHelperState encapsulates this from clients as
+ * on the main thread, but GCHelperState encapsulates this from clients as
  * much as possible.
  */
 class GCHelperState
@@ -36,13 +36,13 @@ class GCHelperState
     // Associated runtime.
     JSRuntime* const rt;
 
-    // Condvar for notifying the active thread when work has finished. This is
+    // Condvar for notifying the main thread when work has finished. This is
     // associated with the runtime's GC lock --- the worker thread state
     // condvars can't be used here due to lock ordering issues.
     ConditionVariable done;
 
     // Activity for the helper to do, protected by the GC lock.
-    ActiveThreadOrGCTaskData<State> state_;
+    MainThreadOrGCTaskData<State> state_;
 
     // Whether work is being performed on some thread.
     GCLockData<bool> hasThread;

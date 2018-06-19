@@ -29,8 +29,8 @@ XULStore.prototype = {
                                     contractID: XULSTORE_CONTRACTID,
                                     classDescription: "XULStore",
                                     interfaces: [Ci.nsIXULStore]}),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsIXULStore,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsIXULStore,
+                                          Ci.nsISupportsWeakReference]),
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(XULStore),
 
   /* ---------- private members ---------- */
@@ -221,6 +221,20 @@ XULStore.prototype = {
     }
   },
 
+  removeDocument(docURI) {
+    this.log("remove store values for doc=" + docURI);
+
+    if (!this._saveAllowed) {
+      Services.console.logStringMessage("XULStore: Changes after profile-before-change are ignored!");
+      return;
+    }
+
+    if (this._data[docURI]) {
+      delete this._data[docURI];
+      this.markAsChanged();
+    }
+  },
+
   getIDsEnumerator(docURI) {
     this.log("Getting ID enumerator for doc=" + docURI);
 
@@ -258,7 +272,7 @@ function nsStringEnumerator(items) {
 }
 
 nsStringEnumerator.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIStringEnumerator]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIStringEnumerator]),
   _nextIndex: 0,
   hasMore() {
     return this._nextIndex < this._items.length;

@@ -9,12 +9,12 @@
 #include "AndroidBridge.h"
 #include "FennecJNINatives.h"
 #include "gfxPlatform.h"
+#include "mozilla/dom/DOMRect.h"
 #include "mozIDOMWindow.h"
 #include "nsAppShell.h"
 #include "nsCOMPtr.h"
 #include "nsIChannel.h"
 #include "nsIDOMWindowUtils.h"
-#include "nsIDOMClientRect.h"
 #include "nsIDocShell.h"
 #include "nsIHttpChannel.h"
 #include "nsIPresShell.h"
@@ -200,7 +200,7 @@ public:
             bool mIdlePass;
 
         public:
-            IdleEvent(Functor&& aCall)
+            explicit IdleEvent(Functor&& aCall)
                 : Runnable("ThumbnailHelperIdle")
                 , mLambda(Move(aCall))
                 , mIdlePass(false)
@@ -240,17 +240,19 @@ public:
 
         // take a screenshot, as wide as possible, proportional to the destination size
         nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-        nsCOMPtr<nsIDOMClientRect> rect;
-        float pageLeft = 0.0f, pageTop = 0.0f, pageWidth = 0.0f, pageHeight = 0.0f;
-
+        RefPtr<DOMRect> rect;
         if (!utils ||
                 NS_FAILED(utils->GetRootBounds(getter_AddRefs(rect))) ||
-                !rect ||
-                NS_FAILED(rect->GetLeft(&pageLeft)) ||
-                NS_FAILED(rect->GetTop(&pageTop)) ||
-                NS_FAILED(rect->GetWidth(&pageWidth)) ||
-                NS_FAILED(rect->GetHeight(&pageHeight)) ||
-                int32_t(pageWidth) == 0 || int32_t(pageHeight) == 0) {
+                !rect) {
+            java::ThumbnailHelper::NotifyThumbnail(
+                    aData, aTab, /* success */ false, /* store */ false);
+            return;
+        }
+        float pageLeft = rect->Left();
+        float pageTop = rect->Top();
+        float pageWidth = rect->Width();
+        float pageHeight = rect->Height();
+        if (int32_t(pageWidth) == 0 || int32_t(pageHeight) == 0) {
             java::ThumbnailHelper::NotifyThumbnail(
                     aData, aTab, /* success */ false, /* store */ false);
             return;

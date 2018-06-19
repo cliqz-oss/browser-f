@@ -101,7 +101,7 @@ SetASameSiteCookie(nsICookieService *aCookieService, const char *aSpec1, const c
     NS_NewChannel(getter_AddRefs(dummyChannel),
                   uri1,
                   spec1Principal,
-                  nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
+                  nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
                   nsIContentPolicy::TYPE_OTHER);
 
     nsresult rv = aCookieService->SetCookieStringFromHttp(uri1, uri2, nullptr, (char *)aCookieString, aServerTime, dummyChannel);

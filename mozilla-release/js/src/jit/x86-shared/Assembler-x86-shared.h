@@ -395,8 +395,13 @@ class AssemblerX86Shared : public AssemblerShared
 
     static void TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
 
-    // MacroAssemblers hold onto gcthings, so they are traced by the GC.
-    void trace(JSTracer* trc);
+    void assertNoGCThings() const {
+#ifdef DEBUG
+        MOZ_ASSERT(dataRelocations_.length() == 0);
+        for (auto& j : jumps_)
+            MOZ_ASSERT(j.kind == Relocation::HARDCODED);
+#endif
+    }
 
     bool oom() const {
         return AssemblerShared::oom() ||
@@ -934,17 +939,6 @@ class AssemblerX86Shared : public AssemblerShared
     void j(Condition cond, RepatchLabel* label) { jSrc(cond, label); }
     void jmp(RepatchLabel* label) { jmpSrc(label); }
 
-    void j(Condition cond, wasm::OldTrapDesc target) {
-        Label l;
-        j(cond, &l);
-        bindLater(&l, target);
-    }
-    void jmp(wasm::OldTrapDesc target) {
-        Label l;
-        jmp(&l);
-        bindLater(&l, target);
-    }
-
     void jmp(const Operand& op) {
         switch (op.kind()) {
           case Operand::MEM_REG_DISP:
@@ -974,15 +968,6 @@ class AssemblerX86Shared : public AssemblerShared
             } while (more);
         }
         label->bind(dst.offset());
-    }
-    void bindLater(Label* label, wasm::OldTrapDesc target) {
-        if (label->used()) {
-            JmpSrc jmp(label->offset());
-            do {
-                append(wasm::OldTrapSite(target, jmp.offset()));
-            } while (masm.nextJump(jmp, &jmp));
-        }
-        label->reset();
     }
     void bind(RepatchLabel* label) {
         JmpDst dst(masm.label());
@@ -1084,24 +1069,11 @@ class AssemblerX86Shared : public AssemblerShared
         unsigned char* code = masm.data();
         X86Encoding::SetRel32(code + farJump.offset(), code + targetOffset);
     }
-    static void repatchFarJump(uint8_t* code, uint32_t farJumpOffset, uint32_t targetOffset) {
-        X86Encoding::SetRel32(code + farJumpOffset, code + targetOffset);
-    }
 
     // This is for patching during code generation, not after.
     void patchAddl(CodeOffset offset, int32_t n) {
         unsigned char* code = masm.data();
         X86Encoding::SetInt32(code + offset.offset(), n);
-    }
-
-    CodeOffset twoByteNop() {
-        return CodeOffset(masm.twoByteNop().offset());
-    }
-    static void patchTwoByteNopToJump(uint8_t* jump, uint8_t* target) {
-        X86Encoding::BaseAssembler::patchTwoByteNopToJump(jump, target);
-    }
-    static void patchJumpToTwoByteNop(uint8_t* jump) {
-        X86Encoding::BaseAssembler::patchJumpToTwoByteNop(jump);
     }
 
     static void patchFiveByteNopToCall(uint8_t* callsite, uint8_t* target) {

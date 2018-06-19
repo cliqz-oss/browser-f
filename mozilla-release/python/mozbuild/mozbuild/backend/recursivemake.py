@@ -64,7 +64,7 @@ from ..frontend.data import (
     RustLibrary,
     HostRustLibrary,
     RustProgram,
-    RustTest,
+    RustTests,
     SharedLibrary,
     SimpleProgram,
     Sources,
@@ -539,12 +539,17 @@ class RecursiveMakeBackend(CommonBackend):
             if obj.inputs:
                 if obj.localized:
                     # Localized generated files can have locale-specific inputs, which are
-                    # indicated by paths starting with `en-US/` or containing `/locales/en-US/`.
+                    # indicated by paths starting with `en-US/` or containing `locales/en-US/`.
                     def srcpath(p):
-                        if '/locales/en-US' in p:
-                            e, f = p.split('/locales/en-US/', 1)
+                        if 'locales/en-US' in p:
+                            # We need an "absolute source path" relative to
+                            # topsrcdir, like "/source/path".
+                            if not p.startswith('/'):
+                                p = '/' + mozpath.relpath(p.full_path, obj.topsrcdir)
+                            e, f = p.split('locales/en-US/', 1)
                             assert(f)
-                            return '$(call MERGE_RELATIVE_FILE,%s,/locales/%s)' % (f, e)
+                            return '$(call MERGE_RELATIVE_FILE,{},{}locales)'.format(
+                                f, e if not e.startswith('/') else e[len('/'):])
                         elif p.startswith('en-US/'):
                             e, f = p.split('en-US/', 1)
                             assert(not e)
@@ -573,8 +578,15 @@ class RecursiveMakeBackend(CommonBackend):
                     backend_file.write('%s: %s ;\n' % (output, first_output))
                 backend_file.write('GARBAGE += %s\n' % output)
             backend_file.write('EXTRA_MDDEPEND_FILES += %s\n' % dep_file)
+
+            force = ''
+            if obj.force:
+                force = ' FORCE'
+            elif obj.localized:
+                force = ' $(if $(IS_LANGUAGE_REPACK),FORCE)'
+
             if obj.script:
-                backend_file.write("""{output}: {script}{inputs}{backend}{repack_force}
+                backend_file.write("""{output}: {script}{inputs}{backend}{force}
 \t$(REPORT_BUILD)
 \t$(call py_action,file_generate,{locale}{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
 
@@ -587,7 +599,7 @@ class RecursiveMakeBackend(CommonBackend):
            # so standard mtime dependencies won't work properly when the build is re-run
            # with a different locale as input. IS_LANGUAGE_REPACK will reliably be set
            # in this situation, so simply force the generation to run in that case.
-           repack_force=' $(if $(IS_LANGUAGE_REPACK),FORCE)' if obj.localized else '',
+           force=force,
            locale='--locale=$(AB_CD) ' if obj.localized else '',
            script=obj.script,
            method=obj.method))
@@ -608,8 +620,8 @@ class RecursiveMakeBackend(CommonBackend):
             build_target = self._build_target_for_obj(obj)
             self._compile_graph[build_target]
 
-        elif isinstance(obj, RustTest):
-            self._process_rust_test(obj, backend_file)
+        elif isinstance(obj, RustTests):
+            self._process_rust_tests(obj, backend_file)
 
         elif isinstance(obj, Program):
             self._process_program(obj, backend_file)
@@ -1051,8 +1063,6 @@ class RecursiveMakeBackend(CommonBackend):
 
         modules = manager.modules
         xpt_modules = sorted(modules.keys())
-        xpt_files = set()
-        registered_xpt_files = set()
 
         mk = Makefile()
 
@@ -1070,36 +1080,12 @@ class RecursiveMakeBackend(CommonBackend):
             # listing the .idls here, we ensure the make file has a
             # reference to the new .idl. Since the new .idl presumably has
             # an mtime newer than the .xpt, it will trigger xpt generation.
-            xpt_path = '$(DEPTH)/%s/components/%s.xpt' % (install_target, module)
-            xpt_files.add(xpt_path)
             mk.add_statement('%s_deps = %s' % (module, ' '.join(deps)))
 
-            if install_target.startswith('dist/'):
-                path = mozpath.relpath(xpt_path, '$(DEPTH)/dist')
-                prefix, subpath = path.split('/', 1)
-                key = 'dist_%s' % prefix
-
-                self._install_manifests[key].add_optional_exists(subpath)
+            build_files.add_optional_exists('%s.xpt' % module)
 
         rules = StringIO()
         mk.dump(rules, removal_guard=False)
-
-        interfaces_manifests = []
-        dist_dir = mozpath.join(self.environment.topobjdir, 'dist')
-        for manifest, entries in manager.interface_manifests.items():
-            interfaces_manifests.append(mozpath.join('$(DEPTH)', manifest))
-            for xpt in sorted(entries):
-                registered_xpt_files.add(mozpath.join(
-                    '$(DEPTH)', mozpath.dirname(manifest), xpt))
-
-            if install_target.startswith('dist/'):
-                path = mozpath.join(self.environment.topobjdir, manifest)
-                path = mozpath.relpath(path, dist_dir)
-                prefix, subpath = path.split('/', 1)
-                key = 'dist_%s' % prefix
-                self._install_manifests[key].add_optional_exists(subpath)
-
-        chrome_manifests = [mozpath.join('$(DEPTH)', m) for m in sorted(manager.chrome_manifests)]
 
         # Create dependency for output header so we force regeneration if the
         # header was deleted. This ideally should not be necessary. However,
@@ -1115,16 +1101,12 @@ class RecursiveMakeBackend(CommonBackend):
         obj.topobjdir = self.environment.topobjdir
         obj.config = self.environment
         self._create_makefile(obj, extra=dict(
-            chrome_manifests = ' '.join(chrome_manifests),
-            interfaces_manifests = ' '.join(interfaces_manifests),
             xpidl_rules=rules.getvalue(),
             xpidl_modules=' '.join(xpt_modules),
-            xpt_files=' '.join(sorted(xpt_files - registered_xpt_files)),
-            registered_xpt_files=' '.join(sorted(registered_xpt_files)),
         ))
 
     def _process_program(self, obj, backend_file):
-        backend_file.write('PROGRAM = %s\n' % obj.program)
+        backend_file.write('PROGRAM = %s\n' % self._pretty_path(obj.output_path, backend_file))
         if not obj.cxx_link and not self.environment.bin_suffix:
             backend_file.write('PROG_IS_C_ONLY_%s := 1\n' % obj.program)
 
@@ -1149,10 +1131,10 @@ class RecursiveMakeBackend(CommonBackend):
                                         'HOST_RUST_PROGRAMS',
                                         'HOST_RUST_CARGO_PROGRAMS')
 
-    def _process_rust_test(self, obj, backend_file):
+    def _process_rust_tests(self, obj, backend_file):
         self._no_skip['check'].add(backend_file.relobjdir)
         backend_file.write_once('CARGO_FILE := $(srcdir)/Cargo.toml\n')
-        backend_file.write_once('RUST_TEST := %s\n' % obj.name)
+        backend_file.write_once('RUST_TESTS := %s\n' % ' '.join(obj.names))
         backend_file.write_once('RUST_TEST_FEATURES := %s\n' % ' '.join(obj.features))
 
     def _process_simple_program(self, obj, backend_file):
@@ -1312,66 +1294,103 @@ class RecursiveMakeBackend(CommonBackend):
             self.environment.topobjdir), obj.KIND)
 
     def _process_linked_libraries(self, obj, backend_file):
-        def write_shared_and_system_libs(lib):
-            for l in lib.linked_libraries:
-                if isinstance(l, (StaticLibrary, RustLibrary)):
-                    write_shared_and_system_libs(l)
-                else:
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                        % (pretty_relpath(l), l.import_name))
-            for l in lib.linked_system_libs:
-                backend_file.write_once('OS_LIBS += %s\n' % l)
-
-        def pretty_relpath(lib):
-            return '$(DEPTH)/%s' % mozpath.relpath(lib.objdir, topobjdir)
+        def pretty_relpath(lib, name):
+            return os.path.normpath(mozpath.join(mozpath.relpath(lib.objdir, obj.objdir),
+                                                 name))
 
         topobjdir = mozpath.normsep(obj.topobjdir)
         # This will create the node even if there aren't any linked libraries.
         build_target = self._build_target_for_obj(obj)
         self._compile_graph[build_target]
 
+        objs, no_pgo_objs, shared_libs, os_libs, static_libs = self._expand_libs(obj)
+
+        if obj.KIND == 'target':
+            obj_target = obj.name
+            if isinstance(obj, Program):
+                obj_target = self._pretty_path(obj.output_path, backend_file)
+
+            is_unit_test = isinstance(obj, BaseProgram) and obj.is_unit_test
+            profile_gen_objs = []
+
+            if (self.environment.substs.get('MOZ_PGO') and
+                self.environment.substs.get('GNU_CC')):
+                # We use a different OBJ_SUFFIX for the profile generate phase on
+                # linux. These get picked up via OBJS_VAR_SUFFIX in config.mk.
+                if not is_unit_test and not isinstance(obj, SimpleProgram):
+                    profile_gen_objs = [o if o in no_pgo_objs else '%s.%s' %
+                                        (mozpath.splitext(o)[0], 'i_o') for o in objs]
+
+            def write_obj_deps(target, objs_ref, pgo_objs_ref):
+                if pgo_objs_ref:
+                    backend_file.write('ifdef MOZ_PROFILE_GENERATE\n')
+                    backend_file.write('%s: %s\n' % (target, pgo_objs_ref))
+                    backend_file.write('else\n')
+                    backend_file.write('%s: %s\n' % (target, objs_ref))
+                    backend_file.write('endif\n')
+                else:
+                    backend_file.write('%s: %s\n' % (target, objs_ref))
+
+            objs_ref = ' \\\n    '.join(os.path.relpath(o, obj.objdir)
+                                        for o in objs)
+            pgo_objs_ref = ' \\\n    '.join(os.path.relpath(o, obj.objdir)
+                                            for o in profile_gen_objs)
+            # Don't bother with a list file if we're only linking objects built
+            # in this directory or building a real static library. This
+            # accommodates clang-plugin, where we would otherwise pass an
+            # incorrect list file format to the host compiler as well as when
+            # creating an archive with AR, which doesn't understand list files.
+            if (objs == obj.objs and not isinstance(obj, StaticLibrary) or
+              isinstance(obj, StaticLibrary) and obj.no_expand_lib):
+                backend_file.write_once('%s_OBJS := %s\n' % (obj.name,
+                                                             objs_ref))
+                if profile_gen_objs:
+                    backend_file.write_once('%s_PGO_OBJS := %s\n' % (obj.name,
+                                                                     pgo_objs_ref))
+                write_obj_deps(obj_target, objs_ref, pgo_objs_ref)
+            elif not isinstance(obj, StaticLibrary):
+                list_file_path = '%s.list' % obj.name.replace('.', '_')
+                list_file_ref = self._make_list_file(obj.objdir, objs,
+                                                     list_file_path)
+                backend_file.write_once('%s_OBJS := %s\n' %
+                                        (obj.name, list_file_ref))
+                backend_file.write_once('%s: %s\n' % (obj_target, list_file_path))
+                if profile_gen_objs:
+                    pgo_list_file_path = '%s_pgo.list' % obj.name.replace('.', '_')
+                    pgo_list_file_ref = self._make_list_file(obj.objdir,
+                                                             profile_gen_objs,
+                                                             pgo_list_file_path)
+                    backend_file.write_once('%s_PGO_OBJS := %s\n' %
+                                            (obj.name, pgo_list_file_ref))
+                    backend_file.write_once('%s: %s\n' % (obj_target,
+                                                          pgo_list_file_path))
+                write_obj_deps(obj_target, objs_ref, pgo_objs_ref)
+
+        for lib in shared_libs:
+            backend_file.write_once('SHARED_LIBS += %s\n' %
+                                    pretty_relpath(lib, lib.import_name))
+        for lib in static_libs:
+            backend_file.write_once('STATIC_LIBS += %s\n' %
+                                    pretty_relpath(lib, lib.import_name))
+        for lib in os_libs:
+            if obj.KIND == 'target':
+                backend_file.write_once('OS_LIBS += %s\n' % lib)
+            else:
+                backend_file.write_once('HOST_EXTRA_LIBS += %s\n' % lib)
+
         for lib in obj.linked_libraries:
             if not isinstance(lib, ExternalLibrary):
                 self._compile_graph[build_target].add(
                     self._build_target_for_obj(lib))
-            relpath = pretty_relpath(lib)
-            if isinstance(obj, Library):
-                if isinstance(lib, RustLibrary):
-                    # We don't need to do anything here; we will handle
-                    # linkage for any RustLibrary elsewhere.
-                    continue
-                elif isinstance(lib, StaticLibrary):
-                    backend_file.write_once('STATIC_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-                    if isinstance(obj, SharedLibrary):
-                        write_shared_and_system_libs(lib)
-                elif isinstance(obj, SharedLibrary):
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-            elif isinstance(obj, (Program, SimpleProgram)):
-                if isinstance(lib, StaticLibrary):
-                    backend_file.write_once('STATIC_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-                    write_shared_and_system_libs(lib)
-                else:
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-            elif isinstance(obj, (HostLibrary, HostProgram, HostSimpleProgram)):
-                assert isinstance(lib, (HostLibrary, HostRustLibrary))
-                backend_file.write_once('HOST_LIBS += %s/%s\n'
-                                   % (relpath, lib.import_name))
+            if isinstance(lib, (HostLibrary, HostRustLibrary)):
+                backend_file.write_once('HOST_LIBS += %s\n' %
+                                        pretty_relpath(lib, lib.import_name))
 
         # We have to link any Rust libraries after all intermediate static
         # libraries have been listed to ensure that the Rust libraries are
         # searched after the C/C++ objects that might reference Rust symbols.
         if isinstance(obj, SharedLibrary):
             self._process_rust_libraries(obj, backend_file, pretty_relpath)
-
-        for lib in obj.linked_system_libs:
-            if obj.KIND == 'target':
-                backend_file.write_once('OS_LIBS += %s\n' % lib)
-            else:
-                backend_file.write_once('HOST_EXTRA_LIBS += %s\n' % lib)
 
         # Process library-based defines
         self._process_defines(obj.lib_defines, backend_file)
@@ -1390,8 +1409,8 @@ class RecursiveMakeBackend(CommonBackend):
         # TODO: see bug 1310063 for checking dependencies are set up correctly.
 
         direct_linked = direct_linked[0]
-        backend_file.write('RUST_STATIC_LIB_FOR_SHARED_LIB := %s/%s\n' %
-                           (pretty_relpath(direct_linked), direct_linked.import_name))
+        backend_file.write('RUST_STATIC_LIB_FOR_SHARED_LIB := %s\n' %
+                           pretty_relpath(direct_linked, direct_linked.import_name))
 
     def _process_final_target_files(self, obj, files, backend_file):
         target = obj.install_target

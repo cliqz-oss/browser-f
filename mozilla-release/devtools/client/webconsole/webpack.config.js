@@ -77,8 +77,7 @@ webpackConfig.resolve = {
   alias: {
     "Services": "devtools-modules/src/Services",
 
-    "devtools/client/webconsole/jsterm": path.join(__dirname, "../../client/shared/webpack/shims/jsterm-stub"),
-    "devtools/client/webconsole/utils": path.join(__dirname, "new-console-output/test/fixtures/WebConsoleUtils"),
+    "devtools/client/webconsole/utils": path.join(__dirname, "test/fixtures/WebConsoleUtils"),
 
     "devtools/client/shared/vendor/immutable": "immutable",
     "devtools/client/shared/vendor/react": "react",
@@ -87,18 +86,18 @@ webpackConfig.resolve = {
     "devtools/client/shared/vendor/redux": "redux",
     "devtools/client/shared/vendor/reselect": "reselect",
 
-    "devtools/shared/system": path.join(__dirname, "../../client/shared/webpack/shims/system-stub"),
+    "resource://gre/modules/AppConstants.jsm": path.join(__dirname, "../../client/shared/webpack/shims/app-constants-stub"),
 
     "devtools/client/framework/devtools": path.join(__dirname, "../../client/shared/webpack/shims/framework-devtools-shim"),
     "devtools/client/framework/menu": "devtools-modules/src/menu",
     "devtools/client/sourceeditor/editor": "devtools-source-editor/src/source-editor",
 
+    "devtools/client/shared/unicode-url": "./node_modules/devtools-modules/src/unicode-url",
     "devtools/client/shared/zoom-keys": "devtools-modules/src/zoom-keys",
 
     "devtools/shared/fronts/timeline": path.join(__dirname, "../../client/shared/webpack/shims/fronts-timeline-shim"),
-    "devtools/shared/old-event-emitter": "devtools-modules/src/utils/event-emitter",
     "devtools/shared/event-emitter": "devtools-modules/src/utils/event-emitter",
-    "devtools/shared/client/debugger-client": path.join(__dirname, "new-console-output/test/fixtures/DebuggerClient"),
+    "devtools/shared/client/debugger-client": path.join(__dirname, "test/fixtures/DebuggerClient"),
     "devtools/shared/platform/clipboard": path.join(__dirname, "../../client/shared/webpack/shims/platform-clipboard-stub"),
     "devtools/shared/platform/stack": path.join(__dirname, "../../client/shared/webpack/shims/platform-stack-stub"),
 
@@ -106,7 +105,7 @@ webpackConfig.resolve = {
     "toolkit/locales": path.join(__dirname, "../../../toolkit/locales/en-US"),
     "devtools/client/locales": path.join(__dirname, "../../client/locales/en-US"),
     "devtools/shared/locales": path.join(__dirname, "../../shared/locales/en-US"),
-    "devtools/shim/locales": path.join(__dirname, "../../shared/locales/en-US"),
+    "devtools/startup/locales": path.join(__dirname, "../../shared/locales/en-US"),
 
     // Unless a path explicitly needs to be rewritten or shimmed, all devtools paths can
     // be mapped to ../../

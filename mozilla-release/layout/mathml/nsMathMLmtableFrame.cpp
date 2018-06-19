@@ -7,7 +7,6 @@
 #include "gfxContext.h"
 #include "nsMathMLmtableFrame.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
 #include "nsStyleConsts.h"
 #include "nsNameSpaceManager.h"
 #include "nsCSSRendering.h"
@@ -18,7 +17,6 @@
 #include "celldata.h"
 
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include <algorithm>
 
 #include "nsIScriptError.h"
@@ -325,7 +323,7 @@ public:
                                                  mFrame, mVisibleRect,
                                                  bounds,
                                                  styleBorder,
-                                                 mFrame->StyleContext(),
+                                                 mFrame->Style(),
                                                  flags,
                                                  mFrame->GetSkipSides());
 
@@ -449,7 +447,7 @@ ExtractSpacingValues(const nsAString&   aString,
                      float              aFontSizeInflation)
 {
   nsPresContext* presContext = aFrame->PresContext();
-  nsStyleContext* styleContext = aFrame->StyleContext();
+  ComputedStyle* computedStyle = aFrame->Style();
 
   const char16_t* start = aString.BeginReading();
   const char16_t* end = aString.EndReading();
@@ -484,7 +482,7 @@ ExtractSpacingValues(const nsAString&   aString,
       }
       nsMathMLFrame::ParseNumericValue(valueString, &newValue,
                                        nsMathMLElement::PARSE_ALLOW_UNITLESS,
-                                       presContext, styleContext,
+                                       presContext, computedStyle,
                                        aFontSizeInflation);
       aSpacingArray.AppendElement(newValue);
 
@@ -702,9 +700,9 @@ NS_QUERYFRAME_HEAD(nsMathMLmtableWrapperFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsTableWrapperFrame)
 
 nsContainerFrame*
-NS_NewMathMLmtableOuterFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmtableOuterFrame (nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmtableWrapperFrame(aContext);
+  return new (aPresShell) nsMathMLmtableWrapperFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmtableWrapperFrame)
@@ -933,9 +931,9 @@ nsMathMLmtableWrapperFrame::Reflow(nsPresContext*           aPresContext,
 }
 
 nsContainerFrame*
-NS_NewMathMLmtableFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmtableFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmtableFrame(aContext);
+  return new (aPresShell) nsMathMLmtableFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmtableFrame)
@@ -1101,9 +1099,9 @@ NS_QUERYFRAME_TAIL_INHERITING(nsTableFrame)
 // implementation of nsMathMLmtrFrame
 
 nsContainerFrame*
-NS_NewMathMLmtrFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmtrFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmtrFrame(aContext);
+  return new (aPresShell) nsMathMLmtrFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmtrFrame)
@@ -1148,10 +1146,10 @@ nsMathMLmtrFrame::AttributeChanged(int32_t  aNameSpaceID,
 
 nsContainerFrame*
 NS_NewMathMLmtdFrame(nsIPresShell*   aPresShell,
-                     nsStyleContext* aContext,
+                     ComputedStyle* aStyle,
                      nsTableFrame*   aTableFrame)
 {
-  return new (aPresShell) nsMathMLmtdFrame(aContext, aTableFrame);
+  return new (aPresShell) nsMathMLmtdFrame(aStyle, aTableFrame);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmtdFrame)
@@ -1261,23 +1259,18 @@ NS_QUERYFRAME_HEAD(nsMathMLmtdInnerFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBlockFrame)
 
 nsContainerFrame*
-NS_NewMathMLmtdInnerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmtdInnerFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmtdInnerFrame(aContext);
+  return new (aPresShell) nsMathMLmtdInnerFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmtdInnerFrame)
 
-nsMathMLmtdInnerFrame::nsMathMLmtdInnerFrame(nsStyleContext* aContext)
-  : nsBlockFrame(aContext, kClassID)
-{
+nsMathMLmtdInnerFrame::nsMathMLmtdInnerFrame(ComputedStyle* aStyle)
+  : nsBlockFrame(aStyle, kClassID)
   // Make a copy of the parent nsStyleText for later modification.
-  mUniqueStyleText = new (PresContext()) nsStyleText(*StyleText());
-}
-
-nsMathMLmtdInnerFrame::~nsMathMLmtdInnerFrame()
+  , mUniqueStyleText(MakeUnique<nsStyleText>(*StyleText()))
 {
-  mUniqueStyleText->Destroy(PresContext());
 }
 
 void
@@ -1315,13 +1308,12 @@ nsStyleText* nsMathMLmtdInnerFrame::StyleTextForLineLayout()
   }
 
   mUniqueStyleText->mTextAlign = alignment;
-  return mUniqueStyleText;
+  return mUniqueStyleText.get();
 }
 
 /* virtual */ void
-nsMathMLmtdInnerFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsMathMLmtdInnerFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
-  nsBlockFrame::DidSetStyleContext(aOldStyleContext);
-  mUniqueStyleText->Destroy(PresContext());
-  mUniqueStyleText = new (PresContext()) nsStyleText(*StyleText());
+  nsBlockFrame::DidSetComputedStyle(aOldComputedStyle);
+  mUniqueStyleText = MakeUnique<nsStyleText>(*StyleText());
 }

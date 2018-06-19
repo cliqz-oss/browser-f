@@ -37,12 +37,13 @@ namespace net {
 class nsHttpRequestHead;
 class nsHttpResponseHead;
 
-class Predictor : public nsINetworkPredictor
-                , public nsIObserver
-                , public nsISpeculativeConnectionOverrider
-                , public nsIInterfaceRequestor
-                , public nsICacheEntryMetaDataVisitor
-                , public nsINetworkPredictorVerifier
+class Predictor final
+  : public nsINetworkPredictor
+  , public nsIObserver
+  , public nsISpeculativeConnectionOverrider
+  , public nsIInterfaceRequestor
+  , public nsICacheEntryMetaDataVisitor
+  , public nsINetworkPredictorVerifier
 {
 public:
   NS_DECL_ISUPPORTS
@@ -85,12 +86,10 @@ private:
     NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSIDNSLISTENER
 
-    DNSListener()
-    { }
+    DNSListener() = default;
 
   private:
-    virtual ~DNSListener()
-    { }
+    virtual ~DNSListener() = default;
   };
 
   class Action : public nsICacheEntryOpenCallback
@@ -114,7 +113,7 @@ private:
     static const bool DO_LEARN = false;
 
   private:
-    virtual ~Action();
+    virtual ~Action() = default;
 
     bool mFullUri : 1;
     bool mPredict : 1;
@@ -151,7 +150,7 @@ private:
     { }
 
   private:
-    virtual ~CacheabilityAction() { }
+    virtual ~CacheabilityAction() = default;
 
     nsCOMPtr<nsIURI> mTargetURI;
     uint32_t mHttpStatus;
@@ -177,7 +176,7 @@ private:
     explicit Resetter(Predictor *predictor);
 
   private:
-    virtual ~Resetter() { }
+    virtual ~Resetter() = default;
 
     void Complete();
 
@@ -203,7 +202,7 @@ private:
     void Finalize(nsICacheEntry *entry);
 
   private:
-    virtual ~SpaceCleaner() { }
+    virtual ~SpaceCleaner() = default;
     uint32_t mLRUStamp;
     const char *mLRUKeyToDelete;
     nsTArray<nsCString> mLongKeysToDelete;
@@ -225,7 +224,7 @@ private:
     { }
 
   private:
-    virtual ~PrefetchListener() { }
+    virtual ~PrefetchListener() = default;
 
     nsCOMPtr<nsINetworkPredictorVerifier> mVerifier;
     nsCOMPtr<nsIURI> mURI;
@@ -444,37 +443,11 @@ private:
                                   bool isTracking, bool couldVary,
                                   bool isNoStore);
 
-  // Make sure our prefs are in their expected range of values
-  void SanitizePrefs();
+  // Gets the pref value and clamps it within the acceptable range.
+  uint32_t ClampedPrefetchRollingLoadCount();
 
   // Our state
   bool mInitialized;
-
-  bool mEnabled;
-  bool mEnableHoverOnSSL;
-  bool mEnablePrefetch;
-
-  int32_t mPageDegradationDay;
-  int32_t mPageDegradationWeek;
-  int32_t mPageDegradationMonth;
-  int32_t mPageDegradationYear;
-  int32_t mPageDegradationMax;
-
-  int32_t mSubresourceDegradationDay;
-  int32_t mSubresourceDegradationWeek;
-  int32_t mSubresourceDegradationMonth;
-  int32_t mSubresourceDegradationYear;
-  int32_t mSubresourceDegradationMax;
-
-  int32_t mPrefetchRollingLoadCount;
-  int32_t mPrefetchMinConfidence;
-  int32_t mPreconnectMinConfidence;
-  int32_t mPreresolveMinConfidence;
-  int32_t mRedirectLikelyConfidence;
-
-  int32_t mPrefetchForceValidFor;
-
-  int32_t mMaxResourcesPerEntry;
 
   bool mCleanedUp;
   nsCOMPtr<nsITimer> mCleanupTimer;
@@ -492,8 +465,6 @@ private:
   uint32_t mLastStartupTime;
   int32_t mStartupCount;
 
-  uint32_t mMaxURILength;
-
   nsCOMPtr<nsIDNSService> mDnsService;
 
   RefPtr<DNSListener> mDNSListener;
@@ -501,8 +472,6 @@ private:
   nsTArray<nsCOMPtr<nsIURI>> mPrefetches;
   nsTArray<nsCOMPtr<nsIURI>> mPreconnects;
   nsTArray<nsCOMPtr<nsIURI>> mPreresolves;
-
-  bool mDoingTests;
 
   static Predictor *sSelf;
 };

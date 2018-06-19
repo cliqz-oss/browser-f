@@ -63,7 +63,8 @@ public:
   WebRenderLayerManager* AsWebRenderLayerManager() override { return this; }
   virtual CompositorBridgeChild* GetCompositorBridgeChild() override;
 
-  virtual int32_t GetMaxTextureSize() const override;
+  // WebRender can handle images larger than the max texture size via tiling.
+  virtual int32_t GetMaxTextureSize() const override { return INT32_MAX; }
 
   virtual bool BeginTransactionWithTarget(gfxContext* aTarget) override;
   virtual bool BeginTransaction() override;
@@ -92,7 +93,7 @@ public:
 
   virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) override;
 
-  virtual void DidComposite(uint64_t aTransactionId,
+  virtual void DidComposite(TransactionId aTransactionId,
                             const mozilla::TimeStamp& aCompositeStart,
                             const mozilla::TimeStamp& aCompositeEnd) override;
 
@@ -174,11 +175,6 @@ private:
 private:
   nsIWidget* MOZ_NON_OWNING_REF mWidget;
   nsTArray<wr::ImageKey> mImageKeysToDelete;
-  // TODO - This is needed because we have some code that creates image keys
-  // and enqueues them for deletion right away which is bad not only because
-  // of poor texture cache usage, but also because images end up deleted before
-  // they are used. This should hopfully be temporary.
-  nsTArray<wr::ImageKey> mImageKeysToDeleteLater;
 
   // Set of compositor animation ids for which there are active animations (as
   // of the last transaction) on the compositor side.
@@ -190,7 +186,7 @@ private:
   RefPtr<WebRenderBridgeChild> mWrChild;
 
   RefPtr<TransactionIdAllocator> mTransactionIdAllocator;
-  uint64_t mLatestTransactionId;
+  TransactionId mLatestTransactionId;
 
   nsTArray<DidCompositeObserver*> mDidCompositeObservers;
 

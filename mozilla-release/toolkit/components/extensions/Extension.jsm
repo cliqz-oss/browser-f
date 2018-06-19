@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var EXPORTED_SYMBOLS = ["Extension", "ExtensionData", "Langpack"];
+var EXPORTED_SYMBOLS = ["Dictionary", "Extension", "ExtensionData", "Langpack"];
 
 /* exported Extension, ExtensionData */
 /* globals Extension ExtensionData */
@@ -62,6 +62,15 @@ XPCOMUtils.defineLazyGetter(
   () => Cc["@mozilla.org/webextensions/extension-process-script;1"]
           .getService().wrappedJSObject);
 
+// This is used for manipulating jar entry paths, which always use Unix
+// separators.
+XPCOMUtils.defineLazyGetter(
+  this, "OSPath", () => {
+    let obj = {};
+    ChromeUtils.import("resource://gre/modules/osfile/ospath_unix.jsm", obj);
+    return obj;
+  });
+
 XPCOMUtils.defineLazyGetter(
   this, "resourceProtocol",
   () => Services.io.getProtocolHandler("resource")
@@ -72,6 +81,7 @@ ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   aomStartup: ["@mozilla.org/addons/addon-manager-startup;1", "amIAddonManagerStartup"],
+  spellCheck: ["@mozilla.org/spellchecker/engine;1", "mozISpellCheckingEngine"],
   uuidGen: ["@mozilla.org/uuid-generator;1", "nsIUUIDGenerator"],
 });
 
@@ -373,6 +383,9 @@ class ExtensionData {
     // Normalize the directory path.
     path = `${uri.JAREntry}/${path}`;
     path = path.replace(/\/\/+/g, "/").replace(/^\/|\/$/g, "") + "/";
+    if (path === "/") {
+      path = "";
+    }
 
     // Escape pattern metacharacters.
     let pattern = path.replace(/[[\]()?*~|$\\]/g, "\\$&") + "*";
@@ -493,6 +506,11 @@ class ExtensionData {
     };
   }
 
+  canUseExperiment(manifest) {
+    return this.experimentsAllowed && manifest.experiment_apis;
+  }
+
+  // eslint-disable-next-line complexity
   async parseManifest() {
     let [manifest] = await Promise.all([
       this.readJSON("manifest.json"),
@@ -525,6 +543,9 @@ class ExtensionData {
     } else if (this.manifest.langpack_id) {
       this.type = "langpack";
       manifestType = "manifest.WebExtensionLangpackManifest";
+    } else if (this.manifest.dictionaries) {
+      this.type = "dictionary";
+      manifestType = "manifest.WebExtensionDictionaryManifest";
     } else {
       this.type = "extension";
     }
@@ -576,6 +597,8 @@ class ExtensionData {
     };
 
     if (this.type === "extension") {
+      let restrictSchemes = !(this.isPrivileged && manifest.permissions.includes("mozillaAddons"));
+
       for (let perm of manifest.permissions) {
         if (perm === "geckoProfiler" && !this.isPrivileged) {
           const acceptedExtensions = Services.prefs.getStringPref("extensions.geckoProfiler.acceptedExtensionIds", "");
@@ -587,10 +610,15 @@ class ExtensionData {
 
         let type = classifyPermission(perm);
         if (type.origin) {
-          let matcher = new MatchPattern(perm, {ignorePath: true});
+          try {
+            let matcher = new MatchPattern(perm, {restrictSchemes, ignorePath: true});
 
-          perm = matcher.pattern;
-          originPermissions.add(perm);
+            perm = matcher.pattern;
+            originPermissions.add(perm);
+          } catch (e) {
+            this.manifestWarning(`Invalid host permission: ${perm}`);
+            continue;
+          }
         } else if (type.api) {
           apiNames.add(type.api);
         }
@@ -629,7 +657,7 @@ class ExtensionData {
         return manager.initModuleJSON([modules]);
       };
 
-      if (manifest.experiment_apis) {
+      if (this.canUseExperiment(manifest)) {
         let parentModules = {};
         let childModules = {};
 
@@ -713,6 +741,30 @@ class ExtensionData {
 
 
       this.startupData = {chromeEntries, langpackId, l10nRegistrySources, languages};
+    } else if (this.type == "dictionary") {
+      let dictionaries = {};
+      for (let [lang, path] of Object.entries(manifest.dictionaries)) {
+        path = path.replace(/^\/+/, "");
+
+        let dir = OSPath.dirname(path);
+        if (dir === ".") {
+          dir = "";
+        }
+        let leafName = OSPath.basename(path);
+        let affixPath = leafName.slice(0, -3) + "aff";
+
+        let entries = Array.from(await this.readDirectory(dir), entry => entry.name);
+        if (!entries.includes(leafName)) {
+          this.manifestError(`Invalid dictionary path specified for '${lang}': ${path}`);
+        }
+        if (!entries.includes(affixPath)) {
+          this.manifestError(`Invalid dictionary path specified for '${lang}': Missing affix file: ${path}`);
+        }
+
+        dictionaries[lang] = path;
+      }
+
+      this.startupData = {dictionaries};
     }
 
     if (schemaPromises.size) {
@@ -756,9 +808,26 @@ class ExtensionData {
     await this.apiManager.lazyInit();
 
     this.webAccessibleResources = manifestData.webAccessibleResources.map(res => new MatchGlob(res));
-    this.whiteListedHosts = new MatchPatternSet(manifestData.originPermissions);
+    this.whiteListedHosts = new MatchPatternSet(manifestData.originPermissions, {restrictSchemes: !this.hasPermission("mozillaAddons")});
 
     return this.manifest;
+  }
+
+  hasPermission(perm, includeOptional = false) {
+    let manifest_ = "manifest:";
+    if (perm.startsWith(manifest_)) {
+      return this.manifest[perm.substr(manifest_.length)] != null;
+    }
+
+    if (this.permissions.has(perm)) {
+      return true;
+    }
+
+    if (includeOptional && this.manifest.optional_permissions.includes(perm)) {
+      return true;
+    }
+
+    return false;
   }
 
   getAPIManager() {
@@ -1089,7 +1158,9 @@ const shutdownPromises = new Map();
 class BootstrapScope {
   install(data, reason) {}
   uninstall(data, reason) {
-    Management.emit("uninstall", {id: data.id});
+    AsyncShutdown.profileChangeTeardown.addBlocker(
+      `Uninstalling add-on: ${data.id}`,
+      Management.emit("uninstall", {id: data.id}));
   }
 
   update(data, reason) {
@@ -1122,6 +1193,22 @@ XPCOMUtils.defineLazyGetter(BootstrapScope.prototype, "BOOTSTRAP_REASON_TO_STRIN
     [BOOTSTRAP_REASONS.ADDON_DOWNGRADE]: "ADDON_DOWNGRADE",
   });
 });
+
+class DictionaryBootstrapScope extends BootstrapScope {
+  install(data, reason) {}
+  uninstall(data, reason) {}
+
+  startup(data, reason) {
+    // eslint-disable-next-line no-use-before-define
+    this.dictionary = new Dictionary(data);
+    return this.dictionary.startup(this.BOOTSTRAP_REASON_TO_STRING_MAP[reason]);
+  }
+
+  shutdown(data, reason) {
+    this.dictionary.shutdown(this.BOOTSTRAP_REASON_TO_STRING_MAP[reason]);
+    this.dictionary = null;
+  }
+}
 
 class LangpackBootstrapScope {
   install(data, reason) {}
@@ -1161,6 +1248,7 @@ class Extension extends ExtensionData {
     }
 
     this.addonData = addonData;
+    this.startupData = addonData.startupData || {};
     this.startupReason = startupReason;
 
     if (["ADDON_UPGRADE", "ADDON_DOWNGRADE"].includes(startupReason)) {
@@ -1191,7 +1279,6 @@ class Extension extends ExtensionData {
 
     this.uninstallURL = null;
 
-    this.apis = [];
     this.whiteListedHosts = null;
     this._optionalOrigins = null;
     this.webAccessibleResources = null;
@@ -1208,7 +1295,7 @@ class Extension extends ExtensionData {
         let patterns = this.whiteListedHosts.patterns.map(host => host.pattern);
 
         this.whiteListedHosts = new MatchPatternSet(new Set([...patterns, ...permissions.origins]),
-                                                    {ignorePath: true});
+                                                    {restrictSchemes: !this.hasPermission("mozillaAddons"), ignorePath: true});
       }
 
       this.policy.permissions = Array.from(this.permissions);
@@ -1346,6 +1433,8 @@ class Extension extends ExtensionData {
 
   get isPrivileged() {
     return (this.addonData.signedState === AddonManager.SIGNEDSTATE_PRIVILEGED ||
+            this.addonData.signedState === AddonManager.SIGNEDSTATE_SYSTEM ||
+            this.addonData.builtIn ||
             (AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS &&
              this.addonData.temporarilyInstalled));
   }
@@ -1353,6 +1442,10 @@ class Extension extends ExtensionData {
   get experimentsAllowed() {
     return (AddonSettings.ALLOW_LEGACY_EXTENSIONS ||
             this.isPrivileged);
+  }
+
+  saveStartupData() {
+    AddonManagerPrivate.setStartupData(this.id, this.startupData);
   }
 
   async _parseManifest() {
@@ -1388,18 +1481,6 @@ class Extension extends ExtensionData {
 
     if (this.errors.length) {
       return Promise.reject({errors: this.errors});
-    }
-
-    if (this.apiNames.size) {
-      // Load Experiments APIs that this extension depends on.
-      let apis = await Promise.all(
-        Array.from(this.apiNames, api => ExtensionCommon.ExtensionAPIs.load(api)));
-
-      for (let API of apis) {
-        if (API) {
-          this.apis.push(new API(this));
-        }
-      }
     }
 
     return manifest;
@@ -1647,9 +1728,11 @@ class Extension extends ExtensionData {
       Management.emit("ready", this);
       this.emit("ready");
       TelemetryStopwatch.finish("WEBEXT_EXTENSION_STARTUP_MS", this);
-    } catch (e) {
-      dump(`Extension error: ${e.message || e} ${e.filename || e.fileName}:${e.lineNumber} :: ${e.stack || new Error().stack}\n`);
-      Cu.reportError(e);
+    } catch (errors) {
+      for (let e of [].concat(errors)) {
+        dump(`Extension error: ${e.message || e} ${e.filename || e.fileName}:${e.lineNumber} :: ${e.stack || new Error().stack}\n`);
+        Cu.reportError(e);
+      }
 
       if (this.policy) {
         this.policy.active = false;
@@ -1657,7 +1740,7 @@ class Extension extends ExtensionData {
 
       this.cleanupGeneratedFile();
 
-      throw e;
+      throw errors;
     }
 
     this.startupPromise = null;
@@ -1758,10 +1841,6 @@ class Extension extends ExtensionData {
       obj.close();
     }
 
-    for (let api of this.apis) {
-      api.destroy();
-    }
-
     ParentAPIManager.shutdownExtension(this.id);
 
     Management.emit("shutdown", this);
@@ -1782,23 +1861,6 @@ class Extension extends ExtensionData {
     }
   }
 
-  hasPermission(perm, includeOptional = false) {
-    let manifest_ = "manifest:";
-    if (perm.startsWith(manifest_)) {
-      return this.manifest[perm.substr(manifest_.length)] != null;
-    }
-
-    if (this.permissions.has(perm)) {
-      return true;
-    }
-
-    if (includeOptional && this.manifest.optional_permissions.includes(perm)) {
-      return true;
-    }
-
-    return false;
-  }
-
   get name() {
     return this.manifest.name;
   }
@@ -1806,9 +1868,41 @@ class Extension extends ExtensionData {
   get optionalOrigins() {
     if (this._optionalOrigins == null) {
       let origins = this.manifest.optional_permissions.filter(perm => classifyPermission(perm).origin);
-      this._optionalOrigins = new MatchPatternSet(origins, {ignorePath: true});
+      this._optionalOrigins = new MatchPatternSet(origins, {restrictSchemes: !this.hasPermission("mozillaAddons"), ignorePath: true});
     }
     return this._optionalOrigins;
+  }
+}
+
+class Dictionary extends ExtensionData {
+  constructor(addonData, startupReason) {
+    super(addonData.resourceURI);
+    this.id = addonData.id;
+    this.startupData = addonData.startupData;
+  }
+
+  static getBootstrapScope(id, file) {
+    return new DictionaryBootstrapScope();
+  }
+
+  async startup(reason) {
+    this.dictionaries = {};
+    for (let [lang, path] of Object.entries(this.startupData.dictionaries)) {
+      let uri = Services.io.newURI(path, null, this.rootURI);
+      this.dictionaries[lang] = uri;
+
+      spellCheck.addDictionary(lang, uri);
+    }
+
+    Management.emit("ready", this);
+  }
+
+  async shutdown(reason) {
+    if (reason !== "APP_SHUTDOWN") {
+      for (let [lang, file] of Object.entries(this.dictionaries)) {
+        spellCheck.removeDictionary(lang, file);
+      }
+    }
   }
 }
 
@@ -1828,14 +1922,6 @@ class Langpack extends ExtensionData {
       .get([this.id, "@@all_locales"], () => this._promiseLocaleMap());
 
     return this._setupLocaleData(locales);
-  }
-
-  readLocaleFile(locale) {
-    return StartupCache.locales.get([this.id, this.version, locale],
-                                    () => super.readLocaleFile(locale))
-      .then(result => {
-        this.localeData.messages.set(locale, result);
-      });
   }
 
   parseManifest() {

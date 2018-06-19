@@ -4,10 +4,14 @@ add_task(async function test_opened_page() {
   requestLongerTimeout(2);
 
   // ./head.js sets the value for PREF_WC_REPORTER_ENDPOINT
-  await SpecialPowers.pushPrefEnv({set: [[PREF_WC_REPORTER_ENDPOINT, NEW_ISSUE_PAGE]]});
+  await SpecialPowers.pushPrefEnv({set: [
+    [PREF_WC_REPORTER_ENABLED, true],
+    [PREF_WC_REPORTER_ENDPOINT, NEW_ISSUE_PAGE]
+  ]});
 
   let tab1 = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_PAGE);
 
+  await openPageActions();
   let webcompatButton = document.getElementById(WC_PAGE_ACTION_ID);
   ok(webcompatButton, "Report Site Issue button exists.");
 
@@ -20,7 +24,6 @@ add_task(async function test_opened_page() {
       resolve(tab);
     }, { once: true });
   });
-  openPageActions();
   webcompatButton.click();
   let tab2 = await newTabPromise;
   await screenshotPromise;
@@ -38,6 +41,6 @@ add_task(async function test_opened_page() {
     ok(preview.style.backgroundImage.startsWith("url(\"data:image/png;base64,iVBOR"), "A green screenshot was successfully postMessaged");
   });
 
-  await BrowserTestUtils.removeTab(tab2);
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab1);
 });

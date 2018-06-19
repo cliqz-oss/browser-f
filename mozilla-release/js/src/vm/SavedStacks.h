@@ -9,8 +9,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/FastBernoulliTrial.h"
-
-#include "jsmath.h"
+#include "mozilla/Maybe.h"
 
 #include "js/HashTable.h"
 #include "js/Wrapper.h"
@@ -170,7 +169,7 @@ class SavedStacks {
     MOZ_MUST_USE bool copyAsyncStack(JSContext* cx, HandleObject asyncStack,
                                      HandleString asyncCause,
                                      MutableHandleSavedFrame adoptedStack,
-                                     const Maybe<size_t>& maxFrameCount);
+                                     const mozilla::Maybe<size_t>& maxFrameCount);
     void sweep();
     void trace(JSTracer* trc);
     uint32_t count();
@@ -224,7 +223,7 @@ class SavedStacks {
                                    JS::StackCapture&& capture);
     MOZ_MUST_USE bool adoptAsyncStack(JSContext* cx, MutableHandleSavedFrame asyncStack,
                                       HandleAtom asyncCause,
-                                      const Maybe<size_t>& maxFrameCount);
+                                      const mozilla::Maybe<size_t>& maxFrameCount);
     MOZ_MUST_USE bool checkForEvalInFramePrev(JSContext* cx, SavedFrame::HandleLookup lookup);
     SavedFrame* getOrCreateSavedFrame(JSContext* cx, SavedFrame::HandleLookup lookup);
     SavedFrame* createFrameFromLookup(JSContext* cx, SavedFrame::HandleLookup lookup);

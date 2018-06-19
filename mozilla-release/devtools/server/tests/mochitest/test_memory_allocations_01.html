@@ -15,15 +15,14 @@ Bug 1067491 - Test recording allocations.
 <script>
 "use strict";
 
-window.onload = function () {
-  let { Task } = require("devtools/shared/task");
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
-  Task.spawn(function* () {
-    let { memory, client } = yield startServerAndGetSelectedTabMemory();
-    yield memory.attach();
+  (async function() {
+    let { memory, client } = await startServerAndGetSelectedTabMemory();
+    await memory.attach();
 
-    yield memory.startRecordingAllocations();
+    await memory.startRecordingAllocations();
     ok(true, "Can start recording allocations");
 
     // Allocate some objects.
@@ -37,15 +36,15 @@ window.onload = function () {
           alloc1 = {}; alloc1.line = Error().lineNumber;
           alloc2 = []; alloc2.line = Error().lineNumber;
           // eslint-disable-next-line new-parens
-          alloc3 = new function () {}; alloc3.line = Error().lineNumber;
+          alloc3 = new function() {}; alloc3.line = Error().lineNumber;
         }());
       }());
     }());
     /* eslint-enable max-nested-callbacks */
 
-    let response = yield memory.getAllocations();
+    let response = await memory.getAllocations();
 
-    yield memory.stopRecordingAllocations();
+    await memory.stopRecordingAllocations();
     ok(true, "Can stop recording allocations");
 
     // Filter out allocations by library and test code, and get only the
@@ -95,9 +94,9 @@ window.onload = function () {
     is(expectedLines.size, 0,
        "Should have found all the expected lines");
 
-    yield memory.detach();
+    await memory.detach();
     destroyServerAndFinish(client);
-  });
+  })();
 };
 </script>
 </pre>

@@ -4,6 +4,11 @@
 
 /* CSS Variables specific to this panel that aren't defined by the themes */
 :root {
+  --rule-badge-active-background-color: var(--blue-50);
+  --rule-badge-background-color: var(--grey-20);
+  --rule-badge-border-color: #CACAD1;
+  --rule-badge-color: var(--grey-90);
+  --rule-badge-hover-background-color: #DFDFE8;
   --rule-highlight-background-color: var(--theme-highlight-yellow);
   --rule-overridden-item-border-color: var(--theme-content-color3);
   --rule-header-background-color: var(--theme-toolbar-background);
@@ -12,19 +17,16 @@
 }
 
 :root.theme-dark {
+  --rule-badge-active-background-color: var(--blue-60);
+  --rule-badge-background-color: var(--grey-70);
+  --rule-badge-border-color: var(--grey-50);
+  --rule-badge-color: var(--grey-30);
+  --rule-badge-hover-background-color: var(--grey-80);
   --rule-highlight-background-color: #521C76;
   --rule-overridden-item-border-color: var(--theme-content-color1);
   --rule-header-background-color: #222225;
   --rule-flex-toggle-color: var(--grey-10);
   --rule-shape-toggle-color: var(--grey-10);
-}
-
-:root.theme-firebug {
-  --rule-highlight-background-color: var(--theme-highlight-yellow);
-  --rule-property-name: darkgreen;
-  --rule-property-value: darkblue;
-  --rule-overridden-item-border-color: var(--theme-content-color2);
-  --rule-header-background-color: var(--theme-header-background);
 }
 
 /* Rule View Tabpanel */
@@ -217,12 +219,6 @@
   cursor: default;
 }
 
-.theme-firebug .ruleview-rule-source-label {
-  font-family: var(--proportional-font-family);
-  font-weight: bold;
-  color: #0000FF;
-}
-
 .ruleview-rule-source:not([unselectable]):hover {
   text-decoration: underline;
 }
@@ -238,17 +234,6 @@
   display: flex;
 
   -moz-user-select: none;
-}
-
-.theme-firebug .ruleview-header {
-  font-family: var(--proportional-font-family);
-  font-weight: bold;
-  color: inherit;
-  border: none;
-  margin: 4px 0;
-  padding: 3px 4px 2px 4px;
-  line-height: inherit;
-  min-height: 0;
 }
 
 .ruleview-expandable-header {
@@ -306,46 +291,6 @@
 .ruleview-rule[uneditable=true] .ruleview-propertyvaluecontainer >
 .ruleview-propertyvalue {
   border-bottom-color: transparent;
-}
-
-.theme-firebug .ruleview-namecontainer > .ruleview-propertyname,
-.theme-firebug .ruleview-propertyvaluecontainer > .ruleview-propertyvalue {
-  border-bottom: none;
-}
-
-.theme-firebug .ruleview-namecontainer > .ruleview-propertyname {
-  color: var(--rule-property-name);
-}
-
-.theme-firebug .ruleview-propertyvaluecontainer > .ruleview-propertyvalue {
-  color: var(--rule-property-value);
-}
-
-.theme-firebug .ruleview-overridden .ruleview-propertyname,
-.theme-firebug .ruleview-overridden .ruleview-propertyvalue {
-  text-decoration: line-through;
-}
-
-.theme-firebug .ruleview-enableproperty:not([checked]) ~ .ruleview-namecontainer,
-.theme-firebug .ruleview-enableproperty:not([checked]) ~ .ruleview-namecontainer *,
-.theme-firebug .ruleview-enableproperty:not([checked]) ~ .ruleview-propertyvaluecontainer,
-.theme-firebug .ruleview-enableproperty:not([checked]) ~ .ruleview-propertyvaluecontainer *,
-.theme-firebug .ruleview-overridden > * > .ruleview-computed:not(.ruleview-overridden),
-.theme-firebug .ruleview-overridden > * > .ruleview-computed:not(.ruleview-overridden) * {
-  color: #CCCCCC;
-}
-
-.theme-firebug .ruleview-rule + .ruleview-rule {
-  border-bottom: none;
-}
-
-.ruleview-warning {
-  background-image: url(images/alerticon-warning.png);
-  background-size: 13px 12px;
-  margin-inline-start: 5px;
-  display: inline-block;
-  width: 13px;
-  height: 12px;
 }
 
 @media (min-resolution: 1.1dppx) {
@@ -482,7 +427,8 @@
   border-radius: 0;
 }
 
-.ruleview-shape-point.active {
+.ruleview-shape-point.active,
+.ruleview-shapeswatch.active + .ruleview-shape > .ruleview-shape-point:hover {
   background-color: var(--rule-highlight-background-color);
 }
 
@@ -518,12 +464,14 @@
 }
 
 .ruleview-shapeswatch {
-  background: url("chrome://devtools/skin/images/tool-shadereditor.svg");
-  -moz-context-properties: fill;
-  fill: var(--rule-shape-toggle-color);
+  background: url("chrome://devtools/skin/images/shape-swatch.svg");
+  -moz-context-properties: stroke;
+  stroke: var(--rule-shape-toggle-color);
   border-radius: 0;
-  background-size: 1em;
+  background-size: 110% 110%;
   box-shadow: none;
+  width: 1.45em;
+  height: 1.45em;
 }
 
 @media (min-resolution: 1.1dppx) {
@@ -560,11 +508,6 @@
   border: 1px solid #CCC;
   padding: 0;
   margin: -1px -3px -1px -1px;
-}
-
-.theme-firebug .styleinspector-propertyeditor {
-  border: 1px solid var(--theme-splitter-color);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 .ruleview-property {
@@ -620,12 +563,6 @@
   color: var(--theme-highlight-orange);
 }
 
-.theme-firebug .ruleview-selector > .ruleview-selector-matched,
-.theme-firebug .ruleview-selector > .ruleview-selector-separator,
-.theme-firebug .ruleview-selector > .ruleview-selector-unmatched {
-  color: inherit;
-}
-
 .ruleview-selectorhighlighter {
   background: url("chrome://devtools/skin/images/vview-open-inspector.png") no-repeat 0 0;
   padding-left: 16px;
@@ -664,28 +601,33 @@
   opacity: 1;
 }
 
-.theme-firebug .ruleview-overridden {
-  text-decoration: none;
-}
-
-/* Firebug theme disable/enable CSS rule. Firebug theme uses its own
-  icons to indicate when CSS rules can be disabled or enabled. */
-
-.theme-firebug .ruleview-rule .theme-checkbox {
-  background-repeat: no-repeat;
-  background-size: 12px 12px;
-  background-image: url(chrome://devtools/skin/images/firebug/disable.svg);
-  background-position: 0 0;
-}
-
-.theme-firebug .ruleview-rule .theme-checkbox:not([checked]){
-  filter: grayscale(1);
-}
-
-.theme-firebug .ruleview-rule .theme-checkbox[checked] {
-  background-position: 0 0;
-}
-
-.theme-firebug .ruleview-property:not(:hover) .ruleview-enableproperty {
+.ruleview-rule:not(:hover) .ruleview-font-editor-toggle:not(.active) {
   visibility: hidden;
+}
+
+.ruleview-font-editor-toggle {
+  position: absolute;
+  right: 1.5em;
+  bottom: 0.5em;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 11px;
+  border: 1px solid var(--rule-badge-border-color);
+  border-radius: 3px;
+  padding: 0px 4px;
+  -moz-user-select: none;
+  cursor: pointer;
+  background-color: var(--rule-badge-background-color);
+  color: var(--rule-badge-color);
+}
+
+.ruleview-font-editor-toggle:focus,
+.ruleview-font-editor-toggle:hover {
+  background-color: var(--rule-badge-hover-background-color);
+}
+
+.ruleview-font-editor-toggle.active {
+  background-color: var(--rule-badge-active-background-color);
+  border-color: var(--rule-badge-active-background-color);
+  color: var(--theme-selection-color);
 }

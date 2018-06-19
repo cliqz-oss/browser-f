@@ -26,7 +26,7 @@ interface mozIDOMWindowProxy;
 
 native LiveResizeListenerArray(nsTArray<RefPtr<mozilla::LiveResizeListener>>);
 
-[scriptable, uuid(d6d7a014-e28d-4c9d-8727-1cf6d870619b)]
+[builtinclass, scriptable, uuid(d6d7a014-e28d-4c9d-8727-1cf6d870619b)]
 interface nsIXULWindow : nsISupports
 {
   /**
@@ -65,6 +65,13 @@ interface nsIXULWindow : nsISupports
    * @param aChild the child window being added
    */
   void addChildWindow(in nsIXULWindow aChild);
+
+  /**
+   * Returns the difference between the inner window size (client size) and the
+   * outer window size, in CSS pixels.
+   */
+  [infallible] readonly attribute unsigned long outerToInnerHeightDifferenceInCSSPixels;
+  [infallible] readonly attribute unsigned long outerToInnerWidthDifferenceInCSSPixels;
 
   /**
    * Tell this window that it has lost a child XUL window
@@ -128,12 +135,14 @@ interface nsIXULWindow : nsISupports
   attribute nsIXULBrowserWindow XULBrowserWindow;
 
   /**
-   * Back-door method to force application of chrome flags at a particular
-   * time.  Do NOT call this unless you know what you're doing!  In particular,
+   * Back-door method to make sure some stuff is done when the document is
+   * ready for layout, that would cause expensive computation otherwise later.
+   *
+   * Do NOT call this unless you know what you're doing!  In particular,
    * calling this when this XUL window doesn't yet have a document in its
    * docshell could cause problems.
    */
-  [noscript] void applyChromeFlags();
+  [noscript] void beforeStartLayout();
 
   /**
    * Given the dimensions of some content area held within this

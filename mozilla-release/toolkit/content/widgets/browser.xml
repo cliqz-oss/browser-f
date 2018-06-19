@@ -8,11 +8,11 @@
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <binding id="browser" extends="xul:browser">
+  <binding id="browser">
     <content clickthrough="never">
       <children/>
     </content>
-    <implementation type="application/javascript" implements="nsIObserver, nsIDOMEventListener, nsIMessageListener, nsIBrowser">
+    <implementation type="application/javascript" implements="nsIObserver, nsIBrowser">
       <property name="autoscrollEnabled">
         <getter>
           <![CDATA[
@@ -103,87 +103,28 @@
       <!-- throws exception for unknown schemes -->
       <method name="loadURI">
         <parameter name="aURI"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
+        <parameter name="aParams"/>
         <body>
           <![CDATA[
-            const nsIWebNavigation = Ci.nsIWebNavigation;
-            const flags = nsIWebNavigation.LOAD_FLAGS_NONE;
-            this._wrapURIChangeCall(() =>
-              this.loadURIWithFlags(aURI, flags, aReferrerURI, aCharset));
-          ]]>
-        </body>
-      </method>
-
-      <!-- throws exception for unknown schemes -->
-      <method name="loadURIWithFlags">
-        <parameter name="aURI"/>
-        <parameter name="aFlags"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
-        <parameter name="aPostData"/>
-        <body>
-          <![CDATA[
-            if (!aURI)
+            if (!aURI) {
               aURI = "about:blank";
-
-            var aReferrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET;
-            var aTriggeringPrincipal;
-
-            // Check for loadURIWithFlags(uri, { ... });
-            var params = arguments[1];
-            if (params && typeof(params) == "object") {
-              aFlags = params.flags;
-              aReferrerURI = params.referrerURI;
-              if ("referrerPolicy" in params) {
-                aReferrerPolicy = params.referrerPolicy;
-              }
-              if ("triggeringPrincipal" in params) {
-                aTriggeringPrincipal = params.triggeringPrincipal;
-              }
-              aCharset = params.charset;
-              aPostData = params.postData;
             }
+
+            let {
+              flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE,
+              referrerURI,
+              referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
+              triggeringPrincipal,
+              postData,
+            } = aParams || {};
 
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
-                  aURI, aFlags, aReferrerURI, aReferrerPolicy,
-                  aPostData, null, null, aTriggeringPrincipal));
+                  aURI, flags, referrerURI, referrerPolicy,
+                  postData, null, null, triggeringPrincipal));
           ]]>
         </body>
       </method>
-
-      <method name="goHome">
-        <body>
-          <![CDATA[
-            try {
-              this.loadURI(this.homePage);
-            } catch (e) {
-            }
-          ]]>
-        </body>
-      </method>
-
-      <property name="homePage">
-        <getter>
-          <![CDATA[
-            var uri;
-
-            if (this.hasAttribute("homepage"))
-              uri = this.getAttribute("homepage");
-            else
-              uri = "http://www.mozilla.org/"; // widget pride
-
-            return uri;
-          ]]>
-        </getter>
-        <setter>
-          <![CDATA[
-            this.setAttribute("homepage", val);
-            return val;
-          ]]>
-        </setter>
-      </property>
 
       <method name="gotoIndex">
         <parameter name="aIndex"/>
@@ -223,10 +164,6 @@
 
       <property name="documentContentType"
                 onget="return this.contentDocument ? this.contentDocument.contentType : null;"
-                readonly="true"/>
-
-      <property name="preferences"
-                onget="return this.mPrefs.QueryInterface(Components.interfaces.nsIPrefService);"
                 readonly="true"/>
 
       <!--
@@ -551,14 +488,6 @@
                        return val;"
                 onget="return this.getAttribute('showresizer') == 'true';"/>
 
-      <property name="manifestURI"
-                readonly="true">
-        <getter><![CDATA[
-          return this.contentDocument.documentElement &&
-                 this.contentDocument.documentElement.getAttribute("manifest");
-        ]]></getter>
-      </property>
-
       <property name="fullZoom">
         <getter><![CDATA[
           return this.markupDocumentViewer.fullZoom;
@@ -568,13 +497,6 @@
         ]]></setter>
       </property>
 
-      <property name="deviceFullZoom"
-                readonly="true">
-        <getter><![CDATA[
-          return this.markupDocumentViewer.deviceFullZoom;
-        ]]></getter>
-      </property>
-
       <property name="textZoom">
         <getter><![CDATA[
           return this.markupDocumentViewer.textZoom;
@@ -582,13 +504,6 @@
         <setter><![CDATA[
           this.markupDocumentViewer.textZoom = val;
         ]]></setter>
-      </property>
-
-      <property name="effectiveTextZoom"
-                readonly="true">
-        <getter><![CDATA[
-          return this.markupDocumentViewer.effectiveTextZoom;
-        ]]></getter>
       </property>
 
       <property name="isSyntheticDocument">
@@ -645,27 +560,6 @@
         </body>
       </method>
 
-      <method name="findChildShell">
-        <parameter name="aDocShell"/>
-        <parameter name="aSoughtURI"/>
-        <body>
-          <![CDATA[
-            if (aDocShell.QueryInterface(Ci.nsIWebNavigation)
-                         .currentURI.spec == aSoughtURI.spec)
-              return aDocShell;
-            var node = aDocShell.QueryInterface(
-                                   Ci.nsIDocShellTreeItem);
-            for (var i = 0; i < node.childCount; ++i) {
-              var docShell = node.getChildAt(i);
-              docShell = this.findChildShell(docShell, aSoughtURI);
-              if (docShell)
-                return docShell;
-            }
-            return null;
-          ]]>
-        </body>
-      </method>
-
       <method name="onPageHide">
         <parameter name="aEvent"/>
         <body>
@@ -688,7 +582,7 @@
         <body>
           <![CDATA[
             let event = document.createEvent("Events");
-            event.initEvent("DOMUpdatePageReport", true, true);
+            event.initEvent("DOMUpdateBlockedPopups", true, true);
             this.dispatchEvent(event);
           ]]>
         </body>
@@ -721,11 +615,6 @@
       </method>
 
       <field name="blockedPopups">null</field>
-
-      <!-- Obsolete name for blockedPopups. Used by android. -->
-      <property name="pageReport"
-         onget="return this.blockedPopups;"
-         readonly="true"/>
 
       <method name="audioPlaybackStarted">
         <body>
@@ -962,14 +851,6 @@
           return val;
         ]]></setter>
       </property>
-
-      <field name="mFormFillAttached">
-        false
-      </field>
-
-      <field name="isShowingMessage">
-        false
-      </field>
 
       <field name="droppedLinkHandler">
         null
@@ -1367,10 +1248,7 @@
             let maxY = (top.value + height.value) / scaleFactor - 0.5 * POPUP_SIZE;
             let popupX = Math.max(minX, Math.min(maxX, screenX));
             let popupY = Math.max(minY, Math.min(maxY, screenY));
-            this._autoScrollPopup.showPopup(document.documentElement,
-                                            popupX,
-                                            popupY,
-                                            "popup", null, null);
+            this._autoScrollPopup.openPopupAtScreen(popupX, popupY);
             this._ignoreMouseEvents = true;
             this._scrolling = true;
             this._startX = screenX;

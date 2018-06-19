@@ -115,6 +115,9 @@ public:
   // and if still more space is needed remove from the end.
   EvictDataResult EvictData(const media::TimeUnit& aPlaybackTime, int64_t aSize);
 
+  // Queue a task to run ChangeType
+  void ChangeType(const MediaContainerType& aType);
+
   // Returns the buffered range currently managed.
   // This may be called on any thread.
   // Buffered must conform to http://w3c.github.io/media-source/index.html#widl-SourceBuffer-buffered
@@ -157,6 +160,15 @@ public:
                                            MediaResult& aResult);
   int32_t FindCurrentPosition(TrackInfo::TrackType aTrack,
                               const media::TimeUnit& aFuzz) const;
+
+  // Will set the next GetSample index if needed. This information is determined
+  // through the value of mNextSampleTimecode. Return false if the index
+  // couldn't be determined or if there's nothing more that could be demuxed.
+  // This occurs if either the track buffer doesn't contain the required
+  // timecode or is empty.
+  nsresult SetNextGetSampleIndexIfNeeded(TrackInfo::TrackType aTrack,
+                                         const media::TimeUnit& aFuzz);
+
   media::TimeUnit GetNextRandomAccessPoint(TrackInfo::TrackType aTrack,
                                            const media::TimeUnit& aFuzz);
 
@@ -205,10 +217,11 @@ private:
   // Accessed on both the main thread and the task queue.
   Atomic<bool> mBufferFull;
   bool mFirstInitializationSegmentReceived;
+  bool mChangeTypeReceived;
   // Set to true once a new segment is started.
   bool mNewMediaSegmentStarted;
   bool mActiveTrack;
-  const MediaContainerType mType;
+  MediaContainerType mType;
 
   // ContainerParser objects and methods.
   // Those are used to parse the incoming input buffer.

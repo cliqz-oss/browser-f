@@ -285,7 +285,7 @@ void HandleException(ResumeFromException* rfe);
 
 void EnsureBareExitFrame(JitActivation* act, JitFrameLayout* frame);
 
-void TraceJitActivations(JSContext* cx, const CooperatingContext& target, JSTracer* trc);
+void TraceJitActivations(JSContext* cx, JSTracer* trc);
 
 void UpdateJitActivationsForMinorGC(JSRuntime* rt);
 
@@ -373,6 +373,9 @@ class CommonFrameLayout
     }
     void setHasCachedSavedFrame() {
         descriptor_ |= HASCACHEDSAVEDFRAME_BIT;
+    }
+    void clearHasCachedSavedFrame() {
+        descriptor_ &= ~HASCACHEDSAVEDFRAME_BIT;
     }
     uint8_t* returnAddress() const {
         return returnAddress_;

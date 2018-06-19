@@ -10,25 +10,25 @@
 
 #include "mozilla/IntegerRange.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/ServoCounterStyleRule.h"
 #include "mozilla/ServoDocumentRule.h"
 #include "mozilla/ServoImportRule.h"
+#include "mozilla/ServoFontFaceRule.h"
 #include "mozilla/ServoFontFeatureValuesRule.h"
 #include "mozilla/ServoKeyframesRule.h"
 #include "mozilla/ServoMediaRule.h"
 #include "mozilla/ServoNamespaceRule.h"
 #include "mozilla/ServoPageRule.h"
 #include "mozilla/ServoStyleRule.h"
-#include "mozilla/ServoStyleSheet.h"
 #include "mozilla/ServoSupportsRule.h"
-#include "nsCSSCounterStyleRule.h"
-#include "nsCSSFontFaceRule.h"
+#include "mozilla/StyleSheet.h"
 
 using namespace mozilla::dom;
 
 namespace mozilla {
 
 ServoCSSRuleList::ServoCSSRuleList(already_AddRefed<ServoCssRules> aRawRules,
-                                   ServoStyleSheet* aDirectOwnerStyleSheet)
+                                   StyleSheet* aDirectOwnerStyleSheet)
   : mStyleSheet(aDirectOwnerStyleSheet)
   , mRawRules(aRawRules)
 {
@@ -53,16 +53,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ServoCSSRuleList,
     if (!aRule->IsCCLeaf()) {
       NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mRules[i]");
       cb.NoteXPCOMChild(aRule);
-      // Note about @font-face and @counter-style rule again, since
-      // there is an indirect owning edge through Servo's struct that
-      // FontFaceRule / CounterStyleRule in Servo owns a Gecko
-      // nsCSSFontFaceRule / nsCSSCounterStyleRule object.
-      auto type = aRule->Type();
-      if (type == CSSRuleBinding::FONT_FACE_RULE ||
-          type == CSSRuleBinding::COUNTER_STYLE_RULE) {
-        NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mRawRules[i]");
-        cb.NoteXPCOMChild(aRule);
-      }
     }
   });
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
@@ -79,7 +69,7 @@ ServoCSSRuleList::SetParentRule(css::GroupRule* aParentRule)
 void
 ServoCSSRuleList::SetStyleSheet(StyleSheet* aStyleSheet)
 {
-  mStyleSheet = aStyleSheet ? aStyleSheet->AsServo() : nullptr;
+  mStyleSheet = aStyleSheet;
   EnumerateInstantiatedRules([this](css::Rule* rule) {
     rule->SetStyleSheet(mStyleSheet);
   });
@@ -112,19 +102,9 @@ ServoCSSRuleList::GetRule(uint32_t aIndex)
       CASE_RULE(DOCUMENT, Document)
       CASE_RULE(IMPORT, Import)
       CASE_RULE(FONT_FEATURE_VALUES, FontFeatureValues)
+      CASE_RULE(FONT_FACE, FontFace)
+      CASE_RULE(COUNTER_STYLE, CounterStyle)
 #undef CASE_RULE
-      // For @font-face and @counter-style rules, the function returns
-      // a borrowed Gecko rule object directly, so we don't need to
-      // create anything here. But we still need to have the style sheet
-      // and parent rule set properly.
-      case CSSRuleBinding::FONT_FACE_RULE: {
-        ruleObj = Servo_CssRules_GetFontFaceRuleAt(mRawRules, aIndex);
-        break;
-      }
-      case CSSRuleBinding::COUNTER_STYLE_RULE: {
-        ruleObj = Servo_CssRules_GetCounterStyleRuleAt(mRawRules, aIndex);
-        break;
-      }
       case CSSRuleBinding::KEYFRAME_RULE:
         MOZ_ASSERT_UNREACHABLE("keyframe rule cannot be here");
         return nullptr;

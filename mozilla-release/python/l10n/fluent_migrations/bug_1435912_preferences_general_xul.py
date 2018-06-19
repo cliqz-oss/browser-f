@@ -15,7 +15,7 @@ def migrate(ctx):
 
     ctx.add_transforms(
         'browser/browser/preferences/preferences.ftl',
-        'browser/locales/en-US/browser/preferences/preferences.ftl',
+        'browser/browser/preferences/preferences.ftl',
         [
             FTL.Message(
                 id=FTL.Identifier('startup-header'),
@@ -201,7 +201,7 @@ def migrate(ctx):
                 id=FTL.Identifier('home-page-header'),
                 value=COPY(
                     'browser/chrome/browser/preferences/main.dtd',
-                    'startupUserHomePage.label',
+                    'homepage2.label',
                 )
             ),
             FTL.Message(

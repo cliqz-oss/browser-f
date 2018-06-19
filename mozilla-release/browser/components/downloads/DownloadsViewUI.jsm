@@ -15,20 +15,15 @@ var EXPORTED_SYMBOLS = [
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "Downloads",
-                               "resource://gre/modules/Downloads.jsm");
-ChromeUtils.defineModuleGetter(this, "DownloadUtils",
-                               "resource://gre/modules/DownloadUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "DownloadsCommon",
-                               "resource:///modules/DownloadsCommon.jsm");
-ChromeUtils.defineModuleGetter(this, "FileUtils",
-                               "resource://gre/modules/FileUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "OS",
-                               "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-                               "resource://gre/modules/PlacesUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "RecentWindow",
-                               "resource:///modules/RecentWindow.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+  Downloads: "resource://gre/modules/Downloads.jsm",
+  DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
+  DownloadsCommon: "resource:///modules/DownloadsCommon.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm"
+});
 
 var DownloadsViewUI = {
   /**
@@ -109,8 +104,30 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
     return OS.Path.basename(this.download.target.path);
   },
 
+  /**
+   * The user-facing label for the size (if any) of the download. The return value
+   * is an object 'sizeStrings' with 2 strings:
+   *   1. stateLabel - The size with the units (e.g. "1.5 MB").
+   *   2. status - The status of the download (e.g. "Completed");
+   */
+  get sizeStrings() {
+    let s = DownloadsCommon.strings;
+    let sizeStrings = {};
+
+    if (this.download.target.size !== undefined) {
+      let [size, unit] = DownloadUtils.convertByteUnits(this.download.target.size);
+      sizeStrings.stateLabel = s.sizeWithUnits(size, unit);
+      sizeStrings.status = s.statusSeparator(s.stateCompleted, sizeStrings.stateLabel);
+    } else {
+      // History downloads may not have a size defined.
+      sizeStrings.stateLabel = s.sizeUnknown;
+      sizeStrings.status = s.stateCompleted;
+    }
+    return sizeStrings;
+  },
+
   get browserWindow() {
-    return RecentWindow.getMostRecentBrowserWindow();
+    return BrowserWindowTracker.getTopWindow();
   },
 
   /**
@@ -245,17 +262,10 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
         stateLabel = s.fileMovedOrMissing;
         hoverStatus = stateLabel;
       } else if (this.download.succeeded) {
-        // For completed downloads, show the file size (e.g. "1.5 MB").
-        if (this.download.target.size !== undefined) {
-          let [size, unit] =
-            DownloadUtils.convertByteUnits(this.download.target.size);
-          stateLabel = s.sizeWithUnits(size, unit);
-          status = s.statusSeparator(s.stateCompleted, stateLabel);
-        } else {
-          // History downloads may not have a size defined.
-          stateLabel = s.sizeUnknown;
-          status = s.stateCompleted;
-        }
+        // For completed downloads, show the file size
+        let sizeStrings = this.sizeStrings;
+        stateLabel = sizeStrings.stateLabel;
+        status = sizeStrings.status;
         hoverStatus = status;
       } else if (this.download.canceled) {
         stateLabel = s.stateCanceled;

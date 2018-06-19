@@ -29,6 +29,10 @@ mochitest:
             default: mochitest/plain-chunked
     treeherder-symbol: M()
     loopback-video: true
+    run-on-projects:
+        by-test-platform:
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            default: built-projects
     instance-size:
         by-test-platform:
             linux64-jsdcov/opt: xlarge
@@ -45,7 +49,6 @@ mochitest:
             default: 5
     e10s:
         by-test-platform:
-            linux64-jsdcov/opt: false
             linux32/debug: both
             default: true
     max-run-time:
@@ -99,10 +102,6 @@ mochitest-browser-chrome:
             linux.*/debug: 16
             linux64-asan/opt: 16
             default: 7
-    e10s:
-        by-test-platform:
-            linux64-jsdcov/opt: false
-            default: true
     max-run-time:
         by-test-platform:
             linux64-.*cov/opt: 7200
@@ -197,6 +196,10 @@ mochitest-clipboard:
     treeherder-symbol: M(cl)
     loopback-video: true
     instance-size: xlarge
+    max-run-time:
+        by-test-platform:
+            windows10-64-ccov/debug: 7200
+            default: 3600
     e10s:
         by-test-platform:
             linux32/debug: both
@@ -223,7 +226,10 @@ mochitest-devtools-chrome:
             default: mochitest/mochitest-devtools-chrome-chunked
     treeherder-symbol: M(dt)
     loopback-video: true
-    max-run-time: 5400
+    max-run-time:
+        by-test-platform:
+            windows10-64-ccov/debug: 7200
+            default: 5400
     run-on-projects:
         by-test-platform:
             linux64-jsdcov/opt: ['try']  # jsdcov only on try, Bug 1442823
@@ -232,10 +238,6 @@ mochitest-devtools-chrome:
         by-test-platform:
             windows10-64-ccov/debug: 10
             default: 8
-    e10s:
-        by-test-platform:
-            linux64-jsdcov/opt: false
-            default: true
     mozharness:
         mochitest-flavor: chrome
         chunked: true
@@ -256,7 +258,7 @@ mochitest-gpu:
     treeherder-symbol: M(gpu)
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['mozilla-central', 'autoland', 'mozilla-inbound', 'try']  # exclude beta and project branches
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
             default: built-projects
     loopback-video: true
     instance-size:
@@ -287,10 +289,13 @@ mochitest-media:
     description: "Mochitest media run"
     suite: mochitest/mochitest-media
     treeherder-symbol: M(mda)
-    max-run-time: 5400
+    max-run-time:
+        by-test-platform:
+            windows10-64-ccov/debug: 7200
+            default: 5400
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['mozilla-central', 'autoland', 'mozilla-inbound', 'try']  # exclude beta and project branches
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
             default: built-projects
     loopback-video: true
     virtualization:
@@ -363,7 +368,7 @@ mochitest-webgl:
     run-on-projects:
         by-test-platform:
             windows10-64-ccov/.*: []  # Do not run on Windows ccov, see bug 1419475.
-            .*-qr/.*: ['mozilla-central', 'autoland', 'mozilla-inbound', 'try']  # exclude beta and project branches
+            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
             default: built-projects
     virtualization: virtual-with-gpu
     chunks:

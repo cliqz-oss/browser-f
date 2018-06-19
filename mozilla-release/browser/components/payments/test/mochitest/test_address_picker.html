@@ -1,0 +1,153 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+Test the address-picker component
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test the address-picker component</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="payments_common.js"></script>
+  <script src="../../res/vendor/custom-elements.min.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="../../res/components/rich-select.css"/>
+  <link rel="stylesheet" type="text/css" href="../../res/components/address-option.css"/>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+  <p id="display">
+    <address-picker id="picker1"
+                    selected-state-key="selectedShippingAddress"></address-picker>
+  </p>
+<div id="content" style="display: none">
+
+</div>
+<pre id="test">
+</pre>
+<script type="module">
+/** Test the address-picker component **/
+
+/* import-globals-from payments_common.js */
+import "../../res/containers/address-picker.js";
+
+let picker1 = document.getElementById("picker1");
+
+add_task(async function test_empty() {
+  ok(picker1, "Check picker1 exists");
+  let {savedAddresses} = picker1.requestStore.getState();
+  is(Object.keys(savedAddresses).length, 0, "Check empty initial state");
+  is(picker1.dropdown.popupBox.children.length, 0, "Check dropdown is empty");
+});
+
+add_task(async function test_initialSet() {
+  picker1.requestStore.setState({
+    savedAddresses: {
+      "48bnds6854t": {
+        "address-level1": "MI",
+        "address-level2": "Some City",
+        "country": "US",
+        "guid": "48bnds6854t",
+        "name": "Mr. Foo",
+        "postal-code": "90210",
+        "street-address": "123 Sesame Street,\nApt 40",
+        "tel": "+1 519 555-5555",
+      },
+      "68gjdh354j": {
+        "address-level1": "CA",
+        "address-level2": "Mountain View",
+        "country": "US",
+        "guid": "68gjdh354j",
+        "name": "Mrs. Bar",
+        "postal-code": "94041",
+        "street-address": "P.O. Box 123",
+        "tel": "+1 650 555-5555",
+      },
+    },
+  });
+  await asyncElementRendered();
+  let options = picker1.dropdown.popupBox.children;
+  is(options.length, 2, "Check dropdown has both addresses");
+  ok(options[0].textContent.includes("123 Sesame Street"), "Check first address");
+  ok(options[1].textContent.includes("P.O. Box 123"), "Check second address");
+});
+
+add_task(async function test_update() {
+  picker1.requestStore.setState({
+    savedAddresses: {
+      "48bnds6854t": {
+        // Same GUID, different values to trigger an update
+        "address-level1": "MI-edit",
+        // address-level2 was cleared which means it's not returned
+        "country": "CA",
+        "guid": "48bnds6854t",
+        "name": "Mr. Foo-edit",
+        "postal-code": "90210-1234",
+        "street-address": "new-edit",
+        "tel": "+1 650 555-5555",
+      },
+      "68gjdh354j": {
+        "address-level1": "CA",
+        "address-level2": "Mountain View",
+        "country": "US",
+        "guid": "68gjdh354j",
+        "name": "Mrs. Bar",
+        "postal-code": "94041",
+        "street-address": "P.O. Box 123",
+        "tel": "+1 650 555-5555",
+      },
+    },
+  });
+  await asyncElementRendered();
+  let options = picker1.dropdown.popupBox.children;
+  is(options.length, 2, "Check dropdown still has both addresses");
+  ok(options[0].textContent.includes("MI-edit"), "Check updated first address-level1");
+  ok(!options[0].textContent.includes("Some City"), "Check removed first address-level2");
+  ok(options[0].textContent.includes("new-edit"), "Check updated first address");
+
+  ok(options[1].textContent.includes("P.O. Box 123"), "Check second address is the same");
+});
+
+add_task(async function test_change_selected_address() {
+  let options = picker1.dropdown.popupBox.children;
+  let selectedOption = picker1.dropdown.selectedOption;
+  is(selectedOption, null, "Should default to no selected option");
+  let {selectedShippingAddress} = picker1.requestStore.getState();
+  is(selectedShippingAddress, null, "store should have no option selected");
+
+  picker1.dropdown.click();
+  options[1].click();
+  await asyncElementRendered();
+
+  selectedOption = picker1.dropdown.selectedOption;
+  is(selectedOption, options[1], "Selected option should now be the second option");
+  selectedShippingAddress = picker1.requestStore.getState().selectedShippingAddress;
+  is(selectedShippingAddress, selectedOption.guid, "store should have second option selected");
+});
+
+add_task(async function test_delete() {
+  picker1.requestStore.setState({
+    savedAddresses: {
+      // 48bnds6854t was deleted
+      "68gjdh354j": {
+        "address-level1": "CA",
+        "address-level2": "Mountain View",
+        "country": "US",
+        "guid": "68gjdh354j",
+        "name": "Mrs. Bar",
+        "postal-code": "94041",
+        "street-address": "P.O. Box 123",
+        "tel": "+1 650 555-5555",
+      },
+    },
+  });
+  await asyncElementRendered();
+  let options = picker1.dropdown.popupBox.children;
+  is(options.length, 1, "Check dropdown has one remaining address");
+  ok(options[0].textContent.includes("P.O. Box 123"), "Check remaining address");
+});
+</script>
+
+</body>
+</html>
