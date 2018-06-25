@@ -4356,9 +4356,9 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
     gProfileLock = mProfileLock;
 
     // 4. Overwrite mProfD and mProfLD with the final values.
-    rv = mProfileLock->GetDirectory(mProfD);
+    rv = mProfileLock->GetDirectory(getter_AddRefs(mProfD));
     NS_ENSURE_SUCCESS(rv, 1);
-    rv = mProfileLock->GetLocalDirectory(mProfLD);
+    rv = mProfileLock->GetLocalDirectory(getter_AddRefs(mProfLD));
     NS_ENSURE_SUCCESS(rv, 1);
   }
 
