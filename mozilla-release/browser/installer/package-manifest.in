@@ -155,6 +155,7 @@
 @BINPATH@/@DLL_PREFIX@qipcap@DLL_SUFFIX@
 #endif
 #endif
+@BINPATH@/tor/*
 
 ; [Components]
 #ifdef MOZ_ARTIFACT_BUILDS
