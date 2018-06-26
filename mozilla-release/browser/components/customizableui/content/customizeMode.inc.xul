@@ -38,6 +38,9 @@
               label="&customizeMode.extraDragSpace;"
               oncommand="gCustomizeMode.toggleDragSpace(this.checked)"/>
 #endif
+    <checkbox id="customization-cliqz-blue-theme-checkbox" class="customizationmode-checkbox"
+              label="&customizeMode.cliqzBlueTheme;"
+              oncommand="gCustomizeMode.toggleBlueTheme(this.checked)"/>
     <button id="customization-toolbar-visibility-button" label="&customizeMode.toolbars2;" class="customizationmode-button" type="menu">
       <menupopup id="customization-toolbar-menu" onpopupshowing="onViewToolbarsPopupShowing(event)"/>
     </button>
