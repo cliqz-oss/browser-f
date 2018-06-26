@@ -8,13 +8,14 @@ import os
 from os import path
 import logging
 import sys
+import site
 
 # Use explicit version of python-requests
 sys.path.insert(0, path.join(path.dirname(__file__),
                              "../../lib/python/vendor/requests-2.7.0"))
-sys.path.insert(0, path.join(path.dirname(__file__), "../../lib/python"))
+site.addsitedir(os.path.join(os.path.dirname(__file__), "../../lib/python"))
 
-from balrog.submitter.cli import ReleasePusher
+from balrog.submitter.cli import ReleaseScheduler
 from release.info import readReleaseConfig
 from util.retry import retry
 from util.hg import mercurial, make_hg_url
@@ -87,6 +88,6 @@ if __name__ == '__main__':
 
     ruleIds = [release_config["updateChannels"][release_channel]["ruleId"]]
 
-    pusher = ReleasePusher(options.api_root, auth)
+    pusher = ReleaseScheduler(options.api_root, auth)
     pusher.run(release_config['productName'].capitalize(), release_config['version'],
                release_config['buildNumber'], ruleIds)

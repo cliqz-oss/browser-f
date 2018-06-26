@@ -12,12 +12,7 @@ sub GetPrettyVersion {
     my $product = $args{'product'};
 
     $prettyVersion =~ s/a([0-9]+)$/ Alpha $1/;
-    if ($product eq 'firefox' && $version ge '5') {
-        $prettyVersion =~ s/b([0-9]+)$/ Beta/;
-    } else {
-        $prettyVersion =~ s/b([0-9]+)$/ Beta $1/;
-    }
-    $prettyVersion =~ s/rc([0-9]+)$/ RC $1/;
+    $prettyVersion =~ s/b([0-9]+)$/ Beta $1/;
 
     return $prettyVersion;
 }

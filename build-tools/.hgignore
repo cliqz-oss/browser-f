@@ -12,3 +12,4 @@ release-runner.ini
 coverage.xml
 lib/python/buildtools.egg-info/
 nosetests.xml
+^\.idea/

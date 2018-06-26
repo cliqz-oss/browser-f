@@ -205,6 +205,12 @@ if __name__ == '__main__':
     if len(args) != 1:
         parser.error("Need just one server.ini file to read")
 
+    # anything past here should only be done as user cltsign, remove
+    # footgun
+    if getpass.getuser() != 'cltsign':
+        log.error("Must run as user 'cltsign' for remaining actions")
+        sys.exit(1)
+
     config = load_config(args[0])
     if not config:
         parser.error("Error reading config file: %s" % args[0])
@@ -236,9 +242,11 @@ if __name__ == '__main__':
     passphrases = {}
     formats = [f.strip() for f in config.get('signing', 'formats').split(',')]
     for format_ in formats:
-        passphrase = getpass.getpass("%s passphrase: " % format_)
-        if not passphrase:
-            passphrase = None
+        passphrase = get_config(config, 'signing', '{}_passphrase'.format(format_), None)
+        if passphrase is None:
+            passphrase = getpass.getpass("%s passphrase: " % format_)
+            if not passphrase:
+                passphrase = None
         tmpdir = tempfile.mkdtemp()
         try:
             log.info("checking %s passphrase", format_)
@@ -279,6 +287,13 @@ if __name__ == '__main__':
         curdir = os.path.abspath(os.curdir)
         pidfile = os.path.abspath(options.pidfile)
         logfile = os.path.abspath(options.logfile)
+        # Clear out loggers before daemonize to avoid having duplicates
+        # after setting up logging again. For some reason the loggers
+        # don't work after daemonizing unless we set them up again,
+        # but if we don't clear them out *before* daemonizing we end up
+        # with two handlers, leading to duplicate log messages.
+        logger = logging.getLogger()
+        logger.handlers = []
 
         daemon_ctx = daemon.DaemonContext(
             # We do our own signal handling in run()

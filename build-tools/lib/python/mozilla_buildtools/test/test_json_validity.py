@@ -14,10 +14,7 @@ class JsonValidityTest(unittest.TestCase):
             self.fail("Required json file missing from tools repository: '%s'" % jsonFilePath)
         except BaseException as e:
             self.fail("Exception occurred while checking validity of json file '%s': %s" % (jsonFilePath, e))
-
-    def testDevicesJson(self):
-        self._loadJsonFile('buildfarm/mobile/devices.json')
-
+  
     def testProductionMasters(self):
         self._loadJsonFile('buildfarm/maintenance/production-masters.json')
 

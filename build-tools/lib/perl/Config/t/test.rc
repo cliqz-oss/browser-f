@@ -1,0 +1,90 @@
+/*
+ * Beispiel .redirect Datei.
+ *
+ * Wenn diese Datei nicht im $HOME des
+ * jeweiligen Benutzers vorhanden ist,
+ * oder wenn die vorhandene Datei aus
+ * irgendeinem Grund ungültig ist(Syntax)
+ * dann wird per Default alles an @domain
+ * zum Benutzer weitergeleitet.
+ *
+ * Syntax:
+ * Domain Blöcke beginnen mit <domain name> und enden
+ * mit </domain> (equivalent zu apache config).
+ * Als Kommentare sind # sowie C-Style erlaubt(so
+ * wie dieser hier).
+ * Näheres zum <domain ...> Block siehe unten.
+ *
+ * Im <var> Block kann man Variablen definieren, auf
+ * die man dann innerhalb der <domain...> Blöcke zu-
+ * greifen kann (siehe <var> sample!) 
+ *
+ *
+ * Im <list name> Block kann man Mailinglisten einrichten
+ * allerdings rudimentär, d.h. es sind eigentlich nur
+ * Verteiler, aber immerhin. Die entsprechende Adresse
+ * muss im dazugehörigen <domain..> Block definiert sein.
+ *
+ * Angegebene Emailadressen werden (zumindest im Moment)
+ * nicht überprüft, also 1:1 übernommen, also Sorgfalt
+ * walten lassen.
+ *
+ * Fragen/Kommentare/Kritik/Flames/Mecker an:
+ * Thomas Linden <tom@daemon.de>
+ *
+ */
+
+
+
+/*
+ *********************************************************************
+ * Hier kann man Variablen definieren und später mittels
+ * $variablenname verwenden.
+ *********************************************************************
+ */
+<var>
+   USER     scip            # via $USER verwendbar
+</var>
+
+host manna
+host gorky
+
+/*
+ *********************************************************************
+ * Für jede Domain muss ein <domain name> Block vorhanden sein
+ *********************************************************************
+ */
+<domain bar.de>
+   foo    max@nasa.gov      # foo@bar.de nach max@nasa.gov
+
+   coderz %coderz           # coderz@bar.de ist ein Verteiler, der
+                            # in <list coderz> definiert ist.
+
+   @      $USER             # alles andere an "scip" schicken.
+                            # Wenn nicht angegeben, kommen unbekannte
+                            # Adressen an den Absender zurück, z.B.
+                            # gibtsnet@bar.de würde "Unknown User" ver-
+                            # ursachen!
+</domain>
+
+
+
+
+/*
+ *********************************************************************
+ * Definition einer "Mailingliste", gültige Empfänger müssen mit
+ * dem Parameter "rcpt" definiert werden. <list> Blöcke sind Domain-
+ * unabhängig, d.h. sie müssen einen eindeutigen Namen haben.
+ *********************************************************************
+ */
+<list coderz>
+    rcpt    solaar.designer@packetstorm.org
+    rcpt    $USER
+    rcpt    machine@star.wars.de
+</list>
+
+
+
+
+
+

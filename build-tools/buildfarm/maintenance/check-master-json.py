@@ -35,7 +35,7 @@ def check_master(master):
                      'tools_branch', 'datacentre', 'buildbot_bin', 'buildbot_branch',
                      'buildbot_python', 'buildbot_setup', 'environment')
     opt_keys = ('http_port', 'ssh_port', 'pb_port', 'buildbot_version',
-                'limit_fx_platforms', 'limit_tb_platforms', 'limit_b2g_platforms',
+                'limit_fx_platforms', 'limit_tb_platforms',
                 'release_branches', 'thunderbird_release_branches', 'mobile_release_branches')
     int_keys = ('http_port', 'ssh_port', 'pb_port')
 

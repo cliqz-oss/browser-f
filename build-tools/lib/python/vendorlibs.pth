@@ -10,3 +10,8 @@ vendor/jsonmerge-1.1.0/
 vendor/jsonschema-2.5.1/
 vendor/functools32-3.2.3-2/
 vendor/repoze.lru-ef418de/
+vendor/balrogclient-0.0.4/
+vendor/certifi-2016.9.26/
+vendor/arrow-0.10.0/
+vendor/python-dateutil-2.6.0/
+vendor/six-1.10.0/

@@ -1,0 +1,18 @@
+<a>
+  var1 = yes
+  var2 = on
+  var3 = true
+  var4 = no
+  var5 = off
+  var6 = false
+</a>
+
+<b>
+  var1 = Yes
+  var2 = On
+  var3 = TRUE
+  var4 = nO
+  var5 = oFf
+  var6 = False
+</b>
+

@@ -26,8 +26,6 @@ if __name__ == '__main__':
         loglevel=logging.INFO,
         shared_dir=os.environ.get('HG_SHARE_BASE_DIR'),
         clone_by_rev=False,
-        mirrors=None,
-        bundles=None,
     )
     parser.add_option(
         "-v", "--verbose", dest="loglevel", action="store_const",
@@ -47,10 +45,6 @@ if __name__ == '__main__':
         help="do initial clone with -r <rev> instead of cloning the entire repo. "
              "This is slower but is useful when cloning repositories with many "
              "heads which may timeout otherwise.")
-    parser.add_option("--mirror", dest="mirrors", action="append",
-                      help="add a mirror to try cloning/pulling from before repo")
-    parser.add_option("--bundle", dest="bundles", action="append",
-                      help="add a bundle to try downloading/unbundling from before doing a full clone")
     parser.add_option("--purge", dest="auto_purge", action="store_true",
                       help="Purge the destination directory (if it exists).")
 
@@ -89,8 +83,6 @@ if __name__ == '__main__':
     got_revision = mercurial(repo, dest, options.branch, options.revision,
                              shareBase=options.shared_dir,
                              clone_by_rev=options.clone_by_rev,
-                             mirrors=options.mirrors,
-                             bundles=options.bundles,
                              autoPurge=options.auto_purge)
 
     print "Got revision %s" % got_revision

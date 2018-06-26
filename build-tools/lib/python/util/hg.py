@@ -214,7 +214,7 @@ def update(dest, branch=None, revision=None):
 
 
 def clone(repo, dest, branch=None, revision=None, update_dest=True,
-          clone_by_rev=False, mirrors=None, bundles=None, timeout=1800):
+          clone_by_rev=False, timeout=1800):
     """Clones hg repo and places it at `dest`, replacing whatever else is
     there.  The working copy will be empty.
 
@@ -223,14 +223,6 @@ def clone(repo, dest, branch=None, revision=None, update_dest=True,
 
     If `update_dest` is set, then `dest` will be updated to `revision` if
     set, otherwise to `branch`, otherwise to the head of default.
-
-    If `mirrors` is set, will try and clone from the mirrors before
-    cloning from `repo`.
-
-    If `bundles` is set, will try and download the bundle first and
-    unbundle it. If successful, will pull in new revisions from mirrors or
-    the master repo. If unbundling fails, will fall back to doing a regular
-    clone from mirrors or the master repo.
 
     Regardless of how the repository ends up being cloned, the 'default' path
     will point to `repo`.
@@ -244,49 +236,6 @@ def clone(repo, dest, branch=None, revision=None, update_dest=True,
     """
     if os.path.exists(dest):
         remove_path(dest)
-
-    if bundles:
-        log.info("Attempting to initialize clone with bundles")
-        for bundle in bundles:
-            if os.path.exists(dest):
-                remove_path(dest)
-            init(dest)
-            log.info("Trying to use bundle %s", bundle)
-            try:
-                if not unbundle(bundle, dest):
-                    remove_path(dest)
-                    continue
-                adjust_paths(dest, default=repo)
-                # Now pull / update
-                return pull(repo, dest, update_dest=update_dest,
-                            mirrors=mirrors, revision=revision, branch=branch)
-            except Exception:
-                remove_path(dest)
-                log.exception("Problem unbundling/pulling from %s", bundle)
-                continue
-        else:
-            log.info("Using bundles failed; falling back to clone")
-
-    if mirrors:
-        log.info("Attempting to clone from mirrors")
-        for mirror in mirrors:
-            log.info("Cloning from %s", mirror)
-            try:
-                retval = clone(mirror, dest, branch, revision,
-                               update_dest=update_dest, clone_by_rev=clone_by_rev)
-                adjust_paths(dest, default=repo)
-                return retval
-            except:
-                log.exception("Problem cloning from mirror %s", mirror)
-                continue
-        else:
-            log.info("Pulling from mirrors failed; falling back to %s", repo)
-            # We may have a partial repo here; mercurial() copes with that
-            # We need to make sure our paths are correct though
-            if os.path.exists(os.path.join(dest, '.hg')):
-                adjust_paths(dest, default=repo)
-            return mercurial(repo, dest, branch, revision, autoPurge=True,
-                             update_dest=update_dest, clone_by_rev=clone_by_rev)
 
     cmd = ['clone', '--traceback']
     if not update_dest:
@@ -350,24 +299,12 @@ def common_args(revision=None, branch=None, ssh_username=None, ssh_key=None):
     return args
 
 
-def pull(repo, dest, update_dest=True, mirrors=None, **kwargs):
+def pull(repo, dest, update_dest=True, **kwargs):
     """Pulls changes from hg repo and places it in `dest`.
 
     If `update_dest` is set, then `dest` will be updated to `revision` if
     set, otherwise to `branch`, otherwise to the head of default.
-
-    If `mirrors` is set, will try and pull from the mirrors first before
-    `repo`."""
-
-    if mirrors:
-        for mirror in mirrors:
-            try:
-                return pull(mirror, dest, update_dest=update_dest, **kwargs)
-            except:
-                log.exception("Problem pulling from mirror %s", mirror)
-                continue
-        else:
-            log.info("Pulling from mirrors failed; falling back to %s", repo)
+    """
 
     # Convert repo to an absolute path if it's a local repository
     repo = _make_absolute(repo)
@@ -456,28 +393,16 @@ def push(src, remote, push_new_branches=True, force=False, **kwargs):
 
 
 def mercurial(repo, dest, branch=None, revision=None, update_dest=True,
-              shareBase=DefaultShareBase, allowUnsharedLocalClones=False,
-              clone_by_rev=False, mirrors=None, bundles=None, autoPurge=False):
+              shareBase=DefaultShareBase, clone_by_rev=False, 
+              autoPurge=False):
     """Makes sure that `dest` is has `revision` or `branch` checked out from
     `repo`.
 
     Do what it takes to make that happen, including possibly clobbering
     dest.
 
-    If allowUnsharedLocalClones is True and we're trying to use the share
-    extension but fail, then we will be able to clone from the shared repo to
-    our destination.  If this is False, the default, then if we don't have the
-    share extension we will just clone from the remote repository.
-
     If `clone_by_rev` is True, use 'hg clone -r <rev>' instead of 'hg clone'.
     This is slower, but useful when cloning repos with lots of heads.
-
-    If `mirrors` is set, will try and use the mirrors before `repo`.
-
-    If `bundles` is set, will try and download the bundle first and
-    unbundle it instead of doing a full clone. If successful, will pull in
-    new revisions from mirrors or the master repo. If unbundling fails, will
-    fall back to doing a regular clone from mirrors or the master repo.
     """
     dest = os.path.abspath(dest)
     if shareBase is DefaultShareBase:
@@ -532,8 +457,7 @@ def mercurial(repo, dest, branch=None, revision=None, update_dest=True,
                         return update(dest, branch=branch, revision=revision)
                     return revision
                 return pull(repo, dest, update_dest=update_dest, branch=branch,
-                            revision=revision,
-                            mirrors=mirrors)
+                            revision=revision)
             except subprocess.CalledProcessError:
                 log.warning("Error pulling changes into %s from %s; clobbering", dest, repo)
                 log.debug("Exception:", exc_info=True)
@@ -573,7 +497,7 @@ def mercurial(repo, dest, branch=None, revision=None, update_dest=True,
             log.info("Updating shared repo")
             mercurial(repo, sharedRepo, branch=branch, revision=revision,
                       update_dest=False, shareBase=None, clone_by_rev=clone_by_rev,
-                      mirrors=mirrors, bundles=bundles, autoPurge=False)
+                      autoPurge=False)
             if os.path.exists(dest):
 
                 # Bug 969689: Check to see if the dest repo is still on a valid
@@ -592,25 +516,8 @@ def mercurial(repo, dest, branch=None, revision=None, update_dest=True,
                         purge(dest)
                     return update(dest, branch=branch, revision=revision)
 
-            try:
-                log.info("Trying to share %s to %s", sharedRepo, dest)
-                return share(sharedRepo, dest, branch=branch, revision=revision)
-            except subprocess.CalledProcessError:
-                if not allowUnsharedLocalClones:
-                    # Re-raise the exception so it gets caught below.
-                    # We'll then clobber dest, and clone from original repo
-                    raise
-
-                log.warning("Error calling hg share from %s to %s;"
-                            "falling back to normal clone from shared repo",
-                            sharedRepo, dest)
-                # Do a full local clone first, and then update to the
-                # revision we want
-                # This lets us use hardlinks for the local clone if the OS
-                # supports it
-                clone(sharedRepo, dest, update_dest=False,
-                      mirrors=mirrors, bundles=bundles)
-                return update(dest, branch=branch, revision=revision)
+            log.info("Trying to share %s to %s", sharedRepo, dest)
+            return share(sharedRepo, dest, branch=branch, revision=revision)
         except subprocess.CalledProcessError:
             log.warning(
                 "Error updating %s from sharedRepo (%s): ", dest, sharedRepo)
@@ -623,8 +530,7 @@ def mercurial(repo, dest, branch=None, revision=None, update_dest=True,
 
     # Share isn't available or has failed, clone directly from the source
     return clone(repo, dest, branch, revision,
-                 update_dest=update_dest, mirrors=mirrors,
-                 bundles=bundles, clone_by_rev=clone_by_rev)
+                 update_dest=update_dest, clone_by_rev=clone_by_rev)
 
 
 def apply_and_push(localrepo, remote, changer, max_attempts=10,
@@ -677,6 +583,12 @@ def apply_and_push(localrepo, remote, changer, max_attempts=10,
 def share(source, dest, branch=None, revision=None):
     """Creates a new working directory in "dest" that shares history with
        "source" using Mercurial's share extension"""
+    if not os.path.exists(dest):
+        log.info("mkdir: %s" % str(dest))
+        try:
+            os.makedirs(dest)
+        except OSError:
+            log.error("Can't create directory %s!" % dest)
     run_cmd(['hg', 'share', '-U', source, dest])
     return update(dest, branch=branch, revision=revision)
 
@@ -701,18 +613,6 @@ def path(src, name='default'):
 def init(dest):
     """Initializes an empty repo in `dest`"""
     run_cmd(['hg', 'init', dest])
-
-
-def unbundle(bundle, dest):
-    """Unbundles the bundle located at `bundle` into `dest`.
-
-    `bundle` can be a local file or remote url."""
-    try:
-        get_hg_output(['unbundle', '--traceback', bundle], timeout=3600,
-                      cwd=dest, include_stderr=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
 
 
 def adjust_paths(dest, **paths):

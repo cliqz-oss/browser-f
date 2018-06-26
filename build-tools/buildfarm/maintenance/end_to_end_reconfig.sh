@@ -35,11 +35,11 @@ function usage {
     echo
     echo "This script can be used to reconfig interactively, or non-interactively. It will merge"
     echo "buildbotcustom, buildbot-configs from default to production(-0.8)."
-    echo "It will then reconfig the buildbot masters, update the foopies with the latest tools"
-    echo "changes, and afterwards if all was successful, it will also update the wiki page"
-    echo "https://wiki.mozilla.org/ReleaseEngineering/Maintenance and additionally post comments"
-    echo "on the Bugzilla bugs it finds in the commit messages of merged changes, providing a link"
-    echo "to the hg web interface of the commits that have been deployed to production."
+    echo "It will then reconfig the buildbot masters. Afterwards, if all was successful, the script will"
+    echo "update the maintenance wiki (https://wiki.mozilla.org/ReleaseEngineering/Maintenance) and"
+    echo "will additionally post comments to bugzilla for bugs it finds in the commit messages of"
+    echo "merged changes, providing a link to the hg web interface of the commits that have been"
+    echo "deployed to production."
     echo
     echo "USAGE"
     echo "     1) $(basename "${0}") -h"
@@ -256,6 +256,14 @@ if ! python --version 2>&1 | grep -q '^Python 2\.7'; then
     exit 66
 fi
 
+run_virtualenv() {
+    if hash virtualenv2 2>/dev/null; then
+        virtualenv2 "$@"
+    else
+        virtualenv -p python2 "$@"
+    fi
+}
+
 for package in fabric requests; do
     installed_package=false
     echo "  * Checking ${package} package is available in python environment..."
@@ -264,7 +272,7 @@ for package in fabric requests; do
         if [ ! -e "${RECONFIG_DIR}/reconfig-virtual-env" ]; then
             echo "  * Creating virtualenv directory '${RECONFIG_DIR}/reconfig-virtual-env' for reconfig tool..."
             echo "  * Logging to: '${RECONFIG_DIR}/virtualenv-installation.log'..."
-            virtualenv "${RECONFIG_DIR}/reconfig-virtual-env" >"${RECONFIG_DIR}/virtualenv-installation.log" 2>&1
+            run_virtualenv "${RECONFIG_DIR}/reconfig-virtual-env" >"${RECONFIG_DIR}/virtualenv-installation.log" 2>&1
             set +u
             source "${RECONFIG_DIR}/reconfig-virtual-env/bin/activate"
             set -u
@@ -479,7 +487,7 @@ if merge_to_production; then
 fi
 
 if [ "${FORCE_RECONFIG}" == '1' ]; then
-    production_masters_url='http://hg.mozilla.org/build/tools/raw-file/tip/buildfarm/maintenance/production-masters.json'
+    production_masters_url='https://hg.mozilla.org/build/tools/raw-file/default/buildfarm/maintenance/production-masters.json'
     if [ "${PREPARE_ONLY}" != '0' ]; then
         echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests show_revisions update"
         echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests update_master_config"
@@ -537,23 +545,6 @@ if [ -f "${RECONFIG_DIR}/${RECONFIG_UPDATE_FILE}" ]; then
 
     echo "  * Summary of changes:"
     cat "${RECONFIG_DIR}/${RECONFIG_UPDATE_FILE}" | sed 's/^/        /'
-fi
-
-# Manage foopies after everything else.
-# No easy way to see if there are changes to the tools repo since there is no production branch
-# and we do not tag it - so aside from running show_revision and then checking if every version
-# is already on the latest commit, we should probably just run it regardless.
-devices_json_url='http://hg.mozilla.org/build/tools/raw-file/tip/buildfarm/mobile/devices.json'
-if [ "${PREPARE_ONLY}" != '0' ]; then
-    echo "  * Preparing foopy update only; not running: '$(pwd)/manage_foopies.py' -f '${devices_json_url}' -j16 -H all show_revision update"
-    echo "  * Preparing foopy update only; not running: '$(pwd)/manage_foopies.py' -f '${devices_json_url}' -j16 -H all show_revision"
-else
-    echo "  * Fabric log for foopies: '${RECONFIG_DIR}/manage_foopies-${START_TIME}.log'"
-    echo "  * Running: '$(pwd)/manage_foopies.py' -f '${devices_json_url}' -j16 -H all show_revision update"
-    ./manage_foopies.py -f "${devices_json_url}" -j16 -H all show_revision update >>"${RECONFIG_DIR}/manage_foopies-${START_TIME}.log" 2>&1
-    echo "  * Running: '$(pwd)/manage_foopies.py' -f '${devices_json_url}' -j16 -H all show_revision"
-    ./manage_foopies.py -f "${devices_json_url}" -j16 -H all show_revision >>"${RECONFIG_DIR}/manage_foopies-${START_TIME}.log" 2>&1
-    echo "  * Foopies updated"
 fi
 
 echo "  * Directory '${RECONFIG_DIR}' contains artifacts from reconfig process"

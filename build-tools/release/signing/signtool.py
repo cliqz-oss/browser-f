@@ -40,8 +40,11 @@ def is_authenticode_signed(filename):
 
 
 def main():
-    allowed_formats = ("sha2signcode", "signcode", "osslsigncode", "gpg", "mar", "dmg",
-                       "dmgv2", "jar", "b2gmar", "emevoucher")
+    allowed_formats = ("sha2signcode", "sha2signcodestub", "signcode",
+                       "osslsigncode", "gpg", "mar", "mar_sha384", "dmg",
+                       # "jar" alone is to sign Fennec
+                       "dmgv2", "macapp", "jar", "focus-jar", "emevoucher",
+                       "widevine", "widevine_blessed")
 
     from optparse import OptionParser
     import random
@@ -130,12 +133,13 @@ def main():
         else:
             formats.append(fmt)
 
-    # bug 1164456
-    # GPG signing must happen last because it will be invalid if done prior to
-    # any format that modifies the file in-place.
-    if "gpg" in formats:
-        formats.remove("gpg")
-        formats.append("gpg")
+    # bug 1382882, bug 1164456
+    # Widevine and gpg signing must happen last because they will be invalid if
+    # done prior to any format that modifies the file in-place.
+    for fmt in ("widevine", "widevine_blessed", "gpg"):
+        if fmt in formats:
+            formats.remove(fmt)
+            formats.append(fmt)
 
     if options.output_file and (len(args) > 1 or os.path.isdir(args[0])):
         parser.error(
@@ -184,10 +188,10 @@ def main():
         urls = format_urls[fmt]
         random.shuffle(urls)
 
-        # The only difference between dmg and dmgv2 are the servers they use.
+        # The only difference between dmg, dmgv2, and macapp are the servers they use.
         # The server side code only understands "dmg" as a format, so we need
         # to translate this now that we've chosen our URLs
-        if fmt == "dmgv2":
+        if fmt in ("dmgv2", "macapp"):
             fmt = "dmg"
 
         log.debug("doing %s signing", fmt)
@@ -205,7 +209,7 @@ def main():
         for f in files:
             log.debug("%s", f)
             log.debug("checking %s for signature...", f)
-            if fmt in ('sha2signcode', 'signcode', 'osslsigncode') and is_authenticode_signed(f):
+            if fmt in ('sha2signcode', 'sha2signcodestub', 'signcode', 'osslsigncode') and is_authenticode_signed(f):
                 log.info("Skipping %s because it looks like it's already signed", f)
                 continue
             if options.output_dir:

@@ -1,0 +1,13 @@
+# should generate an error about invalid structure
+# array of hashrefs => scalar
+
+<val 1>
+ x = no
+</val>
+
+val = 3
+
+<val 2>
+ x = no
+</val>
+
