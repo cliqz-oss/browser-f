@@ -63,15 +63,13 @@ def tag(repo, revision, tags, username):
 
 
 def tagRepo(config, repo, reponame, revision, tags, bumpFiles, relbranch,
-            pushAttempts, defaultBranch='default'):
+            pushAttempts):
     remote = make_hg_url(HG, repo)
     mercurial(remote, reponame)
 
-    def bump_and_tag(repo, attempt, config, relbranch, revision, tags,
-                     defaultBranch):
+    def bump_and_tag(repo, attempt, config, relbranch, revision, tags):
         # set relbranchChangesets=1 because tag() generates exactly 1 commit
         relbranchChangesets = 1
-        defaultBranchChangesets = 0
 
         if relbranch in get_branches(reponame):
             update(reponame, revision=relbranch)
@@ -102,40 +100,21 @@ def tagRepo(config, repo, reponame, revision, tags, bumpFiles, relbranch,
         # Create the desired tags on the relbranch
         tag(repo, revision, tags, config['hgUsername'])
 
-        # This is the bump of the version on the default branch
-        # We do it after the other one in order to get the tip of the
-        # repository back on default, thus avoiding confusion.
-        if len(bumpFiles) > 0:
-            update(reponame, revision=defaultBranch)
-            bump(reponame, bumpFiles, 'nextVersion')
-            run_cmd(['hg', 'diff'], cwd=repo)
-            try:
-                get_output(['hg', 'commit', '-u', config['hgUsername'],
-                            '-m', getBumpCommitMessage(config['productName'], config['version'])],
-                           cwd=reponame)
-                defaultBranchChangesets += 1
-            except subprocess.CalledProcessError, e:
-                if e.returncode != 1 or "nothing changed" not in e.output:
-                    raise
-
         # Validate that the repository is only different from the remote in
         # ways we expect.
         outgoingRevs = out(src=reponame, remote=remote,
                            ssh_username=config['hgUsername'],
                            ssh_key=config['hgSshKey'])
 
-        if len([r for r in outgoingRevs if r[BRANCH] == "default"]) != defaultBranchChangesets:
-            raise Exception(
-                "Incorrect number of revisions on 'default' branch")
         if len([r for r in outgoingRevs if r[BRANCH] == relbranch]) != relbranchChangesets:
             raise Exception("Incorrect number of revisions on %s" % relbranch)
-        if len(outgoingRevs) != (relbranchChangesets + defaultBranchChangesets):
+        if len(outgoingRevs) != relbranchChangesets:
             raise Exception("Wrong number of outgoing revisions")
 
     pushRepo = make_hg_url(HG, repo, protocol='ssh')
 
     def bump_and_tag_wrapper(r, n):
-        bump_and_tag(r, n, config, relbranch, revision, tags, defaultBranch)
+        bump_and_tag(r, n, config, relbranch, revision, tags)
 
     def cleanup_wrapper():
         cleanOutgoingRevs(reponame, pushRepo, config['hgUsername'],

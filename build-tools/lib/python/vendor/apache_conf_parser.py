@@ -496,8 +496,8 @@ class ApacheConfParser(ComplexNode):
     def __init__(self, source, infile=True, delay=False, count=None):
         """Count is the starting number for line counting..."""
         super(ApacheConfParser, self).__init__(_NODES)
-	self.source = source.splitlines()
-	if infile:
+        self.source = source.splitlines()
+        if infile:
             self.source = (line.strip("\n") for line in open(source))
         self.count = count
         if not delay:

@@ -123,6 +123,9 @@ source bin/activate
 if reconfig_needed; then
     # We append the START_TIME to the reconfig milestone messages to make it easier to match up milestones
     # (start/finish) from a single reconfig event.
+    log_info "--------------------------------------------------------------"
+    log_info " Begin updating master_config.json"
+    python ./buildbot-configs/update-master-json.py "${MASTER_DIR}/tools/buildfarm/maintenance/production-masters.json" ${MASTER_DIR}/master/master_config.json >> ${LOGFILE} 2>&1
     log_info "Starting reconfig. - ${START_TIME}"
     make checkconfig >> ${LOGFILE} 2>&1
     RC=$?
@@ -134,6 +137,7 @@ if reconfig_needed; then
     fi
     if [ "${RC}" == "0" ]; then
         log_info "Reconfig completed successfuly. - ${START_TIME}"
+        echo "Reconfig completed successfuly. - ${START_TIME}"
     else
         log_error "Reconfig failed. - ${START_TIME}"
         exit 5

@@ -2,10 +2,9 @@
 # Other keys in whitelist contain things are in that branches mozconfigs and allowed to be missing from nightly builds.
 whitelist = {
     'mozilla-release': {},
-    'mozilla-esr38': {},
     'mozilla-beta': {},
     'comm-beta': {},
-    'comm-esr38': {},
+    'comm-esr52': {},
     'nightly': {},
     }
 
@@ -16,6 +15,7 @@ all_platforms = all_desktop_platforms + all_mobile_platforms
 for platform in all_platforms:
     whitelist['nightly'][platform] = [
         'ac_add_options --enable-update-channel=nightly',
+        'ac_add_options --enable-profiling',
         'mk_add_options CLIENT_PY_ARGS="--hg-options=\'--verbose --time\' --hgtool=../tools/buildfarm/utils/hgtool.py --skip-chatzilla --skip-comm --skip-inspector --skip-venkman --tinderbox-print"'
     ]
 
@@ -35,6 +35,7 @@ for platform in ['linux', 'linux64', 'macosx64', 'win32', 'win64']:
     whitelist['nightly'][platform] += ['ac_add_options --enable-signmar']
     whitelist['nightly'][platform] += ['ac_add_options --enable-js-diagnostics']
     whitelist['nightly'][platform] += ['ac_add_options --with-branding=browser/branding/nightly']
+    whitelist['nightly'][platform] += ['. "$commtopsrcdir/build/mozconfig.sccache"']
 
 whitelist['nightly']['linux'] += [
     'CXX=$REAL_CXX',
@@ -149,7 +150,7 @@ for branch in ('mozilla-beta', 'comm-beta'):
     whitelist[branch]['android-api-15'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
 
 
-for branch in ('mozilla-release', 'comm-esr38'):
+for branch in ('mozilla-release', 'comm-esr52'):
     for platform in all_platforms:
         whitelist[branch][platform] = [
             'ac_add_options --enable-update-channel=release',
@@ -184,14 +185,6 @@ for branch in ('mozilla-release', 'comm-esr38'):
     whitelist[branch]['android-api-15'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-x86'] += ['ac_add_options --enable-updater']
 
-
-for branch in ('mozilla-esr38', ):
-    for platform in all_platforms:
-        whitelist[branch][platform] = [
-            'ac_add_options --enable-official-branding',
-            'mk_add_options MOZ_PGO=1',
-            'export BUILDING_RELEASE=1',
-        ]
 
 if __name__ == '__main__':
     import pprint

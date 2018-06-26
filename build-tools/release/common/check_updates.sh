@@ -1,11 +1,16 @@
 check_updates () {
-  # called with 6 args - platform, source package, target package, update package, old updater boolean, updates-settings.ini values
+  # called with 9 args - platform, source package, target package, update package, old updater boolean,
+  # a path to the updater binary to use for the tests, a file to write diffs to, the update channel,
+  # and (sometimes) update-settings.ini values
   update_platform=$1
   source_package=$2
   target_package=$3
   locale=$4
   use_old_updater=$5
-  mar_channel_IDs=$6
+  updater=$6
+  diff_file=$7
+  channel=$8
+  mar_channel_IDs=$9
 
   # cleanup
   rm -rf source/*
@@ -25,20 +30,12 @@ check_updates () {
   case $update_platform in
       Darwin_ppc-gcc | Darwin_Universal-gcc3 | Darwin_x86_64-gcc3 | Darwin_x86-gcc3-u-ppc-i386 | Darwin_x86-gcc3-u-i386-x86_64 | Darwin_x86_64-gcc3-u-i386-x86_64) 
           platform_dirname="*.app"
-          updater="Contents/MacOS/updater.app/Contents/MacOS/updater"
-          binary_file_pattern='^Binary files'
           ;;
       WINNT*) 
           platform_dirname="bin"
-          updater="updater.exe"
-          binary_file_pattern='^Files.*and.*differ$'
           ;;
       Linux_x86-gcc | Linux_x86-gcc3 | Linux_x86_64-gcc3) 
           platform_dirname=`echo $product | tr '[A-Z]' '[a-z]'`
-          updater="updater"
-          binary_file_pattern='^Binary files'
-          # Bug 1209376. Linux updater linked against other libraries in the installation directory
-          export LD_LIBRARY_PATH=$PWD/source/$platform_dirname
           ;;
   esac
 
@@ -46,13 +43,25 @@ check_updates () {
   if [ -f update/update.log ]; then rm update/update.log; fi
 
   if [ -d source/$platform_dirname ]; then
-    cd source/$platform_dirname;
-    cp $updater ../../update
-    if [ "$use_old_updater" = "1" ]; then
-        ../../update/updater ../../update . 0
+    if [ `uname | cut -c-5` == "MINGW" ]; then
+      # windows
+      # change /c/path/to/pwd to c:\\path\\to\\pwd
+      four_backslash_pwd=$(echo $PWD | sed -e 's,^/\([a-zA-Z]\)/,\1:/,' | sed -e 's,/,\\\\,g')
+      two_backslash_pwd=$(echo $PWD | sed -e 's,^/\([a-zA-Z]\)/,\1:/,' | sed -e 's,/,\\,g')
+      cwd="$two_backslash_pwd\\source\\$platform_dirname"
+      update_abspath="$two_backslash_pwd\\update"
     else
-        ../../update/updater ../../update . . 0
+      # not windows
+      # use ls here, because mac uses *.app, and we need to expand it
+      cwd=$(ls -d $PWD/source/$platform_dirname)
+      update_abspath="$PWD/update"
     fi
+
+    cd_dir=$(ls -d ${PWD}/source/${platform_dirname})
+    cd "${cd_dir}"
+    set -x
+    "$updater" "$update_abspath" "$cwd" "$cwd" 0
+    set +x
     cd ../..
   else
     echo "FAIL: no dir in source/$platform_dirname"
@@ -68,34 +77,36 @@ check_updates () {
     return 1
   fi
 
-  diff -r source/$platform_dirname target/$platform_dirname  > results.diff
-  diffErr=$?
-  cat results.diff
-  grep ^Only results.diff | sed 's/^Only in \(.*\): \(.*\)/\1\/\2/' | \
-  while read to_test; do
-    if [ -d "$to_test" ]; then 
-      echo Contents of $to_test dir only in source or target
-      find "$to_test" -ls | grep -v "${to_test}$"
-    fi
-  done
-  grep "$binary_file_pattern" results.diff > /dev/null
-  grepErr=$?
-  if [ $grepErr == 0 ]
+  # If we were testing an OS X mar on Linux, the unpack step copied the
+  # precomplete file from Contents/Resources to the root of the install
+  # to ensure the Linux updater binary could find it. However, only the
+  # precomplete file in Contents/Resources was updated, which means
+  # the copied version in the root of the install will usually have some
+  # differences between the source and target. To prevent this false
+  # positive from failing the tests, we simply remove it before diffing.
+  # The precomplete file in Contents/Resources is still diffed, so we
+  # don't lose any coverage by doing this.
+  cd `echo "source/$platform_dirname"`
+  if [[ -f "Contents/Resources/precomplete" && -f "precomplete" ]]
   then
-    echo "FAIL: binary files found in diff"
-    return 1
-  elif [ $grepErr == 1 ]
-  then
-    if [ -s results.diff ]
-    then
-      echo "WARN: non-binary files found in diff"
-      return 2
-    fi
-  else
-    echo "FAIL: unknown error from grep: $grepErr"
-    return 3
+    rm "precomplete"
   fi
-  if [ $diffErr != 0 ]
+  cd ../..
+  cd `echo "target/$platform_dirname"`
+  if [[ -f "Contents/Resources/precomplete" && -f "precomplete" ]]
+  then
+    rm "precomplete"
+  fi
+  cd ../..
+
+  ../compare-directories.py source/${platform_dirname} target/${platform_dirname}  ${channel} > "${diff_file}"
+  diffErr=$?
+  cat "${diff_file}"
+  if [ $diffErr == 2 ]
+  then
+    echo "FAIL: differences found after update"
+    return 1
+  elif [ $diffErr != 0 ]
   then
     echo "FAIL: unknown error from diff: $diffErr"
     return 3

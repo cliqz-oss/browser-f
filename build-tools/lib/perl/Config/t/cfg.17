@@ -1,0 +1,4 @@
+home = /home/users
+<foo>
+quux = $bar
+</foo>

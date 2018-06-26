@@ -72,13 +72,12 @@ def signfile(filename, keydir, fake=False, passphrase=None, timestamp=True):
         raise
 
 
-def osslsigncode_signfile(inputfile, outputfile, keydir, fake=False, passphrase=None, timestamp=None):
+def osslsigncode_signfile(inputfile, outputfile, keydir, fake=False, passphrase=None,
+                          timestamp=None, includedummycert=False):
     """Perform Authenticode signing on "inputfile", writing a signed version
-    to "outputfile". See signcode_signfile for a description of other
-    arguments.
-
-    See https://bugzilla.mozilla.org/show_bug.cgi?id=711210#c15 for background
-    on why we want both methods.
+    to "outputfile". includedummycert controls the inclusion of the extra cert from bug
+    1261140, intended for stub installers only. See signfile() for a description
+    of other arguments.
     """
     if fake:
         time.sleep(1)
@@ -95,6 +94,9 @@ def osslsigncode_signfile(inputfile, outputfile, keydir, fake=False, passphrase=
     ]
     if timestamp:
         args.extend(['-t', 'http://timestamp.verisign.com/scripts/timestamp.dll'])
+    # requires osslsigncode >= 1.6
+    if includedummycert:
+        args.extend(['-ac', '%s/StubDummy.cert' % keydir])
 
     try:
         import pexpect
@@ -130,7 +132,7 @@ I am ur signature!
         return
 
     command = ['gpg', '--homedir', gpgdir, '-bsa', '-o', sigfile, '-q',
-               '--batch']
+               '--batch', '--personal-digest-preferences', 'SHA256']
     if passphrase:
         command.extend(['--passphrase-fd', '0'])
     command.append(filename)
@@ -246,12 +248,18 @@ def jar_unsignfile(filename):
         raise ValueError("Couldn't remove previous signature")
 
 
-def jar_signfile(filename, keystore, keyname, fake=False, passphrase=None):
+def jar_signfile(filename, keystore, keyname, digestalg, sigalg, fake=False, passphrase=None):
     """Sign a jar file
     """
     # unsign first
     jar_unsignfile(filename)
-    command = ["jarsigner", "-keystore", keystore, filename]
+    command = [
+        "jarsigner",
+        "-keystore", keystore,
+        "-digestalg", digestalg,
+        "-sigalg", sigalg,
+        filename
+    ]
     if keyname:
         command.append(keyname)
     stdout = tempfile.TemporaryFile()
@@ -353,6 +361,55 @@ def dmg_signfile(filename, keychain, signing_identity, subject_ou, fake=False):
     try:
         log.debug("Signing with command: %s %s", " ".join(sign_command), app)
         check_call(sign_command + [app], cwd=appdir, stdout=stdout, stderr=STDOUT)
+    except:
+        stdout.seek(0)
+        data = stdout.read()
+        log.exception(data)
+        raise
+
+
+def widevine_signfile(filename, sigfile, key, cert, widevine_cmd, fake=False,
+                      passphrase=None, blessed="0"):
+    """Sign the given file with the widevine key and cert. The signature is
+    written to sigfile.
+
+    If fake is True, generate a fake signature and sleep for a bit.
+
+    If passphrase is set, it will be passed to the script on stdin
+    """
+    if fake:
+        open(sigfile, "wb").write("""
+-----BEGIN FAKE SIGNATURE-----
+Version: 1.2.3.4
+
+I am ur signature!
+-----END FAKE SIGNATURE-----""")
+        time.sleep(1)
+        return
+
+    stdout = tempfile.TemporaryFile()
+
+    if isinstance(widevine_cmd, basestring):
+        widevine_cmd = shlex.split(widevine_cmd)
+    repl_dict = {
+        "widevine_key": key,
+        "widevine_cert": cert,
+        "input": filename,
+        "output": sigfile,
+        "blessed": blessed,
+    }
+    for i, item in enumerate(widevine_cmd):
+        widevine_cmd[i] = item % repl_dict
+
+    log.info('Running %s', widevine_cmd)
+    try:
+        import pexpect
+        proc = pexpect.spawn(widevine_cmd[0], widevine_cmd[1:])
+        # We use logfile_read because we only want stdout/stderr, _not_ stdin.
+        proc.logfile_read = stdout
+        proc.expect('Private key passphrase:')
+        proc.sendline(passphrase)
+        proc.wait()
     except:
         stdout.seek(0)
         data = stdout.read()

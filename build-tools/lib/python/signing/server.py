@@ -514,7 +514,7 @@ class SigningServer:
             checksum = sha1sum(fn)
             headers = [
                 ('X-SHA1-Digest', checksum),
-                ('Content-Length', os.path.getsize(fn)),
+                ('Content-Length', str(os.path.getsize(fn))),
             ]
             fp = open(fn, 'rb')
             os.utime(fn, None)
@@ -558,6 +558,10 @@ class SigningServer:
                 self.misses += 1
 
             start_response("404 Not Found", headers)
+            yield ""
+        except:
+            log.exception("ISE")
+            start_response("500 Internal Server Error", headers)
             yield ""
 
     def handle_upload(self, environ, start_response, values, rest, next_nonce):

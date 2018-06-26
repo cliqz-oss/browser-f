@@ -20,7 +20,7 @@ setup(
     install_requires=[
         'sqlalchemy',
         'argparse',
-        'twisted',
+        'Twisted==10.1.0',
         'simplejson',
         'furl',
         'requests',
