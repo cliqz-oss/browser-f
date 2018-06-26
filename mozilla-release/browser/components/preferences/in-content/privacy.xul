@@ -317,14 +317,8 @@
 
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-<<<<<<< HEAD
-  <caption><label>&doNotTrackHeader.label;</label></caption>
-#if 0
-||||||| merged common ancestors
-  <caption><label>&trackingProtectionHeader2.label;</label></caption>
-=======
   <caption><label data-l10n-id="tracking-header"/></caption>
->>>>>>> origin/upstream-releases
+#if 0
   <vbox>
     <hbox align="start">
       <vbox flex="1">
@@ -596,32 +590,16 @@
 #endif
   <vbox data-subcategory="reports">
     <description flex="1">
-<<<<<<< HEAD
-      <checkbox id="submitHealthReportBox" label="&enableHealthReport2.label;"
-#if 0
-                class="tail-with-learn-more"
-#endif
-                accesskey="&enableHealthReport2.accesskey;"/>
-#if 0
-||||||| merged common ancestors
-      <checkbox id="submitHealthReportBox" label="&enableHealthReport2.label;"
-                class="tail-with-learn-more"
-                accesskey="&enableHealthReport2.accesskey;"/>
-=======
       <checkbox id="submitHealthReportBox"
-                data-l10n-id="collection-health-report"
-                class="tail-with-learn-more"/>
->>>>>>> origin/upstream-releases
-      <label id="FHRLearnMore"
-<<<<<<< HEAD
-             class="learnMore text-link">&healthReportLearnMore.label;</label>
+#if 0
+                class="tail-with-learn-more"
 #endif
-||||||| merged common ancestors
-             class="learnMore text-link">&healthReportLearnMore.label;</label>
-=======
+                data-l10n-id="collection-health-report"/>
+#if 0
+      <label id="FHRLearnMore"
              class="learnMore text-link"
              data-l10n-id="collection-health-report-link"/>
->>>>>>> origin/upstream-releases
+#endif
     </description>
 #ifndef MOZ_TELEMETRY_REPORTING
   <description id="TelemetryDisabledDesc"
@@ -652,14 +630,8 @@
                 flex="1"/>
 #if 0
       <label id="crashReporterLearnMore"
-<<<<<<< HEAD
-             class="learnMore text-link">&crashReporterLearnMore.label;</label>
+             class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
 #endif
-||||||| merged common ancestors
-             class="learnMore text-link">&crashReporterLearnMore.label;</label>
-=======
-              class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
->>>>>>> origin/upstream-releases
     </hbox>
 #endif
   <description>&cliqzFirefoxPrivacy.label;</description>

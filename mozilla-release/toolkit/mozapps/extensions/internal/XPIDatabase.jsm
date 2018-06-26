@@ -28,6 +28,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   Services: "resource://gre/modules/Services.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+  TelemetryController: "resource://gre/modules/TelemetryController.jsm",
 
   Blocklist: "resource://gre/modules/Blocklist.jsm",
   UpdateChecker: "resource://gre/modules/addons/XPIInstall.jsm",
@@ -903,11 +905,13 @@ AddonWrapper = class {
     }
 
     if (addon.inDatabase) {
+      /* In CLIQZ we need to be able to userDisable system addons like HTTPSEverywhere
       // hidden and system add-ons should not be user disabled,
       // as there is no UI to re-enable them.
       if (this.hidden) {
         throw new Error(`Cannot disable hidden add-on ${addon.id}`);
       }
+      */
       XPIDatabase.updateAddonDisabledState(addon, val);
     } else {
       addon.userDisabled = val;
@@ -943,6 +947,10 @@ AddonWrapper = class {
   get hidden() {
     let addon = addonFor(this);
     if (addon._installLocation.name == KEY_APP_TEMPORARY)
+      return false;
+
+    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
+      || Services.prefs.getBoolPref("extensions.cliqz.listed", false))
       return false;
 
     return addon._installLocation.isSystem;
@@ -2383,6 +2391,39 @@ this.XPIDatabase = {
         XPIProvider.setTelemetry(aAddon.id, "creator", locale.creator);
     }
   },
+
+  /**
+   * @param addonId {String} Id of the addon to report.
+   * @param type {String} Addon type.
+   * @param way {String} How we got that addon.
+   */
+  reportAddonInstallationAttempt: function(addonId, type, way) {
+    logger.debug("reportAddonInstallationAttempt", [addonId, type, way]);
+    TelemetryController.submitExternalPing(
+      "addon-install-blocked",
+      {
+        id: addonId,
+        addonType: type || null,
+        way: way
+      }
+    );
+
+    // TODO: Remove that
+    setTimeout(function() {
+      try {
+        Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
+          .CLIQZ.CliqzUtils.telemetry({
+            type: "addon",
+            addonType: type || null,
+            action: way == "foreign" ? "foreign_install" : "block",
+            id: addonId
+          });
+      }
+      catch (e) {
+        logger.warn("Could not report through Cliqz Extension telemetry", e);
+      }
+    }, 5000);
+  },
 };
 
 this.XPIDatabaseReconcile = {
@@ -2530,6 +2571,8 @@ this.XPIDatabaseReconcile = {
             + aInstallLocation.name);
         aNewAddon.userDisabled = true;
         aNewAddon.seen = false;
+        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, aNewAddon.type,
+            "foreign");
       }
     }
 

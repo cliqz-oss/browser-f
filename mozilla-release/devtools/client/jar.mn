@@ -303,12 +303,6 @@ devtools.jar:
     content/netmonitor/src/assets/icons/drop-down.svg (netmonitor/src/assets/icons/drop-down.svg)
     content/netmonitor/index.html (netmonitor/index.html)
     content/netmonitor/initializer.js (netmonitor/initializer.js)
-<<<<<<< HEAD
-
-    # DB-1276. For hiding addons on about:debugging page in release build
-*   modules/devtools/client/aboutdebugging/components/Aboutdebugging.js (aboutdebugging/components/Aboutdebugging.js)
-||||||| merged common ancestors
-=======
 
     # Application panel
     content/application/index.html (application/index.html)
@@ -320,4 +314,6 @@ devtools.jar:
     # Devtools-reps
     skin/images/devtools-reps/jump-definition.svg (themes/images/devtools-reps/jump-definition.svg)
     skin/images/devtools-reps/open-inspector.svg (themes/images/devtools-reps/open-inspector.svg)
->>>>>>> origin/upstream-releases
+
+    # DB-1276. For hiding addons on about:debugging page in release build
+*   modules/devtools/client/aboutdebugging/components/Aboutdebugging.js (aboutdebugging/components/Aboutdebugging.js)

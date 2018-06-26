@@ -278,7 +278,7 @@ class Package {
       };
     }
 
-    let root = Ci.nsIX509CertDB.AddonsPublicRoot;
+    let root = Ci.nsIX509CertDB.cliqzAddonsRoot;
     if (!AppConstants.MOZ_REQUIRE_SIGNING &&
         Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false)) {
       root = Ci.nsIX509CertDB.AddonsStageRoot;
@@ -1080,174 +1080,6 @@ function shouldVerifySignedState(aAddon) {
 }
 
 /**
-<<<<<<< HEAD
- * Verifies that a zip file's contents are all correctly signed by an
- * AMO-issued certificate
- *
- * @param  aFile
- *         the xpi file to check
- * @param  aAddon
- *         the add-on object to verify
- * @return a Promise that resolves to an object with properties:
- *         signedState: an AddonManager.SIGNEDSTATE_* constant
- *         cert: an nsIX509Cert
- */
-function verifyZipSignedState(aFile, aAddon) {
-  if (!shouldVerifySignedState(aAddon))
-    return Promise.resolve({
-      signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-      cert: null
-    });
-
-  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
-  if (!AppConstants.MOZ_REQUIRE_SIGNING && Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false))
-    root = Ci.nsIX509CertDB.AddonsStageRoot;
-
-  return new Promise(resolve => {
-    let callback = {
-      openSignedAppFileFinished(aRv, aZipReader, aCert) {
-        if (aZipReader)
-          aZipReader.close();
-        resolve({
-          signedState: getSignedStatus(aRv, aCert, aAddon.id),
-          cert: aCert
-        });
-      }
-    };
-    // This allows the certificate DB to get the raw JS callback object so the
-    // test code can pass through objects that XPConnect would reject.
-    callback.wrappedJSObject = callback;
-
-    gCertDB.openSignedAppFileAsync(root, aFile, callback);
-  });
-}
-
-/**
- * Verifies that a directory's contents are all correctly signed by an
- * AMO-issued certificate
- *
- * @param  aDir
- *         the directory to check
- * @param  aAddon
- *         the add-on object to verify
- * @return a Promise that resolves to an object with properties:
- *         signedState: an AddonManager.SIGNEDSTATE_* constant
- *         cert: an nsIX509Cert
- */
-function verifyDirSignedState(aDir, aAddon) {
-  if (!shouldVerifySignedState(aAddon))
-    return Promise.resolve({
-      signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-      cert: null,
-    });
-
-  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
-  if (!AppConstants.MOZ_REQUIRE_SIGNING && Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false))
-    root = Ci.nsIX509CertDB.AddonsStageRoot;
-
-  return new Promise(resolve => {
-    let callback = {
-      verifySignedDirectoryFinished(aRv, aCert) {
-        resolve({
-          signedState: getSignedStatus(aRv, aCert, aAddon.id),
-          cert: null,
-        });
-      }
-    };
-    // This allows the certificate DB to get the raw JS callback object so the
-    // test code can pass through objects that XPConnect would reject.
-    callback.wrappedJSObject = callback;
-
-    gCertDB.verifySignedDirectoryAsync(root, aDir, callback);
-  });
-}
-
-/**
-||||||| merged common ancestors
- * Verifies that a zip file's contents are all correctly signed by an
- * AMO-issued certificate
- *
- * @param  aFile
- *         the xpi file to check
- * @param  aAddon
- *         the add-on object to verify
- * @return a Promise that resolves to an object with properties:
- *         signedState: an AddonManager.SIGNEDSTATE_* constant
- *         cert: an nsIX509Cert
- */
-function verifyZipSignedState(aFile, aAddon) {
-  if (!shouldVerifySignedState(aAddon))
-    return Promise.resolve({
-      signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-      cert: null
-    });
-
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
-  if (!AppConstants.MOZ_REQUIRE_SIGNING && Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false))
-    root = Ci.nsIX509CertDB.AddonsStageRoot;
-
-  return new Promise(resolve => {
-    let callback = {
-      openSignedAppFileFinished(aRv, aZipReader, aCert) {
-        if (aZipReader)
-          aZipReader.close();
-        resolve({
-          signedState: getSignedStatus(aRv, aCert, aAddon.id),
-          cert: aCert
-        });
-      }
-    };
-    // This allows the certificate DB to get the raw JS callback object so the
-    // test code can pass through objects that XPConnect would reject.
-    callback.wrappedJSObject = callback;
-
-    gCertDB.openSignedAppFileAsync(root, aFile, callback);
-  });
-}
-
-/**
- * Verifies that a directory's contents are all correctly signed by an
- * AMO-issued certificate
- *
- * @param  aDir
- *         the directory to check
- * @param  aAddon
- *         the add-on object to verify
- * @return a Promise that resolves to an object with properties:
- *         signedState: an AddonManager.SIGNEDSTATE_* constant
- *         cert: an nsIX509Cert
- */
-function verifyDirSignedState(aDir, aAddon) {
-  if (!shouldVerifySignedState(aAddon))
-    return Promise.resolve({
-      signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-      cert: null,
-    });
-
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
-  if (!AppConstants.MOZ_REQUIRE_SIGNING && Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false))
-    root = Ci.nsIX509CertDB.AddonsStageRoot;
-
-  return new Promise(resolve => {
-    let callback = {
-      verifySignedDirectoryFinished(aRv, aCert) {
-        resolve({
-          signedState: getSignedStatus(aRv, aCert, aAddon.id),
-          cert: null,
-        });
-      }
-    };
-    // This allows the certificate DB to get the raw JS callback object so the
-    // test code can pass through objects that XPConnect would reject.
-    callback.wrappedJSObject = callback;
-
-    gCertDB.verifySignedDirectoryAsync(root, aDir, callback);
-  });
-}
-
-/**
-=======
->>>>>>> origin/upstream-releases
  * Verifies that a bundle's contents are all correctly signed by an
  * AMO-issued certificate
  *
@@ -1954,60 +1786,24 @@ class AddonInstall {
         }
       }
 
-<<<<<<< HEAD
-    if (mustSign(this.addon.type)) {
-      if (this.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
-        // This add-on isn't properly signed by a signature that chains to the
-        // trusted root.
-        let state = this.addon.signedState;
-        const manifest = this.addon;
-        this.addon = null;
-        zipreader.close();
-||||||| merged common ancestors
-    if (mustSign(this.addon.type)) {
-      if (this.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
-        // This add-on isn't properly signed by a signature that chains to the
-        // trusted root.
-        let state = this.addon.signedState;
-        this.addon = null;
-        zipreader.close();
-=======
       if (XPIDatabase.mustSign(this.addon.type)) {
         if (this.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
           // This add-on isn't properly signed by a signature that chains to the
           // trusted root.
           let state = this.addon.signedState;
+          const manifest = this.addon;
           this.addon = null;
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-        if (state == AddonManager.SIGNEDSTATE_MISSING ||
-            state == AddonManager.SIGNEDSTATE_UNKNOWN)
-          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing",
-                                 manifest]);
-||||||| merged common ancestors
-        if (state == AddonManager.SIGNEDSTATE_MISSING)
-          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing"]);
-=======
-          if (state == AddonManager.SIGNEDSTATE_MISSING)
+          if (state == AddonManager.SIGNEDSTATE_MISSING ||
+              state == AddonManager.SIGNEDSTATE_UNKNOWN)
             return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                   "signature is required but missing"]);
->>>>>>> origin/upstream-releases
+                                   "signature is required but missing",
+                                   manifest]);
 
-<<<<<<< HEAD
-        return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                               "signature verification failed",
-                               manifest]);
-||||||| merged common ancestors
-        return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                               "signature verification failed"]);
-=======
           return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                                 "signature verification failed"]);
+                                 "signature verification failed",
+                                 manifest]);
         }
->>>>>>> origin/upstream-releases
       }
     } finally {
       pkg.close();

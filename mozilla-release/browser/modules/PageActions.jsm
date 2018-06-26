@@ -1167,11 +1167,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     },
   });
 }
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-
-=======
 
 if (AppConstants.platform == "macosx") {
   gBuiltInActions.push(
@@ -1192,7 +1188,6 @@ if (AppConstants.platform == "macosx") {
     },
   });
 }
->>>>>>> origin/upstream-releases
 
 /**
  * Gets a BrowserPageActions object in a browser window.

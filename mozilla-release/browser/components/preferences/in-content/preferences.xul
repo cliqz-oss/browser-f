@@ -21,100 +21,16 @@
 <!ENTITY % historyDTD SYSTEM "chrome://mozapps/locale/update/history.dtd">
 <!ENTITY % certManagerDTD SYSTEM "chrome://pippki/locale/certManager.dtd">
 <!ENTITY % deviceManangerDTD SYSTEM "chrome://pippki/locale/deviceManager.dtd">
-<<<<<<< HEAD
-<!ENTITY % connectionDTD SYSTEM "chrome://browser/locale/preferences/connection.dtd">
-<!ENTITY % siteDataSettingsDTD SYSTEM
-  "chrome://browser/locale/preferences/siteDataSettings.dtd" >
-<!ENTITY % clearSiteDataDTD SYSTEM
-  "chrome://browser/locale/preferences/clearSiteData.dtd" >
-<!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences/privacy.dtd">
-<!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences/search.dtd">
-<!ENTITY % securityDTD SYSTEM
-  "chrome://browser/locale/preferences/security.dtd">
-<!ENTITY % containersDTD SYSTEM
-  "chrome://browser/locale/preferences/containers.dtd">
-||||||| merged common ancestors
-<!ENTITY % connectionDTD SYSTEM "chrome://browser/locale/preferences/connection.dtd">
-<!ENTITY % siteDataSettingsDTD SYSTEM
-  "chrome://browser/locale/preferences/siteDataSettings.dtd" >
-<!ENTITY % clearSiteDataDTD SYSTEM
-  "chrome://browser/locale/preferences/clearSiteData.dtd" >
-<!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences/privacy.dtd">
-<!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences/search.dtd">
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
-<!ENTITY % securityDTD SYSTEM
-  "chrome://browser/locale/preferences/security.dtd">
-<!ENTITY % containersDTD SYSTEM
-  "chrome://browser/locale/preferences/containers.dtd">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY % sanitizeDTD SYSTEM "chrome://browser/locale/sanitize.dtd">
-<<<<<<< HEAD
-<!ENTITY % mainDTD SYSTEM "chrome://browser/locale/preferences/main.dtd">
-<!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
-<!ENTITY % contentDTD SYSTEM "chrome://browser/locale/preferences/content.dtd">
-<!ENTITY % advancedDTD SYSTEM
-  "chrome://browser/locale/preferences/advanced.dtd">
-<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd">
-<!ENTITY % connectDTD SYSTEM
-  "chrome://browser/locale/preferences/connect.dtd">
-||||||| merged common ancestors
-<!ENTITY % mainDTD SYSTEM "chrome://browser/locale/preferences/main.dtd">
-<!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
-<!ENTITY % contentDTD SYSTEM "chrome://browser/locale/preferences/content.dtd">
-<!ENTITY % advancedDTD SYSTEM
-  "chrome://browser/locale/preferences/advanced.dtd">
+<!ENTITY % connectDTD SYSTEM "chrome://browser/locale/preferences/connect.dtd">
 <!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
-=======
-<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
->>>>>>> origin/upstream-releases
 %aboutDialogDTD;
 %brandDTD;
 %historyDTD;
 %certManagerDTD;
 %deviceManangerDTD;
-<<<<<<< HEAD
-%connectionDTD;
-%siteDataSettingsDTD;
-%clearSiteDataDTD;
-%privacyDTD;
-%searchDTD;
-%securityDTD;
-%containersDTD;
-||||||| merged common ancestors
-%connectionDTD;
-%siteDataSettingsDTD;
-%clearSiteDataDTD;
-%privacyDTD;
-%searchDTD;
-%syncBrandDTD;
-%syncDTD;
-%securityDTD;
-%containersDTD;
-=======
->>>>>>> origin/upstream-releases
 %sanitizeDTD;
-<<<<<<< HEAD
-%mainDTD;
-%aboutHomeDTD;
-%contentDTD;
-%advancedDTD;
 %connectDTD;
-
-#if MOZ_SERVICES_SYNC
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
-%syncBrandDTD;
-%syncDTD;
-#endif
-||||||| merged common ancestors
-%mainDTD;
-%aboutHomeDTD;
-%contentDTD;
-%advancedDTD;
-=======
->>>>>>> origin/upstream-releases
 ]>
 
 <page xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"

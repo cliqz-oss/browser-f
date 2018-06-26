@@ -80,39 +80,6 @@ nsURLFormatterService.prototype = {
         return "ZZ";
       }
     },
-<<<<<<< HEAD
-    VENDOR:           function() { return this.appInfo.vendor; },
-    NAME:             function() { return this.appInfo.name; },
-    ID:               function() { return this.appInfo.ID; },
-    VERSION:          function() { return this.appInfo.version; },
-    MAJOR_VERSION:    function() { return this.appInfo.version.replace(/^([^\.]+\.[0-9]+[a-z]*).*/gi, "$1"); },
-    APPBUILDID:       function() { return this.appInfo.appBuildID; },
-    PLATFORMVERSION:  function() { return this.appInfo.platformVersion; },
-    PLATFORMBUILDID:  function() { return this.appInfo.platformBuildID; },
-#if 0
-    APP:              function() { return this.appInfo.name.toLowerCase().replace(/ /, ""); },
-#endif
-    // We want to look like Firefox, when navigating to Mozilla's web-pages.
-    APP:              function() { return "firefox"; },
-    OS:               function() { return this.appInfo.OS; },
-    XPCOMABI:         function() { return this.ABI; },
-    BUILD_TARGET:     function() { return this.appInfo.OS + "_" + this.ABI; },
-    OS_VERSION:       function() { return this.OSVersion; },
-||||||| merged common ancestors
-    VENDOR:           function() { return this.appInfo.vendor; },
-    NAME:             function() { return this.appInfo.name; },
-    ID:               function() { return this.appInfo.ID; },
-    VERSION:          function() { return this.appInfo.version; },
-    MAJOR_VERSION:    function() { return this.appInfo.version.replace(/^([^\.]+\.[0-9]+[a-z]*).*/gi, "$1"); },
-    APPBUILDID:       function() { return this.appInfo.appBuildID; },
-    PLATFORMVERSION:  function() { return this.appInfo.platformVersion; },
-    PLATFORMBUILDID:  function() { return this.appInfo.platformBuildID; },
-    APP:              function() { return this.appInfo.name.toLowerCase().replace(/ /, ""); },
-    OS:               function() { return this.appInfo.OS; },
-    XPCOMABI:         function() { return this.ABI; },
-    BUILD_TARGET:     function() { return this.appInfo.OS + "_" + this.ABI; },
-    OS_VERSION:       function() { return this.OSVersion; },
-=======
     VENDOR() { return Services.appinfo.vendor; },
     NAME() { return Services.appinfo.name; },
     ID() { return Services.appinfo.ID; },
@@ -121,12 +88,15 @@ nsURLFormatterService.prototype = {
     APPBUILDID() { return Services.appinfo.appBuildID; },
     PLATFORMVERSION() { return Services.appinfo.platformVersion; },
     PLATFORMBUILDID() { return Services.appinfo.platformBuildID; },
+#if 0
     APP() { return Services.appinfo.name.toLowerCase().replace(/ /, ""); },
+#endif
+    // Cliqz. We want to look like Firefox, when navigating to Mozilla's web-pages.
+    APP() { return "firefox"; },
     OS() { return Services.appinfo.OS; },
     XPCOMABI() { return this.ABI; },
     BUILD_TARGET() { return Services.appinfo.OS + "_" + this.ABI; },
     OS_VERSION() { return this.OSVersion; },
->>>>>>> origin/upstream-releases
     CHANNEL:          () => UpdateUtils.UpdateChannel,
     MOZILLA_API_KEY:  () => AppConstants.MOZ_MOZILLA_API_KEY,
     GOOGLE_API_KEY:   () => AppConstants.MOZ_GOOGLE_API_KEY,

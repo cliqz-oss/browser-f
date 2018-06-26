@@ -7,15 +7,9 @@
 #include "nsISupports.idl"
 
 interface mozIDOMWindowProxy;
-<<<<<<< HEAD
-interface nsIDOMElement;
 interface nsIPrivacyTransitionObserver;
-||||||| merged common ancestors
-interface nsIDOMElement;
-=======
 
 webidl Element;
->>>>>>> origin/upstream-releases
 
 [ref] native OriginAttributes(mozilla::OriginAttributes);
 

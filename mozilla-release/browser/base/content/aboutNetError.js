@@ -136,9 +136,11 @@ function initPage() {
     "malformedURI", "dnsNotFound", "connectionFailure", "netInterrupt",
     "netTimeout", "netReset", "netOffline",
   ];
+  /* Cliqz. Not used now
   if (illustratedErrors.includes(err)) {
     document.body.classList.add("illustrated", err);
   }
+  */
   if (err == "blockedByPolicy") {
     document.body.classList.add("blocked");
   }

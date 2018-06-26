@@ -23,19 +23,9 @@ EXTRA_JS_MODULES += [
     'SearchWidgetTracker.jsm',
 ]
 
-<<<<<<< HEAD
 EXTRA_PP_JS_MODULES += [
     'CustomizableUI.jsm',
 ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa'):
-    DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
-
-||||||| merged common ancestors
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa'):
-    DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
-
-=======
->>>>>>> origin/upstream-releases
 with Files('**'):
     BUG_COMPONENT = ('Firefox', 'Toolbars and Customization')

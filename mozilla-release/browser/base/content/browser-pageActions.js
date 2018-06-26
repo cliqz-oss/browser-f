@@ -1145,10 +1145,7 @@ BrowserPageActions.sendToDevice = {
     }
   },
 };
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
 
 // add search engine
 BrowserPageActions.addSearchEngine = {
@@ -1323,4 +1320,3 @@ XPCOMUtils.defineLazyServiceGetter(BrowserPageActions.shareURL,
                                    "_sharingService",
                                    "@mozilla.org/widget/macsharingservice;1",
                                    "nsIMacSharingService");
->>>>>>> origin/upstream-releases

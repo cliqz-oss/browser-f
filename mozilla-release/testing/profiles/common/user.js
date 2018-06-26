@@ -376,3 +376,6 @@ user_pref("places.database.lastMaintenance", 2147483647);
 
 // Disable Bookmark backups by default.
 user_pref("browser.bookmarks.max_backups", 0);
+
+// Cliqz ignore onboarding
+user_pref("extensions.cliqz.browserOnboarding", true);

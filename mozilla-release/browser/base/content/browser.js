@@ -1058,14 +1058,7 @@ function handleUriInChrome(aBrowser, aUri) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
-<<<<<<< HEAD
-// |browser| is the {xul::browser} element (binding id="tabbrowser-browser").
-function _loadURIWithFlags(browser, uri, params) {
-||||||| merged common ancestors
-function _loadURIWithFlags(browser, uri, params) {
-=======
 function _loadURI(browser, uri, params = {}) {
->>>>>>> origin/upstream-releases
   let tab = gBrowser.getTabForBrowser(browser);
   // Preloaded browsers don't have tabs, so we ignore those.
   if (tab) {
@@ -1112,19 +1105,10 @@ function _loadURI(browser, uri, params = {}) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId });
       }
 
-<<<<<<< HEAD
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null,
-                                               triggeringPrincipal, !!params.ensurePrivate);
-||||||| merged common ancestors
-      browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrer, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
-=======
       browser.webNavigation.loadURIWithOptions(uri, flags,
                                                referrerURI, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
->>>>>>> origin/upstream-releases
+                                               postData, null, null,
+                                               triggeringPrincipal, !!params.ensurePrivate);
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
@@ -1169,17 +1153,9 @@ function _loadURI(browser, uri, params = {}) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId });
       }
 
-<<<<<<< HEAD
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+      browser.webNavigation.loadURIWithOptions(uri, flags, referrerURI, referrerPolicy,
                                                postData, null, null,
                                                triggeringPrincipal, !!params.ensurePrivate);
-||||||| merged common ancestors
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
-=======
-      browser.webNavigation.loadURIWithOptions(uri, flags, referrerURI, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
->>>>>>> origin/upstream-releases
     } else {
       throw e;
     }
@@ -1377,13 +1353,7 @@ var gBrowserInit = {
     LanguageDetectionListener.init();
     BrowserOnClick.init();
     FeedHandler.init();
-<<<<<<< HEAD
-    CompactTheme.init();
 #if 0
-||||||| merged common ancestors
-    CompactTheme.init();
-=======
->>>>>>> origin/upstream-releases
     AboutCapabilitiesListener.init();
 #endif
     TrackingProtection.init();
@@ -1434,39 +1404,11 @@ var gBrowserInit = {
     BrowserPageActions.init();
     gAccessibilityServiceIndicator.init();
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
     this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
     this._privateTabUI.start();
 #endif
 
-    if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
-        window.matchMedia("(-moz-windows-default-theme)").matches) {
-      let windowFrameColor = new Color(...ChromeUtils.import("resource:///modules/Windows8WindowFrameColor.jsm", {})
-                                            .Windows8WindowFrameColor.get());
-      // Default to black for foreground text.
-      if (!windowFrameColor.isContrastRatioAcceptable(new Color(0, 0, 0))) {
-        document.documentElement.setAttribute("darkwindowframe", "true");
-      }
-    }
-
-    ToolbarIconColor.init();
-
-||||||| merged common ancestors
-    if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
-        window.matchMedia("(-moz-windows-default-theme)").matches) {
-      let windowFrameColor = new Color(...ChromeUtils.import("resource:///modules/Windows8WindowFrameColor.jsm", {})
-                                            .Windows8WindowFrameColor.get());
-      // Default to black for foreground text.
-      if (!windowFrameColor.isContrastRatioAcceptable(new Color(0, 0, 0))) {
-        document.documentElement.setAttribute("darkwindowframe", "true");
-      }
-    }
-
-    ToolbarIconColor.init();
-
-=======
->>>>>>> origin/upstream-releases
     gRemoteControl.updateVisualCue(Marionette.running);
 
     // If we are given a tab to swap in, take care of it before first paint to
@@ -1986,15 +1928,7 @@ var gBrowserInit = {
 
     FeedHandler.uninit();
 
-<<<<<<< HEAD
-    CompactTheme.uninit();
-
 #if 0
-||||||| merged common ancestors
-    CompactTheme.uninit();
-
-=======
->>>>>>> origin/upstream-releases
     AboutCapabilitiesListener.uninit();
 #endif
 
@@ -7581,159 +7515,9 @@ function formatURL(aFormat, aIsPref) {
  * Fired on the "marionette-remote-control" system notification,
  * indicating if the browser session is under remote control.
  */
-<<<<<<< HEAD
-var gIdentityHandler = {
-  /**
-   * nsIURI for which the identity UI is displayed. This has been already
-   * processed by nsIURIFixup.createExposableURI.
-   */
-  _uri: null,
-
-  /**
-   * We only know the connection type if this._uri has a defined "host" part.
-   *
-   * These URIs, like "about:", "file:" and "data:" URIs, will usually be treated as a
-   * an unknown connection.
-   */
-  _uriHasHost: false,
-
-  /**
-   * If this tab belongs to a WebExtension, contains its WebExtensionPolicy.
-   */
-  _pageExtensionPolicy: null,
-
-  /**
-   * Whether this._uri refers to an internally implemented browser page.
-   *
-   * Note that this is set for some "about:" pages, but general "chrome:" URIs
-   * are not included in this category by default.
-   */
-  _isSecureInternalUI: false,
-
-  /**
-   * nsISSLStatus metadata provided by gBrowser.securityUI the last time the
-   * identity UI was updated, or null if the connection is not secure.
-   */
-  _sslStatus: null,
-
-  /**
-   * Bitmask provided by nsIWebProgressListener.onSecurityChange.
-   */
-  _state: 0,
-
-  /**
-   * This flag gets set if the identity popup was opened by a keypress,
-   * to be able to focus it on the popupshown event.
-   */
-  _popupTriggeredByKeyboard: false,
-
-  /**
-   * RegExp used to decide if an about url should be shown as being part of
-   * the browser UI.
-   */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|cliqz|config|crashes|customizing|downloads|healthreport|license|newaddon|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-
-  get _isBroken() {
-    return this._state & Ci.nsIWebProgressListener.STATE_IS_BROKEN;
-  },
-
-  get _isSecure() {
-    // If a <browser> is included within a chrome document, then this._state
-    // will refer to the security state for the <browser> and not the top level
-    // document. In this case, don't upgrade the security state in the UI
-    // with the secure state of the embedded <browser>.
-    return !this._isURILoadedFromFile && this._state & Ci.nsIWebProgressListener.STATE_IS_SECURE;
-  },
-
-  get _isEV() {
-    // If a <browser> is included within a chrome document, then this._state
-    // will refer to the security state for the <browser> and not the top level
-    // document. In this case, don't upgrade the security state in the UI
-    // with the EV state of the embedded <browser>.
-    return !this._isURILoadedFromFile && this._state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL;
-  },
-
-  get _isMixedActiveContentLoaded() {
-    return this._state & Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT;
-||||||| merged common ancestors
-var gIdentityHandler = {
-  /**
-   * nsIURI for which the identity UI is displayed. This has been already
-   * processed by nsIURIFixup.createExposableURI.
-   */
-  _uri: null,
-
-  /**
-   * We only know the connection type if this._uri has a defined "host" part.
-   *
-   * These URIs, like "about:", "file:" and "data:" URIs, will usually be treated as a
-   * an unknown connection.
-   */
-  _uriHasHost: false,
-
-  /**
-   * If this tab belongs to a WebExtension, contains its WebExtensionPolicy.
-   */
-  _pageExtensionPolicy: null,
-
-  /**
-   * Whether this._uri refers to an internally implemented browser page.
-   *
-   * Note that this is set for some "about:" pages, but general "chrome:" URIs
-   * are not included in this category by default.
-   */
-  _isSecureInternalUI: false,
-
-  /**
-   * nsISSLStatus metadata provided by gBrowser.securityUI the last time the
-   * identity UI was updated, or null if the connection is not secure.
-   */
-  _sslStatus: null,
-
-  /**
-   * Bitmask provided by nsIWebProgressListener.onSecurityChange.
-   */
-  _state: 0,
-
-  /**
-   * This flag gets set if the identity popup was opened by a keypress,
-   * to be able to focus it on the popupshown event.
-   */
-  _popupTriggeredByKeyboard: false,
-
-  /**
-   * RegExp used to decide if an about url should be shown as being part of
-   * the browser UI.
-   */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|license|newaddon|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-
-  get _isBroken() {
-    return this._state & Ci.nsIWebProgressListener.STATE_IS_BROKEN;
-  },
-
-  get _isSecure() {
-    // If a <browser> is included within a chrome document, then this._state
-    // will refer to the security state for the <browser> and not the top level
-    // document. In this case, don't upgrade the security state in the UI
-    // with the secure state of the embedded <browser>.
-    return !this._isURILoadedFromFile && this._state & Ci.nsIWebProgressListener.STATE_IS_SECURE;
-  },
-
-  get _isEV() {
-    // If a <browser> is included within a chrome document, then this._state
-    // will refer to the security state for the <browser> and not the top level
-    // document. In this case, don't upgrade the security state in the UI
-    // with the EV state of the embedded <browser>.
-    return !this._isURILoadedFromFile && this._state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL;
-  },
-
-  get _isMixedActiveContentLoaded() {
-    return this._state & Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT;
-=======
 const gRemoteControl = {
   observe(subject, topic, data) {
     gRemoteControl.updateVisualCue(data);
->>>>>>> origin/upstream-releases
   },
 
   updateVisualCue(enabled) {
@@ -8027,18 +7811,6 @@ function switchToTabHavingURI(aURI, aOpenNew, aOpenParams = {}) {
 
 var RestoreLastSessionObserver = {
   init() {
-<<<<<<< HEAD
-    let browser_tabs_restorebutton_pref = Services.prefs.getIntPref("browser.tabs.restorebutton");
-    Services.telemetry.scalarSet("browser.session.restore.browser_tabs_restorebutton", browser_tabs_restorebutton_pref);
-#if 0
-    Services.telemetry.scalarSet("browser.session.restore.browser_startup_page", Services.prefs.getIntPref("browser.startup.page"));
-#endif
-||||||| merged common ancestors
-    let browser_tabs_restorebutton_pref = Services.prefs.getIntPref("browser.tabs.restorebutton");
-    Services.telemetry.scalarSet("browser.session.restore.browser_tabs_restorebutton", browser_tabs_restorebutton_pref);
-    Services.telemetry.scalarSet("browser.session.restore.browser_startup_page", Services.prefs.getIntPref("browser.startup.page"));
-=======
->>>>>>> origin/upstream-releases
     if (SessionStore.canRestoreLastSession &&
         !PrivateBrowsingUtils.isWindowPrivate(window)) {
       Services.obs.addObserver(this, "sessionstore-last-session-cleared", true);

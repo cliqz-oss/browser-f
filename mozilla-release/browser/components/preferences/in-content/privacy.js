@@ -467,19 +467,7 @@ var gPrivacyPane = {
       bundlePrefs.getString("trackingprotectionpermissionstitle"),
       bundlePrefs.getString("trackingprotectionpermissionstext2"),
     ]);
-<<<<<<< HEAD
-    appendSearchKeywords("changeBlockList", [
-      bundlePrefs.getString("blockliststitle"),
-      bundlePrefs.getString("blockliststext"),
-    ]);
 #endif
-||||||| merged common ancestors
-    appendSearchKeywords("changeBlockList", [
-      bundlePrefs.getString("blockliststitle"),
-      bundlePrefs.getString("blockliststext"),
-    ]);
-=======
->>>>>>> origin/upstream-releases
     appendSearchKeywords("popupPolicyButton", [
       bundlePrefs.getString("popuppermissionstitle2"),
       bundlePrefs.getString("popuppermissionstext"),

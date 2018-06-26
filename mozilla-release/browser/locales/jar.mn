@@ -17,14 +17,8 @@
 # Disabled in favor of Cliqz own design
 #if 0
     locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
-<<<<<<< HEAD
-    locale/browser/aboutPrivateBrowsing.properties (%chrome/browser/aboutPrivateBrowsing.properties)
 #endif
     locale/browser/cliqzPrivateBrowsing.dtd        (%chrome/browser/cliqzPrivateBrowsing.dtd)
-||||||| merged common ancestors
-    locale/browser/aboutPrivateBrowsing.properties (%chrome/browser/aboutPrivateBrowsing.properties)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/aboutRobots.dtd                 (%chrome/browser/aboutRobots.dtd)
     locale/browser/aboutHome.dtd                   (%chrome/browser/aboutHome.dtd)
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
@@ -67,21 +61,7 @@
     locale/browser/migration/migration.properties  (%chrome/browser/migration/migration.properties)
     locale/browser/preferences/preferences.properties     (%chrome/browser/preferences/preferences.properties)
     locale/browser/preferences/security.dtd           (%chrome/browser/preferences/security.dtd)
-<<<<<<< HEAD
-    locale/browser/preferences/selectBookmark.dtd     (%chrome/browser/preferences/selectBookmark.dtd)
-    locale/browser/preferences/siteDataSettings.dtd     (%chrome/browser/preferences/siteDataSettings.dtd)
 #ifdef MOZ_SERVICES_SYNC
-    locale/browser/preferences/sync.dtd               (%chrome/browser/preferences/sync.dtd)
-#endif
-    locale/browser/preferences/translation.dtd        (%chrome/browser/preferences/translation.dtd)
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-    locale/browser/preferences/selectBookmark.dtd     (%chrome/browser/preferences/selectBookmark.dtd)
-    locale/browser/preferences/siteDataSettings.dtd     (%chrome/browser/preferences/siteDataSettings.dtd)
-    locale/browser/preferences/sync.dtd               (%chrome/browser/preferences/sync.dtd)
-    locale/browser/preferences/translation.dtd        (%chrome/browser/preferences/translation.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
 #endif

@@ -746,7 +746,6 @@ xul|*.radio-label-box {
   -moz-user-select: none;
 }
 
-<<<<<<< HEAD
 *|*.header-mozilla-support-label {
   margin-inline-end: 3px;
   font-weight: initial;
@@ -759,87 +758,6 @@ xul|*.radio-label-box {
   margin-bottom: -3px;
 }
 
-/* File fields */
-
-xul|filefield {
-  -moz-appearance: none;
-  background-color: transparent;
-  border: none;
-  padding: 0;
-}
-
-xul|*.fileFieldContentBox {
-  background-color: transparent;
-}
-
-xul|*.fileFieldIcon {
-  margin-inline-start: 10px;
-  margin-inline-end: 0;
-}
-
-xul|*.fileFieldLabel {
-  margin-inline-start: -26px;
-  padding-inline-start: 36px;
-}
-
-xul|*.fileFieldLabel:-moz-locale-dir(rtl),
-xul|filefield + xul|button:-moz-locale-dir(ltr) {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-xul|*.fileFieldLabel:-moz-locale-dir(ltr),
-xul|filefield + xul|button:-moz-locale-dir(rtl) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-xul|filefield + xul|button {
-  border-inline-start: none;
-}
-
-||||||| merged common ancestors
-/* File fields */
-
-xul|filefield {
-  -moz-appearance: none;
-  background-color: transparent;
-  border: none;
-  padding: 0;
-}
-
-xul|*.fileFieldContentBox {
-  background-color: transparent;
-}
-
-xul|*.fileFieldIcon {
-  margin-inline-start: 10px;
-  margin-inline-end: 0;
-}
-
-xul|*.fileFieldLabel {
-  margin-inline-start: -26px;
-  padding-inline-start: 36px;
-}
-
-xul|*.fileFieldLabel:-moz-locale-dir(rtl),
-xul|filefield + xul|button:-moz-locale-dir(ltr) {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-xul|*.fileFieldLabel:-moz-locale-dir(ltr),
-xul|filefield + xul|button:-moz-locale-dir(rtl) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-xul|filefield + xul|button {
-  border-inline-start: none;
-}
-
-=======
->>>>>>> origin/upstream-releases
 /* List boxes */
 
 html|select[size][multiple],

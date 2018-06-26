@@ -106,88 +106,8 @@
         <parameter name="aParams"/>
         <body>
           <![CDATA[
-<<<<<<< HEAD
-            const nsIWebNavigation = Ci.nsIWebNavigation;
-            const flags = nsIWebNavigation.LOAD_FLAGS_NONE;
-            this._wrapURIChangeCall(() =>
-              this.loadURIWithFlags(aURI, flags, aReferrerURI, aCharset));
-          ]]>
-        </body>
-      </method>
-
-      <!-- throws exception for unknown schemes -->
-      <method name="loadURIWithFlags">
-        <parameter name="aURI"/>
-        <parameter name="aFlags"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
-        <parameter name="aPostData"/>
-        <parameter name="aEnsurePrivate"/>
-        <body>
-          <![CDATA[
-            if (!aURI)
-||||||| merged common ancestors
-            const nsIWebNavigation = Ci.nsIWebNavigation;
-            const flags = nsIWebNavigation.LOAD_FLAGS_NONE;
-            this._wrapURIChangeCall(() =>
-              this.loadURIWithFlags(aURI, flags, aReferrerURI, aCharset));
-          ]]>
-        </body>
-      </method>
-
-      <!-- throws exception for unknown schemes -->
-      <method name="loadURIWithFlags">
-        <parameter name="aURI"/>
-        <parameter name="aFlags"/>
-        <parameter name="aReferrerURI"/>
-        <parameter name="aCharset"/>
-        <parameter name="aPostData"/>
-        <body>
-          <![CDATA[
-            if (!aURI)
-=======
             if (!aURI) {
->>>>>>> origin/upstream-releases
               aURI = "about:blank";
-<<<<<<< HEAD
-
-            var aReferrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET;
-            var aTriggeringPrincipal;
-
-            // Check for loadURIWithFlags(uri, { ... });
-            var params = arguments[1];
-            if (params && typeof(params) == "object") {
-              aFlags = params.flags;
-              aReferrerURI = params.referrerURI;
-              if ("referrerPolicy" in params) {
-                aReferrerPolicy = params.referrerPolicy;
-              }
-              if ("triggeringPrincipal" in params) {
-                aTriggeringPrincipal = params.triggeringPrincipal;
-              }
-              aCharset = params.charset;
-              aPostData = params.postData;
-              aEnsurePrivate = params.ensurePrivate;
-||||||| merged common ancestors
-
-            var aReferrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET;
-            var aTriggeringPrincipal;
-
-            // Check for loadURIWithFlags(uri, { ... });
-            var params = arguments[1];
-            if (params && typeof(params) == "object") {
-              aFlags = params.flags;
-              aReferrerURI = params.referrerURI;
-              if ("referrerPolicy" in params) {
-                aReferrerPolicy = params.referrerPolicy;
-              }
-              if ("triggeringPrincipal" in params) {
-                aTriggeringPrincipal = params.triggeringPrincipal;
-              }
-              aCharset = params.charset;
-              aPostData = params.postData;
-=======
->>>>>>> origin/upstream-releases
             }
 
             let {
@@ -196,20 +116,14 @@
               referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
               triggeringPrincipal,
               postData,
+              ensurePrivate,
             } = aParams || {};
 
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
-<<<<<<< HEAD
-                  aURI, aFlags, aReferrerURI, aReferrerPolicy,
-                  aPostData, null, null, aTriggeringPrincipal, !!aEnsurePrivate));
-||||||| merged common ancestors
-                  aURI, aFlags, aReferrerURI, aReferrerPolicy,
-                  aPostData, null, null, aTriggeringPrincipal));
-=======
                   aURI, flags, referrerURI, referrerPolicy,
-                  postData, null, null, triggeringPrincipal));
->>>>>>> origin/upstream-releases
+                  postData, null, null, triggeringPrincipal,
+                  !!ensurePrivate));
           ]]>
         </body>
       </method>
@@ -254,22 +168,10 @@
                 onget="return this.contentDocument ? this.contentDocument.contentType : null;"
                 readonly="true"/>
 
-<<<<<<< HEAD
-      <property name="preferences"
-                onget="return this.mPrefs.QueryInterface(Components.interfaces.nsIPrefService);"
-                readonly="true"/>
-
       <property name="asFrameLoaderOwner"
                 onget="return this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);"
                 readonly="true"/>
 
-||||||| merged common ancestors
-      <property name="preferences"
-                onget="return this.mPrefs.QueryInterface(Components.interfaces.nsIPrefService);"
-                readonly="true"/>
-
-=======
->>>>>>> origin/upstream-releases
       <!--
         Weak reference to an optional frame loader that can be used to influence
         process selection for this browser.

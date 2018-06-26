@@ -2172,12 +2172,8 @@ window._gBrowser = {
     var aNoInitialLabel;
     var aFocusUrlBar;
     var aName;
-<<<<<<< HEAD
-    var aPrivate;
-||||||| merged common ancestors
-=======
     var aBulkOrderedOpen;
->>>>>>> origin/upstream-releases
+    var aPrivate;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2209,12 +2205,8 @@ window._gBrowser = {
       aNoInitialLabel = params.noInitialLabel;
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
-<<<<<<< HEAD
-      aPrivate = params.private;
-||||||| merged common ancestors
-=======
       aBulkOrderedOpen = params.bulkOrderedOpen;
->>>>>>> origin/upstream-releases
+      aPrivate = params.private;
     }
 
     // if we're adding tabs, we're past interrupt mode, ditch the owner

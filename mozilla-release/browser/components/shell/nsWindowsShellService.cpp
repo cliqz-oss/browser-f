@@ -32,12 +32,8 @@
 #include "nsIURLFormatter.h"
 #include "nsXULAppAPI.h"
 #include "mozilla/WindowsVersion.h"
-<<<<<<< HEAD
-#include "nsWindowsHelpers.h"
-||||||| merged common ancestors
-=======
 #include "mozilla/dom/Element.h"
->>>>>>> origin/upstream-releases
+#include "nsWindowsHelpers.h"
 
 #include "windows.h"
 #include "shellapi.h"

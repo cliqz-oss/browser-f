@@ -6,13 +6,7 @@ browser.jar:
 % skin browser classic/1.0 %skin/classic/browser/
 #include ../shared/jar.inc.mn
   skin/classic/browser/sanitizeDialog.css
-<<<<<<< HEAD
-  skin/classic/browser/aboutSessionRestore-window-icon.png
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-  skin/classic/browser/aboutSessionRestore-window-icon.png
-=======
->>>>>>> origin/upstream-releases
 * skin/classic/browser/syncedtabs/sidebar.css     (syncedtabs/sidebar.css)
 #endif
 * skin/classic/browser/browser.css

@@ -73,7 +73,6 @@
   </vbox>
 #endif
 
-<<<<<<< HEAD
   <vbox id="startupPageBox">
     <label accesskey="&startupPage2.accesskey;"
            control="browserStartupPage">&startupPage2.label;</label>
@@ -85,46 +84,7 @@
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
         label="&startupUserHomePage.label;"/>
-# Replaced by two checkboxes above.
-#if 0
-    <label data-l10n-id="startup-page"
-           control="browserStartupPage"/>
-    <radiogroup id="browserStartupPage"
-                preference="browser.startup.page">
-      <radio data-l10n-id="startup-user-homepage"
-             value="1"
-             id="browserStartupHomePage"/>
-      <radio data-l10n-id="startup-blank-page"
-             value="0"
-             id="browserStartupBlank"/>
-      <radio data-l10n-id="startup-prev-session"
-             value="3"
-             id="browserStartupLastSession"/>
-    </radiogroup>
-    <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
-      <description control="disableNewTabExtension" flex="1" />
-      <button id="disableNewTabExtension"
-              class="extension-controlled-button accessory-button"
-              data-l10n-id="disable-extension" />
-    </hbox>
-#endif
   </vbox>
-#if 0
-</groupbox>
-
-<!-- Home Page -->
-<groupbox id="homepageGroup"
-          data-category="paneGeneral"
-          hidden="true">
-  <caption><label data-l10n-id="home-page-header"/></caption>
-
-  <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
-    <description control="disableHomePageExtension" flex="1" />
-    <button id="disableHomePageExtension"
-            class="extension-controlled-button accessory-button"
-            data-l10n-id="disable-extension" />
-  </hbox>
-#endif
 
   <vbox>
     <textbox id="browserHomePage"
@@ -157,77 +117,6 @@
             data-l10n-id="restore-default"
             preference="pref.browser.homepage.disable_button.restore_default"/>
   </hbox>
-||||||| merged common ancestors
-  <vbox id="startupPageBox">
-    <label data-l10n-id="startup-page"
-           control="browserStartupPage"/>
-    <radiogroup id="browserStartupPage"
-                preference="browser.startup.page">
-      <radio data-l10n-id="startup-user-homepage"
-             value="1"
-             id="browserStartupHomePage"/>
-      <radio data-l10n-id="startup-blank-page"
-             value="0"
-             id="browserStartupBlank"/>
-      <radio data-l10n-id="startup-prev-session"
-             value="3"
-             id="browserStartupLastSession"/>
-    </radiogroup>
-    <hbox id="browserNewTabExtensionContent" align="center" hidden="true">
-      <description control="disableNewTabExtension" flex="1" />
-      <button id="disableNewTabExtension"
-              class="extension-controlled-button accessory-button"
-              data-l10n-id="disable-extension" />
-    </hbox>
-  </vbox>
-</groupbox>
-
-<!-- Home Page -->
-<groupbox id="homepageGroup"
-          data-category="paneGeneral"
-          hidden="true">
-  <caption><label data-l10n-id="home-page-header"/></caption>
-
-  <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
-    <description control="disableHomePageExtension" flex="1" />
-    <button id="disableHomePageExtension"
-            class="extension-controlled-button accessory-button"
-            data-l10n-id="disable-extension" />
-  </hbox>
-
-  <vbox>
-    <textbox id="browserHomePage"
-             class="uri-element"
-             type="autocomplete"
-             autocompletesearch="unifiedcomplete"
-             onsyncfrompreference="return gMainPane.syncFromHomePref();"
-             onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-             placeholder="&abouthome.pageTitle;"
-             preference="browser.startup.homepage"/>
-  </vbox>
-
-  <hbox class="homepage-buttons">
-    <button id="useCurrent"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="use-current-pages"
-            data-l10n-args='{"tabCount": 0}'
-            disabled="true"
-            preference="pref.browser.homepage.disable_button.current_page"/>
-    <button id="useBookmark"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="choose-bookmark"
-            preference="pref.browser.homepage.disable_button.bookmark_page"
-            searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
-    <button id="restoreDefaultHomePage"
-            flex="1"
-            class="homepage-button"
-            data-l10n-id="restore-default"
-            preference="pref.browser.homepage.disable_button.restore_default"/>
-  </hbox>
-=======
->>>>>>> origin/upstream-releases
 </groupbox>
 
 <!-- Tab preferences -->

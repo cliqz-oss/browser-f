@@ -30,9 +30,6 @@ ChromeUtils.defineModuleGetter(this, "FileUtils",
                                "resource://gre/modules/FileUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "ProfileAge",
                                "resource://gre/modules/ProfileAge.jsm");
-<<<<<<< HEAD
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-                               "resource://gre/modules/AppConstants.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
                                "resource://gre/modules/PlacesUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Sqlite",
@@ -95,11 +92,6 @@ function* insertWholeBookmarkFolder(db, aId, aGuid) {
         yield insertWholeBookmarkFolder(db, id, newFolderGuid); // Recursive insert bookmarks
         break;
     }
-||||||| merged common ancestors
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-                               "resource://gre/modules/AppConstants.jsm");
-=======
->>>>>>> origin/upstream-releases
 
     // With many bookmarks we end up stealing the CPU - even with yielding!
     // So we let everyone else have a go every few items (bug 1186714).

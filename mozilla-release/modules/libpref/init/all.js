@@ -1003,17 +1003,7 @@ pref("toolkit.scrollbox.clickToScroll.scrollDelay", 150);
 // Server to submit telemetry pings to.
 pref("toolkit.telemetry.server", "https://reports.cliqz.com");
 // Telemetry server owner. Please change if you set toolkit.telemetry.server to a different server
-<<<<<<< HEAD
 pref("toolkit.telemetry.server_owner", "CLIQZ");
-// Information page about telemetry (temporary ; will be about:telemetry in the end)
-pref("toolkit.telemetry.infoURL", "https://www.mozilla.org/legal/privacy/firefox.html#telemetry");
-||||||| merged common ancestors
-pref("toolkit.telemetry.server_owner", "Mozilla");
-// Information page about telemetry (temporary ; will be about:telemetry in the end)
-pref("toolkit.telemetry.infoURL", "https://www.mozilla.org/legal/privacy/firefox.html#telemetry");
-=======
-pref("toolkit.telemetry.server_owner", "Mozilla");
->>>>>>> origin/upstream-releases
 // Determines whether full SQL strings are returned when they might contain sensitive info
 // i.e. dynamically constructed SQL strings or SQL executed by addons against addon DBs
 pref("toolkit.telemetry.debugSlowSql", false);

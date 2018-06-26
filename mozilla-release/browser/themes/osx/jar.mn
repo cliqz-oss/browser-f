@@ -6,13 +6,7 @@ browser.jar:
 % skin browser classic/1.0 %skin/classic/browser/
 #include ../shared/jar.inc.mn
   skin/classic/browser/sanitizeDialog.css
-<<<<<<< HEAD
-  skin/classic/browser/aboutSessionRestore-window-icon.png
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-  skin/classic/browser/aboutSessionRestore-window-icon.png
-=======
->>>>>>> origin/upstream-releases
 * skin/classic/browser/syncedtabs/sidebar.css          (syncedtabs/sidebar.css)
 #endif
 * skin/classic/browser/browser.css
@@ -69,16 +63,6 @@ browser.jar:
   skin/classic/browser/share.svg                            (share.svg)
   skin/classic/browser/tabbrowser/tabDragIndicator.png                   (tabbrowser/tabDragIndicator.png)
   skin/classic/browser/tabbrowser/tabDragIndicator@2x.png                (tabbrowser/tabDragIndicator@2x.png)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-  skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
-  skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
-#endif
-||||||| merged common ancestors
-  skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
-  skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/e10s-64@2x.png                                  (../shared/e10s-64@2x.png)
 
 % override chrome://browser/skin/feeds/audioFeedIcon.png                   chrome://browser/skin/feeds/feedIcon.png

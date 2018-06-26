@@ -62,13 +62,8 @@ can reach it easily. -->
 <!ENTITY  closeTab.label                     "Tab schließen">
 <!ENTITY  closeTab.accesskey                 "c">
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-
-=======
 <!ENTITY  hiddenTabs.label                   "Ausgeblendete Tabs">
 
->>>>>>> origin/upstream-releases
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
 
 <!ENTITY tabCmd.label "Neuer Tab">
@@ -228,22 +223,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 
-<<<<<<< HEAD
+<!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
+
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf deine Kamera und/oder dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf dein Mikrofon durch diese Website">
 <!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf deine Fenster oder Bildschirme durch diese Website">
-||||||| merged common ancestors
-
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
-=======
-<!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
-
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
->>>>>>> origin/upstream-releases
 
 <!ENTITY urlbar.servicesNotificationAnchor.tooltip        "Ansicht über eine Installation öffnen">
 <!ENTITY urlbar.translateNotificationAnchor.tooltip       "Diese Seite übersetzen">
@@ -409,15 +393,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.subtitle): This is shown
      when Sync is configured but this appears to be the only device attached to
      the account. We also show links to download Firefox for android/ios. -->
-<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
-<!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
-=======
-<!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
->>>>>>> origin/upstream-releases
 <!ENTITY appMenuRemoteTabs.opensyncprefs.label "Sync-Einstellungen öffnen">
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
@@ -467,15 +443,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY moreMenu.label "Sonstiges">
 
 <!ENTITY openCmd.commandkey           "l">
-<<<<<<< HEAD
 <!ENTITY urlbar.placeholder2          "In Cliqz suchen oder Adresse eingeben">
-<!ENTITY urlbar.placeholder3          "Suchwörter und Adressen hier eingeben">
-||||||| merged common ancestors
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
-<!ENTITY urlbar.placeholder3          "Suchwörter und Adressen hier eingeben">
-=======
-<!ENTITY urlbar.placeholder2          "Suche oder Adresse eingeben">
->>>>>>> origin/upstream-releases
 <!ENTITY urlbar.accesskey             "s">
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Erweiterung:">
@@ -1064,18 +1032,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-<<<<<<< HEAD
-
-<!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
-     The first <image> tag is replaced with the icon for the add-ons menu.
-     The second <image> tag is replaced with the icon for the toolbar menu. -->
 
 <!-- Cliqz -->
 <!ENTITY connect.panelUI.label "Connect">
-||||||| merged common ancestors
-
-<!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
-     The first <image> tag is replaced with the icon for the add-ons menu.
-     The second <image> tag is replaced with the icon for the toolbar menu. -->
-=======
->>>>>>> origin/upstream-releases

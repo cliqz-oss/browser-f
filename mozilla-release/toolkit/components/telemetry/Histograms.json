@@ -13821,19 +13821,6 @@
     "kind": "boolean",
     "keyed": true,
     "description": "Permission requests (showing a permission prompt) by whether they were requested from code handling a user input event."
-<<<<<<< HEAD
-  },
-  "REPORT_DECEPTIVE_SITE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 3,
-    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
-    "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "ACTIVE_DOCGROUPS_PER_TABGROUP": {
     "record_in_processes": ["content"],
@@ -13854,6 +13841,15 @@
     "high": 50,
     "n_buckets": 20,
     "description": "Total number of doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
->>>>>>> origin/upstream-releases
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

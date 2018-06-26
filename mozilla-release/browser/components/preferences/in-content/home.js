@@ -7,18 +7,16 @@
  /* import-globals-from main.js */
 
  // HOME PAGE
-
  /*
-   * Preferences:
-   *
-   * browser.startup.homepage
-   * - the user's home page, as a string; if the home page is a set of tabs,
-   *   this will be those URLs separated by the pipe character "|"
-   * browser.newtabpage.enabled
-   * - determines that is shown on the user's new tab page.
-   *   true = Activity Stream is shown,
-   *   false = about:blank is shown
-   */
+  * Preferences:
+  *
+  * browser.startup.homepage
+  * - the user's home page, as a string; if the home page is a set of tabs,
+  *   this will be those URLs separated by the pipe character "|"
+  * browser.startup.restoreTabs
+  * - whether to restore windows and tabs from the last session (a.k.a. session
+  *   restore)
+  */
 
 Preferences.addAll([
   { id: "browser.startup.homepage", type: "wstring" },
@@ -200,6 +198,7 @@ let gHomePane = {
   },
 
   async _handleHomePageOverrides() {
+#if 0
     const homePref = Preferences.get("browser.startup.homepage");
     if (homePref.locked) {
       // An extension can't control these settings if they're locked.
@@ -211,6 +210,7 @@ let gHomePane = {
       this._renderCustomSettings({isControlled});
       this._renderHomepageMode(isControlled);
     }
+#endif
   },
 
   syncFromHomePref() {
@@ -268,10 +268,12 @@ let gHomePane = {
     const tabCount = tabs.length;
     document.l10n.setAttributes(useCurrent, "use-current-pages", { tabCount });
 
+#if 0
     // If the homepage is controlled by an extension then you can't use this.
     if (await getControllingExtensionInfo(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY)) {
       return;
     }
+#endif
 
     // In this case, the button's disabled state is set by preferences.xml.
     let prefName = "pref.browser.homepage.disable_button.current_page";

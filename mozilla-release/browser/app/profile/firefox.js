@@ -81,13 +81,7 @@ pref("extensions.webextensions.remote", true);
 #endif
 
 // Extensions that should not be flagged as legacy in about:addons
-<<<<<<< HEAD
-pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},cliqz@cliqz.com,https-everywhere@cliqz.com,testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
-||||||| merged common ancestors
-pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
-=======
-pref("extensions.legacy.exceptions", "testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
->>>>>>> origin/upstream-releases
+pref("extensions.legacy.exceptions", "cliqz@cliqz.com,https-everywhere@cliqz.com,testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
 
 // Require signed add-ons by default
 pref("extensions.langpacks.signatures.required", true);
@@ -1277,13 +1271,8 @@ pref("services.sync.syncedTabs.showRemoteIcons", true);
 pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org",
      sticky);
 #else
-<<<<<<< HEAD
-pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
-||||||| merged common ancestors
-pref("lightweightThemes.selectedThemeID", "", sticky);
-=======
+//pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
 pref("lightweightThemes.selectedThemeID", "default-theme@mozilla.org", sticky);
->>>>>>> origin/upstream-releases
 #endif
 
 // Whether the character encoding menu is under the main Firefox button. This
@@ -1582,23 +1571,7 @@ pref("browser.tabs.crashReporting.requestEmail", false);
 pref("browser.tabs.crashReporting.emailMe", false);
 pref("browser.tabs.crashReporting.email", "");
 
-<<<<<<< HEAD
-// But don't allow non-MPC extensions by default on Nightly
-#if defined(NIGHTLY_BUILD)
-pref("extensions.allow-non-mpc-extensions", false);
-#endif
-
 pref("extensions.legacy.enabled", true);
-||||||| merged common ancestors
-// But don't allow non-MPC extensions by default on Nightly
-#if defined(NIGHTLY_BUILD)
-pref("extensions.allow-non-mpc-extensions", false);
-#endif
-
-pref("extensions.legacy.enabled", false);
-=======
-pref("extensions.legacy.enabled", false);
->>>>>>> origin/upstream-releases
 
 // How often to check for CPOW timeouts. CPOWs are only timed out by
 // the hang monitor.

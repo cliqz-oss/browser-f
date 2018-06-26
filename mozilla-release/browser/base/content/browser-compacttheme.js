@@ -36,15 +36,6 @@ var CompactTheme = {
     }
   },
 
-<<<<<<< HEAD
-  createStyleSheet() {
-    let styleSheetAttr = `href="${this.styleSheetLocation}" type="text/css"`;
-    this.styleSheet = document.createProcessingInstruction(
-      "xml-stylesheet", styleSheetAttr);
-    document.insertBefore(this.styleSheet, document.documentElement);
-    this.styleSheet.sheet.disabled = true;
-  },
-
   createCliqzStyleSheet() {
     const url = "chrome://browser/skin/cliqz/theme.css";
     let styleSheetAttr = `href="${url}" type="text/css"`;
@@ -53,17 +44,6 @@ var CompactTheme = {
     document.insertBefore(this.cliqzStyleSheet, document.documentElement);
   },
 
-||||||| merged common ancestors
-  createStyleSheet() {
-    let styleSheetAttr = `href="${this.styleSheetLocation}" type="text/css"`;
-    this.styleSheet = document.createProcessingInstruction(
-      "xml-stylesheet", styleSheetAttr);
-    document.insertBefore(this.styleSheet, document.documentElement);
-    this.styleSheet.sheet.disabled = true;
-  },
-
-=======
->>>>>>> origin/upstream-releases
   observe(subject, topic, data) {
     if (topic == "lightweight-theme-styling-update") {
       let newTheme = JSON.parse(data);
@@ -83,24 +63,12 @@ var CompactTheme = {
   _toggleStyleSheet(enabled) {
     let wasEnabled = this.isStyleSheetEnabled;
     if (enabled) {
-<<<<<<< HEAD
       // The stylesheet may not have been created yet if it wasn't
       // needed on initial load.  Make it now.
       if (!this.styleSheet) {
-        this.createStyleSheet();
         this.createCliqzStyleSheet();
       }
-      this.styleSheet.sheet.disabled = false;
-||||||| merged common ancestors
-      // The stylesheet may not have been created yet if it wasn't
-      // needed on initial load.  Make it now.
-      if (!this.styleSheet) {
-        this.createStyleSheet();
-      }
-      this.styleSheet.sheet.disabled = false;
-=======
       this.styleSheet.disabled = false;
->>>>>>> origin/upstream-releases
     } else if (!enabled && wasEnabled) {
       this.styleSheet.disabled = true;
     }
@@ -111,22 +79,10 @@ var CompactTheme = {
     this.styleSheet = null;
   }
 };
-<<<<<<< HEAD
 
 // If the compact theme is going to be applied in gBrowserInit.onLoad,
 // then preload it now.  This prevents a flash of unstyled content where the
 // normal theme is applied while the compact theme stylesheet is loading.
 if (this != Services.appShell.hiddenDOMWindow && CompactTheme.isThemeCurrentlyApplied) {
-  CompactTheme.createStyleSheet();
   CompactTheme.createCliqzStyleSheet();
 }
-||||||| merged common ancestors
-
-// If the compact theme is going to be applied in gBrowserInit.onLoad,
-// then preload it now.  This prevents a flash of unstyled content where the
-// normal theme is applied while the compact theme stylesheet is loading.
-if (this != Services.appShell.hiddenDOMWindow && CompactTheme.isThemeCurrentlyApplied) {
-  CompactTheme.createStyleSheet();
-}
-=======
->>>>>>> origin/upstream-releases

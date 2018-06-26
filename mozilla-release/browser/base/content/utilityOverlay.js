@@ -267,24 +267,7 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
   if (arguments.length == 3 && typeof arguments[2] == "object") {
     params = aAllowThirdPartyFixup;
   } else {
-<<<<<<< HEAD
-    params = {
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      postData: aPostData,
-      referrerURI: aReferrerURI,
-      referrerPolicy: Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-      private: aPrivate,
-    };
-||||||| merged common ancestors
-    params = {
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      postData: aPostData,
-      referrerURI: aReferrerURI,
-      referrerPolicy: Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-    };
-=======
     throw new Error("Required argument triggeringPrincipal missing within openUILinkIn");
->>>>>>> origin/upstream-releases
   }
 
   params.fromChrome = true;

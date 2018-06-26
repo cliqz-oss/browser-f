@@ -68,12 +68,8 @@ browser.jar:
         content/browser/browser-plugins.js            (content/browser-plugins.js)
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
         content/browser/browser-sidebar.js            (content/browser-sidebar.js)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
         content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
 #endif
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
@@ -98,19 +94,11 @@ browser.jar:
         content/browser/defaultthemes/5.header.png    (content/defaultthemes/5.header.png)
         content/browser/defaultthemes/5.icon.jpg      (content/defaultthemes/5.icon.jpg)
         content/browser/defaultthemes/5.preview.jpg   (content/defaultthemes/5.preview.jpg)
-<<<<<<< HEAD
-        content/browser/defaultthemes/dark.icon.svg  (content/defaultthemes/dark.icon.svg)
-        content/browser/defaultthemes/light.icon.svg (content/defaultthemes/light.icon.svg)
+        content/browser/defaultthemes/dark.icon.svg   (content/defaultthemes/dark.icon.svg)
+        content/browser/defaultthemes/light.icon.svg  (content/defaultthemes/light.icon.svg)
 #if CQZ_AUTO_PRIVATE_TAB
         content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
 #endif
-||||||| merged common ancestors
-        content/browser/defaultthemes/dark.icon.svg  (content/defaultthemes/dark.icon.svg)
-        content/browser/defaultthemes/light.icon.svg (content/defaultthemes/light.icon.svg)
-=======
-        content/browser/defaultthemes/dark.icon.svg   (content/defaultthemes/dark.icon.svg)
-        content/browser/defaultthemes/light.icon.svg  (content/defaultthemes/light.icon.svg)
->>>>>>> origin/upstream-releases
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
