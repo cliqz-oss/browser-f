@@ -634,6 +634,8 @@ var LightWeightThemeWebInstaller = {
         notificationBox.PRIORITY_INFO_MEDIUM,
         []);
 
+#if 0
+    // Prevent installing theme on Cliqz browser.
     // Don't allow installing off null principals.
     if (!principal.URI) {
       return;
@@ -672,6 +674,7 @@ var LightWeightThemeWebInstaller = {
         LightWeightThemeWebInstaller._install(data, notify);
       }
     });
+#endif
   },
 
   _install(newLWTheme, notify) {
