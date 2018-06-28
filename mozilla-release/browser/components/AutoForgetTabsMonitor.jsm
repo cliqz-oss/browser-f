@@ -24,8 +24,6 @@ class AutoForgetTabsMonitor {
   constructor(docShell, msgMgr) {
     if (!(docShell instanceof Ci.nsIDocShell))
       throw new TypeError("nsIDocShell required");
-    if (!(msgMgr instanceof Ci.nsIMessageListenerManager))
-      throw new TypeError("nsIMessageListenerManager required");
 
     this._loadContext = docShell.QueryInterface(Ci.nsILoadContext);
     this._webNav = docShell.QueryInterface(Ci.nsIWebNavigation);

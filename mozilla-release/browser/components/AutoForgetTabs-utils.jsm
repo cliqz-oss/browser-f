@@ -72,7 +72,6 @@ class RPCCaller {
   }
 
   _callStub(methodName, argNames, sender) {
-    const [broadcaster, sync] = this._isSync(sender);
     const msgName = this._messagePrefix + methodName;
 
     // Map additional args as RPC call args.
@@ -82,21 +81,16 @@ class RPCCaller {
       rpcCalArgs[argName] = arguments[argIdx++];
     }
 
-    if (sync)
+    if (typeof sender.sendSyncMessage === "function")
       return sender.sendSyncMessage(msgName, rpcCalArgs)[0];
 
-    if (broadcaster)
-      sender.broadcastAsyncMessage(msgName, rpcCalArgs);
-    else
-      sender.sendAsyncMessage(msgName, rpcCalArgs);
-  }
+    if (typeof sender.broadcastAsyncMessage === "function")
+      return sender.broadcastAsyncMessage(msgName, rpcCalArgs);
 
-  _isSync(messageSender) {
-    const broadcaster = (messageSender instanceof Ci.nsIMessageBroadcaster);
-    if (!(messageSender instanceof Ci.nsIMessageSender) && !broadcaster)
-      throw new TypeError("nsIMessageSender or nsIMessageBroadcaster required");
-    const sync = (messageSender instanceof Ci.nsISyncMessageSender);
-    return [broadcaster, sync];
+    if (typeof sender.sendAsyncMessage === "function")
+      return sender.sendAsyncMessage(msgName, rpcCalArgs);
+
+    throw new TypeError("ChromeMessageSender or ChromeMessageBroadcaster required");
   }
 }
 
@@ -118,9 +112,6 @@ class RPCResponder {
    * @param messagePrefix {string} String prepended to message names.
    */
   constructor(delegate, publishedMethods, messageManager, messagePrefix) {
-    if (!(messageManager instanceof Ci.nsIMessageListenerManager))
-      throw new TypeError("nsIMessageListenerManager required");
-
     this._delegate = delegate;
     this._publishedMethods = publishedMethods;
     this._messageManager = messageManager;
@@ -158,7 +149,7 @@ class RPCResponder {
     // Turn passed named arguments into list of values.
     const args = argsMap.map(argName => data[argName]);
     // Prepend xul:browser corresponding to message source frame.
-    if (target instanceof Ci.nsIDOMElement)
+    if (target && target.nodeName === "browser")
       args.unshift(target);
     return this._delegate[methodName].apply(this._delegate, args);
   }
@@ -166,7 +157,6 @@ class RPCResponder {
 // nsISupports:
 RPCResponder.prototype.QueryInterface = XPCOMUtils.generateQI([
     Ci.nsISupports,
-    Ci.nsIMessageListener
 ]);
 
 
