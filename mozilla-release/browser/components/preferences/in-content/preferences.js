@@ -53,7 +53,9 @@ function init_all() {
 
   gSubDialog.init();
   register_module("paneGeneral", gMainPane);
+#if 0
   register_module("paneHome", gHomePane);
+#endif
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);

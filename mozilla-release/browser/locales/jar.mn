@@ -61,6 +61,7 @@
     locale/browser/migration/migration.properties  (%chrome/browser/migration/migration.properties)
     locale/browser/preferences/preferences.properties     (%chrome/browser/preferences/preferences.properties)
     locale/browser/preferences/security.dtd           (%chrome/browser/preferences/security.dtd)
+    locale/browser/preferences/cliqzpref.dtd       (%chrome/browser/preferences/cliqzpref.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
@@ -75,6 +76,7 @@
     locale/browser/searchplugins/images/amazon.ico     (searchplugins/images/amazon.ico)
     locale/browser/searchplugins/images/ebay.ico       (searchplugins/images/ebay.ico)
     locale/browser/searchplugins/images/wikipedia.ico  (searchplugins/images/wikipedia.ico)
+    locale/browser/searchplugins/images/yahoo.ico      (searchplugins/images/yahoo.ico)
     locale/browser/searchplugins/images/yandex-en.ico  (searchplugins/images/yandex-en.ico)
     locale/browser/searchplugins/images/yandex-ru.ico  (searchplugins/images/yandex-ru.ico)
 % locale browser-region @AB_CD@ %locale/browser-region/

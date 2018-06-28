@@ -114,7 +114,7 @@
     <button id="restoreDefaultHomePage"
             flex="1"
             class="homepage-button"
-            data-l10n-id="restore-default"
+            data-l10n-id="home-restore-defaults"
             preference="pref.browser.homepage.disable_button.restore_default"/>
   </hbox>
 </groupbox>

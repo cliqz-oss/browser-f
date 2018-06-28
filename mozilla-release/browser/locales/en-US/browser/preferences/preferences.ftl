@@ -424,7 +424,7 @@ home-homepage-mode-label = Homepage and new windows
 home-newtabs-mode-label = New tabs
 
 home-restore-defaults =
-    .label = Restore Defaults
+    .label = Restore to Defaults
     .accesskey = R
 
 # "Firefox" should be treated as a brand and kept in English,
