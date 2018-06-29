@@ -189,6 +189,24 @@ button > hbox > label {
   font-weight: 600;
 }
 
+#startupPageBox {
+  padding-top: 32px;
+}
+
+#browserHomePage {
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+  margin-bottom: 4px;
+}
+
+.homepage-button:first-of-type {
+  margin-inline-start: 0;
+}
+
+.homepage-button:last-of-type {
+  margin-inline-end: 0;
+}
+
 .extension-controlled-icon {
   height: 20px;
   margin: 2px 0 6px;

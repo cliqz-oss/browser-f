@@ -43,10 +43,12 @@
   </vbox>
 #endif
 
+#if 0
   <vbox id="startupPageBox">
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
   </vbox>
+#endif
 
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
