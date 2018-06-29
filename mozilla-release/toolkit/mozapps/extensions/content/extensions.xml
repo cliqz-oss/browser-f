@@ -1600,7 +1600,7 @@
         <parameter name="percentage"/>
         <body><![CDATA[
           let progressHolder = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
-          progressHolder.textContent = percentage
+          progressHolder.label = percentage
         ]]>
         </body>
       </method>
@@ -1616,7 +1616,7 @@
         <parameter name="showText"/>
         <body><![CDATA[
           let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
-          button.textContent = showText;
+          button.label = showText;
         ]]>
         </body>
       </method>

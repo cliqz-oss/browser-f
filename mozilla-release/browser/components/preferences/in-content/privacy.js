@@ -1632,14 +1632,10 @@ var gPasswordManagers = {
   getExisting: function() {
     let KNOWN_PW_MANAGERS = ["support@lastpass.com", "{446900e4-71c2-419f-a6a7-df9c091e268b}"];
 
-    return new Promise(function(resolve, reject) {
-      AddonManager.getAllAddons(function(all) {
-        // filter only installed extensions
-        var extensions = all.filter(function(addon) {
-          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
-        });
-
-        resolve(extensions);
+    return AddonManager.getAllAddons().then((all) => {
+      // filter only installed extensions
+      return all.filter(function(addon) {
+        return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.includes(addon.id);
       });
     });
   },
@@ -1722,14 +1718,10 @@ var gPrivacyManagers = {
   getExisting: function() {
     let KNOWN_PW_MANAGERS = ["firefox@ghostery.com"];
 
-    return new Promise(function(resolve, reject) {
-      AddonManager.getAllAddons(function(all) {
-        // filter only installed extensions
-        var extensions = all.filter(function(addon) {
-          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
-        });
-
-        resolve(extensions);
+    return AddonManager.getAllAddons().then((all) => {
+      // filter only installed extensions
+      return all.filter(function(addon) {
+        return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.includes(addon.id);
       });
     });
   },
@@ -1786,8 +1778,8 @@ ItemHandler.prototype = {
     let self = this;
     let reloadTimeout = 3000;
 
-    AddonManager.getInstallForURL(this.listItemDesc.sourceURI,
-      function(addon) {
+    AddonManager.getInstallForURL(this.listItemDesc.sourceURI, "application/x-xpinstall")
+      .then((addon) => {
         addon.addListener({
           onDownloadProgress: function(aInstall) {
             let percent = gStrings.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
@@ -1805,7 +1797,7 @@ ItemHandler.prototype = {
           },
           onInstallEnded: function(aInstall, aAddon) {
             // redrawing the listItem as *installed*
-            AddonManager.getAddonByID(self.listItemDesc.id, (newlyInstalled) => {
+            AddonManager.getAddonByID(self.listItemDesc.id).then((newlyInstalled) => {
               self.listContainer.removeChild(self.listItem);
               let installedItem = new ItemHandler(self.listContainer, self.listItemDesc, newlyInstalled, 'installed');
               self.listContainer.appendChild(installedItem.listItem);
@@ -1816,9 +1808,7 @@ ItemHandler.prototype = {
           }
         });
         addon.install();
-      },
-      "application/x-xpinstall"
-    )
+      });
   },
 
   onUninstallClick: function() {

@@ -278,7 +278,7 @@ class Package {
       };
     }
 
-    let root = Ci.nsIX509CertDB.cliqzAddonsRoot;
+    let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
     if (!AppConstants.MOZ_REQUIRE_SIGNING &&
         Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false)) {
       root = Ci.nsIX509CertDB.AddonsStageRoot;
