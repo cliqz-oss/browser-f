@@ -29,7 +29,7 @@ function init(aEvent) {
     distroIdField.style.display = "block";
 
     // DB-1148: Add platform and extension version to About dialog.
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
       let componentsVersion = Services.appinfo.platformVersion;
       if (cliqzAddon) {
         componentsVersion += `+${cliqzAddon.version}`;
