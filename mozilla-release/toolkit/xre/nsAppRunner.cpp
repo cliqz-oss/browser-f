@@ -4240,59 +4240,62 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   }
 
 #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
-  // Check for and process any available updates
-  nsCOMPtr<nsIFile> updRoot;
-  bool persistent;
-  rv = mDirProvider.GetFile(XRE_UPDATE_ROOT_DIR, &persistent,
-                            getter_AddRefs(updRoot));
-  // XRE_UPDATE_ROOT_DIR may fail. Fallback to appDir if failed
-  if (NS_FAILED(rv))
-    updRoot = mDirProvider.GetAppDir();
+  const char *skipUpdates = PR_GetEnv("MOZ_CLIQZ_SKIP_UPDATES");
+  if (!skipUpdates || !(*skipUpdates)) {
+    // Check for and process any available updates
+    nsCOMPtr<nsIFile> updRoot;
+    bool persistent;
+    rv = mDirProvider.GetFile(XRE_UPDATE_ROOT_DIR, &persistent,
+                              getter_AddRefs(updRoot));
+    // XRE_UPDATE_ROOT_DIR may fail. Fallback to appDir if failed
+    if (NS_FAILED(rv))
+      updRoot = mDirProvider.GetAppDir();
 
-  // If the MOZ_TEST_PROCESS_UPDATES environment variable already exists, then
-  // we are being called from the callback application.
-  if (EnvHasValue("MOZ_TEST_PROCESS_UPDATES")) {
-    // If the caller has asked us to log our arguments, do so.  This is used
-    // to make sure that the maintenance service successfully launches the
-    // callback application.
-    const char *logFile = nullptr;
-    if (ARG_FOUND == CheckArg("dump-args", false, &logFile)) {
-      FILE* logFP = fopen(logFile, "wb");
-      if (logFP) {
-        for (int i = 1; i < gRestartArgc; ++i) {
-          fprintf(logFP, "%s\n", gRestartArgv[i]);
+    // If the MOZ_TEST_PROCESS_UPDATES environment variable already exists, then
+    // we are being called from the callback application.
+    if (EnvHasValue("MOZ_TEST_PROCESS_UPDATES")) {
+      // If the caller has asked us to log our arguments, do so.  This is used
+      // to make sure that the maintenance service successfully launches the
+      // callback application.
+      const char *logFile = nullptr;
+      if (ARG_FOUND == CheckArg("dump-args", false, &logFile)) {
+        FILE* logFP = fopen(logFile, "wb");
+        if (logFP) {
+          for (int i = 1; i < gRestartArgc; ++i) {
+            fprintf(logFP, "%s\n", gRestartArgv[i]);
+          }
+          fclose(logFP);
         }
-        fclose(logFP);
       }
+      *aExitFlag = true;
+      return 0;
     }
-    *aExitFlag = true;
-    return 0;
-  }
 
-  // Support for processing an update and exiting. The MOZ_TEST_PROCESS_UPDATES
-  // environment variable will be part of the updater's environment and the
-  // application that is relaunched by the updater. When the application is
-  // relaunched by the updater it will be removed below and the application
-  // will exit.
-  if (CheckArg("test-process-updates")) {
-    SaveToEnv("MOZ_TEST_PROCESS_UPDATES=1");
-  }
-  nsCOMPtr<nsIFile> exeFile, exeDir;
-  rv = mDirProvider.GetFile(XRE_EXECUTABLE_FILE, &persistent,
-                            getter_AddRefs(exeFile));
-  NS_ENSURE_SUCCESS(rv, 1);
-  rv = exeFile->GetParent(getter_AddRefs(exeDir));
-  NS_ENSURE_SUCCESS(rv, 1);
-  ProcessUpdates(mDirProvider.GetGREDir(),
-                 exeDir,
-                 updRoot,
-                 gRestartArgc,
-                 gRestartArgv,
-                 mAppData->version);
-  if (EnvHasValue("MOZ_TEST_PROCESS_UPDATES")) {
-    SaveToEnv("MOZ_TEST_PROCESS_UPDATES=");
-    *aExitFlag = true;
-    return 0;
+    // Support for processing an update and exiting. The MOZ_TEST_PROCESS_UPDATES
+    // environment variable will be part of the updater's environment and the
+    // application that is relaunched by the updater. When the application is
+    // relaunched by the updater it will be removed below and the application
+    // will exit.
+    if (CheckArg("test-process-updates")) {
+      SaveToEnv("MOZ_TEST_PROCESS_UPDATES=1");
+    }
+    nsCOMPtr<nsIFile> exeFile, exeDir;
+    rv = mDirProvider.GetFile(XRE_EXECUTABLE_FILE, &persistent,
+                              getter_AddRefs(exeFile));
+    NS_ENSURE_SUCCESS(rv, 1);
+    rv = exeFile->GetParent(getter_AddRefs(exeDir));
+    NS_ENSURE_SUCCESS(rv, 1);
+    ProcessUpdates(mDirProvider.GetGREDir(),
+                   exeDir,
+                   updRoot,
+                   gRestartArgc,
+                   gRestartArgv,
+                   mAppData->version);
+    if (EnvHasValue("MOZ_TEST_PROCESS_UPDATES")) {
+      SaveToEnv("MOZ_TEST_PROCESS_UPDATES=");
+      *aExitFlag = true;
+      return 0;
+    }
   }
 #endif
 
