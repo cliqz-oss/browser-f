@@ -21,12 +21,17 @@ sl_platform_map = {'win32': 'win32', 'win64': 'win32', 'macosx': 'osx',
 # buildbot -> update platform mapping
 update_platform_map = {
     'android': ['Android_arm-eabi-gcc3'],
-    'android-api-9': ['Android_arm-eabi-gcc3'],
     'android-api-11': ['Android_arm-eabi-gcc3'],
     'android-api-15': ['Android_arm-eabi-gcc3'],
+    'android-api-15-old-id': ['Android_arm-eabi-gcc3'],
+    'android-api-16': ['Android_arm-eabi-gcc3'],
+    'android-api-16-old-id': ['Android_arm-eabi-gcc3'],
     'android-x86': ['Android_x86-gcc3'],
+    'android-x86-old-id': ['Android_x86-gcc3'],
+    'android-aarch64': ['Android_aarch64-gcc3'],
     'linux': ['Linux_x86-gcc3'],
     'linux64': ['Linux_x86_64-gcc3'],
+    'linux64-asan-reporter': ['Linux_x86_64-gcc3-asan'],
     'macosx64': ['Darwin_x86_64-gcc3-u-i386-x86_64',  # The main platofrm
                  'Darwin_x86-gcc3-u-i386-x86_64',
                 # We don't ship builds with these build targets, but some users
@@ -35,15 +40,6 @@ update_platform_map = {
                  'Darwin_x86-gcc3', 'Darwin_x86_64-gcc3'],
     'win32': ['WINNT_x86-msvc', 'WINNT_x86-msvc-x86', 'WINNT_x86-msvc-x64'],
     'win64': ['WINNT_x86_64-msvc', 'WINNT_x86_64-msvc-x64'],
-
-    # This is for v2.1 and v2.2 branches.
-    # Must be killed in the future.
-    'flame-kk': ['flame-kk','flame'],
-
-    # BUILD_TARGET follows the pattern <platform>-<variant>-<sdk-version>
-    # We add the proper aliases for backward compatibility
-    'flame-user-kk': ['flame-user-kk', 'flame-kk', 'flame'],
-    'aries-user-kk': ['aries-user-kk', 'aries'],
 }
 
 # These FTP -> other mappings are provided so that things interpreting patcher

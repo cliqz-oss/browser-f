@@ -1,0 +1,32 @@
+# variable interpolation test
+me=blah
+pr=$me/blubber
+<vars>
+  base = /usr
+  uid  = 501
+</vars>
+
+base = /opt
+<etc>
+  base = /usr        # set $base to a new value in this scope
+  log  = ${base}/log/logfile  # use braces
+  <users>
+    home = $base/home/max # $base should be /usr, not /opt !
+  </users>
+</etc>
+
+# block(name) test
+tag  = dir
+mono = teri
+<$tag>
+  bl = 1
+</$tag>
+<$tag mono>
+  bl = 2
+</$tag>
+<text $mono>
+  bl = 3
+</text>
+<$tag $mono>
+  bl = 3
+</$tag>

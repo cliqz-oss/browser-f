@@ -1,0 +1,13 @@
+<outer b1>
+  test = foo
+  <inner>
+    ivar = $test
+  </inner>
+</outer>
+
+<outer b2>
+  test = bar
+  <inner>
+    ivar = $test
+  </inner>
+</outer>

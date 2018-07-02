@@ -105,7 +105,8 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
                  productName=None, platform=None,
                  version=None, partialUpdates=None,
                  buildNumber=None, stageServer=None,
-                 mozillaDir=None, mozillaSrcDir=None):
+                 mozillaDir=None, mozillaSrcDir=None,
+                 marSignatureFormat='mar'):
     repo = "/".join([l10nBaseRepo, locale])
     localeDir = path.join(l10nRepoDir, locale)
     mercurial(repo, localeDir)
@@ -185,7 +186,10 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
 
     compareLocales(compareLocalesRepo, locale, l10nRepoDir, localeSrcDir,
                    l10nIni, revision=revision, merge=merge)
-    run_cmd(make + ["installers-%s" % locale], cwd=localeSrcDir, env=env)
+
+    make_installers_env = env.copy()
+    make_installers_env['MOZ_OBJDIR'] = absObjdir
+    run_cmd(make + ["installers-%s" % locale], cwd=localeSrcDir, env=make_installers_env)
 
     # Our Windows-native rm from bug 727551 requires Windows-style paths
     run_cmd(['rm', '-rf', msys2windows(current)])
@@ -209,8 +213,8 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
                     current], cwd=nativeDistDir, env=env)
             if os.environ.get('MOZ_SIGN_CMD'):
                 run_cmd(['bash', '-c',
-                        '%s -f mar "%s"' %
-                        (os.environ['MOZ_SIGN_CMD'], partial_mar)],
+                        '%s -f %s "%s"' %
+                        (os.environ['MOZ_SIGN_CMD'], marSignatureFormat, partial_mar)],
                         env=env)
                 UPLOAD_EXTRA_FILES.append(
                     '%s/%s.asc' % (updateDir, partial_mar_name))
@@ -234,7 +238,7 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
         os.chdir(localeSrcDir)
         relative_checksums = get_output(make +
                                         ["--no-print-directory", "echo-variable-CHECKSUM_FILE", "AB_CD=%s" % locale],
-                                        env=env).strip("\"'\n\r")
+                                        env=env, cwd=localeSrcDir).strip("\"'\n\r")
         return path.normpath(path.join(localeSrcDir, relative_checksums))
     finally:
         os.chdir(curdir)

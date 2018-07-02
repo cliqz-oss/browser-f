@@ -9,7 +9,7 @@ def merge_partial_updates(base_obj, new_obj):
     """Merges 2 update objects, merging partials and replacing completes"""
     schema = {
         "properties": {
-            # Merge partials using fileUrl as an identifier field
+            # Merge partials using "from" as an identifier field
             "partials": {
                 "mergeStrategy": "arrayMergeById",
                 "mergeOptions": {

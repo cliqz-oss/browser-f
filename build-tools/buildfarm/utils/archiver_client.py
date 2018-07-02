@@ -22,6 +22,7 @@ import urllib2
 import json
 import sys
 from optparse import OptionParser
+import httplib
 
 SUCCESS_CODE = 0
 # This is not an infra error and we can't recover from it
@@ -135,7 +136,7 @@ def get_url_response(api_url, options):
             else:
                 log.debug("got a bad response. response code: %s", response.code)
 
-        except (urllib2.HTTPError, urllib2.URLError, ssl.SSLError) as e:
+        except (urllib2.HTTPError, urllib2.URLError, ssl.SSLError, httplib.BadStatusLine) as e:
             if num == options.max_retries - 1:
                 log.exception(fatal_msg)
                 exit(INFRA_CODE)

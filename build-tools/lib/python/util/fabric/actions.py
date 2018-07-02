@@ -195,7 +195,7 @@ def action_graceful_stop(master):
     print OK, "gracefully stopped %(hostname)s:%(basedir)s" % master
 
 
-def start(master):
+def action_start(master):
     with show('running'):
         put(BUILDBOT_WRANGLER,
             '%s/buildbot-wrangler.py' % master['basedir'])
@@ -239,17 +239,13 @@ def action_fix_makefile_symlink(master):
     print OK, "updated Makefile symlink in %(hostname)s:%(basedir)s" % master
 
 
-def action_add_esr38_symlinks(master):
+def action_add_esr52_symlinks(master):
     with show('running'):
-        run('ln -s %(bbconfigs_dir)s/mozilla/release-firefox-mozilla-esr38.py '
+        run('ln -s %(bbconfigs_dir)s/mozilla/release-thunderbird-comm-esr52.py '
             '%(master_dir)s/' % master)
-        run('ln -s %(bbconfigs_dir)s/mozilla/l10n-changesets_mozilla-esr38 '
+        run('ln -s %(bbconfigs_dir)s/mozilla/l10n-changesets_thunderbird-esr52 '
             '%(master_dir)s/' % master)
-        run('ln -s %(bbconfigs_dir)s/mozilla/release-thunderbird-comm-esr38.py '
-            '%(master_dir)s/' % master)
-        run('ln -s %(bbconfigs_dir)s/mozilla/l10n-changesets_thunderbird-esr38 '
-            '%(master_dir)s/' % master)
-    print OK, "Added esr38 symlinks in %(hostname)s:%(basedir)s" % master
+    print OK, "Added esr52 symlinks in %(hostname)s:%(basedir)s" % master
 
 
 def action_rm_34_1_symlinks(master):
@@ -265,13 +261,6 @@ def action_add_gecko_version_symlinks(master):
     with show('running'):
         run('ln -s %(bbconfigs_dir)s/mozilla/gecko_versions.json '
             '%(master_dir)s/' % master)
-
-
-def action_add_config_seta_symlinks(master):
-    with show('running'):
-        run('ln -s %(bbconfigs_dir)s/mozilla-tests/config_seta.py '
-            '%(master_dir)s/' % master)
-
 
 def action_update_exception_timestamp(master):
     with show('running'):
@@ -311,6 +300,12 @@ def action_master_health(master):
     with show('running'):
         run('ls -l %(master_dir)s/*.pid' % master)
         run('free -m')
+
+
+def action_check_queues(master):
+    """Check for command queue jobs that are running or pending"""
+    with hide('running'):
+        run('find /dev/shm/queue/commands/{cur,new} -type f')
 
 
 def action_create_reconfig_lockfile(master, notify=True):

@@ -1,0 +1,7 @@
+# should generate an error about invalid structure
+# array of scalars => hashref
+val = 1
+val = 2
+<val 3>
+ x = no
+</val>

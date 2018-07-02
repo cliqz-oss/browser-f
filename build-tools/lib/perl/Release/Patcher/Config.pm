@@ -42,6 +42,7 @@ sub GetReleaseBlock {
     my $appVersion = $args{'appVersion'};
     my $prettyVersion = $args{'prettyVersion'};
     my $product = $args{'product'};
+    my $stage_product = $args{'stage_product'};
     my $buildStr = $args{'buildstr'};
     my $ftpServer = $args{'ftpServer'};
     my $localeInfo = $args{'localeInfo'};
@@ -55,7 +56,7 @@ sub GetReleaseBlock {
     $releaseBlock->{'extension-version'} = $appVersion;
     $releaseBlock->{'prettyVersion'} = $prettyVersion;
 
-    my $candidateDir = '/pub/mozilla.org/' . $product . '/candidates/' .
+    my $candidateDir = '/pub/' . $stage_product . '/candidates/' .
       $version . '-candidates/' . $buildStr;
 
     $releaseBlock->{'platforms'} = {};
@@ -71,9 +72,9 @@ sub GetReleaseBlock {
             die("ASSERT: GetReleaseBlock(): unknown OS $os");
         }
     }
-    
+
     $releaseBlock->{'locales'} = join(' ', sort (keys(%{$localeInfo})));
-    
+
     $releaseBlock->{'completemarurl'} = 'http://' . $ftpServer . $candidateDir .
       '/update/%platform%/%locale%/' . $product . '-' . $version . '.complete.mar';
     $releaseBlock->{'checksumsurl'} = 'http://' . $ftpServer . $candidateDir .

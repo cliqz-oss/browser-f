@@ -5,11 +5,9 @@ unset DRY_RUN
 
 INCREMENT_TITLES="Template:Version/Gecko/release/next \
     Template:Version/Gecko/central/current \
-    Template:Version/Gecko/aurora/current \
     Template:Version/Gecko/beta/current \
     Template:Version/Gecko/release/current"
 
-B2G_TITLES="Template:B2G_DEV_VERSION"
 ESR_TITLES="Template:Version/Gecko/esr/current"
 SIX_WEEK_DATE_TITLES="Template:NextReleaseDate"
 WIKI_COMMENT="Merge day"
@@ -18,10 +16,9 @@ WIKI_COMMENT="Merge day"
 
 function usage {
     echo "Usage: $0 -h"
-    echo "Usage: $0 -b B2G_VERSION [-e ESR_VERSION] [-d]"
+    echo "Usage: $0 [-e ESR_VERSION] [-d]"
     echo
     echo "    -h:                    Display help."
-    echo "    -b B2G_VERSION:        REQUIRED! New B2G version for mozilla-central. e.g. 2.1"
     echo "    -e ESR_VERSION:        New ESR version (only set this when a new ESR version comes along!)"
     echo "    -r NEXT_RELEASE_DATE:  Next release date YYYY-MM-DD . By default we'll increment 6 weeks."
     echo "    -d:                    Dry run; will not make changes, only validates login."
@@ -58,8 +55,6 @@ while getopts ":dhb:e:r:" opt; do
         h)  usage
             exit 0
             ;;
-        b)  B2G_VERSION="${OPTARG}"
-            ;;
         e)  ESR_VERSION="${OPTARG}"
             ;;
         r)  NEXT_RELEASE_DATE="${OPTARG}"
@@ -71,36 +66,8 @@ while getopts ":dhb:e:r:" opt; do
 done
 
 DRY_RUN="${DRY_RUN:-0}"
-if [ ! -n "${B2G_VERSION}" ]; then
-    echo "Missing b2g version!"
-    usage
-    exit 1
-fi
-
 check_wiki_login_env
 wiki_login
-
-# Bump b2g version.  This is more prone to error, so let's do it first.
-for WIKI_TITLE in ${B2G_TITLES}; do
-    # create some temporary files
-    current_content="$(mktemp -t current-content.XXXXXXXXXX)"
-    new_content="$(mktemp -t new-content.XXXXXXXXXX)"
-    echo "  * Retrieving current wiki text of https://wiki.mozilla.org/${WIKI_TITLE}..."
-    curl -s "https://wiki.mozilla.org/${WIKI_TITLE}?action=raw" >> "${current_content}"
-    old_content=$(cat ${current_content})
-    if [ "${old_content}" == "${B2G_VERSION}" ]; then
-        echo "***** B2g version ${B2G_VERSION} hasn't changed!"
-        rm "${new_content}"
-        rm "${current_content}"
-        continue
-    fi
-    echo ${B2G_VERSION} > "${new_content}"
-    wiki_edit_login
-    wiki_post
-    echo "  * Deleting temporary files..."
-    rm "${new_content}"
-    rm "${current_content}"
-done
 
 # Bump esr version.
 if [ -n "${ESR_VERSION}" ]; then

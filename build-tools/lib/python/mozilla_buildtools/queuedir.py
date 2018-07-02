@@ -60,9 +60,13 @@ class QueueDir(object):
             path = "/"
             for p in parts:
                 path = os.path.join(path, p)
-                if not os.path.exists(path):
+                try:
                     os.mkdir(path)
                     os.chmod(path, 0755)
+                except OSError:
+                    pass
+            if not os.path.isdir(d):
+                raise OSError("Can't create %s" % d)
 
         self.cleanup()
 

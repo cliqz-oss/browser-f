@@ -74,6 +74,8 @@ def main():
     options, args = parser.parse_args()
 
     # TODO: check params
+    """
+    # commenting this out so we don't post as per bug 1156885
     properties = json.load(open(options.propertiesFile))
     testresults = properties['properties']['testresults']
 
@@ -84,6 +86,7 @@ def main():
                        sourcestamp=options.sourcestamp, buildid=options.buildid,
                        timestamp=options.timestamp)
         gp.postResult()
+    """
 
 if __name__ == '__main__':
     main()

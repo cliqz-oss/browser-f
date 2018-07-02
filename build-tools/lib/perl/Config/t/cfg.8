@@ -1,0 +1,39 @@
+<cops>
+  <officer randall>
+      name stein
+      age  25
+  </officer>
+  <officer gordon>
+      name bird
+      age  31
+  </officer>
+</cops>
+domain	b0fh.org
+domain  l0pht.com
+domain  infonexus.com
+message <<EOF
+  yes. we are not here. you
+  can reach us somewhere in
+  outerspace.
+EOF
+command = ssh -f -g orpheus.0x49.org \
+          -l azrael -L:34777samir.okir.da.ru:22 \
+          -L:31773:shane.sol1.rocket.de:22 \
+          'exec sleep 99999990'
+user = tom 
+passwd = sakkra
+<db>
+host = blah.blubber
+</db>
+
+<beta>
+  user1 hans
+</beta>
+
+<beta>
+  user2 max
+</beta>
+
+quoted = "this one contains whitespace at the end    "
+
+quotedwithquotes = " holy crap, it contains \"masked quotes\" and 'single quotes'  "

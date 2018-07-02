@@ -1,0 +1,7 @@
+This module exists here just to satisfy 'make test'
+because it tests the -tie functionality. It is NOT
+part of Config::General itself, which doesn't depend
+on it.
+
+
+Tom

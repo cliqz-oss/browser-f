@@ -14,8 +14,7 @@ class TestPurge(TestCase):
                      'release-mozilla-central-android_update_verify',
                      'info',
                      ]
-    notImportantDirs = ['mozilla-central-bundle',
-                        'mozilla-1.9.2-linux-l10n-dep',
+    notImportantDirs = ['mozilla-1.9.2-linux-l10n-dep',
                         'mozilla-central-win32-xulrunner',
                         'nanojit-macosx64',
                         'fuzzer-linux',

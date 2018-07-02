@@ -47,6 +47,8 @@ def remote_signfile(options, urls, filename, fmt, token, dest=None):
 
     if fmt == 'gpg':
         dest += '.asc'
+    elif fmt in ('widevine', 'widevine_blessed'):
+        dest += '.sig'
 
     parent_dir = os.path.dirname(os.path.abspath(dest))
     if not os.path.exists(parent_dir):
@@ -85,12 +87,19 @@ def remote_signfile(options, urls, filename, fmt, token, dest=None):
 
     errors = 0
     pendings = 0
-    max_errors = 20
-    max_pending_tries = 300
+    max_errors = 5
+    # It takes the server ~60s to respond to an attempting to get a signed file
+    # We want to give up after about 5 minutes, so 60*5 = 5 tries.
+    max_pending_tries = 5
     while True:
         if pendings >= max_pending_tries:
             log.error("%s: giving up after %i tries", filehash, pendings)
-            return False
+            # If we've given up on the current server, try a different one!
+            urls.pop(0)
+            urls.append(url)
+            errors += 1
+            # Pendings needs to be reset to give the next server a fair shake.
+            pendings = 0
         if errors >= max_errors:
             log.error("%s: giving up after %i tries", filehash, errors)
             return False
@@ -140,7 +149,7 @@ def remote_signfile(options, urls, filename, fmt, token, dest=None):
             try:
                 if 'X-Pending' in e.headers:
                     log.debug("%s: pending; try again in a bit", filehash)
-                    time.sleep(1)
+                    time.sleep(15)
                     pendings += 1
                     continue
             except:

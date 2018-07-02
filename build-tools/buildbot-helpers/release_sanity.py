@@ -157,50 +157,6 @@ def verify_l10n_changesets(hgHost, l10n_changesets):
     return success
 
 
-def verify_l10n_dashboard(l10n_changesets, l10n_dashboard_version=None):
-    """Checks the l10n-changesets against the l10n dashboard"""
-    success = True
-    locales = query_locale_revisions(l10n_changesets)
-    if l10n_dashboard_version:
-        l10n_dashboard_version = getL10nDashboardVersion(
-            l10n_dashboard_version, releaseConfig['productName'],
-            parse_version=False)
-    else:
-        l10n_dashboard_version = getL10nDashboardVersion(
-            releaseConfig['version'], releaseConfig['productName'])
-    dash_url = 'https://l10n.mozilla.org/shipping/l10n-changesets?ms=%s' % \
-        l10n_dashboard_version
-    log.info("Comparing l10n changesets on dashboard %s to on-disk %s ..."
-             % (dash_url, l10n_changesets))
-    try:
-        dash_changesets = {}
-        for line in urllib2.urlopen(dash_url, timeout=10):
-            locale, revision = line.split()
-            dash_changesets[locale] = revision
-        for locale in locales:
-            revision = locales[locale]
-            dash_revision = dash_changesets.pop(locale, None)
-            if not dash_revision:
-                log.error("\tlocale %s missing on dashboard" % locale)
-                success = False
-                error_tally.add('verify_l10n_dashboard')
-            elif revision != dash_revision:
-                log.error("\tlocale %s revisions not matching: %s (config)"
-                          " vs. %s (dashboard)"
-                          % (locale, revision, dash_revision))
-                success = False
-                error_tally.add('verify_l10n_dashboard')
-        for locale in dash_changesets:
-            log.error("\tlocale %s missing in config" % locale)
-            success = False
-            error_tally.add('verify_l10n_dashboard')
-    except (urllib2.HTTPError, urllib2.URLError):
-        log.error("cannot find l10n dashboard at %s" % dash_url)
-        success = False
-        error_tally.add('verify_l10n_dashboard')
-    return success
-
-
 def verify_l10n_shipped_locales(l10n_changesets, shipped_locales):
     """Ensure that our l10n-changesets on the master match the repo's shipped
     locales list"""
@@ -242,18 +198,12 @@ def verify_options(cmd_options, config):
 
 
 def verify_partial(platforms, product, version, build_number,
-                   HACK_first_released_versions=None, protocol='http',
-                   server='ftp.mozilla.org'):
+                   protocol='http', server='archive.mozilla.org'):
 
-    from distutils.version import LooseVersion
     partial = Partial(product, version, build_number, protocol, server)
     log.info("Checking for existence of %s complete mar file..." % partial)
     complete_mar_name = partial.complete_mar_name()
     for platform in platforms:
-        if HACK_first_released_versions and platform in HACK_first_released_versions:
-            if LooseVersion(version) < LooseVersion(HACK_first_released_versions[platform]):
-                # No partial for this!
-                continue
         log.info("Platform: %s" % platform)
         complete_mar_url = partial.complete_mar_url(platform=platform)
         if partial.exists(platform=platform):
@@ -297,9 +247,6 @@ if __name__ == '__main__':
     parser.add_option(
         "-l", "--bypass-l10n-check", dest="checkL10n", action="store_false",
         help="don't bother verifying l10n milestones")
-    parser.add_option(
-        "--bypass-l10n-dashboard-check", dest="checkL10nDashboard",
-        action="store_false", help="don't verify l10n changesets against the dashboard (implied when --bypass-l10n-check is passed)")
     parser.add_option(
         "-m", "--bypass-mozconfig-check", dest="checkMozconfigs",
         action="store_false", help="don't verify mozconfigs")
@@ -465,14 +412,6 @@ if __name__ == '__main__':
                     test_success = False
                     log.error("Error verifying l10n changesets")
 
-                if options.checkL10nDashboard:
-                    # verify that l10n changesets match the dashboard
-                    if not verify_l10n_dashboard(
-                        l10nRevisionFile,
-                            options.l10n_dashboard_version):
-                        test_success = False
-                        log.error("Error verifying l10n dashboard changesets")
-
                 if options.checkMultiLocale:
                     if releaseConfig.get('enableMultiLocale'):
                         f = open(l10nRevisionFile)
@@ -527,7 +466,6 @@ if __name__ == '__main__':
                     # unreleased builds see bug 1091694 c2)
                     if not verify_partial(platforms, product, partial,
                                           build_number,
-                                          releaseConfig.get("HACK_first_released_version"),
                                           server=releaseConfig['ftpServer']):
                         test_success = False
                         log.error("Error verifying partials")
